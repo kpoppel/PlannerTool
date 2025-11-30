@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+*.egg
+*.env
+.env
+venv/
+ENV/
+.envrc
+
+# VS Code
+.vscode/
+
+# Node.js
+node_modules/
+
+# Coverage
+coverage/
+*.cover
+*.coverage
+*.cov
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*.orig
+*.rej
+*.swo
+*.swn
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# HTML/JS build artifacts
+mockup-www/*.js
+mockup-www/*.css
+mockup-www/*.html
+
+# Test output
+www/js/tests/*.log
+
+# Ignore markdown drafts
+[0-9]*-*.md
+
+# Ignore plan templates
+plan-template.md
+
+# Ignore other temp files
+*.tmp
