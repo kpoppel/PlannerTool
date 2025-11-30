@@ -7,13 +7,7 @@ export class ProviderREST {
         // return fetch('/api/capabilities').then(res => res.json());
         return { scenariosPersisted: true, colorsPersisted: true, batchUpdates: true };
     }
-    // async persistScenarioOverrides(id, overrides) {
-    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
-    // Currently disabled for code simplification. See issue #offline-mode.
-    // Example: persist scenario overrides via REST API (stub)
-    // return fetch(`/api/scenarios/${id}/overrides`, { method: 'POST', body: JSON.stringify({ overrides }) }).then(res => res.json());
-    //    return { id, overrides, persistedAt: new Date().toISOString() };
-    // }
+
     async deleteScenario(id) {
         // Example: delete scenario via REST API (stub)
         // return fetch(`/api/scenarios/${id}`, { method: 'DELETE' }).then(res => res.json());

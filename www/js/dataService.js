@@ -22,7 +22,6 @@ function delay(ms){ return new Promise(res => setTimeout(res, ms)); }
  * @property {function():Promise<{features:Array, diff?:Object}>} refreshBaseline
  * @property {function(Object):Promise<Object>} saveScenario
  * @property {function(string, Array<string>=):Promise<Object>} annotateScenario
- * @property {function(string, Array<{id:string,start:string,end:string}>):Promise<Object>} persistScenarioOverrides
  * @property {function(string):Promise<boolean>} deleteScenario
  * @property {function(string,string):Promise<Object>} renameScenario
  * @property {function():Promise<Array>} listScenarios
@@ -55,9 +54,6 @@ class DataService {
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
 
-    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
-    // Currently disabled for code simplification. See issue #offline-mode.
-    //async persistScenarioOverrides(id, overrides) { return this.providers['mock'].persistScenarioOverrides(id, overrides); }
     async listScenarios() { return this.providers['mock'].listScenarios(); }
     async deleteScenario(id) { return this.providers['mock'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['mock'].renameScenario(id, name); }
