@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AZ Planner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <base href="/static/" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div id="app" class="app-container">
+    <aside id="sidebar" class="sidebar" aria-label="Projects and Teams"></aside>
+    <main id="main" class="main">
+      <section id="loadGraphSection" class="load-graph" aria-label="Organisational Load Graph">
+        <canvas id="loadGraphCanvas"></canvas>
+      </section>
+      <section id="timelineSection" class="timeline-section" aria-label="Timeline and Features">
+        <header id="timelineHeader" class="timeline-header" role="row"></header>
+        <div id="featureBoard" class="feature-board" role="list"></div>
+      </section>
+    </main>
+    <aside id="detailsPanel" class="details-panel" aria-label="Work Item Details" hidden>
+      <button id="detailsCloseBtn" class="details-close" aria-label="Close details">&times;</button>
+      <div id="detailsContent" class="details-content"></div>
+    </aside>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

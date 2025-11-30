@@ -1,0 +1,15 @@
+{
+  "name": "PlannerTool",
+  "version": "1.0.0",
+  "description": "Azure DevOps Planner UI and backend integration",
+  "type": "module",
+  "main": "planner.py",
+  "scripts": {
+    "test-js": "npx c8 node scripts/run_js_tests.mjs"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "c8": "^10.1.3"
+  }
+}
