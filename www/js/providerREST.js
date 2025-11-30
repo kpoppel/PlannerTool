@@ -34,20 +34,15 @@ export class ProviderREST {
         // return fetch('/api/pat', { method: 'POST', body: JSON.stringify({ pat: patInput }) }).then(res => res.json());
         return { token: 'PAT-STORE-MOCKED' };
     }
-    async publishBaseline(selectedOverrides, scenario) {
+    async publishBaseline(selectedOverrides) {
         // Example: annotate selected overrides via REST API (stub)
-        // return fetch('/api/scenarios/annotate', { method: 'POST', body: JSON.stringify({ selectedOverrides, scenario }) }).then(res => res.json());
+        // return fetch('/api/scenarios/annotate', { method: 'POST', body: JSON.stringify({ selectedOverrides }) }).then(res => res.json());
         return { ok: true, annotatedAt: new Date().toISOString(), count: selectedOverrides.length };
     }
     async refreshBaseline() {
         // Example: refresh baseline via REST API (stub)
         // return fetch('/api/baseline/refresh').then(res => res.json());
         return { ok: true, refreshedAt: new Date().toISOString() };
-    }
-    async syncScenario(scenario) {
-        // Example: sync scenario via REST API (stub)
-        // return fetch('/api/scenarios/sync', { method: 'POST', body: JSON.stringify(scenario) }).then(res => res.json());
-        return { ok: true, syncedAt: new Date().toISOString(), updatedFeatureCount: Object.keys(scenario.overrides || {}).length };
     }
     async saveScenario(scenario) {
         // Example: save scenario via REST API (stub)

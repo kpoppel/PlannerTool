@@ -47,17 +47,13 @@ export class ProviderLocalStorage {
         // Simulate PAT submission in localStorage
         return { token: 'PAT-STORE-MOCKED' };
     }
-    async publishBaseline(selectedOverrides, scenario) {
+    async publishBaseline(selectedOverrides) {
         // Simulate annotation of selected overrides in localStorage
         return { ok: true, annotatedAt: new Date().toISOString(), count: selectedOverrides.length };
     }
     async refreshBaseline() {
         // Simulate baseline refresh in localStorage
         return { ok: true, refreshedAt: new Date().toISOString() };
-    }
-    async syncScenario(scenario) {
-        // Simulate syncing scenario in localStorage
-        return { ok: true, syncedAt: new Date().toISOString(), updatedFeatureCount: Object.keys(scenario.overrides || {}).length };
     }
     async saveScenario(scenario) {
         // Save scenario to localStorage

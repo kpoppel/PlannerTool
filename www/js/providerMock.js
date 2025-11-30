@@ -95,7 +95,9 @@ export class ProviderMock {
             summary.push({ id, start: { from: f.start, to: ov.start }, end: { from: f.end, to: ov.end } });
             f.start = ov.start; f.end = ov.end; f.dirty = true; f.changedFields = ['start', 'end'];
         }
-        return { ok: true, annotatedAt: new Date().toISOString(), count: annotated, summary };
+        const res = { ok: true, annotatedAt: new Date().toISOString(), count: annotated, details: summary };
+        this.logCall('publishBaseline', res);
+        return res;
     }
     async refreshBaseline() {
         this.logCall('refreshBaseline', arguments);
@@ -117,13 +119,7 @@ export class ProviderMock {
         }
         return { features: await this.getFeatures() };
     }
-    async syncScenario(scenario) {
-        this.logCall('syncScenario', arguments);
-        // call publishBaseline with selected features if provided
-        const ids = scenario && scenario.overrides ? Object.keys(scenario.overrides) : [];
-        const res = await this.publishBaseline(ids.map(id => ({ id })), scenario);
-        return { ok: true, syncedAt: res.annotatedAt, updatedFeatureCount: res.count };
-    }
+
     async saveScenario(scenario) {
         this.logCall('saveScenario', arguments);
         let existing = this.scenarios.find(s => s.id === scenario.id);
