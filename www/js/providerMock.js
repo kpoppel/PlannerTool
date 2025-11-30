@@ -1,0 +1,201 @@
+// providerMock.js
+// Mock implementation of the BackendProvider interface
+
+export class ProviderMock {
+    constructor() {
+        this.projects = [
+            { id:'alpha', name:'Project Alpha', selected:true },
+            { id:'beta', name:'Project Beta', selected:true }
+        ];
+        this.teams = [
+            { id:'frontend', name:'Frontend Team', selected:true },
+            { id:'backend', name:'Backend Team', selected:true },
+            { id:'devops', name:'DevOps Team', selected:true }
+        ];
+        this.features = [
+            { id:'epic-alpha-1', type:'epic', title:'Alpha Platform Expansion', project:'alpha', start:'2025-01-01', end:'2025-06-30', teamLoads:[{team:'frontend', load:18},{team:'backend', load:22}], orgLoad:40, status:'In Progress', assignee:'Alice', description:'High-level expansion of Alpha platform.', azureUrl:'#' },
+            { id:'epic-beta-1', type:'epic', title:'Beta Reliability Initiative', project:'beta', start:'2025-02-01', end:'2025-09-30', teamLoads:[{team:'backend', load:15},{team:'devops', load:20}], orgLoad:35, status:'New', assignee:'Bob', description:'Improve reliability & observability.', azureUrl:'#' },
+            // Increased loads to create some days with total > 100%
+            { id:'feat-alpha-A', type:'feature', parentEpic:'epic-alpha-1', title:'User Onboarding Overhaul', project:'alpha', start:'2025-01-01', end:'2025-02-28', teamLoads:[{team:'frontend', load:100},{team:'backend', load:100},{team:'devops', load:100}], orgLoad:120, status:'New', assignee:'Clara', description:'Redesign onboarding flow.', azureUrl:'#' },
+            { id:'feat-alpha-B', type:'feature', parentEpic:'epic-alpha-1', title:'Search Scalability Upgrade', project:'alpha', start:'2025-03-01', end:'2025-04-30', teamLoads:[{team:'backend', load:12},{team:'devops', load:6}], orgLoad:18, status:'In Progress', assignee:'Dan', description:'Scale search services.', azureUrl:'#' },
+            { id:'feat-alpha-C', type:'feature', parentEpic:'epic-alpha-1', title:'Reporting Dashboard Improvements', project:'alpha', start:'2025-05-01', end:'2025-06-15', teamLoads:[{team:'frontend', load:8},{team:'backend', load:6}], orgLoad:14, status:'New', assignee:'Eve', description:'Enhance reporting UI.', azureUrl:'#' },
+            { id:'feat-beta-A', type:'feature', parentEpic:'epic-beta-1', title:'Error Tracking Integration', project:'beta', start:'2025-02-03', end:'2025-03-15', teamLoads:[{team:'backend', load:8},{team:'devops', load:4}], orgLoad:12, status:'New', assignee:'Frank', description:'Integrate error tracking tool.', azureUrl:'#' },
+            { id:'feat-beta-B', type:'feature', parentEpic:'epic-beta-1', title:'Service Health Monitoring', project:'beta', start:'2025-04-01', end:'2025-06-30', teamLoads:[{team:'devops', load:10},{team:'backend', load:9}], orgLoad:19, status:'In Progress', assignee:'Grace', description:'Add health metrics and alerts.', azureUrl:'#' },
+            { id:'feat-beta-C', type:'feature', parentEpic:'epic-beta-1', title:'Automated Failover', project:'beta', start:'2025-07-01', end:'2025-09-15', teamLoads:[{team:'devops', load:11},{team:'backend', load:7}], orgLoad:18, status:'New', assignee:'Hank', description:'Implement automated failover strategy.', azureUrl:'#' },
+            // A one-day spike that further pushes over 100%
+            { id:'feat-alpha-spike', type:'feature', title:'Alpha One-Day Spike', project:'alpha', start:'2025-02-05', end:'2025-02-05', teamLoads:[{team:'frontend', load:40},{team:'devops', load:30}], orgLoad:70, status:'New', assignee:'Ivy', description:'Investigate quick alpha edge case.', azureUrl:'#' },
+            { id:'feat-beta-maint', type:'feature', title:'Beta Maintenance Window', project:'beta', start:'2025-08-10', end:'2025-08-20', teamLoads:[{team:'backend', load:6}], orgLoad:6, status:'New', assignee:'Jake', description:'Scheduled maintenance tasks.', azureUrl:'#' }
+        ].map(f => ({ ...f, original: { ...f }, changedFields: [], dirty: false }));
+        this.scenarios = [{ id:'live', name:'Live Scenario', isLive:true, overrides:{}, stale:false }];
+        this._idCounter = 1;
+    }
+
+    logCall(method, args) {
+        // Developer-friendly logging for mock provider calls
+        const argList = Array.from(args).map(a => JSON.stringify(a)).join(', ');
+        console.log(`[ProviderMock] ${method} called with: ${argList}`);
+    }
+    nextId(prefix='id') { return `${prefix}_${this._idCounter++}`; }
+    async getCapabilities() {
+        this.logCall('getCapabilities', arguments);
+        // Simulate capabilities fetch
+        return { scenariosPersisted: true, colorsPersisted: false, batchUpdates: true };
+    }
+    // async persistScenarioOverrides(id, overrides) {
+    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
+    // Currently disabled for code simplification. See issue #offline-mode.
+    //     this.logCall('persistScenarioOverrides', arguments);
+    // const scenario = this.scenarios.find(s => s.id === id);
+    // if (!scenario) throw { code: 'SCENARIO_NOT_FOUND', message: `Scenario ${id} not found` };
+    // scenario.overrides = Object.fromEntries(overrides.map(o => [o.id, { start: o.start, end: o.end }]));
+    // return { ...scenario };
+    // }
+    async deleteScenario(id) {
+        this.logCall('deleteScenario', arguments);
+        const idx = this.scenarios.findIndex(s => s.id === id && !s.isLive);
+        if (idx < 0) return false;
+        this.scenarios.splice(idx, 1);
+        return true;
+    }
+    async renameScenario(id, name) {
+        this.logCall('renameScenario', arguments);
+        const scenario = this.scenarios.find(s => s.id === id && !s.isLive);
+        if (!scenario) throw { code: 'SCENARIO_NOT_FOUND', message: `Scenario ${id} not found or is live` };
+        scenario.name = name;
+        return { ...scenario };
+    }
+    async listScenarios() {
+        this.logCall('listScenarios', arguments);
+        return this.scenarios.map(s => ({
+            id: s.id,
+            name: s.name,
+            isLive: s.isLive,
+            overridesCount: Object.keys(s.overrides || {}).length,
+            stale: !!s.stale
+        }));
+    }
+    async setPat(patInput) {
+        this.logCall('setPat', arguments);
+        // Simulate PAT submission
+        return { token: 'PAT-STORE-MOCKED' };
+    }
+    async publishBaseline(selectedOverrides, scenario) {
+        this.logCall('publishBaseline', arguments);
+        // Accept scenario or scenarioId; default to 'live'
+        const scenarioId = scenario && typeof scenario === 'object' ? scenario.id : (typeof scenario === 'string' ? scenario : 'live');
+        const s = this.scenarios.find(x => x.id === scenarioId);
+        if (!s) throw { code: 'SCENARIO_NOT_FOUND', message: `Scenario ${scenarioId} not found` };
+        const ids = selectedOverrides && selectedOverrides.length ? selectedOverrides.map(o => o.id) : Object.keys(s.overrides || {});
+        let annotated = 0; const summary = [];
+        for (const id of ids) {
+            const ov = s.overrides[id];
+            const f = this.features.find(x => x.id === id);
+            if (!ov || !f) continue;
+            annotated++;
+            summary.push({ id, start: { from: f.start, to: ov.start }, end: { from: f.end, to: ov.end } });
+            f.start = ov.start; f.end = ov.end; f.dirty = true; f.changedFields = ['start', 'end'];
+        }
+        return { ok: true, annotatedAt: new Date().toISOString(), count: annotated, summary };
+    }
+    async refreshBaseline() {
+        this.logCall('refreshBaseline', arguments);
+        this.features = this.features.map(f => {
+            if (f.original) {
+                const reverted = { ...f, ...f.original };
+                reverted.changedFields = [];
+                reverted.dirty = false;
+                return reverted;
+            }
+            return f;
+        });
+        // Mark scenarios stale if overrides reference missing features
+        const featureIds = new Set(this.features.map(f => f.id));
+        for (const s of this.scenarios) {
+            if (!s.isLive) {
+                s.stale = Object.keys(s.overrides || {}).some(fid => !featureIds.has(fid));
+            }
+        }
+        return { features: await this.getFeatures() };
+    }
+    async syncScenario(scenario) {
+        this.logCall('syncScenario', arguments);
+        // call publishBaseline with selected features if provided
+        const ids = scenario && scenario.overrides ? Object.keys(scenario.overrides) : [];
+        const res = await this.publishBaseline(ids.map(id => ({ id })), scenario);
+        return { ok: true, syncedAt: res.annotatedAt, updatedFeatureCount: res.count };
+    }
+    async saveScenario(scenario) {
+        this.logCall('saveScenario', arguments);
+        let existing = this.scenarios.find(s => s.id === scenario.id);
+        if (existing) {
+            Object.assign(existing, scenario);
+        } else {
+            existing = { ...scenario, id: scenario.id || this.nextId('scen'), isLive: false };
+            this.scenarios.push(existing);
+        }
+        const count = Object.keys(existing.overrides || {}).length;
+        return { ...existing, savedAt: new Date().toISOString(), overridesCount: count };
+    }
+    async checkHealth() {
+        this.logCall('checkHealth', arguments);
+        // Simulate health check
+        return { ok: true };
+    }
+    async setFeatureField(id, field, value) {
+        this.logCall('setFeatureField', arguments);
+        const f = this.features.find(x => x.id === id);
+        if (!f) throw { code: 'FEATURE_NOT_FOUND', message: `Feature ${id} not found` };
+        f[field] = value;
+        f.dirty = true;
+        if (!Array.isArray(f.changedFields)) f.changedFields = [];
+        if (!f.changedFields.includes(field)) f.changedFields.push(field);
+        return { ...f };
+    }
+    async batchSetFeatureDates(updates) {
+        this.logCall('batchSetFeatureDates', arguments);
+        const res = [];
+        for (const u of updates) {
+            res.push(await this.setFeatureDates(u.id, u.start, u.end));
+        }
+        return res;
+    }
+    async setFeatureDates(id, start, end) {
+        this.logCall('setFeatureDates', arguments);
+        const f = this.features.find(x => x.id === id);
+        if (!f) throw { code: 'FEATURE_NOT_FOUND', message: `Feature ${id} not found` };
+        f.start = start;
+        f.end = end;
+        f.dirty = true;
+        f.changedFields = ['start', 'end'];
+        return { ...f };
+    }
+    async getConfig() {
+        this.logCall('getConfig', arguments);
+        // Simulate config fetch
+        return { developmentMode: true, apiBaseUrl: '/api', orgUrl: 'https://dev.azure.com/example', projectDefault: 'alpha' };
+    }
+    async getAll() {
+        this.logCall('getAll', arguments);
+        return {
+            projects: await this.getProjects(),
+            teams: await this.getTeams(),
+            features: await this.getFeatures()
+        };
+    }
+        async getFeatures() {
+        this.logCall('getFeatures', arguments);
+        // Return features from instance state
+        return this.features.map(f => ({ ...f }));
+        }
+        async getTeams() {
+        this.logCall('getTeams', arguments);
+        // Return teams from instance state
+        return this.teams.map(t => ({ ...t }));
+        }
+        async getProjects() {
+        this.logCall('getProjects', arguments);
+        // Return projects from instance state
+        return this.projects.map(p => ({ ...p }));
+        }
+  // ...other methods will be added in later steps
+}

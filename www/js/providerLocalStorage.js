@@ -1,0 +1,142 @@
+// providerLocalStorage.js
+// LocalStorage implementation of the BackendProvider interface
+
+export class ProviderLocalStorage {
+    async getCapabilities() {
+        // Simulate capabilities fetch for localStorage
+        return { scenariosPersisted: true, colorsPersisted: true, batchUpdates: true };
+    }
+    async persistScenarioOverrides(id, overrides) {
+          let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
+    //    const idx = scenarios.findIndex(s => s.id === id);
+    //    if (idx >= 0) {
+    //        scenarios[idx].overrides = overrides;
+    //        localStorage.setItem('scenarios', JSON.stringify(scenarios));
+    //        return { id, overrides, persistedAt: new Date().toISOString() };
+    //    }
+    //    return { id, overrides, persisted: false };
+    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
+    // Currently disabled for code simplification. See issue #offline-mode.
+    }
+    async deleteScenario(id) {
+        let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
+        const idx = scenarios.findIndex(s => s.id === id);
+        if (idx >= 0) {
+            scenarios.splice(idx, 1);
+            localStorage.setItem('scenarios', JSON.stringify(scenarios));
+            return { id, deleted: true };
+        }
+        return { id, deleted: false };
+    }
+    async renameScenario(id, name) {
+        let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
+        const idx = scenarios.findIndex(s => s.id === id);
+        if (idx >= 0) {
+            scenarios[idx].name = name;
+            localStorage.setItem('scenarios', JSON.stringify(scenarios));
+            return scenarios[idx];
+        }
+        return null;
+    }
+    async listScenarios() {
+        // List scenarios from localStorage
+        const scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
+        return scenarios;
+    }
+    async setPat(patInput) {
+        // Simulate PAT submission in localStorage
+        return { token: 'PAT-STORE-MOCKED' };
+    }
+    async publishBaseline(selectedOverrides, scenario) {
+        // Simulate annotation of selected overrides in localStorage
+        return { ok: true, annotatedAt: new Date().toISOString(), count: selectedOverrides.length };
+    }
+    async refreshBaseline() {
+        // Simulate baseline refresh in localStorage
+        return { ok: true, refreshedAt: new Date().toISOString() };
+    }
+    async syncScenario(scenario) {
+        // Simulate syncing scenario in localStorage
+        return { ok: true, syncedAt: new Date().toISOString(), updatedFeatureCount: Object.keys(scenario.overrides || {}).length };
+    }
+    async saveScenario(scenario) {
+        // Save scenario to localStorage
+        let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
+        const idx = scenarios.findIndex(s => s.id === scenario.id);
+        if (idx >= 0) {
+            scenarios[idx] = scenario;
+        } else {
+            scenarios.push(scenario);
+        }
+        localStorage.setItem('scenarios', JSON.stringify(scenarios));
+        return { ...scenario, savedAt: new Date().toISOString() };
+    }
+    async checkHealth() {
+        // Simulate health check for localStorage
+        return { ok: true };
+    }
+    async setFeatureField(id, field, value) {
+        let features = JSON.parse(localStorage.getItem('features') || '[]');
+        const idx = features.findIndex(f => f.id === id);
+        if (idx >= 0) {
+            features[idx][field] = value;
+            localStorage.setItem('features', JSON.stringify(features));
+            return features[idx];
+        }
+        return null;
+    }
+    async batchSetFeatureDates(updates) {
+        let features = JSON.parse(localStorage.getItem('features') || '[]');
+        const results = [];
+        for (const u of updates) {
+            const idx = features.findIndex(f => f.id === u.id);
+            if (idx >= 0) {
+                features[idx].start = u.start;
+                features[idx].end = u.end;
+                results.push(features[idx]);
+            }
+        }
+        localStorage.setItem('features', JSON.stringify(features));
+        return results;
+    }
+    async setFeatureDates(id, start, end) {
+        // Update feature dates in localStorage
+        let features = JSON.parse(localStorage.getItem('features') || '[]');
+        const idx = features.findIndex(f => f.id === id);
+        if (idx >= 0) {
+            features[idx].start = start;
+            features[idx].end = end;
+            localStorage.setItem('features', JSON.stringify(features));
+            return features[idx];
+        }
+        return null;
+    }
+    async getConfig() {
+        // Fetch config from localStorage
+        const config = JSON.parse(localStorage.getItem('config') || '{}');
+        return config;
+    }
+    async getAll() {
+        return {
+            projects: await this.getProjects(),
+            teams: await this.getTeams(),
+            features: await this.getFeatures()
+        };
+    }
+    async getFeatures() {
+        // Fetch features from localStorage
+        const features = JSON.parse(localStorage.getItem('features') || '[]');
+        return features;
+    }
+    async getTeams() {
+        // Fetch teams from localStorage
+        const teams = JSON.parse(localStorage.getItem('teams') || '[]');
+        return teams;
+    }
+    async getProjects() {
+        // Fetch projects from localStorage
+        const projects = JSON.parse(localStorage.getItem('projects') || '[]');
+        return projects;
+    }
+    // ...other methods will be added in later steps
+}
