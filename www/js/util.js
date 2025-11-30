@@ -6,5 +6,16 @@ export function formatDate(dt){
 	return `${y}-${m}-${d}`;
 }
 export function addMonths(date, n){ const d = new Date(date); d.setMonth(d.getMonth()+n); return d; }
-export function dateRangeInclusiveMonths(start, end){ const arr=[]; let d = new Date(start); d.setDate(1); const limit = new Date(end); limit.setDate(1); while(d<=limit){ arr.push(new Date(d)); d.setMonth(d.getMonth()+1); } return arr; }
+export function dateRangeInclusiveMonths(start, end) {
+	const arr=[];
+	let d = new Date(start);
+	d.setDate(1);
+	const limit = new Date(end);
+	limit.setDate(1);
+	while(d<=limit) {
+		arr.push(new Date(d));
+		d.setMonth(d.getMonth()+1);
+	}
+	return arr;
+}
 export function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
