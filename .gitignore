@@ -40,9 +40,7 @@ coverage/
 Thumbs.db
 
 # HTML/JS build artifacts
-mockup-www/*.js
-mockup-www/*.css
-mockup-www/*.html
+mockup-www/**
 
 # Test output
 www/js/tests/*.log
