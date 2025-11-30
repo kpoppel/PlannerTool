@@ -1,4 +1,4 @@
-import { state, updateFeatureDates } from './state.js';
+import { state } from './state.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths } from './timeline.js';
 import { computeMoveUpdates, computeResizeUpdates, applyUpdates } from './scheduleService.js';
@@ -12,7 +12,7 @@ function getBoardOffset(){
   return isNaN(pl)?0:pl;
 }
 
-export function startDragMove(e, feature, card, updateDatesCb = updateFeatureDates, featuresSource = state.features){
+export function startDragMove(e, feature, card, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const months = getTimelineMonths();
   const boardOffset = getBoardOffset();
   const startDateOrig = parseDate(feature.start);
@@ -59,7 +59,7 @@ export function startDragMove(e, feature, card, updateDatesCb = updateFeatureDat
   window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
 }
 
-export function startResize(e, feature, card, datesEl, updateDatesCb = updateFeatureDates, featuresSource = state.features){
+export function startResize(e, feature, card, datesEl, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const startDate = parseDate(feature.start);
   let startX = e.clientX;
   const origWidth = parseInt(card.style.width,10);

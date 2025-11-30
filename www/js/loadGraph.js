@@ -1,4 +1,4 @@
-import { state, getEffectiveFeatures } from './state.js';
+import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { getTimelineMonths } from './timeline.js';
 import { computeDailyLoadMaps } from './loadMath.js';
@@ -65,7 +65,7 @@ function render(){
   canvas.height = 120;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  const effective = getEffectiveFeatures();
+  const effective = state.getEffectiveFeatures();
   const { teamDayMap, projectDayMap, orgTotalsTeam, orgTotalsProject } = computeDailyLoadMaps(effective, state.teams, state.projects, { showEpics: state.showEpics, showFeatures: state.showFeatures }, range);
   const visibleStartIdx = dateToIndex(months, range.startDate);
   const visibleEndIdx = dateToIndex(months, range.endDate);

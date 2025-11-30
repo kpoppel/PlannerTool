@@ -1,4 +1,4 @@
-import { state, getEffectiveFeatures, setScenarioOverride } from './state.js';
+import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { formatDate, parseDate, addMonths } from './util.js';
 import { getTimelineMonths } from './timeline.js';
@@ -85,7 +85,7 @@ function createCard(feature, idx, sourceFeatures){
   card.style.top = (idx * laneHeight()) + 'px';
   card.style.width = width + 'px';
   card.dataset.id = feature.id;
-  // Dirty logic: live scenario uses baseline feature.dirty; non-live scenarios only mark dirty if override changes dates.
+  // Always mark cards as dirty in scenarios if they differ from baseline
   const activeScenario = state.scenarios.find(s=>s.id===state.activeScenarioId);
   const inScenarioMode = !!activeScenario && !activeScenario.isLive;
   if(inScenarioMode){
@@ -134,7 +134,7 @@ function createCard(feature, idx, sourceFeatures){
   // Unified click/drag handling with threshold
   // Scenario override wiring: if active scenario is non-live, route updates to overrides
   // Reuse scenario mode detection for drag callbacks.
-  const updateDatesCb = inScenarioMode ? (id,start,end)=> setScenarioOverride(id,start,end) : undefined; // undefined lets defaults apply
+  const updateDatesCb = inScenarioMode ? (id,start,end)=> state.setScenarioOverride(id,start,end) : undefined; // undefined lets defaults apply
   const featuresSource = sourceFeatures || state.features;
 
   card.addEventListener('mousedown', e => {
@@ -189,7 +189,7 @@ function createCard(feature, idx, sourceFeatures){
 function renderFeatureBoard(){
   const board = document.getElementById('featureBoard'); if(!board) return; board.innerHTML='';
   let ordered;
-  const sourceFeatures = getEffectiveFeatures();
+  const sourceFeatures = state.getEffectiveFeatures();
   if(state.featureSortMode === 'rank'){
     // Group epics with their children preserving original import rank
     const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a,b)=> (a.originalRank||0)-(b.originalRank||0));
