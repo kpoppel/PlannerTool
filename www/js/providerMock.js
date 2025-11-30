@@ -41,15 +41,7 @@ export class ProviderMock {
         // Simulate capabilities fetch
         return { scenariosPersisted: true, colorsPersisted: false, batchUpdates: true };
     }
-    // async persistScenarioOverrides(id, overrides) {
-    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
-    // Currently disabled for code simplification. See issue #offline-mode.
-    //     this.logCall('persistScenarioOverrides', arguments);
-    // const scenario = this.scenarios.find(s => s.id === id);
-    // if (!scenario) throw { code: 'SCENARIO_NOT_FOUND', message: `Scenario ${id} not found` };
-    // scenario.overrides = Object.fromEntries(overrides.map(o => [o.id, { start: o.start, end: o.end }]));
-    // return { ...scenario };
-    // }
+
     async deleteScenario(id) {
         this.logCall('deleteScenario', arguments);
         const idx = this.scenarios.findIndex(s => s.id === id && !s.isLive);

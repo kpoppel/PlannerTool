@@ -6,18 +6,7 @@ export class ProviderLocalStorage {
         // Simulate capabilities fetch for localStorage
         return { scenariosPersisted: true, colorsPersisted: true, batchUpdates: true };
     }
-    async persistScenarioOverrides(id, overrides) {
-          let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
-    //    const idx = scenarios.findIndex(s => s.id === id);
-    //    if (idx >= 0) {
-    //        scenarios[idx].overrides = overrides;
-    //        localStorage.setItem('scenarios', JSON.stringify(scenarios));
-    //        return { id, overrides, persistedAt: new Date().toISOString() };
-    //    }
-    //    return { id, overrides, persisted: false };
-    // [Offline mode] This function can be expanded to persist scenario updates in localStorage for draft/offline scenarios.
-    // Currently disabled for code simplification. See issue #offline-mode.
-    }
+
     async deleteScenario(id) {
         let scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
         const idx = scenarios.findIndex(s => s.id === id);
