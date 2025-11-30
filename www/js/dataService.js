@@ -61,9 +61,8 @@ class DataService {
     async listScenarios() { return this.providers['mock'].listScenarios(); }
     async deleteScenario(id) { return this.providers['mock'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['mock'].renameScenario(id, name); }
-    async publishBaseline(selectedOverrides, scenario) { return this.providers['mock'].publishBaseline(selectedOverrides, scenario); }
+    async publishBaseline(selectedOverrides) { return this.providers['mock'].publishBaseline(selectedOverrides); }
     async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
-    async syncScenario(scenario) { return this.providers['mock'].syncScenario(scenario); }
     async saveScenario(scenario) { return this.providers['mock'].saveScenario(scenario); }
 }
 

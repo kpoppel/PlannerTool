@@ -237,7 +237,7 @@ function renderScenarios(){
               .map(chk => {
                 const id = chk.dataset.id; const ov = activeOverrides[id]; return { id, start: ov.start, end: ov.end };
               });
-            const res = await dataService.publishBaseline(selected); console.log('Publish baseline', res);
+            const res = await dataService.publishBaseline(selected);
             document.body.removeChild(overlay);
           });
           buttons.appendChild(cancelBtn); buttons.appendChild(saveBtn);
