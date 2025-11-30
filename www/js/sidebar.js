@@ -179,10 +179,11 @@ function renderScenarios(){
         if(!disabled) item.addEventListener('click', ev => { ev.stopPropagation(); onClick(); closeAnyScenarioMenu(); });
         pop.appendChild(item);
       }
+      // Add Clone Scenario for all scenarios
+      addItem('Clone Scenario', '⎘', ()=>{
+        openInputModal({ title:`Clone Scenario`, message:`Create a new scenario from "${s.name}".`, label:'Scenario name', defaultValue: defaultCloneName, confirmLabel:'Clone', validate: validateScenarioName, onConfirm: (val)=>{ const newScen = cloneScenario(s.id, val); if(newScen){ activateScenario(newScen.id); } } });
+      });
       if(s.isLive){
-        addItem('Clone Scenario', '⎘', ()=>{
-          openInputModal({ title:'Clone Live Scenario', message:'Create a new scenario from the live baseline.', label:'Scenario name', defaultValue: defaultCloneName, confirmLabel:'Clone', validate: validateScenarioName, onConfirm: (val)=>{ const newScen = cloneScenario(s.id, val); if(newScen){ activateScenario(newScen.id); } } });
-        });
         addItem('Refresh from Azure DevOps', '🔄', async ()=>{
           // Use state refresh to pull data after backend reset
           const res = await dataService.refreshBaseline(); console.log('Baseline refresh', res);
