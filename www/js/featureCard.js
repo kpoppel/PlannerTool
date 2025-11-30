@@ -24,7 +24,7 @@ export function initFeatureCards(){
   bus.on('scenario:activated', ({scenarioId})=>{
     const board = document.getElementById('featureBoard');
     if(!board) return;
-    if(scenarioId && scenarioId !== 'live') board.classList.add('scenario-mode');
+    if(scenarioId && scenarioId !== 'baseline') board.classList.add('scenario-mode');
     else board.classList.remove('scenario-mode');
   });
   renderFeatureBoard();
@@ -87,15 +87,8 @@ function createCard(feature, idx, sourceFeatures){
   card.dataset.id = feature.id;
   // Always mark cards as dirty in scenarios if they differ from baseline
   const activeScenario = state.scenarios.find(s=>s.id===state.activeScenarioId);
-  const inScenarioMode = !!activeScenario && !activeScenario.isLive;
-  if(inScenarioMode){
-    const baseline = state.features.find(x=>x.id===feature.id);
-    if(baseline && (feature.start !== baseline.start || feature.end !== baseline.end)){
-      card.classList.add('dirty');
-    }
-  } else {
-    if(feature.dirty){ card.classList.add('dirty'); }
-  }
+  const inScenarioMode = !!activeScenario && activeScenario.id !== 'baseline';
+  if(feature.dirty){ card.classList.add('dirty'); }
   // Apply project color to left border
   const project = state.projects.find(p=>p.id===feature.project);
   if(project){ card.style.borderLeftColor = project.color; }
@@ -134,8 +127,8 @@ function createCard(feature, idx, sourceFeatures){
   // Unified click/drag handling with threshold
   // Scenario override wiring: if active scenario is non-live, route updates to overrides
   // Reuse scenario mode detection for drag callbacks.
-  const updateDatesCb = inScenarioMode ? (id,start,end)=> state.setScenarioOverride(id,start,end) : undefined; // undefined lets defaults apply
-  const featuresSource = sourceFeatures || state.features;
+  const updateDatesCb = (id,start,end)=> state.updateFeatureDates(id,start,end); // unified override handler
+  const featuresSource = sourceFeatures;
 
   card.addEventListener('mousedown', e => {
     if(e.target===resizeHandle) return; // resize handled separately

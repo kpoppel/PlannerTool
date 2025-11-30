@@ -103,9 +103,9 @@ export function initSidebar(){
 function renderProjects(){
   elCache.projectList.innerHTML = '';
   state.projects.forEach(p=>{
-    // Count epics and features for this project
-    const epicsCount = state.features.filter(f => f.project === p.id && f.type === 'epic').length;
-    const featuresCount = state.features.filter(f => f.project === p.id && f.type === 'feature').length;
+    // Count epics and features for this project (baseline only)
+    const epicsCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'epic').length;
+    const featuresCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'feature').length;
     const li = document.createElement('li');
     li.className='sidebar-list-item';
     li.innerHTML = `<span class="color-dot" style="background:${p.color}" data-color-id="${p.id}"></span>
@@ -118,13 +118,14 @@ function renderProjects(){
     elCache.projectList.appendChild(li);
   });
 }
+
 function renderTeams(){
   elCache.teamList.innerHTML = '';
   state.teams.forEach(t=>{
     const li = document.createElement('li');
     li.className='sidebar-list-item';
-    const epicsCount = state.features.filter(f => f.type==='epic' && f.teamLoads.some(tl=>tl.team===t.id)).length;
-    const featuresCount = state.features.filter(f => f.type==='feature' && f.teamLoads.some(tl=>tl.team===t.id)).length;
+    const epicsCount = state.baselineFeatures.filter(f => f.type==='epic' && f.teamLoads.some(tl=>tl.team===t.id)).length;
+    const featuresCount = state.baselineFeatures.filter(f => f.type==='feature' && f.teamLoads.some(tl=>tl.team===t.id)).length;
     li.innerHTML = `<span class="color-dot" style="background:${t.color}" data-color-id="${t.id}"></span>
       <label><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/> ${t.name}
         <span class="project-counts">
@@ -135,6 +136,7 @@ function renderTeams(){
     elCache.teamList.appendChild(li);
   });
 }
+
 function closeAnyScenarioMenu(){
   document.querySelectorAll('.scenario-menu-popover').forEach(p=>p.remove());
 }
@@ -150,10 +152,9 @@ function renderScenarios(){
     // Name label clickable to activate
     const nameSpan = document.createElement('span'); nameSpan.className='scenario-name'; nameSpan.textContent = s.name; nameSpan.title = s.name;
     nameSpan.addEventListener('click', ()=>{ state.activateScenario(s.id); });
-    // Live scenario lock icon positioned to the left of the name
-    if(s.isLive){
-      const lock = document.createElement('span'); lock.className='scenario-lock'; lock.title='Live baseline (read-only)'; lock.textContent='🔒';
-      li.appendChild(lock);
+    // Show warning icon if scenario is unsaved.
+    if (state.isScenarioUnsaved(s)) {
+      const warn = document.createElement('span'); warn.className='scenario-warning'; warn.title = s.id==='baseline' ? 'Baseline modified (overrides present)' : 'Scenario has unsaved changes'; warn.textContent='⚠️'; li.appendChild(warn);
     }
     li.appendChild(nameSpan);
     const defaultCloneName = (()=>{
@@ -183,12 +184,12 @@ function renderScenarios(){
       addItem('Clone Scenario', '⎘', ()=>{
         openInputModal({ title:`Clone Scenario`, message:`Create a new scenario from "${s.name}".`, label:'Scenario name', defaultValue: defaultCloneName, confirmLabel:'Clone', validate: validateScenarioName, onConfirm: (val)=>{ const newScen = state.cloneScenario(s.id, val); if(newScen){ state.activateScenario(newScen.id); } } });
       });
-      if(s.isLive){
-        addItem('Refresh from Azure DevOps', '🔄', async ()=>{
-          // Use state refresh to pull data after backend reset
-          const res = await dataService.refreshBaseline(); console.log('Baseline refresh', res);
+      if(s.id === 'baseline'){
+        addItem('Refresh Baseline', '🔄', async ()=>{
+          await dataService.refreshBaseline();
           const mod = await import('./state.js'); await mod.state.refreshBaseline();
         });
+        // Baseline cannot rename/delete
       } else {
         addItem('Rename', '✏️', ()=>{
           openInputModal({ title:'Rename Scenario', message:'Enter a new unique name for the scenario.', label:'Scenario name', defaultValue: s.name, confirmLabel:'Rename', validate: validateScenarioName, onConfirm:(val)=>{ state.renameScenario(s.id, val); } });
@@ -196,21 +197,17 @@ function renderScenarios(){
         addItem('Delete', '🗑️', ()=>{
           openConfirmModal({ title:'Delete Scenario', message:`Delete scenario "${s.name}"? This cannot be undone.`, confirmLabel:'Delete', onConfirm:()=>{ state.deleteScenario(s.id); } });
         });
-        // Save scenario to backend (Phase 1 mock persistence)
-        addItem('Save to Backend', '💾', async ()=>{
-          const res = await dataService.saveScenario(s); console.log('Scenario saved', res);
+        // Save scenario to backend
+        addItem('Save Scenario', '💾', async ()=>{
+          await state.saveScenario(s.id);
         });
         addItem('Save to Azure DevOps', '💾', async ()=>{
-          const activeOverrides = s.overrides || {};
-          // Only include overrides that differ from baseline dates
-          const rows = Object.entries(activeOverrides)
-            .map(([id, ov])=>{
-              const f = state.features.find(x=>x.id===id);
-              return { id, title: f? f.title : id, start: ov.start, end: ov.end, baselineStart: f? f.original?.start ?? f.start : ov.start, baselineEnd: f? f.original?.end ?? f.end : ov.end };
-            })
-            .filter(r => r.start !== r.baselineStart || r.end !== r.baselineEnd)
-            .map(r => ({ id: r.id, title: r.title, start: r.start, end: r.end }));
-          if(rows.length === 0){ console.log('No differing overrides to annotate.'); return; }
+          // Overrides is a dictionary: { featureId: { start, end, ... } }
+          const overrides = s.overrides || {};
+          const overrideEntries = Object.entries(overrides);
+          console.log('Preparing to annotate overrides back to Azure DevOps...', overrideEntries);
+          // TODO: Grey out the save button if there's nothing to save.
+          if(overrideEntries.length === 0){ console.log('No differing overrides to annotate.'); return; }
           const overlay = document.createElement('div'); overlay.className='modal-overlay';
           const modal = document.createElement('div'); modal.className='modal';
           const titleEl = document.createElement('h3'); titleEl.textContent='Save to Azure DevOps'; modal.appendChild(titleEl);
@@ -218,12 +215,14 @@ function renderScenarios(){
           const table = document.createElement('table'); table.className='scenario-annotate-table';
           const thead = document.createElement('thead'); thead.innerHTML = '<tr><th>Select</th><th>Title</th><th>Start</th><th>End</th></tr>'; table.appendChild(thead);
           const tbody = document.createElement('tbody');
-          rows.forEach(r=>{
+          overrideEntries.forEach(([id, ov]) => {
+            console.log('Override to annotate:', id, ov);
+            console.log('Feature title:', state.getFeatureTitleById(id));
             const tr = document.createElement('tr');
-            const tdSel = document.createElement('td'); const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=true; chk.dataset.id=r.id; tdSel.appendChild(chk); tr.appendChild(tdSel);
-            const tdTitle = document.createElement('td'); tdTitle.textContent = r.title; tr.appendChild(tdTitle);
-            const tdStart = document.createElement('td'); tdStart.textContent = r.start; tr.appendChild(tdStart);
-            const tdEnd = document.createElement('td'); tdEnd.textContent = r.end; tr.appendChild(tdEnd);
+            const tdSel = document.createElement('td'); const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=true; chk.dataset.id=id; tdSel.appendChild(chk); tr.appendChild(tdSel);
+            const tdTitle = document.createElement('td'); tdTitle.textContent = state.getFeatureTitleById(id); tr.appendChild(tdTitle);
+            const tdStart = document.createElement('td'); tdStart.textContent = ov.start; tr.appendChild(tdStart);
+            const tdEnd = document.createElement('td'); tdEnd.textContent = ov.end; tr.appendChild(tdEnd);
             tbody.appendChild(tr);
           });
           table.appendChild(tbody);
@@ -235,7 +234,7 @@ function renderScenarios(){
             const selected = Array.from(tbody.querySelectorAll('input[type="checkbox"]'))
               .filter(chk => chk.checked)
               .map(chk => {
-                const id = chk.dataset.id; const ov = activeOverrides[id]; return { id, start: ov.start, end: ov.end };
+                const id = chk.dataset.id; const ov = overrides[id]; return { id, start: ov.start, end: ov.end };
               });
             const res = await dataService.publishBaseline(selected);
             document.body.removeChild(overlay);

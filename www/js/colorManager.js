@@ -3,7 +3,7 @@ import { bus } from './eventBus.js';
 import { saveProjectColor, saveTeamColor } from './dataLocalStorageService.js';
 
 // Expanded 16-color palette
-const PALETTE = [
+export const PALETTE = [
   '#3498db','#2980b9','#1abc9c','#16a085',
   '#27ae60','#2ecc71','#f1c40f','#f39c12',
   '#e67e22','#d35400','#e74c3c','#c0392b',
