@@ -1,4 +1,4 @@
-import { state, setProjectSelected, setTeamSelected, setTimelineScale, setShowEpics, setShowFeatures, setCondensedCards, setLoadViewMode, activateScenario, cloneScenario, renameScenario, deleteScenario } from './state.js';
+import { state } from './state.js';
 import { dataService } from './dataService.js';
 import { openInputModal, openConfirmModal } from './modal.js';
 import { bus } from './eventBus.js';
@@ -80,7 +80,7 @@ export function initSidebar(){
   if(condenseToggle){
     condenseToggle.checked = !!state.condensedCards;
     condenseToggle.addEventListener('change', (e)=>{
-      setCondensedCards(e.target.checked);
+      state.setCondensedCards(e.target.checked);
     });
   }
 
@@ -89,7 +89,7 @@ export function initSidebar(){
   radios.forEach(r => {
     r.checked = (r.value === state.loadViewMode);
     r.addEventListener('change', (e)=>{
-      if(e.target.checked){ setLoadViewMode(e.target.value); }
+      if(e.target.checked){ state.setLoadViewMode(e.target.value); }
     });
   });
 
@@ -149,7 +149,7 @@ function renderScenarios(){
     const controls = document.createElement('span'); controls.className='scenario-controls';
     // Name label clickable to activate
     const nameSpan = document.createElement('span'); nameSpan.className='scenario-name'; nameSpan.textContent = s.name; nameSpan.title = s.name;
-    nameSpan.addEventListener('click', ()=>{ activateScenario(s.id); });
+    nameSpan.addEventListener('click', ()=>{ state.activateScenario(s.id); });
     // Live scenario lock icon positioned to the left of the name
     if(s.isLive){
       const lock = document.createElement('span'); lock.className='scenario-lock'; lock.title='Live baseline (read-only)'; lock.textContent='🔒';
@@ -181,20 +181,20 @@ function renderScenarios(){
       }
       // Add Clone Scenario for all scenarios
       addItem('Clone Scenario', '⎘', ()=>{
-        openInputModal({ title:`Clone Scenario`, message:`Create a new scenario from "${s.name}".`, label:'Scenario name', defaultValue: defaultCloneName, confirmLabel:'Clone', validate: validateScenarioName, onConfirm: (val)=>{ const newScen = cloneScenario(s.id, val); if(newScen){ activateScenario(newScen.id); } } });
+        openInputModal({ title:`Clone Scenario`, message:`Create a new scenario from "${s.name}".`, label:'Scenario name', defaultValue: defaultCloneName, confirmLabel:'Clone', validate: validateScenarioName, onConfirm: (val)=>{ const newScen = state.cloneScenario(s.id, val); if(newScen){ state.activateScenario(newScen.id); } } });
       });
       if(s.isLive){
         addItem('Refresh from Azure DevOps', '🔄', async ()=>{
           // Use state refresh to pull data after backend reset
           const res = await dataService.refreshBaseline(); console.log('Baseline refresh', res);
-          const mod = await import('./state.js'); await mod.refreshBaseline();
+          const mod = await import('./state.js'); await mod.state.refreshBaseline();
         });
       } else {
         addItem('Rename', '✏️', ()=>{
-          openInputModal({ title:'Rename Scenario', message:'Enter a new unique name for the scenario.', label:'Scenario name', defaultValue: s.name, confirmLabel:'Rename', validate: validateScenarioName, onConfirm:(val)=>{ renameScenario(s.id, val); } });
+          openInputModal({ title:'Rename Scenario', message:'Enter a new unique name for the scenario.', label:'Scenario name', defaultValue: s.name, confirmLabel:'Rename', validate: validateScenarioName, onConfirm:(val)=>{ state.renameScenario(s.id, val); } });
         });
         addItem('Delete', '🗑️', ()=>{
-          openConfirmModal({ title:'Delete Scenario', message:`Delete scenario "${s.name}"? This cannot be undone.`, confirmLabel:'Delete', onConfirm:()=>{ deleteScenario(s.id); } });
+          openConfirmModal({ title:'Delete Scenario', message:`Delete scenario "${s.name}"? This cannot be undone.`, confirmLabel:'Delete', onConfirm:()=>{ state.deleteScenario(s.id); } });
         });
         // Save scenario to backend (Phase 1 mock persistence)
         addItem('Save to Backend', '💾', async ()=>{
@@ -259,13 +259,13 @@ function renderScenarios(){
   });
 }
 function onSidebarChange(e){
-  if(e.target.matches('input[data-project]')){ setProjectSelected(e.target.getAttribute('data-project'), e.target.checked); }
-  if(e.target.matches('input[data-team]')){ setTeamSelected(e.target.getAttribute('data-team'), e.target.checked); }
-  if(e.target.name==='scale'){ setTimelineScale(e.target.value); }
-  if(e.target.id==='filterEpics'){ setShowEpics(e.target.checked); }
-  if(e.target.id==='filterFeatures'){ setShowFeatures(e.target.checked); }
-  if(e.target.name==='loadViewMode' && e.target.checked){ setLoadViewMode(e.target.value); }
-  if(e.target.name==='featureSortMode' && e.target.checked){ import('./state.js').then(m=> m.setFeatureSortMode(e.target.value)); }
+  if(e.target.matches('input[data-project]')){ state.setProjectSelected(e.target.getAttribute('data-project'), e.target.checked); }
+  if(e.target.matches('input[data-team]')){ state.setTeamSelected(e.target.getAttribute('data-team'), e.target.checked); }
+  if(e.target.name==='scale'){ state.setTimelineScale(e.target.value); }
+  if(e.target.id==='filterEpics'){ state.setShowEpics(e.target.checked); }
+  if(e.target.id==='filterFeatures'){ state.setShowFeatures(e.target.checked); }
+  if(e.target.name==='loadViewMode' && e.target.checked){ state.setLoadViewMode(e.target.value); }
+  if(e.target.name==='featureSortMode' && e.target.checked){ import('./state.js').then(m=> m.state.setFeatureSortMode(e.target.value)); }
 }
 
 function validateScenarioName(val){

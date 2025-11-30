@@ -1,5 +1,5 @@
 import { bus } from './eventBus.js';
-import { state, revertFeature } from './state.js';
+import { state } from './state.js';
 
 let panel, content, closeBtn;
 
@@ -54,7 +54,7 @@ function show(feature){
   `;
   if(feature.dirty){
     const btn = content.querySelector('.details-revert');
-    if(btn){ btn.addEventListener('click', ev => { ev.stopPropagation(); revertFeature(feature.id); }); }
+    if(btn){ btn.addEventListener('click', ev => { ev.stopPropagation(); state.revertFeature(feature.id); }); }
   }
 }
 

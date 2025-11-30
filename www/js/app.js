@@ -4,11 +4,11 @@ import { initFeatureCards } from './featureCard.js';
 import { initDetailsPanel } from './detailsPanel.js';
 import { initColorManager } from './colorManager.js';
 import { bus } from './eventBus.js';
-import { initState } from './state.js';
+import { state } from './state.js';
 import { initLoadGraph } from './loadGraph.js';
 
 async function init(){
-  await initState();
+  await state.initState();
   initSidebar();
   initTimeline();
   initFeatureCards();
