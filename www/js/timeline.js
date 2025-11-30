@@ -1,4 +1,4 @@
-import { state, getEffectiveFeatures } from './state.js';
+import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { parseDate, formatDate, addMonths, dateRangeInclusiveMonths } from './util.js';
 
@@ -16,7 +16,7 @@ export function initTimeline(){
 export function getTimelineMonths(){ return monthsCache; }
 
 function computeRange(){
-  const feats = getEffectiveFeatures();
+  const feats = state.getEffectiveFeatures();
   if(feats.length===0){ const today = new Date(); return { min: today, max: addMonths(today, 6) }; }
   let min = parseDate(feats[0].start); let max = parseDate(feats[0].end);
   for(const f of feats){ const s = parseDate(f.start); const e = parseDate(f.end); if(s<min) min = s; if(e>max) max = e; }
