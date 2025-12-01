@@ -5,7 +5,8 @@ export class ProviderMock {
     constructor() {
         this.projects = [
             { id:'alpha', name:'Project Alpha', selected:true },
-            { id:'beta', name:'Project Beta', selected:true }
+            { id:'beta', name:'Project Beta', selected:true },
+            { id:'ceta', name:'Project Ceta', selected:true }
         ];
         this.teams = [
             { id:'frontend', name:'Frontend Team', selected:true },
@@ -13,18 +14,19 @@ export class ProviderMock {
             { id:'devops', name:'DevOps Team', selected:true }
         ];
         this.features = [
-            { id:'epic-alpha-1', type:'epic', title:'Alpha Platform Expansion', project:'alpha', start:'2025-01-01', end:'2025-06-30', teamLoads:[{team:'frontend', load:18},{team:'backend', load:22}], orgLoad:40, status:'In Progress', assignee:'Alice', description:'High-level expansion of Alpha platform.', azureUrl:'#' },
-            { id:'epic-beta-1', type:'epic', title:'Beta Reliability Initiative', project:'beta', start:'2025-02-01', end:'2025-09-30', teamLoads:[{team:'backend', load:15},{team:'devops', load:20}], orgLoad:35, status:'New', assignee:'Bob', description:'Improve reliability & observability.', azureUrl:'#' },
+            { id:'epic-alpha-1', type:'epic', title:'Alpha Platform Expansion', project:'alpha', start:'2025-01-01', end:'2025-06-30', teamLoads:[{team:'frontend', load:18},{team:'backend', load:22}], status:'In Progress', assignee:'Alice', description:'High-level expansion of Alpha platform.', azureUrl:'#' },
+            { id:'epic-beta-1', type:'epic', title:'Beta Reliability Initiative', project:'beta', start:'2025-02-01', end:'2025-09-30', teamLoads:[{team:'backend', load:15},{team:'devops', load:20}], status:'New', assignee:'Bob', description:'Improve reliability & observability.', azureUrl:'#' },
+            { id:'epic-ceta-1', type:'epic', title:'Ceta Backend Implementation', project:'ceta', start:'2025-03-20', end:'2025-06-14', teamLoads:[{team:'backend', load:50},{team:'devops', load:10}], status:'New', assignee:'John', description:'Implement the backend', azureUrl:'#' },
             // Increased loads to create some days with total > 100%
-            { id:'feat-alpha-A', type:'feature', parentEpic:'epic-alpha-1', title:'User Onboarding Overhaul', project:'alpha', start:'2025-01-01', end:'2025-02-28', teamLoads:[{team:'frontend', load:100},{team:'backend', load:100},{team:'devops', load:100}], orgLoad:120, status:'New', assignee:'Clara', description:'Redesign onboarding flow.', azureUrl:'#' },
-            { id:'feat-alpha-B', type:'feature', parentEpic:'epic-alpha-1', title:'Search Scalability Upgrade', project:'alpha', start:'2025-03-01', end:'2025-04-30', teamLoads:[{team:'backend', load:12},{team:'devops', load:6}], orgLoad:18, status:'In Progress', assignee:'Dan', description:'Scale search services.', azureUrl:'#' },
-            { id:'feat-alpha-C', type:'feature', parentEpic:'epic-alpha-1', title:'Reporting Dashboard Improvements', project:'alpha', start:'2025-05-01', end:'2025-06-15', teamLoads:[{team:'frontend', load:8},{team:'backend', load:6}], orgLoad:14, status:'New', assignee:'Eve', description:'Enhance reporting UI.', azureUrl:'#' },
-            { id:'feat-beta-A', type:'feature', parentEpic:'epic-beta-1', title:'Error Tracking Integration', project:'beta', start:'2025-02-03', end:'2025-03-15', teamLoads:[{team:'backend', load:8},{team:'devops', load:4}], orgLoad:12, status:'New', assignee:'Frank', description:'Integrate error tracking tool.', azureUrl:'#' },
-            { id:'feat-beta-B', type:'feature', parentEpic:'epic-beta-1', title:'Service Health Monitoring', project:'beta', start:'2025-04-01', end:'2025-06-30', teamLoads:[{team:'devops', load:10},{team:'backend', load:9}], orgLoad:19, status:'In Progress', assignee:'Grace', description:'Add health metrics and alerts.', azureUrl:'#' },
-            { id:'feat-beta-C', type:'feature', parentEpic:'epic-beta-1', title:'Automated Failover', project:'beta', start:'2025-07-01', end:'2025-09-15', teamLoads:[{team:'devops', load:11},{team:'backend', load:7}], orgLoad:18, status:'New', assignee:'Hank', description:'Implement automated failover strategy.', azureUrl:'#' },
+            { id:'feat-alpha-A', type:'feature', parentEpic:'epic-alpha-1', title:'User Onboarding Overhaul', project:'alpha', start:'2025-01-01', end:'2025-02-28', teamLoads:[{team:'frontend', load:100},{team:'backend', load:100},{team:'devops', load:100}], status:'New', assignee:'Clara', description:'Redesign onboarding flow.', azureUrl:'#' },
+            { id:'feat-alpha-B', type:'feature', parentEpic:'epic-alpha-1', title:'Search Scalability Upgrade', project:'alpha', start:'2025-03-01', end:'2025-04-30', teamLoads:[{team:'backend', load:12},{team:'devops', load:6}], status:'In Progress', assignee:'Dan', description:'Scale search services.', azureUrl:'#' },
+            { id:'feat-alpha-C', type:'feature', parentEpic:'epic-alpha-1', title:'Reporting Dashboard Improvements', project:'alpha', start:'2025-05-01', end:'2025-06-15', teamLoads:[{team:'frontend', load:8},{team:'backend', load:6}], status:'New', assignee:'Eve', description:'Enhance reporting UI.', azureUrl:'#' },
+            { id:'feat-beta-A', type:'feature', parentEpic:'epic-beta-1', title:'Error Tracking Integration', project:'beta', start:'2025-02-03', end:'2025-03-15', teamLoads:[{team:'backend', load:8},{team:'devops', load:4}], status:'New', assignee:'Frank', description:'Integrate error tracking tool.', azureUrl:'#' },
+            { id:'feat-beta-B', type:'feature', parentEpic:'epic-beta-1', title:'Service Health Monitoring', project:'beta', start:'2025-04-01', end:'2025-06-30', teamLoads:[{team:'devops', load:10},{team:'backend', load:9}], status:'In Progress', assignee:'Grace', description:'Add health metrics and alerts.', azureUrl:'#' },
+            { id:'feat-beta-C', type:'feature', parentEpic:'epic-beta-1', title:'Automated Failover', project:'beta', start:'2025-07-01', end:'2025-09-15', teamLoads:[{team:'devops', load:11},{team:'backend', load:7}], status:'New', assignee:'Hank', description:'Implement automated failover strategy.', azureUrl:'#' },
             // A one-day spike that further pushes over 100%
-            { id:'feat-alpha-spike', type:'feature', title:'Alpha One-Day Spike', project:'alpha', start:'2025-02-05', end:'2025-02-05', teamLoads:[{team:'frontend', load:40},{team:'devops', load:30}], orgLoad:70, status:'New', assignee:'Ivy', description:'Investigate quick alpha edge case.', azureUrl:'#' },
-            { id:'feat-beta-maint', type:'feature', title:'Beta Maintenance Window', project:'beta', start:'2025-08-10', end:'2025-08-20', teamLoads:[{team:'backend', load:6}], orgLoad:6, status:'New', assignee:'Jake', description:'Scheduled maintenance tasks.', azureUrl:'#' }
+            { id:'feat-alpha-spike', type:'feature', title:'Alpha One-Day Spike', project:'alpha', start:'2025-02-05', end:'2025-02-05', teamLoads:[{team:'frontend', load:40},{team:'devops', load:30}], status:'New', assignee:'Ivy', description:'Investigate quick alpha edge case.', azureUrl:'#' },
+            { id:'feat-beta-maint', type:'feature', title:'Beta Maintenance Window', project:'beta', start:'2025-08-10', end:'2025-08-20', teamLoads:[{team:'backend', load:6}], status:'New', assignee:'Jake', description:'Scheduled maintenance tasks.', azureUrl:'#' }
         ].map(f => ({ ...f, original: { ...f }, changedFields: [], dirty: false }));
         this.scenarios = [{ id:'live', name:'Live Scenario', isLive:true, overrides:{}, stale:false }];
         this._idCounter = 1;
@@ -37,7 +39,7 @@ export class ProviderMock {
     }
 
     nextId(prefix='id') { return `${prefix}_${this._idCounter++}`; }
-    
+
     async getCapabilities() {
         this.logCall('getCapabilities', arguments);
         // Simulate capabilities fetch
