@@ -35,7 +35,9 @@ export class ProviderMock {
         const argList = Array.from(args).map(a => JSON.stringify(a)).join(', ');
         console.log(`[ProviderMock] ${method} called with: ${argList}`);
     }
+
     nextId(prefix='id') { return `${prefix}_${this._idCounter++}`; }
+    
     async getCapabilities() {
         this.logCall('getCapabilities', arguments);
         // Simulate capabilities fetch
