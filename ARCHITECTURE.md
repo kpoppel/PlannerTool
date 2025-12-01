@@ -14,26 +14,49 @@ This project is designed to be modular, extensible, and testable, integrating a 
 ## Components
 
 ### 1. Python Backend
-- **Core Modules:**
-  - `planner.py`: Is the main program assembling the software and starting the web service.
-  - `modules/client.py`: Handles Azure DevOps API integration, configuration management, area path discovery, and work item retrieval/storage.
-  - `modules/sso.py`: Provides authentication and session management for Azure DevOps.
-  - `modules/sever.py`: The webservice, serving the UI content, reacting to client side callbacks to the server.
-  - `modules/config.py`: Module handling all aspects of the configuration, loading and updating
-  - `www/`: Files here comprise the user interface. HTML, CSS and JS files.
-- **Web Service:**
-  - Serves the frontend user interface (using Flask or FastAPI) for frontend communication.
-  - Exposes endpoint for debug/test mode to show: configuration, area paths, work items, and offline data.
-  - Exposes endpoint for the runtime user interface.
-- **Configuration:**
-  - `config.yaml`: Stores credentials, organization URL, project name, and enabled area paths.
-  - `work_items.json`: Is a generated file which persists work items for an offline test mode used to not over-use the API endpoint.
-- **Testing:**
-  - Automated unit tests ensure correctness and maintainability.
-  - Tests are each in their own file
-  - Testing uses the standard Python unittest framework.
-  - Tests are in the `tests` directory
-  - For Javascript tests, the Python service will serve a `test.html` page which runs unit tests on the Javascript code.
+**Core Modules and Structure:**
+
+The backend is organized for clarity, modularity, and extensibility. The main entrypoint is `planner.py`. Modules are grouped by responsibility:
+
+```
+planner.py
+planner_lib/
+  models/      # Data models and schemas (e.g., models/user.py, models/project.py)
+  api/         # REST endpoints/controllers (e.g., api/user.py, api/project.py)
+  services/    # Business logic/services (e.g., services/user_service.py)
+  db/          # Database setup, migrations, session (e.g., db/connection.py)
+  utils/       # Utility functions/helpers (e.g., utils/validators.py)
+  config/      # Configuration (e.g., config/settings.py)
+tests/
+  backend/     # Backend unit/integration tests
+www/           # Frontend UI files (HTML, CSS, JS)
+```
+
+- **planner.py**: Main program assembling the software and starting the web service.
+- **models/**: Data models and schemas for ORM and validation.
+- **api/**: REST API endpoints/controllers, organized by resource.
+- **services/**: Business logic, reusable across endpoints.
+- **db/**: Database connection, migrations, session management.
+- **utils/**: Utility functions and helpers.
+- **config/**: Configuration management.
+- **tests/backend/**: Automated unit and integration tests for backend modules.
+- **www/**: User interface files.
+
+**Web Service:**
+- Serves the frontend user interface (using Flask or FastAPI) for frontend communication.
+- Exposes endpoints for debug/test mode: configuration, area paths, work items, and offline data.
+- Exposes endpoints for the runtime user interface.
+
+**Configuration:**
+- `config.yaml`: Stores credentials, organization URL, project name, and enabled area paths.
+- `work_items.json`: Generated file for offline test mode, persists work items to avoid excessive API usage.
+
+**Testing:**
+- Automated unit tests ensure correctness and maintainability.
+- Tests are each in their own file.
+- Testing uses the standard Python unittest framework.
+- Tests are in the `tests/backend` directory.
+- For Javascript tests, the Python service will serve a `test.html` page which runs unit tests on the Javascript code.
 
 ### 2. Web Frontend
 - **Mockup of the UI**
@@ -53,7 +76,7 @@ This project is designed to be modular, extensible, and testable, integrating a 
   - Communicates with the backend via HTTP requests (fetch/AJAX).
   - Keep the Javascript modular and extensible so that later wiring to the backend is easily done.
   - Always plan and implement unit tests of all user interface elements in a separate HTML page or pages.
-  - Configuration flow (Iteration 2): A gear button in the sidebar opens a configuration view where the user enters their email and PAT. The email is stored in localStorage via `dataLocalStorageService` and configuration events are emitted via `eventBus` (`config:open`, `config:updated`, `config:pat:updated`). The PAT is not stored locally; a mock submission via `dataService.setPatMock()` returns a fixed token for UI flows.
+  - Configuration flow (Iteration 2): A gear button in the sidebar opens a configuration view where the user enters their email and PAT. The email is stored in localStorage via `providerLocalStorage` and configuration events are emitted via `eventBus` (`config:open`, `config:updated`, `config:pat:updated`). The PAT is not stored locally; a mock submission via `dataService.setPatMock()` returns a fixed token for UI flows.
   - View Options (Iteration 2 extension): A "Condense cards" toggle reduces swimlane height and hides team load/date rows, showing only task type icon and title for higher density planning.
 - **React (optional):**
   - For advanced UI, React components (e.g., Timeline, Sidebar, DetailsPanel) are used for stateful, interactive views.
@@ -129,7 +152,9 @@ project-root/
 └── mockup-image.png
 ```
 
-Ignore files in the directories `archived` and `devops_server`
+Ignore files in the directories `archived` and `devops_server`.
+
+Note: Legacy hyphenated directory naming (`planner-lib`) has been standardized to underscore form (`planner_lib`) for valid Python package imports.
 
 ## Future Enhancements
 - Add authentication and authorization for web service endpoints.

@@ -1,8 +1,5 @@
-// On load, check localPref for autosave interval
-
 import { bus } from './eventBus.js';
 import { dataService } from './dataService.js';
-import { loadColors, getLocalPref } from './dataLocalStorageService.js';
 import { PALETTE } from './colorManager.js';
 
 class State {
@@ -74,8 +71,10 @@ class State {
     this.autosaveTimer = null;
     this.autosaveIntervalMin = 0;
     // Setup autosave if configured
-    const initialAutosave = getLocalPref('autosave.interval');
-    if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
+    dataService.getLocalPref('autosave.interval').then(initialAutosave => {
+      if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
+    });
+    //if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
     bus.on('config:autosave', ({ autosaveInterval }) => {
       this.setupAutosave(autosaveInterval);
     });
@@ -97,9 +96,9 @@ class State {
     }
   }
 
-  initColors() {
+  async initColors() {
     try {
-      const { projectColors, teamColors } = loadColors();
+      const { projectColors, teamColors } = await dataService.loadColors();
       let pi = 0; let ti = 0;
       this.projects.forEach(p => {
         if(projectColors[p.id]) { p.color = projectColors[p.id]; }

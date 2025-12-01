@@ -60,6 +60,15 @@ class DataService {
     async publishBaseline(selectedOverrides) { return this.providers['mock'].publishBaseline(selectedOverrides); }
     async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
     async saveScenario(scenario) { return this.providers['mock'].saveScenario(scenario); }
+
+    // --- Color and Preference Management ---
+    async getColorMappings() { return this.providers['local'].loadColors(); }
+    async updateProjectColor(id, color) { return this.providers['local'].saveProjectColor(id, color); }
+    async updateTeamColor(id, color) { return this.providers['local'].saveTeamColor(id, color); }
+    async clearColorMappings() { return this.providers['local'].clearAll(); }
+    async getLocalPref(key) { return this.providers['local'].getLocalPref(key); }
+    async setLocalPref(key, value) { return this.providers['local'].setLocalPref(key, value); }
+    // --- End Color and Preference Management ---
 }
 
 const providerMock = new ProviderMock();
