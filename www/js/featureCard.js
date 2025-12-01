@@ -65,18 +65,6 @@ function computePosition(feature){
   return { left, width };
 }
 
-function computeFeatureOrgLoad(feature){
-  // Org load per card: sum of participating selected team loads divided by total global number of teams.
-  const numTeamsGlobal = state.teams.length === 0 ? 1 : state.teams.length;
-  let sum = 0;
-  for(const tl of feature.teamLoads){
-    const t = state.teams.find(x=>x.id===tl.team && x.selected);
-    if(!t) continue; // respect team filters for scenario simulation
-    sum += tl.load;
-  }
-  return (sum / numTeamsGlobal).toFixed(1) + '%';
-}
-
 function createCard(feature, idx, sourceFeatures){
   const {left, width} = computePosition(feature);
   const card = document.createElement('div');
@@ -99,7 +87,7 @@ function createCard(feature, idx, sourceFeatures){
   let datesEl = null;
   if(!state.condensedCards){
     const teamRow = document.createElement('div'); teamRow.className='team-load-row';
-    const orgBox = document.createElement('span'); orgBox.className='team-load-box'; orgBox.style.background='#23344d'; orgBox.textContent = computeFeatureOrgLoad(feature); teamRow.appendChild(orgBox);
+    const orgBox = document.createElement('span'); orgBox.className='team-load-box'; orgBox.style.background='#23344d'; orgBox.textContent = feature.orgLoad || '0%'; teamRow.appendChild(orgBox);
     feature.teamLoads.forEach(tl=>{ const t= state.teams.find(x=>x.id===tl.team && x.selected); if(!t) return; const box = document.createElement('span'); box.className='team-load-box'; box.style.background = t.color; box.textContent = tl.load; teamRow.appendChild(box); });
     card.appendChild(teamRow);
   }

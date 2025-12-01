@@ -26,7 +26,7 @@ function show(feature){
   }
 
   // Build colored team load boxes
-  const orgBox = `<span class="team-load-box" style="background:#23344d" title="Org Load">Org: ${feature.orgLoad}%</span>`;
+  const orgBox = `<span class="team-load-box" style="background:#23344d" title="Org Load">Org: ${feature.orgLoad||'0%'}</span>`;
   const teamBoxes = feature.teamLoads.map(tl => {
     const t = state.teams.find(x=>x.id===tl.team);
     if(!t) return '';
