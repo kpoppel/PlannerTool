@@ -175,13 +175,19 @@ class State {
     const base = this.baselineFeatures.find(f=>f.id===id);
     if(!base) return;
 
-    // Epic shrink inhibition based on baseline children (do not mutate baseline)
+    // Epic shrink inhibition based on baseline children + possible overrides
     let finalEnd = end;
     if(base.type === 'epic') {
-      // Find the last-ending child feature/epic in baseline
+      // Find the last-ending child feature/epic in baseline + possible overrides
       const children = this.baselineFeatures.filter(ch => ch.parentEpic === base.id);
+      // Get effective end dates for each child
+      const effectiveEnds = children.map(ch => {
+        const ov = active.overrides && active.overrides[ch.id];
+        return ov && ov.end ? ov.end : ch.end;
+      });
+      // Find the max effective end date
       if(children.length){
-        const maxChildEnd = children.reduce((max, ch) => ch.end > max ? ch.end : max, children[0].end);
+        const maxChildEnd = effectiveEnds.reduce((max, end) => end > max ? end : max, effectiveEnds[0]);
         if(finalEnd < maxChildEnd){ finalEnd = maxChildEnd; }
       }
     }
