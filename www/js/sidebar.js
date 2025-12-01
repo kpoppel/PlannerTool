@@ -186,8 +186,7 @@ function renderScenarios(){
       });
       if(s.id === 'baseline'){
         addItem('Refresh Baseline', '🔄', async ()=>{
-          await dataService.refreshBaseline();
-          const mod = await import('./state.js'); await mod.state.refreshBaseline();
+          await state.refreshBaseline();
         });
         // Baseline cannot rename/delete
       } else {

@@ -97,18 +97,16 @@ class State {
   }
 
   async initColors() {
-    try {
-      const { projectColors, teamColors } = await dataService.loadColors();
-      let pi = 0; let ti = 0;
-      this.projects.forEach(p => {
-        if(projectColors[p.id]) { p.color = projectColors[p.id]; }
-        else { p.color = PALETTE[pi % PALETTE.length]; pi++; }
-      });
-      this.teams.forEach(t => {
-        if(teamColors[t.id]) { t.color = teamColors[t.id]; }
-        else { t.color = PALETTE[ti % PALETTE.length]; ti++; }
-      });
-    } catch{}
+    const { projectColors, teamColors } = await dataService.getColorMappings();
+    let pi = 0; let ti = 0;
+    this.projects.forEach(p => {
+      if(projectColors[p.id]) { p.color = projectColors[p.id]; }
+      else { p.color = PALETTE[pi % PALETTE.length]; pi++; }
+    });
+    this.teams.forEach(t => {
+      if(teamColors[t.id]) { t.color = teamColors[t.id]; }
+      else { t.color = PALETTE[ti % PALETTE.length]; ti++; }
+    });
   }
 
   async initState() {
@@ -151,7 +149,8 @@ class State {
     this.projects = this.baselineProjects.map(p=>({ ...p, selected: selectedProjects.has(p.id) }));
     this.teams = this.baselineTeams.map(t=>({ ...t, selected: selectedTeams.has(t.id) }));
     this.initBaselineScenario();
-    this.initColors();
+    console.log('Re-initializing colors after baseline refresh');
+    await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
     bus.emit('projects:changed', this.projects);
