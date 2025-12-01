@@ -1,10 +1,10 @@
 import { state } from './state.js';
 import { bus } from './eventBus.js';
-import { getTimelineMonths } from './timeline.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from './timeline.js';
 import { computeDailyLoadMaps } from './loadMath.js';
 
-// Constants
-const MONTH_WIDTH = 120; // keep in sync with CSS var --timeline-month-width
+// Constants sourced from centralized timeline config
+const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth; // keep in sync with CSS var --timeline-month-width
 
 function getTimelineSection(){ return document.getElementById('timelineSection'); }
 function getCanvas(){ return document.getElementById('loadGraphCanvas'); }
@@ -22,6 +22,13 @@ function indexToDate(months, idx){
 }
 function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 function daysInMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); }
+function hexToRgba(hex, alpha){
+  // Accepts formats like #rrggbb
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if(!m){ return `rgba(231,76,60,${alpha})`; }
+  const r = parseInt(m[1],16), g = parseInt(m[2],16), b = parseInt(m[3],16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 function getVisibleRange(months){
   const section = getTimelineSection();
@@ -106,6 +113,31 @@ function render(){
   const drawHeight = canvas.height - bottomBand;
   const percentToPx = drawHeight / maxYPercent;
 
+  // Render overload background first: full-height bands for days over 100%
+  const bandHeight = bottomBand;
+  let inSpan = false;
+  let spanStartX = 0;
+  for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+    const total = chosenTotals.get(d) || 0;
+    const x = xForDayIndex(d);
+    const nextX = xForDayIndex(d+1);
+    const over = total > 100;
+    if(over && !inSpan){ inSpan = true; spanStartX = x; }
+    if(!over && inSpan){
+      // close current span
+      ctx.fillStyle = `${hexToRgba(TIMELINE_CONFIG.overloadBgColor, TIMELINE_CONFIG.overloadBgAlpha)}`;
+      ctx.fillRect(spanStartX, 0, x - spanStartX, canvas.height);
+      inSpan = false;
+    }
+    // handle end at last day
+    if(d === visibleEndIdx && inSpan){
+      ctx.fillStyle = `${hexToRgba(TIMELINE_CONFIG.overloadBgColor, TIMELINE_CONFIG.overloadBgAlpha)}`;
+      ctx.fillRect(spanStartX, 0, nextX - spanStartX, canvas.height);
+      inSpan = false;
+    }
+  }
+
+  // Draw stacked bars per day
   daySegmentsCache = [];
   for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
     const bucket = chosenMap.get(d) || {};
@@ -114,11 +146,12 @@ function render(){
     const nextX = xForDayIndex(d+1);
     const dayWidth = Math.max(1, nextX - x);
     if(usingTeam){
+      // Render in backend order using state.teams sequence
       for(const team of state.teams){
         const val = bucket[team.id] || 0;
         if(val <= 0) continue;
         const h = clamp(Math.round(val * percentToPx), 0, canvas.height);
-        ctx.fillStyle = team.color;
+        ctx.fillStyle = team.color || '#888';
         ctx.fillRect(x, y - h, dayWidth, h);
         y -= h;
       }
@@ -127,7 +160,7 @@ function render(){
         const val = bucket[project.id] || 0;
         if(val <= 0) continue;
         const h = clamp(Math.round(val * percentToPx), 0, canvas.height);
-        ctx.fillStyle = project.color;
+        ctx.fillStyle = project.color || '#888';
         ctx.fillRect(x, y - h, dayWidth, h);
         y -= h;
       }
@@ -146,29 +179,29 @@ function render(){
   ctx.stroke();
   ctx.restore();
 
-  // Highlight timespans with total load over 100% as red bands at the bottom
-  const bandHeight = bottomBand;
-  let inSpan = false;
-  let spanStartX = 0;
-  for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
-    const total = chosenTotals.get(d) || 0;
-    const x = xForDayIndex(d);
-    const nextX = xForDayIndex(d+1);
-    const over = total > 100;
-    if(over && !inSpan){ inSpan = true; spanStartX = x; }
-    if(!over && inSpan){
-      // close current span
-      ctx.fillStyle = 'rgba(231, 76, 60, 0.8)'; // red
-      ctx.fillRect(spanStartX, canvas.height - bandHeight, x - spanStartX, bandHeight);
-      inSpan = false;
-    }
-    // handle end at last day
-    if(d === visibleEndIdx && inSpan){
-      ctx.fillStyle = 'rgba(231, 76, 60, 0.8)';
-      ctx.fillRect(spanStartX, canvas.height - bandHeight, nextX - spanStartX, bandHeight);
-      inSpan = false;
-    }
-  }
+  // // Highlight timespans with total load over 100% as red bands at the bottom
+  // const bandHeight = bottomBand;
+  // let inSpan = false;
+  // let spanStartX = 0;
+  // for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+  //   const total = chosenTotals.get(d) || 0;
+  //   const x = xForDayIndex(d);
+  //   const nextX = xForDayIndex(d+1);
+  //   const over = total > 100;
+  //   if(over && !inSpan){ inSpan = true; spanStartX = x; }
+  //   if(!over && inSpan){
+  //     // close current span
+  //     ctx.fillStyle = 'rgba(231, 76, 60, 0.8)'; // red
+  //     ctx.fillRect(spanStartX, canvas.height - bandHeight, x - spanStartX, bandHeight);
+  //     inSpan = false;
+  //   }
+  //   // handle end at last day
+  //   if(d === visibleEndIdx && inSpan){
+  //     ctx.fillStyle = 'rgba(231, 76, 60, 0.8)';
+  //     ctx.fillRect(spanStartX, canvas.height - bandHeight, nextX - spanStartX, bandHeight);
+  //     inSpan = false;
+  //   }
+  // }
 }
 
 export function initLoadGraph(){

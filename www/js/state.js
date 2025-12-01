@@ -109,6 +109,20 @@ class State {
     });
   }
 
+// Compute organization load for a feature based on selected teams.
+// Returns a percentage string like '45.0%'.
+  computeFeatureOrgLoad(feature) {
+    const teams = state.teams || [];
+    const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
+    let sum = 0;
+    for (const tl of feature.teamLoads || []) {
+      const t = teams.find(x => x.id === tl.team && x.selected);
+      if (!t) continue;
+      sum += tl.load;
+    }
+    return (sum / numTeamsGlobal).toFixed(1) + '%';
+  }  
+
   async initState() {
     const { projects, teams, features } = await dataService.getAll();
     // Freeze baseline copies
@@ -123,8 +137,10 @@ class State {
     // Working copies for selection & colors (do not mutate baseline)
     this.projects = this.baselineProjects.map(p=>({ ...p }));
     this.teams = this.baselineTeams.map(t=>({ ...t }));
+    // Precompute orgLoad on baseline features based on current team selection
+    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     this.initBaselineScenario();
-    this.initColors();
+    await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
     bus.emit('projects:changed', this.projects);
@@ -148,7 +164,9 @@ class State {
     const selectedTeams = new Set(this.teams.filter(t=>t.selected).map(t=>t.id));
     this.projects = this.baselineProjects.map(p=>({ ...p, selected: selectedProjects.has(p.id) }));
     this.teams = this.baselineTeams.map(t=>({ ...t, selected: selectedTeams.has(t.id) }));
+    // Precompute orgLoad on refreshed baseline features after restoring selections
     this.initBaselineScenario();
+    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: computeFeatureOrgLoad(f) }));
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
     this.emitScenarioList();
