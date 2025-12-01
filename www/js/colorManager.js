@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { bus } from './eventBus.js';
-import { saveProjectColor, saveTeamColor } from './dataLocalStorageService.js';
+import { dataService } from './dataService.js';
 
 // Expanded 16-color palette
 export const PALETTE = [
@@ -14,11 +14,11 @@ let popoverEl = null;
 let currentTargetId = null;
 let currentEntityType = null;
 
-function applyColor(entityType, id, newColor){
+async function applyColor(entityType, id, newColor){
   if(entityType==='project'){
-    const p = state.projects.find(x=>x.id===id); if(!p) return; p.color = newColor; saveProjectColor(id, newColor); bus.emit('projects:changed', state.projects);
+    const p = state.projects.find(x=>x.id===id); if(!p) return; p.color = newColor; await dataService.updateProjectColor(id, newColor); bus.emit('projects:changed', state.projects);
   } else if(entityType==='team'){
-    const t = state.teams.find(x=>x.id===id); if(!t) return; t.color = newColor; saveTeamColor(id, newColor); bus.emit('teams:changed', state.teams);
+    const t = state.teams.find(x=>x.id===id); if(!t) return; t.color = newColor; await dataService.updateTeamColor(id, newColor); bus.emit('teams:changed', state.teams);
   }
   bus.emit('color:changed', { entityType, id, color:newColor });
 }
@@ -48,9 +48,9 @@ function ensurePopover(){
     sw.className='color-swatch';
     sw.style.background=color;
     sw.setAttribute('data-color', color);
-    sw.addEventListener('click', () => {
+    sw.addEventListener('click', async () => {
       if(currentTargetId && currentEntityType){
-        applyColor(currentEntityType, currentTargetId, color);
+        await applyColor(currentEntityType, currentTargetId, color);
       }
       closePopover();
     });
@@ -93,4 +93,25 @@ function handleSidebarClick(e){
 export function initColorManager(){
   const sidebar = document.getElementById('sidebar');
   if(sidebar){ sidebar.addEventListener('click', handleSidebarClick); }
+
+  // Load colors from localStorage and apply to state
+  (async () => {
+    const colorMappings = await dataService.getColorMappings();
+    if (colorMappings.projectColors && Array.isArray(state.projects)) {
+      for (const p of state.projects) {
+        if (colorMappings.projectColors[p.id]) {
+          p.color = colorMappings.projectColors[p.id];
+        }
+      }
+    }
+    if (colorMappings.teamColors && Array.isArray(state.teams)) {
+      for (const t of state.teams) {
+        if (colorMappings.teamColors[t.id]) {
+          t.color = colorMappings.teamColors[t.id];
+        }
+      }
+    }
+    bus.emit('projects:changed', state.projects);
+    bus.emit('teams:changed', state.teams);
+  })();
 }

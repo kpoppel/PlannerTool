@@ -1,5 +1,4 @@
 import { bus } from './eventBus.js';
-import { getLocalPref, setLocalPref } from './dataLocalStorageService.js';
 import { dataService } from './dataService.js';
 
 function ensureModal(){
@@ -35,7 +34,7 @@ function ensureModal(){
   return modal;
 }
 
-export function openConfigModal(){
+export async function openConfigModal(){
   const modal = ensureModal();
   modal.style.display = 'flex';
   const emailInput = modal.querySelector('#configEmail');
@@ -45,9 +44,9 @@ export function openConfigModal(){
   const closeBtn = modal.querySelector('#closeConfigBtn');
   const autosaveInput = modal.querySelector('#autosaveInterval');
 
-  const storedEmail = getLocalPref('user.email');
+    const storedEmail = await dataService.getLocalPref('user.email');
   if (storedEmail) emailInput.value = storedEmail;
-  const storedAutosave = getLocalPref('autosave.interval');
+    const storedAutosave = await dataService.getLocalPref('autosave.interval');
   if (storedAutosave !== undefined) autosaveInput.value = storedAutosave;
 
   form.onsubmit = async (e) => {
@@ -55,8 +54,8 @@ export function openConfigModal(){
     const email = emailInput.value.trim();
     const pat = patInput.value;
     const autosaveInterval = parseInt(autosaveInput.value, 10) || 0;
-    if (email) setLocalPref('user.email', email);
-    setLocalPref('autosave.interval', autosaveInterval);
+      if (email) await dataService.setLocalPref('user.email', email);
+      await dataService.setLocalPref('autosave.interval', autosaveInterval);
     const patResult = await dataService.setPat(pat);
     status.textContent = 'Configuration saved. PAT stored (mocked).';
     bus.emit('config:updated', { email });

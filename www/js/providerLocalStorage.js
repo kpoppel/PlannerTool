@@ -123,5 +123,77 @@ export class ProviderLocalStorage {
         const projects = JSON.parse(localStorage.getItem('projects') || '[]');
         return projects;
     }
-    // ...other methods will be added in later steps
+    // --- Color and Preference Management ---
+    async loadColors() {
+        const raw = localStorage.getItem('az_planner:user_prefs:v1');
+        let data;
+        try {
+            data = raw ? JSON.parse(raw) : { projectColors: {}, teamColors: {} };
+        } catch {
+            data = { projectColors: {}, teamColors: {} };
+        }
+        return { projectColors: data.projectColors || {}, teamColors: data.teamColors || {} };
+    }
+
+    async saveProjectColor(id, color) {
+        const raw = localStorage.getItem('az_planner:user_prefs:v1');
+        let data;
+        try {
+            data = raw ? JSON.parse(raw) : { projectColors: {}, teamColors: {} };
+        } catch {
+            data = { projectColors: {}, teamColors: {} };
+        }
+        data.projectColors = data.projectColors || {};
+        data.projectColors[id] = color;
+        try {
+            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(data));
+        } catch {}
+    }
+
+    async saveTeamColor(id, color) {
+        const raw = localStorage.getItem('az_planner:user_prefs:v1');
+        let data;
+        try {
+            data = raw ? JSON.parse(raw) : { projectColors: {}, teamColors: {} };
+        } catch {
+            data = { projectColors: {}, teamColors: {} };
+        }
+        data.teamColors = data.teamColors || {};
+        data.teamColors[id] = color;
+        try {
+            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(data));
+        } catch {}
+    }
+
+    async clearAll() {
+        try {
+            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify({ projectColors: {}, teamColors: {} }));
+        } catch {}
+    }
+
+    async getLocalPref(key) {
+        const raw = localStorage.getItem('az_planner:user_prefs:v1');
+        let data;
+        try {
+            data = raw ? JSON.parse(raw) : { projectColors: {}, teamColors: {} };
+        } catch {
+            data = { projectColors: {}, teamColors: {} };
+        }
+        return data[key];
+    }
+
+    async setLocalPref(key, value) {
+        const raw = localStorage.getItem('az_planner:user_prefs:v1');
+        let data;
+        try {
+            data = raw ? JSON.parse(raw) : { projectColors: {}, teamColors: {} };
+        } catch {
+            data = { projectColors: {}, teamColors: {} };
+        }
+        data[key] = value;
+        try {
+            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(data));
+        } catch {}
+    }
+    // --- End Color and Preference Management ---
 }
