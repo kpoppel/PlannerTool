@@ -2,6 +2,15 @@ import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { parseDate, formatDate, addMonths, dateRangeInclusiveMonths } from './util.js';
 
+// Graph/timeline rendering config (kept here to centralize cross-module use)
+export const TIMELINE_CONFIG = {
+  monthWidth: 120,           // must match CSS var --timeline-month-width
+  teamLineWidth: 2,          // stroke width for team load lines
+  teamLineOpacity: 0.9,      // default line opacity
+  overloadBgAlpha: 0.18,     // background alpha for overload bands
+  overloadBgColor: '#ff3b30' // fallback if team color missing
+};
+
 let monthsCache = [];
 let didInitialScroll = false;
 
@@ -27,7 +36,7 @@ function renderTimelineHeader(){
   const header = document.getElementById('timelineHeader'); if(!header) return;
   const {min, max} = computeRange(); let baseMonths = dateRangeInclusiveMonths(min, max);
   // Ensure months fill the visible timeline width so header spans entire card area
-  const monthWidth = 120; // matches CSS var --timeline-month-width
+  const monthWidth = TIMELINE_CONFIG.monthWidth; // matches CSS var --timeline-month-width
   const section = document.getElementById('timelineSection');
   if(section){
     const targetWidth = section.clientWidth;
@@ -44,7 +53,7 @@ function renderTimelineHeader(){
   header.innerHTML = '';
   monthsCache.forEach(m=>{ const cell = document.createElement('div'); cell.className='timeline-cell'; cell.style.width='var(--timeline-month-width)'; cell.textContent = m.toLocaleString('default',{month:'short', year:'2-digit'}); header.appendChild(cell); });
   // Expand header width to reflect full span for horizontal scrolling
-  const totalWidth = monthsCache.length * 120; // sync with month width
+  const totalWidth = monthsCache.length * TIMELINE_CONFIG.monthWidth; // sync with month width
   header.style.width = totalWidth + 'px';
   const board = document.getElementById('featureBoard'); if(board){ board.style.width = totalWidth + 'px'; }
   // Initial scroll so current month is at left edge
@@ -55,7 +64,7 @@ function renderTimelineHeader(){
       const section = document.getElementById('timelineSection');
       if(section){
         // Defer until layout applied
-        requestAnimationFrame(()=>{ section.scrollLeft = idx * 120; didInitialScroll = true; });
+        requestAnimationFrame(()=>{ section.scrollLeft = idx * TIMELINE_CONFIG.monthWidth; didInitialScroll = true; });
       }
     } else {
       didInitialScroll = true; // nothing to scroll or already first
