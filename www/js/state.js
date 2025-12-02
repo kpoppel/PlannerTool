@@ -166,7 +166,7 @@ class State {
     this.teams = this.baselineTeams.map(t=>({ ...t, selected: selectedTeams.has(t.id) }));
     // Precompute orgLoad on refreshed baseline features after restoring selections
     this.initBaselineScenario();
-    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: computeFeatureOrgLoad(f) }));
+    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
     this.emitScenarioList();
