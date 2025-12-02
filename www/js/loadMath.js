@@ -170,5 +170,6 @@ export function computeDailyLoadMaps(features, teams, projects, flags, range){
     orgTotalsProject.set(dayIdx, Object.values(bucket).reduce((a,b)=>a+b,0));
   }
 
+  console.log('Computed daily load maps', { teamDayMap, projectDayMap, orgTotalsTeam, orgTotalsProject, numTeamsGlobal });
   return { teamDayMap, projectDayMap, orgTotalsTeam, orgTotalsProject, numTeamsGlobal };
 }

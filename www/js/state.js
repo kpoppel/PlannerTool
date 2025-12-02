@@ -66,6 +66,7 @@ class State {
     this.condensedCards = false;
     this.loadViewMode = 'team';
     this.featureSortMode = 'rank';
+    this.showDependencies = false;
     this.scenarios = [];
     this.activeScenarioId = null;
     this.autosaveTimer = null;
@@ -290,6 +291,13 @@ class State {
   setCondensedCards(val) {
     this.condensedCards = !!val;
     bus.emit('view:condensed', this.condensedCards);
+    bus.emit('feature:updated');
+  }
+
+  setShowDependencies(val){
+    this.showDependencies = !!val;
+    console.debug('[state] setShowDependencies ->', this.showDependencies);
+    bus.emit('view:dependencies', this.showDependencies);
     bus.emit('feature:updated');
   }
 

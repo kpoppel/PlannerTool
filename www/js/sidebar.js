@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { dataService } from './dataService.js';
-import { openInputModal, openConfirmModal } from './modal.js';
+import { openInputModal, openConfirmModal, openHelpModal } from './modal.js';
 import { bus } from './eventBus.js';
 
 const elCache = {};
@@ -41,6 +41,9 @@ export function initSidebar(){
       <div class="filter-group">
         <label><input type="checkbox" id="condenseCards"> Condense cards</label>
       </div>
+      <div class="filter-group">
+        <label><input type="checkbox" id="showDependencies"> Show dependencies</label>
+      </div>
       <div class="filter-group" id="loadViewModeGroup">
         <label title="Team-based load view"><input type="radio" name="loadViewMode" value="team" checked> Team Load</label>
         <label title="Project-based aggregate load view"><input type="radio" name="loadViewMode" value="project"> Project Load</label>
@@ -54,6 +57,7 @@ export function initSidebar(){
     <section class="sidebar-section sidebar-config" id="configSection">
       <div class="config-row">
         <button id="openConfigBtn" title="Configuration">⚙️ Configuration</button>
+        <button id="openHelpBtn" title="Help">❓ Help</button>
       </div>
     </section>`;
   elCache.projectList = document.getElementById('projectList');
@@ -76,12 +80,25 @@ export function initSidebar(){
     });
   }
 
+  const openHelpBtn = document.getElementById('openHelpBtn');
+  if (openHelpBtn) {
+    openHelpBtn.addEventListener('click', () => {
+      openHelpModal();
+    });
+  }
+
   const condenseToggle = document.getElementById('condenseCards');
   if(condenseToggle){
     condenseToggle.checked = !!state.condensedCards;
     condenseToggle.addEventListener('change', (e)=>{
       state.setCondensedCards(e.target.checked);
     });
+  }
+
+  const depsToggle = document.getElementById('showDependencies');
+  if(depsToggle){
+    depsToggle.checked = !!state.showDependencies;
+    depsToggle.addEventListener('change', (e)=>{ state.setShowDependencies(e.target.checked); });
   }
 
   // Initialize load view mode radios
@@ -208,11 +225,16 @@ function renderScenarios(){
           // TODO: Grey out the save button if there's nothing to save.
           if(overrideEntries.length === 0){ console.log('No differing overrides to annotate.'); return; }
           const overlay = document.createElement('div'); overlay.className='modal-overlay';
-          const modal = document.createElement('div'); modal.className='modal';
+          const modal = document.createElement('div'); modal.className='modal wide-modal';
           const titleEl = document.createElement('h3'); titleEl.textContent='Save to Azure DevOps'; modal.appendChild(titleEl);
           const desc = document.createElement('p'); desc.textContent='Select which items to annotate back to Azure DevOps:'; modal.appendChild(desc);
+          // Toggle all/none convenience button
+          const toggleRow = document.createElement('div'); toggleRow.style.display='flex'; toggleRow.style.justifyContent='flex-end'; toggleRow.style.marginBottom='8px';
+          const toggleBtn = document.createElement('button'); toggleBtn.type='button'; toggleBtn.textContent='Toggle All/None'; toggleBtn.title='Toggle select all or none'; toggleBtn.style.marginLeft='8px';
+          toggleRow.appendChild(toggleBtn);
+          modal.appendChild(toggleRow);
           const table = document.createElement('table'); table.className='scenario-annotate-table';
-          const thead = document.createElement('thead'); thead.innerHTML = '<tr><th>Select</th><th>Title</th><th>Start</th><th>End</th></tr>'; table.appendChild(thead);
+          const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:64px">Select</th><th>Title</th><th>Start</th><th>End</th></tr>'; table.appendChild(thead);
           const tbody = document.createElement('tbody');
           overrideEntries.forEach(([id, ov]) => {
             console.log('Override to annotate:', id, ov);
@@ -220,8 +242,19 @@ function renderScenarios(){
             const tr = document.createElement('tr');
             const tdSel = document.createElement('td'); const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=true; chk.dataset.id=id; tdSel.appendChild(chk); tr.appendChild(tdSel);
             const tdTitle = document.createElement('td'); tdTitle.textContent = state.getFeatureTitleById(id); tr.appendChild(tdTitle);
-            const tdStart = document.createElement('td'); tdStart.textContent = ov.start; tr.appendChild(tdStart);
-            const tdEnd = document.createElement('td'); tdEnd.textContent = ov.end; tr.appendChild(tdEnd);
+            // Show original -> new format for dates
+            const baseFeature = state.baselineFeatures.find(f => f.id === id) || {};
+            const origStart = baseFeature.start || '';
+            const origEnd = baseFeature.end || '';
+            const formatRange = (from, to) => {
+              if(!from && !to) return '';
+              if(!from) return to;
+              if(!to) return from;
+              if(from === to) return from;
+              return `${from} -> ${to}`;
+            };
+            const tdStart = document.createElement('td'); tdStart.textContent = formatRange(origStart, ov.start); tr.appendChild(tdStart);
+            const tdEnd = document.createElement('td'); tdEnd.textContent = formatRange(origEnd, ov.end); tr.appendChild(tdEnd);
             tbody.appendChild(tr);
           });
           table.appendChild(tbody);
@@ -240,6 +273,12 @@ function renderScenarios(){
           });
           buttons.appendChild(cancelBtn); buttons.appendChild(saveBtn);
           modal.appendChild(buttons);
+          // Toggle button logic: select all if any unchecked, otherwise deselect all
+          toggleBtn.addEventListener('click', ()=>{
+            const checks = Array.from(tbody.querySelectorAll('input[type="checkbox"]'));
+            const anyUnchecked = checks.some(c=>!c.checked);
+            checks.forEach(c=> c.checked = anyUnchecked);
+          });
           overlay.appendChild(modal);
           document.body.appendChild(overlay);
         });
@@ -262,6 +301,7 @@ function onSidebarChange(e){
   if(e.target.name==='scale'){ state.setTimelineScale(e.target.value); }
   if(e.target.id==='filterEpics'){ state.setShowEpics(e.target.checked); }
   if(e.target.id==='filterFeatures'){ state.setShowFeatures(e.target.checked); }
+  if(e.target.id==='showDependencies'){ state.setShowDependencies(e.target.checked); }
   if(e.target.name==='loadViewMode' && e.target.checked){ state.setLoadViewMode(e.target.value); }
   if(e.target.name==='featureSortMode' && e.target.checked){ import('./state.js').then(m=> m.state.setFeatureSortMode(e.target.value)); }
 }

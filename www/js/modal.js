@@ -40,3 +40,32 @@ export function openConfirmModal({ title='Confirm', message='', confirmLabel='Co
 }
 
 function escapeHtml(str){ return str.replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s])); }
+
+export async function openHelpModal(){
+  const overlay = document.createElement('div'); overlay.className='modal-overlay';
+  const modal = document.createElement('div'); modal.className='modal wide-modal';
+  const title = document.createElement('h3'); title.textContent = 'Help'; modal.appendChild(title);
+  const content = document.createElement('div'); content.className = 'help-content'; content.style.maxHeight='60vh'; content.style.overflow='auto'; content.style.whiteSpace='pre-wrap'; content.style.fontFamily='monospace'; content.textContent = 'Loading...';
+  modal.appendChild(content);
+  const btnRow = document.createElement('div'); btnRow.className='modal-buttons';
+  const closeBtn = document.createElement('button'); closeBtn.textContent='Close'; closeBtn.addEventListener('click', ()=>{ document.body.removeChild(overlay); });
+  btnRow.appendChild(closeBtn);
+  modal.appendChild(btnRow);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  try {
+    const url = '/static/help.md';
+    console.debug('openHelpModal: fetching', url);
+    const res = await fetch(url);
+    if (res.ok) {
+      const txt = await res.text();
+      content.textContent = txt;
+    } else {
+      console.error('openHelpModal: failed to fetch', url, res.status, res.statusText);
+      content.textContent = `Failed to load help (status ${res.status})`;
+    }
+  } catch (err) {
+    console.error('openHelpModal: exception fetching help', err);
+    content.textContent = 'Could not load help page.';
+  }
+}
