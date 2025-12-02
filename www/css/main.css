@@ -143,6 +143,8 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .sidebar-config { position:absolute; bottom:12px; left:12px; }
 #openConfigBtn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
 #openConfigBtn:hover { background:#eee; }
+#openHelpBtn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
+#openHelpBtn:hover { background:#eee; }
 .details-panel { width:var(--details-width); background:var(--color-panel-bg); border-left:1px solid var(--color-border); position:fixed; right:0; top:0; bottom:0; padding:22px 18px; box-shadow:-2px 0 8px var(--color-shadow); display:none; flex-direction:column; z-index:var(--z-details); }
 .details-panel.open { display:flex; }
 .details-close { background:none; border:none; font-size:24px; color:#888; position:absolute; top:10px; right:14px; cursor:pointer; }
@@ -203,3 +205,13 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .scenario-annotate-table { width:100%; border-collapse:collapse; margin-top:8px; }
 .scenario-annotate-table th, .scenario-annotate-table td { border:1px solid var(--color-border); padding:6px 8px; font-size:0.85rem; }
 .scenario-annotate-table th { background:#f7f7f7; text-align:left; }
+
+/* Wider modal variant for content-heavy dialogs */
+.modal.wide-modal { width:760px; max-width:96vw; }
+.scenario-annotate-table td { vertical-align:middle; }
+.scenario-annotate-table td:nth-child(3), .scenario-annotate-table td:nth-child(4) { white-space:nowrap; font-family:monospace; color:#333; }
+.scenario-annotate-table td:nth-child(3)::before, .scenario-annotate-table td:nth-child(4)::before { content:''; }
+.modal .toggle-row { display:flex; justify-content:flex-end; margin-bottom:8px; }
+.modal button[type="button"] { cursor:pointer; }
+
+.help-content { font-size:14px; color:#222; padding:6px 4px; }

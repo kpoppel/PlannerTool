@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths } from './timeline.js';
 import { computeMoveUpdates, computeResizeUpdates, applyUpdates } from './scheduleService.js';
+import { bus } from './eventBus.js';
 
 const monthWidth = 120;
 
@@ -40,6 +41,8 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const newStartDate = dateFromLeft(newLeft);
     const newEndDate = addDays(newStartDate, durationDays - 1);
     if(datesEl){ datesEl.textContent = formatDate(newStartDate) + ' → ' + formatDate(newEndDate); }
+    // Notify listeners so dependency lines can update live
+    bus.emit('drag:move', { featureId: feature.id, left: newLeft });
   }
   function onUp(){
     window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
@@ -51,6 +54,7 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     if(newStartStr !== feature.start || newEndStr !== feature.end){
       const updates = computeMoveUpdates(feature, newStartDate, newEndDate, featuresSource);
       applyUpdates(updates, updateDatesCb);
+      bus.emit('drag:end', { featureId: feature.id, start: newStartStr, end: newEndStr });
     } else {
       card.style.left = origLeft + 'px';
       if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; }
@@ -120,6 +124,7 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     const snappedWidth = widthForSpan(startDate, tentativeEnd);
     card.style.width = snappedWidth + 'px';
     if(datesEl){ datesEl.textContent = feature.start + ' → ' + formatDate(tentativeEnd); }
+    bus.emit('drag:move', { featureId: feature.id });
   }
 
   function onUp(){
@@ -132,6 +137,7 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     if(newEndStr !== feature.end){
       const updates = computeResizeUpdates(feature, adjustedFinalEnd, featuresSource);
       applyUpdates(updates, updateDatesCb);
+      bus.emit('drag:end', { featureId: feature.id, end: newEndStr });
     } else {
       if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; }
       card.style.width = origWidth + 'px';

@@ -6,6 +6,7 @@ import { initColorManager } from './colorManager.js';
 import { bus } from './eventBus.js';
 import { state } from './state.js';
 import { initLoadGraph } from './loadGraph.js';
+import { initDependencyRenderer } from './dependencyRenderer.js';
 
 async function init(){
   await state.initState();
@@ -15,6 +16,7 @@ async function init(){
   initDetailsPanel();
   initColorManager();
   initLoadGraph();
+  initDependencyRenderer();
 
   // Configuration navigation
   bus.on('config:open', ()=>{
