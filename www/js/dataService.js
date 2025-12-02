@@ -43,7 +43,7 @@ class DataService {
     }
     async getConfig() { return this.providers['mock'].getConfig(); }
     async getCapabilities() { return this.providers['mock'].getCapabilities(); }
-    async checkHealth() { return this.providers['mock'].checkHealth(); }
+    async checkHealth() { return this.providers['rest'].checkHealth(); }
     async setPat(patInput) { return this.providers['mock'].setPat(patInput); }
 
     async getAll() { return this.providers['mock'].getAll(); }

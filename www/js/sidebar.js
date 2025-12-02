@@ -115,6 +115,27 @@ export function initSidebar(){
   sortRadios.forEach(r => {
     r.checked = (r.value === state.featureSortMode);
   });
+
+  // Place a small single-line server status label under the config/help buttons
+  const configSection = document.getElementById('configSection');
+  if(configSection){
+    let statusLine = document.getElementById('serverStatusLabel');
+    if(!statusLine){
+      statusLine = document.createElement('div');
+      statusLine.id = 'serverStatusLabel';
+      statusLine.style.fontSize = '12px';
+      statusLine.style.marginTop = '8px';
+      statusLine.textContent = 'Server: loading...';
+      const configRow = configSection.querySelector('.config-row');
+      if(configRow){
+        configRow.parentNode.insertBefore(statusLine, configRow.nextSibling);
+      } else {
+        configSection.appendChild(statusLine);
+      }
+    }
+  }
+  // Fetch health once on init (no periodic polling)
+  refreshServerStatus();
 }
 
 function renderProjects(){
@@ -311,4 +332,20 @@ function validateScenarioName(val){
   const exists = state.scenarios.some(s => s.name.toLowerCase() === val.toLowerCase());
   if(exists) return 'Name already exists';
   return null;
+}
+
+async function refreshServerStatus(){
+  const label = document.getElementById('serverStatusLabel');
+  if(!label) return;
+  try{
+    const h = await dataService.checkHealth();
+    // Expecting { status, start_time, uptime_seconds }
+    const status = h.status || (h.ok ? 'ok' : 'error');
+    const start = h.start_time ? (new Date(h.start_time)).toISOString().slice(0,10) : '';
+    const uptimeHours = ('uptime_seconds' in h) ? (h.uptime_seconds / 3600) : null;
+    const uptimeStr = uptimeHours !== null ? `${uptimeHours.toFixed(1)}h` : '';
+    label.textContent = `Server: ${status} ${start} ${uptimeStr}`;
+  }catch(err){
+    label.textContent = 'Server: error';
+  }
 }

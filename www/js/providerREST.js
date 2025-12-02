@@ -44,9 +44,14 @@ export class ProviderREST {
         return { ...scenario, savedAt: new Date().toISOString() };
     }
     async checkHealth() {
-        // Example: health check via REST API (stub)
-        // return fetch('/api/health').then(res => res.json());
-        return { ok: true };
+        // Perform an actual fetch to /api/health and return parsed JSON.
+        try {
+            const res = await fetch('/api/health');
+            if (!res.ok) return { status: 'error' };
+            return await res.json();
+        } catch (err) {
+            return { status: 'error', error: String(err) };
+        }
     }
     async setFeatureField(id, field, value) {
         // Example: update feature field via REST API (stub)
