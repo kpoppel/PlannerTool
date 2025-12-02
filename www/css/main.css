@@ -42,8 +42,8 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .timeline-section.panning { cursor:grabbing; }
 .timeline-header { display:flex; background:var(--color-sidebar-bg); color:#fff; padding:6px 0 6px 10px; font-weight:bold; position:sticky; top:0; z-index:var(--z-header); font-size:0.85rem; }
 .timeline-cell { width:var(--timeline-month-width); flex:0 0 var(--timeline-month-width); text-align:center; }
-.feature-board { flex:1; position:relative; overflow:visible; padding:18px 0 20px 10px; 
-  /* Alternating month background aligned with card lanes (offset by left padding) */
+.feature-board { flex:1; position:relative; overflow:auto; padding:0px 0px 0px 0px; 
+  /* Alternating month background aligned with card lanes */
   background:
     repeating-linear-gradient(to right,
       var(--color-bg) 0,
@@ -51,7 +51,7 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
       var(--color-month-alt) var(--timeline-month-width),
       var(--color-month-alt) calc(var(--timeline-month-width) * 2)
     );
-  background-position: 10px 0; /* align stripes with card origin (padding-left) */
+  background-position: 0px 0; /* align stripes with card origin */
 }
 .feature-board.scenario-mode { 
   background:
