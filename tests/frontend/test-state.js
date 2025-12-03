@@ -3,11 +3,11 @@ const mockBus = {
     emit: () => {}
 };
 const mockDataService = {
-    getAll: async () => ({
-        projects: [{id: 'p1', name: 'Project1'}],
-        teams: [{id: 't1', name: 'Team1'}],
-        features: [{id: 'f1', start: '2025-01-01', end: '2025-02-01', title: 'Feature1', type: 'feature'}]
-    }),
+    getProjects: async () => ([{id: 'p1', name: 'Project1'}]),
+    getTeams: async () => ([{id: 't1', name: 'Team1'}]),
+    getFeatures: async () => ([
+        {id: 'f1', start: '2025-01-01', end: '2025-02-01', title: 'Feature1', type: 'feature'}
+    ]),
     refreshBaseline: async () => {},
     saveScenario: async () => {}
 };

@@ -125,7 +125,9 @@ class State {
   }  
 
   async initState() {
-    const { projects, teams, features } = await dataService.getAll();
+    const projects = await dataService.getProjects();
+    const teams = await dataService.getTeams();
+    const features = await dataService.getFeatures();
     // Freeze baseline copies
     this.baselineProjects = projects.map(p=>({ ...p }));
     this.baselineTeams = teams.map(t=>({ ...t }));
@@ -151,7 +153,9 @@ class State {
 
   async refreshBaseline() {
     await dataService.refreshBaseline();
-    const { projects, teams, features } = await dataService.getAll();
+    const projects = await dataService.getProjects();
+    const teams = await dataService.getTeams();
+    const features = await dataService.getFeatures();
     this.baselineProjects = projects.map(p=>({ ...p }));
     this.baselineTeams = teams.map(t=>({ ...t }));
     this.baselineFeatures = features.map(f=>({ ...f }));

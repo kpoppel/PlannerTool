@@ -1,5 +1,9 @@
 // modal.js - Generic lightweight modal utility for simple interactions
 // Provides openInputModal and openConfirmModal.
+import { bus } from './eventBus.js';
+import { dataService } from './dataService.js';
+
+// Input Modal
 export function openInputModal({ title='Input', message='', label='Name', defaultValue='', confirmLabel='OK', cancelLabel='Cancel', validate, onConfirm }){
   const overlay = document.createElement('div'); overlay.className='modal-overlay';
   const modal = document.createElement('div'); modal.className='modal';
@@ -23,6 +27,7 @@ export function openInputModal({ title='Input', message='', label='Name', defaul
   return { close };
 }
 
+// Confirmation Modal
 export function openConfirmModal({ title='Confirm', message='', confirmLabel='Confirm', cancelLabel='Cancel', onConfirm }){
   const overlay = document.createElement('div'); overlay.className='modal-overlay';
   const modal = document.createElement('div'); modal.className='modal';
@@ -41,6 +46,7 @@ export function openConfirmModal({ title='Confirm', message='', confirmLabel='Co
 
 function escapeHtml(str){ return str.replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s])); }
 
+// Help Modal
 export async function openHelpModal(){
   const overlay = document.createElement('div'); overlay.className='modal-overlay';
   const modal = document.createElement('div'); modal.className='modal wide-modal';
@@ -68,4 +74,88 @@ export async function openHelpModal(){
     console.error('openHelpModal: exception fetching help', err);
     content.textContent = 'Could not load help page.';
   }
+}
+
+// Configuration Modal
+function createConfigModal(){
+  let modal = document.getElementById('configModal');
+  if(modal) return modal;
+  modal = document.createElement('div');
+  modal.id = 'configModal';
+  modal.className = 'config-modal-overlay';
+  modal.innerHTML = `
+    <div class="config-modal">
+      <h2>Configuration</h2>
+      <form id="configForm" class="config-form">
+        <div class="form-row">
+          <label for="configEmail">Email address</label>
+          <input type="email" id="configEmail" placeholder="you@example.com" required />
+        </div>
+        <div class="form-row">
+          <label for="configPat">Personal Access Token (PAT)</label>
+          <input type="password" id="configPat" placeholder="••••••••" />
+        </div>
+        <div class="form-row">
+          <label for="autosaveInterval">Autosave interval (minutes, 0=off)</label>
+          <input type="number" id="autosaveInterval" min="0" max="120" step="1" value="0" />
+        </div>
+        <div class="config-actions">
+          <button type="submit" id="saveConfigBtn">Save</button>
+          <button type="button" id="closeConfigBtn">Close</button>
+        </div>
+        <div id="configStatus" class="status" aria-live="polite"></div>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+export async function openConfigModal(){
+  const modal = createConfigModal();
+  modal.style.display = 'flex';
+  const emailInput = modal.querySelector('#configEmail');
+  const patInput = modal.querySelector('#configPat');
+  const form = modal.querySelector('#configForm');
+  const status = modal.querySelector('#configStatus');
+  const closeBtn = modal.querySelector('#closeConfigBtn');
+  const autosaveInput = modal.querySelector('#autosaveInterval');
+
+  const storedEmail = await dataService.getLocalPref('user.email');
+  if (storedEmail) emailInput.value = storedEmail;
+    const storedAutosave = await dataService.getLocalPref('autosave.interval');
+  if (storedAutosave !== undefined) autosaveInput.value = storedAutosave;
+
+  status.textContent = '';
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const email = emailInput.value.trim();
+    const pat = patInput.value;
+    const autosaveInterval = parseInt(autosaveInput.value, 10) || 0;
+    // Store email and autosave interval locally
+    if (email) await dataService.setLocalPref('user.email', email);
+    await dataService.setLocalPref('autosave.interval', autosaveInterval);
+    let patText = '';
+    if (pat) {
+      patText = 'Access token updated.';
+    }
+    // Persist account to backend (server will store via storage backend)
+    try{
+      const res = await dataService.saveConfig({ email, pat });
+      if(res && res.ok){
+        status.textContent = 'Configuration saved. ' + patText;
+      } else {
+        status.textContent = 'Configuration saved locally, but server save failed.';
+      }
+    }catch(err){
+      status.textContent = 'Configuration saved locally, but server save failed.';
+    }
+    bus.emit('config:updated', { email });
+    bus.emit('config:autosave', { autosaveInterval });
+  };
+
+  closeBtn.onclick = () => { modal.style.display = 'none'; };
+  modal.addEventListener('click', (e)=>{
+    if(e.target === modal) modal.style.display = 'none';
+  });
 }

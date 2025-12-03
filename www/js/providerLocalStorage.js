@@ -43,11 +43,7 @@ export class ProviderLocalStorage {
         const scenarios = JSON.parse(localStorage.getItem('scenarios') || '[]');
         return scenarios;
     }
-    async setPat(patInput) {
-        this.logCall('setPat', arguments);
-        // Simulate PAT submission in localStorage
-        return { token: 'PAT-STORE-MOCKED' };
-    }
+
     async publishBaseline(selectedOverrides) {
         this.logCall('publishBaseline', arguments);
         // Simulate annotation of selected overrides in localStorage
@@ -115,19 +111,12 @@ export class ProviderLocalStorage {
         }
         return null;
     }
+
     async getConfig() {
         this.logCall('getConfig', arguments);
         // Fetch config from localStorage
         const config = JSON.parse(localStorage.getItem('config') || '{}');
         return config;
-    }
-    async getAll() {
-        this.logCall('getAll', arguments);
-        return {
-            projects: await this.getProjects(),
-            teams: await this.getTeams(),
-            features: await this.getFeatures()
-        };
     }
 
     async getFeatures() {

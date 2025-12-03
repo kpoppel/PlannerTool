@@ -41,3 +41,11 @@ class StorageBackend(ABC):
     @abstractmethod
     def exists(self, namespace: str, key: str) -> bool:
         """Return True if `key` exists under `namespace`."""
+
+    @abstractmethod
+    def configure(self, **options) -> None:
+        """Configure backend-specific options.
+
+        Options are backend-defined. For the file backend we support
+        `mode` which can be `'pickle'` (default) or `'text'` (store plaintext).
+        """

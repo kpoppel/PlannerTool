@@ -29,9 +29,6 @@ console.log('Running dataService.js tests...');
         const patResult = await dataService.dataService.setPat('test-pat');
         assertEqual(typeof patResult, 'object', 'setPat returns object');
 
-        const all = await dataService.dataService.getAll();
-        assertEqual(Array.isArray(all.projects), true, 'getAll returns projects array');
-
         const projects = await dataService.dataService.getProjects();
         assertEqual(Array.isArray(projects), true, 'getProjects returns array');
 

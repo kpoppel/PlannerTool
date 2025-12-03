@@ -14,7 +14,9 @@
   `uvicorn planner:app --reload`
 - Use the application by browsing to `http://localhost:8000`
 
-3 Testing
+The server will run a setup first time. If you need to run the setup again, either delete the `data/config/server_config.yml` file or run `python3 planner.py --setup`.
+
+# Testing
 
 - Install code coverage tool
   `npm install --save-dev c8`
@@ -22,6 +24,24 @@
   `npx c8 node scripts/run_js_tests.mjs`
 - Run tests without coverage
   `node ./scripts/run_js_tests.mjs`
+
+## Run a sessino from CLI
+export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com"}' \
+  localhost:8000/api/session | jq -r .sessionId)
+
+echo "$SESSION_ID"
+
+Create a configuration
+    curl -s -X POST -H "Content-Type: application/json" \
+      -d '{"email":"user@example.com", "pat":"YOUR PAT"}' \
+      localhost:8000/api/session
+
+Run some requests
+    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/projects
+    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/tasks
+    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/teams
+
 
 # WIP - Planner REST calls (not implemented):
 

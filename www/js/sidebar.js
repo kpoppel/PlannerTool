@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { dataService } from './dataService.js';
-import { openInputModal, openConfirmModal, openHelpModal } from './modal.js';
+import { openConfigModal, openInputModal, openConfirmModal, openHelpModal } from './modal.js';
 import { bus } from './eventBus.js';
 
 const elCache = {};
@@ -76,7 +76,7 @@ export function initSidebar(){
   const openConfigBtn = document.getElementById('openConfigBtn');
   if (openConfigBtn) {
     openConfigBtn.addEventListener('click', () => {
-      bus.emit('config:open');
+      openConfigModal();
     });
   }
 

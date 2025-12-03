@@ -10,12 +10,19 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .base import StorageBackend
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class FileStorageBackend(StorageBackend):
     def __init__(self, data_dir: str | Path = "./data") -> None:
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir, exist_ok=True)
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        # storage mode: 'pickle' (binary pickled objects) or 'text' (plaintext files)
+        self.mode = "pickle"
 
     def _ns_dir(self, namespace: str) -> Path:
         ns = self.data_dir / namespace
@@ -24,23 +31,40 @@ class FileStorageBackend(StorageBackend):
 
     def _path_for(self, namespace: str, key: str) -> Path:
         safe_key = key.replace("/", "_")
-        return self._ns_dir(namespace) / f"{safe_key}.pkl"
+        ns = self._ns_dir(namespace)
+        if self.mode == "text":
+            return ns / f"{safe_key}"
+        return ns / f"{safe_key}.pkl"
 
     def save(self, namespace: str, key: str, value: Any) -> None:
         path = self._path_for(namespace, key)
         tmp = path.with_suffix(path.suffix + ".tmp")
-        with open(tmp, "wb") as f:
-            pickle.dump(value, f)
-            f.flush()
-            os.fsync(f.fileno())
+        if self.mode == "text":
+            # write plaintext (assume `value` is str)
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(value)
+                f.flush()
+                os.fsync(f.fileno())
+        else:
+            with open(tmp, "wb") as f:
+                pickle.dump(value, f)
+                f.flush()
+                os.fsync(f.fileno())
         tmp.replace(path)
 
     def load(self, namespace: str, key: str) -> Any:
         path = self._path_for(namespace, key)
         if not path.exists():
             raise KeyError(key)
+        if self.mode == "text":
+            with open(path, "r", encoding="utf-8") as f:
+                data = f.read()
+                logger.debug("Loaded text %s", path)
+                return data
         with open(path, "rb") as f:
-            return pickle.load(f)
+            obj = pickle.load(f)
+            logger.debug("Loaded %s: %s", path, type(obj))
+            return obj
 
     def delete(self, namespace: str, key: str) -> None:
         path = self._path_for(namespace, key)
@@ -56,3 +80,10 @@ class FileStorageBackend(StorageBackend):
 
     def exists(self, namespace: str, key: str) -> bool:
         return self._path_for(namespace, key).exists()
+
+    def configure(self, **options) -> None:
+        mode = options.get("mode")
+        if mode:
+            if mode not in ("pickle", "text"):
+                raise ValueError("unsupported mode: %s" % mode)
+            self.mode = mode

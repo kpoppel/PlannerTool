@@ -72,11 +72,7 @@ export class ProviderMock {
             stale: !!s.stale
         }));
     }
-    async setPat(patInput) {
-        this.logCall('setPat', arguments);
-        // Simulate PAT submission
-        return { token: 'PAT-STORE-MOCKED' };
-    }
+
     async publishBaseline(selectedOverrides, scenario) {
         this.logCall('publishBaseline', arguments);
         // Accept scenario or scenarioId; default to 'live'
@@ -135,6 +131,12 @@ export class ProviderMock {
         // Simulate health check
         return { ok: true };
     }
+    async saveConfig(config){
+        this.logCall('saveConfig', arguments);
+        // Simulate saving config data
+        this.config = { ...config, savedAt: new Date().toISOString() };
+        return { ok: true, email: config.email };
+    }
     async setFeatureField(id, field, value) {
         this.logCall('setFeatureField', arguments);
         const f = this.features.find(x => x.id === id);
@@ -168,28 +170,20 @@ export class ProviderMock {
         // Simulate config fetch
         return { developmentMode: true, apiBaseUrl: '/api', orgUrl: 'https://dev.azure.com/example', projectDefault: 'alpha' };
     }
-    async getAll() {
-        this.logCall('getAll', arguments);
-        return {
-            projects: await this.getProjects(),
-            teams: await this.getTeams(),
-            features: await this.getFeatures()
-        };
-    }
-        async getFeatures() {
+    async getFeatures() {
         this.logCall('getFeatures', arguments);
         // Return features from instance state
         return this.features.map(f => ({ ...f }));
-        }
-        async getTeams() {
+    }
+    async getTeams() {
         this.logCall('getTeams', arguments);
         // Return teams from instance state
         return this.teams.map(t => ({ ...t }));
-        }
-        async getProjects() {
+    }
+    async getProjects() {
         this.logCall('getProjects', arguments);
         // Return projects from instance state
         return this.projects.map(p => ({ ...p }));
-        }
+    }
   // ...other methods will be added in later steps
 }
