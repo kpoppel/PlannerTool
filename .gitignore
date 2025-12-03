@@ -18,6 +18,7 @@ ENV/
 
 # Node.js
 node_modules/
+package-lock.json
 
 # Coverage
 coverage/
@@ -40,16 +41,22 @@ coverage/
 Thumbs.db
 
 # HTML/JS build artifacts
-mockup-www/**
+mockups/
+mockups/**
 
 # Test output
 www/js/tests/*.log
+data/
+data/**
+dev.html
 
 # Ignore markdown drafts
 [0-9]*-*.md
 
 # Ignore plan templates
 plan-template.md
+plan-*.md
+Notes.md
 
 # Ignore other temp files
 *.tmp
