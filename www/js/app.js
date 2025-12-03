@@ -9,6 +9,8 @@ import { initLoadGraph } from './loadGraph.js';
 import { initDependencyRenderer } from './dependencyRenderer.js';
 
 async function init(){
+  // Ensure backend session is created before first API calls
+  try { const { dataService } = await import('./dataService.js'); await dataService.init(); } catch {}
   await state.initState();
   initSidebar();
   initTimeline();
@@ -17,13 +19,6 @@ async function init(){
   initColorManager();
   initLoadGraph();
   initDependencyRenderer();
-
-  // Configuration navigation
-  bus.on('config:open', ()=>{
-    import('./configModal.js').then(mod => {
-      mod.openConfigModal();
-    });
-  });
   bus.emit('app:ready');
 }
 

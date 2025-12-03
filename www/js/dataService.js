@@ -41,37 +41,42 @@ class DataService {
     constructor(providers) {
         this.providers = providers;
     }
-    async getConfig() { return this.providers['mock'].getConfig(); }
-    async getCapabilities() { return this.providers['mock'].getCapabilities(); }
+    async init(){
+        if (this.providers['rest'] && typeof this.providers['rest'].init === 'function') {
+            await this.providers['rest'].init();
+        }
+    }
+    // Service health and capabilities
     async checkHealth() { return this.providers['rest'].checkHealth(); }
-    async setPat(patInput) { return this.providers['mock'].setPat(patInput); }
-
-    async getAll() { return this.providers['mock'].getAll(); }
-    async getProjects() { return this.providers['mock'].getProjects(); }
-    async getTeams() { return this.providers['mock'].getTeams(); }
-    async getFeatures() { return this.providers['mock'].getFeatures(); }
+    async getCapabilities() { return this.providers['mock'].getCapabilities(); }
+    // Configuration and local preferences
+    async getConfig() { return this.providers['mock'].getConfig(); }
+    async saveConfig(account) { return this.providers['rest'].saveConfig(account); }
+    async getLocalPref(key) { return this.providers['local'].getLocalPref(key); }
+    async setLocalPref(key, value) { return this.providers['local'].setLocalPref(key, value); }
+    // --- Color Preferences Management ---
+    async getColorMappings() { return this.providers['local'].loadColors(); }
+    async clearColorMappings() { return this.providers['local'].clearAll(); }
+    async updateProjectColor(id, color) { return this.providers['local'].saveProjectColor(id, color); }
+    async updateTeamColor(id, color) { return this.providers['local'].saveTeamColor(id, color); }
+    // --- Feature Data Management ---
+    async getProjects() { return this.providers['rest'].getProjects(); }
+    async getTeams() { return this.providers['rest'].getTeams(); }
+    async getFeatures() { return this.providers['rest'].getFeatures(); }
     async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
-
+    // --- Scenario Management ---
     async listScenarios() { return this.providers['mock'].listScenarios(); }
     async deleteScenario(id) { return this.providers['mock'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['mock'].renameScenario(id, name); }
     async publishBaseline(selectedOverrides) { return this.providers['mock'].publishBaseline(selectedOverrides); }
     async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
     async saveScenario(scenario) { return this.providers['mock'].saveScenario(scenario); }
-
-    // --- Color and Preference Management ---
-    async getColorMappings() { return this.providers['local'].loadColors(); }
-    async updateProjectColor(id, color) { return this.providers['local'].saveProjectColor(id, color); }
-    async updateTeamColor(id, color) { return this.providers['local'].saveTeamColor(id, color); }
-    async clearColorMappings() { return this.providers['local'].clearAll(); }
-    async getLocalPref(key) { return this.providers['local'].getLocalPref(key); }
-    async setLocalPref(key, value) { return this.providers['local'].setLocalPref(key, value); }
-    // --- End Color and Preference Management ---
 }
 
 const providerMock = new ProviderMock();
 const providerLocalStorage = new ProviderLocalStorage();
 const providerREST = new ProviderREST();
 export const dataService = new DataService({'mock' : providerMock, 'rest': providerREST, 'local': providerLocalStorage});
+// Initialization now awaited by app.js before any API calls
