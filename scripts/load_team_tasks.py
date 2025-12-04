@@ -112,13 +112,13 @@ def main():
         print("Error loading config:", e)
         sys.exit(2)
 
-    azure_url = cfg.get("azure_devops_url")
-    if not azure_url:
-        print("Config missing `azure_devops_url`")
+    azure_devops_organization = cfg.get("azure_devops_organization")
+    if not azure_devops_organization:
+        print("Config missing `azure_devops_organization`")
         sys.exit(2)
 
     pat = "<YOURPAT>"
-    project = "eSW"
+    project = "Platform_Development"
     #pat = os.environ.get("AZURE_DEVOPS_PAT") or getpass("Azure DevOps PAT (input hidden): ")
     #project = os.environ.get("AZURE_DEVOPS_PROJECT") or input("Azure DevOps project name: ").strip()
     if not pat:
@@ -130,7 +130,7 @@ def main():
 
     try:
         from planner_lib.azure import get_client
-        client = get_client(azure_url, pat)
+        client = get_client(azure_devops_organization, pat)
     except Exception as e:
         print("Failed to initialize AzureClient:", e)
         sys.exit(3)

@@ -118,9 +118,11 @@ export class ProviderREST {
         // return fetch('/api/config').then(res => res.json());
         return {};
     }
-    async getFeatures() {
+
+    async getFeatures(project) {
         try{
-            const res = await fetch('/api/tasks', { headers: this._headers() });
+            const url = project ? `/api/tasks?project=${encodeURIComponent(project)}` : '/api/tasks';
+            const res = await fetch(url, { headers: this._headers() });
             if(!res.ok) return [];
             let retval = await res.json();
             // Add fields to the returned values
@@ -129,6 +131,7 @@ export class ProviderREST {
             return retval;
         }catch(err){ return {}; }
     }
+
     async getTeams() {
         try{
             const res = await fetch('/api/teams', { headers: this._headers() });

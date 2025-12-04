@@ -18,8 +18,8 @@ from getpass import getpass
 
 from planner_lib.azure import get_client
 
-DEFAULT_AREA_PATH = "eSW"
-DEFAULT_AZURE_URL = "https://dev.azure.com/WSAudiology"
+DEFAULT_AREA_PATH = '/'
+DEFAULT_AZURE_ORG = "YOUR_ORG_HERE"
 
 # Module-level place to hold the loaded BackendConfig instance after setup
 _loaded_config: list[BackendConfig] = []
@@ -49,28 +49,10 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     args, _ = parser.parse_known_args(argv)
     return args
 
-def sanitize_area_path(path: str) -> str:
-    """Sanitize an area path so it is safe to include in a WIQL query.
-
-    - Remove a leading backslash if present.
-    - Remove any occurrences of the substring "Area\\" (and common typo "Aera\\")
-        since Azure returns those in some listings but they must not be sent back
-        to the Azure endpoint inside the WIQL AreaPath string.
-    """
-    if not isinstance(path, str):
-        return path
-    # strip leading backslash
-    out = path.lstrip('\\')
-    # remove 'Area\\' and common typo 'Aera\\' occurrences
-    out = out.replace('Area\\', '')
-    return out
-
-
 def create_template(store, namespace, key) -> tuple[bool, str]:
     # Default non-interactive template
     tpl_cfg = BackendConfig(
-        azure_devops_url=DEFAULT_AZURE_URL,
-        root_area_path=DEFAULT_AREA_PATH,
+        azure_devops_organization=DEFAULT_AZURE_ORG,
         area_paths=[],
         project_map=[],
         team_map=[],
@@ -81,12 +63,11 @@ def create_template(store, namespace, key) -> tuple[bool, str]:
 def interactive_setup(store, namespace, key) -> tuple[bool, str]:
     try:
         print("Server configuration not found. Starting interactive setup.")
-        url = input(f"Azure DevOps URL [{DEFAULT_AZURE_URL}]: ") or DEFAULT_AZURE_URL
-        root = input(f"Root area path [{DEFAULT_AREA_PATH}]: ") or DEFAULT_AREA_PATH
         # Ask for a PAT so we can query area paths
         pat = getpass("Azure DevOps Personal Access Token (input hidden): ")
+        organization = input(f"Azure DevOps Organization [{DEFAULT_AZURE_ORG}]: ") or DEFAULT_AZURE_ORG
         try:
-            client = get_client(url, pat)
+            client = get_client(organization, pat)
         except Exception as e:
             return False, f"Azure client init failed: {e}"
 
@@ -104,24 +85,28 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
             pi = 1
         project = projects[max(0, pi-1)]
 
+        root_path = input(f"Root area path (/ for all paths under this project) [{DEFAULT_AREA_PATH}]: ") or DEFAULT_AREA_PATH
+
         # Retrieve area paths under the provided root
-        paths = client.get_area_paths(project, root)
+        paths = client.get_area_paths(project, root_path)
 
         # Persist the area paths into the config
         tpl_cfg = BackendConfig(
-            azure_devops_url=url,
-            root_area_path=root,
+            azure_devops_organization=organization,
             area_paths=paths,
             project_map=[],
             team_map=[],
         )
+        # Save configuration template with area paths and reload to add project mappings
         store.save(key, tpl_cfg)
+        cfg = store.load(key)
+        proj_map = list(cfg.project_map)
 
-        # Present numbered list and allow mapping
+        # Present numbered list and allow mapping paths to projects
         while True:
-            print('\nDiscovered area paths:')
+            print(f'\nDiscovered area paths under {project}\\{root_path}:')
             for idx, pth in enumerate(paths, start=1):
-                print(f"{idx}. {pth}")
+                print(f"{idx}. {pth.replace(f"{project}\\{root_path}\\", '')}")
             choice = input("Select path number to configure (0 to finish): ")
             try:
                 ci = int(choice)
@@ -134,49 +119,35 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
                 print("Out of range")
                 continue
             sel_path = paths[ci-1]
-            # Determine type
-            typ = input("Type (Project/Team) [Project]: ") or "Project"
-            typ = "Project" if typ.lower().startswith('p') else "Team"
-            # Determine Team/Project name
-            name = input(f"Name for the {typ} [{sel_path.split('\\')[-1]}]: ") or sel_path.split('\\')[-1]
-            # TODO: Remove custom wiql.
-            # Generate WIQL template and allow edit
-            safe_path = sanitize_area_path(sel_path)
-            # default_wiql=f"""
-            # SELECT [System.Id], [System.WorkItemType], [System.Title], [System.State], [System.AreaPath], [System.IterationPath], [System.Tags]
-            # FROM WorkItems
-            # WHERE [System.TeamProject] = 'Platform_Development'
-            # AND [System.AreaPath] UNDER '{safe_path}'
-            # AND [System.WorkItemType] IN ('Epic','Feature')
-            # AND [System.State] <> 'Closed'
-            # AND [Microsoft.VSTS.Common.StackRank] <> ''
-            # ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
-            # """
-            default_wiql = ""
-            #print("Generated WIQL:\n", default_wiql)
-            #edited = input("Edit WIQL (press Enter to accept): ")
-            #wiql = edited or default_wiql
-            wiql = default_wiql
-            # Save mapping into template config
-            cfg_after = store.load(key)
-            proj_map = list(cfg_after.project_map)
-            team_map = list(cfg_after.team_map)
-            entry = {"name": name, "area_path": safe_path, "wiql": wiql}
-            if typ == "Project":
-                proj_map.append(entry)
-            else:
-                team_map.append(entry)
-            # Write back
-            new_cfg = BackendConfig(
-                azure_devops_url=cfg_after.azure_devops_url,
-                root_area_path=cfg_after.root_area_path,
-                area_paths=cfg_after.area_paths,
-                project_map=proj_map,
-                team_map=team_map,
-            )
-            store.save(key, new_cfg)
-            print(f"Saved mapping for {sel_path} as {typ}")
 
+            name = input(f"Name for the project/team backlog [{sel_path.split('\\')[-1]}]: ") or sel_path.split('\\')[-1]
+            entry = {"name": name, "area_path": sel_path}
+
+            # Save project mapping into config as well
+            proj_map.append(entry)
+
+        # Save configuration template with area paths and reload to add team mappings
+        store.save(key, tpl_cfg)
+        cfg = store.load(key)
+        team_map = list(cfg.team_map)
+
+        # Add team mappings
+        while True:
+            name = input(f"Name for the Team (empty to finish): ") or ""
+            if not name:
+                break
+            short_name = input(f"Short Name for the Team [{name[:3].upper()}]: ") or name[:3].upper()
+            entry = {"name": name, "short_name": short_name}
+            team_map.append(entry)
+
+        # Write back
+        new_cfg = BackendConfig(
+            azure_devops_organization=cfg.azure_devops_organization,
+            area_paths=cfg.area_paths,
+            project_map=proj_map,
+            team_map=team_map,
+        )
+        store.save(key, new_cfg)
         return True, f"Wrote template server config with {len(paths)} area paths to storage {namespace}/{key}"
     except Exception as e:
         return False, str(e)
@@ -240,8 +211,7 @@ def setup(argv: Optional[Iterable[str]], storage: StorageBackend, namespace: str
 
 @dataclass
 class BackendConfig:
-    azure_devops_url: str
-    root_area_path: str
+    azure_devops_organization: str
     area_paths: List[str]
     project_map: List[Dict[str, str]]
     team_map: List[Dict[str, str]]
@@ -275,8 +245,7 @@ class YamlConfigStore:
             raise ValueError("invalid config format: expected mapping")
 
         return BackendConfig(
-            azure_devops_url=data["azure_devops_url"],
-            root_area_path=data["root_area_path"],
+            azure_devops_organization=data["azure_devops_organization"],
             area_paths=list(data.get("area_paths", [])),
             project_map=list(data.get("project_map", [])),
             team_map=list(data.get("team_map", [])),

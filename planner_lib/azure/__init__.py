@@ -22,7 +22,7 @@ class AzureClient:
         if Connection is None or BasicAuthentication is None:
             raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
         creds = BasicAuthentication('', pat)
-        self.conn = Connection(base_url=organization_url, creds=creds)
+        self.conn = Connection(base_url=f"https://dev.azure.com/{organization_url}", creds=creds)
 
     def get_projects(self) -> List[str]:
         core_client = self.conn.clients.get_core_client()
@@ -53,6 +53,19 @@ class AzureClient:
                 paths.extend(self._flatten_area_nodes(c))
         return paths
 
+    def _sanitize_area_path(self, path: str) -> str:
+        """Sanitize an area path so it is safe to include in a WIQL query.
+
+        - Remove a leading backslash if present.
+        - Remove any occurrences of the substring "Area\\" (and common typo "Aera\\")
+            since Azure returns those in some listings but they must not be sent back
+            to the Azure endpoint inside the WIQL AreaPath string.
+        """
+        if not isinstance(path, str):
+            return path
+        # strip leading backslash, convert / to \ and remove 'Area\' occurrences
+        return path.lstrip('/\\').replace('/', '\\').replace('Area\\', '')
+
     def get_area_paths(self, project: str, root_path: str = '/') -> List[str]:
         """Return area paths under `root_path` for the given `project`.
 
@@ -76,7 +89,7 @@ class AzureClient:
             # The returned node may be a top-level node with children; flatten to full paths
             paths = self._flatten_area_nodes(node)
             # Normalise to backslash-separated area paths (Azure DevOps uses backslashes)
-            normed = [p.replace('/', '\\') for p in paths]
+            normed = [self._sanitize_area_path(p) for p in paths]
             return normed
         except Exception:
             # best-effort: return empty list if the server doesn't support nodes or call fails
@@ -92,6 +105,16 @@ class AzureClient:
         q = Wiql(query=wiql)
         return wit.query_by_wiql(q)
 
+    # Construct UI link from API URL
+    def api_url_to_ui_link(self, api_url: str, org: str, project: str) -> str:
+        # Extract work item ID from API URL
+        import re
+        match = re.search(r'/workItems/(\d+)', api_url)
+        if not match:
+            raise ValueError("Invalid API URL format")
+        work_item_id = match.group(1)
+        return f"https://dev.azure.com/{org}/{project}/_workitems/edit/{work_item_id}"
+
     def get_work_items(self, project, area_path):
         # Item 516412 has a parent link to 516154
         # Item 516154 has 6 links to children
@@ -104,7 +127,7 @@ class AzureClient:
         FROM WorkItems
         WHERE [System.WorkItemType] IN ('Epic','Feature')
         AND [System.AreaPath] = '{area_path}' 
-        AND [System.State] <> 'Closed'
+        AND [System.State] NOT IN ('Closed', 'Removed')
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
         wiql_obj = Wiql(query=wiql_query)
@@ -123,13 +146,14 @@ class AzureClient:
             relation_map = []
             parent_id = None
             for r in relations:
-                if r.attributes["name"] in ("Parent", "Child"):
+                if r.attributes["name"] in ("Parent", "Child", "Related", "Predecessor", "Successor"):
                     # Make a tuple of (type, url)
                     relation_map.append((
                         r.attributes["name"],    # 'Parent' or 'Child'
                         getattr(r, "url", None), # link URL
                         #getattr(r, "rel", None), # System.LinkTypes.Hierarchy-Forward/Reverse
                         ))
+            #logger.debug(f"Item {id} relations: {relation_map}")
             assigned = item.fields.get("System.AssignedTo")
             assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
             try:
@@ -195,7 +219,7 @@ def get_client(organization_url: Optional[str] = None, pat: Optional[str] = None
     if _client_instance is not None:
         return _client_instance
 
-    org = organization_url or os.environ.get("AZURE_DEVOPS_URL")
+    org = organization_url or os.environ.get("AZURE_DEVOPS_ORG")
     token = pat or os.environ.get("AZURE_DEVOPS_PAT", "")
     if not org:
         raise RuntimeError("Azure organization URL not provided. Set AZURE_DEVOPS_URL or pass organization_url.")
