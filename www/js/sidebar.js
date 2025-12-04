@@ -11,10 +11,20 @@ export function initSidebar(){
     <h2>Projects & Teams</h2>
     <section class="sidebar-section" id="projectsSection">
       <h3>Projects</h3>
+      <div class="counts-header" aria-hidden="true">
+        <span></span><span></span>
+        <span class="type-icon epic" title="Epics">👑</span>
+        <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+      </div>
       <ul class="sidebar-list" id="projectList"></ul>
     </section>
     <section class="sidebar-section" id="teamsSection">
       <h3>Teams</h3>
+      <div class="counts-header" aria-hidden="true">
+        <span></span><span></span>
+        <span class="type-icon epic" title="Epics">👑</span>
+        <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+      </div>
       <ul class="sidebar-list" id="teamList"></ul>
     </section>
     <section class="sidebar-section" id="scaleSection" style="display:none">
@@ -145,14 +155,15 @@ function renderProjects(){
     const epicsCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'epic').length;
     const featuresCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'feature').length;
     const li = document.createElement('li');
-    li.className='sidebar-list-item';
-    li.innerHTML = `<span class="color-dot" style="background:${p.color}" data-color-id="${p.id}"></span>
-      <label><input type="checkbox" data-project="${p.id}" ${p.selected?'checked':''}/> ${p.name}
-        <span class="project-counts">
-          <span class="type-icon epic" title="Epics">👑</span><span class="count-badge">${epicsCount}</span>
-          <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span><span class="count-badge">${featuresCount}</span>
-        </span>
-      </label>`;
+    li.className='sidebar-list-item grid-row';
+    const epicsTxt = epicsCount >= 10 ? String(epicsCount) : String(epicsCount);
+    const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
+    li.innerHTML = `
+      <span class="color-dot" style="background:${p.color}" data-color-id="${p.id}"></span>
+      <label class="row-label"><input type="checkbox" data-project="${p.id}" ${p.selected?'checked':''}/> ${p.name}</label>
+      <span class="count-badge">${epicsTxt}</span>
+      <span class="count-badge">${featsTxt}</span>
+    `;
     elCache.projectList.appendChild(li);
   });
 }
@@ -161,16 +172,17 @@ function renderTeams(){
   elCache.teamList.innerHTML = '';
   state.teams.forEach(t=>{
     const li = document.createElement('li');
-    li.className='sidebar-list-item';
+    li.className='sidebar-list-item grid-row';
     const epicsCount = state.baselineFeatures.filter(f => f.type==='epic' && f.teamLoads.some(tl=>tl.team===t.id)).length;
     const featuresCount = state.baselineFeatures.filter(f => f.type==='feature' && f.teamLoads.some(tl=>tl.team===t.id)).length;
-    li.innerHTML = `<span class="color-dot" style="background:${t.color}" data-color-id="${t.id}"></span>
-      <label><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/> ${t.name}
-        <span class="project-counts">
-          <span class="type-icon epic" title="Epics">👑</span><span class="count-badge">${epicsCount}</span>
-          <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span><span class="count-badge">${featuresCount}</span>
-        </span>
-      </label>`;
+    const epicsTxt = epicsCount >= 10 ? String(epicsCount) : String(epicsCount);
+    const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
+    li.innerHTML = `
+      <span class="color-dot" style="background:${t.color}" data-color-id="${t.id}"></span>
+      <label class="row-label"><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/> ${t.name}</label>
+      <span class="count-badge">${epicsTxt}</span>
+      <span class="count-badge">${featsTxt}</span>
+    `;
     elCache.teamList.appendChild(li);
   });
 }
