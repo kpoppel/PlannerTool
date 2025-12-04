@@ -151,6 +151,10 @@ async def api_tasks(request: Request):
             logger.exception('Failed to load user config for %s: %s', email, e)
     try:
         from planner_lib.projects import list_tasks
+        # Optional per-project filtering via query parameter
+        project_id = request.query_params.get('project')
+        if project_id:
+            return list_tasks(pat=pat, project_id=project_id)
         return list_tasks(pat=pat)
     except Exception:
         return []

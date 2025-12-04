@@ -15,11 +15,17 @@ logger = logging.getLogger(__name__)
 # File-backed storage used for persisted projects
 #_storage = FileStorageBackend(data_dir="./data")
 
-def slugify(text,prefix="") -> str:
-    text = text.lower()
+def slugify(text, prefix: str = "") -> str:
+    """Create a URL-safe slug optionally prefixed.
+
+    Ensures consistent IDs across API responses. When `prefix` is provided,
+    it will be prepended to the slug (e.g., prefix="project-" -> "project-alpha").
+    """
+    text = str(text).lower()
     text = re.sub(r'[^a-z0-9]+', '-', text)
-    return text.strip('-')
-#    return prefix + text.strip('-')
+    base = text.strip('-')
+    return base
+    return (prefix + base) if prefix else base
 
 def list_projects() -> List[str]:
     """Return a list of project names. """
@@ -61,7 +67,7 @@ def list_teams() -> List[dict]:
         return []
         
 
-def list_tasks(pat: str | None = None) -> List[dict]:
+def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[dict]:
     """Return tasks for all configured projects in a frontend-friendly format.
 
     Uses WIQL queries from `project_map` to fetch work items and formats them
@@ -69,7 +75,7 @@ def list_tasks(pat: str | None = None) -> List[dict]:
     """
     from planner_lib.setup import get_loaded_config
     from planner_lib.azure import get_client
-    from datetime import date
+    from datetime import date, timedelta
 
     cfg = get_loaded_config()
     if not cfg or not getattr(cfg, "project_map", None):
@@ -79,7 +85,7 @@ def list_tasks(pat: str | None = None) -> List[dict]:
     # Initialize Azure client using URL and interactive/token-less flow is not supported here.
     # Expect PAT via environment variable for server context if needed; otherwise rely on AzureClient's internal mechanism.
     items: List[dict] = []
-    client = get_client(cfg.azure_devops_url, pat)
+    client = get_client(cfg.azure_devops_organization, pat)
 
     def _safe_type(type: str) -> str:
         lt = type.lower()
@@ -99,12 +105,16 @@ def list_tasks(pat: str | None = None) -> List[dict]:
 
     # For each project fetch task data
     wis = []
+    items: List[dict] = []
     for p in cfg.project_map:
         name = p.get("name")
-        wiql = p.get("wiql")
         path = p.get("area_path")
+        # If a specific project_id is requested, skip non-matching entries
+        if project_id:
+            pid = slugify(name, prefix="project-")
+            if pid != project_id:
+                continue
         wis = client.get_work_items(name, path)
-        #wis = []
         # Returned data is list of dict:
         # [{'id': 535825, 'type': 'Feature', 'title': 'Architecture team requests incoming',
         #   'state': 'Active', 'tags': None, 'areaPath': 'Platform_Development\\eSW\\Teams\\Architecture',
@@ -115,9 +125,9 @@ def list_tasks(pat: str | None = None) -> List[dict]:
         #       ]}]
         logger.debug(f"Fetched {len(wis)} work items for project '{name}'")
         # Now format into frontend-friendly shape
-        items = []
         for wi in wis or []:
             today = str(date.today().isoformat())
+            today_plus_30 = str((date.today() + timedelta(days=30)).isoformat())
             depends_on_list = []
             for rel in wi.get("relations", []):
                 if rel[0] == "Parent":
@@ -129,11 +139,10 @@ def list_tasks(pat: str | None = None) -> List[dict]:
                 "id": str(wi["id"]),
                 "type": _safe_type(wi.get("type")),
                 "parentEpic": depends_on_list[0] if depends_on_list else None,
-                #"parentEpic": wi.get("parentId"),
                 "title": wi["title"],
-                "project": slugify(name, prefix="proj-"),
+                "project": slugify(name, prefix="project-"),
                 "start": _safe_date(wi["startDate"]) or today,
-                "end": _safe_date(wi["finishDate"]) or today,
+                "end": _safe_date(wi["finishDate"]) or today_plus_30,
                 "teamLoads": [{"team": "architecture", "load": 20}],
                 "status": wi["state"],
                 "assignee": wi["assignedTo"],
