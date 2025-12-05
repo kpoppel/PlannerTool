@@ -44,6 +44,7 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     // Notify listeners so dependency lines can update live
     bus.emit('drag:move', { featureId: feature.id, left: newLeft });
   }
+
   function onUp(){
     window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
     const finalLeft = parseInt(card.style.left,10);
