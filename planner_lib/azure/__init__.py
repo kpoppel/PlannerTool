@@ -138,42 +138,42 @@ class AzureClient:
 
         # Next retrieve the work items by ID
         ret = []
-        as_of_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") # "2026-06-01T00:00:00Z"
-        for id in task_ids:
-            item = wit_client.get_work_item(id, as_of=as_of_date, expand="relations")
-            #print(item)
-            relations = getattr(item, "relations", []) or []
-            relation_map = []
-            parent_id = None
-            for r in relations:
-                if r.attributes["name"] in ("Parent", "Child", "Related", "Predecessor", "Successor"):
-                    # Make a tuple of (type, url)
-                    relation_map.append((
-                        r.attributes["name"],    # 'Parent' or 'Child'
-                        getattr(r, "url", None), # link URL
-                        #getattr(r, "rel", None), # System.LinkTypes.Hierarchy-Forward/Reverse
+        as_of_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Batch fetch up to 200 IDs per request for speed
+        def chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i+n]
+        for batch in chunks(task_ids, 200):
+            items = wit_client.get_work_items(batch, as_of=as_of_date, expand="relations")
+            for item in items or []:
+                relations = getattr(item, "relations", []) or []
+                relation_map = []
+                for r in relations:
+                    if r.attributes.get("name") in ("Parent", "Child", "Related", "Predecessor", "Successor"):
+                        relation_map.append((
+                            r.attributes.get("name"),
+                            getattr(r, "url", None),
                         ))
-            #logger.debug(f"Item {id} relations: {relation_map}")
-            assigned = item.fields.get("System.AssignedTo")
-            assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
-            try:
-                ret.append({
-                    "id": item.id,
-                    "type": item.fields.get("System.WorkItemType"),
-                    "title": item.fields.get("System.Title"),
-                    "assignedTo": assignedTo,
-                    "state": item.fields.get("System.State"),
-                    "tags": item.fields.get("System.Tags"),
-                    "description": item.fields.get("System.Description"),
-                    "startDate": item.fields.get("Microsoft.VSTS.Scheduling.StartDate"),
-                    "finishDate": item.fields.get("Microsoft.VSTS.Scheduling.FinishDate"),
-                    "areaPath": item.fields.get("System.AreaPath"),
-                    "iterationPath": item.fields.get("System.IterationPath"),
-                    "relations": relation_map,
-                    "azureUrl": item.url,
-                })
-            except Exception as e:
-                print(f"Error processing item {id}: {e}")
+                assigned = item.fields.get("System.AssignedTo")
+                assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
+                try:
+                    ret.append({
+                        "id": item.id,
+                        "type": item.fields.get("System.WorkItemType"),
+                        "title": item.fields.get("System.Title"),
+                        "assignedTo": assignedTo,
+                        "state": item.fields.get("System.State"),
+                        "tags": item.fields.get("System.Tags"),
+                        "description": item.fields.get("System.Description"),
+                        "startDate": item.fields.get("Microsoft.VSTS.Scheduling.StartDate"),
+                        "finishDate": item.fields.get("Microsoft.VSTS.Scheduling.FinishDate"),
+                        "areaPath": item.fields.get("System.AreaPath"),
+                        "iterationPath": item.fields.get("System.IterationPath"),
+                        "relations": relation_map,
+                        "azureUrl": item.url,
+                    })
+                except Exception as e:
+                    logger.exception("Error processing item %s: %s", getattr(item, 'id', '?'), e)
         return ret
 
     def get_work_items_by_wiql(self, project: str, wiql: str, fields: Optional[list[str]] = None):
