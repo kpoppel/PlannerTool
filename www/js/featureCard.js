@@ -115,7 +115,7 @@ function createCard(feature, idx, sourceFeatures){
   // Unified click/drag handling with threshold
   // Scenario override wiring: if active scenario is non-live, route updates to overrides
   // Reuse scenario mode detection for drag callbacks.
-  const updateDatesCb = (id,start,end)=> state.updateFeatureDates(id,start,end); // unified override handler
+  const updateDatesCb = (updatesArray) => state.updateFeatureDates(updatesArray);
   const featuresSource = sourceFeatures;
 
   card.addEventListener('mousedown', e => {

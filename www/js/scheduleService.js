@@ -56,7 +56,5 @@ export function computeResizeUpdates(feature, newEndDate, features){
 
 // Apply a list of updates using provided callback.
 export function applyUpdates(updates, updateDatesCb){
-  for(const u of updates){
-    updateDatesCb(u.id, u.start, u.end);
-  }
+  updateDatesCb(updates);
 }

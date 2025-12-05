@@ -71,6 +71,9 @@ class State {
     this.activeScenarioId = null;
     this.autosaveTimer = null;
     this.autosaveIntervalMin = 0;
+    // Indexes for fast lookup
+    this.baselineFeatureById = new Map();
+    this.childrenByEpic = new Map();
     // Setup autosave if configured
     dataService.getLocalPref('autosave.interval').then(initialAutosave => {
       if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
@@ -137,6 +140,10 @@ class State {
     Object.freeze(this.baselineFeatures);
     this.originalFeatureOrder = this.baselineFeatures.map(f=>f.id);
     this.baselineFeatures.forEach((f,i)=>{ f.originalRank = i; });
+    // Build lookup maps for fast updates
+    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
+    this.childrenByEpic = new Map();
+    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
     // Working copies for selection & colors (do not mutate baseline)
     this.projects = this.baselineProjects.map(p=>({ ...p }));
     this.teams = this.baselineTeams.map(t=>({ ...t }));
@@ -164,6 +171,10 @@ class State {
     Object.freeze(this.baselineFeatures);
     this.originalFeatureOrder = this.baselineFeatures.map(f=>f.id);
     this.baselineFeatures.forEach((f,i)=>{ f.originalRank = i; });
+    // Rebuild lookup maps
+    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
+    this.childrenByEpic = new Map();
+    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
     // Refresh working copies (preserve selection flags if exist)
     const selectedProjects = new Set(this.projects.filter(p=>p.selected).map(p=>p.id));
     const selectedTeams = new Set(this.teams.filter(t=>t.selected).map(t=>t.id));
@@ -191,47 +202,61 @@ class State {
     return { changedFields, dirty: changedFields.length > 0 };
   }
 
-  updateFeatureDates(id, start, end) {
+  // Bulk update the state
+  updateFeatureDates(updates){
+    const prof_start = Date.now();
     const active = this.scenarios.find(s=>s.id===this.activeScenarioId);
     if(!active) return;
-    const base = this.baselineFeatures.find(f=>f.id===id);
-    if(!base) return;
+    if(!Array.isArray(updates) || updates.length===0) return;
 
-    // Epic shrink inhibition based on baseline children + possible overrides
-    let finalEnd = end;
-    if(base.type === 'epic') {
-      // Find the last-ending child feature/epic in baseline + possible overrides
-      const children = this.baselineFeatures.filter(ch => ch.parentEpic === base.id);
-      // Get effective end dates for each child
-      const effectiveEnds = children.map(ch => {
-        const ov = active.overrides && active.overrides[ch.id];
-        return ov && ov.end ? ov.end : ch.end;
-      });
-      // Find the max effective end date
-      if(children.length){
-        const maxChildEnd = effectiveEnds.reduce((max, end) => end > max ? end : max, effectiveEnds[0]);
-        if(finalEnd < maxChildEnd){ finalEnd = maxChildEnd; }
+    // Work on a copy of overrides to compute effective child ends including these updates
+    const newOverrides = Object.assign({}, active.overrides || {});
+    for(const u of updates){ if(!u || !u.id) continue; newOverrides[u.id] = { start: u.start, end: u.end }; }
+
+    // Apply each update with epic-child clamping and parent-epic extension handling
+    for(const u of updates){
+      if(!u || !u.id) continue;
+      const id = u.id; const start = u.start; let end = u.end;
+      const base = this.baselineFeatureById.get(id);
+      if(!base) continue;
+      // Epic shrink inhibition
+      if(base.type === 'epic'){
+        const childIds = this.childrenByEpic.get(base.id) || [];
+        if(childIds.length){
+          // compute effective ends for children using newOverrides if present
+          let maxChildEnd = null;
+          for(const cid of childIds){
+            const chBase = this.baselineFeatureById.get(cid);
+            if(!chBase) continue;
+            const ov = newOverrides[cid];
+            const effEnd = ov && ov.end ? ov.end : chBase.end;
+            if(maxChildEnd === null || effEnd > maxChildEnd) maxChildEnd = effEnd;
+          }
+          if(maxChildEnd && end < maxChildEnd) end = maxChildEnd;
+        }
+      }
+      // Apply override
+      const existing = active.overrides[id] || {};
+      if(existing.start === start && existing.end === end) continue;
+      active.overrides[id] = { start, end };
+      // If feature extends parent epic, adjust epic override in newOverrides and active.overrides
+      if(base.type === 'feature' && base.parentEpic){
+        const epicId = base.parentEpic;
+        const epicBase = this.baselineFeatureById.get(epicId);
+        if(epicBase){
+          const epicOv = active.overrides[epicId] || { start: epicBase.start, end: epicBase.end };
+          let changed = false;
+          if(end > (epicOv.end || epicBase.end)){ epicOv.end = end; changed = true; }
+          if(start < (epicOv.start || epicBase.start)){ epicOv.start = start; changed = true; }
+          if(changed){ active.overrides[epicId] = epicOv; newOverrides[epicId] = epicOv; }
+        }
       }
     }
-    const existing = active.overrides[id] || {};
-    if(existing.start === start && existing.end === finalEnd) return; // no change
-    // Override the dates so Epics don't shrink beyond their children
-    active.overrides[id] = { start, end: finalEnd };
 
-    // If feature extends its parent epic range, add/adjust epic override too
-    if(base.type === 'feature' && base.parentEpic){
-      const epicBase = this.baselineFeatures.find(f=>f.id===base.parentEpic);
-      if(epicBase){
-        const epicOv = active.overrides[epicBase.id] || { start: epicBase.start, end: epicBase.end };
-        let changed = false;
-        if(finalEnd > (epicOv.end || epicBase.end)){ epicOv.end = finalEnd; changed = true; }
-        if(start < (epicOv.start || epicBase.start)){ epicOv.start = start; changed = true; }
-        if(changed) active.overrides[epicBase.id] = epicOv;
-      }
-    }
     active.isChanged = true;
-    this.emitScenarioUpdated(active.id, { type:'overrideDates', featureId: id });
+    this.emitScenarioUpdated(active.id, { type:'overrideBatch', count: updates.length });
     bus.emit('feature:updated');
+    console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
   }
 
   updateFeatureField(id, field, value) {
