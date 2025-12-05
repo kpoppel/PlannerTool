@@ -58,8 +58,10 @@ def list_teams() -> List[dict]:
         for p in cfg.team_map:
             if isinstance(p, dict):
                 n = p.get("name")
+                s = p.get("short_name")
                 if isinstance(n, str):
-                    names.append({"id": slugify(n, prefix="team-"), "name": n})
+                    entry = {"id": slugify(n, prefix="team-"), "name": n, "short_name": s}
+                    names.append(entry)
         logger.debug("Returning %d configured teams", len(names))
         return names
     else:
