@@ -166,7 +166,7 @@ class AzureClient:
                         "tags": item.fields.get("System.Tags"),
                         "description": item.fields.get("System.Description"),
                         "startDate": item.fields.get("Microsoft.VSTS.Scheduling.StartDate"),
-                        "finishDate": item.fields.get("Microsoft.VSTS.Scheduling.FinishDate"),
+                        "finishDate": item.fields.get("Microsoft.VSTS.Scheduling.TargetDate"),
                         "areaPath": item.fields.get("System.AreaPath"),
                         "iterationPath": item.fields.get("System.IterationPath"),
                         "relations": relation_map,
