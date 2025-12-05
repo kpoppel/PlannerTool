@@ -12,7 +12,9 @@ export function initSidebar(){
     <section class="sidebar-section" id="projectsSection">
       <h3>Projects</h3>
       <div class="counts-header" aria-hidden="true">
-        <span></span><span></span>
+        <span></span>
+        <div class="list-toggle"><button id="projectToggleBtn" title="Select all / Clear all projects">☑</button></div>
+        <span></span>
         <span class="type-icon epic" title="Epics">👑</span>
         <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
       </div>
@@ -21,7 +23,9 @@ export function initSidebar(){
     <section class="sidebar-section" id="teamsSection">
       <h3>Teams</h3>
       <div class="counts-header" aria-hidden="true">
-        <span></span><span></span>
+        <span></span>
+        <div class="list-toggle"><button id="teamToggleBtn" title="Select all / Clear all teams">☑</button></div>
+        <span></span>
         <span class="type-icon epic" title="Epics">👑</span>
         <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
       </div>
@@ -76,6 +80,34 @@ export function initSidebar(){
   renderProjects();
   renderTeams();
   renderScenarios();
+  // Wire list toggle buttons
+  const projectToggleBtn = document.getElementById('projectToggleBtn');
+  const teamToggleBtn = document.getElementById('teamToggleBtn');
+  function setAllInList(listEl, checked){
+    if(!listEl) return;
+    const inputs = Array.from(listEl.querySelectorAll('input[type="checkbox"]'));
+    inputs.forEach(i=>{ i.checked = checked; i.dispatchEvent(new Event('change')); });
+  }
+  if(projectToggleBtn){
+    projectToggleBtn.addEventListener('click', ()=>{
+      const list = document.getElementById('projectList');
+      if(!list) return;
+      const inputs = Array.from(list.querySelectorAll('input[type="checkbox"]'));
+      const anyUnchecked = inputs.some(i=>!i.checked);
+      setAllInList(list, anyUnchecked);
+      projectToggleBtn.classList.add('toggle-pulse'); setTimeout(()=> projectToggleBtn.classList.remove('toggle-pulse'),700);
+    });
+  }
+  if(teamToggleBtn){
+    teamToggleBtn.addEventListener('click', ()=>{
+      const list = document.getElementById('teamList');
+      if(!list) return;
+      const inputs = Array.from(list.querySelectorAll('input[type="checkbox"]'));
+      const anyUnchecked = inputs.some(i=>!i.checked);
+      setAllInList(list, anyUnchecked);
+      teamToggleBtn.classList.add('toggle-pulse'); setTimeout(()=> teamToggleBtn.classList.remove('toggle-pulse'),700);
+    });
+  }
   sidebar.addEventListener('change', onSidebarChange);
   bus.on('projects:changed', renderProjects);
   bus.on('teams:changed', renderTeams);
@@ -160,7 +192,8 @@ function renderProjects(){
     const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
     li.innerHTML = `
       <span class="color-dot" style="background:${p.color}" data-color-id="${p.id}"></span>
-      <label class="row-label"><input type="checkbox" data-project="${p.id}" ${p.selected?'checked':''}/> ${p.name}</label>
+      <div class="checkbox-col"><input type="checkbox" data-project="${p.id}" ${p.selected?'checked':''}/></div>
+      <div class="project-name-col">${p.name}</div>
       <span class="count-badge">${epicsTxt}</span>
       <span class="count-badge">${featsTxt}</span>
     `;
@@ -179,7 +212,8 @@ function renderTeams(){
     const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
     li.innerHTML = `
       <span class="color-dot" style="background:${t.color}" data-color-id="${t.id}"></span>
-      <label class="row-label"><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/> ${t.name}</label>
+      <div class="checkbox-col"><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/></div>
+      <div class="team-name-col">${t.name}${t.short? ' ('+t.short+')' : ''}</div>
       <span class="count-badge">${epicsTxt}</span>
       <span class="count-badge">${featsTxt}</span>
     `;
