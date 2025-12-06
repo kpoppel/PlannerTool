@@ -81,9 +81,11 @@ export class ProviderREST {
     }
 
     async publishBaseline(selectedOverrides) {
-        // Example: annotate selected overrides via REST API (stub)
-        // return fetch('/api/scenarios/annotate', { method: 'POST', body: JSON.stringify({ selectedOverrides }) }).then(res => res.json());
-        return { ok: true, annotatedAt: new Date().toISOString(), count: selectedOverrides.length };
+        try{
+            const res = await fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(selectedOverrides) });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            return await res.json();
+        }catch(err){ return { ok:false, error: String(err) }; }
     }
 
     async saveConfig(config) {

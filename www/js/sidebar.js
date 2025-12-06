@@ -322,69 +322,15 @@ function renderScenarios(){
           await state.saveScenario(s.id);
         });
         addItem('Save to Azure DevOps', '💾', async ()=>{
-          // Overrides is a dictionary: { featureId: { start, end, ... } }
           const overrides = s.overrides || {};
           const overrideEntries = Object.entries(overrides);
           console.log('Preparing to annotate overrides back to Azure DevOps...', overrideEntries);
-          // TODO: Grey out the save button if there's nothing to save.
           if(overrideEntries.length === 0){ console.log('No differing overrides to annotate.'); return; }
-          const overlay = document.createElement('div'); overlay.className='modal-overlay';
-          const modal = document.createElement('div'); modal.className='modal wide-modal';
-          const titleEl = document.createElement('h3'); titleEl.textContent='Save to Azure DevOps'; modal.appendChild(titleEl);
-          const desc = document.createElement('p'); desc.textContent='Select which items to annotate back to Azure DevOps:'; modal.appendChild(desc);
-          // Toggle all/none convenience button
-          const toggleRow = document.createElement('div'); toggleRow.style.display='flex'; toggleRow.style.justifyContent='flex-end'; toggleRow.style.marginBottom='8px';
-          const toggleBtn = document.createElement('button'); toggleBtn.type='button'; toggleBtn.textContent='Toggle All/None'; toggleBtn.title='Toggle select all or none'; toggleBtn.style.marginLeft='8px';
-          toggleRow.appendChild(toggleBtn);
-          modal.appendChild(toggleRow);
-          const table = document.createElement('table'); table.className='scenario-annotate-table';
-          const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:64px">Select</th><th>Title</th><th>Start</th><th>End</th></tr>'; table.appendChild(thead);
-          const tbody = document.createElement('tbody');
-          overrideEntries.forEach(([id, ov]) => {
-            console.log('Override to annotate:', id, ov);
-            console.log('Feature title:', state.getFeatureTitleById(id));
-            const tr = document.createElement('tr');
-            const tdSel = document.createElement('td'); const chk = document.createElement('input'); chk.type='checkbox'; chk.checked=true; chk.dataset.id=id; tdSel.appendChild(chk); tr.appendChild(tdSel);
-            const tdTitle = document.createElement('td'); tdTitle.textContent = state.getFeatureTitleById(id); tr.appendChild(tdTitle);
-            // Show original -> new format for dates
-            const baseFeature = state.baselineFeatures.find(f => f.id === id) || {};
-            const origStart = baseFeature.start || '';
-            const origEnd = baseFeature.end || '';
-            const formatRange = (from, to) => {
-              if(!from && !to) return '';
-              if(!from) return to;
-              if(!to) return from;
-              if(from === to) return from;
-              return `${from} -> ${to}`;
-            };
-            const tdStart = document.createElement('td'); tdStart.textContent = formatRange(origStart, ov.start); tr.appendChild(tdStart);
-            const tdEnd = document.createElement('td'); tdEnd.textContent = formatRange(origEnd, ov.end); tr.appendChild(tdEnd);
-            tbody.appendChild(tr);
-          });
-          table.appendChild(tbody);
-          modal.appendChild(table);
-          const buttons = document.createElement('div'); buttons.className='modal-buttons';
-          const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel'; cancelBtn.addEventListener('click', ()=>{ document.body.removeChild(overlay); });
-          const saveBtn = document.createElement('button'); saveBtn.className='primary'; saveBtn.textContent='Save to Azure DevOps';
-          saveBtn.addEventListener('click', async ()=>{
-            const selected = Array.from(tbody.querySelectorAll('input[type="checkbox"]'))
-              .filter(chk => chk.checked)
-              .map(chk => {
-                const id = chk.dataset.id; const ov = overrides[id]; return { id, start: ov.start, end: ov.end };
-              });
-            const res = await dataService.publishBaseline(selected);
-            document.body.removeChild(overlay);
-          });
-          buttons.appendChild(cancelBtn); buttons.appendChild(saveBtn);
-          modal.appendChild(buttons);
-          // Toggle button logic: select all if any unchecked, otherwise deselect all
-          toggleBtn.addEventListener('click', ()=>{
-            const checks = Array.from(tbody.querySelectorAll('input[type="checkbox"]'));
-            const anyUnchecked = checks.some(c=>!c.checked);
-            checks.forEach(c=> c.checked = anyUnchecked);
-          });
-          overlay.appendChild(modal);
-          document.body.appendChild(overlay);
+          const { openSaveToAzureModal } = await import('./modal.js');
+          const selected = await openSaveToAzureModal(overrides, state);
+          if(selected && selected.length){
+            await dataService.publishBaseline(selected);
+          }
         });
       }
       const rect = menuBtn.getBoundingClientRect();

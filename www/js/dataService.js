@@ -67,10 +67,10 @@ class DataService {
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
     // --- Scenario Management ---
+    async publishBaseline(selectedOverrides) { return this.providers['rest'].publishBaseline(selectedOverrides); }
     async listScenarios() { return this.providers['mock'].listScenarios(); }
     async deleteScenario(id) { return this.providers['mock'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['mock'].renameScenario(id, name); }
-    async publishBaseline(selectedOverrides) { return this.providers['mock'].publishBaseline(selectedOverrides); }
     async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
     async saveScenario(scenario) { return this.providers['mock'].saveScenario(scenario); }
 }

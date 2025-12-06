@@ -211,6 +211,25 @@ class AzureClient:
         except Exception as e:
             raise RuntimeError(f"Failed to fetch work items for project {project}: {e}")
 
+    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
+        """Update StartDate and/or TargetDate on a work item by ID.
+
+        Dates should be ISO strings (YYYY-MM-DD). Returns SDK response object.
+        """
+        logger.debug("Updating work item %d: start=%s, end=%s", work_item_id, start, end)
+        wit = self.conn.clients.get_work_item_tracking_client()
+        ops = []
+        if start is not None:
+            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
+        if end is not None:
+            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
+        if not ops:
+            return None
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id}: {e}")
+
 
 _client_instance: Optional[AzureClient] = None
 

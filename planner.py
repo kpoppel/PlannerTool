@@ -14,6 +14,7 @@ logger = logging.getLogger('planner')
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException, Request, Response
+from fastapi import Body
 import uuid
 
 from planner_lib.config.health import get_health
@@ -158,6 +159,33 @@ async def api_tasks(request: Request):
         return list_tasks(pat=pat)
     except Exception:
         return []
+
+@app.post('/api/tasks')
+async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):
+    # Require a valid session
+    sid = get_session_id(request)
+    logger.debug("Updating tasks for session %s: %d items", sid, len(payload or []))
+    # Ensure session has user PAT
+    ctx = SESSIONS.get(sid) or {}
+    email = ctx.get('email')
+    pat = ctx.get('pat')
+    if email and not pat:
+        try:
+            loaded = config_manager.load(email)
+            pat = loaded.get('pat')
+            ctx['pat'] = pat
+            SESSIONS[sid] = ctx
+        except Exception as e:
+            logger.exception('Failed to load user config for %s: %s', email, e)
+    try:
+        from planner_lib.projects import update_tasks
+        result = update_tasks(payload or [], pat=pat)
+        if not result.get('ok', True) and result.get('errors'):
+            # Return 207 Multi-Status-like behavior via 200 but include errors
+            logger.warning("Task update completed with errors: %s", result['errors'])
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get('/api/teams')
 async def api_teams(request: Request):
