@@ -5,21 +5,6 @@ export class ProviderREST {
     constructor(){
         this.sessionId = null;
     }
-    // Temporary helper: inject randomized team loads using team short names.
-    // Keep isolated so it can be removed cleanly later.
-    _mockTeamLoads(tasks, teams){
-        function sampleTeams(list, k){
-            const arr = [...list]; const n = Math.min(k, arr.length); const out=[];
-            for(let i=0;i<n;i++){ const idx = Math.floor(Math.random()*arr.length); out.push(arr.splice(idx,1)[0]); }
-            return out;
-        }
-        return (tasks || []).map(f=>{
-            const k = Math.max(1, Math.floor(Math.random()*4)+1);
-            const picks = sampleTeams(teams || [], k);
-            const loads = picks.map(t => ({ team: (t.short || t.id || t.name), load: Math.floor(Math.random()*31) }));
-            return { ...f, teamLoads: loads };
-        });
-    }
     async init(){
         // Attempt to read user email from local storage prefs
         let email = null;
@@ -145,10 +130,7 @@ export class ProviderREST {
         if(!resTasks.ok) return [];
         const tasks = await resTasks.json();
         const teams = resTeams.ok ? await resTeams.json() : [];
-        // TODO: REMOVE THIS WHEN MOCK IS NOT NEEDED: mock team loads using short names
-        const withLoads = this._mockTeamLoads(tasks, teams);
-        // Add baseline tracking fields
-        const retval = withLoads.map(f => ({ ...f, original: { ...f }, changedFields: [], dirty: false }));
+        const retval = (tasks || []).map(f => ({ ...f, original: { ...f }, changedFields: [], dirty: false }));
         console.log("Fetched tasks:", retval);
         return retval;
     }

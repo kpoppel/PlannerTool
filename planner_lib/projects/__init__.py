@@ -105,9 +105,98 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         else:
             return str(d)[:10]
 
+    def _parse_team_loads(description: str | None) -> List[dict]:
+        """Parse team load block from description.
+
+        Expected format:
+        [PlannerTool Team Loads]\n<short_name>: <percent_load>\n...\n[/PlannerTool Team Loads]
+        Returns a list of { team, load }.
+        """
+        if not description or not isinstance(description, str):
+            return []
+        try:
+            # Normalize HTML content to plain text: convert <br> to newlines, strip tags, unescape entities
+            desc = description
+            # Replace <br> variants with newline
+            desc = re.sub(r"<br\s*/?>", "\n", desc, flags=re.I)
+            # Strip other HTML tags but keep text content
+            desc = re.sub(r"</?\w+[^>]*>", "", desc)
+            # Unescape common entities (&amp; -> &, &lt; -> <, &gt; -> >)
+            desc = desc.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+
+            m = re.search(r"\[PlannerTool Team Loads\](.*?)\[/PlannerTool Team Loads\]", desc, flags=re.S)
+            if not m:
+                return []
+            body = m.group(1)
+            loads: List[dict] = []
+            for raw_line in (body.splitlines() or []):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                # Allow comments starting with '#'
+                if line.startswith('#'):
+                    continue
+                mm = re.match(r"^([^:]+)\s*:\s*(\d+)%?\s*$", line)
+                if not mm:
+                    continue
+                team = mm.group(1).strip()
+                try:
+                    load = int(mm.group(2))
+                except Exception:
+                    continue
+                # Clamp to 0-100
+                if load < 0:
+                    load = 0
+                if load > 100:
+                    load = 100
+                loads.append({"team": team, "load": load})
+            return loads
+        except Exception:
+            return []
+
+    def _map_team_token_to_id(token: str, cfg) -> str:
+        """Map a team token (name or short_name) to the canonical frontend team id.
+
+        Returns slugified id with prefix 'team-' if a match is found; otherwise
+        returns the original token.
+        """
+        if not token:
+            return token
+        if not cfg or not getattr(cfg, "team_map", None):
+            return token
+        tkn = str(token).strip()
+        for tm in getattr(cfg, "team_map", []):
+            name = str(tm.get("name", ""))
+            short = str(tm.get("short_name", ""))
+            if tkn.lower() == name.lower() or (short and tkn.lower() == short.lower()):
+                return slugify(name, prefix="team-")
+        return token
+
     # For each project fetch task data
     wis = []
     items: List[dict] = []
+    # TODO: Remove mocking data once we have graphs working successfully.
+    # Helper: backend-side mock team loads using configured team short names
+    def _mock_team_loads() -> List[dict]:
+        # Build pool of canonical frontend team ids (team-<slug(name)>)
+        team_ids: List[str] = []
+        try:
+            for tm in getattr(cfg, "team_map", []):
+                name = tm.get("name") or ""
+                if name:
+                    team_ids.append(slugify(str(name), prefix="team-"))
+        except Exception:
+            pass
+        import random
+        random.seed()  # non-deterministic
+        k = max(1, min(4, random.randint(1, 4)))
+        picks: List[str] = []
+        pool = team_ids[:]
+        for _ in range(min(k, len(pool))):
+            idx = random.randrange(len(pool))
+            picks.append(pool.pop(idx))
+        return [{"team": p, "load": random.randint(5, 30)} for p in picks]
+    ###################################
     for p in cfg.project_map:
         name = p.get("name")
         path = p.get("area_path")
@@ -128,8 +217,9 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         logger.debug(f"Fetched {len(wis)} work items for project '{name}'")
         # Now format into frontend-friendly shape
         for wi in wis or []:
-            today = str(date.today().isoformat())
-            today_plus_30 = str((date.today() + timedelta(days=30)).isoformat())
+            # If the item has no scheduled dates place it 4 months prior to allow the user to see what has been scheduled and schedule it.
+            today_minus_120 = str((date.today() - timedelta(days=120)).isoformat())
+            today_minus_90 = str((date.today() - timedelta(days=90)).isoformat())
             depends_on_list = []
             for rel in wi.get("relations", []):
                 if rel[0] == "Parent":
@@ -137,15 +227,22 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
                 #if rel[0] == "Child":
                 #    depends_on_list.append(str(rel[1].split('/')[-1]))
 
+            parsed_loads = _parse_team_loads(wi.get("description"))
+            if parsed_loads:
+                parsed_loads = [
+                    {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "load": entry.get("load", 0)}
+                    for entry in parsed_loads
+                ]
+            logger.debug(f"Parsed team loads for work item {wi['id']}: {parsed_loads} based on description {wi.get('description')}.")
             items.append({
                 "id": str(wi["id"]),
                 "type": _safe_type(wi.get("type")),
                 "parentEpic": depends_on_list[0] if depends_on_list else None,
                 "title": wi["title"],
                 "project": slugify(name, prefix="project-"),
-                "start": _safe_date(wi["startDate"]) or today,
-                "end": _safe_date(wi["finishDate"]) or today_plus_30,
-                "teamLoads": [{"team": "architecture", "load": 20}],
+                "start": _safe_date(wi["startDate"]) or today_minus_120,
+                "end": _safe_date(wi["finishDate"]) or today_minus_90,
+                "teamLoads": parsed_loads if parsed_loads else _mock_team_loads(),
                 "status": wi["state"],
                 "assignee": wi["assignedTo"],
                 "description": wi["description"],
@@ -173,7 +270,7 @@ def update_tasks(updates: List[dict], pat: str | None = None) -> dict:
     errors: List[str] = []
     for u in updates or []:
         try:
-            wid = int(u.get('id'))
+            wid = int(u.get('id') or 0)
         except Exception:
             errors.append(f"Invalid work item id: {u}")
             continue
