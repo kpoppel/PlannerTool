@@ -9,17 +9,33 @@ import { initLoadGraph } from './loadGraph.js';
 import { initDependencyRenderer } from './dependencyRenderer.js';
 
 async function init(){
-  // Ensure backend session is created before first API calls
-  try { const { dataService } = await import('./dataService.js'); await dataService.init(); } catch {}
-  await state.initState();
-  initSidebar();
-  initTimeline();
-  initFeatureCards();
-  initDetailsPanel();
-  initColorManager();
-  initLoadGraph();
-  initDependencyRenderer();
-  bus.emit('app:ready');
+  // Simple loading modal
+  const modal = document.getElementById('loading-modal');
+  function showModal(){
+    if(modal) modal.style.display = 'flex';
+  }
+  function hideModal(){
+    if(modal) modal.style.display = 'none';
+  }
+
+  showModal();
+  try {
+    const { dataService } = await import('./dataService.js');
+    await dataService.init();
+    await state.initState();
+    initSidebar();
+    initTimeline();
+    initFeatureCards();
+    initDetailsPanel();
+    initColorManager();
+    initLoadGraph();
+    initDependencyRenderer();
+    hideModal();
+    bus.emit('app:ready');
+  } catch(e) {
+    hideModal();
+    throw e;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', init);
