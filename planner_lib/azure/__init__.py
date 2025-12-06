@@ -105,14 +105,18 @@ class AzureClient:
         q = Wiql(query=wiql)
         return wit.query_by_wiql(q)
 
-    # Construct UI link from API URL
-    def api_url_to_ui_link(self, api_url: str, org: str, project: str) -> str:
-        # Extract work item ID from API URL
+    def api_url_to_ui_link(self, api_url: str) -> str:
+        """
+        Convert an Azure DevOps API URL to a UI link for the work item.
+        """
         import re
-        match = re.search(r'/workItems/(\d+)', api_url)
-        if not match:
+        m = re.match(
+            r"https://dev\.azure\.com/([^/]+)/([^/]+)/_apis/wit/workItems/(\d+)",
+            api_url
+        )
+        if not m:
             raise ValueError("Invalid API URL format")
-        work_item_id = match.group(1)
+        org, project, work_item_id = m.groups()
         return f"https://dev.azure.com/{org}/{project}/_workitems/edit/{work_item_id}"
 
     def get_work_items(self, project, area_path):
@@ -156,6 +160,8 @@ class AzureClient:
                         ))
                 assigned = item.fields.get("System.AssignedTo")
                 assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
+                # Construct UI link
+                url = self.api_url_to_ui_link(getattr(item, "url", ""))
                 try:
                     ret.append({
                         "id": item.id,
@@ -170,7 +176,7 @@ class AzureClient:
                         "areaPath": item.fields.get("System.AreaPath"),
                         "iterationPath": item.fields.get("System.IterationPath"),
                         "relations": relation_map,
-                        "azureUrl": item.url,
+                        "azureUrl": url,
                     })
                 except Exception as e:
                     logger.exception("Error processing item %s: %s", getattr(item, 'id', '?'), e)
