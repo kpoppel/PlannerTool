@@ -155,6 +155,37 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
     logger.debug("Returning total %d tasks from all projects", len(items))
     return items
 
+def update_tasks(updates: List[dict], pat: str | None = None) -> dict:
+    """Apply date updates to Azure work items.
+
+    `updates` should be a list of dicts: { id: str|int, start?: str, end?: str }
+    Returns a summary dict: { ok: bool, updated: int, errors: List }.
+    """
+    from planner_lib.setup import get_loaded_config
+    from planner_lib.azure import get_client
+
+    cfg = get_loaded_config()
+    if not cfg:
+        return { "ok": False, "updated": 0, "errors": ["No server config loaded"] }
+
+    client = get_client(cfg.azure_devops_organization, pat)
+    updated = 0
+    errors: List[str] = []
+    for u in updates or []:
+        try:
+            wid = int(u.get('id'))
+        except Exception:
+            errors.append(f"Invalid work item id: {u}")
+            continue
+        start = u.get('start')
+        end = u.get('end')
+        try:
+            client.update_work_item_dates(wid, start=start, end=end)
+            updated += 1
+        except Exception as e:
+            errors.append(f"{wid}: {e}")
+    return { "ok": len(errors) == 0, "updated": updated, "errors": errors }
+
 ## TODO: Add later the option to load saved project definitions from the user configurations saved.
 # def load_user_projects() -> List[str]:
     # # Fallback: read stored projects from the file backend

@@ -14,7 +14,7 @@ The following modules in `www/js/` are suitable for console-based testing (minim
 - state.js
 - util.js
 
-Modules with significant DOM/UI logic (e.g., modal.js, sidebar.js, detailsPanel.js, dragManager.js, featureCard.js, timeline.js, configModal.js, loadGraph.js, loadMath.js, app.js) are less suitable for pure console tests and may require browser or DOM mocks.
+Modules with significant DOM/UI logic (e.g., modal.js, sidebar.js, detailsPanel.js, dragManager.js, featureCard.js, timeline.js, loadGraph.js, loadMath.js, app.js) are less suitable for pure console tests and may require browser or DOM mocks.
 
 ## Test Conventions & Runner Usage
 
