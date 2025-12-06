@@ -75,13 +75,33 @@ function renderTimelineHeader(){
 
 function enableTimelinePanning(){
   const section = document.getElementById('timelineSection'); if(!section) return;
-  let isPanning=false; let startX=0; let startScroll=0;
+  let isPanning = false;
+  let startX = 0, startY = 0;
+  let startScrollLeft = 0, startScrollTop = 0;
   section.addEventListener('mousedown', e => {
     // Ignore drags originating on feature cards / resize handles
-    if(e.target.closest('.feature-card') || e.target.classList.contains('drag-handle')) return;
-    isPanning=true; startX=e.clientX; startScroll=section.scrollLeft; section.classList.add('panning');
-    function onMove(ev){ if(!isPanning) return; const dx = ev.clientX - startX; section.scrollLeft = startScroll - dx; }
-    function onUp(){ isPanning=false; section.classList.remove('panning'); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); }
-    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+    if (e.target.closest('.feature-card') || e.target.classList.contains('drag-handle')) return;
+    isPanning = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startScrollLeft = section.scrollLeft;
+    const featureBoard = document.getElementById('featureBoard');
+    startScrollTop = featureBoard ? featureBoard.scrollTop : 0;
+    section.classList.add('panning');
+    function onMove(ev) {
+      if (!isPanning) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      section.scrollLeft = startScrollLeft - dx;
+      if (featureBoard) featureBoard.scrollTop = startScrollTop - dy;
+    }
+    function onUp() {
+      isPanning = false;
+      section.classList.remove('panning');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   });
 }

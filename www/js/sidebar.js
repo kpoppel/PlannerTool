@@ -6,74 +6,114 @@ import { bus } from './eventBus.js';
 const elCache = {};
 
 export function initSidebar(){
+
   const sidebar = document.getElementById('sidebar');
   sidebar.innerHTML = `
-    <h2>Projects & Teams</h2>
-    <section class="sidebar-section" id="projectsSection">
-      <h3>Projects</h3>
-      <div class="counts-header" aria-hidden="true">
-        <span></span>
-        <div class="list-toggle"><button id="projectToggleBtn" title="Select all / Clear all projects">☑</button></div>
-        <span></span>
-        <span class="type-icon epic" title="Epics">👑</span>
-        <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+    <h2>Planner Tool</h2>
+    <section class="sidebar-section" id="viewOptionsSection">
+      <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▲</span><span class="sidebar-title">View Options</span></div>
+      <div class="sidebar-section-collapsed"> <!-- collapsible wrapper -->
+        <div class="filter-group">
+          <label><input type="checkbox" id="condenseCards"> Condense cards</label>
+        </div>
+        <div class="filter-group">
+          <label><input type="checkbox" id="showDependencies"> Show dependencies</label>
+        </div>
+        <div class="filter-group" id="loadViewModeGroup">
+          <label title="Team-based load view"><input type="radio" name="loadViewMode" value="team" checked> Team Load</label>
+          <label title="Project-based aggregate load view"><input type="radio" name="loadViewMode" value="project"> Project Load</label>
+        </div>
+        <div class="filter-group" id="featureSortModeGroup">
+          <span class="group-label">Sort tasks by:</span>
+          <label title="Sort by earliest start date"><input type="radio" name="featureSortMode" value="date"> Date</label>
+          <label title="Original imported order"><input type="radio" name="featureSortMode" value="rank" checked> Rank</label>
+        </div>
+        <div class="filter-group" id="taskTypeViewGroup">
+        <span class="group-label">Show Task Types:</span>
+        <div class="filter-group">
+          <label><input type="checkbox" id="filterFeatures" checked> Features</label>
+          <label><input type="checkbox" id="filterEpics" checked> Epics</label>
+        </div>
       </div>
-      <ul class="sidebar-list" id="projectList"></ul>
+    </section>
+    <section class="sidebar-section" id="projectsSection">
+      <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Projects</span></div>
+      <div class=""> <!-- collapsible wrapper -->
+        <div class="counts-header" aria-hidden="true">
+          <span></span>
+          <span id="projectToggleBtn" class="list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all projects"><svg class="checkbox-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 149.15041 149.14843" width="16" height="16" aria-hidden="true"><path fill="#5481E6" d="m5 0c-2.77 0-5 2.23-5 5v139.15c0 2.77 2.23 5 5 5h139.15c2.77 0 5-2.23 5-5v-139.15c0-2.77-2.23-5-5-5h-139.15zm10.734 10.732h117.68c2.77 0 5 2.23 5 5v117.68c0 2.77-2.23 5-5 5h-117.68c-2.77 0-5.002-2.23-5.002-5v-117.68c0-2.77 2.232-5 5.002-5zm8.332 8.334c-2.77 0-5 2.23-5 5v101.02c0 2.77 2.23 5 5 5h101.02c2.77 0 5-2.23 5-5v-101.02c0-2.77-2.23-5-5-5h-101.02zm92.346 7.5195c1.875 0 3.1348 0.17577 3.7793 0.52734 0.64453 0.35156 0.9668 0.79101 0.9668 1.3184 0 0.82031-0.9668 2.4316-2.9004 4.834-22.617 27.188-43.594 55.898-62.93 86.133-1.3477 2.1094-4.1016 3.1641-8.2617 3.1641-4.2188 0-6.709-0.1758-7.4707-0.5274-1.9922-0.8789-4.336-5.3613-7.0312-13.447-3.0469-8.9649-4.5703-14.59-4.5703-16.875 0-2.4609 2.0508-4.834 6.1524-7.1191 2.5195-1.4062 4.7461-2.1094 6.6797-2.1094 2.2852 0 4.0137 1.875 5.1855 5.625 2.3438 7.0312 4.0137 10.547 5.0098 10.547 0.76172 0 1.5527-0.5859 2.373-1.7578 16.465-26.367 31.699-47.695 45.703-63.984 3.6328-4.2188 9.4043-6.3281 17.314-6.3281z"/></svg></span>
+          <span></span>
+          <span class="type-icon epic" title="Epics">👑</span>
+          <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+        </div>
+        <ul class="sidebar-list" id="projectList"></ul>
+      </div>
     </section>
     <section class="sidebar-section" id="teamsSection">
-      <h3>Teams</h3>
-      <div class="counts-header" aria-hidden="true">
-        <span></span>
-        <div class="list-toggle"><button id="teamToggleBtn" title="Select all / Clear all teams">☑</button></div>
-        <span></span>
-        <span class="type-icon epic" title="Epics">👑</span>
-        <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+      <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Teams</span></div>
+      <div class=""> <!-- collapsible wrapper -->
+        <div class="counts-header" aria-hidden="true">
+          <span></span>
+          <span id="teamToggleBtn" class="list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all teams"><svg class="checkbox-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 149.15041 149.14843" width="16" height="16" aria-hidden="true"><path fill="#5481E6" d="m5 0c-2.77 0-5 2.23-5 5v139.15c0 2.77 2.23 5 5 5h139.15c2.77 0 5-2.23 5-5v-139.15c0-2.77-2.23-5-5-5h-139.15zm10.734 10.732h117.68c2.77 0 5 2.23 5 5v117.68c0 2.77-2.23 5-5 5h-117.68c-2.77 0-5.002-2.23-5.002-5v-117.68c0-2.77 2.232-5 5.002-5zm8.332 8.334c-2.77 0-5 2.23-5 5v101.02c0 2.77 2.23 5 5 5h101.02c2.77 0 5-2.23 5-5v-101.02c0-2.77-2.23-5-5-5h-101.02zm92.346 7.5195c1.875 0 3.1348 0.17577 3.7793 0.52734 0.64453 0.35156 0.9668 0.79101 0.9668 1.3184 0 0.82031-0.9668 2.4316-2.9004 4.834-22.617 27.188-43.594 55.898-62.93 86.133-1.3477 2.1094-4.1016 3.1641-8.2617 3.1641-4.2188 0-6.709-0.1758-7.4707-0.5274-1.9922-0.8789-4.336-5.3613-7.0312-13.447-3.0469-8.9649-4.5703-14.59-4.5703-16.875 0-2.4609 2.0508-4.834 6.1524-7.1191 2.5195-1.4062 4.7461-2.1094 6.6797-2.1094 2.2852 0 4.0137 1.875 5.1855 5.625 2.3438 7.0312 4.0137 10.547 5.0098 10.547 0.76172 0 1.5527-0.5859 2.373-1.7578 16.465-26.367 31.699-47.695 45.703-63.984 3.6328-4.2188 9.4043-6.3281 17.314-6.3281z"/></svg></span>
+          <span></span>
+          <span class="type-icon epic" title="Epics">👑</span>
+          <span class="type-icon feature" title="Features"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/></svg></span>
+        </div>
+        <ul class="sidebar-list" id="teamList"></ul>
       </div>
-      <ul class="sidebar-list" id="teamList"></ul>
     </section>
     <section class="sidebar-section" id="scaleSection" style="display:none">
-      <h3>Timeline Scale</h3>
-      <div class="filter-group">
-        <label><input type="radio" name="scale" value="months" checked> Months</label>
-        <label><input type="radio" name="scale" value="weeks"> Weeks</label>
-        <label><input type="radio" name="scale" value="years"> Years</label>
-      </div>
-    </section>
-    <section class="sidebar-section" id="filtersSection">
-      <h3>Task Types</h3>
-      <div class="filter-group">
-        <label><input type="checkbox" id="filterFeatures" checked> Features</label>
-        <label><input type="checkbox" id="filterEpics" checked> Epics</label>
+      <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Timeline Scale</span></div>
+      <div class=""> <!-- collapsible wrapper -->
+        <div class="filter-group">
+          <label><input type="radio" name="scale" value="months" checked> Months</label>
+          <label><input type="radio" name="scale" value="weeks"> Weeks</label>
+          <label><input type="radio" name="scale" value="years"> Years</label>
+        </div>
       </div>
     </section>
     <section class="sidebar-section" id="scenariosSection">
-      <h3>Scenarios</h3>
-      <ul class="sidebar-list" id="scenarioList"></ul>
-    </section>
-    <section class="sidebar-section" id="viewOptionsSection">
-      <h3>View Options</h3>
-      <div class="filter-group">
-        <label><input type="checkbox" id="condenseCards"> Condense cards</label>
-      </div>
-      <div class="filter-group">
-        <label><input type="checkbox" id="showDependencies"> Show dependencies</label>
-      </div>
-      <div class="filter-group" id="loadViewModeGroup">
-        <label title="Team-based load view"><input type="radio" name="loadViewMode" value="team" checked> Team Load</label>
-        <label title="Project-based aggregate load view"><input type="radio" name="loadViewMode" value="project"> Project Load</label>
-      </div>
-      <div class="filter-group" id="featureSortModeGroup">
-        <span class="group-label">Sort tasks by:</span>
-        <label title="Sort by earliest start date"><input type="radio" name="featureSortMode" value="date"> Date</label>
-        <label title="Original imported order"><input type="radio" name="featureSortMode" value="rank" checked> Rank</label>
+      <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
+      <div class=""> <!-- collapsible wrapper -->
+        <ul class="sidebar-list" id="scenarioList"></ul>
       </div>
     </section>
     <section class="sidebar-section sidebar-config" id="configSection">
+      <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
       <div class="config-row">
         <button id="openConfigBtn" title="Configuration">⚙️ Configuration</button>
         <button id="openHelpBtn" title="Help">❓ Help</button>
       </div>
+      <div id='serverStatusLabel' style='font-size:12px; margin-top:8px;'>Server: loading...</div>
+      <div id='attributionLabel' style='font-size:9px; margin-top:8px;'>(c) 2025 Kim Poulsen</div>
     </section>`;
+
+  // Collapse/expand logic for sidebar sections
+  // TODO: Start View Options not expanded. Probably the best thing to do is to wrap the content
+  //       of the expandable in a div and set the display style on that either directly of using a class "collapsed".
+  const sectionHeaders = sidebar.querySelectorAll('.sidebar-section-header-collapsible');
+  sectionHeaders.forEach(header => {
+    const chevron = header.querySelector('.sidebar-chevron');
+    const section = header.parentElement;
+    const contentWrapper = section.children[1];
+    // Handler after initial load
+    function toggleSection() {
+      if (contentWrapper.classList.contains('sidebar-section-collapsed')) {
+        contentWrapper.classList.remove('sidebar-section-collapsed');
+        chevron.textContent = '▼';
+      } else {
+        contentWrapper.classList.add('sidebar-section-collapsed');
+        chevron.textContent = '▲';
+      }
+    }
+    header.addEventListener('click', toggleSection);
+    chevron.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSection();
+    });
+  });
+
+  // Cache elements
   elCache.projectList = document.getElementById('projectList');
   elCache.teamList = document.getElementById('teamList');
   elCache.scenarioList = document.getElementById('scenarioList');
@@ -86,27 +126,42 @@ export function initSidebar(){
   function setAllInList(listEl, checked){
     if(!listEl) return;
     const inputs = Array.from(listEl.querySelectorAll('input[type="checkbox"]'));
-    inputs.forEach(i=>{ i.checked = checked; i.dispatchEvent(new Event('change')); });
+    inputs.forEach(i=>{
+      i.checked = checked;
+      // Update application state directly to ensure persistence
+      if(i.hasAttribute('data-project')){
+        const pid = i.getAttribute('data-project');
+        state.setProjectSelected(pid, checked);
+      }
+      if(i.hasAttribute('data-team')){
+        const tid = i.getAttribute('data-team');
+        state.setTeamSelected(tid, checked);
+      }
+      // Also emit a composed, bubbling change event so any listeners react
+      i.dispatchEvent(new Event('change', { bubbles: true, composed: true, cancelable: true }));
+    });
   }
   if(projectToggleBtn){
-    projectToggleBtn.addEventListener('click', ()=>{
+    const handleProjectToggle = ()=>{
       const list = document.getElementById('projectList');
       if(!list) return;
       const inputs = Array.from(list.querySelectorAll('input[type="checkbox"]'));
       const anyUnchecked = inputs.some(i=>!i.checked);
       setAllInList(list, anyUnchecked);
       projectToggleBtn.classList.add('toggle-pulse'); setTimeout(()=> projectToggleBtn.classList.remove('toggle-pulse'),700);
-    });
+    };
+    projectToggleBtn.addEventListener('click', handleProjectToggle);
   }
   if(teamToggleBtn){
-    teamToggleBtn.addEventListener('click', ()=>{
+    const handleTeamToggle = ()=>{
       const list = document.getElementById('teamList');
       if(!list) return;
       const inputs = Array.from(list.querySelectorAll('input[type="checkbox"]'));
       const anyUnchecked = inputs.some(i=>!i.checked);
       setAllInList(list, anyUnchecked);
       teamToggleBtn.classList.add('toggle-pulse'); setTimeout(()=> teamToggleBtn.classList.remove('toggle-pulse'),700);
-    });
+    };
+    teamToggleBtn.addEventListener('click', handleTeamToggle);
   }
   sidebar.addEventListener('change', onSidebarChange);
   bus.on('projects:changed', renderProjects);
@@ -158,24 +213,6 @@ export function initSidebar(){
     r.checked = (r.value === state.featureSortMode);
   });
 
-  // Place a small single-line server status label under the config/help buttons
-  const configSection = document.getElementById('configSection');
-  if(configSection){
-    let statusLine = document.getElementById('serverStatusLabel');
-    if(!statusLine){
-      statusLine = document.createElement('div');
-      statusLine.id = 'serverStatusLabel';
-      statusLine.style.fontSize = '12px';
-      statusLine.style.marginTop = '8px';
-      statusLine.textContent = 'Server: loading...';
-      const configRow = configSection.querySelector('.config-row');
-      if(configRow){
-        configRow.parentNode.insertBefore(statusLine, configRow.nextSibling);
-      } else {
-        configSection.appendChild(statusLine);
-      }
-    }
-  }
   // Fetch health once on init (no periodic polling)
   refreshServerStatus();
 }
