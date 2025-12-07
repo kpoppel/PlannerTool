@@ -1,7 +1,6 @@
 import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './timeline.js';
-import { computeDailyLoadMaps } from './loadMath.js';
 
 let svgEl = null;
 let tooltipEl = null;
@@ -148,18 +147,58 @@ function computeDailyTotals(mode, sDate, eDate){
   const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
   const teamSetSelected = new Set(selectedTeams.length ? selectedTeams : teams.map(t=>t.id));
   const projectSetSelected = new Set(selectedProjects.length ? selectedProjects : projects.map(p=>p.id));
-  const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
 
   const days = daysBetween(sDate, eDate);
+
+  // If precomputed state arrays exist, use them for faster, authoritative rendering
+  const stateDates = state.capacityDates || [];
+  const teamDaily = state.teamDailyCapacity || [];
+  const projectDaily = state.projectDailyCapacity || [];
+  const totalOrgPerTeam = state.totalOrgDailyPerTeamAvg || [];
+  if(stateDates && stateDates.length && teamDaily && projectDaily){
+    // Map state date -> index
+    const dateIndexMap = new Map(stateDates.map((ds,i)=>[ds,i]));
+    const totals = new Array(days).fill(0).map(()=> ({ total: 0, perTeam: {}, perProject: {} }));
+    for(let i=0;i<days;i++){
+      const iso = fmtDate(addDays(sDate, i));
+      const si = dateIndexMap.get(iso);
+      if(si === undefined) continue;
+      const tTuple = teamDaily[si] || [];
+      const pTuple = projectDaily[si] || [];
+      // build per-team map (use raw team values)
+      let maxTeamVal = 0;
+      for(let ti=0; ti<teams.length; ti++){
+        const tid = teams[ti].id;
+        if(!teamSetSelected.has(tid)) continue;
+        const v = Number(tTuple[ti] || 0);
+        totals[i].perTeam[tid] = v;
+        if(v > maxTeamVal) maxTeamVal = v;
+      }
+      // build per-project map (projectDaily is already normalized per-team)
+      let sumProj = 0;
+      for(let pi=0; pi<projects.length; pi++){
+        const pid = projects[pi].id;
+        if(!projectSetSelected.has(pid)) continue;
+        const v = Number(pTuple[pi] || 0);
+        totals[i].perProject[pid] = v;
+        sumProj += v;
+      }
+      totals[i].total = (mode === 'team') ? maxTeamVal : sumProj;
+    }
+    return { days, totals };
+  }
+
+  // Fallback: compute from features (original behavior)
   const teamDayMap = new Map(); // dayIdx -> {teamId: normalized}
   const projectDayMap = new Map();
 
-  // Helper to add normalized values
-  function addNormalizedTeam(dayIdx, teamId, raw){
+  const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
+  // Helper to add values. Team loads are stored as raw percentages (do NOT divide by numTeamsGlobal).
+  function addRawTeam(dayIdx, teamId, raw){
     if(dayIdx < 0 || dayIdx >= days) return;
     if(!teamDayMap.has(dayIdx)) teamDayMap.set(dayIdx, {});
     const b = teamDayMap.get(dayIdx);
-    b[teamId] = (b[teamId] || 0) + (raw / numTeamsGlobal);
+    b[teamId] = (b[teamId] || 0) + Number(raw || 0);
   }
   function addNormalizedProject(dayIdx, projectId, raw){
     if(dayIdx < 0 || dayIdx >= days) return;
@@ -190,14 +229,14 @@ function computeDailyTotals(mode, sDate, eDate){
         const currentDayMs = startMs + d * msPerDay;
         const coveredByChild = showFeatures && childRanges.some(r => currentDayMs >= r.s && currentDayMs <= r.e);
         if(coveredByChild) continue;
-        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addNormalizedTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
+        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
       }
     } else {
       if(!showFeatures) continue;
       const startIdx = Math.max(0, Math.floor((Math.max(itemStart, startMs) - startMs)/msPerDay));
       const endIdx = Math.min(days-1, Math.floor((Math.min(itemEnd, new Date(eDate).setHours(0,0,0,0)) - startMs)/msPerDay));
       for(let d = startIdx; d <= endIdx; d++){
-        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addNormalizedTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
+        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
       }
     }
   }
@@ -209,9 +248,11 @@ function computeDailyTotals(mode, sDate, eDate){
     const pmap = projectDayMap.get(i) || {};
     totals[i].perTeam = tmap;
     totals[i].perProject = pmap;
-    const tSum = Object.values(tmap).reduce((a,b)=>a+b,0);
+    // For team mode, use the maximum single-team contribution for the day's total (so overload flags per-team overloads).
+    const teamVals = Object.values(tmap).map(v=>Number(v||0));
+    const tMax = teamVals.length ? Math.max(...teamVals) : 0;
     const pSum = Object.values(pmap).reduce((a,b)=>a+b,0);
-    totals[i].total = (mode === 'team') ? tSum : pSum;
+    totals[i].total = (mode === 'team') ? tMax : pSum;
   }
   return { days, totals };
 }
@@ -444,6 +485,8 @@ function render(){
   let approx = Math.ceil(maxY / 5);
   step = Math.ceil(approx / 5) * 5;
   if(step < 1) step = 1;
+  // Debug: log observed maxima to help diagnose y-axis scaling issues
+  try{ console.debug('[mountainView] scale', { mode: currentMode, maxY, step, sampleDay0: data.totals[0] }); }catch(e){}
   // Precompute day offsets (cumulative x positions) using timeline month widths
   const months = getTimelineMonths();
   const monthWidth = TIMELINE_CONFIG.monthWidth;

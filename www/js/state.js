@@ -2,6 +2,11 @@ import { bus } from './eventBus.js';
 import { dataService } from './dataService.js';
 import { PALETTE } from './colorManager.js';
 
+// Epic capacity handling modes:
+// 'ignoreIfHasChildren' - Ignore epic teamLoads entirely if the epic has any children
+// 'fillGapsIfNoChildCoversDate' - Use epic teamLoads only on days where no child feature covers the date
+const EPIC_CAPACITY_MODE = 'ignoreIfHasChildren';
+
 class State {
   /**
    * State class datastructures:
@@ -71,6 +76,17 @@ class State {
     this.activeScenarioId = null;
     this.autosaveTimer = null;
     this.autosaveIntervalMin = 0;
+    // Capacity metrics over time (computed from baseline/scenario)
+    // projectDailyCapacityRaw — raw per-project sums (sum of team loads; sums to org total).
+    // projectDailyCapacity — normalized per-project values (raw / N_teams), suitable for showing project share without double-counting teams.
+    // totalOrgDailyLoad — raw total org spend per day (sum of project raw).
+    // totalOrgDailyPerTeamAvg — totalOrgDailyLoad / N_teams.
+    this.capacityDates = []; // ISO date strings spanning min(start)..max(end)
+    this.teamDailyCapacity = []; // Array of arrays: per day N-tuple of team capacities
+    this.projectDailyCapacityRaw = []; // raw sums per project (sum of team loads)
+    this.projectDailyCapacity = []; // normalized per-project (divided by number of teams)
+    this.totalOrgDailyLoad = []; // Array: per day total org capacity (sum of project raw tuple)
+    this.totalOrgDailyPerTeamAvg = []; // totalOrgDailyLoad divided by number of teams
     // Indexes for fast lookup
     this.baselineFeatureById = new Map();
     this.childrenByEpic = new Map();
@@ -163,6 +179,9 @@ class State {
     bus.emit('teams:changed', this.teams);
     bus.emit('states:changed', this.availableStates);
     bus.emit('feature:updated');
+    // Compute capacity metrics for charts/analytics
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   async refreshBaseline() {
@@ -200,6 +219,9 @@ class State {
     bus.emit('teams:changed', this.teams);
     bus.emit('states:changed', this.availableStates);
     bus.emit('feature:updated');
+    // Recompute capacity metrics after refresh
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   setStateFilter(stateName){
@@ -271,6 +293,9 @@ class State {
 
     active.isChanged = true;
     this.emitScenarioUpdated(active.id, { type:'overrideBatch', count: updates.length });
+    // Recompute capacity metrics after overrides batch update
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
     bus.emit('feature:updated');
     console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
   }
@@ -287,6 +312,9 @@ class State {
       active.overrides[id] = ov;
       active.isChanged = true;
       this.emitScenarioUpdated(active.id, { type:'overrideField', featureId:id, field });
+      // Recompute capacity metrics after single-field override change
+      this.recomputeCapacityMetrics();
+      bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
       bus.emit('feature:updated');
     }
   }
@@ -300,6 +328,9 @@ class State {
     active.isChanged = true;
     // TODO: If epic revert: also remove overrides of its children? Keep independent; do not cascade.
     this.emitScenarioUpdated(active.id, { type:'revert', featureId:id });
+    // Recompute capacity metrics after revert
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
     bus.emit('feature:updated');
   }
 
@@ -455,6 +486,9 @@ class State {
     if(!scen) return;
     this.activeScenarioId = id;
     this.emitScenarioActivated();
+    // Recompute capacity metrics to reflect active scenario overrides
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
     bus.emit('feature:updated');
   }
 
@@ -496,6 +530,9 @@ class State {
     active.overrides[featureId] = ov;
     active.isChanged = true;
     this.emitScenarioUpdated(active.id, { type:'override', featureId });
+    // Recompute capacity metrics after setting override
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, orgDailyLoad: this.orgDailyLoad });
     bus.emit('feature:updated');
   }
 
@@ -527,6 +564,140 @@ class State {
     await dataService.saveScenario({ id: scen.id, name: scen.name, overrides: scen.overrides, filters: scen.filters, view: scen.view });
     scen.isChanged = false;
     this.emitScenarioUpdated(scen.id, { type:'saved' });
+  }
+
+  // -------- Capacity Metrics ---------
+  // Build per-day capacity spent per team and per project and totals.
+  // Days span earliest feature start to latest feature end across baseline.
+  recomputeCapacityMetrics(){
+    const teams = this.baselineTeams || [];
+    const projects = this.baselineProjects || [];
+    // Use effective features based on the active scenario (overrides applied)
+    const features = this.getEffectiveFeatures();
+    if(!teams.length || !features.length || !projects.length){
+      this.capacityDates = [];
+      this.teamDailyCapacity = [];
+      this.projectDailyCapacity = [];
+      this.totalOrgDailyLoad = [];
+      return;
+    }
+
+    // Determine date range
+    let minStart = null; let maxEnd = null;
+    for(const f of features){
+      if(!f || !f.start || !f.end) continue;
+      const s = f.start; const e = f.end;
+      if(minStart===null || s < minStart) minStart = s;
+      if(maxEnd===null || e > maxEnd) maxEnd = e;
+    }
+    if(!minStart || !maxEnd){
+      this.capacityDates = [];
+      this.teamDailyCapacity = [];
+      this.projectDailyCapacity = [];
+      this.totalOrgDailyLoad = [];
+      return;
+    }
+
+    // Generate inclusive list of ISO date strings from minStart..maxEnd
+    const dates = [];
+    const startDate = new Date(minStart);
+    const endDate = new Date(maxEnd);
+    // Normalize to midnight UTC to avoid TZ drift in iteration
+    const cur = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
+    const end = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
+    while(cur <= end){
+      const iso = new Date(cur).toISOString().slice(0,10);
+      dates.push(iso);
+      cur.setUTCDate(cur.getUTCDate()+1);
+    }
+
+    // Pre-map team and project index by id for tuple construction
+    const teamIndexById = new Map();
+    teams.forEach((t, idx) => { teamIndexById.set(t.id, idx); });
+    const projectIndexById = new Map();
+    projects.forEach((p, idx) => { projectIndexById.set(p.id, idx); });
+
+    // Build effective feature lookup by id for epic-child checks
+    const effectiveById = new Map(features.map(f => [f.id, f]));
+
+    // Initialize arrays
+    const teamDaily = new Array(dates.length);
+    const projectDaily = new Array(dates.length);
+    const totalOrgDaily = new Array(dates.length);
+
+    // For efficient lookup, bucket features by day span
+    // Given instruction, capacity for a team on a day is sum of teamLoads.load
+    // for all features whose date range covers that day.
+    for(let di=0; di<dates.length; di++){
+      const dayIso = dates[di];
+      const teamTuple = new Array(teams.length).fill(0);
+      const projectTuple = new Array(projects.length).fill(0);
+      // Sum per team
+      for(const f of features){
+        if(!f || !f.start || !f.end) continue;
+        // day within [start,end]
+        if(dayIso < f.start || dayIso > f.end) continue;
+        // Epic capacity handling
+        if(f.type === 'epic'){
+          if(EPIC_CAPACITY_MODE === 'ignoreIfHasChildren'){
+            const childIds = this.childrenByEpic.get(f.id) || [];
+            if(childIds.length) continue; // ignore epic loads when has children
+          } else if(EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate'){
+            const childIds = this.childrenByEpic.get(f.id) || [];
+            if(childIds.length){
+              // include epic capacity only if no child covers this day
+              let childCovers = false;
+              for(const cid of childIds){
+                const ch = effectiveById.get(cid);
+                if(!ch || !ch.start || !ch.end) continue;
+                if(dayIso >= ch.start && dayIso <= ch.end){ childCovers = true; break; }
+              }
+              if(childCovers) continue;
+            }
+          }
+        }
+        const tls = f.teamLoads || [];
+        for(const tl of tls){
+          const ti = teamIndexById.get(tl.team);
+          if(ti !== undefined){
+            const load = Number(tl.load) || 0;
+            teamTuple[ti] += load;
+          }
+          // Project capacity: add all team loads for the feature to the owning project
+          const pi = projectIndexById.get(f.project);
+          if(pi !== undefined){
+            const load = Number(tl.load) || 0;
+            projectTuple[pi] += load;
+          }
+        }
+      }
+      teamDaily[di] = teamTuple;
+      projectDaily[di] = projectTuple;
+      const sumProjects = projectTuple.reduce((a,b)=>a+b,0);
+      totalOrgDaily[di] = sumProjects;
+    }
+
+    // Normalize project tuples by number of teams so per-project values represent
+    // organisation share (prevents double-counting when multiple teams allocate to same project).
+    const nTeams = teams.length || 1;
+    const projectDailyNormalized = projectDaily.map(tuple => tuple.map(v => v / nTeams));
+    const totalOrgDailyPerTeamAvg = totalOrgDaily.map(v => v / nTeams);
+
+    // Assign computed arrays to state
+    this.capacityDates = dates;
+    this.teamDailyCapacity = teamDaily;
+    this.projectDailyCapacityRaw = projectDaily;            // raw sums (sum of team loads)
+    this.projectDailyCapacity = projectDailyNormalized;    // normalized per-project (per-team average)
+    this.totalOrgDailyLoad = totalOrgDaily;                // raw total org spend (sum of projectDailyCapacityRaw)
+    this.totalOrgDailyPerTeamAvg = totalOrgDailyPerTeamAvg; // totalOrgDailyLoad / nTeams
+
+    console.debug('[state] recomputeCapacityMetrics - computed', dates.length, 'days of capacity metrics');
+    console.debug('[state] capacityDates:', this.capacityDates);
+    console.debug('[state] teamDailyCapacity:', this.teamDailyCapacity);
+    console.debug('[state] projectDailyCapacityRaw:', this.projectDailyCapacityRaw);
+    console.debug('[state] projectDailyCapacity (normalized):', this.projectDailyCapacity);
+    console.debug('[state] totalOrgDailyLoad (raw):', this.totalOrgDailyLoad);
+    console.debug('[state] totalOrgDailyPerTeamAvg:', this.totalOrgDailyPerTeamAvg);
   }
 }
 
