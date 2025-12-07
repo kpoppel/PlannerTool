@@ -22,6 +22,12 @@ from planner_lib.config.config import config_manager, AccountPayload
 from planner_lib.storage.file_backend import FileStorageBackend
 from planner_lib.setup import YamlConfigStore
 from planner_lib.setup import setup
+from planner_lib.storage.scenario_store import (
+    save_user_scenario,
+    load_user_scenario,
+    delete_user_scenario,
+    list_user_scenarios,
+)
 
 # Parse CLI args for setup-related actions
 ##########################################
@@ -41,6 +47,11 @@ store = YamlConfigStore(storage, namespace=STORE_NS)
 rc = setup(sys.argv[1:], storage, STORE_NS, STORE_KEY)
 if rc != 0:
     sys.exit(rc)
+
+# Separate storage backend for scenarios (binary pickled objects)
+scenarios_storage = FileStorageBackend()
+# Use pickle mode for binary objects
+scenarios_storage.configure(mode="pickle")
 
 ## Setup is complete, setup routing, and start the FastAPI app
 ##############################################################
@@ -197,3 +208,54 @@ async def api_teams(request: Request):
         return list_teams()
     except Exception:
         return []
+
+@app.get('/api/scenario')
+async def api_scenario_get(request: Request):
+    sid = get_session_id(request)
+    ctx = SESSIONS.get(sid) or {}
+    user_id = ctx.get('email')
+    if not user_id:
+        raise HTTPException(status_code=401, detail='Missing user context')
+    scenario_id = request.query_params.get('id')
+    try:
+        if scenario_id:
+            data = load_user_scenario(scenarios_storage, user_id, scenario_id)
+            return data
+        else:
+            return list_user_scenarios(scenarios_storage, user_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail='Scenario not found')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post('/api/scenario')
+async def api_scenario_post(request: Request, payload: dict = Body(default={})): 
+    sid = get_session_id(request)
+    ctx = SESSIONS.get(sid) or {}
+    user_id = ctx.get('email')
+    if not user_id:
+        raise HTTPException(status_code=401, detail='Missing user context')
+    op = (payload or {}).get('op')
+    data = (payload or {}).get('data')
+    if not op:
+        raise HTTPException(status_code=400, detail='Missing op')
+    try:
+        if op == 'save':
+            scenario_id = None
+            if isinstance(data, dict):
+                scenario_id = data.get('id')
+            meta = save_user_scenario(scenarios_storage, user_id, scenario_id, data)
+            return meta
+        elif op == 'delete':
+            if not isinstance(data, dict) or not data.get('id'):
+                raise HTTPException(status_code=400, detail='Missing scenario id for delete')
+            ok = delete_user_scenario(scenarios_storage, user_id, data['id'])
+            if not ok:
+                raise HTTPException(status_code=404, detail='Scenario not found')
+            return { 'ok': True, 'id': data['id'] }
+        else:
+            raise HTTPException(status_code=400, detail='Unsupported op')
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

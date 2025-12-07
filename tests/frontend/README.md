@@ -3,7 +3,6 @@
 The following modules in `www/js/` are suitable for console-based testing (minimal DOM dependencies):
 
 - colorManager.js
-- colorSimpleManager.js
 - providerLocalStorage.js
 - dataService.js
 - eventBus.js

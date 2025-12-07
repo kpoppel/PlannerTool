@@ -1,5 +1,6 @@
 // providerREST.js
 // REST API implementation of the BackendProvider interface (stub)
+import { bus } from './eventBus.js';
 
 export class ProviderREST {
     constructor(){
@@ -33,6 +34,10 @@ export class ProviderREST {
             if(res.ok){
                 const data = await res.json();
                 this.sessionId = data.sessionId;
+                // Preload scenarios for the user so UI shows saved items
+                console.log("Created session, loading scenarios...");
+                try { await this.loadAllScenarios(); } catch {}
+                console.log("Completed loading scenarios...");
             } else {
                 console.error('Failed to create session', res.status);
             }
@@ -51,22 +56,76 @@ export class ProviderREST {
         return { scenariosPersisted: true, colorsPersisted: true, batchUpdates: true };
     }
 
-    async deleteScenario(id) {
-        // Example: delete scenario via REST API (stub)
-        // return fetch(`/api/scenarios/${id}`, { method: 'DELETE' }).then(res => res.json());
-        return { id, deleted: true };
+    async listScenarios() {
+        try{
+            const res = await fetch('/api/scenario', { headers: this._headers() });
+            if(!res.ok) return [];
+            const list = await res.json();
+            try{ bus.emit('scenarios:changed', list); }catch{}
+            console.log("providerREST:listScenarios - Fetched tasks:", list);
+            return list;
+        }catch(err){ return []; }
+    }
+    async loadAllScenarios(){
+        const metas = await this.listScenarios();
+        const scenarios = [];
+        for(const m of metas){
+            if(!m || !m.id || m.id==='baseline') continue;
+            const data = await this.getScenario(m.id);
+            if(data){ scenarios.push(data); }
+        }
+        try{ bus.emit('scenarios:data', scenarios); }catch{}
+        console.log("providerREST:loadAllScenarios - Fetched scenarios:", scenarios);
+        return scenarios;
+    }
+    async getScenario(id) {
+        try{
+            const res = await fetch(`/api/scenario?id=${encodeURIComponent(id)}`, { headers: this._headers() });
+            if(!res.ok) return null;
+            const data = await res.json();
+            console.log("providerREST:getScenario - Fetched scenario:", data);
+            return data;
+        }catch(err){ return null; }
+    }
+
+    async saveScenario(scenario) {
+        try{
+            const body = JSON.stringify({ op: 'save', data: scenario });
+            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            const meta = await res.json();
+            try{ const list = await this.listScenarios(); bus.emit('scenarios:changed', list); }catch{}
+            console.log("providerREST:saveScenario - Fetched tasks:", meta);
+            return meta;
+        }catch(err){ return { ok:false, error:String(err) }; }
     }
 
     async renameScenario(id, name) {
-        // Example: rename scenario via REST API (stub)
-        // return fetch(`/api/scenarios/${id}/rename`, { method: 'POST', body: JSON.stringify({ name }) }).then(res => res.json());
-        return { id, name };
+        // Persist name by saving the scenario metadata; backend stores raw structure.
+        try{
+            const body = JSON.stringify({ op: 'save', data: { id, name } });
+            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            const meta = await res.json();
+            try{ const list = await this.listScenarios(); bus.emit('scenarios:changed', list); }catch{}
+            console.log("providerREST:renameScenario - Fetched tasks:", meta);
+            return meta;
+        }catch(err){ return { ok:false, error:String(err) }; }
     }
 
-    async listScenarios() {
-        // Example: list scenarios via REST API (stub)
-        // return fetch('/api/scenarios').then(res => res.json());
-        return [];
+    async deleteScenario(id) {
+        try{
+            const body = JSON.stringify({ op: 'delete', data: { id } });
+            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return false; }
+            const data = await res.json();
+            const ok = !!data?.ok;
+            if(ok){
+                try{ const list = await this.listScenarios(); bus.emit('scenarios:changed', list); }catch{}
+            }
+            console.log("providerREST:deleteScenario - Fetched tasks:", data);
+            return ok;
+        }catch(err){ return false; }
     }
 
     async publishBaseline(selectedOverrides) {
@@ -88,12 +147,6 @@ export class ProviderREST {
         // Example: refresh baseline via REST API (stub)
         // return fetch('/api/baseline/refresh').then(res => res.json());
         return { ok: true, refreshedAt: new Date().toISOString() };
-    }
-
-    async saveScenario(scenario) {
-        // Example: save scenario via REST API (stub)
-        // return fetch('/api/scenarios', { method: 'POST', body: JSON.stringify(scenario) }).then(res => res.json());
-        return { ...scenario, savedAt: new Date().toISOString() };
     }
 
     async checkHealth() {

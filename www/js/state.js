@@ -102,6 +102,32 @@ class State {
     bus.on('config:autosave', ({ autosaveInterval }) => {
       this.setupAutosave(autosaveInterval);
     });
+
+    // Load scenarios from backend on startup and keep state in sync
+    bus.on('scenarios:changed', async (metas) => {
+      // Only update list UI; full data comes via scenarios:data
+      this.emitScenarioList();
+    });
+    bus.on('scenarios:data', (scenarios) => {
+      // Merge fetched scenarios into state (preserve baseline)
+      const baseline = this.scenarios.find(s=>s.id==='baseline');
+      this.scenarios = [];
+      if(baseline){ this.scenarios.push(baseline); }
+      for(const s of (scenarios || [])){
+        // Ensure required fields
+        const merged = Object.assign({ overrides:{}, filters: this.captureCurrentFilters(), view: this.captureCurrentView(), isChanged: false }, s);
+        // Avoid duplicate baseline
+        if(merged.id === 'baseline') continue;
+        this.scenarios.push(merged);
+      }
+      // Keep active scenario valid
+      if(!this.scenarios.find(x=>x.id===this.activeScenarioId)){
+        this.activeScenarioId = 'baseline';
+      }
+      this.emitScenarioList();
+      this.emitScenarioActivated();
+      bus.emit('feature:updated');
+    });
   }
 
   setupAutosave(intervalMin) {

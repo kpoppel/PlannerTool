@@ -150,6 +150,8 @@ export function initSidebar(){
   bus.on('scenario:list', renderScenarios);
   bus.on('scenario:activated', renderScenarios);
   bus.on('scenario:updated', renderScenarios);
+  // Ensure scenarios render when full data is preloaded
+  bus.on('scenarios:data', renderScenarios);
 
   const openConfigBtn = document.getElementById('openConfigBtn');
   if (openConfigBtn) {
@@ -257,7 +259,15 @@ function closeAnyScenarioMenu(){
 function renderScenarios(){
   if(!elCache.scenarioList) return;
   elCache.scenarioList.innerHTML = '';
-  state.scenarios.forEach(s => {
+  // Ensure baseline is shown first, then other scenarios (by name)
+  const sorted = [...state.scenarios].sort((a,b)=>{
+    if(a.id==='baseline' && b.id!=='baseline') return -1;
+    if(b.id==='baseline' && a.id!=='baseline') return 1;
+    const an = (a.name||'').toLowerCase();
+    const bn = (b.name||'').toLowerCase();
+    return an.localeCompare(bn);
+  });
+  sorted.forEach(s => {
     const li = document.createElement('li');
     li.className = 'sidebar-list-item scenario-item sidebar-chip';
     if(s.id === state.activeScenarioId) li.classList.add('active');

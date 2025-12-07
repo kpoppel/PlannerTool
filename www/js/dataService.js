@@ -68,11 +68,12 @@ class DataService {
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
     // --- Scenario Management ---
     async publishBaseline(selectedOverrides) { return this.providers['rest'].publishBaseline(selectedOverrides); }
-    async listScenarios() { return this.providers['mock'].listScenarios(); }
-    async deleteScenario(id) { return this.providers['mock'].deleteScenario(id); }
-    async renameScenario(id, name) { return this.providers['mock'].renameScenario(id, name); }
+    async listScenarios() { return this.providers['rest'].listScenarios(); }
+    async getScenario(id) { return this.providers['rest'].getScenario(id); }
+    async deleteScenario(id) { return this.providers['rest'].deleteScenario(id); }
+    async renameScenario(id, name) { return this.providers['rest'].renameScenario(id, name); }
     async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
-    async saveScenario(scenario) { return this.providers['mock'].saveScenario(scenario); }
+    async saveScenario(scenario) { return this.providers['rest'].saveScenario(scenario); }
 }
 
 const providerMock = new ProviderMock();
