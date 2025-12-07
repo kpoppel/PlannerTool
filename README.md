@@ -115,7 +115,7 @@ systemctl start plannertool
     another (like "team-"). This is only to display them in different places. All other handling is the same.
     However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
     A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
-- Way of Working: How to organise data to get load graphs correctly diaplayed:
+- Way of Working: How to organise data to get capacity graphs correctly displayed:
   - Projects only contain Epics.
   - Teams Do not have any Epics. They have Features (maybe someday Enabler type) and below.
   - Project capacity spend is calculated from all Features which are children to those Epics.
@@ -126,7 +126,6 @@ systemctl start plannertool
     - Project load more difficult.
 
 Next:
-- Finish scenario save/load per user
 
 Later:
 - Feature: Make it possible to edit team load in the UI
@@ -160,3 +159,4 @@ Solved:
   - What if the epics are shown alone? Load graph should still display propagated load as this is more accurate.
   - If there are no children use the Epic estimates.
   - NOTE: This is now a const variable to do either of these. Default is to ignore Epic if it has children.
+- (/) Finish scenario save/load per user
