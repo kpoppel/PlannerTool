@@ -11,6 +11,14 @@ let _savedMainStyles = null;
 let dayOffsets = null;
 let lastRenderedData = null;
 let xScale = 1;
+let _scheduledRenderTimer = null;
+
+function scheduleRender(delay = 80){
+  // Only schedule when modal is visible
+  if(document.getElementById('mountainViewModal')?.style.display === 'none') return;
+  if(_scheduledRenderTimer) clearTimeout(_scheduledRenderTimer);
+  _scheduledRenderTimer = setTimeout(()=>{ _scheduledRenderTimer = null; try{ render(); }catch(e){ console.error('[mountainView] scheduled render error', e); } }, delay);
+}
 
 function ensureElements() {
   const host = document.getElementById('mountainViewHost');
@@ -142,11 +150,15 @@ function computeDailyTotals(mode, sDate, eDate){
   const projects = state.projects || [];
   const showEpics = !!state.showEpics;
   const showFeatures = !!state.showFeatures;
-  // If no explicit selections, treat it as all selected to mirror main view behavior
+  // Respect explicit selections. Do NOT fall back to 'all selected' —
+  // when the user has selected none, show no graph for that view.
   const selectedTeams = teams.filter(t=>t.selected).map(t=>t.id);
   const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
-  const teamSetSelected = new Set(selectedTeams.length ? selectedTeams : teams.map(t=>t.id));
-  const projectSetSelected = new Set(selectedProjects.length ? selectedProjects : projects.map(p=>p.id));
+  const teamSetSelected = new Set(selectedTeams);
+  const projectSetSelected = new Set(selectedProjects);
+  // If there are no selections relevant to the current mode, return no data so render shows no graph
+  if(mode === 'project' && projectSetSelected.size === 0) return { days: 0, totals: [] };
+  if(mode === 'team' && teamSetSelected.size === 0) return { days: 0, totals: [] };
 
   const days = daysBetween(sDate, eDate);
 
@@ -601,9 +613,9 @@ export function closeMountainView(){
 }
 
 // Keep modal in sync with selections on main screen
-bus.on('projects:changed', ()=>{ if(document.getElementById('mountainViewModal')?.style.display !== 'none') render(); });
-bus.on('teams:changed', ()=>{ if(document.getElementById('mountainViewModal')?.style.display !== 'none') render(); });
-bus.on('states:changed', ()=>{ if(document.getElementById('mountainViewModal')?.style.display !== 'none') render(); });
-bus.on('view:loadMode', (mode)=>{ if(document.getElementById('mountainViewModal')?.style.display !== 'none'){ currentMode = mode; render(); } });
+bus.on('projects:changed', ()=>{ scheduleRender(); });
+bus.on('teams:changed', ()=>{ scheduleRender(); });
+bus.on('states:changed', ()=>{ scheduleRender(); });
+bus.on('view:loadMode', (mode)=>{ currentMode = mode; scheduleRender(); });
 // Re-render when filters change (e.g., toggling Epics/Features)
-bus.on('filters:changed', ()=>{ if(document.getElementById('mountainViewModal')?.style.display !== 'none') render(); });
+bus.on('filters:changed', ()=>{ scheduleRender(); });

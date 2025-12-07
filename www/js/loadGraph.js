@@ -88,10 +88,13 @@ function render(){
   const msPerDay = 24*60*60*1000;
 
   // Build maps keyed by timeline dayIdx for the visible range
+  // Respect current selection flags on teams/projects: only include selected items
   const teamDayMap = new Map();
   const projectDayMap = new Map();
   const orgTotalsTeam = new Map();
   const orgTotalsProject = new Map();
+  const selectedTeamIds = new Set((state.teams || []).filter(t=>t.selected).map(t=>t.id));
+  const selectedProjectIds = new Set((state.projects || []).filter(p=>p.selected).map(p=>p.id));
   for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
     const date = indexToDate(months, d);
     const iso = date.toISOString().slice(0,10);
@@ -104,26 +107,37 @@ function render(){
       orgTotalsProject.set(d, 0);
       continue;
     }
-    // Team bucket: use raw team values (percent per team), do NOT divide by nTeams
+    // Team bucket: use raw team values (percent per team), include only selected teams
     const tTuple = teamDaily[idx] || [];
     const teamBucket = {};
     let maxTeamVal = 0;
     for(let i=0;i<state.teams.length;i++){
+      const team = state.teams[i];
       const v = (tTuple[i] || 0);
-      teamBucket[state.teams[i].id] = v;
-      if(v > maxTeamVal) maxTeamVal = v;
+      // respect selection: if the team is not selected, treat its value as 0
+      teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
+      if(selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
     }
     teamDayMap.set(d, teamBucket);
     // Project bucket: already normalized in state.projectDailyCapacity
     const pTuple = projectDaily[idx] || [];
     const projectBucket = {};
-    for(let i=0;i<state.projects.length;i++){ projectBucket[state.projects[i].id] = pTuple[i] || 0; }
+    for(let i=0;i<state.projects.length;i++){
+      const project = state.projects[i];
+      // respect selection: if the project is not selected, value is 0
+      projectBucket[project.id] = selectedProjectIds.has(project.id) ? (pTuple[i] || 0) : 0;
+    }
     projectDayMap.set(d, projectBucket);
     // Totals
     // For team view we set the day's total to the maximum team load so overload highlights when any team is >100%.
     orgTotalsTeam.set(d, maxTeamVal);
-    // For project view keep the per-team average total from state
-    const totalPerTeam = totalOrgPerTeam[idx] || 0; // already per-team average
+    // For project view compute total only from selected projects (per-team average values)
+    let totalPerTeam = 0;
+    for(let i=0;i<state.projects.length;i++){
+      const proj = state.projects[i];
+      if(!selectedProjectIds.has(proj.id)) continue;
+      totalPerTeam += (projectDaily[idx] && projectDaily[idx][i]) ? projectDaily[idx][i] / Math.max(1, nTeams) : 0;
+    }
     orgTotalsProject.set(d, totalPerTeam);
   }
   
