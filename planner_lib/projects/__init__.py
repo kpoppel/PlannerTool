@@ -89,22 +89,6 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
     items: List[dict] = []
     client = get_client(cfg.azure_devops_organization, pat)
 
-    def _safe_type(type: str) -> str:
-        lt = type.lower()
-        if "epic" in lt:
-            return "epic"
-        if "feature" in lt:
-            return "feature"
-        if "task" in lt or "user story" in lt or "story" in lt:
-            return "feature"
-        return "feature"
-
-    def _safe_date(d):
-        if not d:
-            return None
-        else:
-            return str(d)[:10]
-
     def _parse_team_loads(description: str | None) -> List[dict]:
         """Parse team load block from description.
 
@@ -211,8 +195,11 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         #   'state': 'Active', 'tags': None, 'areaPath': 'Platform_Development\\eSW\\Teams\\Architecture',
         #  'iterationPath': 'Platform_Development',
         #  'relations': [
-        #        {'https://.../516154', 'Parent','System.LinkTypes.Hierarchy-Reverse'},
-        #        {'https://...643127', 'Child', 'System.LinkTypes.Hierarchy-Forward'},
+        #        {'type': 'Parent', 'id': 123456, 'url': 'https://.../516154'}, # System.LinkTypes.Hierarchy-Reverse
+        #        {'type': 'Child', 'id': 643127, 'url': 'https://.../643127'}, # System.LinkTypes.Hierarchy-Forward
+        #        {'type': 'Predecessor', 'id': 643127, 'url': 'https://.../643127'},
+        #        {'type': 'Successor', 'id': 643127, 'url': 'https://.../643127'},
+        #        {'type': 'Related', 'id': 643127, 'url': 'https://.../643127'},
         #       ]}]
         logger.debug(f"Fetched {len(wis)} work items for project '{name}'")
         # Now format into frontend-friendly shape
@@ -220,35 +207,21 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             # If the item has no scheduled dates place it 4 months prior to allow the user to see what has been scheduled and schedule it.
             today_minus_120 = str((date.today() - timedelta(days=120)).isoformat())
             today_minus_90 = str((date.today() - timedelta(days=90)).isoformat())
-            depends_on_list = []
-            for rel in wi.get("relations", []):
-                if rel[0] == "Parent":
-                    depends_on_list.append(str(rel[1].split('/')[-1]))
-                #if rel[0] == "Child":
-                #    depends_on_list.append(str(rel[1].split('/')[-1]))
-
             parsed_loads = _parse_team_loads(wi.get("description"))
-            if parsed_loads:
-                parsed_loads = [
-                    {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "load": entry.get("load", 0)}
-                    for entry in parsed_loads
-                ]
+            parsed_loads = [
+                {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "load": entry.get("load", 0)}
+                for entry in parsed_loads
+            ]
             logger.debug(f"Parsed team loads for work item {wi['id']}: {parsed_loads} based on description {wi.get('description')}.")
-            items.append({
-                "id": str(wi["id"]),
-                "type": _safe_type(wi.get("type")),
-                "parentEpic": depends_on_list[0] if depends_on_list else None,
-                "title": wi["title"],
-                "project": slugify(name, prefix="project-"),
-                "start": _safe_date(wi["startDate"]) or today_minus_120,
-                "end": _safe_date(wi["finishDate"]) or today_minus_90,
-                "teamLoads": parsed_loads if parsed_loads else _mock_team_loads(),
-                "status": wi["state"],
-                "assignee": wi["assignedTo"],
-                "description": wi["description"],
-                "azureUrl": wi["azureUrl"],
-                "dependsOn": depends_on_list,
-            })
+            # Enrich the existing work item dict instead of rebuilding it from scratch.
+            # This preserves any additional fields returned by the client and only adds/overrides
+            # the computed values we need for the frontend.
+            entry = dict(wi)  # shallow copy to avoid mutating original source
+            entry["project"] = slugify(name, prefix="project-")
+            entry["start"] = entry.get("startDate") or today_minus_120
+            entry["end"] = entry.get("finishDate") or today_minus_90
+            entry["teamLoads"] = parsed_loads if parsed_loads else _mock_team_loads()
+            items.append(entry)
     logger.debug("Returning total %d tasks from all projects", len(items))
     return items
 

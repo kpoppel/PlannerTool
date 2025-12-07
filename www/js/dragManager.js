@@ -4,7 +4,14 @@ import { getTimelineMonths } from './timeline.js';
 import { computeMoveUpdates, computeResizeUpdates, applyUpdates } from './scheduleService.js';
 import { bus } from './eventBus.js';
 
-const monthWidth = 120;
+// Derive month width from CSS variable to stay in sync with layout
+const monthWidth = (() => {
+  try{
+    const val = getComputedStyle(document.documentElement).getPropertyValue('--timeline-month-width');
+    const n = parseFloat(val);
+    return isNaN(n) ? 120 : n;
+  }catch(e){ return 120; }
+})();
 
 function getBoardOffset(){
   const board = document.getElementById('featureBoard');
@@ -31,7 +38,9 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const monthStart = months[monthIndex];
     const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
     const epsilon = 0.0001;
-    let dayOffset = Math.floor((fraction * daysInMonth) + epsilon); // 0..daysInMonth-1
+    // Map fraction -> day offset using rounded mapping so 100% fraction hits last day
+    let dayOffset = Math.round(fraction * (daysInMonth - 1)); // 0..daysInMonth-1
+    if(dayOffset < 0) dayOffset = 0;
     if(dayOffset >= daysInMonth) dayOffset = daysInMonth - 1;
     return new Date(monthStart.getFullYear(), monthStart.getMonth(), 1 + dayOffset);
   }
@@ -80,9 +89,8 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
       const widthForRemainingMonth = daysLeftInMonth * sizePerDay;
       if(remaining <= widthForRemainingMonth){
         const epsilon = 0.0001; // float safety
-        let daySpan = Math.floor((remaining + epsilon) / sizePerDay);
-        if(daySpan < 1) daySpan = 1;
-        if(daySpan > daysLeftInMonth) daySpan = daysLeftInMonth;
+        // Use rounding so width that covers most of a day snaps to that day
+        let daySpan = Math.max(1, Math.min(daysLeftInMonth, Math.round((remaining) / sizePerDay)));
         return addDays(current, daySpan-1);
       } else {
         remaining -= widthForRemainingMonth;
