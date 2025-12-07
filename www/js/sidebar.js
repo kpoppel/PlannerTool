@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { dataService } from './dataService.js';
 import { openConfigModal, openInputModal, openConfirmModal, openHelpModal } from './modal.js';
 import { bus } from './eventBus.js';
+import { initViewOptions } from './viewOptions.js';
 
 const elCache = {};
 
@@ -13,27 +14,7 @@ export function initSidebar(){
     <section class="sidebar-section" id="viewOptionsSection">
       <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▲</span><span class="sidebar-title">View Options</span></div>
       <div class="sidebar-section-collapsed"> <!-- collapsible wrapper -->
-        <div class="filter-group">
-          <label><input type="checkbox" id="condenseCards"> Condense cards</label>
-        </div>
-        <div class="filter-group">
-          <label><input type="checkbox" id="showDependencies"> Show dependencies</label>
-        </div>
-        <div class="filter-group" id="loadViewModeGroup">
-          <label title="Team-based load view"><input type="radio" name="loadViewMode" value="team" checked> Team Load</label>
-          <label title="Project-based aggregate load view"><input type="radio" name="loadViewMode" value="project"> Project Load</label>
-        </div>
-        <div class="filter-group" id="featureSortModeGroup">
-          <span class="group-label">Sort tasks by:</span>
-          <label title="Sort by earliest start date"><input type="radio" name="featureSortMode" value="date"> Date</label>
-          <label title="Original imported order"><input type="radio" name="featureSortMode" value="rank" checked> Rank</label>
-        </div>
-        <div class="filter-group" id="taskTypeViewGroup">
-        <span class="group-label">Show Task Types:</span>
-        <div class="filter-group">
-          <label><input type="checkbox" id="filterFeatures" checked> Features</label>
-          <label><input type="checkbox" id="filterEpics" checked> Epics</label>
-        </div>
+        <div id="viewOptionsContainer"></div>
       </div>
     </section>
     <section class="sidebar-section" id="projectsSection">
@@ -184,34 +165,11 @@ export function initSidebar(){
     });
   }
 
-  const condenseToggle = document.getElementById('condenseCards');
-  if(condenseToggle){
-    condenseToggle.checked = !!state.condensedCards;
-    condenseToggle.addEventListener('change', (e)=>{
-      state.setCondensedCards(e.target.checked);
-    });
+  // Initialize chip-based View Options UI
+  const viewOptionsHost = document.getElementById('viewOptionsContainer');
+  if(viewOptionsHost){
+    initViewOptions(viewOptionsHost);
   }
-
-  const depsToggle = document.getElementById('showDependencies');
-  if(depsToggle){
-    depsToggle.checked = !!state.showDependencies;
-    depsToggle.addEventListener('change', (e)=>{ state.setShowDependencies(e.target.checked); });
-  }
-
-  // Initialize load view mode radios
-  const radios = sidebar.querySelectorAll('input[name="loadViewMode"]');
-  radios.forEach(r => {
-    r.checked = (r.value === state.loadViewMode);
-    r.addEventListener('change', (e)=>{
-      if(e.target.checked){ state.setLoadViewMode(e.target.value); }
-    });
-  });
-
-  // Initialize feature sort mode radios
-  const sortRadios = sidebar.querySelectorAll('input[name="featureSortMode"]');
-  sortRadios.forEach(r => {
-    r.checked = (r.value === state.featureSortMode);
-  });
 
   // Fetch health once on init (no periodic polling)
   refreshServerStatus();

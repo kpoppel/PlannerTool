@@ -74,6 +74,10 @@ class State {
     // Indexes for fast lookup
     this.baselineFeatureById = new Map();
     this.childrenByEpic = new Map();
+    // Available work item states discovered after loading baseline
+    this.availableStates = [];
+    // Currently selected state filter (null means show all)
+    this.selectedStateFilter = null;
     // Setup autosave if configured
     dataService.getLocalPref('autosave.interval').then(initialAutosave => {
       if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
@@ -149,12 +153,15 @@ class State {
     this.teams = this.baselineTeams.map(t=>({ ...t }));
     // Precompute orgLoad on baseline features based on current team selection
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
+    // Compute available states from baseline features
+    this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     this.initBaselineScenario();
     await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
     bus.emit('projects:changed', this.projects);
     bus.emit('teams:changed', this.teams);
+    bus.emit('states:changed', this.availableStates);
     bus.emit('feature:updated');
   }
 
@@ -183,12 +190,21 @@ class State {
     // Precompute orgLoad on refreshed baseline features after restoring selections
     this.initBaselineScenario();
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
+    // Recompute available states
+    this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
     bus.emit('projects:changed', this.projects);
     bus.emit('teams:changed', this.teams);
+    bus.emit('states:changed', this.availableStates);
+    bus.emit('feature:updated');
+  }
+
+  setStateFilter(stateName){
+    this.selectedStateFilter = stateName || null;
+    bus.emit('filters:changed', { selectedStateFilter: this.selectedStateFilter });
     bus.emit('feature:updated');
   }
 
