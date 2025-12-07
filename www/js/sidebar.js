@@ -181,17 +181,36 @@ function renderProjects(){
     // Count epics and features for this project (baseline only)
     const epicsCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'epic').length;
     const featuresCount = state.baselineFeatures.filter(f => f.project === p.id && f.type === 'feature').length;
-    const li = document.createElement('li');
-    li.className='sidebar-list-item grid-row';
-    const epicsTxt = epicsCount >= 10 ? String(epicsCount) : String(epicsCount);
-    const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
-    li.innerHTML = `
-      <span class="color-dot" style="background:${p.color}" data-color-id="${p.id}"></span>
-      <div class="checkbox-col"><input type="checkbox" data-project="${p.id}" ${p.selected?'checked':''}/></div>
-      <div class="project-name-col">${p.name}</div>
-      <span class="count-badge">${epicsTxt}</span>
-      <span class="count-badge">${featsTxt}</span>
-    `;
+      const li = document.createElement('li');
+      li.className='sidebar-list-item';
+      const wrapper = document.createElement('div'); wrapper.className = 'chip sidebar-chip'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'stretch'; wrapper.style.gap = '8px'; wrapper.style.width = '100%';
+      const color = document.createElement('span'); color.className = 'color-dot'; color.style.background = p.color; color.setAttribute('data-color-id', p.id); color.setAttribute('aria-hidden','true');
+      const labelWrap = document.createElement('div'); labelWrap.style.display='flex'; labelWrap.style.alignItems='center'; labelWrap.style.gap='8px'; labelWrap.style.flex='1';
+      const title = document.createElement('div'); title.className='project-name-col'; title.textContent = p.name; title.title = p.name; title.style.alignSelf = 'center';
+      const badges = document.createElement('div'); badges.style.display='inline-flex'; badges.style.gap='6px'; badges.style.marginLeft = 'auto'; badges.style.alignItems = 'center';
+      const epBadge = document.createElement('span'); epBadge.className='chip-badge'; epBadge.textContent = String(epicsCount);
+      const featBadge = document.createElement('span'); featBadge.className='chip-badge'; featBadge.textContent = String(featuresCount);
+      badges.appendChild(epBadge); badges.appendChild(featBadge);
+      labelWrap.appendChild(title);
+    // Hidden checkbox for accessibility; keep data attribute for toggling
+    const chk = document.createElement('input'); chk.type='checkbox'; chk.style.display='none'; chk.setAttribute('data-project', p.id); if(p.selected) chk.checked = true;
+    wrapper.appendChild(color); wrapper.appendChild(labelWrap); wrapper.appendChild(badges); wrapper.appendChild(chk);
+    // Hover effect: show pressed state on hover similar to chips
+    wrapper.addEventListener('mouseenter', ()=> wrapper.classList.add('chip-hover'));
+    wrapper.addEventListener('mouseleave', ()=> wrapper.classList.remove('chip-hover'));
+    wrapper.addEventListener('click', (e)=>{
+      // If click originated on color-dot let color manager handle it
+      if(e.target.closest('.color-dot')) return;
+      const newVal = !chk.checked;
+      chk.checked = newVal;
+      state.setProjectSelected(p.id, newVal);
+      // emit change for other listeners
+      chk.dispatchEvent(new Event('change', { bubbles:true }));
+      // update visual active state
+      if(newVal) wrapper.classList.add('active'); else wrapper.classList.remove('active');
+    });
+    if(p.selected) wrapper.classList.add('active');
+    li.appendChild(wrapper);
     elCache.projectList.appendChild(li);
   });
 }
@@ -200,18 +219,33 @@ function renderTeams(){
   elCache.teamList.innerHTML = '';
   state.teams.forEach(t=>{
     const li = document.createElement('li');
-    li.className='sidebar-list-item grid-row';
+    li.className='sidebar-list-item';
     const epicsCount = state.baselineFeatures.filter(f => f.type==='epic' && f.teamLoads.some(tl=>tl.team===t.id)).length;
     const featuresCount = state.baselineFeatures.filter(f => f.type==='feature' && f.teamLoads.some(tl=>tl.team===t.id)).length;
-    const epicsTxt = epicsCount >= 10 ? String(epicsCount) : String(epicsCount);
-    const featsTxt = featuresCount >= 10 ? String(featuresCount) : String(featuresCount);
-    li.innerHTML = `
-      <span class="color-dot" style="background:${t.color}" data-color-id="${t.id}"></span>
-      <div class="checkbox-col"><input type="checkbox" data-team="${t.id}" ${t.selected?'checked':''}/></div>
-      <div class="team-name-col">${t.name}${t.short? ' ('+t.short+')' : ''}</div>
-      <span class="count-badge">${epicsTxt}</span>
-      <span class="count-badge">${featsTxt}</span>
-    `;
+    const wrapper = document.createElement('div'); wrapper.className = 'chip sidebar-chip'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'stretch'; wrapper.style.gap = '8px'; wrapper.style.width = '100%';
+    const color = document.createElement('span'); color.className = 'color-dot'; color.style.background = t.color; color.setAttribute('data-color-id', t.id); color.setAttribute('aria-hidden','true');
+    const labelWrap = document.createElement('div'); labelWrap.style.display='flex'; labelWrap.style.alignItems='center'; labelWrap.style.gap='8px'; labelWrap.style.flex='1';
+    const title = document.createElement('div'); title.className='team-name-col'; title.textContent = t.name + (t.short? ' ('+t.short+')':''); title.title = t.name; title.style.alignSelf='center';
+    const badges = document.createElement('div'); badges.style.display='inline-flex'; badges.style.gap='6px'; badges.style.marginLeft='auto'; badges.style.alignItems='center';
+    const epBadge = document.createElement('span'); epBadge.className='chip-badge'; epBadge.textContent = String(epicsCount);
+    const featBadge = document.createElement('span'); featBadge.className='chip-badge'; featBadge.textContent = String(featuresCount);
+    badges.appendChild(epBadge); badges.appendChild(featBadge);
+    labelWrap.appendChild(title);
+    const chk = document.createElement('input'); chk.type='checkbox'; chk.style.display='none'; chk.setAttribute('data-team', t.id); if(t.selected) chk.checked = true;
+    wrapper.appendChild(color); wrapper.appendChild(labelWrap); wrapper.appendChild(badges); wrapper.appendChild(chk);
+      wrapper.addEventListener('mouseenter', ()=> wrapper.classList.add('chip-hover'));
+      wrapper.addEventListener('mouseleave', ()=> wrapper.classList.remove('chip-hover'));
+      wrapper.addEventListener('click', (e)=>{
+        // If click originated on color-dot let color manager handle it
+        if(e.target.closest('.color-dot')) return;
+        const newVal = !chk.checked;
+        chk.checked = newVal;
+        state.setTeamSelected(t.id, newVal);
+        chk.dispatchEvent(new Event('change', { bubbles:true }));
+        if(newVal) wrapper.classList.add('active'); else wrapper.classList.remove('active');
+      });
+    if(t.selected) wrapper.classList.add('active');
+    li.appendChild(wrapper);
     elCache.teamList.appendChild(li);
   });
 }
@@ -225,12 +259,16 @@ function renderScenarios(){
   elCache.scenarioList.innerHTML = '';
   state.scenarios.forEach(s => {
     const li = document.createElement('li');
-    li.className = 'sidebar-list-item scenario-item';
+    li.className = 'sidebar-list-item scenario-item sidebar-chip';
     if(s.id === state.activeScenarioId) li.classList.add('active');
     const controls = document.createElement('span'); controls.className='scenario-controls';
-    // Name label clickable to activate
+    // Name label
     const nameSpan = document.createElement('span'); nameSpan.className='scenario-name'; nameSpan.textContent = s.name; nameSpan.title = s.name;
-    nameSpan.addEventListener('click', ()=>{ state.activateScenario(s.id); });
+    // Make the whole row activate the scenario when clicked, except when clicking on the controls
+    li.addEventListener('click', (e) => {
+      if (e.target.closest('.scenario-controls')) return; // allow controls to handle their clicks
+      state.activateScenario(s.id);
+    });
     // Show warning icon if scenario is unsaved.
     if (state.isScenarioUnsaved(s)) {
       const warn = document.createElement('span'); warn.className='scenario-warning'; warn.title = s.id==='baseline' ? 'Baseline modified (overrides present)' : 'Scenario has unsaved changes'; warn.textContent='⚠️'; li.appendChild(warn);
