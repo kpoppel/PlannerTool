@@ -72,11 +72,61 @@ function render(){
   canvas.height = 120;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  const effective = state.getEffectiveFeatures();
-  const { teamDayMap, projectDayMap, orgTotalsTeam, orgTotalsProject } = computeDailyLoadMaps(effective, state.teams, state.projects, { showEpics: state.showEpics, showFeatures: state.showFeatures }, range);
+  // Use precomputed daily capacity arrays from state for faster rendering and
+  // to ensure graphs reflect the active scenario and normalization rules.
+  const nTeams = state.teams.length || 1;
+  const dates = state.capacityDates || [];
+  const teamDaily = state.teamDailyCapacity || [];
+  const projectDaily = state.projectDailyCapacity || []; // normalized per-project
+  const totalOrgPerTeam = state.totalOrgDailyPerTeamAvg || [];
+  // Build a date->index map for quick lookup (dates are ISO yyyy-mm-dd)
+  const dateIndexMap = new Map(dates.map((ds, i) => [ds, i]));
+
+  // Determine visible day index range for mapping dates to timeline positions
   const visibleStartIdx = dateToIndex(months, range.startDate);
   const visibleEndIdx = dateToIndex(months, range.endDate);
   const msPerDay = 24*60*60*1000;
+
+  // Build maps keyed by timeline dayIdx for the visible range
+  const teamDayMap = new Map();
+  const projectDayMap = new Map();
+  const orgTotalsTeam = new Map();
+  const orgTotalsProject = new Map();
+  for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+    const date = indexToDate(months, d);
+    const iso = date.toISOString().slice(0,10);
+    const idx = dateIndexMap.get(iso);
+    if(idx === undefined){
+      // no data for this date
+      teamDayMap.set(d, {});
+      projectDayMap.set(d, {});
+      orgTotalsTeam.set(d, 0);
+      orgTotalsProject.set(d, 0);
+      continue;
+    }
+    // Team bucket: use raw team values (percent per team), do NOT divide by nTeams
+    const tTuple = teamDaily[idx] || [];
+    const teamBucket = {};
+    let maxTeamVal = 0;
+    for(let i=0;i<state.teams.length;i++){
+      const v = (tTuple[i] || 0);
+      teamBucket[state.teams[i].id] = v;
+      if(v > maxTeamVal) maxTeamVal = v;
+    }
+    teamDayMap.set(d, teamBucket);
+    // Project bucket: already normalized in state.projectDailyCapacity
+    const pTuple = projectDaily[idx] || [];
+    const projectBucket = {};
+    for(let i=0;i<state.projects.length;i++){ projectBucket[state.projects[i].id] = pTuple[i] || 0; }
+    projectDayMap.set(d, projectBucket);
+    // Totals
+    // For team view we set the day's total to the maximum team load so overload highlights when any team is >100%.
+    orgTotalsTeam.set(d, maxTeamVal);
+    // For project view keep the per-team average total from state
+    const totalPerTeam = totalOrgPerTeam[idx] || 0; // already per-team average
+    orgTotalsProject.set(d, totalPerTeam);
+  }
+  
 
   // Helper: per-day pixel width depends on month
   function pxPerDay(date){ return MONTH_WIDTH / daysInMonth(date); }
@@ -103,12 +153,23 @@ function render(){
 
   // Adaptive scaling: compute max normalised organisational load in the visible range
   let maxTotal = 0;
-  for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
-    const total = chosenTotals.get(d) || 0;
-    if(total > maxTotal) maxTotal = total;
+  if(usingTeam){
+    // compute max across all teams in the visible range
+    for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+      const bucket = teamDayMap.get(d) || {};
+      for(const team of state.teams){
+        const v = bucket[team.id] || 0;
+        if(v > maxTotal) maxTotal = v;
+      }
+    }
+  } else {
+    for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+      const total = chosenTotals.get(d) || 0;
+      if(total > maxTotal) maxTotal = total;
+    }
   }
-  // Minimum scaling at 100% to keep the 100% line visible; cap headroom to avoid extreme scaling.
-  const maxYPercent = Math.max(100, Math.min(Math.ceil(maxTotal * 1.1), 200));
+  // Minimum scaling at 100% to keep the 100% line visible; add small headroom above observed max.
+  const maxYPercent = Math.max(100, Math.ceil(maxTotal * 1.1));
   const bottomBand = 8; // reserved band for over-capacity indicator
   const drawHeight = canvas.height - bottomBand;
   const percentToPx = drawHeight / maxYPercent;
@@ -139,23 +200,70 @@ function render(){
 
   // Draw stacked bars per day
   daySegmentsCache = [];
+  // Precompute x positions for each visible day to reuse for line plotting
+  const dayX = new Map();
   for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
-    const bucket = chosenMap.get(d) || {};
-    let y = drawHeight;
-    const x = xForDayIndex(d);
-    const nextX = xForDayIndex(d+1);
-    const dayWidth = Math.max(1, nextX - x);
-    if(usingTeam){
-      // Render in backend order using state.teams sequence
-      for(const team of state.teams){
-        const val = bucket[team.id] || 0;
-        if(val <= 0) continue;
-        const h = clamp(Math.round(val * percentToPx), 0, canvas.height);
-        ctx.fillStyle = team.color || '#888';
-        ctx.fillRect(x, y - h, dayWidth, h);
-        y -= h;
+    dayX.set(d, xForDayIndex(d));
+  }
+
+  // If using team view, draw a line per team. Otherwise fall back to stacked bars per project.
+  if(usingTeam){
+    // Build per-team arrays of values (normalized per-team) and also populate daySegmentsCache for hover/interaction
+    const teamPoints = state.teams.map(() => []); // array of [ { x, y, val, date, dayIdx } ]
+    for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+      const x = dayX.get(d);
+      const nextX = xForDayIndex(d+1);
+      const bucket = chosenMap.get(d) || {};
+      const total = chosenTotals.get(d) || 0;
+      // Store day segments cache entry (for tests/hover info)
+      daySegmentsCache.push({ dayIdx: d, startX: x, endX: nextX, total, date: indexToDate(months,d) });
+      // For each team construct the point
+      for(let ti=0; ti<state.teams.length; ti++){
+        const teamId = state.teams[ti].id;
+        const val = bucket[teamId] || 0; // normalized percent (0..100)
+        const y = drawHeight - (val * percentToPx);
+        teamPoints[ti].push({ x, y, val, date: indexToDate(months,d), dayIdx: d });
       }
-    } else {
+    }
+
+    // Draw grid-like background for readability (optional subtle lines)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+    ctx.lineWidth = 1;
+    for(const entry of daySegmentsCache){
+      const x = entry.startX;
+      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x, drawHeight); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Draw a polyline for each team
+    for(let ti=0; ti<state.teams.length; ti++){
+      const team = state.teams[ti];
+      const pts = teamPoints[ti];
+      if(!pts.length) continue;
+      ctx.beginPath();
+      for(let i=0;i<pts.length;i++){
+        const p = pts[i];
+        if(i===0) ctx.moveTo(p.x + 0.5, p.y);
+        else ctx.lineTo(p.x + 0.5, p.y);
+      }
+      ctx.strokeStyle = team.color || '#888';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw small markers at points
+      //ctx.fillStyle = team.color || '#888';
+      //for(const p of pts){
+      //  ctx.beginPath(); ctx.arc(p.x + 0.5, p.y, 2, 0, Math.PI*2); ctx.fill();
+      //}
+    }
+  } else {
+    for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
+      const bucket = chosenMap.get(d) || {};
+      let y = drawHeight;
+      const x = dayX.get(d);
+      const nextX = xForDayIndex(d+1);
+      const dayWidth = Math.max(1, nextX - x);
       for(const project of state.projects){
         const val = bucket[project.id] || 0;
         if(val <= 0) continue;
@@ -164,8 +272,8 @@ function render(){
         ctx.fillRect(x, y - h, dayWidth, h);
         y -= h;
       }
+      daySegmentsCache.push({ dayIdx: d, startX: x, endX: nextX, total: chosenTotals.get(d) || 0, date: indexToDate(months,d) });
     }
-    daySegmentsCache.push({ dayIdx: d, startX: x, endX: nextX, total: chosenTotals.get(d) || 0, date: indexToDate(months,d) });
   }
 
   // Draw dotted 100% line across the canvas
