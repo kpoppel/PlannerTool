@@ -207,6 +207,9 @@ function renderFeatureBoard(){
   sourceFeatures.forEach(f => { if(f.type==='feature' && f.parentEpic){ if(!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
   for(const f of ordered){
     if(!isProjectSelected(f.project)) continue;
+    // State filter: if selected, only show features matching that state/status
+    const selState = state.selectedStateFilter;
+    if(selState){ const fState = f.status || f.state; if(fState !== selState) continue; }
     if(f.type === 'epic' && !state.showEpics) continue;
     if(f.type === 'feature' && !state.showFeatures) continue;
     if(f.type === 'epic'){

@@ -327,3 +327,13 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .relation-title .details-link { color:#3543be; text-decoration:none; }
 .relation-title .details-link:hover { text-decoration:underline; }
 .relation-meta { font-size:12px; color:#000000; opacity:1; }
+
+/* Chip controls for View Options */
+.chip-group { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.chip-group .group-label { width:100%; font-weight:600; font-size:0.85rem; opacity:0.9; }
+.chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:16px; border:1px solid rgba(255,255,255,0.25); color:var(--color-sidebar-text); background:rgba(255,255,255,0.08); cursor:pointer; font-size:0.8rem; line-height:1; user-select:none; }
+.chip:hover { background:rgba(255,255,255,0.14); }
+.chip.active { background:#fff; color:#23344d; border-color:#fff; }
+.chip-badge { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:9px; font-size:0.7rem; font-weight:700; background:rgba(0,0,0,0.12); color:#fff; }
+.chip.active .chip-badge { background:#23344d; color:#fff; }
+.chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
