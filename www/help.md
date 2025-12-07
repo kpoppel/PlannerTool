@@ -106,7 +106,7 @@ form.  It is only necessary to include the teams actually participating, so usua
 
 The long form template:
 
-  [PlannerTool Team Loads]
+  [PlannerTool Team Capacity]
   Integration Team: 0
   System & Framework: 0
   Bluetooth: 0
@@ -118,11 +118,11 @@ The long form template:
   Tooling: 0
   Architecture: 0
   Requirements: 0
-  [/PlannerTool Team Loads]
+  [/PlannerTool Team Capacity]
 
 or this format using the short form names:
 
-  [PlannerTool Team Loads]
+  [PlannerTool Team Capacity]
   INT: 0
   SYS: 0
   BT : 0
@@ -134,7 +134,7 @@ or this format using the short form names:
   TOL: 0
   ARC: 0
   REQ: 0
-  [/PlannerTool Team Loads]
+  [/PlannerTool Team Capacity]
 
 # FAQ
 
