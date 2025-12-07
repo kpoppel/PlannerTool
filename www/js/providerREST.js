@@ -38,11 +38,13 @@ export class ProviderREST {
             }
         }catch(err){ console.error('Session creation error', err); }
     }
+
     _headers(extra){
         const h = Object.assign({}, extra || {});
         if(this.sessionId){ h['X-Session-Id'] = this.sessionId; }
         return h;
     }
+
     async getCapabilities() {
         // Example: fetch capabilities via REST API (stub)
         // return fetch('/api/capabilities').then(res => res.json());
@@ -54,11 +56,13 @@ export class ProviderREST {
         // return fetch(`/api/scenarios/${id}`, { method: 'DELETE' }).then(res => res.json());
         return { id, deleted: true };
     }
+
     async renameScenario(id, name) {
         // Example: rename scenario via REST API (stub)
         // return fetch(`/api/scenarios/${id}/rename`, { method: 'POST', body: JSON.stringify({ name }) }).then(res => res.json());
         return { id, name };
     }
+
     async listScenarios() {
         // Example: list scenarios via REST API (stub)
         // return fetch('/api/scenarios').then(res => res.json());
@@ -85,11 +89,13 @@ export class ProviderREST {
         // return fetch('/api/baseline/refresh').then(res => res.json());
         return { ok: true, refreshedAt: new Date().toISOString() };
     }
+
     async saveScenario(scenario) {
         // Example: save scenario via REST API (stub)
         // return fetch('/api/scenarios', { method: 'POST', body: JSON.stringify(scenario) }).then(res => res.json());
         return { ...scenario, savedAt: new Date().toISOString() };
     }
+
     async checkHealth() {
         // Perform an actual fetch to /api/health and return parsed JSON.
         try {
@@ -100,21 +106,25 @@ export class ProviderREST {
             return { status: 'error', error: String(err) };
         }
     }
+
     async setFeatureField(id, field, value) {
         // Example: update feature field via REST API (stub)
         // return fetch(`/api/features/${id}/field`, { method: 'POST', body: JSON.stringify({ field, value }) }).then(res => res.json());
         return { id, [field]: value };
     }
+
     async batchSetFeatureDates(updates) {
         // Example: batch update via REST API (stub)
         // return fetch('/api/features/batchUpdate', { method: 'POST', body: JSON.stringify(updates) }).then(res => res.json());
         return updates.map(u => ({ id: u.id, start: u.start, end: u.end }));
     }
+
     async setFeatureDates(id, start, end) {
         // Example: update feature dates via REST API (stub)
         // return fetch(`/api/features/${id}/dates`, { method: 'POST', body: JSON.stringify({ start, end }) }).then(res => res.json());
         return { id, start, end };
     }
+
     async getConfig() {
         // Example: fetch config from REST API (stub)
         // return fetch('/api/config').then(res => res.json());
@@ -123,15 +133,19 @@ export class ProviderREST {
 
     async getFeatures(project) {
         const url = project ? `/api/tasks?project=${encodeURIComponent(project)}` : '/api/tasks';
-        const [resTasks, resTeams] = await Promise.all([
-            fetch(url, { headers: this._headers() }),
-            fetch('/api/teams', { headers: this._headers() })
-        ]);
+        const resTasks = await fetch(url, { headers: this._headers() });
         if(!resTasks.ok) return [];
         const tasks = await resTasks.json();
-        const teams = resTeams.ok ? await resTeams.json() : [];
-        const retval = (tasks || []).map(f => ({ ...f, original: { ...f }, changedFields: [], dirty: false }));
-        console.log("Fetched tasks:", retval);
+        // Calculate derived fields used in the frontend
+        // - parentEpic is used for relating Features to their parent Epic
+        function getParent(f){
+            const parentRel = f.relations.find(r => r.type === 'Parent');
+            return parentRel ? parentRel.id : null;
+        }
+        //const parentEpic = tasks.relations ? tasks.relations.find(r => r.type === 'Parent') : null;
+        //console.log("Parent Epic:", parentEpic);
+        const retval = (tasks || []).map(f => ({ ...f, parentEpic: getParent(f), original: { ...f }, changedFields: [], dirty: false }));
+        console.log("providerREST:getFeatures - Fetched tasks:", retval);
         return retval;
     }
 
@@ -142,10 +156,11 @@ export class ProviderREST {
             let retval = await res.json();
             // TODO: move item selection state to scenario configuration
             retval = retval.map(team => ({ ...team, selected: true }));
-            console.log("Fetched teams:", retval);
+            console.log("providerREST:getTeams - Fetched teams:", retval);
             return retval
         }catch(err){ return {}; }
     }
+
     async getProjects() {
         try{
             const res = await fetch('/api/projects', { headers: this._headers() });
@@ -153,7 +168,7 @@ export class ProviderREST {
             let retval = await res.json();
             // TODO: move item selection state to scenario configuration
             retval = retval.map(project => ({ ...project, selected: true }));
-            console.log("Fetched projects:", retval);
+            console.log("providerREST:getProjects - Fetched projects:", retval);
             return retval
         }catch(err){ return {}; }
     }

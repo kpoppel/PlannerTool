@@ -28,33 +28,6 @@ function createSvgLayer(){
 
 function clearLines(layer){ while(layer && layer.firstChild) layer.removeChild(layer.firstChild); }
 
-function getCardCenterEdge(el, side){
-  const board = document.getElementById('featureBoard');
-  // Scroll container may be the parent (timeline-section) rather than board for vertical scroll.
-  const verticalContainer = (board && board.parentElement && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
-  const laneHeight = state && state.condensedCards ? 40 : 100;
-  // Use inline layout positions for horizontal (left) & lane index for vertical, subtract scroll offsets from the active scroll container
-  const leftStyle = parseFloat(el.style.left);
-  const topStyle = parseFloat(el.style.top);
-  const widthStyle = parseFloat(el.style.width);
-  const scrollLeft = board ? board.scrollLeft : 0; // horizontal always comes from board
-  const scrollTop = verticalContainer ? verticalContainer.scrollTop : 0; // vertical from parent if exists
-  if(!isNaN(leftStyle) && !isNaN(topStyle)){
-    const left = leftStyle - scrollLeft;
-    const top = topStyle - scrollTop;
-    const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth;
-    const h = laneHeight; // fixed lane height ensures hidden content doesn't skew center
-    if(side === 'right') return { x: left + w, y: top + h/2 };
-    return { x: left, y: top + h/2 };
-  }
-  // Fallback bounding box relative to scroll container viewport if styles missing
-  const r = el.getBoundingClientRect();
-  const containerRect = verticalContainer ? verticalContainer.getBoundingClientRect() : { left:0, top:0 };
-  const left = r.left - containerRect.left;
-  const top = r.top - containerRect.top;
-  if(side === 'right') return { x: left + r.width, y: top + r.height/2 };
-  return { x: left, y: top + r.height/2 };
-}
 
 function drawLine(layer, from, to){
   const ns = 'http://www.w3.org/2000/svg';
@@ -74,6 +47,7 @@ function drawLine(layer, from, to){
   path.setAttribute('stroke-linecap', 'round');
   path.setAttribute('stroke-linejoin', 'round');
   layer.appendChild(path);
+  return path;
 }
 
 export function initDependencyRenderer(){
@@ -81,27 +55,119 @@ export function initDependencyRenderer(){
     const layer = createSvgLayer();
     if(!state.showDependencies){ clearLines(layer); return; }
     console.debug('[depRenderer] render called, showDependencies=', state.showDependencies);
-    // Resize svg to match visible board viewport so coords map 1:1
+    // Resize svg to match full scrollable board content so coords map to content coordinates
     const board = document.getElementById('featureBoard');
     if(!board) return;
-    const w = board.clientWidth; const h = board.clientHeight;
+    const w = board.scrollWidth || board.clientWidth; const h = board.scrollHeight || board.clientHeight;
     layer.setAttribute('width', String(w));
     layer.setAttribute('height', String(h));
     layer.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    // Make the rendered CSS size match the content pixel size so coordinates map 1:1
+    layer.style.width = String(w) + 'px';
+    layer.style.height = String(h) + 'px';
+    layer.setAttribute('preserveAspectRatio', 'none');
     clearLines(layer);
     const features = state.getEffectiveFeatures();
     console.debug('[depRenderer] effective features count=', features.length);
-    for(const f of features){
-      if(f.dependsOn) console.debug('[depRenderer] feature', f.id, 'dependsOn=', f.dependsOn);
-      if(!f.dependsOn || !Array.isArray(f.dependsOn)) continue;
-      const targetCard = document.querySelector(`.feature-card[data-id="${f.id}"]`);
+    // Compute board geometry once
+    const boardRect = board.getBoundingClientRect();
+    const verticalContainer = (board && board.parentElement && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
+    const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
+    const scrollLeft = board ? board.scrollLeft : 0;
+    const laneHeight = state && state.condensedCards ? 40 : 100;
+    // Cache card elements by data-id to avoid repeated DOM queries
+    const cardEls = document.querySelectorAll('.feature-card');
+    const cardById = new Map();
+    for(let i=0;i<cardEls.length;i++){ const el = cardEls[i]; const id = el.dataset && el.dataset.id; if(id) cardById.set(id, el); }
+
+    // inline helpers using precomputed geometry
+    function edgeOf(el, side){
+      const leftStyle = parseFloat(el.style.left);
+      const topStyle = parseFloat(el.style.top);
+      const widthStyle = parseFloat(el.style.width);
+      if(!isNaN(leftStyle) && !isNaN(topStyle)){
+        const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth;
+        const h = laneHeight;
+        return side === 'right' ? { x: leftStyle + w, y: topStyle + h/2 } : { x: leftStyle, y: topStyle + h/2 };
+      }
+      const r = el.getBoundingClientRect();
+      const left = r.left - boardRect.left + scrollLeft;
+      const top = r.top - boardRect.top + verticalScrollTop;
+      return side === 'right' ? { x: left + r.width, y: top + r.height/2 } : { x: left, y: top + r.height/2 };
+    }
+    function centerOf(el){
+      const leftStyle = parseFloat(el.style.left);
+      const topStyle = parseFloat(el.style.top);
+      const widthStyle = parseFloat(el.style.width);
+      const h = state && state.condensedCards ? 40 : (el.offsetHeight || 100);
+      if(!isNaN(leftStyle) && !isNaN(topStyle)){
+        const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth;
+        return { x: leftStyle + w/2, y: topStyle + h/2 };
+      }
+      const r = el.getBoundingClientRect();
+      const left = r.left - boardRect.left + scrollLeft;
+      const top = r.top - boardRect.top + verticalScrollTop;
+      return { x: left + r.width/2, y: top + r.height/2 };
+    }
+
+    // Track drawn pairs across the whole render pass to avoid duplicates when both
+    // involved features list the same relation (A->B and B->A).
+    const drawnPairs = new Set();
+    for(let fi=0; fi<features.length; fi++){
+      const f = features[fi];
+      const relations = Array.isArray(f.relations) ? f.relations : null;
+      if(!relations) continue;
+      const targetCard = cardById.get(String(f.id)) || document.querySelector(`.feature-card[data-id="${f.id}"]`);
       if(!targetCard) continue;
-      for(const depId of f.dependsOn){
-        const sourceCard = document.querySelector(`.feature-card[data-id="${depId}"]`);
-        if(!sourceCard) continue;
-        const from = getCardCenterEdge(sourceCard,'right');
-        const to = getCardCenterEdge(targetCard,'left');
-        drawLine(layer, from, to);
+      // loop relations
+      for(let ri=0; ri<relations.length; ri++){
+        const rel = relations[ri];
+        // Normalize relation entry to { otherId, type }
+        let otherId = null;
+        let relType = 'Related'; // default fallback
+        if(typeof rel === 'string' || typeof rel === 'number'){
+          // simple id entry: treat as predecessor by default
+          otherId = String(rel);
+          relType = 'Predecessor';
+        } else if(rel && rel.id){
+          otherId = String(rel.id);
+          relType = rel.type || rel.relationType || 'Related';
+        } else {
+          // unknown relation shape
+          continue;
+        }
+
+        // Do not render Child relations
+        if(relType === 'Child' || relType === 'Parent') continue;
+
+        const otherCard = document.querySelector(`.feature-card[data-id="${otherId}"]`);
+        if(!otherCard) continue;
+
+        // Determine canonical key for pair (unordered) to avoid duplicates
+        const pairKey = [otherId, f.id].sort().join('::');
+        if(drawnPairs.has(pairKey)) continue;
+
+        let from, to;
+        if(relType === 'Successor'){
+          from = edgeOf(targetCard, 'right'); // this card right
+          to = edgeOf(otherCard, 'left');     // successor's left
+        } else if(relType === 'Predecessor'){
+          from = edgeOf(otherCard, 'right');
+          to = edgeOf(targetCard, 'left');
+        } else {
+          // Related: draw center-to-center dashed line
+          from = centerOf(otherCard);
+          to = centerOf(targetCard);
+        }
+
+        // Draw the line and then tweak style for related links
+        const path = drawLine(layer, from, to);
+        if(relType === 'Related' && path){
+          path.setAttribute('stroke-dasharray', '6,4');
+          path.setAttribute('stroke', '#6a6'); // slightly green tint for related
+          path.setAttribute('stroke-width', '1.5');
+        }
+        drawnPairs.add(pairKey);
       }
     }
     // Temporary debug markers: draw small boxes on the corners and center of every visible card
@@ -144,21 +210,29 @@ export function initDependencyRenderer(){
       }
     }
   }
-  // Re-render on events
-  bus.on('feature:updated', render);
-  bus.on('view:dependencies', render);
-  bus.on('projects:changed', render);
-  bus.on('teams:changed', render);
+  // Debounced scheduler: coalesce multiple rapid events into a single repaint
+  let scheduled = false;
+  function scheduleRender(){
+    if(scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(()=>{ scheduled = false; render(); });
+  }
+
+  // Re-render on events (use scheduler to avoid duplicate immediate calls)
+  bus.on('feature:updated', scheduleRender);
+  bus.on('view:dependencies', scheduleRender);
+  bus.on('projects:changed', scheduleRender);
+  bus.on('teams:changed', scheduleRender);
   // Listen for drag intermediate updates
-  bus.on('drag:move', render);
+  bus.on('drag:move', scheduleRender);
   // Window resize/scroll
-  window.addEventListener('resize', render);
+  window.addEventListener('resize', scheduleRender);
   const board = document.getElementById('featureBoard');
-  if(board) board.addEventListener('scroll', render);
+  if(board) board.addEventListener('scroll', scheduleRender);
   // Also listen to vertical scroll on timeline-section parent
   if(board && board.parentElement && board.parentElement.classList.contains('timeline-section')){
-    board.parentElement.addEventListener('scroll', render);
+    board.parentElement.addEventListener('scroll', scheduleRender);
   }
   // initial render
-  setTimeout(render, 100);
+  setTimeout(scheduleRender, 100);
 }
