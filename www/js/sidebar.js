@@ -59,7 +59,7 @@ export function initSidebar(){
         <ul class="sidebar-list" id="scenarioList"></ul>
       </div>
     </section>
-    <section class="sidebar-section sidebar-config" id="configSection">
+    <section class="sidebar-config" id="configSection">
       <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
       <div class="config-row">
         <button id="openConfigBtn" title="Configuration">⚙️ Configuration</button>
