@@ -93,7 +93,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         """Parse team load block from description.
 
         Expected format:
-        [PlannerTool Team Loads]\n<short_name>: <percent_load>\n...\n[/PlannerTool Team Loads]
+        [PlannerTool Team Capacity]\n<short_name>: <percent_load>\n...\n[/PlannerTool Team Capacity]
         Returns a list of { team, load }.
         """
         if not description or not isinstance(description, str):
@@ -103,12 +103,14 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             desc = description
             # Replace <br> variants with newline
             desc = re.sub(r"<br\s*/?>", "\n", desc, flags=re.I)
+            # Ensure adjacent tags don't concatenate text (e.g. </div><div> -> newline)
+            desc = re.sub(r">\s*<", ">\n<", desc)
             # Strip other HTML tags but keep text content
             desc = re.sub(r"</?\w+[^>]*>", "", desc)
             # Unescape common entities (&amp; -> &, &lt; -> <, &gt; -> >)
             desc = desc.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
 
-            m = re.search(r"\[PlannerTool Team Loads\](.*?)\[/PlannerTool Team Loads\]", desc, flags=re.S)
+            m = re.search(r"\[PlannerTool Team Capacity\](.*?)\[/PlannerTool Team Capacity\]", desc, flags=re.S)
             if not m:
                 return []
             body = m.group(1)
@@ -179,7 +181,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         for _ in range(min(k, len(pool))):
             idx = random.randrange(len(pool))
             picks.append(pool.pop(idx))
-        return [{"team": p, "load": random.randint(5, 30)} for p in picks]
+        return [{"team": p, "load": random.randint(1, 3)} for p in picks]
     ###################################
     for p in cfg.project_map:
         name = p.get("name")
