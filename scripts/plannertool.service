@@ -1,0 +1,13 @@
+[Unit]
+Description=PlannerTool backend service
+After=network.target
+
+[Service]
+Type=simple
+User=planner
+WorkingDirectory=/home/planner/PlannerTool
+ExecStart=/home/planner/PlannerTool/scripts/systemd_runner.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
