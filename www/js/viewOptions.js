@@ -73,11 +73,37 @@ export function initViewOptions(container){
   renderToggle(root, 'Condensed', ()=> state.condensedCards, (val)=> state.setCondensedCards(val));
   // Dependencies
   renderToggle(root, 'Dependencies', ()=> state.showDependencies, (val)=> state.setShowDependencies(val));
-  // Load view mode
-  renderRadioGroup(root, 'Load View', [
-    { label:'Team Load', active: state.loadViewMode==='team', onClick: ()=> state.setLoadViewMode('team') },
-    { label:'Project Load', active: state.loadViewMode==='project', onClick: ()=> state.setLoadViewMode('project') },
-  ]);
+  // Capacity selector + Open Graph action (moved here)
+  const capWrapper = document.createElement('div');
+  const capTitle = document.createElement('div'); capTitle.className = 'group-label'; capTitle.textContent = 'Capacity:';
+  const capGroup = document.createElement('div'); capGroup.className = 'chip-group'; capGroup.setAttribute('role','radiogroup');
+  const teamChip = makeChip('Team', { active: state.loadViewMode==='team', onClick: ()=> state.setLoadViewMode('team'), role:'radio', ariaChecked: state.loadViewMode==='team' });
+  const projectChip = makeChip('Project', { active: state.loadViewMode==='project', onClick: ()=> state.setLoadViewMode('project'), role:'radio', ariaChecked: state.loadViewMode==='project' });
+  // Open Graph chip shows modal (active if modal present and visible)
+  const modalEl = document.getElementById('mountainViewModal');
+  let modalOpen = false;
+  if(modalEl){ const dsp = modalEl.style.display; if(dsp && dsp !== 'none') modalOpen = true; else { const cs = window.getComputedStyle(modalEl); modalOpen = cs.display !== 'none'; } }
+  const openGraphChip = makeChip('Open Graph', {
+    active: modalOpen,
+    onClick: ()=>{
+      import('./mountainViewModal.js').then(mod => {
+        const modal = document.getElementById('mountainViewModal');
+        const open = modal && modal.style.display !== 'none';
+        if(open){ mod.closeMountainView(); }
+        else {
+          const mode = state.loadViewMode === 'team' ? 'team' : 'project';
+          mod.openMountainView(mode);
+        }
+        // Re-render chips after modal state has changed
+        setTimeout(()=>{ const node = document.getElementById('viewOptionsContainer'); if(node) initViewOptions(node); }, 0);
+      });
+    },
+    role: 'radio',
+    ariaChecked: modalOpen
+  });
+  capGroup.appendChild(teamChip); capGroup.appendChild(projectChip); capGroup.appendChild(openGraphChip);
+  capWrapper.appendChild(capTitle); capWrapper.appendChild(capGroup);
+  root.appendChild(capWrapper);
   // Sort mode
   renderRadioGroup(root, 'Sort', [
     { label:'Rank', active: state.featureSortMode==='rank', onClick: ()=> state.setFeatureSortMode('rank') },
