@@ -61,7 +61,7 @@
 * { box-sizing: border-box; }
 body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var(--color-bg); height:100%; }
 .app-container { display:flex; height:100vh; overflow:hidden; }
-.sidebar { width:var(--sidebar-width); min-width:var(--sidebar-width); background:var(--color-sidebar-bg); color:var(--color-sidebar-text); padding:16px 12px; display:flex; flex-direction:column; gap:18px; position:relative; z-index:var(--z-sidebar); font-size:14px; }
+.sidebar { width:var(--sidebar-width); min-width:var(--sidebar-width); background:var(--color-sidebar-bg); color:var(--color-sidebar-text); padding:16px 12px; display:flex; flex-direction:column; gap:18px; position:relative; z-index:var(--z-sidebar); font-size:14px; overflow-y:auto; padding-bottom:96px; }
 .sidebar h2 { margin:0 0 8px; font-size:1.1rem; }
 .sidebar-section { margin-bottom:12px; }
 .sidebar-section h3 { margin:0 0 6px; font-size:0.93rem; }
@@ -240,10 +240,11 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .list-toggle button:hover { background:rgba(255,255,255,0.03); }
 .toggle-pulse { transform: scale(0.96); box-shadow: 0 0 0 4px rgba(255,255,255,0.04) inset; transition: transform 120ms ease; }
 /* Config button styling and placement */
-.sidebar-config { position:absolute; bottom:12px; left:12px; }
-#openConfigBtn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
+.sidebar-config { position:fixed; bottom:0; left:0; width: var(--sidebar-width); padding-left: 12px; background: var(--color-sidebar-bg); z-index: 1000; }
+/* Ensure footer buttons remain readable on the dark footer background */
+#openConfigBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
 #openConfigBtn:hover { background:#eee; }
-#openHelpBtn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
+#openHelpBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
 #openHelpBtn:hover { background:#eee; }
 .details-panel { width:var(--details-width); background:var(--color-panel-bg); border-left:1px solid var(--color-border); position:fixed; right:0; top:0; bottom:0; padding:22px 18px; box-shadow:-2px 0 8px var(--color-shadow); display:none; flex-direction:column; z-index:var(--z-details); }
 .details-panel.open { display:flex; }
