@@ -27,10 +27,10 @@ function show(feature){
 
   // Build colored team load boxes
   const orgBox = `<span class="team-load-box" style="background:#23344d" title="Org Load">Org: ${feature.orgLoad||'0%'}</span>`;
-  const teamBoxes = feature.teamLoads.map(tl => {
+  const teamBoxes = feature.capacity.map(tl => {
     const t = state.teams.find(x=>x.id===tl.team);
     if(!t) return '';
-    return `<span class="team-load-box" style="background:${t.color}" title="${t.name}">${t.name}: ${tl.load}%</span>`;
+    return `<span class="team-load-box" style="background:${t.color}" title="${t.name}">${t.name}: ${tl.capacity}%</span>`;
   }).join('');
 
   // Determine list of changed fields generically

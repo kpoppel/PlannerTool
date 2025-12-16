@@ -8,24 +8,13 @@ from __future__ import annotations
 from typing import Any, List
 import re
 from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.util import slugify
 import logging
 
 logger = logging.getLogger(__name__)
 
 # File-backed storage used for persisted projects
 #_storage = FileStorageBackend(data_dir="./data")
-
-def slugify(text, prefix: str = "") -> str:
-    """Create a URL-safe slug optionally prefixed.
-
-    Ensures consistent IDs across API responses. When `prefix` is provided,
-    it will be prepended to the slug (e.g., prefix="project-" -> "project-alpha").
-    """
-    text = str(text).lower()
-    text = re.sub(r'[^a-z0-9]+', '-', text)
-    base = text.strip('-')
-    return base
-    return (prefix + base) if prefix else base
 
 def list_projects() -> List[str]:
     """Return a list of project names. """
@@ -89,12 +78,15 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
     items: List[dict] = []
     client = get_client(cfg.azure_devops_organization, pat)
 
-    def _parse_team_loads(description: str | None) -> List[dict]:
-        """Parse team load block from description.
+    def _parse_team_capacity(description: str | None) -> List[dict]:
+        """Parse team capacity block from description.
 
         Expected format:
-        [PlannerTool Team Capacity]\n<short_name>: <percent_load>\n...\n[/PlannerTool Team Capacity]
-        Returns a list of { team, load }.
+        [PlannerTool Team Capacity]
+        <short_name>: <percent_load>
+        ...
+        [/PlannerTool Team Capacity]
+        Returns a list of { team, capacity }.
         """
         if not description or not isinstance(description, str):
             return []
@@ -114,7 +106,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             if not m:
                 return []
             body = m.group(1)
-            loads: List[dict] = []
+            capacity_estimation: List[dict] = []
             for raw_line in (body.splitlines() or []):
                 line = raw_line.strip()
                 if not line:
@@ -127,16 +119,16 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
                     continue
                 team = mm.group(1).strip()
                 try:
-                    load = int(mm.group(2))
+                    capacity = int(mm.group(2))
                 except Exception:
                     continue
                 # Clamp to 0-100
-                if load < 0:
-                    load = 0
-                if load > 100:
-                    load = 100
-                loads.append({"team": team, "load": load})
-            return loads
+                if capacity < 0:
+                    capacity = 0
+                if capacity > 100:
+                    capacity = 100
+                capacity_estimation.append({"team": team, "capacity": capacity})
+            return capacity_estimation
         except Exception:
             return []
 
@@ -162,8 +154,8 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
     wis = []
     items: List[dict] = []
     # TODO: Remove mocking data once we have graphs working successfully.
-    # Helper: backend-side mock team loads using configured team short names
-    def _mock_team_loads() -> List[dict]:
+    # Helper: backend-side mock team capacity using configured team short names
+    def _mock_team_capacity() -> List[dict]:
         # Build pool of canonical frontend team ids (team-<slug(name)>)
         team_ids: List[str] = []
         try:
@@ -181,7 +173,8 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
         for _ in range(min(k, len(pool))):
             idx = random.randrange(len(pool))
             picks.append(pool.pop(idx))
-        return [{"team": p, "load": random.randint(1, 3)} for p in picks]
+        #return [{"team": p, "capacity": 0} for p in picks]
+        return [{"team": p, "capacity": random.randint(1, 2)} for p in picks]
     ###################################
     for p in cfg.project_map:
         name = p.get("name")
@@ -209,12 +202,12 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             # If the item has no scheduled dates place it 4 months prior to allow the user to see what has been scheduled and schedule it.
             today_minus_120 = str((date.today() - timedelta(days=120)).isoformat())
             today_minus_90 = str((date.today() - timedelta(days=90)).isoformat())
-            parsed_loads = _parse_team_loads(wi.get("description"))
-            parsed_loads = [
-                {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "load": entry.get("load", 0)}
-                for entry in parsed_loads
+            parsed_capacity = _parse_team_capacity(wi.get("description"))
+            parsed_capacity = [
+                {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "capacity": entry.get("capacity", 0)}
+                for entry in parsed_capacity
             ]
-            logger.debug(f"Parsed team loads for work item {wi['id']}: {parsed_loads} based on description {wi.get('description')}.")
+            logger.debug(f"Parsed team capacity for work item {wi['id']}: {parsed_capacity} based on description {wi.get('description')}.")
             # Enrich the existing work item dict instead of rebuilding it from scratch.
             # This preserves any additional fields returned by the client and only adds/overrides
             # the computed values we need for the frontend.
@@ -222,7 +215,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             entry["project"] = slugify(name, prefix="project-")
             entry["start"] = entry.get("startDate") or today_minus_120
             entry["end"] = entry.get("finishDate") or today_minus_90
-            entry["teamLoads"] = parsed_loads if parsed_loads else _mock_team_loads()
+            entry["capacity"] = parsed_capacity if parsed_capacity else _mock_team_capacity()
             items.append(entry)
     logger.debug("Returning total %d tasks from all projects", len(items))
     return items

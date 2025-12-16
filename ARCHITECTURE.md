@@ -84,11 +84,11 @@ www/           # Frontend UI files (HTML, CSS, JS)
   - HTML/JS mockups for planning and prototyping UI features.
 
 ### Load Graph (Iterations 3 & 4)
-- **Module:** `www/js/loadGraph.js` renders a stacked, per-day capacity graph aligned to the timeline.
+- **Module:** `www/js/mainGraph.js` renders a stacked, per-day capacity graph aligned to the timeline.
 - **Math:** `www/js/loadMath.js` computes raw daily team loads (Iteration 3) and normalized per-team & per-project daily loads (Iteration 4) while avoiding double counting (epic overlap exclusion when features visible).
 - **Dual View (Iteration 4):** A sidebar toggle switches between Team Load mode (normalized team segments) and Project Load mode (normalized project segments aggregating selected team loads per project). Normalization divides raw percentages by the global number of teams to compute organisational capacity share.
 - **Alignment:** Bars map 1 day → variable pixel width based on month length; `timeline.js` exposes months and visible range; graph renders only the visible viewport.
-- **Events:** Re-renders on `feature:updated`, `projects:changed`, `teams:changed`, `filters:changed`, `timeline:months`, `view:loadMode`, and timeline `scroll`.
+- **Events:** Re-renders on `feature:updated`, `projects:changed`, `teams:changed`, `filters:changed`, `timeline:months`, `view:capacityMode`, and timeline `scroll`.
 - **Scaling:** Adaptive vertical scale: minimum 100%, up to ~200% with headroom; dotted 100% reference line.
 - **Over-capacity:** A red 8px band below the graph marks contiguous spans where organisational load exceeds 100% (normalized total).
 - **Tooltip (Iteration 4):** Delayed hover (400ms) displays date, total organizational load, and segment breakdown (team/project) with normalized percentages; segment boundaries cached per render.

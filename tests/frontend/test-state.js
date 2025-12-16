@@ -67,7 +67,7 @@ assertEqual(state.state.timelineScale, 'months', 'timelineScale default');
 assertEqual(state.state.showEpics, true, 'showEpics default');
 assertEqual(state.state.showFeatures, true, 'showFeatures default');
 assertEqual(state.state.condensedCards, false, 'condensedCards default');
-assertEqual(state.state.loadViewMode, 'team', 'loadViewMode default');
+assertEqual(state.state.capacityViewMode, 'team', 'capacityViewMode default');
 assertEqual(state.state.featureSortMode, 'rank', 'featureSortMode default');
 
 // Test: setProjectSelected and setTeamSelected
@@ -92,9 +92,9 @@ assertEqual(state.state.showFeatures, false, 'setShowFeatures sets value');
 state.state.setCondensedCards(true);
 assertEqual(state.state.condensedCards, true, 'setCondensedCards sets value');
 
-// Test: setLoadViewMode
-state.state.setLoadViewMode('project');
-assertEqual(state.state.loadViewMode, 'project', 'setLoadViewMode sets mode');
+// Test: setcapacityViewMode
+state.state.setcapacityViewMode('project');
+assertEqual(state.state.capacityViewMode, 'project', 'setcapacityViewMode sets mode');
 
 
 // Scenario management tests
@@ -105,7 +105,7 @@ const customScenario = {
     name: 'Custom',
     overrides: {},
     filters: { projects: [], teams: [] },
-    view: { loadViewMode: 'team', condensedCards: false, featureSortMode: 'rank' },
+    view: { capacityViewMode: 'team', condensedCards: false, featureSortMode: 'rank' },
     isChanged: false
 };
 state.state.scenarios = [
@@ -197,11 +197,11 @@ assertEqual(filters.projects.length, 1, 'captureCurrentFilters projects');
 assertEqual(filters.teams.length, 1, 'captureCurrentFilters teams');
 
 // captureCurrentView
-state.state.loadViewMode = 'team';
+state.state.capacityViewMode = 'team';
 state.state.condensedCards = true;
 state.state.featureSortMode = 'rank';
 const view = state.state.captureCurrentView();
-assertEqual(view.loadViewMode, 'team', 'captureCurrentView loadViewMode');
+assertEqual(view.capacityViewMode, 'team', 'captureCurrentView capacityViewMode');
 assertEqual(view.condensedCards, true, 'captureCurrentView condensedCards');
 assertEqual(view.featureSortMode, 'rank', 'captureCurrentView featureSortMode');
 
@@ -214,8 +214,8 @@ state.state.setShowFeatures(true);
 assertEqual(state.state.showFeatures, true, 'setShowFeatures true');
 state.state.setCondensedCards(false);
 assertEqual(state.state.condensedCards, false, 'setCondensedCards false');
-state.state.setLoadViewMode('team');
-assertEqual(state.state.loadViewMode, 'team', 'setLoadViewMode team');
+state.state.setcapacityViewMode('team');
+assertEqual(state.state.capacityViewMode, 'team', 'setcapacityViewMode team');
 state.state.setFeatureSortMode('rank');
 assertEqual(state.state.featureSortMode, 'rank', 'setFeatureSortMode rank');
 

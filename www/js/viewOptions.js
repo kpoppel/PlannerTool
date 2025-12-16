@@ -52,13 +52,18 @@ function renderMultiSelect(container, label, options){
 function renderStateFilter(container){
   const wrapper = document.createElement('div');
   const title = document.createElement('div'); title.className='group-label'; title.textContent = 'State Filter:';
-  const group = document.createElement('div'); group.className='chip-group'; group.setAttribute('role','radiogroup');
-  const sel = state.selectedStateFilter;
-  const allChip = makeChip('All', { active: !sel, onClick: ()=> state.setStateFilter(null), role:'radio', ariaChecked: !sel });
+  const group = document.createElement('div'); group.className='chip-group';
+  // Determine current selection set
+  const selSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter || []);
+  // All/None chip: label toggles between 'All' (when some are deselected) and 'None' when all are selected
+  const allSelected = selSet.size === (state.availableStates || []).length && (state.availableStates || []).length > 0;
+  const anyDeselected = selSet.size < (state.availableStates || []).length;
+  const allLabel = allSelected ? 'None' : 'All';
+  const allChip = makeChip(allLabel, { active: allSelected, onClick: ()=> { state.setAllStatesSelected(!allSelected); }, ariaPressed: allSelected });
   group.appendChild(allChip);
   (state.availableStates || []).forEach(s => {
-    const active = sel === s;
-    const chip = makeChip(s, { active, onClick: ()=> state.setStateFilter(s), role:'radio', ariaChecked: active });
+    const active = selSet.has(s);
+    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active });
     group.appendChild(chip);
   });
   wrapper.appendChild(title); wrapper.appendChild(group);
@@ -77,8 +82,8 @@ export function initViewOptions(container){
   const capWrapper = document.createElement('div');
   const capTitle = document.createElement('div'); capTitle.className = 'group-label'; capTitle.textContent = 'Capacity:';
   const capGroup = document.createElement('div'); capGroup.className = 'chip-group'; capGroup.setAttribute('role','radiogroup');
-  const teamChip = makeChip('Team', { active: state.loadViewMode==='team', onClick: ()=> state.setLoadViewMode('team'), role:'radio', ariaChecked: state.loadViewMode==='team' });
-  const projectChip = makeChip('Project', { active: state.loadViewMode==='project', onClick: ()=> state.setLoadViewMode('project'), role:'radio', ariaChecked: state.loadViewMode==='project' });
+  const teamChip = makeChip('Team', { active: state.capacityViewMode==='team', onClick: ()=> state.setcapacityViewMode('team'), role:'radio', ariaChecked: state.capacityViewMode==='team' });
+  const projectChip = makeChip('Project', { active: state.capacityViewMode==='project', onClick: ()=> state.setcapacityViewMode('project'), role:'radio', ariaChecked: state.capacityViewMode==='project' });
   // Open Graph chip shows modal (active if modal present and visible)
   const modalEl = document.getElementById('mountainViewModal');
   let modalOpen = false;
@@ -91,7 +96,7 @@ export function initViewOptions(container){
         const open = modal && modal.style.display !== 'none';
         if(open){ mod.closeMountainView(); }
         else {
-          const mode = state.loadViewMode === 'team' ? 'team' : 'project';
+          const mode = state.capacityViewMode === 'team' ? 'team' : 'project';
           mod.openMountainView(mode);
         }
         // Re-render chips after modal state has changed

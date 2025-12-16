@@ -36,7 +36,39 @@ count 1/N of the organisation load for N teams.
 case it cannot absorb more work.  To fix a permanently overloaded team, move work out of the team or
 make it larger so the estimated team loads can be adjusted down.  The best solution however is to use
 the tool to schedule work better so the load is distributed better in time.
-  
+
+# Using Azure DevOps the 'right way'
+Using any tool for planning requires discipline and compliance to some rules. The principle of
+"garbage in - garbare out" applies in particular to task/issue tracking sytems like Jira and Azure DevOps.
+In a workflow described by:
+
+  New -> Defined -> Active -> Resolved -> Closed
+
+Each state must convery specific information to the reader. For the purpose of this particular workflow, we
+can define the states as follows:
+
+- New: The task is registered as some future work. It may have a short description or just a title.
+       Start and target dates are not set, and an effort estimate may not be present.
+- Defined: The task has cycled through refinement and has an adequate description to allow spending more time
+       towards breakdown the the level below (Epic to Feature, or Feature to Story). The task must have an
+       estimate of capacity spend and start and target dates must be set initially. All of these may change
+       as part of an iterative learning effort, but the task is plannable.
+- Active: The task receives no longer updates which change the scope of it. Scope changes are expensive once
+       teams are committed to the initial scope. The task remains active throughout development until it
+       is ready for delivery (do have a Definition of Done for setting the quality bar). Dates may change.
+       If capacity spending is changed the program takes this into account as an average effort for the duration
+       of a task. Just remember a large spike for a team in the middle of a long task needs to be split out to
+       keep the team effort data accurate - or just avoid spikes alltogether.
+- Resolved: The task is ready for delivery. Delivery entails ensuring the DoD is complied to, the downstream
+       teams have seen a demo, the feature is accepted and so on.  Only close a task once it is clear it fulfils
+       the needs originally stated.
+- Closed: The program does not fetch closed tasks as this is a forward planning tool. Closed means "done!".
+
+When using the program and definitions like these, you can use the filters in the sidebar to consistently view
+data of interest when building scenarios.
+
+# Detailed Feature Description
+
 ## Left Side panel
 This panel is the main control center. Select viewoptions and which teams and projects to display.
 
@@ -96,10 +128,10 @@ These options are available in both normal and condensed card view modes.
 To utilise the team load function you need to prepare the task for this. In each Epic and Feature ass a block like this in the
 description field:
 
-  [PlannerTool Team Loads]
-  <name>: <percent_load>
+  [PlannerTool Team Capacity]
+  <name>: <percent_capacity_consumed>
   ...
-  [/PlannerTool Team Loads]
+  [/PlannerTool Team Capacity]
 
 Team names are defined in the server backend currently and you can use either the full name as seen in the user interface, or a short
 form.  It is only necessary to include the teams actually participating, so usually there is mostly just a few lines here.
