@@ -43,7 +43,10 @@ Run some requests
     curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/teams
 
 
-# WIP - Planner REST calls (not implemented):
+# WIP - Planner REST calls:
+
+Create a session
+  export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
 
   curl http://localhost:8000/offline/work-items
   curl http://localhost:8000/
@@ -59,6 +62,8 @@ Run some requests
   curl -s -X POST localhost:8000/plan -H 'Content-Type: application/json' -d '{"colors":{"type:Feature":"#00ff00"}}'
   curl -s -X POST localhost:8000/plan/move -H 'Content-Type: application/json' -d '{"id":1,"new_area_path":"Proj\\TeamB"}'
   curl -s -X DELETE localhost:8000/plan/reset
+  # Use the cost estimation endpoint
+  curl -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost | jq
 
 ## Run backend tests (not implemented)
 python -m unittest tests/test_caching_client.py -v
@@ -115,7 +120,7 @@ systemctl start plannertool
     another (like "team-"). This is only to display them in different places. All other handling is the same.
     However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
     A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
-- Way of Working: How to organise data to get capacity graphs correctly displayed:
+- doc: Way of Working: How to organise data to get capacity graphs correctly displayed:
   - Projects only contain Epics.
   - Teams Do not have any Epics. They have Features (maybe someday Enabler type) and below.
   - Project capacity spend is calculated from all Features which are children to those Epics.
@@ -124,6 +129,26 @@ systemctl start plannertool
     - Projects and teams are more or less coincident.
     - Team load should be able to calculate regardless.
     - Project load more difficult.
+- Bug: refreshBaseline called needlessly. (mock called)
+- Bug: state.js line 229 hangs the browser.
+  for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
+- feat:Add filter to sort away tasks without start/target dates.
+  Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
+  TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.
+- feat: Improve filter for task state to be additive not exclusive
+- feat: Make a modal to configure team capacity spend.
+  Iteration 1: Just output the text to put in Azure Devops manually
+  Iteration 2: Make the change when syncing to Azure
+- feature: Cost estimation
+  Based on the calendar people ledger we know the size of our teams and how many externals each team has.
+  Need to enrich the externals with their hourly cost
+  Need to enrich the data with worked hours: permanent: 116 h/month (could be different per site), externals 160h/month
+  Using the capacity estimation calculate this:
+  1. Cost per feature/Epic
+  2. Sum of cost per project (unfinished work)
+  3. Sum of cost this fiscal year (configurable WSA 1/10-31/9)
+  4. Sum of cost all time
+  First iteration: Use the team yaml file to avoid extra data orouces. Use serverside configuration in a separate configuration file for working 
 
 Next:
 
@@ -160,3 +185,9 @@ Solved:
   - If there are no children use the Epic estimates.
   - NOTE: This is now a const variable to do either of these. Default is to ignore Epic if it has children.
 - (/) Finish scenario save/load per user
+- (/) doc: Add to README information about the workflow. Document the use the task states actively:
+  - New: Unplanned work
+  - Defined: Planned work, described adequately for further breakdown
+  - Active: Work in progress, developers assigned, time spent
+  - Resolved: Work completed, reviewed, demo, delivery processing
+  - Closed (not fetched): Task completed.

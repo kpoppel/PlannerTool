@@ -32,6 +32,8 @@ from planner_lib.storage.scenario_store import (
 # Parse CLI args for setup-related actions
 ##########################################
 from planner_lib.setup import parse_args, get_parser, setup
+import os
+
 _setup_args = parse_args(sys.argv[1:])
 if _setup_args.help:
     get_parser().print_help()
@@ -44,9 +46,13 @@ STORE_KEY = "server_config.yml"
 storage = FileStorageBackend()
 storage.configure(mode="text")
 store = YamlConfigStore(storage, namespace=STORE_NS)
-rc = setup(sys.argv[1:], storage, STORE_NS, STORE_KEY)
-if rc != 0:
-    sys.exit(rc)
+# Allow tests and CI to skip interactive setup by setting PLANNERTOOL_SKIP_SETUP=1
+if os.environ.get('PLANNERTOOL_SKIP_SETUP'):
+    rc = 0
+else:
+    rc = setup(sys.argv[1:], storage, STORE_NS, STORE_KEY)
+    if rc != 0:
+        sys.exit(rc)
 
 # Separate storage backend for scenarios (binary pickled objects)
 scenarios_storage = FileStorageBackend()
@@ -258,4 +264,121 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/cost')
+# TODO: This looks like total imagination from the LLM. The frontend can ask for recalculation of a single task's cost.
+async def api_cost_post(request: Request, payload: dict = Body(default={})):
+    # Require a valid session
+    sid = get_session_id(request)
+    logger.debug("Calculating cost for session %s", sid)
+    # try:
+    #     from planner_lib.cost import estimate_costs
+    #     # Payload can include optional 'scenario' and 'revisions'
+    #     scenario = (payload or {}).get('scenario')
+    #     revisions = (payload or {}).get('revisions')
+
+    #     # Bind any available features/tasks from session context for local compute
+    #     ctx = SESSIONS.get(sid) or {}
+    #     # Optionally client may include 'features' in payload to avoid extra calls
+    #     features = (payload or {}).get('features')
+    #     if features is not None:
+    #         ctx = dict(ctx)
+    #         ctx['features'] = features
+
+    #     result = estimate_costs(ctx, scenario=scenario, revisions=revisions)
+    #     return result
+    # except HTTPException:
+    #     raise
+    # except Exception as e:
+    #     logger.exception('Failed to calculate cost: %s', e)
+    #     raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/cost')
+async def api_cost_get(request: Request):
+    # Return calculated cost for all loaded tasks/projects for this session
+    sid = get_session_id(request)
+    logger.debug("Fetching calculated cost for session %s", sid)
+    # Ensure session has user PAT
+    ctx = SESSIONS.get(sid) or {}
+    email = ctx.get('email')
+    pat = ctx.get('pat')
+    if email and not pat:
+        try:
+            loaded = config_manager.load(email)
+            pat = loaded.get('pat')
+            ctx['pat'] = pat
+            SESSIONS[sid] = ctx
+        except Exception as e:
+            logger.exception('Failed to load user config for %s: %s', email, e)
+    try:
+        from planner_lib.projects import list_tasks
+        from planner_lib.cost import estimate_costs
+
+        tasks = list_tasks(pat=pat)
+        # Normalize task data for engine (send only expected fields)
+        features = []
+        for t in tasks or []:
+            features.append({
+                'id': t.get('id'),
+                'project': t.get('project'),
+                'start': t.get('start'),
+                'end': t.get('end'),
+                'capacity': t.get('capacity'),
+            })
+
+        ctx = dict(ctx)
+        ctx['features'] = features
+        res = estimate_costs(ctx)
+        return res
+    except Exception as e:
+        logger.exception('Failed to fetch cost data: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/admin/reload-config')
+async def api_admin_reload_config(request: Request):
+    # Require a valid session (admin-like action requires auth)
+    sid = get_session_id(request)
+    logger.debug("Reloading server and cost configuration for session %s", sid)
+    try:
+        # Reload server configuration (re-run setup load into module state)
+        from planner_lib.setup import YamlConfigStore, setup as _setup
+        from planner_lib.config.config import config_manager
+        from planner_lib.cost import config as cost_config
+        from planner_lib.cost import engine as cost_engine
+
+        # Re-load the server-side stored configuration into setup module state
+        # Use the same storage and keys as application startup
+        store = YamlConfigStore(storage, namespace=STORE_NS)
+        try:
+            cfg = store.load(STORE_KEY)
+            # update the loaded config in setup module
+            from planner_lib import setup as setup_module
+            # directly set the private loaded config for simplicity
+            if hasattr(setup_module, '_loaded_config'):
+                setup_module._loaded_config.clear()
+                setup_module._loaded_config.append(cfg)
+        except Exception:
+            # ignore missing server config during reload
+            logger.debug('No server config present to reload')
+
+        # Reload cost configuration files and invalidate cost caches
+        _ = cost_config.load_cost_config()
+        try:
+            cost_engine.invalidate_team_rates_cache()
+        except Exception:
+            logger.debug('Cost engine cache invalidation not available')
+
+        # Also reload any other dynamic config managers if present
+        try:
+            config_manager.load(request.cookies.get(SESSION_COOKIE) or '')
+        except Exception:
+            pass
+
+        return { 'ok': True }
+    except Exception as e:
+        logger.exception('Failed to reload configuration: %s', e)
         raise HTTPException(status_code=500, detail=str(e))

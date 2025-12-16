@@ -31,7 +31,7 @@ export function initFeatureCards(){
 }
 
 function isProjectSelected(id){ return state.projects.find(p=>p.id===id && p.selected); }
-function isAnyTeamSelected(feature){ return feature.teamLoads.some(tl => state.teams.find(t=>t.id===tl.team && t.selected)); }
+function isAnyTeamSelected(feature){ return feature.capacity.some(tl => state.teams.find(t=>t.id===tl.team && t.selected)); }
 
 function computePosition(feature){
   const months = getTimelineMonths();
@@ -88,7 +88,7 @@ function createCard(feature, idx, sourceFeatures){
   if(!state.condensedCards){
     const teamRow = document.createElement('div'); teamRow.className='team-load-row';
     const orgBox = document.createElement('span'); orgBox.className='team-load-box'; orgBox.style.background='#23344d'; orgBox.textContent = feature.orgLoad || '0%'; teamRow.appendChild(orgBox);
-    feature.teamLoads.forEach(tl=>{ const t= state.teams.find(x=>x.id===tl.team && x.selected); if(!t) return; const box = document.createElement('span'); box.className='team-load-box'; box.style.background = t.color; box.textContent = tl.load; teamRow.appendChild(box); });
+    feature.capacity.forEach(tl=>{ const t= state.teams.find(x=>x.id===tl.team && x.selected); if(!t) return; const box = document.createElement('span'); box.className='team-load-box'; box.style.background = t.color; box.textContent = tl.capacity; teamRow.appendChild(box); });
     card.appendChild(teamRow);
   }
   // Title row with type icon
@@ -169,6 +169,7 @@ function createCard(feature, idx, sourceFeatures){
 
 function renderFeatureBoard(){
   const board = document.getElementById('featureBoard'); if(!board) return; board.innerHTML='';
+  console.debug('[featureBoard] renderFeatureBoard - selectedStates:', state.selectedStateFilter instanceof Set ? Array.from(state.selectedStateFilter) : state.selectedStateFilter);
   let ordered;
   const sourceFeatures = state.getEffectiveFeatures();
   if(state.featureSortMode === 'rank'){
@@ -207,9 +208,12 @@ function renderFeatureBoard(){
   sourceFeatures.forEach(f => { if(f.type==='feature' && f.parentEpic){ if(!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
   for(const f of ordered){
     if(!isProjectSelected(f.project)) continue;
-    // State filter: if selected, only show features matching that state/status
-    const selState = state.selectedStateFilter;
-    if(selState){ const fState = f.status || f.state; if(fState !== selState) continue; }
+    // State filter: multi-select. `selectedStateFilter` is a Set; if empty, treat as no selection (show none)
+    const selStateSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
+    // If the set is empty, treat as 'no selection' => show no features
+    if(selStateSet.size === 0) continue;
+    const fState = f.status || f.state;
+    if(!selStateSet.has(fState)) continue;
     if(f.type === 'epic' && !state.showEpics) continue;
     if(f.type === 'feature' && !state.showFeatures) continue;
     if(f.type === 'epic'){

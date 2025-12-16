@@ -3,8 +3,8 @@ import { dataService } from './dataService.js';
 import { PALETTE } from './colorManager.js';
 
 // Epic capacity handling modes:
-// 'ignoreIfHasChildren' - Ignore epic teamLoads entirely if the epic has any children
-// 'fillGapsIfNoChildCoversDate' - Use epic teamLoads only on days where no child feature covers the date
+// 'ignoreIfHasChildren' - Ignore epic capacity entirely if the epic has any children
+// 'fillGapsIfNoChildCoversDate' - Use epic capacity only on days where no child feature covers the date
 const EPIC_CAPACITY_MODE = 'ignoreIfHasChildren';
 
 class State {
@@ -23,7 +23,7 @@ class State {
    *     project: string,
    *     start: string, // ISO date
    *     end: string,   // ISO date
-   *     teamLoads: Array<{ team: string, load: number }>,
+   *     capacity: Array<{ team: string, load: number }>,
    *     orgLoad: number,
    *     status: string,
    *     assignee: string,
@@ -42,7 +42,7 @@ class State {
    *     name: string,
    *     overrides: { [featureId: string]: { start: string, end: string } },
    *     filters: { projects: Array<string>, teams: Array<string> },
-   *     view: { loadViewMode: string, condensedCards: boolean, featureSortMode: string },
+   *     view: { capacityViewMode: string, condensedCards: boolean, featureSortMode: string },
    *     ischanged: boolean
    *   }
    * activeScenarioId: string (currently active scenario's id)
@@ -50,7 +50,7 @@ class State {
    * showEpics: boolean (UI filter)
    * showFeatures: boolean (UI filter)
    * condensedCards: boolean (UI view option)
-   * loadViewMode: string ('team' | 'project')
+   * capacityViewMode: string ('team' | 'project')
    * featureSortMode: string ('date' | 'rank')
    * autosaveTimer: Interval handle for autosave
    * autosaveIntervalMin: number (autosave interval in minutes)
@@ -69,7 +69,7 @@ class State {
     this.showEpics = true;
     this.showFeatures = true;
     this.condensedCards = false;
-    this.loadViewMode = 'team';
+    this.capacityViewMode = 'team';
     this.featureSortMode = 'rank';
     this.showDependencies = false;
     this.scenarios = [];
@@ -79,21 +79,26 @@ class State {
     // Capacity metrics over time (computed from baseline/scenario)
     // projectDailyCapacityRaw — raw per-project sums (sum of team loads; sums to org total).
     // projectDailyCapacity — normalized per-project values (raw / N_teams), suitable for showing project share without double-counting teams.
-    // totalOrgDailyLoad — raw total org spend per day (sum of project raw).
-    // totalOrgDailyPerTeamAvg — totalOrgDailyLoad / N_teams.
+    // totalOrgDailyCapacity — raw total org spend per day (sum of project raw).
+    // totalOrgDailyPerTeamAvg — totalOrgDailyCapacity / N_teams.
     this.capacityDates = []; // ISO date strings spanning min(start)..max(end)
     this.teamDailyCapacity = []; // Array of arrays: per day N-tuple of team capacities
+    this.teamDailyCapacityMap = []; // Array of objects: per day { <teamId>: value }
     this.projectDailyCapacityRaw = []; // raw sums per project (sum of team loads)
+    this.projectDailyCapacityMap = []; // Array of objects: per day { <projectId>: value }
     this.projectDailyCapacity = []; // normalized per-project (divided by number of teams)
-    this.totalOrgDailyLoad = []; // Array: per day total org capacity (sum of project raw tuple)
-    this.totalOrgDailyPerTeamAvg = []; // totalOrgDailyLoad divided by number of teams
+    this.totalOrgDailyCapacity = []; // Array: per day total org capacity (sum of project raw tuple)
+    this.totalOrgDailyPerTeamAvg = []; // totalOrgDailyCapacity divided by number of teams
     // Indexes for fast lookup
     this.baselineFeatureById = new Map();
     this.childrenByEpic = new Map();
     // Available work item states discovered after loading baseline
     this.availableStates = [];
-    // Currently selected state filter (null means show all)
-    this.selectedStateFilter = null;
+    // Currently selected state filter. Use a Set for multiselect. When empty,
+    // no states are selected (shows nothing). Default will be populated to
+    // include all available states after baseline load so that by default
+    // all states are visible.
+    this.selectedStateFilter = new Set();
     // Setup autosave if configured
     dataService.getLocalPref('autosave.interval').then(initialAutosave => {
       if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
@@ -165,10 +170,10 @@ class State {
     const teams = state.teams || [];
     const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
     let sum = 0;
-    for (const tl of feature.teamLoads || []) {
+    for (const tl of feature.capacity || []) {
       const t = teams.find(x => x.id === tl.team && x.selected);
       if (!t) continue;
-      sum += tl.load;
+      sum += tl.capacity;
     }
     return (sum / numTeamsGlobal).toFixed(1) + '%';
   }  
@@ -197,6 +202,10 @@ class State {
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     // Compute available states from baseline features
     this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    // Default selection: select all available states unless user has an explicit selection
+    if(!(this.selectedStateFilter && this.selectedStateFilter.size)){
+      this.selectedStateFilter = new Set(this.availableStates);
+    }
     this.initBaselineScenario();
     await this.initColors();
     this.emitScenarioList();
@@ -207,7 +216,7 @@ class State {
     bus.emit('feature:updated');
     // Compute capacity metrics for charts/analytics
     this.recomputeCapacityMetrics();
-    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   async refreshBaseline() {
@@ -237,6 +246,10 @@ class State {
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     // Recompute available states
     this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    // If there is no explicit selection, default to selecting all discovered states
+    if(!(this.selectedStateFilter && this.selectedStateFilter.size)){
+      this.selectedStateFilter = new Set(this.availableStates);
+    }
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
     this.emitScenarioList();
@@ -247,12 +260,42 @@ class State {
     bus.emit('feature:updated');
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
-    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   setStateFilter(stateName){
-    this.selectedStateFilter = stateName || null;
-    bus.emit('filters:changed', { selectedStateFilter: this.selectedStateFilter });
+    // Backwards-compatible wrapper: if `null` is passed, select all states;
+    // otherwise set single-state selection (legacy behavior).
+    if(stateName === null){
+      this.selectedStateFilter = new Set(this.availableStates || []);
+    } else {
+      this.selectedStateFilter = new Set(stateName ? [stateName] : []);
+    }
+    bus.emit('filters:changed', { selectedStateFilter: Array.from(this.selectedStateFilter) });
+    bus.emit('feature:updated');
+  }
+
+  // Toggle a single state's selection on/off
+  toggleStateSelected(stateName){
+    if(!stateName) return;
+    if(this.selectedStateFilter.has(stateName)) this.selectedStateFilter.delete(stateName);
+    else this.selectedStateFilter.add(stateName);
+    console.debug('[state] toggleStateSelected ->', Array.from(this.selectedStateFilter));
+    // Recompute capacity metrics (graphs) whenever state filter changes
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit('filters:changed', { selectedStateFilter: Array.from(this.selectedStateFilter) });
+    bus.emit('feature:updated');
+  }
+
+  // Select or clear all states
+  setAllStatesSelected(selectAll){
+    if(selectAll){ this.selectedStateFilter = new Set(this.availableStates || []); }
+    else { this.selectedStateFilter = new Set(); }
+    // Recompute capacity metrics (graphs) when toggling all/none
+    this.recomputeCapacityMetrics();
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit('filters:changed', { selectedStateFilter: Array.from(this.selectedStateFilter) });
     bus.emit('feature:updated');
   }
 
@@ -321,7 +364,7 @@ class State {
     this.emitScenarioUpdated(active.id, { type:'overrideBatch', count: updates.length });
     // Recompute capacity metrics after overrides batch update
     this.recomputeCapacityMetrics();
-    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity });
     bus.emit('feature:updated');
     console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
   }
@@ -340,7 +383,7 @@ class State {
       this.emitScenarioUpdated(active.id, { type:'overrideField', featureId:id, field });
       // Recompute capacity metrics after single-field override change
       this.recomputeCapacityMetrics();
-      bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
+      bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity });
       bus.emit('feature:updated');
     }
   }
@@ -356,7 +399,7 @@ class State {
     this.emitScenarioUpdated(active.id, { type:'revert', featureId:id });
     // Recompute capacity metrics after revert
     this.recomputeCapacityMetrics();
-    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity });
     bus.emit('feature:updated');
   }
 
@@ -364,14 +407,22 @@ class State {
     const p = this.projects.find(x=>x.id===id);
     if(p) {
       p.selected = selected;
-      bus.emit('projects:changed', this.projects); 
+      // Recompute capacity metrics to reflect project filter changes
+      this.recomputeCapacityMetrics();
+      bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+      bus.emit('projects:changed', this.projects);
+      bus.emit('feature:updated');
     }
   }
 
   setTeamSelected(id, selected) {
     const t = this.teams.find(x=>x.id===id);
     if(t) { t.selected = selected;
+      // Recompute capacity metrics to reflect team filter changes
+      this.recomputeCapacityMetrics();
+      bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
       bus.emit('teams:changed', this.teams);
+      bus.emit('feature:updated');
     }
   }
 
@@ -403,11 +454,11 @@ class State {
     bus.emit('feature:updated');
   }
 
-  setLoadViewMode(mode) {
+  setcapacityViewMode(mode) {
     if(mode !== 'team' && mode !== 'project') return;
-    if(this.loadViewMode === mode) return;
-    this.loadViewMode = mode;
-    bus.emit('view:loadMode', this.loadViewMode);
+    if(this.capacityViewMode === mode) return;
+    this.capacityViewMode = mode;
+    bus.emit('view:capacityMode', this.capacityViewMode);
     bus.emit('feature:updated');
   }
 
@@ -429,7 +480,7 @@ class State {
 
   captureCurrentView() {
     return {
-      loadViewMode: this.loadViewMode,
+      capacityViewMode: this.capacityViewMode,
       condensedCards: this.condensedCards,
       featureSortMode: this.featureSortMode
     };
@@ -514,7 +565,7 @@ class State {
     this.emitScenarioActivated();
     // Recompute capacity metrics to reflect active scenario overrides
     this.recomputeCapacityMetrics();
-    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyLoad: this.totalOrgDailyLoad });
+    bus.emit('capacity:updated', { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity });
     bus.emit('feature:updated');
   }
 
@@ -598,13 +649,39 @@ class State {
   recomputeCapacityMetrics(){
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
+    // Respect current UI selection filters when computing capacity metrics.
+    // If the user has selected one or more projects/teams, only include those;
+    // if none are selected, treat it as 'all selected' to preserve previous behavior.
+    const selectedProjectIds = new Set((this.projects || []).filter(p => p.selected).map(p => p.id));
+    const selectedTeamIds = new Set((this.teams || []).filter(t => t.selected).map(t => t.id));
+    const filterProjects = selectedProjectIds.size > 0;
+    const filterTeams = selectedTeamIds.size > 0;
+    const selectedStateIds = this.selectedStateFilter instanceof Set ? this.selectedStateFilter : new Set(this.selectedStateFilter || []);
+    const filterStates = selectedStateIds.size > 0;
+
+    // If the user has explicitly deselected all teams, projects, or states,
+    // show no capacity data rather than treating empty selection as 'all'.
+    if ((this.projects && this.projects.length > 0 && selectedProjectIds.size === 0) ||
+        (this.teams && this.teams.length > 0 && selectedTeamIds.size === 0) ||
+        (selectedStateIds && selectedStateIds.size === 0)){
+      this.capacityDates = [];
+      this.teamDailyCapacity = [];
+      this.teamDailyCapacityMap = [];
+      this.projectDailyCapacityRaw = [];
+      this.projectDailyCapacity = [];
+      this.projectDailyCapacityMap = [];
+      this.totalOrgDailyCapacity = [];
+      this.totalOrgDailyPerTeamAvg = [];
+      console.debug('[state] recomputeCapacityMetrics - empty selection -> cleared metrics');
+      return;
+    }
     // Use effective features based on the active scenario (overrides applied)
     const features = this.getEffectiveFeatures();
     if(!teams.length || !features.length || !projects.length){
       this.capacityDates = [];
       this.teamDailyCapacity = [];
       this.projectDailyCapacity = [];
-      this.totalOrgDailyLoad = [];
+      this.totalOrgDailyCapacity = [];
       return;
     }
 
@@ -620,7 +697,7 @@ class State {
       this.capacityDates = [];
       this.teamDailyCapacity = [];
       this.projectDailyCapacity = [];
-      this.totalOrgDailyLoad = [];
+      this.totalOrgDailyCapacity = [];
       return;
     }
 
@@ -652,17 +729,24 @@ class State {
     const totalOrgDaily = new Array(dates.length);
 
     // For efficient lookup, bucket features by day span
-    // Given instruction, capacity for a team on a day is sum of teamLoads.load
+    // Given instruction, capacity for a team on a day is sum of capacity.load
     // for all features whose date range covers that day.
     for(let di=0; di<dates.length; di++){
       const dayIso = dates[di];
       const teamTuple = new Array(teams.length).fill(0);
       const projectTuple = new Array(projects.length).fill(0);
+      const teamMap = {};
+      const projectMap = {};
       // Sum per team
       for(const f of features){
         if(!f || !f.start || !f.end) continue;
         // day within [start,end]
         if(dayIso < f.start || dayIso > f.end) continue;
+        // Respect project selection: if filtering and this feature's project is not selected, skip
+        if(filterProjects && !selectedProjectIds.has(f.project)) continue;
+        // Respect state selection: if filtering and this feature's state/status is not selected, skip
+        const fState = f.status || f.state;
+        if(filterStates && !selectedStateIds.has(fState)) continue;
         // Epic capacity handling
         if(f.type === 'epic'){
           if(EPIC_CAPACITY_MODE === 'ignoreIfHasChildren'){
@@ -682,23 +766,29 @@ class State {
             }
           }
         }
-        const tls = f.teamLoads || [];
+        const tls = f.capacity || [];
         for(const tl of tls){
+          // Respect team selection: if filtering and this team isn't selected, skip its contribution
+          if(filterTeams && !selectedTeamIds.has(tl.team)) continue;
           const ti = teamIndexById.get(tl.team);
           if(ti !== undefined){
-            const load = Number(tl.load) || 0;
+            const load = Number(tl.capacity) || 0;
             teamTuple[ti] += load;
+              teamMap[tl.team] = (teamMap[tl.team] || 0) + load;
           }
           // Project capacity: add all team loads for the feature to the owning project
           const pi = projectIndexById.get(f.project);
           if(pi !== undefined){
-            const load = Number(tl.load) || 0;
+            const load = Number(tl.capacity) || 0;
             projectTuple[pi] += load;
+              projectMap[f.project] = (projectMap[f.project] || 0) + load;
           }
         }
       }
       teamDaily[di] = teamTuple;
+      this.teamDailyCapacityMap[di] = teamMap;
       projectDaily[di] = projectTuple;
+      this.projectDailyCapacityMap[di] = projectMap;
       const sumProjects = projectTuple.reduce((a,b)=>a+b,0);
       totalOrgDaily[di] = sumProjects;
     }
@@ -712,17 +802,20 @@ class State {
     // Assign computed arrays to state
     this.capacityDates = dates;
     this.teamDailyCapacity = teamDaily;
+    // ensure map arrays length matches
+    this.teamDailyCapacityMap = this.teamDailyCapacityMap.slice(0, teamDaily.length);
     this.projectDailyCapacityRaw = projectDaily;            // raw sums (sum of team loads)
     this.projectDailyCapacity = projectDailyNormalized;    // normalized per-project (per-team average)
-    this.totalOrgDailyLoad = totalOrgDaily;                // raw total org spend (sum of projectDailyCapacityRaw)
-    this.totalOrgDailyPerTeamAvg = totalOrgDailyPerTeamAvg; // totalOrgDailyLoad / nTeams
+    this.projectDailyCapacityMap = this.projectDailyCapacityMap.slice(0, projectDaily.length);
+    this.totalOrgDailyCapacity = totalOrgDaily;                // raw total org spend (sum of projectDailyCapacityRaw)
+    this.totalOrgDailyPerTeamAvg = totalOrgDailyPerTeamAvg; // totalOrgDailyCapacity / nTeams
 
     console.debug('[state] recomputeCapacityMetrics - computed', dates.length, 'days of capacity metrics');
     console.debug('[state] capacityDates:', this.capacityDates);
     console.debug('[state] teamDailyCapacity:', this.teamDailyCapacity);
     console.debug('[state] projectDailyCapacityRaw:', this.projectDailyCapacityRaw);
     console.debug('[state] projectDailyCapacity (normalized):', this.projectDailyCapacity);
-    console.debug('[state] totalOrgDailyLoad (raw):', this.totalOrgDailyLoad);
+    console.debug('[state] totalOrgDailyCapacity (raw):', this.totalOrgDailyCapacity);
     console.debug('[state] totalOrgDailyPerTeamAvg:', this.totalOrgDailyPerTeamAvg);
   }
 }

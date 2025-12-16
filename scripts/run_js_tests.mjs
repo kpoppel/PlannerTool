@@ -12,12 +12,12 @@ const uiTestNames = [
   'test-colorManager.js',
   'test-condensedView.js',
   'test-featureOrder.js',
-  'test-loadGraph.js',
+  'test-mainGraph.js',
   'test-scenarios.js',
   'test-state-functional.js',
   'test-state-extra.js',
   'test-state-branches.js',
-  'test-loadViewMode.js',
+  'test-capacityViewMode.js',
   // Add more as needed
 ];
 

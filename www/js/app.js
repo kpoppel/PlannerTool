@@ -5,7 +5,7 @@ import { initDetailsPanel } from './detailsPanel.js';
 import { initColorManager } from './colorManager.js';
 import { bus } from './eventBus.js';
 import { state } from './state.js';
-import { initLoadGraph } from './loadGraph.js';
+import { initmainGraph } from './mainGraph.js';
 import { initDependencyRenderer } from './dependencyRenderer.js';
 
 async function init(){
@@ -28,7 +28,7 @@ async function init(){
     initFeatureCards();
     initDetailsPanel();
     initColorManager();
-    initLoadGraph();
+    initmainGraph();
     initDependencyRenderer();
     hideModal();
     bus.emit('app:ready');

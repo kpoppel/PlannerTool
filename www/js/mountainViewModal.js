@@ -154,11 +154,14 @@ function computeDailyTotals(mode, sDate, eDate){
   // when the user has selected none, show no graph for that view.
   const selectedTeams = teams.filter(t=>t.selected).map(t=>t.id);
   const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
-  const teamSetSelected = new Set(selectedTeams);
+  const selectedStates = (state.selectedStateFilter instanceof Set) ? Array.from(state.selectedStateFilter) : (state.selectedStateFilter ? [state.selectedStateFilter] : []);
   const projectSetSelected = new Set(selectedProjects);
+  const teamSetSelected = new Set(selectedTeams);
+  const stateSetSelected = new Set(selectedStates);
   // If there are no selections relevant to the current mode, return no data so render shows no graph
   if(mode === 'project' && projectSetSelected.size === 0) return { days: 0, totals: [] };
   if(mode === 'team' && teamSetSelected.size === 0) return { days: 0, totals: [] };
+  if(stateSetSelected.size === 0) return { days: 0, totals: [] };
 
   const days = daysBetween(sDate, eDate);
 
@@ -205,7 +208,7 @@ function computeDailyTotals(mode, sDate, eDate){
   const projectDayMap = new Map();
 
   const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
-  // Helper to add values. Team loads are stored as raw percentages (do NOT divide by numTeamsGlobal).
+  // Helper to add values. Team capacity spend is stored as raw percentages (do NOT divide by numTeamsGlobal).
   function addRawTeam(dayIdx, teamId, raw){
     if(dayIdx < 0 || dayIdx >= days) return;
     if(!teamDayMap.has(dayIdx)) teamDayMap.set(dayIdx, {});
@@ -226,7 +229,10 @@ function computeDailyTotals(mode, sDate, eDate){
   const startMs = new Date(sDate).setHours(0,0,0,0);
   const msPerDay = 24*60*60*1000;
 
-  for(const item of effective){
+    for(const item of effective){
+      // Respect state selection: skip items whose state is not selected when stateSetSelected has entries
+      const itemState = item.status || item.state;
+      if(stateSetSelected.size > 0 && !stateSetSelected.has(itemState)) continue;
     const isEpic = item.type === 'epic';
     if(!projectSetSelected.has(item.project)) continue;
     const itemStart = new Date(item.start).setHours(0,0,0,0);
@@ -241,14 +247,14 @@ function computeDailyTotals(mode, sDate, eDate){
         const currentDayMs = startMs + d * msPerDay;
         const coveredByChild = showFeatures && childRanges.some(r => currentDayMs >= r.s && currentDayMs <= r.e);
         if(coveredByChild) continue;
-        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
+        for(const tl of item.capacity || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.capacity); addNormalizedProject(d, item.project, tl.capacity); }
       }
     } else {
       if(!showFeatures) continue;
       const startIdx = Math.max(0, Math.floor((Math.max(itemStart, startMs) - startMs)/msPerDay));
       const endIdx = Math.min(days-1, Math.floor((Math.min(itemEnd, new Date(eDate).setHours(0,0,0,0)) - startMs)/msPerDay));
       for(let d = startIdx; d <= endIdx; d++){
-        for(const tl of item.teamLoads || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.load); addNormalizedProject(d, item.project, tl.load); }
+        for(const tl of item.capacity || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.capacity); addNormalizedProject(d, item.project, tl.capacity); }
       }
     }
   }
@@ -616,6 +622,8 @@ export function closeMountainView(){
 bus.on('projects:changed', ()=>{ scheduleRender(); });
 bus.on('teams:changed', ()=>{ scheduleRender(); });
 bus.on('states:changed', ()=>{ scheduleRender(); });
-bus.on('view:loadMode', (mode)=>{ currentMode = mode; scheduleRender(); });
+bus.on('view:capacityMode', (mode)=>{ currentMode = mode; scheduleRender(); });
 // Re-render when filters change (e.g., toggling Epics/Features)
 bus.on('filters:changed', ()=>{ scheduleRender(); });
+// Re-render when capacity metrics recompute (selection changes)
+bus.on('capacity:updated', ()=>{ scheduleRender(); });

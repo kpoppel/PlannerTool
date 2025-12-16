@@ -222,8 +222,8 @@ function renderTeams(){
   state.teams.forEach(t=>{
     const li = document.createElement('li');
     li.className='sidebar-list-item';
-    const epicsCount = state.baselineFeatures.filter(f => f.type==='epic' && f.teamLoads.some(tl=>tl.team===t.id)).length;
-    const featuresCount = state.baselineFeatures.filter(f => f.type==='feature' && f.teamLoads.some(tl=>tl.team===t.id)).length;
+    const epicsCount = state.baselineFeatures.filter(f => f.type==='epic' && f.capacity.some(tl=>tl.team===t.id)).length;
+    const featuresCount = state.baselineFeatures.filter(f => f.type==='feature' && f.capacity.some(tl=>tl.team===t.id)).length;
     const wrapper = document.createElement('div'); wrapper.className = 'chip sidebar-chip'; wrapper.style.display = 'flex'; wrapper.style.alignItems = 'stretch'; wrapper.style.gap = '8px'; wrapper.style.width = '100%';
     const color = document.createElement('span'); color.className = 'color-dot'; color.style.background = t.color; color.setAttribute('data-color-id', t.id); color.setAttribute('aria-hidden','true');
     const labelWrap = document.createElement('div'); labelWrap.style.display='flex'; labelWrap.style.alignItems='center'; labelWrap.style.gap='8px'; labelWrap.style.flex='1';
@@ -358,7 +358,7 @@ function onSidebarChange(e){
   if(e.target.id==='filterEpics'){ state.setShowEpics(e.target.checked); }
   if(e.target.id==='filterFeatures'){ state.setShowFeatures(e.target.checked); }
   if(e.target.id==='showDependencies'){ state.setShowDependencies(e.target.checked); }
-  if(e.target.name==='loadViewMode' && e.target.checked){ state.setLoadViewMode(e.target.value); }
+  if(e.target.name==='capacityViewMode' && e.target.checked){ state.setcapacityViewMode(e.target.value); }
   if(e.target.name==='featureSortMode' && e.target.checked){ import('./state.js').then(m=> m.state.setFeatureSortMode(e.target.value)); }
 }
 

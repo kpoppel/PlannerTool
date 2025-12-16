@@ -1,13 +1,13 @@
 import { state } from './state.js';
 import { bus } from './eventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './timeline.js';
-import { computeDailyLoadMaps } from './loadMath.js';
+//TODO clean: import { computeDailyCapacityMaps } from './loadMath.js';
 
 // Constants sourced from centralized timeline config
 const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth; // keep in sync with CSS var --timeline-month-width
 
 function getTimelineSection(){ return document.getElementById('timelineSection'); }
-function getCanvas(){ return document.getElementById('loadGraphCanvas'); }
+function getCanvas(){ return document.getElementById('mainGraphCanvas'); }
 
 function dateToIndex(months, date){
   // Map a Date to a continuous day index from the first month start
@@ -95,6 +95,16 @@ function render(){
   const orgTotalsProject = new Map();
   const selectedTeamIds = new Set((state.teams || []).filter(t=>t.selected).map(t=>t.id));
   const selectedProjectIds = new Set((state.projects || []).filter(p=>p.selected).map(p=>p.id));
+  // If user has explicitly deselected all teams or projects, or no states are selected,
+  // treat as no data and avoid drawing the graph (matches project deselection behavior).
+  const stateSelSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
+  if ((state.teams && state.teams.length > 0 && selectedTeamIds.size === 0) ||
+      (state.projects && state.projects.length > 0 && selectedProjectIds.size === 0) ||
+      (stateSelSet && stateSelSet.size === 0)){
+    // clear previous cache and leave canvas blank
+    daySegmentsCache = [];
+    return;
+  }
   for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
     const date = indexToDate(months, d);
     const iso = date.toISOString().slice(0,10);
@@ -107,25 +117,40 @@ function render(){
       orgTotalsProject.set(d, 0);
       continue;
     }
-    // Team bucket: use raw team values (percent per team), include only selected teams
-    const tTuple = teamDaily[idx] || [];
+    // Team bucket: prefer precomputed per-day map if present
     const teamBucket = {};
     let maxTeamVal = 0;
-    for(let i=0;i<state.teams.length;i++){
-      const team = state.teams[i];
-      const v = (tTuple[i] || 0);
-      // respect selection: if the team is not selected, treat its value as 0
-      teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
-      if(selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
+    const dayTeamMap = (state.teamDailyCapacityMap && state.teamDailyCapacityMap[idx]) || null;
+    if(dayTeamMap){
+      for(const team of state.teams){
+        const v = dayTeamMap[team.id] || 0;
+        teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
+        if(selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
+      }
+    } else {
+      const tTuple = teamDaily[idx] || [];
+      for(let i=0;i<state.teams.length;i++){
+        const team = state.teams[i];
+        const v = (tTuple[i] || 0);
+        teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
+        if(selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
+      }
     }
     teamDayMap.set(d, teamBucket);
     // Project bucket: already normalized in state.projectDailyCapacity
-    const pTuple = projectDaily[idx] || [];
     const projectBucket = {};
-    for(let i=0;i<state.projects.length;i++){
-      const project = state.projects[i];
-      // respect selection: if the project is not selected, value is 0
-      projectBucket[project.id] = selectedProjectIds.has(project.id) ? (pTuple[i] || 0) : 0;
+    const dayProjectMap = (state.projectDailyCapacityMap && state.projectDailyCapacityMap[idx]) || null;
+    if(dayProjectMap){
+      for(const project of state.projects){
+        const v = dayProjectMap[project.id] || 0;
+        projectBucket[project.id] = selectedProjectIds.has(project.id) ? (v / Math.max(1, nTeams)) : 0;
+      }
+    } else {
+      const pTuple = projectDaily[idx] || [];
+      for(let i=0;i<state.projects.length;i++){
+        const project = state.projects[i];
+        projectBucket[project.id] = selectedProjectIds.has(project.id) ? (pTuple[i] || 0) : 0;
+      }
     }
     projectDayMap.set(d, projectBucket);
     // Totals
@@ -133,10 +158,18 @@ function render(){
     orgTotalsTeam.set(d, maxTeamVal);
     // For project view compute total only from selected projects (per-team average values)
     let totalPerTeam = 0;
-    for(let i=0;i<state.projects.length;i++){
-      const proj = state.projects[i];
-      if(!selectedProjectIds.has(proj.id)) continue;
-      totalPerTeam += (projectDaily[idx] && projectDaily[idx][i]) ? projectDaily[idx][i] / Math.max(1, nTeams) : 0;
+    // Compute project total per-team average using available map or tuple
+    if(dayProjectMap){
+      for(const pid of Object.keys(dayProjectMap)){
+        if(!selectedProjectIds.has(pid)) continue;
+        totalPerTeam += (dayProjectMap[pid] || 0) / Math.max(1, nTeams);
+      }
+    } else {
+      for(let i=0;i<state.projects.length;i++){
+        const proj = state.projects[i];
+        if(!selectedProjectIds.has(proj.id)) continue;
+        totalPerTeam += (projectDaily[idx] && projectDaily[idx][i]) ? projectDaily[idx][i] / Math.max(1, nTeams) : 0;
+      }
     }
     orgTotalsProject.set(d, totalPerTeam);
   }
@@ -161,7 +194,7 @@ function render(){
   }
 
   // Prepare chosen day map & totals based on view mode
-  const usingTeam = state.loadViewMode === 'team';
+  const usingTeam = state.capacityViewMode === 'team';
   const chosenMap = usingTeam ? teamDayMap : projectDayMap;
   const chosenTotals = usingTeam ? orgTotalsTeam : orgTotalsProject;
 
@@ -326,18 +359,19 @@ function render(){
   // }
 }
 
-export function initLoadGraph(){
+export function initmainGraph(){
   // Initial render after app ready
   let scheduled = false;
   function scheduleRender(){ if(!scheduled){ scheduled = true; requestAnimationFrame(()=>{ scheduled = false; render(); }); } }
   scheduleRender();
   // Re-render on data and viewport changes (throttled)
   bus.on('feature:updated', scheduleRender);
+  bus.on('capacity:updated', scheduleRender);
   bus.on('projects:changed', scheduleRender);
   bus.on('teams:changed', scheduleRender);
   bus.on('filters:changed', scheduleRender);
   bus.on('timeline:months', scheduleRender);
-  bus.on('view:loadMode', scheduleRender);
+  bus.on('view:capacityMode', scheduleRender);
   const section = getTimelineSection();
   if(section){ section.addEventListener('scroll', scheduleRender, { passive: true }); }
   const canvas = getCanvas();
