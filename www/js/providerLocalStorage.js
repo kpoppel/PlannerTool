@@ -49,11 +49,6 @@ export class ProviderLocalStorage {
         // Simulate annotation of selected overrides in localStorage
         return { ok: true, annotatedAt: new Date().toISOString(), count: selectedOverrides.length };
     }
-    async refreshBaseline() {
-        this.logCall('refreshBaseline', arguments);
-        // Simulate baseline refresh in localStorage
-        return { ok: true, refreshedAt: new Date().toISOString() };
-    }
     async saveScenario(scenario) {
         this.logCall('saveScenario', arguments);
         // Save scenario to localStorage

@@ -115,23 +115,11 @@ systemctl start plannertool
 - Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
   Teams and projects in Azure is a floating thing. It is all tasks with an area path associated. Only the area path
   sets projects and teams apart. In our context we should only put "Epics" in projects, and only "Features" (and below") in teams.
-  - Require clean up in Azure to stramline this.
+  - Require clean up in Azure to streamline this.
   - In the backend and frontend refactor so that "projects" are those with some id prefix (like 'project-') and teams with 
     another (like "team-"). This is only to display them in different places. All other handling is the same.
     However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
     A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
-- doc: Way of Working: How to organise data to get capacity graphs correctly displayed:
-  - Projects only contain Epics.
-  - Teams Do not have any Epics. They have Features (maybe someday Enabler type) and below.
-  - Project capacity spend is calculated from all Features which are children to those Epics.
-  - Team capacity spend is calculated from all Features where the team is mentioned.
-  - Right now:
-    - Projects and teams are more or less coincident.
-    - Team load should be able to calculate regardless.
-    - Project load more difficult.
-- Bug: refreshBaseline called needlessly. (mock called)
-- Bug: state.js line 229 hangs the browser.
-  for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
 - feat:Add filter to sort away tasks without start/target dates.
   Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
   TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.
@@ -191,3 +179,13 @@ Solved:
   - Active: Work in progress, developers assigned, time spent
   - Resolved: Work completed, reviewed, demo, delivery processing
   - Closed (not fetched): Task completed.
+- (/) Bug: state.js line 229 hangs the browser. (Reason: an event handler was created again and again)
+- (/) doc: Way of Working: How to organise data to get capacity graphs correctly displayed:
+  - Projects only contain Epics.
+  - Teams Do not have any Epics. They have Features (maybe someday Enabler type) and below.
+  - Project capacity spend is calculated from all Features which are children to those Epics.
+  - Team capacity spend is calculated from all Features where the team is mentioned.
+  - Right now:
+    - Projects and teams are more or less coincident.
+    - Team load should be able to calculate regardless.
+    - Project load more difficult.

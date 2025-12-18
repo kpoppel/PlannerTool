@@ -8,7 +8,6 @@ const mockDataService = {
     getFeatures: async () => ([
         {id: 'f1', start: '2025-01-01', end: '2025-02-01', title: 'Feature1', type: 'feature'}
     ]),
-    refreshBaseline: async () => {},
     saveScenario: async () => {}
 };
 
@@ -34,16 +33,6 @@ try {
     console.error('FAIL: initState threw error');
 }
 
-// Test async refreshBaseline
-try {
-    await state.state.refreshBaseline();
-    assertEqual(Array.isArray(state.state.baselineProjects), true, 'refreshBaseline sets baselineProjects');
-    assertEqual(Array.isArray(state.state.baselineTeams), true, 'refreshBaseline sets baselineTeams');
-    assertEqual(Array.isArray(state.state.baselineFeatures), true, 'refreshBaseline sets baselineFeatures');
-    console.log('PASS: refreshBaseline does not throw');
-} catch (e) {
-    console.error('FAIL: refreshBaseline threw error');
-}
 // Test file for state.js
 // Run with scripts/run_js_tests.mjs
 
