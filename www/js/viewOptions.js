@@ -121,14 +121,6 @@ export function initViewOptions(container){
   ]);
   // State filter
   renderStateFilter(root);
-
-  // Re-render state filter when availableStates change
-  bus.on('states:changed', ()=>{
-    const node = document.getElementById('viewOptionsContainer');
-    if(!node) return;
-    // Rebuild only the state filter portion: simplest is full re-init to sync active flags
-    initViewOptions(node);
-  });
 }
 
 function reinit(){
@@ -136,3 +128,11 @@ function reinit(){
   if(!node) return;
   initViewOptions(node);
 }
+
+// Register the states:changed listener only once at module level
+bus.on('states:changed', ()=>{
+  const node = document.getElementById('viewOptionsContainer');
+  if(!node) return;
+  // Rebuild only the state filter portion: simplest is full re-init to sync active flags
+  initViewOptions(node);
+});
