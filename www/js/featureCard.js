@@ -93,7 +93,7 @@ function createCard(feature, idx, sourceFeatures){
   }
   // Title row with type icon
   const titleRow = document.createElement('div'); titleRow.className='title-row';
-  const typeIcon = document.createElement('span'); typeIcon.className='type-icon ' + (feature.type === 'epic' ? 'epic' : 'feature');
+  const typeIcon = document.createElement('span'); typeIcon.className='feature-card-icon ' + (feature.type === 'epic' ? 'epic' : 'feature');
   if(feature.type === 'epic') {
     // Yellow crown emoji
     typeIcon.textContent = '👑';
