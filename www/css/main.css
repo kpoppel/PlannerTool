@@ -189,6 +189,9 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
   white-space:nowrap;
   text-overflow:ellipsis;
 }
+.feature-card-icon.epic { color:#ffcf33; margin-left: 0px; margin-top: 5px; font-size: 14px}
+.feature-card-icon.feature { color:#7e3ff2; margin-left: 0px; margin-top: 5px;}
+.feature-card-icon svg { width:16px; height:16px; display:block; }
 .feature-card.selected { box-shadow:0 4px 16px rgba(0,0,0,0.18); }
 .feature-card.dirty { background:#ffe5c2; }
 .feature-card.diff-baseline { border-bottom: 4px solid orange;   padding:10px 10px 8px 10px; }
