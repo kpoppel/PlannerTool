@@ -37,7 +37,14 @@ case it cannot absorb more work.  To fix a permanently overloaded team, move wor
 make it larger so the estimated team loads can be adjusted down.  The best solution however is to use
 the tool to schedule work better so the load is distributed better in time.
 
-# Using Azure DevOps the 'right way'
+# Recommendation for using Azure DevOps consistently for best results.
+
+These are the recommended guidelines for using states, types and area paths to get the most out of
+both this software and vanilla Azure DevOps as far as building projects from a single platform where
+multiple teams are involved.
+
+## Use of states - semantics matter
+
 Using any tool for planning requires discipline and compliance to some rules. The principle of
 "garbage in - garbare out" applies in particular to task/issue tracking sytems like Jira and Azure DevOps.
 In a workflow described by:
@@ -66,6 +73,28 @@ can define the states as follows:
 
 When using the program and definitions like these, you can use the filters in the sidebar to consistently view
 data of interest when building scenarios.
+
+## Use of the hierarchy
+
+For a hierarchy arranged as `Epic -> Feature/Enabler -> Story/Bug -> Task` it is recommended to 'reserve' hierarchy for
+specific purposes.  Here the recommendation is to do as follows:
+
+1. Epics are reserved for product deliveries.  These are the big picture blocks where multiple teams deliver their part
+   to combine into a completed delivery.  Epics describe a wanted outcome from a combination of sub-systems in for example
+   a software platform.
+2. Features/Enablers, Stories/Bugs and Tasks are reserved for development teams. For a given Epic each development team has
+   zero or more Features which defines the contribution(s) the team has.  Each Feature is broken down into as much detail
+   as the team needs to ensure proper design and quality.
+
+Do not mix these two by adding an Epic in one path as child of another Epic in another path.
+
+## Use of Azure DevOps 'area paths'
+
+The recommendation is to have one path per product containing Epics related to that specific product. This makes it
+easy to identify work related to a single product at a time.
+For development teams it is likewise recommended to have one path per development backlog. If there are multiple teams
+working from the same development backlog, do not create more paths as tasks will have less tendency to flow between
+teams in the same domain.
 
 # Detailed Feature Description
 
