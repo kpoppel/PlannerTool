@@ -167,7 +167,7 @@ class State {
 // Compute organization load for a feature based on selected teams.
 // Returns a percentage string like '45.0%'.
   computeFeatureOrgLoad(feature) {
-    const teams = state.teams || [];
+    const teams = this.teams || [];
     const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
     let sum = 0;
     for (const tl of feature.capacity || []) {
@@ -226,24 +226,23 @@ class State {
     const features = await dataService.getFeatures();
     this.baselineProjects = projects.map(p=>({ ...p }));
     this.baselineTeams = teams.map(t=>({ ...t }));
-    this.baselineFeatures = features.map(f=>({ ...f }));
-    Object.freeze(this.baselineProjects);
-    Object.freeze(this.baselineTeams);
-    Object.freeze(this.baselineFeatures);
-    this.originalFeatureOrder = this.baselineFeatures.map(f=>f.id);
-    this.baselineFeatures.forEach((f,i)=>{ f.originalRank = i; });
-    // Rebuild lookup maps
-    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
-    this.childrenByEpic = new Map();
-    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
-    // Refresh working copies (preserve selection flags if exist)
+    // Refresh working copies FIRST (preserve selection flags if exist) so computeFeatureOrgLoad has correct team selection
     const selectedProjects = new Set(this.projects.filter(p=>p.selected).map(p=>p.id));
     const selectedTeams = new Set(this.teams.filter(t=>t.selected).map(t=>t.id));
     this.projects = this.baselineProjects.map(p=>({ ...p, selected: selectedProjects.has(p.id) }));
     this.teams = this.baselineTeams.map(t=>({ ...t, selected: selectedTeams.has(t.id) }));
-    // Precompute orgLoad on refreshed baseline features after restoring selections
+    // Build baseline features with all properties in one pass (originalRank and orgLoad)
+    this.baselineFeatures = features.map((f, i) => ({ ...f, originalRank: i, orgLoad: this.computeFeatureOrgLoad(f) }));
+    this.originalFeatureOrder = this.baselineFeatures.map(f=>f.id);
+    // Rebuild lookup maps
+    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
+    this.childrenByEpic = new Map();
+    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
+    // Now freeze baseline copies after all modifications are complete
+    Object.freeze(this.baselineProjects);
+    Object.freeze(this.baselineTeams);
+    Object.freeze(this.baselineFeatures);
     this.initBaselineScenario();
-    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     // Recompute available states
     this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     // If there is no explicit selection, default to selecting all discovered states
