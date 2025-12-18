@@ -143,12 +143,6 @@ export class ProviderREST {
         }catch(err){ return { ok:false, error: String(err) }; }
     }
 
-    async refreshBaseline() {
-        // Example: refresh baseline via REST API (stub)
-        // return fetch('/api/baseline/refresh').then(res => res.json());
-        return { ok: true, refreshedAt: new Date().toISOString() };
-    }
-
     async checkHealth() {
         // Perform an actual fetch to /api/health and return parsed JSON.
         try {

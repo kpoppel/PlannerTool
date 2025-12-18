@@ -93,26 +93,6 @@ export class ProviderMock {
         this.logCall('publishBaseline', res);
         return res;
     }
-    async refreshBaseline() {
-        this.logCall('refreshBaseline', arguments);
-        this.features = this.features.map(f => {
-            if (f.original) {
-                const reverted = { ...f, ...f.original };
-                reverted.changedFields = [];
-                reverted.dirty = false;
-                return reverted;
-            }
-            return f;
-        });
-        // Mark scenarios stale if overrides reference missing features
-        const featureIds = new Set(this.features.map(f => f.id));
-        for (const s of this.scenarios) {
-            if (!s.isLive) {
-                s.stale = Object.keys(s.overrides || {}).some(fid => !featureIds.has(fid));
-            }
-        }
-        return { features: await this.getFeatures() };
-    }
 
     async saveScenario(scenario) {
         this.logCall('saveScenario', arguments);

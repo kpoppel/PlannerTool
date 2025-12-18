@@ -19,7 +19,6 @@ function delay(ms){ return new Promise(res => setTimeout(res, ms)); }
  * @property {function(string,string,string):Promise<Object>} updateFeatureDates
  * @property {function(string,string,any):Promise<Object>} updateFeatureField
  * @property {function(Array<{id:string,start:string,end:string}>):Promise<Array<Object>>} batchUpdateFeatureDates
- * @property {function():Promise<{features:Array, diff?:Object}>} refreshBaseline
  * @property {function(Object):Promise<Object>} saveScenario
  * @property {function(string, Array<string>=):Promise<Object>} annotateScenario
  * @property {function(string):Promise<boolean>} deleteScenario
@@ -72,7 +71,6 @@ class DataService {
     async getScenario(id) { return this.providers['rest'].getScenario(id); }
     async deleteScenario(id) { return this.providers['rest'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['rest'].renameScenario(id, name); }
-    async refreshBaseline() { return this.providers['mock'].refreshBaseline(); }
     async saveScenario(scenario) { return this.providers['rest'].saveScenario(scenario); }
 }
 

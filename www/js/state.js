@@ -220,7 +220,7 @@ class State {
   }
 
   async refreshBaseline() {
-    await dataService.refreshBaseline();
+    // Fetch fresh data from backend
     const projects = await dataService.getProjects();
     const teams = await dataService.getTeams();
     const features = await dataService.getFeatures();

@@ -59,9 +59,6 @@ console.log('Running dataService.js tests...');
         const publishBaseline = await dataService.dataService.publishBaseline([]);
         assertEqual(typeof publishBaseline, 'object', 'publishBaseline returns object');
 
-        const refreshBaseline = await dataService.dataService.refreshBaseline();
-        assertEqual(typeof refreshBaseline, 'object', 'refreshBaseline returns object');
-
         const saveScenario = await dataService.dataService.saveScenario({id:'live',name:'Live',overrides:{},filters:{},view:{}});
         assertEqual(typeof saveScenario, 'object', 'saveScenario returns object');
 
