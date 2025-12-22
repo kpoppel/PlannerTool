@@ -1,0 +1,14 @@
+{
+  "modules": [
+    {
+      "id": "sample-plugin",
+      "name": "Sample Plugin",
+      "version": "1.0.0",
+      "description": "A minimal example plugin used for smoke tests",
+      "path": "../plugins/SamplePlugin.js",
+      "export": "SamplePlugin",
+      "autoActivate": true,
+      "dependencies": []
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1000" height="480" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480">
+  <title>Component to Event flow</title>
+  <desc>Simplified flow diagram illustrating how UI components emit events to the EventBus, which are handled by services that request data from providers.</desc>
+  <style>
+    .node { fill:#ffffff; stroke:#1f2a33; stroke-width:1; }
+    .title { font: bold 13px sans-serif; fill:#102030; }
+    .label { font: 12px sans-serif; fill:#102030; }
+    .arrow { stroke:#1f2a33; stroke-width:2; fill:none; marker-end: url(#arrow-comp); }
+  </style>
+  <defs>
+    <marker id="arrow-comp" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2a33" />
+    </marker>
+  </defs>
+
+  <!-- Nodes -->
+  <rect x="40" y="40" width="250" height="100" class="node" rx="6"/>
+  <text x="60" y="64" class="title">Components (Lit)</text>
+  <text x="60" y="86" class="label">FeatureCard, Timeline, Sidebar</text>
+
+  <rect x="380" y="40" width="240" height="100" class="node" rx="6"/>
+  <text x="400" y="64" class="title">EventBus</text>
+  <text x="400" y="86" class="label">Typed events (EventRegistry)</text>
+
+  <rect x="40" y="180" width="250" height="120" class="node" rx="6"/>
+  <text x="60" y="204" class="title">Services</text>
+  <text x="60" y="228" class="label">State, FilterManager, ScenarioManager</text>
+
+  <rect x="380" y="220" width="240" height="80" class="node" rx="6"/>
+  <text x="400" y="244" class="title">FeatureService</text>
+  <text x="400" y="266" class="label">Computes effective features</text>
+
+  <rect x="720" y="40" width="220" height="120" class="node" rx="6"/>
+  <text x="740" y="64" class="title">Data Providers</text>
+  <text x="740" y="86" class="label">REST / LocalStorage / Mock</text>
+
+  <!-- Arrows -->
+  <path d="M290 90 L380 90" class="arrow" />
+  <path d="M620 90 L720 90" class="arrow" />
+
+  <path d="M160 140 L160 180" class="arrow" />
+  <path d="M500 140 L500 220" class="arrow" />
+  <path d="M500 300 L720 260" class="arrow" />
+
+  <!-- Labels -->
+  <text x="320" y="74" class="label">emit / on</text>
+  <text x="540" y="78" class="label">requests</text>
+  <text x="210" y="170" class="label">invoke service APIs</text>
+  <text x="520" y="250" class="label">getEffectiveFeatures()</text>
+
+  <text x="60" y="320" class="label">Diagram: Component → EventBus → Services → Providers flow (simplified)</text>
+</svg>
