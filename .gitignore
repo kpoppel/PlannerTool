@@ -15,17 +15,12 @@ ENV/
 
 # VS Code
 .vscode/
+.github/
+.copilot-phase.yml
 
 # Node.js
 node_modules/
 package-lock.json
-
-# Coverage
-coverage/
-*.cover
-*.coverage
-*.cov
-*.log
 
 # Temporary files
 *.tmp
@@ -44,11 +39,20 @@ Thumbs.db
 mockups/
 mockups/**
 
-# Test output
-www/js/tests/*.log
+# Configutation files
 data/
 data/**
-dev.html
+backup/
+backup/**
+
+# Test output
+test-results/
+test-results/**
+coverage/
+*.cover
+*.coverage
+*.cov
+*.log
 
 # Ignore markdown drafts
 [0-9]*-*.md
@@ -60,3 +64,4 @@ Notes.md
 
 # Ignore other temp files
 *.tmp
+tests/e2e/storageState.json

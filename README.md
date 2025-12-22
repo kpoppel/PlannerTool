@@ -25,7 +25,7 @@ The server will run a setup first time. If you need to run the setup again, eith
 - Run tests without coverage
   `node ./scripts/run_js_tests.mjs`
 
-## Run a sessinon from CLI
+# Run a session from CLI
 export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" \
   -d '{"email":"user@example.com"}' \
   localhost:8000/api/session | jq -r .sessionId)
@@ -37,33 +37,41 @@ Create a configuration
       -d '{"email":"user@example.com", "pat":"YOUR PAT"}' \
       localhost:8000/api/session
 
-Run some requests
-    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/projects
-    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/tasks
-    curl -s -H "X-Session-Id: $SESSION_ID" localhost:8000/api/teams
+Run browser based tests:
+source .venv/bin/activate && npx playwright test [modal-interactions.spec.js](http://_vscodecontentref_/4) --config=playwright.smoke.config.js --project=chromium --reporter=list
 
-
-# WIP - Planner REST calls:
+# Planner REST calls:
 
 Create a session
   export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
 
-  curl http://localhost:8000/offline/work-items
-  curl http://localhost:8000/
-  curl -X POST http://localhost:8000/config/refresh
-  curl http://localhost:8000/area-paths
-  curl http://localhost:8000/area-paths/tree
-  curl http://localhost:8000/area-paths/projects
-  curl http://localhost:8000/area-paths/teams
-  curl http://localhost:8000/health
-  curl http://localhost:8000/config
-  curl "http://localhost:8000/work-items?paths=Platform_Development\\eSW\\Teams\\Architecture"
-  curl -s localhost:8000/plan
-  curl -s -X POST localhost:8000/plan -H 'Content-Type: application/json' -d '{"colors":{"type:Feature":"#00ff00"}}'
-  curl -s -X POST localhost:8000/plan/move -H 'Content-Type: application/json' -d '{"id":1,"new_area_path":"Proj\\TeamB"}'
-  curl -s -X DELETE localhost:8000/plan/reset
-  # Use the cost estimation endpoint
-  curl -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost | jq
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/health
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/config
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/projects
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/teams
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario?id=
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/admin/reload-config
+
+
+## Scenario POST data example:
+{"op":"save","data":{"id":"scen_1766146121427_4976","name":"12-19 Scenario 1","overrides":{"516154":{"start":"2025-10-24","end":"2025-11-23"},"516364":{"start":"2025-10-24","end":"2025-11-23"},"516412":{"start":"2025-10-24","end":"2025-11-23"},"516413":{"start":"2025-10-24","end":"2025-11-23"},"516419":{"start":"2025-10-24","end":"2025-11-23"},"534751":{"start":"2025-10-24","end":"2025-11-23"},"535825":{"start":"2025-10-24","end":"2025-11-23"},"682664":{"start":"2025-12-17","end":"2026-06-22"},"688048":{"start":"2026-04-19","end":"2026-05-19"},"688049":{"start":"2026-02-20","end":"2026-04-18"},"688050":{"start":"2025-12-26","end":"2026-02-19"},"688051":{"start":"2026-05-23","end":"2026-06-22"}},"filters":{"projects":["project-a","project-b"],"teams":["team-a","team-b","team-c","team-d"]},"view":{"capacityViewMode":"team","condensedCards":false,"featureSortMode":"rank"}}}
+
+## Scenario GET data example:
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
+
+[{"id":"scen_1766146121427_4976","user":"user@example.com","shared":false}]
+
+## Scenario GET data with scenario ID example:
+curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario?id=scen_1766146121427_4976
+
+{"id":"scen_1766146121427_4976","name":"12-19 Scenario 1","overrides":{"516154":{"start":"2025-10-24","end":"2025-11-23"},"516364":{"start":"2025-10-24","end":"2025-11-23"},"516412":{"start":"2025-10-24","end":"2025-11-23"},"516413":{"start":"2025-10-24","end":"2025-11-23"},"516419":{"start":"2025-10-24","end":"2025-11-23"},"534751":{"start":"2025-10-24","end":"2025-11-23"},"535825":{"start":"2025-10-24","end":"2025-11-23"},"682664":{"start":"2025-12-17","end":"2026-06-22"},"688048":{"start":"2026-04-19","end":"2026-05-19"},"688049":{"start":"2026-02-20","end":"2026-04-18"},"688050":{"start":"2025-12-26","end":"2026-02-19"},"688051":{"start":"2026-05-23","end":"2026-06-22"}},"filters":{"projects":["project-a","project-b"],"teams":["team-a","team-b","team-c","team-d"]},"view":{"capacityViewMode":"team","condensedCards":false,"featureSortMode":"rank"}}
+
 
 ## Run backend tests (not implemented)
 python -m unittest tests/test_caching_client.py -v

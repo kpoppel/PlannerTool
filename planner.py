@@ -120,10 +120,6 @@ async def root():
     with open("www/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
-@app.get("/dev", response_class=HTMLResponse)
-async def dev_page():
-    return FileResponse("www/dev.html")
-
 @app.get("/api/health")
 async def api_health():
     return get_health()
