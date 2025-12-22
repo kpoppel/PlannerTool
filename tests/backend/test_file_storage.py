@@ -3,19 +3,12 @@ import shutil
 from planner_lib.storage.file_backend import FileStorageBackend
 
 
-def setup_module(module):
-    # ensure a clean data directory for tests
-    if os.path.exists("./data_test"):
-        shutil.rmtree("./data_test")
-
-
-def teardown_module(module):
-    if os.path.exists("./data_test"):
-        shutil.rmtree("./data_test")
-
-
-def test_save_load_delete_and_list_keys():
-    b = FileStorageBackend(data_dir="./data_test")
+def test_save_load_delete_and_list_keys(tmp_path):
+    data_dir = str(tmp_path / "data_test")
+    # ensure a clean directory
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+    b = FileStorageBackend(data_dir=data_dir)
     ns = "unittest"
     key = "item1"
     value = {"x": 1}
