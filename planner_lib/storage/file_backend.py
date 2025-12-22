@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class FileStorageBackend(StorageBackend):
     def __init__(self, data_dir: str | Path = "./data") -> None:
+        logger.debug("Initializing with data_dir=%s", data_dir)
         if not os.path.exists(data_dir):
             os.makedirs(data_dir, exist_ok=True)
         self.data_dir = Path(data_dir)

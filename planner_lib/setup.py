@@ -16,7 +16,6 @@ import yaml
 from planner_lib.storage.base import StorageBackend
 from getpass import getpass
 
-from planner_lib.azure import get_client
 
 DEFAULT_AREA_PATH = '/'
 DEFAULT_AZURE_ORG = "YOUR_ORG_HERE"
@@ -28,6 +27,19 @@ def get_loaded_config() -> Optional[BackendConfig]:
     """Return the loaded BackendConfig if available, otherwise None."""
     return _loaded_config[0] if _loaded_config else None
 
+def has_feature_flag(flag: str) -> bool:
+    """Return True if the loaded config has the given feature flag enabled."""
+    cfg = get_loaded_config()
+    if cfg and cfg.feature_flags:
+        return bool(cfg.feature_flags.get(flag, False))
+    return False
+
+def get_property(prop: str) -> Any:
+    """Return the value of a property from the loaded config, or None."""
+    cfg = get_loaded_config()
+    if cfg and hasattr(cfg, prop):
+        return getattr(cfg, prop)
+    return None
 
 def get_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
@@ -56,6 +68,8 @@ def create_template(store, namespace, key) -> tuple[bool, str]:
         area_paths=[],
         project_map=[],
         team_map=[],
+        feature_flags={},
+        data_dir='data',
     )
     store.save(key, tpl_cfg)
     return True, f"Wrote template server config storage {namespace}/{key}"
@@ -67,6 +81,7 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
         pat = getpass("Azure DevOps Personal Access Token (input hidden): ")
         organization = input(f"Azure DevOps Organization [{DEFAULT_AZURE_ORG}]: ") or DEFAULT_AZURE_ORG
         try:
+            from planner_lib.azure import get_client
             client = get_client(organization, pat)
         except Exception as e:
             return False, f"Azure client init failed: {e}"
@@ -96,6 +111,8 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
             area_paths=paths,
             project_map=[],
             team_map=[],
+            feature_flags={},
+            data_dir='data',
         )
         # Save configuration template with area paths and reload to add project mappings
         store.save(key, tpl_cfg)
@@ -146,6 +163,8 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
             area_paths=cfg.area_paths,
             project_map=proj_map,
             team_map=team_map,
+            feature_flags=cfg.feature_flags,
+            data_dir=cfg.data_dir,
         )
         store.save(key, new_cfg)
         return True, f"Wrote template server config with {len(paths)} area paths to storage {namespace}/{key}"
@@ -215,6 +234,8 @@ class BackendConfig:
     area_paths: List[str]
     project_map: List[Dict[str, str]]
     team_map: List[Dict[str, str]]
+    feature_flags: Dict[str, Any]
+    data_dir: str
 
 
 class YamlConfigStore:
@@ -246,7 +267,9 @@ class YamlConfigStore:
 
         return BackendConfig(
             azure_devops_organization=data["azure_devops_organization"],
+            feature_flags=data.get("feature_flags", {}),
             area_paths=list(data.get("area_paths", [])),
             project_map=list(data.get("project_map", [])),
             team_map=list(data.get("team_map", [])),
+            data_dir=data.get("data_dir", "data"),
         )
