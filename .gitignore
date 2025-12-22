@@ -40,15 +40,13 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# HTML/JS build artifacts
-mockups/
-mockups/**
-
 # Test output
 www/js/tests/*.log
 data/
 data/**
-dev.html
+.last_run.json
+test-results/
+tests/e2e/storageState.json
 
 # Ignore markdown drafts
 [0-9]*-*.md
@@ -60,3 +58,6 @@ Notes.md
 
 # Ignore other temp files
 *.tmp
+backup/
+.github/
+.copilot-phase.yml

@@ -38,10 +38,13 @@ def test_save_and_load_roundtrip():
     store = YamlConfigStore(backend)
 
     cfg = BackendConfig(
-        azure_devops_url="https://dev.azure.com/org",
-        root_area_path="\\Area",
+        azure_devops_organization="https://dev.azure.com/org",
         area_paths=["\\Area\\A", "\\Area\\B"],
-        area_to_project={"\\Area\\A": "ProjectA", "\\Area\\B": "ProjectB"},
+        project_map=[
+            {"name": "ProjectA", "area_path": "\\Area\\A"},
+            {"name": "ProjectB", "area_path": "\\Area\\B"},
+        ],
+        team_map=[],
     )
 
     store.save("project_config.yml", cfg)

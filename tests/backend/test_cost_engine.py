@@ -6,7 +6,7 @@ from planner_lib.cost import engine as cost_engine
 def test_estimate_costs_empty():
     # Provide a minimal config so the service doesn't attempt to read files
     cfg = {
-        'cost': {'working_hours': [], 'internal_cost': {'default_hourly_rate': 0}, 'external_cost': {}},
+        'cost': {'working_hours': {}, 'internal_cost': {'default_hourly_rate': 0}, 'external_cost': {}},
         'database': {'people': []}
     }
     # monkeypatch load_cost_config and clear cached team rates
@@ -37,9 +37,9 @@ def test_estimate_costs_simple_feature(monkeypatch):
     # Provide a minimal cost/database config so calculations are deterministic
     cfg = {
         'cost': {
-            'working_hours': [
-                {'HQ': {'internal': 160, 'external': 0}}
-            ],
+            'working_hours': {
+                'HQ': {'internal': 160, 'external': 0}
+            },
             'internal_cost': {'default_hourly_rate': 50},
             'external_cost': {'default_hourly_rate': 120, 'external': []},
         },
@@ -70,7 +70,7 @@ def test_engine_calculate_direct():
     # Direct test of calculate with explicit config and capacity
     cfg = {
         'cost': {
-            'working_hours': [{'HQ': {'internal': 160, 'external': 0}}],
+            'working_hours': {'HQ': {'internal': 160, 'external': 0}},
             'internal_cost': {'default_hourly_rate': 60},
             'external_cost': {'default_hourly_rate': 150, 'external': []},
         },
