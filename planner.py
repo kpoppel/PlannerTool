@@ -2,21 +2,50 @@ from fastapi import FastAPI
 import logging
 import sys
 from pathlib import Path
+import yaml
+import os
 
-# configure basic logging for the backend
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+# Load server config early so we can configure the root logger at the intended
+# level before other modules are imported or initialized.
+logging.basicConfig(level=logging.NOTSET, format='%(asctime)s INFO %(message)s')
+DEFAULT_LOG_LEVEL = logging.WARNING
+try:
+    cfg_path = Path('data/config/server_config.yml')
+    if cfg_path.exists():
+        with cfg_path.open('r', encoding='utf-8') as _f:
+            _cfg = yaml.safe_load(_f) or {}
+            _lvl = _cfg.get('log_level')
+            if isinstance(_lvl, str):
+                _numeric = getattr(logging, _lvl.upper(), None)
+                if isinstance(_numeric, int):
+                    DEFAULT_LOG_LEVEL = _numeric
+except Exception:
+    # If yaml missing or invalid, fall back to DEFAULT_LOG_LEVEL
+    logging.exception('Failed to load server configuration for logging setup')
+    pass
+logging.log(100, f'[planner]: Log level set to: {logging.getLevelName(DEFAULT_LOG_LEVEL)}')
+
+# configure basic logging for the backend using the early-configured level
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+logging.basicConfig(level=DEFAULT_LOG_LEVEL, format='%(asctime)s %(levelname)s [%(name)s]: %(message)s')
+logger = logging.getLogger(__name__)
+# Keep known noisy libraries quiet by default
 logging.getLogger('azure.devops.client').setLevel(logging.WARNING)
 logging.getLogger('azure').setLevel(logging.WARNING)
 logging.getLogger('msrest').setLevel(logging.WARNING)
 logging.getLogger('requests').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
-logger = logging.getLogger('planner')
+logger.info("Starting AZ Planner Server")
+
+# FastAPI imports
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException, Request, Response
 from fastapi import Body
 import uuid
 
+# Application imports
 from planner_lib.config.health import get_health
 from planner_lib.config.config import config_manager, AccountPayload
 from planner_lib.storage.file_backend import FileStorageBackend
