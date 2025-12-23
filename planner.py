@@ -5,6 +5,8 @@ from pathlib import Path
 import yaml
 import os
 
+from planner_lib.plugins.middleware import BrotliCompressionMiddleware
+
 # Load server config early so we can configure the root logger at the intended
 # level before other modules are imported or initialized.
 logging.basicConfig(level=logging.NOTSET, format='%(asctime)s INFO %(message)s')
@@ -60,7 +62,7 @@ from planner_lib.storage.scenario_store import (
 
 # Parse CLI args for setup-related actions
 ##########################################
-from planner_lib.setup import parse_args, get_parser, setup
+from planner_lib.setup import parse_args, get_parser, setup, has_feature_flag
 import os
 
 _setup_args = parse_args(sys.argv[1:])
@@ -83,14 +85,21 @@ else:
     if rc != 0:
         sys.exit(rc)
 
+## Setup is complete, setup middlewares, routing, and start the FastAPI app
+###########################################################################
+app = FastAPI(title="AZ Planner Server")
+
+# Add Brotli compression middleware if feature flag is enabled
+if has_feature_flag('planner_use_brotli'):
+    logger.info("Brotli compression middleware is enabled")
+    from planner_lib.plugins.middleware import BrotliCompressionMiddleware
+    #Register Brotli middleware (wrap app at ASGI layer)
+    app.add_middleware(BrotliCompressionMiddleware)
+
 # Separate storage backend for scenarios (binary pickled objects)
 scenarios_storage = FileStorageBackend()
 # Use pickle mode for binary objects
 scenarios_storage.configure(mode="pickle")
-
-## Setup is complete, setup routing, and start the FastAPI app
-##############################################################
-app = FastAPI(title="AZ Planner Dev Server")
 
 # Serve static UI from www/ under /static
 app.mount("/static", StaticFiles(directory="www"), name="static")
