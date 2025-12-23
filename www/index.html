@@ -8,29 +8,18 @@
   <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
-  <div id="loading-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-content">
-      <div class="spinner"></div>
-      <div id="loading-label">Loading ...</div>
-    </div>
-  </div>
+  <modal-spinner id="appSpinner"></modal-spinner>
   <div id="app" class="app-container">
-    <aside id="sidebar" class="sidebar" aria-label="Projects and Teams"></aside>
-    <main id="main" class="main">
-      <section id="mainGraphSection" class="main-graoh" aria-label="Organisational Load Graph">
-        <canvas id="mainGraphCanvas"></canvas>
+    <app-sidebar></app-sidebar>
+    <main class="main">
+      <section aria-label="Organisational Load Graph">
+        <maingraph-lit></maingraph-lit>
       </section>
       <section id="timelineSection" class="timeline-section" aria-label="Timeline and Features">
-        <header id="timelineHeader" class="timeline-header" role="row"></header>
-        <div id="featureBoard" class="feature-board" role="list"></div>
+        <timeline-lit class="timeline-header" role="row"></timeline-lit>
+        <feature-board id="featureBoard" class="feature-board"></feature-board>
       </section>
-      <!-- Mountain View Modal placeholder: actual modal DOM is created by JS when opened -->
-      <div id="mountainViewModal" class="mountain-modal" style="display:none;"></div>
     </main>
-    <aside id="detailsPanel" class="details-panel" aria-label="Work Item Details" hidden>
-      <button id="detailsCloseBtn" class="details-close" aria-label="Close details">&times;</button>
-      <div id="detailsContent" class="details-content"></div>
-    </aside>
   </div>
   <script type="module" src="js/app.js"></script>
 </body>
