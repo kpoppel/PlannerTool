@@ -70,7 +70,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
 
     cfg = get_loaded_config()
     if not cfg or not getattr(cfg, "project_map", None):
-        logger.warning("No configured projects found in server config")
+        logger.error("No configured projects found in server config")
         return []
 
     # Initialize Azure client using URL and interactive/token-less flow is not supported here.
@@ -207,7 +207,8 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
                 {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "capacity": entry.get("capacity", 0)}
                 for entry in parsed_capacity
             ]
-            logger.debug(f"Parsed team capacity for work item {wi['id']}: {parsed_capacity} based on description {wi.get('description')}.")
+            # TODO: Very noisy:
+            #logger.debug(f"Parsed team capacity for work item {wi['id']}: {parsed_capacity} based on description {wi.get('description')}.")
             # Enrich the existing work item dict instead of rebuilding it from scratch.
             # This preserves any additional fields returned by the client and only adds/overrides
             # the computed values we need for the frontend.
