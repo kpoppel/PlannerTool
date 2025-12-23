@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600">
+  <title>PlannerTool architecture overview</title>
+  <desc>Layered diagram showing Presentation, Core, Services and Data Providers for PlannerTool web application.</desc>
+  <style>
+    .box { fill:#f6f9fc; stroke:#2b3b4a; stroke-width:1; }
+    .title { font: bold 16px sans-serif; fill:#102030; }
+    .label { font: 13px sans-serif; fill:#102030; }
+    .layer { font: bold 14px sans-serif; fill:#ffffff; }
+    .arrow { stroke:#2b3b4a; stroke-width:2; fill:none; marker-end: url(#arrow-arch); }
+  </style>
+  <defs>
+    <marker id="arrow-arch" markerWidth="10" markerHeight="10" refX="10" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2b3b4a" />
+    </marker>
+  </defs>
+
+  <!-- Layers -->
+  <rect x="40" y="40" width="1120" height="120" class="box" rx="8"/>
+  <text x="60" y="70" class="title">Presentation Layer</text>
+  <text x="60" y="95" class="label">Lit components (www/js/components/*.lit.js) — FeatureCard, Timeline, Sidebar, Modals</text>
+
+  <rect x="40" y="180" width="1120" height="120" class="box" rx="8"/>
+  <text x="60" y="210" class="title">Core / Orchestration</text>
+  <text x="60" y="235" class="label">EventBus, EventRegistry, PluginManager, ServiceRegistry (www/js/core)</text>
+
+  <rect x="40" y="320" width="1120" height="120" class="box" rx="8"/>
+  <text x="60" y="350" class="title">Services / Domain</text>
+  <text x="60" y="375" class="label">State, ScenarioManager, FeatureService, CapacityCalculator (www/js/services &amp; domain/services)</text>
+
+  <rect x="40" y="460" width="1120" height="80" class="box" rx="8"/>
+  <text x="60" y="490" class="title">Data Providers</text>
+  <text x="60" y="515" class="label">providerREST.js, providerLocalStorage.js, providerMock.js (www/js)</text>
+
+  <!-- Arrows showing flow -->
+  <path d="M600 160 L600 180" class="arrow" />
+  <path d="M600 300 L600 320" class="arrow" />
+  <path d="M600 440 L600 460" class="arrow" />
+
+  <!-- Sidebar annotations -->
+  <rect x="860" y="60" width="280" height="60" rx="6" fill="#ffffff" stroke="#2b3b4a"/>
+  <text x="880" y="83" class="label">Event-driven communication via EventBus</text>
+
+  <rect x="860" y="200" width="280" height="60" rx="6" fill="#ffffff" stroke="#2b3b4a"/>
+  <text x="880" y="223" class="label">Plugins loadable via dynamic import()</text>
+
+  <rect x="860" y="340" width="280" height="60" rx="6" fill="#ffffff" stroke="#2b3b4a"/>
+  <text x="880" y="363" class="label">Services are testable units (unit tests)</text>
+
+  <rect x="860" y="460" width="280" height="60" rx="6" fill="#ffffff" stroke="#2b3b4a"/>
+  <text x="880" y="483" class="label">Provider pattern for swappable backends</text>
+
+  <text x="60" y="565" class="label">Diagram: Architecture overview showing layered separation and flow from UI → core → services → providers</text>
+</svg>

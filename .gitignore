@@ -9,23 +9,18 @@ __pycache__/
 *.egg
 *.env
 .env
-venv/
+.venv/
 ENV/
 .envrc
 
 # VS Code
 .vscode/
+.github/
+.copilot-phase.yml
 
 # Node.js
 node_modules/
 package-lock.json
-
-# Coverage
-coverage/
-*.cover
-*.coverage
-*.cov
-*.log
 
 # Temporary files
 *.tmp
@@ -40,24 +35,25 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Test output
-www/js/tests/*.log
+# Configutation files
 data/
-data/**
-.last_run.json
+
+# Test output
 test-results/
 tests/e2e/storageState.json
+coverage/
+.pytest_cache/
+*.cover
+*.coverage
+*.cov
+*.log
 
 # Ignore markdown drafts
-[0-9]*-*.md
-
-# Ignore plan templates
 plan-template.md
 plan-*.md
+[0-9]*-*.md
 Notes.md
 
 # Ignore other temp files
 *.tmp
 backup/
-.github/
-.copilot-phase.yml
