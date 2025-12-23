@@ -184,7 +184,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             pid = slugify(name, prefix="project-")
             if pid != project_id:
                 continue
-        wis = client.get_work_items(name, path)
+        wis = client.get_work_items(path)
         # Returned data is list of dict:
         # [{'id': 535825, 'type': 'Feature', 'title': 'Architecture team requests incoming',
         #   'state': 'Active', 'tags': None, 'areaPath': 'Platform_Development\\eSW\\Teams\\Architecture',
