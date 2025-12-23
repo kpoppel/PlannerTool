@@ -263,7 +263,7 @@ class AzureCachingClient(AzureClient):
                     area_cache[wi['id']] = wi
                     changed = True
 
-        logger.info("Area '%s': cache_items=%d, wiql_ids=%d, fetched=%d, updated=%d", area_key, cached_count, len(task_ids), new_count, updated_count)
+        logger.debug("Area '%s': cache_items=%d, wiql_ids=%d, fetched=%d, updated=%d", area_key, cached_count, len(task_ids), new_count, updated_count)
 
         new_last = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
@@ -279,7 +279,7 @@ class AzureCachingClient(AzureClient):
             try:
                 removed = self._prune_if_needed(index)
                 if removed:
-                    logger.info("Pruned %d caches", len(removed))
+                    logger.debug("Pruned %d caches", len(removed))
             except Exception:
                 logger.exception("Prune failed")
             try:
