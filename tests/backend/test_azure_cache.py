@@ -84,8 +84,8 @@ class FakeWitClient:
 
 @pytest.fixture
 def patch_config(monkeypatch, data_dir):
-    # Provide a config object with azure_cache_enabled True and data_dir pointing to test dir
-    cfg = SimpleNamespace(azure_cache_enabled=True, data_dir=data_dir)
+    # Provide a config object with feature_flags mapping and data_dir pointing to test dir
+    cfg = SimpleNamespace(feature_flags={"azure_cache_enabled": True}, data_dir=data_dir)
     monkeypatch.setattr("planner_lib.setup.get_loaded_config", lambda: cfg)
     return cfg
 
@@ -106,9 +106,10 @@ def test_cache_miss_updates_cache(patch_config, data_dir):
     assert isinstance(res, list)
     assert len(res) == 1
     assert res[0]["id"] == "1"
-    # ensure cache file exists
+    # ensure the single-file cache dict contains the item and index updated
     fb = FileStorageBackend(data_dir=data_dir)
-    assert fb.exists(NS, "1")
+    cache_dict = fb.load(NS, "azure_cache.pkl")
+    assert "1" in cache_dict
     idx = fb.load(NS, "_index")
     assert "1" in idx
 
@@ -120,7 +121,8 @@ def test_cache_hit_served_from_cache(patch_config, data_dir):
     fb = FileStorageBackend(data_dir=data_dir)
     # precreate a cached object and index
     cached_obj = {"id": "1", "title": "Cached"}
-    fb.save(NS, "1", cached_obj)
+    # precreate single-file cache dict and index
+    fb.save(NS, "azure_cache.pkl", {"1": cached_obj})
     fb.save(NS, "_index", {"1": {"changed_date": "2025-12-22T12:00:00Z", "project": "P", "areaPath": "A"}})
 
     client = AzureClient("org", "pat")
@@ -142,7 +144,7 @@ def test_cache_stale_in_azure_fetch_updates(patch_config, data_dir):
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
     fb = FileStorageBackend(data_dir=data_dir)
-    fb.save(NS, "1", {"id": "1", "title": "Old"})
+    fb.save(NS, "azure_cache.pkl", {"1": {"id": "1", "title": "Old"}})
     fb.save(NS, "_index", {"1": {"changed_date": "2020-01-01T00:00:00Z", "project": "P", "areaPath": "A"}})
 
     client = AzureClient("org", "pat")
@@ -155,9 +157,9 @@ def test_cache_stale_in_azure_fetch_updates(patch_config, data_dir):
     res = client.get_work_items("P", "A")
     assert len(res) == 1
     assert res[0]["title"] == "NewTitle"
-    # Ensure cache updated
-    loaded = fb.load(NS, "1")
-    assert loaded["title"] == "NewTitle"
+    # Ensure cache updated in the single-file cache dict
+    cache_dict = fb.load(NS, "azure_cache.pkl")
+    assert cache_dict["1"]["title"] == "NewTitle"
 
 
 def test_cache_prune_removed_state(patch_config, data_dir):
@@ -165,7 +167,7 @@ def test_cache_prune_removed_state(patch_config, data_dir):
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
     fb = FileStorageBackend(data_dir=data_dir)
-    fb.save(NS, "2", {"id": "2", "title": "ToBeRemoved"})
+    fb.save(NS, "azure_cache.pkl", {"2": {"id": "2", "title": "ToBeRemoved"}})
     fb.save(NS, "_index", {"2": {"changed_date": "2025-12-22T12:00:00Z", "project": "P", "areaPath": "A"}})
 
     client = AzureClient("org", "pat")
@@ -176,8 +178,9 @@ def test_cache_prune_removed_state(patch_config, data_dir):
     client.conn.clients.get_work_item_tracking_client = lambda: wit
 
     res = client.get_work_items("P", "A")
-    # cached id 2 should be pruned
-    assert fb.exists(NS, "2") is False
+    # cached id 2 should be pruned from the single-file cache dict
+    cache_dict = fb.load(NS, "azure_cache.pkl")
+    assert "2" not in cache_dict
     idx = fb.load(NS, "_index")
     assert "2" not in idx
 
