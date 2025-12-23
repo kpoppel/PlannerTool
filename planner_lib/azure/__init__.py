@@ -35,17 +35,13 @@ def get_client(organization_url: Optional[str] = None, pat: Optional[str] = None
     if not org:
         raise RuntimeError("Azure organization URL not provided. Set AZURE_DEVOPS_URL or pass organization_url.")
 
-    # Lazy imports of implementations
-    from planner_lib.azure.AzureNativeClient import AzureNativeClient
-    from planner_lib.azure.AzureCachingClient import AzureCachingClient
-
     # Choose implementation based on feature flag
-    if setup.has_feature_flag("azure_cache_enabled") and AzureCachingClient is not None:
+    if setup.has_feature_flag("azure_cache_enabled"):
+        from planner_lib.azure.AzureCachingClient import AzureCachingClient
         _client_instance = AzureCachingClient(org, token)
-    elif AzureNativeClient is not None:
-        _client_instance = AzureNativeClient(org, token)
     else:
-        logger.exception("Azure client implementation not available (missing dependencies)")
+        from planner_lib.azure.AzureNativeClient import AzureNativeClient
+        _client_instance = AzureNativeClient(org, token)
 
     return _client_instance
 

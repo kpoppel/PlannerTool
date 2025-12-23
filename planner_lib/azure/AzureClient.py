@@ -18,3 +18,7 @@ class AzureClient(ABC):
     @abstractmethod
     def get_area_paths(self, project: str, root_path: str = '/') -> List[str]:
         return []
+    
+    @abstractmethod
+    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None) -> None:
+        pass

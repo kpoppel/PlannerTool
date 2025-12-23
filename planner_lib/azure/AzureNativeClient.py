@@ -1,4 +1,4 @@
-"""AzureClient implementation wit no caching"""
+"""AzureClient implementation with no caching"""
 from __future__ import annotations
 from typing import List, Optional
 import logging
@@ -14,6 +14,7 @@ from planner_lib.azure.AzureClient import AzureClient
 
 class AzureNativeClient(AzureClient):
     def __init__(self, organization_url: str, pat: str):
+        logger.info("Using AzureNativeClient")
         if Connection is None or BasicAuthentication is None:
             raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
         creds = BasicAuthentication('', pat)
