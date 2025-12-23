@@ -174,6 +174,8 @@ class AzureCachingClient(AzureClient):
             index = self._read_index()
             area_cache_list = self._read_area_cache(area_key)
         area_cache = {it.get('id'): it for it in (area_cache_list or [])}
+        cached_count = len(area_cache)
+        logger.debug("Area '%s' cache loaded: %d items", area_key, cached_count)
 
         last_update = None
         if index.get(area_key) and index[area_key].get('last_update'):
@@ -199,6 +201,7 @@ class AzureCachingClient(AzureClient):
         candidate_ws = getattr(result, 'work_items', []) or []
         task_ids = [getattr(wi, 'id', None) for wi in candidate_ws]
         task_ids = [int(t) for t in task_ids if t is not None]
+        logger.debug("WIQL returned %d candidate ids for area '%s' (since=%s)", len(task_ids), area_key, last_update)
 
         updated_items = []
         if task_ids:
@@ -242,11 +245,25 @@ class AzureCachingClient(AzureClient):
                     except Exception as e:
                         logger.exception("Error processing item %s: %s", getattr(item, 'id', '?'), e)
 
+        logger.debug("Fetched %d updated work items for area '%s'", len(updated_items), area_key)
+
         changed = False
+        new_count = 0
+        updated_count = 0
         for wi in updated_items:
-            if wi['id'] not in area_cache or area_cache[wi['id']] != wi:
+            new_count += 1
+            if wi['id'] not in area_cache:
+                updated_count += 1
                 area_cache[wi['id']] = wi
                 changed = True
+            else:
+                # check for differences
+                if area_cache[wi['id']] != wi:
+                    updated_count += 1
+                    area_cache[wi['id']] = wi
+                    changed = True
+
+        logger.info("Area '%s': cache_items=%d, wiql_ids=%d, fetched=%d, updated=%d", area_key, cached_count, len(task_ids), new_count, updated_count)
 
         new_last = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
