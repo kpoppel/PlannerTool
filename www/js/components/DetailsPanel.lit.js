@@ -69,6 +69,8 @@ export class DetailsPanelLit extends LitElement {
     super.connectedCallback();
     bus.on(UIEvents.DETAILS_SHOW, this._onShow);
     bus.on(FeatureEvents.SELECTED, this._onShow);
+    //TODO: Should the side panel receive update if it is shown and the feature is changed?
+    //TODO: Should standardise what is sent on events (full feature vs id only)
 
     document.body.addEventListener('click', (e) => {
       if(!this.open) return;

@@ -71,7 +71,8 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
       if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; }
     }
   }
-  window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
 }
 
 export function startResize(e, feature, card, datesEl, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
