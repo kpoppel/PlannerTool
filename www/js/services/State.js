@@ -612,6 +612,10 @@ class State {
     return this._getFeatureService().getEffectiveFeatures();
   }
 
+  getEffectiveFeatureById(id) {
+    return this._getFeatureService().getEffectiveFeatureById(id);
+  }
+  
   getFeatureTitleById(id) {
     return this._getFeatureService().getFeatureTitleById(id);
   }

@@ -32,21 +32,14 @@ export class FeatureService {
    */
   getEffectiveFeatures() {
     // Prefer features from BaselineStore; fallback to provided baseline getter if store is empty
-    let baselineFeatures = [];
-    try {
-      baselineFeatures = (this._baselineStore && typeof this._baselineStore.getFeatures === 'function') ? this._baselineStore.getFeatures() : [];
-    } catch (e) {
-      baselineFeatures = [];
-    }
-    if ((!baselineFeatures || baselineFeatures.length === 0) && typeof this._getBaselineFallback === 'function') {
-      baselineFeatures = this._getBaselineFallback() || [];
-    }
     const activeScenario = this._getActiveScenario();
-    
+
+    let baselineFeatures = this._baselineStore.getFeatures();
     if (!activeScenario) {
-      return baselineFeatures.map(f => ({ ...f }));
+      return baselineFeatures; //.map(f => ({ ...f }));
     }
 
+    // Merge baseline features with scenario overrides
     return baselineFeatures.map(base => {
       const ov = activeScenario.overrides ? activeScenario.overrides[base.id] : undefined;
       const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
@@ -57,6 +50,28 @@ export class FeatureService {
     });
   }
 
+  /**
+   * Get a single effective feature by id (baseline merged with active scenario override)
+   * Returns null if not found.
+   */
+  getEffectiveFeatureById(id) {
+    if (id == null) return null;
+
+    const base = this._baselineStore.getFeatureById().get(id);
+    if (!base) return null;
+
+    const activeScenario = this._getActiveScenario();
+    if (!activeScenario) return { ...base };
+
+    const ov = activeScenario.overrides ? activeScenario.overrides[id] : undefined;
+    const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
+    const derived = this._recomputeDerived(base, ov);
+    effective.changedFields = derived.changedFields;
+    effective.dirty = derived.dirty;
+    return effective;
+  }
+
+  
   /**
    * Compute derived metadata for a feature (changed fields, dirty flag)
    */

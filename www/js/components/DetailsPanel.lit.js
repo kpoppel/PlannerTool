@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents } from '../core/EventRegistry.js';
+import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 
 export class DetailsPanelLit extends LitElement {
@@ -68,6 +68,8 @@ export class DetailsPanelLit extends LitElement {
   connectedCallback(){
     super.connectedCallback();
     bus.on(UIEvents.DETAILS_SHOW, this._onShow);
+    bus.on(FeatureEvents.SELECTED, this._onShow);
+
     document.body.addEventListener('click', (e) => {
       if(!this.open) return;
       const path = e.composedPath ? e.composedPath() : [];
@@ -88,7 +90,8 @@ export class DetailsPanelLit extends LitElement {
   }
 
   disconnectedCallback(){
-    try{ bus.off(UIEvents.DETAILS_SHOW, this._onShow); }catch(e){}
+    bus.off(UIEvents.DETAILS_SHOW, this._onShow);
+    bus.off(FeatureEvents.SELECTED, this._onShow);
     super.disconnectedCallback();
   }
 
