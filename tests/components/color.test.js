@@ -25,9 +25,10 @@ describe('Color Components Consolidated', () => {
     const bus = busMod.bus;
     state.projects = [{ id: 'p1', selected: true }];
     const events = [];
-    bus.on('color:changed', (p) => events.push(p));
+    const { ColorEvents } = await import('../../www/js/core/EventRegistry.js');
+    bus.on(ColorEvents.CHANGED, (p) => events.push(p));
     state.projects[0].color = '#111111';
-    bus.emit('color:changed', { entityType: 'project', id: 'p1', color: '#111111' });
+    bus.emit(ColorEvents.CHANGED, { entityType: 'project', id: 'p1', color: '#111111' });
     expect(events.length).to.equal(1);
   });
 });

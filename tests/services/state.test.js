@@ -29,6 +29,8 @@ describe('State core behaviors', () => {
     state.selectedStateFilter = new Set(['New']);
     state.scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
     state.activeScenarioId = 'baseline';
+    // Ensure getEffectiveFeatures returns the baseline features for this test
+    state.getEffectiveFeatures = () => state.baselineFeatures;
     // Run recompute
     state.recomputeCapacityMetrics();
     expect(state.capacityDates.length).to.equal(3);
@@ -48,7 +50,8 @@ describe('State core behaviors', () => {
     const bus = busMod.bus;
     if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
     const events = [];
-    bus.on('filters:changed', (p) => events.push(p));
+    const { FilterEvents } = await import('../../www/js/core/EventRegistry.js');
+    bus.on(FilterEvents.CHANGED, (p) => events.push(p));
     state.setStateFilter('New');
     expect(events.length).to.be.greaterThan(0);
   });

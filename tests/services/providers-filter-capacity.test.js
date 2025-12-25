@@ -49,8 +49,9 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const bus = busMod.bus;
       if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
       const events = [];
-      bus.on('scenarios:changed', (p) => events.push({ type: 'changed', p }));
-      bus.on('scenarios:data', (p) => events.push({ type: 'data', p }));
+      const { DataEvents } = await import('../../www/js/core/EventRegistry.js');
+      bus.on(DataEvents.SCENARIOS_CHANGED, (p) => events.push({ type: 'changed', p }));
+      bus.on(DataEvents.SCENARIOS_DATA, (p) => events.push({ type: 'data', p }));
 
       const list = await provider.listScenarios();
       expect(Array.isArray(list)).to.equal(true);
