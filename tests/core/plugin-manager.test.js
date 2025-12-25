@@ -57,16 +57,16 @@ describe('PluginManager & Plugin base', () => {
     expect(plugin.initCalled).to.be.true;
   });
 
-  it('should emit plugin:registered event', (done) => {
+  it('should emit plugin:registered event', async () => {
     const plugin = new TestPlugin('test-plugin');
 
     const { PluginEvents } = await import('../../www/js/core/EventRegistry.js');
-    bus.once(PluginEvents.REGISTERED, (data) => {
-      expect(data.plugin).to.equal('test-plugin');
-      done();
-    });
+    const ev = new Promise((resolve) => bus.once(PluginEvents.REGISTERED, resolve));
 
-    manager.register(plugin);
+    await manager.register(plugin);
+
+    const data = await ev;
+    expect(data.plugin).to.equal('test-plugin');
   });
 
   it('should prevent duplicate registration', async () => {

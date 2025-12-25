@@ -120,11 +120,20 @@ export class QueuedFeatureService {
                   for(const cid of childIds){
                     const chBase = baselineFeatureById.get(cid);
                     if(!chBase) continue;
-                    const existingChild = activeScenario.overrides[cid] || { start: chBase.start, end: chBase.end };
-                    const shiftedStart = shiftIsoByMs(existingChild.start, deltaMs);
-                    const shiftedEnd = shiftIsoByMs(existingChild.end, deltaMs);
-                    activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
-                    actuallyAppliedQuickIds.push(cid);
+                        const existingChildOv = activeScenario.overrides ? activeScenario.overrides[cid] : undefined;
+                        const existingChild = existingChildOv || { start: chBase.start, end: chBase.end };
+                        const hasExplicitChild = existingChildOv && (existingChildOv.start !== chBase.start || existingChildOv.end !== chBase.end);
+                        if(hasExplicitChild){
+                          if(featureFlags && featureFlags.serviceInstrumentation){ try{ console.log('[QueuedFeatureService] skipping optimistic overwrite for', cid, 'fromEpicMove because explicit override exists', existingChildOv); }catch(e){} }
+                          // respect explicit override, don't apply optimistic shift
+                          if(minChildStart === null || existingChild.start < minChildStart) minChildStart = existingChild.start;
+                          if(maxChildEnd === null || existingChild.end > maxChildEnd) maxChildEnd = existingChild.end;
+                          continue;
+                        }
+                        const shiftedStart = shiftIsoByMs(existingChild.start, deltaMs);
+                        const shiftedEnd = shiftIsoByMs(existingChild.end, deltaMs);
+                        activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
+                        actuallyAppliedQuickIds.push(cid);
                     if(minChildStart === null || shiftedStart < minChildStart) minChildStart = shiftedStart;
                     if(maxChildEnd === null || shiftedEnd > maxChildEnd) maxChildEnd = shiftedEnd;
                   }
@@ -140,13 +149,18 @@ export class QueuedFeatureService {
                   }
                 }
 
-                // Compute optimistic epic bounds using DON'T-SHRINK: include baseline and child extremes
+                // Compute optimistic epic bounds: prefer the candidate (u.start/u.end) when present
+                // so epic moves/changes are reflected immediately, but still ensure epic
+                // does not shrink inside its children by including child extremes.
                 const baselineEpicStart = base.start;
                 const baselineEpicEnd = base.end;
                 const candidateStart = u.start || baselineEpicStart;
                 const candidateEnd = u.end || baselineEpicEnd;
-                const startCandidates = [baselineEpicStart, candidateStart, minChildStart].filter(Boolean);
-                const endCandidates = [baselineEpicEnd, candidateEnd, maxChildEnd].filter(Boolean);
+                const startCandidates = [candidateStart, minChildStart].filter(Boolean);
+                const endCandidates = [candidateEnd, maxChildEnd].filter(Boolean);
+                // If candidate missing, fall back to baseline
+                if (startCandidates.length === 0) startCandidates.push(baselineEpicStart);
+                if (endCandidates.length === 0) endCandidates.push(baselineEpicEnd);
                 const finalStart = startCandidates.length ? startCandidates.reduce((a,b)=> a < b ? a : b) : candidateStart;
                 const finalEnd = endCandidates.length ? endCandidates.reduce((a,b)=> a > b ? a : b) : candidateEnd;
 
@@ -238,8 +252,19 @@ export class QueuedFeatureService {
 
               // If epic was moved, apply shifted override for children that do not have explicit overrides
               if(epicMovedDeltaMs !== null){
-                  // Shift all children by the epic delta — including those with explicit overrides.
-                  const existingChild = activeScenario.overrides[cid] || { start: chBase.start, end: chBase.end };
+                  // Shift children by the epic delta, but do NOT overwrite children
+                  // that already have explicit overrides (preserve explicit overrides).
+                  const chBase = baselineFeatureById.get(cid);
+                  const existingChildOv = activeScenario.overrides ? activeScenario.overrides[cid] : undefined;
+                  const hasExplicit = existingChildOv && (existingChildOv.start !== chBase.start || existingChildOv.end !== chBase.end);
+                  if(hasExplicit){
+                    // respect explicit override
+                    const existingChild = existingChildOv || { start: chBase.start, end: chBase.end };
+                    if(maxChildEnd === null || existingChild.end > maxChildEnd) maxChildEnd = existingChild.end;
+                    if(minChildStart === null || existingChild.start < minChildStart) minChildStart = existingChild.start;
+                    continue;
+                  }
+                  const existingChild = { start: chBase.start, end: chBase.end };
                   const shiftedStart = shiftIsoByMs(existingChild.start, epicMovedDeltaMs);
                   const shiftedEnd = shiftIsoByMs(existingChild.end, epicMovedDeltaMs);
                   activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
@@ -269,12 +294,20 @@ export class QueuedFeatureService {
             const baselineEpicEnd = base.end;
             const candidateStart = (start !== undefined && start !== null) ? start : baselineEpicStart;
             const candidateEnd = (end !== undefined && end !== null) ? end : baselineEpicEnd;
-            // finalStart: earliest of (baseline epic start, candidate start, earliest child start)
-            // finalEnd: latest of (baseline epic end, candidate end, latest child end)
-            const startCandidates = [baselineEpicStart, candidateStart, minChildStart].filter(Boolean);
-            const endCandidates = [baselineEpicEnd, candidateEnd, maxChildEnd].filter(Boolean);
-            start = startCandidates.length ? startCandidates.reduce((a,b)=> a < b ? a : b) : candidateStart;
-            end = endCandidates.length ? endCandidates.reduce((a,b)=> a > b ? a : b) : candidateEnd;
+            // If the epic itself was queued (epicQueued exists), prefer the queued candidate bounds
+            // but still enforce that the epic must include any child extremes (don't let candidate shrink inside children).
+            if (epicQueued) {
+              const startCandidates = [candidateStart, minChildStart].filter(Boolean);
+              const endCandidates = [candidateEnd, maxChildEnd].filter(Boolean);
+              start = startCandidates.length ? startCandidates.reduce((a,b)=> a < b ? a : b) : candidateStart;
+              end = endCandidates.length ? endCandidates.reduce((a,b)=> a > b ? a : b) : candidateEnd;
+            } else {
+              // No epic queued; preserve baseline and ensure it covers children
+              const startCandidates = [baselineEpicStart, candidateStart, minChildStart].filter(Boolean);
+              const endCandidates = [baselineEpicEnd, candidateEnd, maxChildEnd].filter(Boolean);
+              start = startCandidates.length ? startCandidates.reduce((a,b)=> a < b ? a : b) : candidateStart;
+              end = endCandidates.length ? endCandidates.reduce((a,b)=> a > b ? a : b) : candidateEnd;
+            }
           }
         }
 
