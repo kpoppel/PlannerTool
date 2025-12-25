@@ -239,26 +239,12 @@ export class FeatureCardLit extends LitElement {
   }
 
   updated(changed) {
-    // Reflect dirty state as a host class so external light-DOM logic and CSS can target it
-    // TODO: Remove light DOM; use shadow DOM only
-    try {
-      const isDirty = !!(this.feature && this.feature.dirty);
-      this.classList.toggle('dirty', isDirty);
-      // Also apply to inner card immediately so visual updates (resize/move) show the style
-      try {
-        const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-        if (rootCard) rootCard.classList.toggle('dirty', isDirty);
-      } catch (e) { /* noop */ }
-    } catch (e) {
-      // no-op
-    }
-    try {
-      if (this.feature && this.feature.id !== undefined && this.feature.id !== null) {
-        this.setAttribute('data-feature-id', String(this.feature.id));
-      } else {
-        this.removeAttribute('data-feature-id');
-      }
-    } catch (e) { }
+    // Reflect dirty state to inner card immediately so visual updates (resize/move) show the style
+    const inner = this.shadowRoot && this.shadowRoot.querySelector && this.shadowRoot.querySelector('.feature-card');
+    if (inner) inner.classList.toggle('dirty', this.feature.dirty);
+    // reflect dirty on host as well for external styles/tests
+    this.classList.toggle('dirty', this.feature && this.feature.dirty);
+    this.setAttribute('data-feature-id', String(this.feature.id));
   }
 
   /**
@@ -278,7 +264,9 @@ export class FeatureCardLit extends LitElement {
       this.selected = selected;
       // immediate visual update for dirty flag to handle external visuals (drag/resize)
       this.feature = Object.assign({}, this.feature, { dirty });
-      this.shadowRoot.classList.toggle('dirty', dirty);
+      if (this.shadowRoot) this.shadowRoot.classList.toggle('dirty', dirty);
+      // Also reflect dirty on host to support tests and external styles
+      this.classList.toggle('dirty', dirty);
       this.project = project;
       // Force an update cycle if necessary
       this.requestUpdate();
@@ -307,12 +295,38 @@ export class FeatureCardLit extends LitElement {
       this._unsubDragMove = bus.on(DragEvents.MOVE, () => { this._skipRo = true; });
       this._unsubDragEnd = bus.on(DragEvents.END, () => { this._skipRo = false; this._processRoNow(); });
     } catch (e) { }
+    // attach mousedown handlers for dragging and resizing directly on the host
+    try {
+      this.addEventListener('mousedown', this._onHostMouseDown = (e) => {
+        const path = (e.composedPath && e.composedPath()) || [];
+        const rh = this.shadowRoot && this.shadowRoot.querySelector('.drag-handle');
+        const cameFromResizeHandle = path.includes(rh);
+        if (cameFromResizeHandle) { e.stopPropagation(); const datesEl = this.shadowRoot && this.shadowRoot.querySelector('.feature-dates'); startResize(e, this.feature, this, datesEl, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures()); return; }
+        e.stopPropagation();
+        const startX = e.clientX;
+        this._boundOnPreMove = null;
+        const self = this;
+        function onPreMove(ev) {
+          const dx = ev.clientX - startX;
+          if (Math.abs(dx) > 5) {
+            try { if (self._boundOnPreMove) { window.removeEventListener('mousemove', self._boundOnPreMove); window.removeEventListener('pointermove', self._boundOnPreMove); self._boundOnPreMove = null; } } catch (e) {}
+            startDragMove(e, self.feature, self, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
+          }
+        }
+        // bind with correct `this` for inside onPreMove and keep reference so it can be removed
+        this._boundOnPreMove = onPreMove.bind(this);
+        window.addEventListener('mousemove', this._boundOnPreMove);
+        window.addEventListener('pointermove', this._boundOnPreMove);
+      });
+    } catch (e) {}
   }
 
   disconnectedCallback() {
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
     try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
     try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
+    try { if (this._onHostMouseDown) this.removeEventListener('mousedown', this._onHostMouseDown); } catch (e) {}
+    try { if (this._boundOnPreMove) { window.removeEventListener('mousemove', this._boundOnPreMove); window.removeEventListener('pointermove', this._boundOnPreMove); this._boundOnPreMove = null; } } catch (e) {}
     super.disconnectedCallback();
   }
 
@@ -350,7 +364,6 @@ export class FeatureCardLit extends LitElement {
 
   _handleClick(e) {
     // If the click originated from the resize handle, ignore it
-    console.log('FeatureCardLit _handleClick', e);
     try {
       const path = (e.composedPath && e.composedPath()) || [];
       // path may include shadow DOM nodes; check for any element with class 'drag-handle'
@@ -361,7 +374,7 @@ export class FeatureCardLit extends LitElement {
     // Emit the SELECTED events for other components to subscribe to.
     // Use the latest effective feature from state to ensure changedFields/dirty
     // are present for the details panel (handles queued optimistic updates).
-    const eff = state.getEffectiveFeatureById(this.feature && this.feature.id);
+    const eff = state.getEffectiveFeatureById(this.feature && this.feature.id) || this.feature;
     this.bus.emit(FeatureEvents.SELECTED, eff);
     if (featureFlags && featureFlags.serviceInstrumentation)
       console.log('[FeatureCardLit] emitted SELECTED for feature', this.feature.id, eff);
@@ -446,230 +459,3 @@ export class FeatureCardLit extends LitElement {
 }
 
 customElements.define('feature-card-lit', FeatureCardLit);
-
-export function laneHeight() {
-  return state.condensedCards ? 40 : 64;
-}
-
-export function getBoardOffset() {
-  const board = typeof document !== 'undefined' ? document.querySelector('feature-board') : null;
-  if (!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
-  return isNaN(pl) ? 0 : pl;
-}
-
-const monthWidth = 120;
-
-// Cached months-derived metadata to avoid repeated Date allocations when computing positions
-let _cachedMonthsRef = null;
-let _cachedMonthStarts = null; // array of ms timestamps for month starts
-let _cachedMonthDays = null; // days per month
-
-function _buildMonthCache(months) {
-  _cachedMonthsRef = months;
-  _cachedMonthStarts = months.map(m => m.getTime());
-  _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
-}
-
-export function computePosition(feature, monthsArg) {
-  const months = monthsArg || getTimelineMonths();
-  if (!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || (_cachedMonthsRef[0] && months[0] && _cachedMonthsRef[0].getTime() !== months[0].getTime())) {
-    _buildMonthCache(months);
-  }
-  let startDate = parseDate(feature.start);
-  let endDate = parseDate(feature.end);
-  if (!(startDate instanceof Date) || isNaN(startDate.getTime())) startDate = new Date('2025-01-01');
-  if (!(endDate instanceof Date) || isNaN(endDate.getTime())) endDate = new Date('2025-01-15');
-
-  // Binary-search month index using cached month starts
-  const ms = startDate.getTime();
-  const ems = endDate.getTime();
-  function findMonthIndexFor(msVal) {
-    const arr = _cachedMonthStarts; let lo = 0, hi = arr.length - 1;
-    if (msVal < arr[0]) return -1;
-    if (msVal >= arr[hi]) return hi;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1; const midStart = arr[mid]; const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
-      if (msVal >= midStart && msVal < midEnd) return mid;
-      if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
-    }
-    return -1;
-  }
-  let startIdx = findMonthIndexFor(ms);
-  if (startIdx < 0) startIdx = ms < _cachedMonthStarts[0] ? 0 : months.length - 1;
-  let endIdx = findMonthIndexFor(ems);
-  if (endIdx < 0) endIdx = ems < _cachedMonthStarts[0] ? 0 : months.length - 1;
-
-  const startDays = _cachedMonthDays[startIdx];
-  const endDays = _cachedMonthDays[endIdx];
-  const startFraction = (startDate.getDate() - 1) / startDays;
-  const endFraction = (endDate.getDate()) / endDays;
-
-  const boardOffset = getBoardOffset();
-  const left = boardOffset + (startIdx + startFraction) * monthWidth;
-  const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
-  let width = spanContinuous * monthWidth;
-  const minVisualWidth = 40;
-  if (width < minVisualWidth) width = minVisualWidth;
-
-  return { left, width };
-}
-
-
-
-// Map of currently rendered Lit feature cards keyed by feature id.
-const litCardMap = new Map();
-
-export function renderFeatureBoardLit(board) {
-  let ordered;
-  const sourceFeatures = state.getEffectiveFeatures();
-  if (state.featureSortMode === 'rank') {
-    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
-    const childrenByEpic = new Map();
-    sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
-    for (const arr of childrenByEpic.values()) arr.sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
-    const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
-    ordered = [];
-    for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
-    ordered.push(...standalone);
-  } else {
-    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => a.start.localeCompare(b.start));
-    const childrenByEpic = new Map();
-    sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
-    for (const arr of childrenByEpic.values()) arr.sort((a, b) => a.start.localeCompare(b.start));
-    const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => a.start.localeCompare(b.start));
-    ordered = [];
-    for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
-    ordered.push(...standalone);
-  }
-  let idx = 0;
-  const mapChildren = new Map();
-  sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
-  board.innerHTML = '';
-  for (const f of ordered) {
-    if (!state.projects.find(p => p.id === f.project && p.selected)) continue;
-    const selStateSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
-    if (selStateSet.size === 0) continue;
-    const fState = f.status || f.state;
-    if (!selStateSet.has(fState)) continue;
-    if (f.type === 'epic' && !state.showEpics) continue;
-    if (f.type === 'feature' && !state.showFeatures) continue;
-    if (f.type === 'epic') {
-      const kids = mapChildren.get(f.id) || [];
-      const anyChildVisible = kids.some(ch => state.projects.find(p => p.id === ch.project && p.selected) && ch.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)));
-      const epicVisible = f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)) || anyChildVisible;
-      if (!epicVisible) continue;
-    } else {
-      if (!f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) continue;
-    }
-    const months = getTimelineMonths();
-    const pos = computePosition(f, months) || {};
-    // cache visual geometry on the feature object to avoid recomputing repeatedly
-    try { f._left = pos.left; f._width = pos.width; } catch (e) { }
-    const left = (pos.left !== undefined ? pos.left : (f._left || f.left));
-    const width = (pos.width !== undefined ? pos.width : (f._width || f.width));
-    const card = document.createElement('feature-card-lit');
-    card.style.left = left + 'px';
-    card.style.top = (idx * laneHeight()) + 'px';
-    card.style.width = width + 'px';
-    card.feature = f;
-    card.bus = bus;
-    card.teams = state.teams;
-    card.condensed = state.condensedCards;
-    card.project = state.projects.find(p => p.id === f.project);
-    const updateDatesCb = (updatesArray) => state.updateFeatureDates(updatesArray);
-    const featuresSource = sourceFeatures;
-    const resizeHandleQuery = () => card.shadowRoot?.querySelector('.drag-handle');
-    const datesQuery = () => card.shadowRoot?.querySelector('.feature-dates');
-
-    card.addEventListener('mousedown', e => {
-      const path = (e.composedPath && e.composedPath()) || [];
-      const rh = resizeHandleQuery();
-      const cameFromResizeHandle = path.includes(rh);
-      if (cameFromResizeHandle) { e.stopPropagation(); const datesEl = datesQuery(); startResize(e, f, card, datesEl, updateDatesCb, featuresSource); return; }
-      e.stopPropagation();
-      const startX = e.clientX;
-      let isDragging = false;
-      function onPreMove(ev) {
-        const dx = ev.clientX - startX;
-        if (Math.abs(dx) > 5) {
-          isDragging = true;
-          window.removeEventListener('mousemove', onPreMove); window.removeEventListener('mouseup', onPreUp);
-          startDragMove(e, f, card, updateDatesCb, featuresSource);
-        }
-      }
-      function onPreUp() {
-        console.log('FeatureCardLit pre-up, isDragging:', isDragging);
-        window.removeEventListener('mousemove', onPreMove); window.removeEventListener('mouseup', onPreUp);
-      }
-      window.addEventListener('mousemove', onPreMove);
-      window.addEventListener('mouseup', onPreUp);
-    });
-    const rh = resizeHandleQuery();
-    if (rh) {
-      rh.addEventListener('mousedown', e => {
-        e.stopPropagation();
-        const datesEl = datesQuery();
-        startResize(e, f, card, datesEl, updateDatesCb, featuresSource);
-      });
-    }
-    board.appendChild(card);
-    try { litCardMap.set(f.id, card); } catch (e) { }
-    if (featureFlags && featureFlags.serviceInstrumentation) {
-        console.log('[FeatureBoard] created card', f.id, 'left:', left, 'width:', width, 'featureOverride:', f._left !== undefined || f._width !== undefined);
-    }
-    idx++;
-  }
-}
-
-export async function updateCardsById(board, ids = [], sourceFeatures = []) {
-  const getFeature = (id) => {
-    if (Array.isArray(sourceFeatures)) return sourceFeatures.find((f) => f.id === id);
-    if (sourceFeatures && typeof sourceFeatures.get === 'function') return sourceFeatures.get(id);
-    return undefined;
-  };
-  try {
-    for (const id of ids) {
-      const feature = getFeature(id);
-      if (!feature) continue;
-      let geom = {};
-      try {
-        // Prefer cached values if present
-        if (feature && feature._left !== undefined && feature._width !== undefined) { geom.left = feature._left; geom.width = feature._width; }
-        else { const months = getTimelineMonths(); geom = computePosition(feature, months) || {}; }
-      } catch (e) { console.warn('computePosition failed', e); geom.left = feature && (feature._left || feature.left) || ''; geom.width = feature && (feature._width || feature.width) || ''; }
-      const left = (geom.left !== undefined && geom.left !== '') ? (typeof geom.left === 'number' ? geom.left + 'px' : geom.left) : '';
-      const width = (geom.width !== undefined && geom.width !== '') ? (typeof geom.width === 'number' ? geom.width + 'px' : geom.width) : '';
-      let existing = litCardMap.get(id);
-      if (!existing && board) {
-        const candidates = board.querySelectorAll('feature-card-lit');
-        for (const c of candidates) { try { const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id); if (fid === id) { existing = c; litCardMap.set(id, c); break; } } catch (e) { } }
-      }
-      if (existing) { if (typeof existing.applyVisuals === 'function') { existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: state.projects.find(p => p.id === feature.project) }); } else { existing.style.left = left; existing.style.width = width; existing.feature = feature; existing.selected = !!feature.selected; } }
-      else {
-        // Fallback: full render
-        try { renderFeatureBoardLit(board); } catch (e) { console.error('updateCardsById fallback render failed', e); }
-      }
-    }
-  } catch (e) { console.error('updateCardsById error', e); try { renderFeatureBoardLit(board); } catch (err) { } }
-}
-
-// Initialize feature cards wiring
-export async function initFeatureCards() {
-  bus.on(ProjectEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
-  bus.on(TeamEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
-  bus.on(TimelineEvents.MONTHS, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
-  bus.on(FeatureEvents.UPDATED, (payload) => {
-    const board = document.querySelector('feature-board');
-    const ids = payload && Array.isArray(payload.ids) && payload.ids.length ? payload.ids : null;
-    if (ids) { updateCardsById(board, ids, state.getEffectiveFeatures()); }
-    else { renderFeatureBoardLit(board); }
-  });
-  bus.on(FilterEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
-  bus.on(ViewEvents.SORT_MODE, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
-  bus.on(ScenarioEvents.ACTIVATED, ({ scenarioId }) => {
-    const board = document.querySelector('feature-board'); if (!board) return;
-    if (scenarioId && scenarioId !== 'baseline') board.classList.add('scenario-mode'); else board.classList.remove('scenario-mode');
-  });
-  const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board);
-}

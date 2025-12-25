@@ -41,17 +41,19 @@ async function init(){
       if(mod && mod.initSidebar) await mod.initSidebar();
     }catch(e){ console.warn('Failed to mount Lit sidebar', e); }
 
+    let modFeatureBoard;
     try{
-      await import('./components/FeatureBoard.lit.js');
-    }catch(e){ console.warn('Failed to load feature-board', e); }
+      modFeatureBoard = await import('./components/FeatureBoard.lit.js');
+      if (modFeatureBoard && modFeatureBoard.initBoard) await modFeatureBoard.initBoard();
+    }catch(e){ console.warn('Failed to load or init feature-board', e); }
 
     try{
       const mod = await import('./components/Timeline.lit.js');
       if(mod && mod.initTimeline) await mod.initTimeline();
     }catch(e){ console.warn('Failed to init Lit timeline', e); }
 
-    const modFeatureCard = await import('./components/FeatureCard.lit.js');
-    if(modFeatureCard && modFeatureCard.initFeatureCards) await modFeatureCard.initFeatureCards();
+    // Ensure card component is registered (no board init here anymore)
+    try{ await import('./components/FeatureCard.lit.js'); }catch(e){ console.warn('Failed to load feature-card', e); }
     // Initialize the details panel by importing the Lit component and ensuring a host exists.
     const modDetailsPanel = await import('./components/DetailsPanel.lit.js');
     if(modDetailsPanel){

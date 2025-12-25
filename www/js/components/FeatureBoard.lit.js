@@ -1,4 +1,12 @@
 import { LitElement, html, css } from '../vendor/lit.js';
+import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
+import { bus } from '../core/EventBus.js';
+import { state } from '../services/State.js';
+import { getTimelineMonths } from './Timeline.lit.js';
+import { formatDate, parseDate, addMonths } from './util.js';
+import { laneHeight, computePosition, getBoardOffset, _test_resetCache } from './board-utils.js';
+import { startDragMove, startResize } from './dragManager.js';
+import { featureFlags } from '../config.js';
 
 class FeatureBoard extends LitElement {
   static properties = {
@@ -8,6 +16,8 @@ class FeatureBoard extends LitElement {
   constructor() {
     super();
     this.features = [];
+    this._cardMap = new Map();
+    this._busHandlers = [];
   }
 
   static styles = css`
@@ -51,8 +61,151 @@ class FeatureBoard extends LitElement {
   }
 
   render(){
-    // Keep rendering minimal — project any light-dom children into slot.
-    return html`<slot></slot>`;
+    if (!this.features || !this.features.length) {
+      return html`<slot></slot>`;
+    }
+    return html`${this.features.map(fobj => html`<feature-card-lit
+        .feature=${fobj.feature}
+        .bus=${bus}
+        .teams=${fobj.teams}
+        .condensed=${fobj.condensed}
+        .project=${fobj.project}
+        style="position:absolute; left:${fobj.left}px; top:${fobj.top}px; width:${fobj.width}px"
+      ></feature-card-lit>`)}
+    `;
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    // remove bus handlers
+    try {
+      for (const { event, handler } of this._busHandlers) bus.off(event, handler);
+    } catch (e) {}
+    this._busHandlers = [];
+  }
+
+  // Compute and render features from current state
+  renderFeatures() {
+    const sourceFeatures = state.getEffectiveFeatures();
+    let ordered;
+    if (state.featureSortMode === 'rank') {
+      const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
+      const childrenByEpic = new Map();
+      sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
+      for (const arr of childrenByEpic.values()) arr.sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
+      const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
+      ordered = [];
+      for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
+      ordered.push(...standalone);
+    } else {
+      const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => a.start.localeCompare(b.start));
+      const childrenByEpic = new Map();
+      sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
+      for (const arr of childrenByEpic.values()) arr.sort((a, b) => a.start.localeCompare(b.start));
+      const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => a.start.localeCompare(b.start));
+      ordered = [];
+      for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
+      ordered.push(...standalone);
+    }
+
+    let idx = 0;
+    const mapChildren = new Map();
+    sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
+    const renderList = [];
+    for (const f of ordered) {
+      if (!state.projects.find(p => p.id === f.project && p.selected)) continue;
+      const selStateSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
+      if (selStateSet.size === 0) continue;
+      const fState = f.status || f.state;
+      if (!selStateSet.has(fState)) continue;
+      if (f.type === 'epic' && !state.showEpics) continue;
+      if (f.type === 'feature' && !state.showFeatures) continue;
+      if (f.type === 'epic') {
+        const kids = mapChildren.get(f.id) || [];
+        const anyChildVisible = kids.some(ch => state.projects.find(p => p.id === ch.project && p.selected) && ch.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)));
+        const epicVisible = f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)) || anyChildVisible;
+        if (!epicVisible) continue;
+      } else {
+        if (!f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) continue;
+      }
+      const months = getTimelineMonths();
+      const pos = computePosition(f, months) || {};
+      try { f._left = pos.left; f._width = pos.width; } catch (e) { }
+      const left = (pos.left !== undefined ? pos.left : (f._left || f.left));
+      const width = (pos.width !== undefined ? pos.width : (f._width || f.width));
+      renderList.push({ feature: f, left, width, top: (idx * laneHeight()), teams: state.teams, condensed: state.condensedCards, project: state.projects.find(p => p.id === f.project) });
+      idx++;
+    }
+    this.features = renderList;
+    // schedule update so updated() runs after render
+    this.requestUpdate();
+  }
+
+  // Update a subset of cards by id (keep compatibility with old function)
+  async updateCardsById(ids = [], sourceFeatures = []) {
+    const getFeature = (id) => {
+      if (Array.isArray(sourceFeatures) && sourceFeatures.length) return sourceFeatures.find((f) => f.id === id);
+      if (sourceFeatures && typeof sourceFeatures.get === 'function') return sourceFeatures.get(id);
+      // fallback to current state
+      const all = state.getEffectiveFeatures();
+      return all.find(f => f.id === id);
+    };
+    try {
+      for (const id of ids) {
+        const feature = getFeature(id);
+        if (!feature) continue;
+        let geom = {};
+        try {
+          if (feature && feature._left !== undefined && feature._width !== undefined) { geom.left = feature._left; geom.width = feature._width; }
+          else { const months = getTimelineMonths(); geom = computePosition(feature, months) || {}; }
+        } catch (e) { console.warn('computePosition failed', e); geom.left = feature && (feature._left || feature.left) || ''; geom.width = feature && (feature._width || feature.width) || ''; }
+        const left = (geom.left !== undefined && geom.left !== '') ? (typeof geom.left === 'number' ? geom.left + 'px' : geom.left) : '';
+        const width = (geom.width !== undefined && geom.width !== '') ? (typeof geom.width === 'number' ? geom.width + 'px' : geom.width) : '';
+        let existing = this._cardMap.get(id);
+        if (!existing) {
+          const candidatesA = this.shadowRoot ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) : [];
+          const candidatesB = Array.from(this.querySelectorAll('feature-card-lit')) || [];
+          const candidates = candidatesA.concat(candidatesB);
+          for (const c of candidates) { try { const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id); if (fid === id) { existing = c; this._cardMap.set(id, c); break; } } catch (e) { } }
+        }
+        if (existing) {
+          if (typeof existing.applyVisuals === 'function') {
+            existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: state.projects.find(p => p.id === feature.project) });
+          } else {
+            if (left) existing.style.left = left;
+            if (width) existing.style.width = width;
+            existing.feature = feature;
+            existing.selected = !!feature.selected;
+          }
+        } else {
+          // fallback to full render
+          this.renderFeatures();
+        }
+      }
+    } catch (e) { console.error('updateCardsById error', e); this.renderFeatures(); }
+  }
+
+  // after render, wire handlers and update _cardMap
+  updated() {
+    if (!this.shadowRoot) return;
+    const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
+    let idx = 0;
+    for (const node of cards) {
+      const fobj = this.features[idx++] || {}; // best-effort
+      try {
+        // ensure styles and props in case template binding didn't set
+        if (fobj.left !== undefined) node.style.left = fobj.left + 'px';
+        if (fobj.top !== undefined) node.style.top = fobj.top + 'px';
+        if (fobj.width !== undefined) node.style.width = fobj.width + 'px';
+        node.feature = fobj.feature;
+        node.bus = bus;
+        node.teams = fobj.teams || state.teams;
+        node.condensed = fobj.condensed || state.condensedCards;
+        node.project = fobj.project || state.projects.find(p => p.id === (fobj.feature && fobj.feature.project));
+      } catch (e) {}
+      // Card component handles its own mousedown/drag/resize wiring.
+      try { if (node.feature && node.feature.id) this._cardMap.set(node.feature.id, node); } catch (e) {}
+    }
   }
 
   _selectFeature(feature){
@@ -72,3 +225,37 @@ class FeatureBoard extends LitElement {
 }
 
 customElements.define('feature-board', FeatureBoard);
+
+// --- Board-level rendering and helpers moved from FeatureCard.lit.js ---
+// helpers moved to `board-utils.js`
+
+// The board rendering is now encapsulated by the `feature-board` component.
+// Call the component's instance methods (`renderFeatures`, `updateCardsById`) directly.
+
+export async function initBoard() {
+  bus.on(ProjectEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board && typeof board.renderFeatures === 'function') board.renderFeatures(); });
+  bus.on(TeamEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board && typeof board.renderFeatures === 'function') board.renderFeatures(); });
+  bus.on(TimelineEvents.MONTHS, () => { const board = document.querySelector('feature-board'); if (board && typeof board.renderFeatures === 'function') board.renderFeatures(); });
+  bus.on(FeatureEvents.UPDATED, (payload) => {
+    const board = document.querySelector('feature-board');
+    const ids = payload && Array.isArray(payload.ids) && payload.ids.length ? payload.ids : null;
+    if (board && typeof board.updateCardsById === 'function') {
+      if (ids) { board.updateCardsById(ids, state.getEffectiveFeatures()); }
+      else { board.renderFeatures(); }
+    }
+  });
+  bus.on(FilterEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board && typeof board.renderFeatures === 'function') board.renderFeatures(); });
+  bus.on(ViewEvents.SORT_MODE, () => { const board = document.querySelector('feature-board'); if (board && typeof board.renderFeatures === 'function') board.renderFeatures(); });
+  bus.on(ScenarioEvents.ACTIVATED, ({ scenarioId }) => {
+    const board = document.querySelector('feature-board');
+    if (!board) return;
+    if (scenarioId !== 'baseline')
+      board.classList.add('scenario-mode');
+    else
+      board.classList.remove('scenario-mode');
+  });
+  // initial render if element exists
+  const board = document.querySelector('feature-board');
+  if (board && typeof board.renderFeatures === 'function') board.renderFeatures();
+}
+

@@ -83,12 +83,11 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     }).to.not.throw();
   });
 
-  it('registerEventTypes should allow symbol mapping and emit with symbol', async () => {
-    const reg = await import('../../www/js/core/EventRegistry.js');
-    reg.registerEventTypes(bus);
+  it('should emit FeatureEvents.UPDATED with symbol', async () => {
+    const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
     const events = [];
-    bus.on(reg.FeatureEvents.UPDATED, (payload) => events.push(payload));
-    bus.emit(reg.FeatureEvents.UPDATED, { id: 1 });
+    bus.on(FeatureEvents.UPDATED, (payload) => events.push(payload));
+    bus.emit(FeatureEvents.UPDATED, { id: 1 });
     expect(events.length).to.equal(1);
     expect(events[0]).to.deep.equal({ id: 1 });
   });
@@ -174,7 +173,7 @@ describe('Enhanced EventBus Features', () => {
   });
 
   describe('Wildcard Support', () => {
-    it('should trigger wildcard listener for matching events', () => {
+    it('should trigger wildcard listener for matching events', async () => {
       let count = 0;
 
       bus.onNamespace('feature', () => count++);
@@ -198,7 +197,7 @@ describe('Enhanced EventBus Features', () => {
       expect(count).to.equal(0);
     });
 
-    it('should trigger both exact and wildcard listeners', () => {
+    it('should trigger both exact and wildcard listeners', async () => {
       let exactCount = 0;
       let wildcardCount = 0;
 
@@ -212,7 +211,7 @@ describe('Enhanced EventBus Features', () => {
       expect(wildcardCount).to.equal(1);
     });
 
-    it('should unsubscribe from wildcard listeners', () => {
+    it('should unsubscribe from wildcard listeners', async () => {
       let count = 0;
 
       const unsubscribe = bus.onNamespace('feature', () => count++);
@@ -225,14 +224,12 @@ describe('Enhanced EventBus Features', () => {
       expect(count).to.equal(1);
     });
 
-    it('should pass payload to wildcard listeners', (done) => {
-      bus.onNamespace('feature', (payload) => {
-        expect(payload.id).to.equal('123');
-        done();
-      });
-
-      const FEAT = await import('../../www/js/core/EventRegistry.js');
-      bus.emit(FEAT.FeatureEvents.CREATED, { id: '123' });
+    it('should pass payload to wildcard listeners', async () => {
+      const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
+      const ev = new Promise((resolve) => bus.onNamespace('feature', resolve));
+      bus.emit(FeatureEvents.CREATED, { id: '123' });
+      const payload = await ev;
+      expect(payload.id).to.equal('123');
     });
   });
 
