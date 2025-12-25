@@ -2,7 +2,7 @@
 // Lit 3.3.1 web component for feature cards
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { UIEvents, ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
@@ -17,7 +17,6 @@ import { featureFlags } from '../config.js';
  * @property {Array} teams - Array of team objects
  * @property {boolean} condensed - Whether to render in condensed mode
  * @property {boolean} selected - Whether this card is selected
- * @property {boolean} inScenarioMode - Whether app is in scenario mode
  * @property {Object} project - Project object for border color
  */
 export class FeatureCardLit extends LitElement {
@@ -27,7 +26,6 @@ export class FeatureCardLit extends LitElement {
     teams: { type: Array },
     condensed: { type: Boolean },
     selected: { type: Boolean },
-    inScenarioMode: { type: Boolean },
     project: { type: Object }
   };
 
@@ -230,7 +228,6 @@ export class FeatureCardLit extends LitElement {
     this.teams = [];
     this.condensed = false;
     this.selected = false;
-    this.inScenarioMode = false;
     this.project = null;
     // ResizeObserver batching state
     this._ro = null;
@@ -243,112 +240,91 @@ export class FeatureCardLit extends LitElement {
 
   updated(changed) {
     // Reflect dirty state as a host class so external light-DOM logic and CSS can target it
+    // TODO: Remove light DOM; use shadow DOM only
     try {
       const isDirty = !!(this.feature && this.feature.dirty);
       this.classList.toggle('dirty', isDirty);
       // Also apply to inner card immediately so visual updates (resize/move) show the style
-      try{
+      try {
         const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-        if(rootCard) rootCard.classList.toggle('dirty', isDirty);
-      }catch(e){ /* noop */ }
+        if (rootCard) rootCard.classList.toggle('dirty', isDirty);
+      } catch (e) { /* noop */ }
     } catch (e) {
       // no-op
     }
-    try{
-      if(this.feature && this.feature.id !== undefined && this.feature.id !== null){
+    try {
+      if (this.feature && this.feature.id !== undefined && this.feature.id !== null) {
         this.setAttribute('data-feature-id', String(this.feature.id));
       } else {
         this.removeAttribute('data-feature-id');
       }
-    }catch(e){}
+    } catch (e) { }
   }
 
   /**
    * Apply lightweight visual updates without forcing a full re-render.
    * Accepts CSS left/width values (strings with px or numbers), selection and dirty flags, and project info.
    */
-  applyVisuals({ left, width, selected, dirty, project } = {}){
-    try{
-      if(left !== undefined){
-        const px = typeof left === 'number' ? left + 'px' : left;
-        this.style.left = px;
-      }
-      if(width !== undefined){
-        const pxw = typeof width === 'number' ? width + 'px' : width;
-        this.style.width = pxw;
-      }
-      if(selected !== undefined){ this.selected = !!selected; }
-      if(dirty !== undefined){ 
-        this.feature = Object.assign({}, this.feature, { dirty }); 
-        // immediate visual update for dirty flag to handle external visuals (drag/resize)
-        try{
-          const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-          const isDirty = !!(dirty && this.inScenarioMode);
-          if(rootCard) rootCard.classList.toggle('dirty', isDirty);
-          this.classList.toggle('dirty', isDirty);
-        }catch(e){ }
-      }
-      if(project !== undefined){ this.project = project; }
+  applyVisuals({ left, width, selected, dirty, project } = {}) {
+    // Optional instrumentation
+    if (featureFlags && featureFlags.serviceInstrumentation) {
+      console.log('[FeatureCard] applyVisuals', this.feature.id, { left, width, selected, dirty, project });
+    }
+    try {
+      const px = typeof left === 'number' ? left + 'px' : left;
+      this.style.left = px;
+      const pxw = typeof width === 'number' ? width + 'px' : width;
+      this.style.width = pxw;
+      this.selected = selected;
+      // immediate visual update for dirty flag to handle external visuals (drag/resize)
+      this.feature = Object.assign({}, this.feature, { dirty });
+      this.shadowRoot.classList.toggle('dirty', dirty);
+      this.project = project;
       // Force an update cycle if necessary
       this.requestUpdate();
-
-      // Optional instrumentation
-      try{
-        if(featureFlags && featureFlags.serviceInstrumentation){
-          console.log('[FeatureCard] applyVisuals', this.feature && this.feature.id, { left, width, selected, dirty });
-        }
-      }catch(e){}
-
-      // Ensure dirty class is applied immediately based on current feature state
-      try{
-        const isDirtyNow = !!(this.feature && this.feature.dirty && this.inScenarioMode);
-        const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-        if(rootCard) rootCard.classList.toggle('dirty', isDirtyNow);
-        this.classList.toggle('dirty', isDirtyNow);
-      }catch(e){ /* noop */ }
-    }catch(e){ /* swallow to allow caller fallback */ }
+    } catch (e) { /* swallow to allow caller fallback */ }
   }
 
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
     // Debounced ResizeObserver: batch entries and process in rAF
     this._ro = new ResizeObserver(entries => {
-      if(this._skipRo) return;
-      for(const ent of entries) this._roQueue.push(ent);
-      if(this._roScheduled) return;
+      if (this._skipRo) return;
+      for (const ent of entries) this._roQueue.push(ent);
+      if (this._roScheduled) return;
       this._roScheduled = true;
-      requestAnimationFrame(()=>{
+      requestAnimationFrame(() => {
         this._roScheduled = false;
         this._processRoNow();
       });
     });
 
     // Delay initial observation to avoid running heavy layout reads during synchronous connectedCallback work
-    requestAnimationFrame(()=>{ try{ this._ro && this._ro.observe(this); }catch(e){} });
+    requestAnimationFrame(() => { try { this._ro && this._ro.observe(this); } catch (e) { } });
 
     // Pause RO measurement during drag moves to avoid layout thrash; resume and process after drag end
-    try{
+    try {
       this._unsubDragMove = bus.on(DragEvents.MOVE, () => { this._skipRo = true; });
       this._unsubDragEnd = bus.on(DragEvents.END, () => { this._skipRo = false; this._processRoNow(); });
-    }catch(e){}
+    } catch (e) { }
   }
 
-  disconnectedCallback(){
-    if(this._ro){ this._ro.disconnect(); this._ro = null; }
-    try{ if(typeof this._unsubDragMove === 'function') this._unsubDragMove(); }catch(e){}
-    try{ if(typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); }catch(e){}
+  disconnectedCallback() {
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
+    try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
     super.disconnectedCallback();
   }
 
-  _processRoNow(){
-    if(this._skipRo){ this._roQueue = []; return; }
+  _processRoNow() {
+    if (this._skipRo) { this._roQueue = []; return; }
     // coalesce latest entry for this host
     const entry = this._roQueue.length ? this._roQueue[this._roQueue.length - 1] : null;
     this._roQueue = [];
-    if(!entry) return;
-    try{
+    if (!entry) return;
+    try {
       const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-      if(!rootCard) return;
+      if (!rootCard) return;
       const teamRow = rootCard.querySelector('.team-load-row');
       const titleEl = rootCard.querySelector('.feature-title');
       const tolerance = 2;
@@ -359,7 +335,7 @@ export class FeatureCardLit extends LitElement {
       const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
       const contentFits = teamFits && titleFits;
 
-      if(contentFits){
+      if (contentFits) {
         rootCard.classList.remove('narrow');
         this.classList.remove('narrow');
       } else {
@@ -367,42 +343,33 @@ export class FeatureCardLit extends LitElement {
         this.classList.add('narrow');
       }
 
-      if(w < 70){ rootCard.classList.add('culled'); this.classList.add('culled'); }
+      if (w < 70) { rootCard.classList.add('culled'); this.classList.add('culled'); }
       else { rootCard.classList.remove('culled'); this.classList.remove('culled'); }
-    }catch(e){}
+    } catch (e) { }
   }
 
   _handleClick(e) {
     // If the click originated from the resize handle, ignore it
-    try{
+    console.log('FeatureCardLit _handleClick', e);
+    try {
       const path = (e.composedPath && e.composedPath()) || [];
       // path may include shadow DOM nodes; check for any element with class 'drag-handle'
       const cameFromHandle = path.some(p => p && p.classList && p.classList.contains && p.classList.contains('drag-handle'));
       if (cameFromHandle) return;
-    }catch(err){ /* ignore path errors and continue */ }
+    } catch (err) { /* ignore path errors and continue */ }
 
-    if (this.bus) {
-      // Emit the typed UI event so EventBus listeners receive it. EventRegistry maps
-      // UIEvents.DETAILS_SHOW -> 'details:show' via the bus registration.
-      try {
-        // Use the latest effective feature from state to ensure changedFields/dirty
-        // are present for the details panel (handles queued optimistic updates).
-        try{
-          const eff = (state.getEffectiveFeatures() || []).find(f => f.id === (this.feature && this.feature.id));
-          this.bus.emit(UIEvents.DETAILS_SHOW, eff || this.feature);
-        }catch(e){
-          this.bus.emit(UIEvents.DETAILS_SHOW, this.feature);
-        }
-      } catch (err) {
-        // Fallback: attempt to emit the string event name if typed emit fails
-        try { this.bus.emit('details:show', this.feature); } catch (e) { /* swallow */ }
-      }
-    }
+    // Emit the SELECTED events for other components to subscribe to.
+    // Use the latest effective feature from state to ensure changedFields/dirty
+    // are present for the details panel (handles queued optimistic updates).
+    const eff = state.getEffectiveFeatureById(this.feature && this.feature.id);
+    this.bus.emit(FeatureEvents.SELECTED, eff);
+    if (featureFlags && featureFlags.serviceInstrumentation)
+      console.log('[FeatureCardLit] emitted SELECTED for feature', this.feature.id, eff);
   }
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
-    
+
     const orgBox = html`
       <span class="team-load-box" style="background: #23344d;">
         ${this.feature.orgLoad || '0%'}
@@ -444,7 +411,7 @@ export class FeatureCardLit extends LitElement {
     const cardClasses = {
       'feature-card': true,
       'selected': this.selected,
-      'dirty': this.feature.dirty && this.inScenarioMode,
+      'dirty': this.feature.dirty,
       'condensed': this.condensed
     };
 
@@ -466,7 +433,6 @@ export class FeatureCardLit extends LitElement {
           <div class="feature-title" title=${this.feature.title}>
             ${this.feature.title}
           </div>
-          <!--${this.feature.dirty && this.inScenarioMode ? html`<div class="dirty-badge">Modified</div>` : ''} -->
         </div>
         ${!this.condensed ? html`
           <div class="feature-dates">
@@ -481,15 +447,15 @@ export class FeatureCardLit extends LitElement {
 
 customElements.define('feature-card-lit', FeatureCardLit);
 
-export function laneHeight(){
+export function laneHeight() {
   return state.condensedCards ? 40 : 64;
 }
 
-export function getBoardOffset(){
+export function getBoardOffset() {
   const board = typeof document !== 'undefined' ? document.querySelector('feature-board') : null;
-  if(!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft,10);
-  return isNaN(pl)?0:pl;
+  if (!board) return 0;
+  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
+  return isNaN(pl) ? 0 : pl;
 }
 
 const monthWidth = 120;
@@ -499,15 +465,15 @@ let _cachedMonthsRef = null;
 let _cachedMonthStarts = null; // array of ms timestamps for month starts
 let _cachedMonthDays = null; // days per month
 
-function _buildMonthCache(months){
+function _buildMonthCache(months) {
   _cachedMonthsRef = months;
   _cachedMonthStarts = months.map(m => m.getTime());
-  _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth()+1, 0).getDate());
+  _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
 }
 
-export function computePosition(feature, monthsArg){
+export function computePosition(feature, monthsArg) {
   const months = monthsArg || getTimelineMonths();
-  if(!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || (_cachedMonthsRef[0] && months[0] && _cachedMonthsRef[0].getTime() !== months[0].getTime())){
+  if (!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || (_cachedMonthsRef[0] && months[0] && _cachedMonthsRef[0].getTime() !== months[0].getTime())) {
     _buildMonthCache(months);
   }
   let startDate = parseDate(feature.start);
@@ -518,24 +484,25 @@ export function computePosition(feature, monthsArg){
   // Binary-search month index using cached month starts
   const ms = startDate.getTime();
   const ems = endDate.getTime();
-  function findMonthIndexFor(msVal){
+  function findMonthIndexFor(msVal) {
     const arr = _cachedMonthStarts; let lo = 0, hi = arr.length - 1;
-    if(msVal < arr[0]) return -1;
-    if(msVal >= arr[hi]) return hi;
-    while(lo <= hi){ const mid = (lo + hi) >> 1; const midStart = arr[mid]; const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
-      if(msVal >= midStart && msVal < midEnd) return mid;
-      if(msVal < midStart) hi = mid - 1; else lo = mid + 1;
+    if (msVal < arr[0]) return -1;
+    if (msVal >= arr[hi]) return hi;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1; const midStart = arr[mid]; const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
+      if (msVal >= midStart && msVal < midEnd) return mid;
+      if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
     }
     return -1;
   }
   let startIdx = findMonthIndexFor(ms);
-  if(startIdx < 0) startIdx = ms < _cachedMonthStarts[0] ? 0 : months.length - 1;
+  if (startIdx < 0) startIdx = ms < _cachedMonthStarts[0] ? 0 : months.length - 1;
   let endIdx = findMonthIndexFor(ems);
-  if(endIdx < 0) endIdx = ems < _cachedMonthStarts[0] ? 0 : months.length - 1;
+  if (endIdx < 0) endIdx = ems < _cachedMonthStarts[0] ? 0 : months.length - 1;
 
   const startDays = _cachedMonthDays[startIdx];
   const endDays = _cachedMonthDays[endIdx];
-  const startFraction = (startDate.getDate()-1) / startDays;
+  const startFraction = (startDate.getDate() - 1) / startDays;
   const endFraction = (endDate.getDate()) / endDays;
 
   const boardOffset = getBoardOffset();
@@ -543,7 +510,7 @@ export function computePosition(feature, monthsArg){
   const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
   let width = spanContinuous * monthWidth;
   const minVisualWidth = 40;
-  if(width < minVisualWidth) width = minVisualWidth;
+  if (width < minVisualWidth) width = minVisualWidth;
 
   return { left, width };
 }
@@ -553,54 +520,52 @@ export function computePosition(feature, monthsArg){
 // Map of currently rendered Lit feature cards keyed by feature id.
 const litCardMap = new Map();
 
-export function renderFeatureBoardLit(board){
+export function renderFeatureBoardLit(board) {
   let ordered;
   const sourceFeatures = state.getEffectiveFeatures();
-  if(state.featureSortMode === 'rank'){
-    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a,b)=> (a.originalRank||0)-(b.originalRank||0));
+  if (state.featureSortMode === 'rank') {
+    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
     const childrenByEpic = new Map();
-    sourceFeatures.forEach(f => { if(f.type==='feature' && f.parentEpic){ if(!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
-    for(const arr of childrenByEpic.values()) arr.sort((a,b)=> (a.originalRank||0)-(b.originalRank||0));
-    const standalone = sourceFeatures.filter(f => f.type==='feature' && !f.parentEpic).sort((a,b)=> (a.originalRank||0)-(b.originalRank||0));
+    sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
+    for (const arr of childrenByEpic.values()) arr.sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
+    const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
     ordered = [];
-    for(const epic of epics){ ordered.push(epic); const kids = childrenByEpic.get(epic.id)||[]; ordered.push(...kids); }
+    for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
     ordered.push(...standalone);
   } else {
-    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a,b)=> a.start.localeCompare(b.start));
+    const epics = sourceFeatures.filter(f => f.type === 'epic').sort((a, b) => a.start.localeCompare(b.start));
     const childrenByEpic = new Map();
-    sourceFeatures.forEach(f => { if(f.type === 'feature' && f.parentEpic){ if(!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
-    for(const arr of childrenByEpic.values()) arr.sort((a,b)=> a.start.localeCompare(b.start));
-    const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a,b)=> a.start.localeCompare(b.start));
+    sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!childrenByEpic.has(f.parentEpic)) childrenByEpic.set(f.parentEpic, []); childrenByEpic.get(f.parentEpic).push(f); } });
+    for (const arr of childrenByEpic.values()) arr.sort((a, b) => a.start.localeCompare(b.start));
+    const standalone = sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic).sort((a, b) => a.start.localeCompare(b.start));
     ordered = [];
-    for(const epic of epics){ ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
+    for (const epic of epics) { ordered.push(epic); const kids = childrenByEpic.get(epic.id) || []; ordered.push(...kids); }
     ordered.push(...standalone);
   }
-  let idx=0;
+  let idx = 0;
   const mapChildren = new Map();
-  sourceFeatures.forEach(f => { if(f.type==='feature' && f.parentEpic){ if(!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
-  const activeScenario = state.scenarios.find(s=>s.id===state.activeScenarioId);
-  const inScenarioMode = !!activeScenario && activeScenario.id !== 'baseline';
+  sourceFeatures.forEach(f => { if (f.type === 'feature' && f.parentEpic) { if (!mapChildren.has(f.parentEpic)) mapChildren.set(f.parentEpic, []); mapChildren.get(f.parentEpic).push(f); } });
   board.innerHTML = '';
-  for(const f of ordered){
-    if(!state.projects.find(p=>p.id===f.project && p.selected)) continue;
+  for (const f of ordered) {
+    if (!state.projects.find(p => p.id === f.project && p.selected)) continue;
     const selStateSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
-    if(selStateSet.size === 0) continue;
+    if (selStateSet.size === 0) continue;
     const fState = f.status || f.state;
-    if(!selStateSet.has(fState)) continue;
-    if(f.type === 'epic' && !state.showEpics) continue;
-    if(f.type === 'feature' && !state.showFeatures) continue;
-    if(f.type === 'epic'){
+    if (!selStateSet.has(fState)) continue;
+    if (f.type === 'epic' && !state.showEpics) continue;
+    if (f.type === 'feature' && !state.showFeatures) continue;
+    if (f.type === 'epic') {
       const kids = mapChildren.get(f.id) || [];
-      const anyChildVisible = kids.some(ch => state.projects.find(p=>p.id===ch.project && p.selected) && ch.capacity.some(tl=> state.teams.find(t=>t.id===tl.team && t.selected)));
-      const epicVisible = f.capacity.some(tl=> state.teams.find(t=>t.id===tl.team && t.selected)) || anyChildVisible;
-      if(!epicVisible) continue;
+      const anyChildVisible = kids.some(ch => state.projects.find(p => p.id === ch.project && p.selected) && ch.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)));
+      const epicVisible = f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)) || anyChildVisible;
+      if (!epicVisible) continue;
     } else {
-      if(!f.capacity.some(tl=> state.teams.find(t=>t.id===tl.team && t.selected))) continue;
+      if (!f.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) continue;
     }
     const months = getTimelineMonths();
     const pos = computePosition(f, months) || {};
     // cache visual geometry on the feature object to avoid recomputing repeatedly
-    try{ f._left = pos.left; f._width = pos.width; }catch(e){}
+    try { f._left = pos.left; f._width = pos.width; } catch (e) { }
     const left = (pos.left !== undefined ? pos.left : (f._left || f.left));
     const width = (pos.width !== undefined ? pos.width : (f._width || f.width));
     const card = document.createElement('feature-card-lit');
@@ -611,80 +576,100 @@ export function renderFeatureBoardLit(board){
     card.bus = bus;
     card.teams = state.teams;
     card.condensed = state.condensedCards;
-    card.inScenarioMode = inScenarioMode;
-    card.project = state.projects.find(p=>p.id===f.project);
+    card.project = state.projects.find(p => p.id === f.project);
     const updateDatesCb = (updatesArray) => state.updateFeatureDates(updatesArray);
     const featuresSource = sourceFeatures;
-    const resizeHandleQuery = () => card.shadowRoot?.querySelector('.drag-handle') || card.querySelector('.drag-handle');
-    const datesQuery = () => card.shadowRoot?.querySelector('.feature-dates') || card.querySelector('.feature-dates');
+    const resizeHandleQuery = () => card.shadowRoot?.querySelector('.drag-handle');
+    const datesQuery = () => card.shadowRoot?.querySelector('.feature-dates');
+
     card.addEventListener('mousedown', e => {
       const path = (e.composedPath && e.composedPath()) || [];
       const rh = resizeHandleQuery();
       const cameFromResizeHandle = path.includes(rh);
-      if(cameFromResizeHandle){ e.stopPropagation(); const datesEl = datesQuery(); startResize(e, f, card, datesEl, updateDatesCb, featuresSource); return; }
+      if (cameFromResizeHandle) { e.stopPropagation(); const datesEl = datesQuery(); startResize(e, f, card, datesEl, updateDatesCb, featuresSource); return; }
       e.stopPropagation();
-      const startX = e.clientX; let isDragging = false;
-      function cleanupTemp(){ window.removeEventListener('mousemove', onPreMove); window.removeEventListener('mouseup', onPreUp); }
-      function onPreMove(ev){ const dx = ev.clientX - startX; if(Math.abs(dx) > 5){ isDragging = true; cleanupTemp(); startDragMove(e, f, card, updateDatesCb, featuresSource); } }
-      function onPreUp(){ cleanupTemp(); if(!isDragging){ document.querySelectorAll('.feature-card').forEach(c=>{ c.classList.remove('selected'); try{ c.selected = false; }catch(e){} }); try{ litCardMap.forEach(h => { try{ h.selected = false; h.classList && h.classList.remove('selected'); }catch(e){} }); }catch(e){} try{ card.selected = true; }catch(e){} bus.emit(UIEvents.DETAILS_SHOW, f); } }
-      window.addEventListener('mousemove', onPreMove); window.addEventListener('mouseup', onPreUp);
+      const startX = e.clientX;
+      let isDragging = false;
+      function onPreMove(ev) {
+        const dx = ev.clientX - startX;
+        if (Math.abs(dx) > 5) {
+          isDragging = true;
+          window.removeEventListener('mousemove', onPreMove); window.removeEventListener('mouseup', onPreUp);
+          startDragMove(e, f, card, updateDatesCb, featuresSource);
+        }
+      }
+      function onPreUp() {
+        console.log('FeatureCardLit pre-up, isDragging:', isDragging);
+        window.removeEventListener('mousemove', onPreMove); window.removeEventListener('mouseup', onPreUp);
+      }
+      window.addEventListener('mousemove', onPreMove);
+      window.addEventListener('mouseup', onPreUp);
     });
-    const rh = resizeHandleQuery(); if(rh){ rh.addEventListener('mousedown', e => { e.stopPropagation(); const datesEl = datesQuery(); startResize(e, f, card, datesEl, updateDatesCb, featuresSource); }); }
+    const rh = resizeHandleQuery();
+    if (rh) {
+      rh.addEventListener('mousedown', e => {
+        e.stopPropagation();
+        const datesEl = datesQuery();
+        startResize(e, f, card, datesEl, updateDatesCb, featuresSource);
+      });
+    }
     board.appendChild(card);
-    try{ litCardMap.set(f.id, card); }catch(e){}
-    if(featureFlags && featureFlags.serviceInstrumentation){ try{ console.log('[FeatureBoard] created card', f.id, 'left:', left, 'width:', width, 'featureOverride:', f._left !== undefined || f._width !== undefined); }catch(e){} }
+    try { litCardMap.set(f.id, card); } catch (e) { }
+    if (featureFlags && featureFlags.serviceInstrumentation) {
+        console.log('[FeatureBoard] created card', f.id, 'left:', left, 'width:', width, 'featureOverride:', f._left !== undefined || f._width !== undefined);
+    }
     idx++;
   }
 }
 
-export async function updateCardsById(board, ids = [], sourceFeatures = []){
+export async function updateCardsById(board, ids = [], sourceFeatures = []) {
   const getFeature = (id) => {
     if (Array.isArray(sourceFeatures)) return sourceFeatures.find((f) => f.id === id);
     if (sourceFeatures && typeof sourceFeatures.get === 'function') return sourceFeatures.get(id);
     return undefined;
   };
-  try{
-    for(const id of ids){
+  try {
+    for (const id of ids) {
       const feature = getFeature(id);
-      if(!feature) continue;
+      if (!feature) continue;
       let geom = {};
-      try{ 
+      try {
         // Prefer cached values if present
-        if(feature && feature._left !== undefined && feature._width !== undefined){ geom.left = feature._left; geom.width = feature._width; }
+        if (feature && feature._left !== undefined && feature._width !== undefined) { geom.left = feature._left; geom.width = feature._width; }
         else { const months = getTimelineMonths(); geom = computePosition(feature, months) || {}; }
-      }catch(e){ console.warn('computePosition failed', e); geom.left = feature && (feature._left || feature.left) || ''; geom.width = feature && (feature._width || feature.width) || ''; }
+      } catch (e) { console.warn('computePosition failed', e); geom.left = feature && (feature._left || feature.left) || ''; geom.width = feature && (feature._width || feature.width) || ''; }
       const left = (geom.left !== undefined && geom.left !== '') ? (typeof geom.left === 'number' ? geom.left + 'px' : geom.left) : '';
       const width = (geom.width !== undefined && geom.width !== '') ? (typeof geom.width === 'number' ? geom.width + 'px' : geom.width) : '';
       let existing = litCardMap.get(id);
-      if(!existing && board){
+      if (!existing && board) {
         const candidates = board.querySelectorAll('feature-card-lit');
-        for(const c of candidates){ try{ const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id); if(fid === id){ existing = c; litCardMap.set(id, c); break; } }catch(e){} }
+        for (const c of candidates) { try { const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id); if (fid === id) { existing = c; litCardMap.set(id, c); break; } } catch (e) { } }
       }
-      if(existing){ if(typeof existing.applyVisuals === 'function'){ existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: state.projects.find(p=>p.id===feature.project) }); } else { existing.style.left = left; existing.style.width = width; existing.feature = feature; existing.selected = !!feature.selected; } }
+      if (existing) { if (typeof existing.applyVisuals === 'function') { existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: state.projects.find(p => p.id === feature.project) }); } else { existing.style.left = left; existing.style.width = width; existing.feature = feature; existing.selected = !!feature.selected; } }
       else {
         // Fallback: full render
-        try{ renderFeatureBoardLit(board); }catch(e){ console.error('updateCardsById fallback render failed', e); }
+        try { renderFeatureBoardLit(board); } catch (e) { console.error('updateCardsById fallback render failed', e); }
       }
     }
-  }catch(e){ console.error('updateCardsById error', e); try{ renderFeatureBoardLit(board); }catch(err){ }}
+  } catch (e) { console.error('updateCardsById error', e); try { renderFeatureBoardLit(board); } catch (err) { } }
 }
 
 // Initialize feature cards wiring
-export async function initFeatureCards(){
-  bus.on(ProjectEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board); });
-  bus.on(TeamEvents.CHANGED,    () => { const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board); });
-  bus.on(TimelineEvents.MONTHS, () => { const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board); });
-  bus.on(FeatureEvents.UPDATED, (payload) => { 
-    const board = document.querySelector('feature-board'); 
+export async function initFeatureCards() {
+  bus.on(ProjectEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
+  bus.on(TeamEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
+  bus.on(TimelineEvents.MONTHS, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
+  bus.on(FeatureEvents.UPDATED, (payload) => {
+    const board = document.querySelector('feature-board');
     const ids = payload && Array.isArray(payload.ids) && payload.ids.length ? payload.ids : null;
-    if(ids){ updateCardsById(board, ids, state.getEffectiveFeatures()); }
+    if (ids) { updateCardsById(board, ids, state.getEffectiveFeatures()); }
     else { renderFeatureBoardLit(board); }
   });
-  bus.on(FilterEvents.CHANGED,  () => { const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board); });
-  bus.on(ViewEvents.SORT_MODE,  () => { const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board); });
-  bus.on(ScenarioEvents.ACTIVATED, ({scenarioId})=>{
-    const board = document.querySelector('feature-board'); if(!board) return;
-    if(scenarioId && scenarioId !== 'baseline') board.classList.add('scenario-mode'); else board.classList.remove('scenario-mode');
+  bus.on(FilterEvents.CHANGED, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
+  bus.on(ViewEvents.SORT_MODE, () => { const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board); });
+  bus.on(ScenarioEvents.ACTIVATED, ({ scenarioId }) => {
+    const board = document.querySelector('feature-board'); if (!board) return;
+    if (scenarioId && scenarioId !== 'baseline') board.classList.add('scenario-mode'); else board.classList.remove('scenario-mode');
   });
-  const board = document.querySelector('feature-board'); if(board) renderFeatureBoardLit(board);
+  const board = document.querySelector('feature-board'); if (board) renderFeatureBoardLit(board);
 }
