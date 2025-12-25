@@ -6,7 +6,7 @@ describe('FeatureBoard & DragSurface Tests', () => {
     if(!window.__origResizeObserver){ window.__origResizeObserver = window.ResizeObserver; }
     window.ResizeObserver = class { observe(){} unobserve(){} disconnect(){} };
 
-    const mod = await import('../../www/js/components/FeatureCard.lit.js');
+    const mod = await import('../../www/js/components/FeatureBoard.lit.js');
     const { updateCardsById } = mod;
     const cfg = await import('../../www/js/config.js');
     cfg.featureFlags.USE_LIT_COMPONENTS = true;
@@ -28,7 +28,7 @@ describe('FeatureBoard & DragSurface Tests', () => {
     const card2 = document.createElement('feature-card-lit'); card2.feature = features[1]; card2.style.left='200px'; card2.style.width='120px'; board.appendChild(card2);
     features[0].start='2025-01-02'; features[0].end='2025-01-08'; features[0]._left=50; features[0]._width=120;
     features[1].start='2025-01-09'; features[1].end='2025-01-20'; features[1]._left=300; features[1]._width=220;
-    await updateCardsById(board, ['F1','F2'], features);
+    await board.updateCardsById(['F1','F2'], features);
     // restore ResizeObserver
     if(window.__origResizeObserver){ window.ResizeObserver = window.__origResizeObserver; delete window.__origResizeObserver; }
     const nodes = board.querySelectorAll('feature-card-lit'); expect(nodes.length).to.be.at.least(2);

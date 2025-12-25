@@ -1,5 +1,4 @@
 import { expect, fixture, html } from '@open-wc/testing';
-import { updateCardsById } from '../../www/js/components/FeatureCard.lit.js';
 import { featureFlags } from '../../www/js/config.js';
 
 // Define a lightweight mock for feature-card-lit so tests don't require Lit runtime.
@@ -28,6 +27,8 @@ describe('FeatureBoard incremental updates', () => {
     if(!window.__origResizeObserver){ window.__origResizeObserver = window.ResizeObserver; }
     window.ResizeObserver = class { observe(){} unobserve(){} disconnect(){} };
 
+    // Ensure the feature-board component is registered
+    await import('../../www/js/components/FeatureBoard.lit.js');
     const board = await fixture(html`<feature-board id="featureBoard"></feature-board>`);
     // Ensure timeline DOM exists and months cache is initialized for computePosition
     const header = document.createElement('div'); header.id = 'timelineHeader'; document.body.appendChild(header);
@@ -60,7 +61,8 @@ describe('FeatureBoard incremental updates', () => {
     features[0].start = '2025-01-02'; features[0].end = '2025-01-08'; features[0]._left = 50; features[0]._width = 120;
     features[1].start = '2025-01-09'; features[1].end = '2025-01-20'; features[1]._left = 300; features[1]._width = 220;
 
-    await updateCardsById(board, ['F1','F2'], features);
+    // Use the refactored component API
+    await board.updateCardsById(['F1','F2'], features);
 
     // Assert the DOM nodes were patched (style.left/width updated and feature prop set)
     const nodes = board.querySelectorAll('feature-card-lit');

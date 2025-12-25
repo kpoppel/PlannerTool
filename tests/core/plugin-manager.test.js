@@ -60,7 +60,8 @@ describe('PluginManager & Plugin base', () => {
   it('should emit plugin:registered event', (done) => {
     const plugin = new TestPlugin('test-plugin');
 
-    bus.once('plugin:registered', (data) => {
+    const { PluginEvents } = await import('../../www/js/core/EventRegistry.js');
+    bus.once(PluginEvents.REGISTERED, (data) => {
       expect(data.plugin).to.equal('test-plugin');
       done();
     });

@@ -12,22 +12,22 @@ describe('Coverage helpers', () => {
     }
     let called = false;
     const h = (p)=> { called = true; };
-    const unsub = bus.on('test:event', h);
-    bus.emit('test:event', { ok: true });
+    const unsub = bus.on(sym, h);
+    bus.emit(sym, { ok: true });
     expect(called).to.equal(true);
     unsub();
     called = false;
-    bus.emit('test:event', { ok: true });
+    bus.emit(sym, { ok: true });
     expect(called).to.equal(false);
 
     let onceCalled = 0;
-    bus.once('test:event', ()=> onceCalled++);
-    bus.emit('test:event');
-    bus.emit('test:event');
+    bus.once(sym, ()=> onceCalled++);
+    bus.emit(sym);
+    bus.emit(sym);
     expect(onceCalled).to.equal(1);
 
     bus.enableHistoryLogging(10);
-    bus.emit('test:event', { x:1 });
+    bus.emit(sym, { x:1 });
     const hst = bus.getEventHistory();
     expect(Array.isArray(hst)).to.equal(true);
     bus.disableHistoryLogging();
