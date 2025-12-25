@@ -1,44 +1,53 @@
 export class EventBus {
   constructor() { 
     this.listeners = new Map();
-    this.eventTypeMap = new Map(); // Maps Symbol constants to string events
-    this.warnOnStringEvents = false;
+    // listeners: Map<Symbol, Set<Function>>
+    // namespaceListeners: Map<string, Set<Function>> for simple wildcard support
+    this.namespaceListeners = new Map();
     this.historyEnabled = false;
     this.history = [];
     this.historyLimit = 1000;
   }
   
   /**
-   * Register a typed event mapping
-   * @param {Symbol} typeConstant - Symbol constant for the event
-   * @param {string} stringEvent - String representation of the event
+   * Extract namespace from a Symbol event (Symbol(description) where description is 'feature:created')
+   * @param {Symbol} event
+   * @returns {string|null} namespace (e.g. 'feature') or null
    */
-  registerEventType(typeConstant, stringEvent) {
-    this.eventTypeMap.set(typeConstant, stringEvent);
-  }
-  
-  /**
-   * Convert event (Symbol or string) to string
-   * @param {Symbol|string} event - Event identifier
-   * @returns {string} String representation
-   */
-  _toEventString(event) {
-    if (typeof event === 'string') return event;
-    if (this.eventTypeMap.has(event)) return this.eventTypeMap.get(event);
-    return event.toString(); // Fallback: convert Symbol to string
-  }
-  
-  /**
-   * Get wildcard pattern key for an event
-   * @param {string} eventStr - Event string (e.g., 'feature:created')
-   * @returns {string|null} Wildcard key (e.g., 'feature:*') or null
-   */
-  _getWildcardKey(eventStr) {
-    const colonIndex = eventStr.indexOf(':');
+  _getNamespaceFromSymbol(event) {
+    if (typeof event !== 'symbol') return null;
+    const desc = event.description || '';
+    const colonIndex = desc.indexOf(':');
     if (colonIndex > 0) {
-      return eventStr.substring(0, colonIndex) + ':*';
+      return desc.substring(0, colonIndex);
     }
     return null;
+  }
+
+  /**
+   * Subscribe to all events within a namespace (e.g., 'feature')
+   * @param {string} namespace
+   * @param {Function} handler
+   * @returns {Function} unsubscribe
+   */
+  onNamespace(namespace, handler) {
+    if (!this.namespaceListeners.has(namespace)) this.namespaceListeners.set(namespace, new Set());
+    this.namespaceListeners.get(namespace).add(handler);
+    return () => this.offNamespace(namespace, handler);
+  }
+
+  offNamespace(namespace, handler) {
+    if (!this.namespaceListeners.has(namespace)) return;
+    this.namespaceListeners.get(namespace).delete(handler);
+  }
+
+  /**
+   * Register a typed event mapping for compatibility with older string-based listeners.
+   * This merely stores the mapping; EventBus now operates on Symbols directly.
+   */
+  registerEventType(symbol, stringRepresentation) {
+    // no-op for now, kept for API compatibility
+    return;
   }
   
   /**
@@ -48,15 +57,14 @@ export class EventBus {
    * @returns {Function} Unsubscribe function
    */
   on(event, handler) { 
-    if (typeof event === 'string' && this.warnOnStringEvents) {
-      console.warn('[EventBus] Subscribing with string event:', event);
+    if (typeof event !== 'symbol') {
+      throw new Error('[EventBus] Events must be Symbol-typed.');
     }
-    const eventStr = this._toEventString(event);
-    if (!this.listeners.has(eventStr)) {
-      this.listeners.set(eventStr, new Set());
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
     }
-    this.listeners.get(eventStr).add(handler); 
-    return () => this.off(eventStr, handler); 
+    this.listeners.get(event).add(handler);
+    return () => this.off(event, handler);
   }
   
   /**
@@ -65,9 +73,11 @@ export class EventBus {
    * @param {Function} handler - Event handler function
    */
   off(event, handler) { 
-    const eventStr = this._toEventString(event);
-    if (this.listeners.has(eventStr)) {
-      this.listeners.get(eventStr).delete(handler);
+    if (typeof event !== 'symbol') {
+      throw new Error('[EventBus] Events must be Symbol-typed.');
+    }
+    if (this.listeners.has(event)) {
+      this.listeners.get(event).delete(handler);
     }
   }
   
@@ -77,14 +87,13 @@ export class EventBus {
    * @param {any} payload - Event payload
    */
   emit(event, payload) { 
-    const eventStr = this._toEventString(event);
-    if (typeof event === 'string' && this.warnOnStringEvents) {
-      console.warn('[EventBus] Emitting string event:', eventStr);
+    if (typeof event !== 'symbol') {
+      throw new Error('[EventBus] Events must be Symbol-typed.');
     }
 
     if (this.historyEnabled) {
       try {
-        this.history.push({ ts: Date.now(), event: eventStr, payload });
+        this.history.push({ ts: Date.now(), event: event, payload });
         if (this.history.length > this.historyLimit) {
           this.history.splice(0, this.history.length - this.historyLimit);
         }
@@ -92,24 +101,24 @@ export class EventBus {
     }
     
     // Trigger exact match listeners
-    if (this.listeners.has(eventStr)) { 
-      for (const h of this.listeners.get(eventStr)) { 
-        try { 
-          h(payload); 
-        } catch (e) { 
-          console.error('Event handler error', eventStr, e); 
-        } 
-      } 
-    }
-    
-    // Trigger wildcard listeners (e.g., 'feature:*' for 'feature:created')
-    const wildcardKey = this._getWildcardKey(eventStr);
-    if (wildcardKey && this.listeners.has(wildcardKey)) {
-      for (const h of this.listeners.get(wildcardKey)) {
+    if (this.listeners.has(event)) {
+      for (const h of this.listeners.get(event)) {
         try {
           h(payload);
         } catch (e) {
-          console.error('Wildcard handler error', wildcardKey, e);
+          console.error('Event handler error', event, e);
+        }
+      }
+    }
+    
+    // Trigger namespace listeners (e.g., namespace 'feature' for Symbol('feature:created'))
+    const ns = this._getNamespaceFromSymbol(event);
+    if (ns && this.namespaceListeners.has(ns)) {
+      for (const h of this.namespaceListeners.get(ns)) {
+        try {
+          h(payload);
+        } catch (e) {
+          console.error('Namespace handler error', ns, e);
         }
       }
     }
@@ -169,15 +178,3 @@ if (!_globalBus) {
   globalThis[GLOBAL_BUS_KEY] = _globalBus;
 }
 export const bus = _globalBus;
-
-// Synchronously register typed event mappings so tests and modules that import
-// the bus directly get the mappings immediately (avoids async race conditions).
-import { EVENT_TYPE_MAP } from './EventRegistry.js';
-import { featureFlags } from '../config.js';
-EVENT_TYPE_MAP.forEach((stringEvent, typeConstant) => {
-  // Avoid double-registration if already present
-  if (!bus.eventTypeMap.has(typeConstant)) {
-    bus.registerEventType(typeConstant, stringEvent);
-  }
-});
-console.log(`[EventBus] Auto-registered ${EVENT_TYPE_MAP.size} typed event mappings`);

@@ -4,13 +4,12 @@ import { initDependencyRenderer } from './components/DependencyRenderer.lit.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { registerCoreServices } from './core/ServiceRegistry.js';
-import { registerEventTypes, AppEvents } from './core/EventRegistry.js';
+import { AppEvents } from './core/EventRegistry.js';
 
 async function init(){
   registerCoreServices();
   // Phase 1: Register typed events and optional runtime behaviors
   try {
-    registerEventTypes(bus);
     if (featureFlags.LOG_STRING_EVENTS) {
       bus.enableStringWarnings();
     }

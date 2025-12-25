@@ -1,5 +1,6 @@
 import { Plugin } from '../core/Plugin.js';
 import { bus } from '../core/EventBus.js';
+import { FeatureEvents } from '../core/EventRegistry.js';
 
 export class SamplePlugin extends Plugin {
   constructor(id, config = {}) {
@@ -15,20 +16,20 @@ export class SamplePlugin extends Plugin {
 
   async activate() {
     // Subscribe to a representative event to demonstrate plugin behavior
-    bus.on('feature:select', this._boundOnFeatureSelect);
+    bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
     this.active = true;
     console.log(`[SamplePlugin] activate ${this.id}`);
   }
 
   async deactivate() {
-    bus.off('feature:select', this._boundOnFeatureSelect);
+    bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
     this.active = false;
     console.log(`[SamplePlugin] deactivate ${this.id}`);
   }
 
   async destroy() {
     // Ensure listeners cleaned up
-    try { bus.off('feature:select', this._boundOnFeatureSelect); } catch (e) {}
+    try { bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect); } catch (e) {}
     this.initialized = false;
     console.log(`[SamplePlugin] destroy ${this.id}`);
   }
