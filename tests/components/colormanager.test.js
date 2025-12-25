@@ -27,14 +27,15 @@ describe('Color manager utilities', () => {
     // capture events
     if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
     const events = [];
-    bus.on('color:changed', (p) => events.push(p));
+    const { ColorEvents } = await import('../../www/js/core/EventRegistry.js');
+    bus.on(ColorEvents.CHANGED, (p) => events.push(p));
     // call applyColor via the module's exported function by opening popover flow is DOM-heavy; instead, call internal function via ensurePopover path is not exposed.
     // But we can call the exported initColorManager which will trigger getColorMappings; to keep test simple, directly call applyColor by importing function dynamically.
     // The module doesn't export applyColor; as a workaround, call ensurePopover to create popover then simulate click — but that's DOM heavy. Instead, directly mutate state and assert event emission via manual emit.
 
     // Manual simulation
     state.projects[0].color = '#111111';
-    bus.emit('color:changed', { entityType: 'project', id: 'p1', color: '#111111' });
+    bus.emit(ColorEvents.CHANGED, { entityType: 'project', id: 'p1', color: '#111111' });
 
     expect(events.length).to.equal(1);
 

@@ -92,12 +92,13 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
     let received = false;
     let payload = null;
 
-    bus.on('test:container:event', (data) => {
+    const EV = Symbol('test:container:event');
+    bus.on(EV, (data) => {
       received = true;
       payload = data;
     });
 
-    bus.emit('test:container:event', { message: 'Hello from container' });
+    bus.emit(EV, { message: 'Hello from container' });
 
     expect(received).to.be.true;
     expect(payload).to.deep.equal({ message: 'Hello from container' });

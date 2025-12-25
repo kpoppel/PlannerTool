@@ -17,25 +17,27 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     if (typeof bus.disableHistoryLogging === 'function') bus.disableHistoryLogging();
   });
 
-  it('should emit and receive string events', (done) => {
+  it('should emit and receive symbol events', (done) => {
     const testPayload = { value: 42 };
+    const EV = Symbol('test:event');
 
-    bus.on('test:event', (payload) => {
+    bus.on(EV, (payload) => {
       expect(payload).to.deep.equal(testPayload);
       done();
     });
 
-    bus.emit('test:event', testPayload);
+    bus.emit(EV, testPayload);
   });
 
   it('should support multiple listeners for same event', () => {
     let count = 0;
 
-    bus.on('test:event', () => count++);
-    bus.on('test:event', () => count++);
-    bus.on('test:event', () => count++);
+    const EV = Symbol('test:event');
+    bus.on(EV, () => count++);
+    bus.on(EV, () => count++);
+    bus.on(EV, () => count++);
 
-    bus.emit('test:event', {});
+    bus.emit(EV, {});
 
     expect(count).to.equal(3);
   });
@@ -43,14 +45,15 @@ describe('EventBus: Consolidated Behavior and Features', () => {
   it('should return unsubscribe function from on()', () => {
     let received = false;
 
-    const unsubscribe = bus.on('test:event', () => {
+    const EV = Symbol('test:event');
+    const unsubscribe = bus.on(EV, () => {
       received = true;
     });
 
     expect(unsubscribe).to.be.a('function');
 
     unsubscribe();
-    bus.emit('test:event', {});
+    bus.emit(EV, {});
 
     expect(received).to.be.false;
   });
@@ -58,17 +61,17 @@ describe('EventBus: Consolidated Behavior and Features', () => {
   it('should isolate errors in event handlers', () => {
     let secondHandlerCalled = false;
 
-    bus.on('test:event', () => {
+    const EV = Symbol('test:event');
+    bus.on(EV, () => {
       throw new Error('Handler error');
     });
-
-    bus.on('test:event', () => {
+    bus.on(EV, () => {
       secondHandlerCalled = true;
     });
 
     // Should not throw
     expect(() => {
-      bus.emit('test:event', {});
+      bus.emit(EV, {});
     }).to.not.throw();
 
     expect(secondHandlerCalled).to.be.true;
@@ -76,7 +79,7 @@ describe('EventBus: Consolidated Behavior and Features', () => {
 
   it('should handle events with no listeners gracefully', () => {
     expect(() => {
-      bus.emit('nonexistent:event', { data: 'test' });
+      bus.emit(Symbol('nonexistent:event'), { data: 'test' });
     }).to.not.throw();
   });
 
@@ -91,34 +94,26 @@ describe('EventBus: Consolidated Behavior and Features', () => {
   });
 
   it('warns when subscribing with string event when enabled', async () => {
-    let warned = false;
-    const orig = console.warn;
-    console.warn = (msg) => {
-      if (typeof msg === 'string' && msg.includes('Subscribing with string event')) warned = true;
-    };
-    try {
-      if (typeof bus.enableStringWarnings === 'function') bus.enableStringWarnings();
-      bus.on('legacy:event', () => {});
-      expect(warned).to.equal(true);
-    } finally {
-      console.warn = orig;
-    }
+    // String subscriptions are no longer supported; ensure they throw
+    if (typeof bus.enableStringWarnings === 'function') bus.enableStringWarnings();
+    expect(() => bus.on('legacy:event', () => {})).to.throw(Error);
   });
 
   it('records history when enabled', async () => {
     if (typeof bus.enableHistoryLogging === 'function') bus.enableHistoryLogging(10);
-    bus.emit('some:event', { a: 1 });
+    const EV = Symbol('some:event');
+    bus.emit(EV, { a: 1 });
     const hist = (typeof bus.getEventHistory === 'function') ? bus.getEventHistory() : bus.history;
     expect(hist.length).to.equal(1);
-    expect(hist[0].event).to.equal('some:event');
+    expect(hist[0].event).to.equal(EV);
     expect(hist[0].payload).to.deep.equal({ a: 1 });
   });
 
   it('wildcard listeners receive events', () => {
     const received = [];
-    bus.on('data:*', (p) => received.push(p));
-    bus.emit('data:one', 1);
-    bus.emit('data:two', 2);
+    bus.onNamespace('data', (p) => received.push(p));
+    bus.emit(Symbol('data:one'), 1);
+    bus.emit(Symbol('data:two'), 2);
     expect(received).to.deep.equal([1,2]);
   });
 });
@@ -136,75 +131,45 @@ describe('Enhanced EventBus Features', () => {
   });
 
   describe('Backward Compatibility', () => {
-    it('should still handle string events', (done) => {
+    it('should handle symbol events', (done) => {
       const payload = { data: 'test' };
+      const EV = Symbol('test:event');
 
-      bus.on('test:event', (received) => {
+      bus.on(EV, (received) => {
         expect(received).to.deep.equal(payload);
         done();
       });
 
-      bus.emit('test:event', payload);
+      bus.emit(EV, payload);
     });
 
     it('should still return unsubscribe function for string events', () => {
       let called = false;
 
-      const unsubscribe = bus.on('test:event', () => {
+      const EV = Symbol('test:event');
+      const unsubscribe = bus.on(EV, () => {
         called = true;
       });
 
       unsubscribe();
-      bus.emit('test:event', {});
+      bus.emit(EV, {});
 
       expect(called).to.be.false;
     });
   });
 
   describe('Typed Events', () => {
-    it('should register typed event mapping', () => {
+    it('should register typed event mapping (no-op) and handle symbol events', () => {
       const TypedEvent = Symbol('test:typed');
 
+      // registerEventType is a compatibility no-op
       bus.registerEventType(TypedEvent, 'test:typed');
 
-      expect(bus.eventTypeMap.has(TypedEvent)).to.be.true;
-      expect(bus.eventTypeMap.get(TypedEvent)).to.equal('test:typed');
-    });
-
-    it('should emit typed event and receive via string listener', (done) => {
-      const TypedEvent = Symbol('test:typed');
-      bus.registerEventType(TypedEvent, 'test:typed');
-
-      bus.on('test:typed', (payload) => {
-        expect(payload.value).to.equal(42);
-        done();
-      });
-
+      // ensure symbol mapping works for subscriptions
+      let seen = false;
+      bus.on(TypedEvent, (payload) => { seen = payload.value === 42; });
       bus.emit(TypedEvent, { value: 42 });
-    });
-
-    it('should emit string event and receive via typed listener', (done) => {
-      const TypedEvent = Symbol('test:typed');
-      bus.registerEventType(TypedEvent, 'test:typed');
-
-      bus.on(TypedEvent, (payload) => {
-        expect(payload.value).to.equal(42);
-        done();
-      });
-
-      bus.emit('test:typed', { value: 42 });
-    });
-
-    it('should support typed event for both emit and subscribe', (done) => {
-      const TypedEvent = Symbol('test:typed');
-      bus.registerEventType(TypedEvent, 'test:typed');
-
-      bus.on(TypedEvent, (payload) => {
-        expect(payload.value).to.equal(42);
-        done();
-      });
-
-      bus.emit(TypedEvent, { value: 42 });
+      expect(seen).to.be.true;
     });
   });
 
@@ -212,11 +177,12 @@ describe('Enhanced EventBus Features', () => {
     it('should trigger wildcard listener for matching events', () => {
       let count = 0;
 
-      bus.on('feature:*', () => count++);
+      bus.onNamespace('feature', () => count++);
 
-      bus.emit('feature:created', {});
-      bus.emit('feature:updated', {});
-      bus.emit('feature:deleted', {});
+      const FEAT = await import('../../www/js/core/EventRegistry.js');
+      bus.emit(FEAT.FeatureEvents.CREATED, {});
+      bus.emit(FEAT.FeatureEvents.UPDATED, {});
+      bus.emit(FEAT.FeatureEvents.DELETED, {});
 
       expect(count).to.equal(3);
     });
@@ -224,10 +190,10 @@ describe('Enhanced EventBus Features', () => {
     it('should not trigger wildcard for non-matching namespace', () => {
       let count = 0;
 
-      bus.on('feature:*', () => count++);
+      bus.onNamespace('feature', () => count++);
 
-      bus.emit('scenario:created', {});
-      bus.emit('project:updated', {});
+      bus.emit(Symbol('scenario:created'), {});
+      bus.emit(Symbol('project:updated'), {});
 
       expect(count).to.equal(0);
     });
@@ -236,10 +202,11 @@ describe('Enhanced EventBus Features', () => {
       let exactCount = 0;
       let wildcardCount = 0;
 
-      bus.on('feature:created', () => exactCount++);
-      bus.on('feature:*', () => wildcardCount++);
+      const FEAT = await import('../../www/js/core/EventRegistry.js');
+      bus.on(FEAT.FeatureEvents.CREATED, () => exactCount++);
+      bus.onNamespace('feature', () => wildcardCount++);
 
-      bus.emit('feature:created', {});
+      bus.emit(FEAT.FeatureEvents.CREATED, {});
 
       expect(exactCount).to.equal(1);
       expect(wildcardCount).to.equal(1);
@@ -248,22 +215,24 @@ describe('Enhanced EventBus Features', () => {
     it('should unsubscribe from wildcard listeners', () => {
       let count = 0;
 
-      const unsubscribe = bus.on('feature:*', () => count++);
+      const unsubscribe = bus.onNamespace('feature', () => count++);
 
-      bus.emit('feature:created', {});
+      const FEAT = await import('../../www/js/core/EventRegistry.js');
+      bus.emit(FEAT.FeatureEvents.CREATED, {});
       unsubscribe();
-      bus.emit('feature:updated', {});
+      bus.emit(FEAT.FeatureEvents.UPDATED, {});
 
       expect(count).to.equal(1);
     });
 
     it('should pass payload to wildcard listeners', (done) => {
-      bus.on('feature:*', (payload) => {
+      bus.onNamespace('feature', (payload) => {
         expect(payload.id).to.equal('123');
         done();
       });
 
-      bus.emit('feature:created', { id: '123' });
+      const FEAT = await import('../../www/js/core/EventRegistry.js');
+      bus.emit(FEAT.FeatureEvents.CREATED, { id: '123' });
     });
   });
 
@@ -280,10 +249,8 @@ describe('Enhanced EventBus Features', () => {
       const UnknownEvent = Symbol('unknown:event');
       let received = false;
 
-      // Listen on the string representation
-      bus.on('Symbol(unknown:event)', () => {
-        received = true;
-      });
+      // Listen on the namespace via onNamespace
+      bus.onNamespace('unknown', () => { received = true; });
 
       bus.emit(UnknownEvent, {});
 
