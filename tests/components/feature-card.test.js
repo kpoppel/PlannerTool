@@ -1,6 +1,9 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { stub } from 'sinon';
-import * as fcHelpers from '../../www/js/components/FeatureCard.lit.js';
+import '../../www/js/components/FeatureCard.lit.js';
+import * as boardHelpers from '../../www/js/components/FeatureBoard.lit.js';
+import { computePosition, laneHeight, getBoardOffset, _test_resetCache } from '../../www/js/components/board-utils.js';
+import { featureFlags } from '../../www/js/config.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('FeatureCard Consolidated Tests', () => {
@@ -21,12 +24,12 @@ describe('FeatureCard Consolidated Tests', () => {
     });
 
     it('laneHeight returns numeric value', () => {
-      const h = fcHelpers.laneHeight();
+      const h = laneHeight();
       expect(h).to.be.a('number');
     });
 
     it('getBoardOffset returns 0 when no board', () => {
-      const v = fcHelpers.getBoardOffset();
+      const v = getBoardOffset();
       expect(v).to.equal(0);
     });
 
@@ -39,7 +42,7 @@ describe('FeatureCard Consolidated Tests', () => {
       // init timeline via import to ensure months computed
       const timeline = await import('../../www/js/components/Timeline.lit.js');
       await timeline.initTimeline();
-      const pos = fcHelpers.computePosition(feat);
+      const pos = computePosition(feat);
       expect(pos).to.be.an('object');
       expect(pos.left).to.be.a('number');
       expect(pos.width).to.be.a('number');
@@ -47,14 +50,14 @@ describe('FeatureCard Consolidated Tests', () => {
     });
 
     it('laneHeight respects condensed flag and featureFlags branch', () => {
-      const original = fcHelpers.featureFlags ? fcHelpers.featureFlags.USE_LIT_COMPONENTS : undefined;
+      const original = featureFlags ? featureFlags.USE_LIT_COMPONENTS : undefined;
       try{
-        if(fcHelpers.featureFlags) fcHelpers.featureFlags.USE_LIT_COMPONENTS = false;
+        if(featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
         state.condensedCards = true;
-        const h = fcHelpers.laneHeight();
+        const h = laneHeight();
         expect(typeof h).to.equal('number');
       } finally {
-        if(fcHelpers.featureFlags && original !== undefined) fcHelpers.featureFlags.USE_LIT_COMPONENTS = original;
+        if(featureFlags && original !== undefined) featureFlags.USE_LIT_COMPONENTS = original;
         state.condensedCards = false;
       }
     });
@@ -62,7 +65,7 @@ describe('FeatureCard Consolidated Tests', () => {
     it('updateCardsById applies visuals to existing feature-card-lit elements', async () => {
       // ensure a board element exists
       let board = document.getElementById('featureBoard');
-      if(!board){ board = document.createElement('div'); board.id = 'featureBoard'; document.body.appendChild(board); }
+      if(!board){ board = document.createElement('feature-board'); board.id = 'featureBoard'; document.body.appendChild(board); }
       const feat = { id: 'fx1', start: '2021-01-05', end: '2021-02-10', project: 'p1', capacity: [{team:'t1', capacity:10}], type: 'feature' };
       const source = [feat];
       // create a fake feature-card-lit element with applyVisuals spy
@@ -72,8 +75,9 @@ describe('FeatureCard Consolidated Tests', () => {
       try{ el.feature = feat; }catch(e){}
       board.appendChild(el);
 
-      const update = fcHelpers.updateCardsById || (await import('../../www/js/components/FeatureCard.lit.js')).updateCardsById;
-      await update(board, ['fx1'], source);
+      const mod = await import('../../www/js/components/FeatureBoard.lit.js');
+      const update = boardHelpers.updateCardsById || mod.updateCardsById;
+      await board.updateCardsById(['fx1'], source);
       await new Promise(r => setTimeout(r, 0));
       expect(called).to.equal(true);
       board.removeChild(el);
@@ -125,11 +129,9 @@ describe('FeatureCard Consolidated Tests', () => {
       card.click();
       expect(mockBus.emit).to.have.been.calledOnce;
       const emittedEvent = mockBus.emit.firstCall.args[0];
-      if (typeof emittedEvent === 'symbol') {
-        expect(String(emittedEvent)).to.include('details');
-      } else {
-        expect(emittedEvent).to.include('details');
-      }
+      const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
+      // Should emit FeatureEvents.SELECTED symbol
+      expect(emittedEvent).to.equal(FeatureEvents.SELECTED);
       expect(mockBus.emit.firstCall.args[1]).to.equal(feature);
     });
 
