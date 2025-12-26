@@ -106,6 +106,7 @@ export class FeatureService {
 
     // Apply each update with epic-child clamping and parent-epic extension handling
     let updateCount = 0;
+    const changedIdsCollector = [];
     for (const u of updates) {
       if (!u || !u.id) continue;
       const id = u.id;
@@ -136,6 +137,41 @@ export class FeatureService {
       if (existing.start === start && existing.end === end) continue;
       activeScenario.overrides[id] = { start, end };
       updateCount++;
+      // Track changed id
+      changedIdsCollector.push(id);
+
+      // If this is an epic move, shift children that do NOT have explicit overrides
+      if (base.type === 'epic') {
+        try {
+          const priorEpic = activeScenario.overrides[id] || { start: base.start, end: base.end };
+          const priorStart = priorEpic.start || base.start;
+          const newStart = start || priorStart;
+          const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
+          const childIds = this._childrenByEpic.get(base.id) || [];
+          if (!isNaN(deltaMs) && deltaMs !== 0) {
+            for (const cid of childIds) {
+              const chBase = baselineFeatureById.get(cid);
+              if (!chBase) continue;
+              const childExistingOv = activeScenario.overrides[cid];
+              const hasExplicit = childExistingOv && (childExistingOv.start !== chBase.start || childExistingOv.end !== chBase.end);
+              if (hasExplicit) {
+                // Do not change explicit child override, but still mark the child for refresh
+                changedIdsCollector.push(cid);
+                continue; // respect explicit child override
+              }
+              // shift child's baseline dates by delta
+              const shiftIsoByMs = (iso, ms) => { try { return new Date(Date.parse(iso) + ms).toISOString().slice(0,10); } catch (e) { return iso; } };
+              const shiftedStart = shiftIsoByMs(chBase.start, deltaMs);
+              const shiftedEnd = shiftIsoByMs(chBase.end, deltaMs);
+              activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
+              changedIdsCollector.push(cid);
+            }
+          } else {
+            // No shift, but still ensure children are refreshed so UI reflects parent change
+            for (const cid of childIds) changedIdsCollector.push(cid);
+          }
+        } catch (e) { /* noop */ }
+      }
 
       // If feature extends parent epic, adjust epic override
       if (base.type === 'feature' && base.parentEpic) {
@@ -155,6 +191,8 @@ export class FeatureService {
           if (changed) {
             activeScenario.overrides[epicId] = epicOv;
             newOverrides[epicId] = epicOv;
+            // Ensure epic is re-rendered
+            changedIdsCollector.push(epicId);
           }
         }
       }
@@ -162,17 +200,31 @@ export class FeatureService {
 
     if (updateCount > 0) {
       activeScenario.isChanged = true;
-      
-      // Emit events
-      bus.emit(FeatureEvents.UPDATED);
-      
+
+      // If an epic itself was updated, include its children so the board
+      // can update their visuals if necessary.
+      // (changedIdsCollector may already contain epic ids from above)
+      for (const cid of Array.from(changedIdsCollector)) {
+        // If cid is an epic, add its children
+        const childIds = this._childrenByEpic.get(cid) || [];
+        if (childIds && childIds.length) changedIdsCollector.push(...childIds);
+      }
+
+      // Collect changed ids to allow consumers to update only affected cards
+      const changedIds = Array.from(new Set(changedIdsCollector.filter(Boolean)));
+
+      //console.log('updateFeatureDatesBulk updated ids:', changedIds);
+
+      // Emit events with explicit ids so listeners can do minimal updates
+      bus.emit(FeatureEvents.UPDATED, { ids: changedIds });
+
       // Trigger capacity recalculation if callback provided
       if (capacityCallback) {
         capacityCallback();
       }
     }
 
-    console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
+    //console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
     return updateCount;
   }
 
@@ -194,8 +246,16 @@ export class FeatureService {
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
 
-      // Emit events
-      bus.emit(FeatureEvents.UPDATED);
+      // Emit events with specific id so board can update only changed cards
+      // Also include parent epic or children where relevant so all affected
+      // cards receive updated `feature` data (dirty flags, dates).
+      const idsToEmit = new Set([id]);
+      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
+      if (base.type === 'epic') {
+        const childIds = this._childrenByEpic.get(base.id) || [];
+        for (const cid of childIds) idsToEmit.add(cid);
+      }
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // Trigger capacity recalculation if callback provided
       if (capacityCallback) {
@@ -219,8 +279,14 @@ export class FeatureService {
       delete activeScenario.overrides[id];
       activeScenario.isChanged = true;
 
-      // Emit events
-      bus.emit(FeatureEvents.UPDATED);
+      // Emit events and include related ids (parent/children)
+      const idsToEmit = new Set([id]);
+      const base = this._baselineStore.getFeatureById().get(id);
+      if (base) {
+        if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
+        if (base.type === 'epic') { const childIds = this._childrenByEpic.get(base.id) || []; for (const cid of childIds) idsToEmit.add(cid); }
+      }
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // Trigger capacity recalculation if callback provided
       if (capacityCallback) {

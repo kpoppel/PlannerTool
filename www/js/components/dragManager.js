@@ -72,8 +72,8 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
       bus.emit(DragEvents.END, { featureId: feature.id, start: newStartStr, end: newEndStr });
     } else {
       card.style.left = origLeft + 'px';
-      try { if (card && typeof card.clearLiveDates === 'function') card.clearLiveDates(); else if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; } } catch (e) { if(datesEl) datesEl.textContent = feature.start + ' → ' + feature.end; }
     }
+    card.clearLiveDates();
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
@@ -158,9 +158,11 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
       applyUpdates(updates, updateDatesCb);
       bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
     } else {
-      try { if (card && typeof card.clearLiveDates === 'function') card.clearLiveDates(); else if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; } } catch (e) { if(datesEl) datesEl.textContent = feature.start + ' → ' + feature.end; }
       card.style.width = origWidth + 'px';
     }
+    // Clear any live-date overlay left from a drag/resize so the
+    // lit-rendered default dates (bound to `feature.start/end`) become visible.
+    card.clearLiveDates();
   }
 
   window.addEventListener('mousemove', onMove);
