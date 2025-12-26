@@ -24,6 +24,9 @@ describe('FeatureBoard & DragSurface Tests', () => {
     const timeline = await import('../../www/js/components/Timeline.lit.js'); await timeline.initTimeline();
 
     const features = [ { id:'F1', title:'One', type:'feature', start:'2025-01-01', end:'2025-01-05', project:null, capacity:[] }, { id:'F2', title:'Two', type:'feature', start:'2025-01-06', end:'2025-01-10', project:null, capacity:[] } ];
+    // ensure state feature lookup works for updateCardsById
+    const { state } = await import('../../www/js/services/State.js');
+    state._featureService = { getEffectiveFeatureById: (id) => features.find(f => f.id === id) };
     const card1 = document.createElement('feature-card-lit'); card1.feature = features[0]; card1.style.left='10px'; card1.style.width='100px'; board.appendChild(card1);
     const card2 = document.createElement('feature-card-lit'); card2.feature = features[1]; card2.style.left='200px'; card2.style.width='120px'; board.appendChild(card2);
     features[0].start='2025-01-02'; features[0].end='2025-01-08'; features[0]._left=50; features[0]._width=120;

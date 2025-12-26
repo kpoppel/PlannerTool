@@ -8,9 +8,10 @@
       "path": "../plugins/SamplePlugin.js",
       "export": "SamplePlugin",
       "enabled": false,
+      "activated": false,
+      "mountPoint": "main",
       "dependencies": []
-    }
-    ,
+    },
     {
       "id": "plugin-graph",
       "name": "Graph View",
@@ -18,7 +19,8 @@
       "description": "Large mountain-view graph",
       "path": "../plugins/PluginGraph.js",
       "export": "default",
-      "enabled": false,
+      "enabled": true,
+      "activated": false,
       "mountPoint": "main",
       "dependencies": []
     },
@@ -29,7 +31,8 @@
       "description": "Cost analysis plugin",
       "path": "../plugins/PluginCost.js",
       "export": "default",
-      "enabled": false,
+      "enabled": true,
+      "activated": false,
       "mountPoint": "main",
       "dependencies": []
     }

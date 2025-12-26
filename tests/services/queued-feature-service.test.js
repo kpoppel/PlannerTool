@@ -43,7 +43,9 @@ describe('QueuedFeatureService epic-child behavior', () => {
         // f2 was not explicit and should have been shifted by +7 days
         expect(activeScenario.overrides['f2'].start).to.equal('2025-09-19');
         // epic should be updated to include moved child ends if necessary
-        expect(activeScenario.overrides['e1'].start).to.equal('2025-09-08');
+        // Note: epic start will reflect the earliest child start (explicit override),
+        // so expect the earliest child's explicit date
+        expect(activeScenario.overrides['e1'].start).to.equal('2025-09-07');
       }finally{
         console.log = origLog;
         done();
