@@ -1,6 +1,5 @@
 // www/js/components/DependencyRenderer.lit.js
 import { LitElement, html, css } from '../vendor/lit.js';
-import { isEnabled } from '../config.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents } from '../core/EventRegistry.js';
@@ -38,7 +37,10 @@ export class DependencyRendererLit extends LitElement {
       svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
       svg.setAttribute('id','dependencyLayer');
       svg.style.position = 'absolute';
-      svg.style.top = '0'; svg.style.left = '0'; svg.style.width = '100%'; svg.style.height = '100%';
+      svg.style.top = '0';
+      svg.style.left = '0';
+      svg.style.width = '100%';
+      svg.style.height = '100%';
       svg.style.pointerEvents = 'none';
       root.appendChild(svg);
     }
@@ -84,72 +86,39 @@ export class DependencyRendererLit extends LitElement {
     }
     this.clear();
 
-    // Diagnostic: log counts when nothing is drawn to aid debugging
-    const featuresDebug = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
-    let totalRelations = 0;
-    for (const f of featuresDebug) { if (Array.isArray(f.relations)) totalRelations += f.relations.length; }
-    if ((state && state.showDependencies) && totalRelations === 0) {
-      try{ console.debug('[DependencyRenderer] No relations found:', { features: featuresDebug.length, relations: totalRelations, cardNodes: Array.from(cardById ? cardById.keys() : []) }); }catch(e){}
-    }
-
-    // gather cards: only support Lit host `feature-card-lit` components
+    // gather cards: prefer Lit hosts inside the board, fallback to document
     const cardById = new Map();
-    const boardEl = document.querySelector('feature-board');
-    const hostCandidates = [];
-    if (boardEl) {
-      try { if (boardEl.shadowRoot) hostCandidates.push(...Array.from(boardEl.shadowRoot.querySelectorAll('feature-card-lit'))); }catch(e){}
-    }
-    // include any hosts in document as fallback
-    hostCandidates.push(...Array.from(document.querySelectorAll('feature-card-lit')));
+    const hostCandidates = [ ...(board.shadowRoot ? Array.from(board.shadowRoot.querySelectorAll('feature-card-lit')) : []), ...Array.from(document.querySelectorAll('feature-card-lit')) ];
     for (const h of hostCandidates) {
-      try {
-        const idAttr = h.getAttribute && h.getAttribute('data-feature-id');
-        const idProp = (h.feature && h.feature.id) ? String(h.feature.id) : null;
-        const id = idAttr || idProp;
-        if (id) cardById.set(String(id), h);
-      } catch (e) {}
+      const idAttr = h && h.getAttribute && h.getAttribute('data-feature-id');
+      const idProp = h && h.feature && h.feature.id ? String(h.feature.id) : null;
+      const id = idAttr || idProp;
+      if (id) cardById.set(String(id), h);
     }
 
     // derive effective features via imported state module so tests can stub it
     const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
-    // Use the renderer element as the coordinate origin so vertical panning isn't double-counted
-    const rendererEl = this;
-    const rendererRect = rendererEl.getBoundingClientRect();
-    const boardRect = board.getBoundingClientRect();
-    const scrollLeft = board ? board.scrollLeft : 0; // horizontal scroll affects x positions
+    const rendererRect = this.getBoundingClientRect();
+    const scrollLeft = board ? board.scrollLeft : 0;
     const verticalContainer = (board && board.parentElement && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
     const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
     const laneHeight = (state && state.condensedCards) ? 40 : 100;
 
-    function edgeOf(el, side){
-      // If the host is a Lit card with a shadowRoot, prefer the inner `.feature-card`
-      // element's layout for more accurate geometry.
+    function computeRect(el){
       try{
-        if(el && el.shadowRoot){ const inner = el.shadowRoot.querySelector('.feature-card'); if(inner){ const rInner = inner.getBoundingClientRect(); const left = rInner.left - rendererRect.left + scrollLeft; const top = rInner.top - rendererRect.top + verticalScrollTop; return side === 'right' ? { x: left + rInner.width, y: top + rInner.height/2 } : { x: left, y: top + rInner.height/2 }; } }
+        if(el && el.shadowRoot){
+          const inner = el.shadowRoot.querySelector('.feature-card');
+          if(inner){ const r = inner.getBoundingClientRect(); return { left: r.left - rendererRect.left + scrollLeft, top: r.top - rendererRect.top + verticalScrollTop, width: r.width, height: r.height }; }
+        }
       }catch(e){}
-      const leftStyle = parseFloat(el.style.left);
-      const topStyle = parseFloat(el.style.top);
-      const widthStyle = parseFloat(el.style.width);
+      const leftStyle = parseFloat(el.style.left); const topStyle = parseFloat(el.style.top);
       if(!isNaN(leftStyle) && !isNaN(topStyle)){
-        const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth; const h = laneHeight;
-        return side === 'right' ? { x: leftStyle + w, y: topStyle + h/2 } : { x: leftStyle, y: topStyle + h/2 };
+        const w = parseFloat(el.style.width) || el.offsetWidth; const h = parseFloat(el.style.height) || laneHeight; return { left: leftStyle, top: topStyle, width: w, height: h };
       }
-      const r = el.getBoundingClientRect();
-      const left = r.left - rendererRect.left + scrollLeft; const top = r.top - rendererRect.top + verticalScrollTop;
-      return side === 'right' ? { x: left + r.width, y: top + r.height/2 } : { x: left, y: top + r.height/2 };
+      const r = el.getBoundingClientRect(); return { left: r.left - rendererRect.left + scrollLeft, top: r.top - rendererRect.top + verticalScrollTop, width: r.width, height: r.height };
     }
-    function centerOf(el){
-      try{
-        if(el && el.shadowRoot){ const inner = el.shadowRoot.querySelector('.feature-card'); if(inner){ const rInner = inner.getBoundingClientRect(); const left = rInner.left - rendererRect.left + scrollLeft; const top = rInner.top - rendererRect.top + verticalScrollTop; return { x: left + rInner.width/2, y: top + rInner.height/2 }; } }
-      }catch(e){}
-      const leftStyle = parseFloat(el.style.left); const topStyle = parseFloat(el.style.top); const widthStyle = parseFloat(el.style.width);
-      const h = (window.state && window.state.condensedCards) ? 40 : (el.offsetHeight || 100);
-      if(!isNaN(leftStyle) && !isNaN(topStyle)){
-        const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth; return { x: leftStyle + w/2, y: topStyle + h/2 };
-      }
-      const r = el.getBoundingClientRect(); const left = r.left - rendererRect.left + scrollLeft; const top = r.top - rendererRect.top + verticalScrollTop;
-      return { x: left + r.width/2, y: top + r.height/2 };
-    }
+    function edgeOf(el, side){ const r = computeRect(el); return side === 'right' ? { x: r.left + r.width, y: r.top + r.height/2 } : { x: r.left, y: r.top + r.height/2 }; }
+    function centerOf(el){ const r = computeRect(el); return { x: r.left + r.width/2, y: r.top + r.height/2 }; }
 
     const drawnPairs = new Set();
     for(let fi=0; fi<features.length; fi++){
