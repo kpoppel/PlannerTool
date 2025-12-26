@@ -273,6 +273,24 @@ export class FeatureCardLit extends LitElement {
     } catch (e) { /* swallow to allow caller fallback */ }
   }
 
+  // Transient live-dates used during drag/resize to avoid writing directly
+  // into text nodes that lit manages. Use `setLiveDates(text)` to show
+  // a temporary date string; `clearLiveDates()` restores the lit-rendered value.
+  setLiveDates(text) {
+    try {
+      const container = this.shadowRoot && this.shadowRoot.querySelector && this.shadowRoot.querySelector('.feature-dates');
+      if (!container) return;
+      const live = container.querySelector('.dates-live');
+      const def = container.querySelector('.dates-default');
+      if (live) { live.textContent = text || ''; live.style.display = text ? '' : 'none'; }
+      if (def) { def.style.display = text ? 'none' : ''; }
+    } catch (e) { }
+  }
+
+  clearLiveDates() {
+    this.setLiveDates('');
+  }
+
   connectedCallback() {
     super.connectedCallback();
     // Debounced ResizeObserver: batch entries and process in rAF
@@ -490,7 +508,8 @@ export class FeatureCardLit extends LitElement {
         </div>
         ${!this.condensed ? html`
           <div class="feature-dates">
-            ${this.feature.start} → ${this.feature.end}
+            <span class="dates-default">${this.feature.start} → ${this.feature.end}</span>
+            <span class="dates-live" aria-hidden="true" style="display:none"></span>
           </div>
         ` : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>

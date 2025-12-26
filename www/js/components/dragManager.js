@@ -50,7 +50,11 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const dx = ev.clientX - startX; let newLeft = origLeft + dx; if(newLeft < boardOffset) newLeft = boardOffset; card.style.left = newLeft + 'px';
     const newStartDate = dateFromLeft(newLeft);
     const newEndDate = addDays(newStartDate, durationDays - 1);
-    if(datesEl){ datesEl.textContent = formatDate(newStartDate) + ' → ' + formatDate(newEndDate); }
+    const liveDatesText = formatDate(newStartDate) + ' → ' + formatDate(newEndDate);
+    try {
+      if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesText);
+      else if(datesEl){ datesEl.textContent = liveDatesText; }
+    } catch (e) { if(datesEl) datesEl.textContent = liveDatesText; }
     // Notify listeners so dependency lines can update live
     bus.emit(DragEvents.MOVE, { featureId: feature.id, left: newLeft });
   }
@@ -68,7 +72,7 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
       bus.emit(DragEvents.END, { featureId: feature.id, start: newStartStr, end: newEndStr });
     } else {
       card.style.left = origLeft + 'px';
-      if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; }
+      try { if (card && typeof card.clearLiveDates === 'function') card.clearLiveDates(); else if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; } } catch (e) { if(datesEl) datesEl.textContent = feature.start + ' → ' + feature.end; }
     }
   }
   window.addEventListener('mousemove', onMove);
@@ -134,7 +138,11 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     }
     const snappedWidth = widthForSpan(startDate, tentativeEnd);
     card.style.width = snappedWidth + 'px';
-    if(datesEl){ datesEl.textContent = feature.start + ' → ' + formatDate(tentativeEnd); }
+    const liveDatesTextR = feature.start + ' → ' + formatDate(tentativeEnd);
+    try {
+      if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesTextR);
+      else if(datesEl){ datesEl.textContent = liveDatesTextR; }
+    } catch (e) { if(datesEl) datesEl.textContent = liveDatesTextR; }
     bus.emit(DragEvents.MOVE, { featureId: feature.id });
   }
 
@@ -150,7 +158,7 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
       applyUpdates(updates, updateDatesCb);
       bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
     } else {
-      if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; }
+      try { if (card && typeof card.clearLiveDates === 'function') card.clearLiveDates(); else if(datesEl){ datesEl.textContent = feature.start + ' → ' + feature.end; } } catch (e) { if(datesEl) datesEl.textContent = feature.start + ' → ' + feature.end; }
       card.style.width = origWidth + 'px';
     }
   }
