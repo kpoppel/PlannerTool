@@ -143,43 +143,66 @@ class FeatureBoard extends LitElement {
 
   // Update a subset of cards by id (keep compatibility with old function)
   async updateCardsById(ids = [], sourceFeatures = []) {
-    const getFeature = (id) => {
-      if (Array.isArray(sourceFeatures) && sourceFeatures.length) return sourceFeatures.find((f) => f.id === id);
-      if (sourceFeatures && typeof sourceFeatures.get === 'function') return sourceFeatures.get(id);
-      // fallback to current state
-      const all = state.getEffectiveFeatures();
-      return all.find(f => f.id === id);
-    };
     try {
+      // Build a map of existing nodes for requested ids to avoid repeated DOM queries
+      const missingIds = new Set();
+      const nodeById = new Map();
+      // first check cache
       for (const id of ids) {
-        const feature = getFeature(id);
+        const cached = this._cardMap.get(id);
+        if (cached) nodeById.set(id, cached);
+        else missingIds.add(id);
+      }
+
+      // Query DOM once for missing ids
+      if (missingIds.size) {
+        const candidatesA = this.shadowRoot ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) : [];
+        const candidatesB = Array.from(this.querySelectorAll('feature-card-lit')) || [];
+        const candidates = candidatesA.concat(candidatesB);
+        for (const c of candidates) {
+          try {
+            const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id);
+            if (missingIds.has(fid)) {
+              nodeById.set(fid, c);
+              this._cardMap.set(fid, c);
+              missingIds.delete(fid);
+              if (missingIds.size === 0) break;
+            }
+          } catch (e) { }
+        }
+      }
+
+      // Update nodes
+      const months = getTimelineMonths();
+      for (const id of ids) {
+        const feature = state.getEffectiveFeatureById(id);
         if (!feature) continue;
         let geom = {};
         try {
           if (feature && feature._left !== undefined && feature._width !== undefined) { geom.left = feature._left; geom.width = feature._width; }
-          else { const months = getTimelineMonths(); geom = computePosition(feature, months) || {}; }
+          else { geom = computePosition(feature, months) || {}; }
         } catch (e) { console.warn('computePosition failed', e); geom.left = feature && (feature._left || feature.left) || ''; geom.width = feature && (feature._width || feature.width) || ''; }
         const left = (geom.left !== undefined && geom.left !== '') ? (typeof geom.left === 'number' ? geom.left + 'px' : geom.left) : '';
         const width = (geom.width !== undefined && geom.width !== '') ? (typeof geom.width === 'number' ? geom.width + 'px' : geom.width) : '';
-        let existing = this._cardMap.get(id);
-        if (!existing) {
-          const candidatesA = this.shadowRoot ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) : [];
-          const candidatesB = Array.from(this.querySelectorAll('feature-card-lit')) || [];
-          const candidates = candidatesA.concat(candidatesB);
-          for (const c of candidates) { try { const fid = c.feature && c.feature.id ? c.feature.id : (c.dataset && c.dataset.id); if (fid === id) { existing = c; this._cardMap.set(id, c); break; } } catch (e) { } }
-        }
+
+        const existing = nodeById.get(id);
         if (existing) {
-          if (typeof existing.applyVisuals === 'function') {
-            existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: state.projects.find(p => p.id === feature.project) });
-          } else {
-            if (left) existing.style.left = left;
-            if (width) existing.style.width = width;
+          // minimize writes: only set style attributes when changed
+          try {
+            const proj = state.projects.find(p => p.id === feature.project);
+            // Ensure the component receives the authoritative feature object first
             existing.feature = feature;
             existing.selected = !!feature.selected;
-          }
+            existing.project = proj;
+            // Clear any live-date overlay left from a drag/resize so the
+            // lit-rendered default dates (bound to `feature.start/end`) become visible.
+            //Moved to drag manager: existing.clearLiveDates();
+            existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: proj });
+          } catch (e) { }
         } else {
-          // fallback to full render
+          // fallback to full render if node isn't present
           this.renderFeatures();
+          break;
         }
       }
     } catch (e) { console.error('updateCardsById error', e); this.renderFeatures(); }
