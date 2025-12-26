@@ -17,9 +17,13 @@ describe('DependencyRenderer Consolidated Tests', () => {
   });
 
   it('legacy renderer draws path between styled legacy cards', async () => {
-    const board = document.createElement('feature-board'); board.id = 'featureBoard'; board.style.position = 'relative'; document.body.appendChild(board);
-    const a = document.createElement('div'); a.className='feature-card'; a.dataset.id='A'; a.style.left='10px'; a.style.top='20px'; a.style.width='100px'; a.style.height='40px'; board.appendChild(a);
-    const b = document.createElement('div'); b.className='feature-card'; b.dataset.id='B'; b.style.left='200px'; b.style.top='20px'; b.style.width='100px'; b.style.height='40px'; board.appendChild(b);
+    const board = document.createElement('feature-board'); board.id = 'featureBoard'; board.style.position = 'relative'; board.style.width = '800px'; board.style.height = '400px'; document.body.appendChild(board);
+    const a = await fixture(html`<feature-card-lit></feature-card-lit>`);
+    const b = await fixture(html`<feature-card-lit></feature-card-lit>`);
+    a.setAttribute('data-feature-id','A'); b.setAttribute('data-feature-id','B');
+    a.style.position = 'absolute'; a.style.left='10px'; a.style.top='20px'; a.style.width='100px'; a.style.height='40px';
+    b.style.position = 'absolute'; b.style.left='200px'; b.style.top='20px'; b.style.width='100px'; b.style.height='40px';
+    board.appendChild(a); board.appendChild(b);
     state.showDependencies = true; state.condensedCards = false; state.getEffectiveFeatures = () => [ { id: 'A', relations: ['B'] }, { id: 'B', relations: [] } ];
     initDependencyRenderer();
     bus.emit(FeatureEvents.UPDATED);
@@ -61,9 +65,9 @@ describe('DependencyRenderer Consolidated Tests', () => {
     state.showDependencies = true;
     initDependencyRenderer();
     const board = document.createElement('feature-board'); board.id = 'featureBoard'; board.style.width = '800px'; board.style.height = '400px'; document.body.appendChild(board);
-    const a = await fixture(html`<div data-feature-id="1" style="position:absolute;left:20px;top:20px;width:80px;height:40px"></div>`);
-    const b = await fixture(html`<div data-feature-id="2" style="position:absolute;left:200px;top:60px;width:80px;height:40px"></div>`);
-    const c = await fixture(html`<div data-feature-id="3" style="position:absolute;left:400px;top:120px;width:80px;height:40px"></div>`);
+    const a = await fixture(html`<feature-card-lit data-feature-id="1" style="position:absolute;left:20px;top:20px;width:80px;height:40px"></feature-card-lit>`);
+    const b = await fixture(html`<feature-card-lit data-feature-id="2" style="position:absolute;left:200px;top:60px;width:80px;height:40px"></feature-card-lit>`);
+    const c = await fixture(html`<feature-card-lit data-feature-id="3" style="position:absolute;left:400px;top:120px;width:80px;height:40px"></feature-card-lit>`);
     board.appendChild(a); board.appendChild(b); board.appendChild(c);
     await new Promise(r => setTimeout(r, 300));
     const svg = board.querySelector('svg'); expect(svg).to.exist;
