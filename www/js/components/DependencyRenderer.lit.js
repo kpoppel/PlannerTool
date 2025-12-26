@@ -217,17 +217,48 @@ export async function initDependencyRenderer(){
   async function render(){
     // Respect global state flag if present
     if(!state.showDependencies){
+      // collect renderers from document and from any feature-board shadow roots
       const lits = Array.from(document.querySelectorAll('dependency-renderer'));
+      const boards = Array.from(document.querySelectorAll('feature-board'));
+      for(const b of boards){
+        try{
+          if(b.shadowRoot){
+            const s = b.shadowRoot.querySelector('dependency-renderer');
+            if(s) lits.push(s);
+          }
+        }catch(e){}
+      }
+      // clear and remove each renderer
       for(const lit of lits){
-        try{ if(typeof lit.clear === 'function') lit.clear(); }catch(e){}
-        try{ lit.remove(); }catch(e){}
+        try{
+          if(typeof lit.clear === 'function') lit.clear();
+        }catch(e){}
+        try{
+          // remove from its parent if possible
+          if(lit.remove) lit.remove();
+        }catch(e){}
       }
       return;
     }
     try{
       const lit = await attachLitToBoard();
-      if(lit){ try{ const lits = Array.from(document.querySelectorAll('dependency-renderer')); for(const L of lits){ L.style.display = ''; } }catch(e){}
-      if(lit.updateComplete){ try{ await lit.updateComplete; }catch(e){} } if(typeof lit.renderLayer === 'function'){ lit.renderLayer(); } }
+      if(lit){
+        try{
+          // show any document-level renderers
+          const lits = Array.from(document.querySelectorAll('dependency-renderer'));
+          for(const L of lits){ L.style.display = ''; }
+          // also ensure renderer inside board shadowRoot is visible
+          try{
+            const boardShadow = (lit && lit.getRootNode && lit.getRootNode() && lit.getRootNode().host) ? lit.getRootNode().host : null;
+            if(boardShadow && boardShadow.shadowRoot){
+              const s = boardShadow.shadowRoot.querySelector('dependency-renderer');
+              if(s) s.style.display = '';
+            }
+          }catch(e){}
+        }catch(e){}
+        if(lit.updateComplete){ try{ await lit.updateComplete; }catch(e){} }
+        if(typeof lit.renderLayer === 'function'){ lit.renderLayer(); }
+      }
     }catch(e){}
   }
 
