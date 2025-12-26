@@ -33,7 +33,7 @@ Purpose: This document describes the architecture, patterns and best-practices f
 
 **Plugin System**
 - Plugin contract: subclass `core/Plugin.js` and implement `init`, `activate`, `deactivate`, `destroy`.
-- PluginManager responsibilities: register, unregister, dependency-checking, load-from-config and activation ordering. Plugins should declare metadata including `id`, `dependencies`, and optional `autoActivate` in `modules.config.json` (or `config.modules`).
+- PluginManager responsibilities: register, unregister, dependency-checking, load-from-config and activation ordering. Plugins should declare metadata including `id`, `dependencies`, and optional `enabled` in `modules.config.json` (or `config.modules`).
 - Hooks: plugins may register EventBus listeners, register UI components (via DOM insertion or Container/ServiceRegistry), or provide service implementations (provider pattern). Keep plugin side-effects reversible so `deactivate`/`destroy` can clean up.
 - Configuration: prefer module-based config with explicit `path` and `export` (see PluginManager.loadFromConfig) so plugins can be loaded via dynamic `import()`.
 
@@ -58,7 +58,8 @@ Purpose: This document describes the architecture, patterns and best-practices f
 - Setup: repository provides `requirements-dev.txt` for Python tests and `package.json` for JS tests. Use node v16+ and run `npm ci` then `npm test` for JS tests.
 - Adding components: create `components/MyThing.lit.js`, export and register custom element, add unit + component tests in `tests/components/`.
 - Adding services: implement pure JS modules under `services/` or `domain/services/` with constructor DI where possible (inject bus, stores). Add unit tests in `tests/unit`.
-- Plugins: Create under `www/js/plugins/` and add module config entry with `id`, `path`, `export`, `dependencies`, and `autoActivate`. Ensure plugin cleans up.
+- Plugins: Create under `www/js/plugins/` and add module config entry with `id`, `path`, `export`, `dependencies`, and `enabled`.
+  Plugins are disabled by default; set `enabled: true` to activate on load. Ensure plugin cleans up.
 - Feature flags: use `config.js` featureFlags to gate breaking changes during migration; aim to remove flags progressively.
 
 **Examples (concise patterns)**
