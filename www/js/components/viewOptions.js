@@ -1,7 +1,6 @@
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { StateFilterEvents } from '../core/EventRegistry.js';
-// Note: avoid static import of PluginGraph to keep module loading lazy
 
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null }){
   const btn = document.createElement('button');
@@ -86,37 +85,7 @@ export function initViewOptions(container){
   const capGroup = document.createElement('div'); capGroup.className = 'chip-group'; capGroup.setAttribute('role','radiogroup');
   const teamChip = makeChip('Team', { active: state.capacityViewMode==='team', onClick: ()=> state.setcapacityViewMode('team'), role:'radio', ariaChecked: state.capacityViewMode==='team' });
   const projectChip = makeChip('Project', { active: state.capacityViewMode==='project', onClick: ()=> state.setcapacityViewMode('project'), role:'radio', ariaChecked: state.capacityViewMode==='project' });
-  // Open Graph chip shows modal (active if modal present and visible)
-  // Prefer Lit component presence (`<plugin-graph>`) for modal state; fallback to legacy placeholder
-  const pluginEl = document.querySelector('plugin-graph');
-  let modalOpen = false;
-  if(pluginEl){ const dsp = pluginEl.style.display; if(dsp && dsp !== 'none') modalOpen = true; else { const cs = window.getComputedStyle(pluginEl); modalOpen = cs.display !== 'none'; } }
-
-  const openGraphChip = makeChip('Open Graph', {
-    active: modalOpen,
-    onClick: async ()=>{
-      try{
-        await import('./PluginGraph.lit.js');
-        let plugin = document.querySelector('plugin-graph');
-        const main = document.querySelector('main');
-        if(plugin){
-          // if visible -> close
-          const dsp = plugin.style.display;
-          const visible = (dsp && dsp !== 'none') || (window.getComputedStyle && window.getComputedStyle(plugin).display !== 'none');
-          if(visible){ if(typeof plugin.close === 'function') plugin.close(); setTimeout(()=>{ const node = document.getElementById('viewOptionsContainer'); if(node) initViewOptions(node); }, 40); return; }
-        }
-        // not present or not visible -> create/open
-        if(!plugin){ plugin = document.createElement('plugin-graph'); if(main) main.appendChild(plugin); else document.body.appendChild(plugin); }
-        const mode = state.capacityViewMode === 'team' ? 'team' : 'project';
-        if(plugin.updateComplete) await plugin.updateComplete.catch(()=>{});
-        if(typeof plugin.open === 'function') plugin.open(mode);
-      }catch(err){ console.warn('Failed to toggle plugin-graph', err); }
-      setTimeout(()=>{ const node = document.getElementById('viewOptionsContainer'); if(node) initViewOptions(node); }, 50);
-    },
-    role: 'radio',
-    ariaChecked: modalOpen
-  });
-  capGroup.appendChild(teamChip); capGroup.appendChild(projectChip); capGroup.appendChild(openGraphChip);
+  capGroup.appendChild(teamChip); capGroup.appendChild(projectChip);
   capWrapper.appendChild(capTitle); capWrapper.appendChild(capGroup);
   root.appendChild(capWrapper);
   // Sort mode

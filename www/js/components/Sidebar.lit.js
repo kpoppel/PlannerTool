@@ -1,11 +1,13 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents } from '../core/EventRegistry.js';
 // Legacy modal helper removed; create Lit modal components directly when needed
 import { dataService } from '../services/dataService.js';
 import { initViewOptions } from './viewOptions.js';
 import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
+import { pluginManager } from '../core/PluginManager.js';
+import { isEnabled } from '../config.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -84,6 +86,8 @@ export class SidebarLit extends LitElement {
       const container = this.querySelector('#viewOptionsContainer');
       if(container){ initViewOptions(container); }
     }catch(e){ console.warn('initViewOptions failed', e); }
+    // listen for plugin registry changes (typed PluginEvents via EventRegistry)
+    try{ this._onPluginsChanged = ()=> this.requestUpdate(); bus.on && bus.on(PluginEvents.REGISTERED, this._onPluginsChanged); bus.on && bus.on(PluginEvents.UNREGISTERED, this._onPluginsChanged); bus.on && bus.on(PluginEvents.ACTIVATED, this._onPluginsChanged); bus.on && bus.on(PluginEvents.DEACTIVATED, this._onPluginsChanged); }catch(e){}
   }
 
   disconnectedCallback(){
@@ -98,7 +102,37 @@ export class SidebarLit extends LitElement {
       this._collapsibleHandlers.forEach(h => { try{ h.el.removeEventListener('click', h.fn); }catch(e){} });
       this._collapsibleHandlers = null;
     }
+    try{ bus.off && bus.off(PluginEvents.REGISTERED, this._onPluginsChanged); bus.off && bus.off(PluginEvents.UNREGISTERED, this._onPluginsChanged); bus.off && bus.off(PluginEvents.ACTIVATED, this._onPluginsChanged); bus.off && bus.off(PluginEvents.DEACTIVATED, this._onPluginsChanged); }catch(e){}
     super.disconnectedCallback();
+  }
+
+  _renderPluginButtons(){
+    // Only render Tools section when plugin system enabled
+    if(!isEnabled('USE_PLUGIN_SYSTEM')) return html``;
+    try{
+      const list = pluginManager.list() || [];
+      return html`${list.map(md => {
+        const active = pluginManager.isActive(md.id);
+        return html`<li class="sidebar-list-item">
+          <div class="chip sidebar-chip ${active? 'active':''}" style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" @click=${()=>this._onPluginClicked(md.id)} role="button" tabindex="0" aria-pressed="${active? 'true':'false'}" @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._onPluginClicked(md.id); }}}>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;" title="${md.title || md.id}">${md.title || md.id}</div>
+          </div>
+        </li>`;
+      })}`;
+    }catch(e){ return html``; }
+  }
+
+  _onPluginClicked(pluginId){
+    try{
+      const p = pluginManager.get(pluginId);
+      if(!p) return;
+      // If plugin is active -> deactivate via manager to ensure events
+      if(pluginManager.isActive(pluginId)){
+        if(typeof pluginManager.deactivate === 'function') pluginManager.deactivate(pluginId).catch(()=>{});
+      } else {
+        if(typeof pluginManager.activate === 'function') pluginManager.activate(pluginId).catch(()=>{});
+      }
+    }catch(e){ console.warn('plugin click failed', e); }
   }
 
   async _openConfig(){
@@ -335,6 +369,13 @@ export class SidebarLit extends LitElement {
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
           <div>
             <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
+          </div>
+        </section>
+
+        <section class="sidebar-section" id="toolsSection">
+          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
+          <div>
+            <ul class="sidebar-list" id="toolsList">${this._renderPluginButtons()}</ul>
           </div>
         </section>
 
