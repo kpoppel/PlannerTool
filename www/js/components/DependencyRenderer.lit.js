@@ -2,6 +2,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { isEnabled } from '../config.js';
 import { state } from '../services/State.js';
+import { bus } from '../core/EventBus.js';
+import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents } from '../core/EventRegistry.js';
 
 export class DependencyRendererLit extends LitElement {
   static properties = {
@@ -19,7 +21,7 @@ export class DependencyRendererLit extends LitElement {
 
   render(){
     // Render a container for the dependency SVG; actual SVG is created/managed imperatively
-    return html`<div id="depRendererRoot" style="position:relative;width:100%;height:100%;pointer-events:none"></div>`;
+    return html`<div id="depRendererRoot" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999"></div>`;
   }
 
   firstUpdated(){
@@ -82,22 +84,49 @@ export class DependencyRendererLit extends LitElement {
     }
     this.clear();
 
-    // gather cards (legacy and lit-hosted)
+    // Diagnostic: log counts when nothing is drawn to aid debugging
+    const featuresDebug = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
+    let totalRelations = 0;
+    for (const f of featuresDebug) { if (Array.isArray(f.relations)) totalRelations += f.relations.length; }
+    if ((state && state.showDependencies) && totalRelations === 0) {
+      try{ console.debug('[DependencyRenderer] No relations found:', { features: featuresDebug.length, relations: totalRelations, cardNodes: Array.from(cardById ? cardById.keys() : []) }); }catch(e){}
+    }
+
+    // gather cards: only support Lit host `feature-card-lit` components
     const cardById = new Map();
-    const cardEls = Array.from(document.querySelectorAll('.feature-card'));
-    for(const el of cardEls){ const id = (el.dataset && el.dataset.id) || el.getAttribute('data-id'); if(id) cardById.set(String(id), el); }
-    const hostEls = Array.from(document.querySelectorAll('[data-feature-id]'));
-    for(const h of hostEls){ const id = h.getAttribute('data-feature-id'); if(id) cardById.set(String(id), h); }
+    const boardEl = document.querySelector('feature-board');
+    const hostCandidates = [];
+    if (boardEl) {
+      try { if (boardEl.shadowRoot) hostCandidates.push(...Array.from(boardEl.shadowRoot.querySelectorAll('feature-card-lit'))); }catch(e){}
+    }
+    // include any hosts in document as fallback
+    hostCandidates.push(...Array.from(document.querySelectorAll('feature-card-lit')));
+    for (const h of hostCandidates) {
+      try {
+        const idAttr = h.getAttribute && h.getAttribute('data-feature-id');
+        const idProp = (h.feature && h.feature.id) ? String(h.feature.id) : null;
+        const id = idAttr || idProp;
+        if (id) cardById.set(String(id), h);
+      } catch (e) {}
+    }
 
     // derive effective features via imported state module so tests can stub it
     const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
+    // Use the renderer element as the coordinate origin so vertical panning isn't double-counted
+    const rendererEl = this;
+    const rendererRect = rendererEl.getBoundingClientRect();
     const boardRect = board.getBoundingClientRect();
-    const scrollLeft = board ? board.scrollLeft : 0;
+    const scrollLeft = board ? board.scrollLeft : 0; // horizontal scroll affects x positions
     const verticalContainer = (board && board.parentElement && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
     const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
     const laneHeight = (state && state.condensedCards) ? 40 : 100;
 
     function edgeOf(el, side){
+      // If the host is a Lit card with a shadowRoot, prefer the inner `.feature-card`
+      // element's layout for more accurate geometry.
+      try{
+        if(el && el.shadowRoot){ const inner = el.shadowRoot.querySelector('.feature-card'); if(inner){ const rInner = inner.getBoundingClientRect(); const left = rInner.left - rendererRect.left + scrollLeft; const top = rInner.top - rendererRect.top + verticalScrollTop; return side === 'right' ? { x: left + rInner.width, y: top + rInner.height/2 } : { x: left, y: top + rInner.height/2 }; } }
+      }catch(e){}
       const leftStyle = parseFloat(el.style.left);
       const topStyle = parseFloat(el.style.top);
       const widthStyle = parseFloat(el.style.width);
@@ -106,16 +135,19 @@ export class DependencyRendererLit extends LitElement {
         return side === 'right' ? { x: leftStyle + w, y: topStyle + h/2 } : { x: leftStyle, y: topStyle + h/2 };
       }
       const r = el.getBoundingClientRect();
-      const left = r.left - boardRect.left + scrollLeft; const top = r.top - boardRect.top + verticalScrollTop;
+      const left = r.left - rendererRect.left + scrollLeft; const top = r.top - rendererRect.top + verticalScrollTop;
       return side === 'right' ? { x: left + r.width, y: top + r.height/2 } : { x: left, y: top + r.height/2 };
     }
     function centerOf(el){
+      try{
+        if(el && el.shadowRoot){ const inner = el.shadowRoot.querySelector('.feature-card'); if(inner){ const rInner = inner.getBoundingClientRect(); const left = rInner.left - rendererRect.left + scrollLeft; const top = rInner.top - rendererRect.top + verticalScrollTop; return { x: left + rInner.width/2, y: top + rInner.height/2 }; } }
+      }catch(e){}
       const leftStyle = parseFloat(el.style.left); const topStyle = parseFloat(el.style.top); const widthStyle = parseFloat(el.style.width);
       const h = (window.state && window.state.condensedCards) ? 40 : (el.offsetHeight || 100);
       if(!isNaN(leftStyle) && !isNaN(topStyle)){
         const w = !isNaN(widthStyle) ? widthStyle : el.offsetWidth; return { x: leftStyle + w/2, y: topStyle + h/2 };
       }
-      const r = el.getBoundingClientRect(); const left = r.left - boardRect.left + scrollLeft; const top = r.top - boardRect.top + verticalScrollTop;
+      const r = el.getBoundingClientRect(); const left = r.left - rendererRect.left + scrollLeft; const top = r.top - rendererRect.top + verticalScrollTop;
       return { x: left + r.width/2, y: top + r.height/2 };
     }
 
@@ -124,7 +156,7 @@ export class DependencyRendererLit extends LitElement {
       const f = features[fi];
       const relations = Array.isArray(f.relations) ? f.relations : null;
       if(!relations) continue;
-      const targetCard = cardById.get(String(f.id)) || document.querySelector(`.feature-card[data-id="${f.id}"]`) || document.querySelector(`[data-feature-id="${f.id}"]`);
+      const targetCard = cardById.get(String(f.id));
       if(!targetCard) continue;
       for(let ri=0; ri<relations.length; ri++){
         const rel = relations[ri];
@@ -133,7 +165,7 @@ export class DependencyRendererLit extends LitElement {
         else if(rel && rel.id){ otherId = String(rel.id); relType = rel.type || rel.relationType || 'Related'; }
         else continue;
         if(relType === 'Child' || relType === 'Parent') continue;
-        const otherCard = cardById.get(String(otherId)) || document.querySelector(`.feature-card[data-id="${otherId}"]`) || document.querySelector(`[data-feature-id="${otherId}"]`);
+        const otherCard = cardById.get(String(otherId));
         if(!otherCard) continue;
         const pairKey = [otherId, f.id].sort().join('::'); if(drawnPairs.has(pairKey)) continue;
         let from, to;
@@ -156,47 +188,94 @@ export async function initDependencyRenderer(){
   async function attachLitToBoard(){
     const board = document.querySelector('feature-board');
     if(!board) return null;
-    if(!customElements.get('dependency-renderer')){
-      try{ /* component already defined above; noop */ }catch(e){}
-    }
-    let lit = board.querySelector('dependency-renderer');
-    if(!lit){
-      try{ lit = document.createElement('dependency-renderer'); board.insertBefore(lit, board.firstChild); }
-      catch(e){ return null; }
-    }
-    return lit;
+    // Prefer any existing dependency-renderer inside the board root to share coordinates
+    try{
+      // Find the nearest scrollable ancestor so the overlay moves with the actual scroller
+      function findScrollParent(el){
+        let p = el.parentElement;
+        while(p){
+          try{
+            const style = window.getComputedStyle(p);
+            const oy = style.overflowY;
+            const ox = style.overflowX;
+            if(oy === 'auto' || oy === 'scroll' || ox === 'auto' || ox === 'scroll') return p;
+          }catch(e){}
+          p = p.parentElement;
+        }
+        return document.body;
+      }
+
+      const scrollParent = findScrollParent(board);
+        // Insert renderer inside the board (or board.shadowRoot) so board.querySelector('svg') finds it
+        const hostRoot = board.shadowRoot || board;
+      let lit = hostRoot.querySelector && hostRoot.querySelector('dependency-renderer') || document.querySelector('dependency-renderer');
+      if(!lit){
+        lit = document.createElement('dependency-renderer');
+          // Append into the board's root so queries under board find the SVG
+          hostRoot.appendChild(lit);
+        lit.style.position = 'absolute';
+          // Fill the board area
+          lit.style.top = '0'; lit.style.left = '0';
+        try{ lit.style.width = `${board.scrollWidth || board.clientWidth}px`; }catch(e){ lit.style.width = '100%'; }
+        try{ lit.style.height = `${board.scrollHeight || board.clientHeight}px`; }catch(e){ lit.style.height = '100%'; }
+        lit.style.pointerEvents = 'none';
+        lit.style.zIndex = '9999';
+
+        // Only schedule redraws when horizontal scroll changes; vertical scroll will move the overlay along with the scroller
+        let lastScrollLeft = board ? board.scrollLeft : 0;
+        let scrollEndTimer = null;
+        const SCROLL_END_DELAY = 120;
+        const onScroll = ()=>{
+          try{
+            const nowLeft = board ? board.scrollLeft : 0;
+            if(nowLeft !== lastScrollLeft){
+              lastScrollLeft = nowLeft;
+              // immediate redraw for horizontal change
+              scheduleRender();
+            }
+            // always schedule a debounced full render in case layout changed
+            if(scrollEndTimer) clearTimeout(scrollEndTimer);
+            scrollEndTimer = setTimeout(()=>{ scrollEndTimer = null; scheduleRender(); }, SCROLL_END_DELAY);
+          }catch(e){}
+        };
+          try{ scrollParent.addEventListener && scrollParent.addEventListener('scroll', onScroll); }catch(e){}
+        window.addEventListener('resize', scheduleRender);
+      }
+      return lit;
+    }catch(e){ return null; }
   }
 
   async function render(){
     // Respect global state flag if present
     if(!state.showDependencies){
-      const board = document.querySelector('feature-board');
-      if(board){
-        const lit = board.querySelector('dependency-renderer');
-        if(lit && typeof lit.clear === 'function') lit.clear();
+      const lits = Array.from(document.querySelectorAll('dependency-renderer'));
+      for(const lit of lits){
+        try{ if(typeof lit.clear === 'function') lit.clear(); }catch(e){}
+        try{ lit.remove(); }catch(e){}
       }
       return;
     }
     try{
       const lit = await attachLitToBoard();
-      if(lit){ if(lit.updateComplete){ try{ await lit.updateComplete; }catch(e){} } if(typeof lit.renderLayer === 'function'){ lit.renderLayer(); } }
+      if(lit){ try{ const lits = Array.from(document.querySelectorAll('dependency-renderer')); for(const L of lits){ L.style.display = ''; } }catch(e){}
+      if(lit.updateComplete){ try{ await lit.updateComplete; }catch(e){} } if(typeof lit.renderLayer === 'function'){ lit.renderLayer(); } }
     }catch(e){}
   }
 
   function scheduleRender(){ if(scheduled) return; scheduled = true; requestAnimationFrame(()=>{ scheduled = false; render(); }); }
 
-  // Wire events
-  import('../core/EventBus.js').then(({ bus })=>{
-    import('../core/EventRegistry.js').then(({ FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents })=>{
-      bus.on(FeatureEvents.UPDATED, scheduleRender);
-      bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
-      bus.on(ProjectEvents.CHANGED, scheduleRender);
-      bus.on(TeamEvents.CHANGED, scheduleRender);
-      bus.on(DragEvents.MOVE, scheduleRender);
-    });
-  }).catch(()=>{});
+  // Wire events directly to the shared bus and typed events
+  try{
+    bus.on(FeatureEvents.UPDATED, scheduleRender);
+    bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
+    bus.on(ProjectEvents.CHANGED, scheduleRender);
+    bus.on(TeamEvents.CHANGED, scheduleRender);
+    bus.on(DragEvents.MOVE, scheduleRender);
+  }catch(e){ /* ignore wiring failures */ }
 
   window.addEventListener('resize', scheduleRender);
+
+  // If the board isn't present at init time, observe the document and attach scroll listener when it appears
   const boardNow = document.querySelector('feature-board');
   if(boardNow) boardNow.addEventListener('scroll', scheduleRender);
   else {
@@ -204,7 +283,7 @@ export async function initDependencyRenderer(){
       for(const r of records){
         for(const n of r.addedNodes){
           if(!n) continue;
-          const isBoard = (n.tagName === 'feature-board');
+          const isBoard = (n.tagName && n.tagName.toLowerCase && n.tagName.toLowerCase() === 'feature-board');
           if(isBoard){
             try{ n.addEventListener('scroll', scheduleRender); }catch(e){}
             scheduleRender();
