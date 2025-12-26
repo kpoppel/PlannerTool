@@ -26,6 +26,8 @@ export class Plugin {
     return {
       id: this.id,
       name: this.config.name || this.id,
+      title: this.config.title || this.config.name || this.id,
+      enabled: this.config.enabled === true,
       version: this.config.version || '1.0.0',
       description: this.config.description || '',
       author: this.config.author || 'Unknown',

@@ -151,6 +151,11 @@ export class PluginManager {
     
     for (const moduleConfig of sorted) {
       try {
+        // If module is explicitly disabled, skip loading/registering it entirely
+        if (moduleConfig.enabled === false) {
+          console.log(`[PluginManager] Skipping disabled module ${moduleConfig.id}`);
+          continue;
+        }
         const module = await import(moduleConfig.path);
         // Expect the module to export a plugin class (constructor) which we instantiate.
         const exported = module[moduleConfig.export];
@@ -161,8 +166,8 @@ export class PluginManager {
         const pluginInstance = new exported(moduleConfig.id, moduleConfig);
         await this.register(pluginInstance);
 
-        // Only activate if explicitly enabled === true (default is false)
-        if (moduleConfig.enabled === true) {
+        // Use `activated` to control initial active state. This keeps `enabled` as a loader flag.
+        if (moduleConfig.activated === true) {
           await this.activate(moduleConfig.id);
         }
       } catch (error) {
