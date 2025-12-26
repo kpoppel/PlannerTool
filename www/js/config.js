@@ -9,13 +9,8 @@ export const featureFlags = {
   WARN_ON_STRING_EVENTS: true,
   LOG_EVENT_HISTORY: true,
   
-  // Phase 5: Capacity & Baseline Services
-  USE_CAPACITY_SERVICE: true,
-  USE_BASELINE_SERVICE: true,
-  
-  // Phase 7: Plugin System
+  // Plugin System
   USE_PLUGIN_SYSTEM: true,
-  ENABLE_PLUGIN_GRAPH: true,
   
   // Phase 8-9: Lit Components
   USE_LIT_COMPONENTS: true,

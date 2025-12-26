@@ -7,7 +7,30 @@
       "description": "A minimal example plugin used for smoke tests",
       "path": "../plugins/SamplePlugin.js",
       "export": "SamplePlugin",
-      "autoActivate": true,
+      "enabled": false,
+      "dependencies": []
+    }
+    ,
+    {
+      "id": "plugin-graph",
+      "name": "Graph View",
+      "version": "1.0.0",
+      "description": "Large mountain-view graph",
+      "path": "../plugins/PluginGraph.js",
+      "export": "default",
+      "enabled": false,
+      "mountPoint": "main",
+      "dependencies": []
+    },
+    {
+      "id": "plugin-cost",
+      "name": "Cost View",
+      "version": "1.0.0",
+      "description": "Cost analysis plugin",
+      "path": "../plugins/PluginCost.js",
+      "export": "default",
+      "enabled": false,
+      "mountPoint": "main",
       "dependencies": []
     }
   ]

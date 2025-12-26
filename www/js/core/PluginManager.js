@@ -152,12 +152,17 @@ export class PluginManager {
     for (const moduleConfig of sorted) {
       try {
         const module = await import(moduleConfig.path);
-        const PluginClass = module[moduleConfig.export];
-        const plugin = new PluginClass(moduleConfig.id, moduleConfig);
-        
-        await this.register(plugin);
-        
-        if (moduleConfig.autoActivate !== false) {
+        // Expect the module to export a plugin class (constructor) which we instantiate.
+        const exported = module[moduleConfig.export];
+        if (typeof exported !== 'function') {
+          throw new Error('Unsupported plugin export type for ' + moduleConfig.id);
+        }
+
+        const pluginInstance = new exported(moduleConfig.id, moduleConfig);
+        await this.register(pluginInstance);
+
+        // Only activate if explicitly enabled === true (default is false)
+        if (moduleConfig.enabled === true) {
           await this.activate(moduleConfig.id);
         }
       } catch (error) {
