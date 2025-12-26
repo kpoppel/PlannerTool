@@ -70,7 +70,7 @@ export class PluginManager {
     }
     
     // Activate dependencies first
-    const deps = plugin.getMetadata().dependencies;
+    const deps = plugin.getMetadata().dependencies || [];
     for (const depId of deps) {
       if (!this.isActive(depId)) {
         await this.activate(depId);
@@ -169,14 +169,14 @@ export class PluginManager {
   // Private helpers
   
   _checkDependencies(plugin) {
-    const deps = plugin.getMetadata().dependencies;
+    const deps = plugin.getMetadata().dependencies || [];
     return deps.filter(depId => !this.plugins.has(depId));
   }
   
   _findDependents(pluginId) {
     const dependents = [];
     for (const plugin of this.plugins.values()) {
-      const deps = plugin.getMetadata().dependencies;
+      const deps = plugin.getMetadata().dependencies || [];
       if (deps.includes(pluginId)) {
         dependents.push(plugin.id);
       }
@@ -185,7 +185,7 @@ export class PluginManager {
   }
   
   _addToLoadOrder(plugin) {
-    const deps = plugin.getMetadata().dependencies;
+    const deps = plugin.getMetadata().dependencies || [];
     
     // Find position after all dependencies
     let insertIndex = 0;

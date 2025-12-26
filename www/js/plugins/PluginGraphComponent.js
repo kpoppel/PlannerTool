@@ -1,9 +1,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
-import { featureFlags } from '../config.js';
-import { ProjectEvents, TeamEvents, StateFilterEvents, FilterEvents, CapacityEvents, ViewEvents } from '../core/EventRegistry.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
+import { ProjectEvents, TeamEvents, StateFilterEvents, FilterEvents, CapacityEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
 
 export class PluginGraph extends LitElement {
   static properties = {
@@ -59,9 +58,7 @@ export class PluginGraph extends LitElement {
   }
 
   firstUpdated(){
-    // create tooltip attached to body
     this._ensureTooltip();
-    // wire buttons
     const startInp = this.renderRoot.querySelector('#mvStart');
     const endInp = this.renderRoot.querySelector('#mvEnd');
     const applyBtn = this.renderRoot.querySelector('#mvApply');
@@ -71,20 +68,64 @@ export class PluginGraph extends LitElement {
     if(exportSvgBtn) exportSvgBtn.addEventListener('click', ()=>this.exportSvg());
     if(exportPngBtn) exportPngBtn.addEventListener('click', ()=>this.exportPng());
 
-    // setup event listeners to schedule renders
     bus.on(ProjectEvents.CHANGED, ()=> this._scheduleRender());
     bus.on(TeamEvents.CHANGED, ()=> this._scheduleRender());
     bus.on(StateFilterEvents.CHANGED, ()=> this._scheduleRender());
     bus.on(ViewEvents.CAPACITY_MODE, (mode)=>{ this.mode = mode; this._scheduleRender(); });
     bus.on(FilterEvents.CHANGED, ()=> this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, ()=> this._scheduleRender());
+    // Re-render once app/state is ready
+    bus.on(AppEvents.READY, ()=> { this._initDateRangeDefaults(); this._scheduleRender(20); });
+    // Initialize mode from state if present
+    try{ if(state && typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode; }catch(e){}
+    // Initialize date range inputs now if possible
+    this._initDateRangeDefaults();
+  }
+
+  _initDateRangeDefaults(){
+    // If already set, keep values
+    try{
+      const needCompute = !(this.startDate && this.endDate);
+      if(needCompute){
+        // 1) Try timeline months
+        const months = typeof getTimelineMonths === 'function' ? getTimelineMonths() : null;
+        if(months && months.length){
+          const d0 = months[0];
+          const last = months[months.length-1];
+          const d1 = new Date(last.getFullYear(), last.getMonth()+1, 0);
+          this.startDate = new Date(d0);
+          this.endDate = new Date(d1);
+        } else if(state && Array.isArray(state.capacityDates) && state.capacityDates.length){
+          // 2) Use computed capacity dates in state
+          const firstIso = state.capacityDates[0];
+          const lastIso = state.capacityDates[state.capacityDates.length-1];
+          this.startDate = new Date(firstIso);
+          this.endDate = new Date(lastIso);
+        } else {
+          // 3) Fallback to today + 30 days
+          const now = new Date();
+          this.startDate = new Date(now);
+          this.endDate = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+        }
+      }
+      // Update inputs if present
+      const setInputs = ()=>{
+        const startInp = this.renderRoot && this.renderRoot.querySelector ? this.renderRoot.querySelector('#mvStart') : null;
+        const endInp = this.renderRoot && this.renderRoot.querySelector ? this.renderRoot.querySelector('#mvEnd') : null;
+        if(startInp) startInp.value = this._fmtDate(this.startDate);
+        if(endInp) endInp.value = this._fmtDate(this.endDate);
+        return !!(startInp || endInp);
+      };
+      const ok = setInputs();
+      if(!ok){
+        // retry next microtask / frame
+        requestAnimationFrame(()=> setInputs());
+      }
+    }catch(e){ console.warn('[plugin-graph] failed to init date range', e); }
   }
 
   _ensureTooltip(){
-    if(!this.tooltipEl){
-      this.tooltipEl = document.createElement('div');
-      document.body.appendChild(this.tooltipEl);
-    }
+    if(!this.tooltipEl){ this.tooltipEl = document.createElement('div'); document.body.appendChild(this.tooltipEl); }
     const t = this.tooltipEl;
     t.style.zIndex = '10000'; t.style.position = 'absolute'; t.style.pointerEvents = 'none'; t.style.background = 'rgba(0,0,0,0.75)'; t.style.color = '#fff'; t.style.padding = '8px 10px'; t.style.borderRadius = '6px'; t.style.fontSize = '12px'; t.style.display = 'none'; t.style.whiteSpace='normal'; t.style.wordBreak='break-word'; t.style.maxWidth='360px'; t.style.boxShadow='0 6px 18px rgba(0,0,0,0.6)'; t.style.lineHeight='1.25';
   }
@@ -112,72 +153,36 @@ export class PluginGraph extends LitElement {
     return host;
   }
 
-  _scheduleRender(delay=80){
-    if(this.style.display === 'none') return;
-    if(this._scheduledRenderTimer) clearTimeout(this._scheduledRenderTimer);
-    this._scheduledRenderTimer = setTimeout(()=>{ this._scheduledRenderTimer = null; try{ this._render(); }catch(e){ console.error('[plugin-graph] scheduled render error', e); } }, delay);
-  }
+  _scheduleRender(delay=80){ if(this.style.display === 'none') return; if(this._scheduledRenderTimer) clearTimeout(this._scheduledRenderTimer); this._scheduledRenderTimer = setTimeout(()=>{ this._scheduledRenderTimer = null; try{ this._render(); }catch(e){ console.error('[plugin-graph] scheduled render error', e); } }, delay); }
 
-  open(mode='project'){
-    this.mode = mode;
-    // hide main children except this component's mount point
+  open(mode){
+    // prefer provided mode, fall back to state setting, then default
+    if(mode) this.mode = mode;
+    else if(state && typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode;
+    else this.mode = 'project';
     const main = document.querySelector('main');
-    if(main && !this._savedMainStyles){
-      this._savedMainStyles = [];
-      Array.from(main.children).forEach(child=>{
-        if(child === this) return;
-        this._savedMainStyles.push({ el: child, display: child.style.display || '' });
-        child.style.display = 'none';
-      });
-    }
-    // default range
+    if(main && !this._savedMainStyles){ this._savedMainStyles = []; Array.from(main.children).forEach(child=>{ if(child === this) return; this._savedMainStyles.push({ el: child, display: child.style.display || '' }); child.style.display = 'none'; }); }
     const months = getTimelineMonths();
     let d0, d1;
     if(months && months.length){ d0 = months[0]; const last = months[months.length-1]; d1 = new Date(last.getFullYear(), last.getMonth()+1, 0); }
     else { d0 = new Date(); d1 = new Date(Date.now() + 30*24*3600*1000); }
     this.startDate = new Date(d0); this.endDate = new Date(d1);
+    this._initDateRangeDefaults();
     const startInp = this.renderRoot.querySelector('#mvStart');
     const endInp = this.renderRoot.querySelector('#mvEnd');
     if(startInp) startInp.value = this._fmtDate(this.startDate);
     if(endInp) endInp.value = this._fmtDate(this.endDate);
     this.style.display = 'block';
-    this._render();
+    // schedule render (will no-op until data available); ensure quick render after DOM updates
+    this._scheduleRender(20);
   }
 
-  close(){
-    this.style.display = 'none';
-    const main = document.querySelector('main');
-    if(main && this._savedMainStyles){ this._savedMainStyles.forEach(s=>{ s.el.style.display = s.display; }); this._savedMainStyles = null; }
-  }
+  close(){ this.style.display = 'none'; const main = document.querySelector('main'); if(main && this._savedMainStyles){ this._savedMainStyles.forEach(s=>{ s.el.style.display = s.display; }); this._savedMainStyles = null; } }
 
-  exportSvg(){
-    if(!this.svgEl) return;
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(this.svgEl);
-    const blob = new Blob([svgStr], { type:'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'mountain-view.svg'; a.click(); URL.revokeObjectURL(url);
-  }
+  exportSvg(){ if(!this.svgEl) return; const serializer = new XMLSerializer(); const svgStr = serializer.serializeToString(this.svgEl); const blob = new Blob([svgStr], { type:'image/svg+xml' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mountain-view.svg'; a.click(); URL.revokeObjectURL(url); }
 
-  exportPng(){
-    if(!this.svgEl) return;
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(this.svgEl);
-    const img = new Image();
-    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
-    img.onload = () => {
-      const host = this.renderRoot.getElementById('mountainViewHost');
-      const vb = this.svgEl.viewBox && this.svgEl.viewBox.baseVal ? this.svgEl.viewBox.baseVal : null;
-      const w = vb ? vb.width : host.clientWidth;
-      const h = vb ? vb.height : host.clientHeight;
-      const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob((blob)=>{ const dl = document.createElement('a'); const u = URL.createObjectURL(blob); dl.href = u; dl.download = 'mountain-view.png'; dl.click(); URL.revokeObjectURL(u); }, 'image/png');
-    };
-    img.src = url;
-  }
+  exportPng(){ if(!this.svgEl) return; const serializer = new XMLSerializer(); const svgStr = serializer.serializeToString(this.svgEl); const img = new Image(); const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr); img.onload = () => { const host = this.renderRoot.getElementById('mountainViewHost'); const vb = this.svgEl.viewBox && this.svgEl.viewBox.baseVal ? this.svgEl.viewBox.baseVal : null; const w = vb ? vb.width : host.clientWidth; const h = vb ? vb.height : host.clientHeight; const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, w, h); canvas.toBlob((blob)=>{ const dl = document.createElement('a'); const u = URL.createObjectURL(blob); dl.href = u; dl.download = 'mountain-view.png'; dl.click(); URL.revokeObjectURL(u); }, 'image/png'); }; img.src = url; }
 
-  // Utility functions (copied from legacy)
   _daysBetween(d0, d1){ const ms = new Date(d1).setHours(0,0,0,0) - new Date(d0).setHours(0,0,0,0); return Math.max(0, Math.floor(ms / (24*3600*1000)) + 1); }
   _addDays(d,n){ const dt = new Date(d); dt.setDate(dt.getDate()+n); return dt; }
   _fmtDate(d){ const dd = new Date(d); return dd.toISOString().slice(0,10); }
@@ -212,9 +217,7 @@ export class PluginGraph extends LitElement {
         const tTuple = teamDaily[si] || [];
         const pTuple = projectDaily[si] || [];
         let maxTeamVal = 0;
-        for(let ti=0; ti<teams.length; ti++){
-          const tid = teams[ti].id; if(!teamSetSelected.has(tid)) continue; const v = Number(tTuple[ti] || 0); totals[i].perTeam[tid] = v; if(v > maxTeamVal) maxTeamVal = v;
-        }
+        for(let ti=0; ti<teams.length; ti++){ const tid = teams[ti].id; if(!teamSetSelected.has(tid)) continue; const v = Number(tTuple[ti] || 0); totals[i].perTeam[tid] = v; if(v > maxTeamVal) maxTeamVal = v; }
         let sumProj = 0;
         for(let pi=0; pi<projects.length; pi++){ const pid = projects[pi].id; if(!projectSetSelected.has(pid)) continue; const v = Number(pTuple[pi] || 0); totals[i].perProject[pid] = v; sumProj += v; }
         totals[i].total = (mode === 'team') ? maxTeamVal : sumProj;

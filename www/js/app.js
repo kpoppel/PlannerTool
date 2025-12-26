@@ -105,6 +105,11 @@ async function init(){
 
         await pluginManager.loadFromConfig(cfg);
         console.log('[App] PluginManager loaded modules');
+        try{
+          // Also run any in-repo plugin registration bootstrap (for demos)
+          const regMod = await import('./plugins/registerPlugins.js');
+          if(regMod && regMod.registerPlugins) await regMod.registerPlugins();
+        }catch(e){ console.warn('[App] failed to register in-repo plugins', e); }
       } catch (err) {
         console.error('[App] Failed to load plugin modules', err);
       }

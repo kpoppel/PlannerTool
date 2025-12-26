@@ -15,6 +15,7 @@ export const featureFlags = {
   
   // Phase 7: Plugin System
   USE_PLUGIN_SYSTEM: true,
+  ENABLE_PLUGIN_GRAPH: true,
   
   // Phase 8-9: Lit Components
   USE_LIT_COMPONENTS: true,
