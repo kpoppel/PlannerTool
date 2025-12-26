@@ -110,12 +110,13 @@ export class SidebarLit extends LitElement {
     // Only render Tools section when plugin system enabled
     if(!isEnabled('USE_PLUGIN_SYSTEM')) return html``;
     try{
-      const list = pluginManager.list() || [];
+      const list = (pluginManager.list() || []).filter(md => md.enabled !== false);
       return html`${list.map(md => {
         const active = pluginManager.isActive(md.id);
+        const title = md.title || md.name || md.id;
         return html`<li class="sidebar-list-item">
           <div class="chip sidebar-chip ${active? 'active':''}" style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" @click=${()=>this._onPluginClicked(md.id)} role="button" tabindex="0" aria-pressed="${active? 'true':'false'}" @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._onPluginClicked(md.id); }}}>
-            <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;" title="${md.title || md.id}">${md.title || md.id}</div>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;" title="${title}">${title}</div>
           </div>
         </li>`;
       })}`;
