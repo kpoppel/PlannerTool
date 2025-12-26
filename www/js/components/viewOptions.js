@@ -2,11 +2,12 @@ import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { StateFilterEvents } from '../core/EventRegistry.js';
 
-function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null }){
+function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'chip';
   btn.textContent = label;
+  if(color){ btn.style.setProperty('--chip-accent', color); btn.classList.add('chip-with-accent'); }
   if(active) btn.classList.add('active');
   if(role) btn.setAttribute('role', role);
   if(ariaPressed !== null) btn.setAttribute('aria-pressed', ariaPressed ? 'true' : 'false');
@@ -64,7 +65,7 @@ function renderStateFilter(container){
   group.appendChild(allChip);
   (state.availableStates || []).forEach(s => {
     const active = selSet.has(s);
-    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active });
+    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active, color: state.getStateColor(s) });
     group.appendChild(chip);
   });
   wrapper.appendChild(title); wrapper.appendChild(group);

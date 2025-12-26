@@ -6,6 +6,17 @@ export const PALETTE = [
   '#e67e22','#d35400','#e74c3c','#c0392b',
   '#9b59b6','#8e44ad','#34495e','#7f8c8d'
 ];
+// Default mapping from feature status/state to color. Exported for reuse.
+export const DEFAULT_STATE_COLOR_MAP = {
+  'New': '#3498db',
+  'Defined': '#2ecc71',
+  'In Progress': '#f1c40f',
+  'Completed': '#9b59b6',
+  'Done': '#9b59b6',
+  'Archived': '#7f8c8d',
+  'Blocked': '#e74c3c',
+  'On Hold': '#e67e22'
+};
 import { featureFlags } from '../config.js';
 import { FilterManager } from './FilterManager.js';
 import { CapacityCalculator } from './CapacityCalculator.js';
@@ -56,6 +67,9 @@ class State {
     
     // FilterManager - lazy init after data loads
     this._filterManager = null;
+
+    // Default state->color mapping (can be overridden by config later)
+    this.defaultStateColorMap = DEFAULT_STATE_COLOR_MAP;
     
     // ScenarioManager - lazy init
     this._scenarioManager = null;
@@ -118,6 +132,17 @@ class State {
       this.emitScenarioActivated();
       bus.emit(FeatureEvents.UPDATED);
     });
+  }
+
+  // Return a hex color for a given state name. Lookup in default map first,
+  // then fallback to selecting a color from PALETTE deterministically.
+  getStateColor(stateName) {
+    if (!stateName) return PALETTE[0];
+    if (this.defaultStateColorMap && this.defaultStateColorMap[stateName]) return this.defaultStateColorMap[stateName];
+    // Deterministic fallback: hash the state name to pick a palette color
+    let hash = 0; for (let i = 0; i < stateName.length; i++) { hash = ((hash << 5) - hash) + stateName.charCodeAt(i); hash |= 0; }
+    const idx = Math.abs(hash) % PALETTE.length;
+    return PALETTE[idx];
   }
 
   setupAutosave(intervalMin) {

@@ -223,6 +223,24 @@ body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var
 .chip.active .chip-badge { background:#23344d; color:#fff; }
 .chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
 
+/* Accent-enabled chip variant: shows a colored left accent using CSS variable */
+.chip-with-accent.active {
+  background: #fff;
+  color: #23344d;
+  /* border-color: #fff; */
+  border-left-color: var(--chip-accent);
+  border-right-color: var(--chip-accent);
+  border-left-style: solid;
+  border-right-style: solid;
+  border-left-width: 8px;
+  border-right-width: 8px;
+}
+.chip-with-accent.active .chip-badge { background: #23344d; color: #fff; }
+.chip-with-accent:focus-visible { outline-offset: 2px; }
+.chip-with-accent::before { box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset; }
+.chip-with-accent::after { box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset; }
+.chip-with-accent:focus-visible { outline-offset: 2px; }
+
 /* Sidebar chip style for projects and teams */
 .sidebar-chip { padding:0 8px 0 0; border-radius:10px; background:transparent; border:1px solid rgba(0,0,0,0.06); box-sizing:border-box; min-height:25px; overflow:hidden; }
 .sidebar-chip { align-items: stretch; }
