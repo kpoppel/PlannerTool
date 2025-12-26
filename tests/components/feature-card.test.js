@@ -77,6 +77,9 @@ describe('FeatureCard Consolidated Tests', () => {
 
       const mod = await import('../../www/js/components/FeatureBoard.lit.js');
       const update = boardHelpers.updateCardsById || mod.updateCardsById;
+      // Ensure state feature lookup returns our source
+      const st = await import('../../www/js/services/State.js');
+      st.state._featureService = { getEffectiveFeatureById: (id) => source.find(f => f.id === id) };
       await board.updateCardsById(['fx1'], source);
       await new Promise(r => setTimeout(r, 0));
       expect(called).to.equal(true);

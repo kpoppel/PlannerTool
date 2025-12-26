@@ -17,7 +17,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('getEffectiveFeatures applies overrides and sets dirty flags', () => {
-      const baselineStore = { getFeatures: () => [{ id: 10, start: '2025-01-01', end: '2025-01-10', title: 'Base' }] };
+      const baselineStore = { getFeatures: () => [{ id: 10, start: '2025-01-01', end: '2025-01-10', title: 'Base' }], getFeatureById: () => new Map([{ 10: { id: 10, start: '2025-01-01', end: '2025-01-10', title: 'Base' } }]) };
       const activeScenario = { overrides: { 10: { start: '2025-01-02', end: '2025-01-09' } } };
       const svc = new FeatureService(baselineStore, { getActiveScenario: () => activeScenario });
       const eff = svc.getEffectiveFeatures();
@@ -26,7 +26,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('updateFeatureField sets override for start/end and returns true', () => {
-      const baselineStore = { getFeatures: () => [{ id: 5, start: '2025-01-01', end: '2025-01-05' }] };
+      const baselineStore = { getFeatures: () => [{ id: 5, start: '2025-01-01', end: '2025-01-05' }], getFeatureById: () => new Map([{ 5: { id: 5, start: '2025-01-01', end: '2025-01-05' } }]) };
       const activeScenario = { overrides: {}, isChanged: false };
       const svc = new FeatureService(baselineStore, { getActiveScenario: () => activeScenario });
       const changed = svc.updateFeatureField(5, 'start', '2025-01-02');
@@ -35,7 +35,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('revertFeature removes override and returns true', () => {
-      const baselineStore = { getFeatures: () => [{ id: 7, start: '2025-01-01', end: '2025-01-05' }] };
+      const baselineStore = { getFeatures: () => [{ id: 7, start: '2025-01-01', end: '2025-01-05' }], getFeatureById: () => new Map([{ 7: { id: 7, start: '2025-01-01', end: '2025-01-05' } }]) };
       const activeScenario = { overrides: { 7: { start: '2025-01-02', end: '2025-01-06' } }, isChanged: false };
       const svc = new FeatureService(baselineStore, { getActiveScenario: () => activeScenario });
       const res = svc.revertFeature(7);
@@ -83,7 +83,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('getFeatureTitleById returns title or id', () => {
-      const baselineStore = { getFeatures: () => [{ id: 99, title: 'NinetyNine' }] };
+      const baselineStore = { getFeatures: () => [{ id: 99, title: 'NinetyNine' }], getFeatureById: () => new Map([[99, { id: 99, title: 'NinetyNine' }]]) };
       const svc = new FeatureService(baselineStore, () => null);
       expect(svc.getFeatureTitleById(99)).to.equal('NinetyNine');
       expect(svc.getFeatureTitleById(123)).to.equal(123);

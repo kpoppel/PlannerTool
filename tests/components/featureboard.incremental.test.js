@@ -1,5 +1,6 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { featureFlags } from '../../www/js/config.js';
+import { state } from '../../www/js/services/State.js';
 
 // Define a lightweight mock for feature-card-lit so tests don't require Lit runtime.
 if(!customElements.get('feature-card-lit')){
@@ -56,6 +57,9 @@ describe('FeatureBoard incremental updates', () => {
     card2.style.left = '200px';
     card2.style.width = '120px';
     board.appendChild(card2);
+
+    // Ensure state will return our source features when updateCardsById queries for them
+    state._featureService = { getEffectiveFeatureById: (id) => features.find(f => f.id === id) };
 
     // Now change features and call update; provide precomputed layout values used by tests
     features[0].start = '2025-01-02'; features[0].end = '2025-01-08'; features[0]._left = 50; features[0]._width = 120;
