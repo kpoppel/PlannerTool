@@ -12,6 +12,10 @@ export class CapacityCalculator {
   constructor(eventBus, childrenByEpicMap = null) {
     this.bus = eventBus;
     this.childrenByEpic = childrenByEpicMap || new Map();
+    // Caches for incremental updates
+    this._lastResultCache = null;          // { dates, teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily }
+    this._lastFeaturesById = new Map();    // featureId -> feature (last seen)
+    this._dateIndexMap = null;             // dateIso -> index
   }
   
   /**
@@ -30,7 +34,8 @@ export class CapacityCalculator {
    * @param {Array} projects - Array of project objects with id
    * @returns {Object} Capacity metrics in legacy tuple format
    */
-  calculate(features, filters, teams, projects) {
+  // Optional 5th param: changedFeatureIds (Array) for incremental updates
+  calculate(features, filters, teams, projects, changedFeatureIds = null) {
     const { selectedProjects = [], selectedTeams = [], selectedStates = [] } = filters;
     
     // Validate inputs
@@ -58,15 +63,58 @@ export class CapacityCalculator {
     
     // Build feature lookup for epic-child checks
     const effectiveById = new Map(features.map(f => [f.id, f]));
-    
-    // Calculate capacities
+
+    // Build/refresh date index map for fast ISO->index lookup
+    const datesKey = dates.join('|');
+    if (!this._dateIndexMap || this._dateIndexMap._key !== datesKey) {
+      const map = new Map();
+      dates.forEach((d, i) => map.set(d, i));
+      map._key = datesKey;
+      this._dateIndexMap = map;
+    }
+
+    // If incremental update requested and we have a compatible cache, apply deltas
+    if (Array.isArray(changedFeatureIds) && this._lastResultCache && this._lastResultCache.dates.length === dates.length) {
+      this._applyFeatureDeltas(changedFeatureIds, effectiveById, {
+        selectedProjects,
+        selectedTeams,
+        selectedStates,
+        teams,
+        projects,
+        teamIndexById,
+        projectIndexById,
+        dates
+      });
+
+      const cached = this._lastResultCache;
+      // Normalize project capacities
+      const nTeams = teams.length || 1;
+      const projectDailyNormalized = cached.projectDaily.map(tuple => tuple.map(v => v / nTeams));
+      const totalOrgDailyPerTeamAvg = cached.totalOrgDaily.map(v => v / nTeams);
+
+      const result = {
+        dates: cached.dates,
+        teamDailyCapacity: cached.teamDaily,
+        teamDailyCapacityMap: cached.teamDailyMap,
+        projectDailyCapacityRaw: cached.projectDaily,
+        projectDailyCapacity: projectDailyNormalized,
+        projectDailyCapacityMap: cached.projectDailyMap,
+        totalOrgDailyCapacity: cached.totalOrgDaily,
+        totalOrgDailyPerTeamAvg
+      };
+      result.totalOrgDaily = cached.totalOrgDaily;
+      this.bus.emit(CapacityEvents.UPDATED, result);
+      return result;
+    }
+
+    // Full calculation (feature-first) for best average performance
     const {
       teamDaily,
       teamDailyMap,
       projectDaily,
       projectDailyMap,
       totalOrgDaily
-    } = this._calculateDailyCapacities(
+    } = this._calculateDailyCapacities_FeatureFirst(
       features,
       dates,
       selectedProjects,
@@ -96,10 +144,200 @@ export class CapacityCalculator {
     // Backwards-compatible alias expected by some callers/tests
     result.totalOrgDaily = totalOrgDaily;
     
+    // Cache result for incremental updates
+    this._lastResultCache = {
+      dates,
+      teamDaily,
+      teamDailyMap,
+      projectDaily,
+      projectDailyMap,
+      totalOrgDaily
+    };
+    // Store snapshot of features for delta subtraction
+    this._lastFeaturesById = new Map(features.map(f => [f.id, f]));
+
     // Emit event
     this.bus.emit(CapacityEvents.UPDATED, result);
     
     return result;
+  }
+
+  // Feature-first calculation (efficient when features cover short ranges)
+  _calculateDailyCapacities_FeatureFirst(
+    features,
+    dates,
+    selectedProjects,
+    selectedTeams,
+    selectedStates,
+    teams,
+    teamIndexById,
+    projectIndexById,
+    effectiveById
+  ) {
+    const dlen = dates.length;
+    const tlen = teams.length;
+    const plen = projectIndexById.size;
+
+    const teamDaily = Array.from({ length: dlen }, () => new Array(tlen).fill(0));
+    const teamDailyMap = Array.from({ length: dlen }, () => ({}));
+    const projectDaily = Array.from({ length: dlen }, () => new Array(plen).fill(0));
+    const projectDailyMap = Array.from({ length: dlen }, () => ({}));
+    const totalOrgDaily = new Array(dlen).fill(0);
+
+    const selectedProjectSet = new Set(selectedProjects);
+    const selectedTeamSet = new Set(selectedTeams);
+    const selectedStateSet = new Set(selectedStates);
+
+    const dateIndex = this._dateIndexMap;
+
+    for (const f of features) {
+      if (!f || !f.start || !f.end) continue;
+      if (!selectedProjectSet.has(f.project)) continue;
+      const fState = f.status || f.state;
+      if (!selectedStateSet.has(fState)) continue;
+
+      if (f.type === 'epic') {
+        const childIds = this.childrenByEpic.get(f.id) || [];
+        if (EPIC_CAPACITY_MODE === 'ignoreIfHasChildren' && childIds.length) continue;
+      }
+
+      const startIdx = dateIndex.get(f.start);
+      const endIdx = dateIndex.get(f.end);
+      if (startIdx === undefined || endIdx === undefined) continue;
+
+      const tls = f.capacity || [];
+      for (let di = startIdx; di <= endIdx; di++) {
+        if (f.type === 'epic' && EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate') {
+          const childIds = this.childrenByEpic.get(f.id) || [];
+          if (childIds.length) {
+            let childCovers = false;
+            for (const cid of childIds) {
+              const ch = effectiveById.get(cid);
+              if (!ch || !ch.start || !ch.end) continue;
+              if (dates[di] >= ch.start && dates[di] <= ch.end) { childCovers = true; break; }
+            }
+            if (childCovers) continue;
+          }
+        }
+
+        let projectLoadForDay = 0;
+        for (const tl of tls) {
+          if (!selectedTeamSet.has(tl.team)) continue;
+          const ti = teamIndexById.get(tl.team);
+          const load = Number(tl.capacity) || 0;
+          if (ti !== undefined) {
+            teamDaily[di][ti] += load;
+            teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + load;
+          }
+          const pi = projectIndexById.get(f.project);
+          if (pi !== undefined) {
+            projectDaily[di][pi] += load;
+            projectDailyMap[di][f.project] = (projectDailyMap[di][f.project] || 0) + load;
+            projectLoadForDay += load;
+          }
+        }
+        totalOrgDaily[di] += projectLoadForDay;
+      }
+    }
+
+    return {
+      teamDaily,
+      teamDailyMap,
+      projectDaily,
+      projectDailyMap,
+      totalOrgDaily
+    };
+  }
+
+  // Apply deltas for changed features (subtract old contribution, add new)
+  _applyFeatureDeltas(changedIds, effectiveById, ctx) {
+    const {
+      selectedProjects,
+      selectedTeams,
+      selectedStates,
+      teams,
+      projects,
+      teamIndexById,
+      projectIndexById,
+      dates
+    } = ctx;
+
+    const cache = this._lastResultCache;
+    if (!cache) return;
+
+    const dateIndex = this._dateIndexMap;
+    const teamDaily = cache.teamDaily;
+    const projectDaily = cache.projectDaily;
+    const teamDailyMap = cache.teamDailyMap;
+    const projectDailyMap = cache.projectDailyMap;
+    const totalOrgDaily = cache.totalOrgDaily;
+
+    const selectedProjectSet = new Set(selectedProjects);
+    const selectedTeamSet = new Set(selectedTeams);
+    const selectedStateSet = new Set(selectedStates);
+
+    for (const id of changedIds) {
+      const oldF = this._lastFeaturesById.get(id) || null;
+      const newF = effectiveById.get(id) || null;
+
+      const processFeature = (f, sign) => {
+        if (!f || !f.start || !f.end) return;
+        if (!selectedProjectSet.has(f.project)) return;
+        const fState = f.status || f.state;
+        if (!selectedStateSet.has(fState)) return;
+
+        if (f.type === 'epic') {
+          const childIds = this.childrenByEpic.get(f.id) || [];
+          if (EPIC_CAPACITY_MODE === 'ignoreIfHasChildren' && childIds.length) return;
+        }
+
+        const startIdx = dateIndex.get(f.start);
+        const endIdx = dateIndex.get(f.end);
+        if (startIdx === undefined || endIdx === undefined) return;
+
+        const tls = f.capacity || [];
+        for (let di = startIdx; di <= endIdx; di++) {
+          if (f.type === 'epic' && EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate') {
+            const childIds = this.childrenByEpic.get(f.id) || [];
+            if (childIds.length) {
+              let childCovers = false;
+              for (const cid of childIds) {
+                const ch = this._lastFeaturesById.get(cid) || effectiveById.get(cid);
+                if (!ch || !ch.start || !ch.end) continue;
+                if (dates[di] >= ch.start && dates[di] <= ch.end) { childCovers = true; break; }
+              }
+              if (childCovers) continue;
+            }
+          }
+
+          let projectLoadForDay = 0;
+          for (const tl of tls) {
+            if (!selectedTeamSet.has(tl.team)) continue;
+            const ti = teamIndexById.get(tl.team);
+            const load = Number(tl.capacity) || 0;
+            if (ti !== undefined) {
+              teamDaily[di][ti] += sign * load;
+              teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + (sign * load);
+            }
+            const pi = projectIndexById.get(f.project);
+            if (pi !== undefined) {
+              projectDaily[di][pi] += sign * load;
+              projectDailyMap[di][f.project] = (projectDailyMap[di][f.project] || 0) + (sign * load);
+              projectLoadForDay += load;
+            }
+          }
+          totalOrgDaily[di] += sign * projectLoadForDay;
+        }
+      };
+
+      // subtract old then add new
+      if (oldF) processFeature(oldF, -1);
+      if (newF) processFeature(newF, +1);
+
+      // update stored feature snapshot
+      if (newF) this._lastFeaturesById.set(id, newF);
+      else this._lastFeaturesById.delete(id);
+    }
   }
   
   _emptyResult() {

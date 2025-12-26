@@ -319,7 +319,8 @@ class State {
   // Bulk update the state
   updateFeatureDates(updates){
     const capacityCallback = () => {
-      this.recomputeCapacityMetrics();
+      const changedIds = (Array.isArray(updates) ? updates.map(u => u.id).filter(Boolean) : []);
+      this.recomputeCapacityMetrics(changedIds.length ? changedIds : null);
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
@@ -338,7 +339,7 @@ class State {
 
   updateFeatureField(id, field, value) {
     const capacityCallback = () => {
-      this.recomputeCapacityMetrics();
+      this.recomputeCapacityMetrics([id]);
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
@@ -357,7 +358,7 @@ class State {
 
   revertFeature(id) {
     const capacityCallback = () => {
-      this.recomputeCapacityMetrics();
+      this.recomputeCapacityMetrics([id]);
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
@@ -603,7 +604,7 @@ class State {
       this.emitScenarioUpdated(activeId, { type:'override', featureId });
     }
     // Recompute capacity metrics after setting override
-    this.recomputeCapacityMetrics();
+    this.recomputeCapacityMetrics([featureId]);
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, orgDailyLoad: this.orgDailyLoad });
     bus.emit(FeatureEvents.UPDATED);
   }
@@ -635,7 +636,9 @@ class State {
   // -------- Capacity Metrics ---------
   // Build per-day capacity spent per team and per project and totals.
   // Delegates to CapacityCalculator service
-  recomputeCapacityMetrics(){
+  // Optional `changedFeatureIds` (Array) allows incremental recalculation when only
+  // a small set of features changed.
+  recomputeCapacityMetrics(changedFeatureIds = null){
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
     const selectedProjects = (this.projects || []).filter(p => p.selected).map(p => p.id);
@@ -673,8 +676,8 @@ class State {
     // Get effective features with scenario overrides
     const features = this.getEffectiveFeatures();
     
-    // Calculate using service
-    const result = this._capacityCalculator.calculate(features, filters, teams, projects);
+    // Calculate using service (pass changed ids for incremental update when available)
+    const result = this._capacityCalculator.calculate(features, filters, teams, projects, changedFeatureIds);
     
     // Assign results to state properties
     this.capacityDates = result.dates;
