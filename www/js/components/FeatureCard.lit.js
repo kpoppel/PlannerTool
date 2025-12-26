@@ -305,18 +305,36 @@ export class FeatureCardLit extends LitElement {
         e.stopPropagation();
         const startX = e.clientX;
         this._boundOnPreMove = null;
+        this._boundOnPreUp = null;
         const self = this;
         function onPreMove(ev) {
           const dx = ev.clientX - startX;
           if (Math.abs(dx) > 5) {
             try { if (self._boundOnPreMove) { window.removeEventListener('mousemove', self._boundOnPreMove); window.removeEventListener('pointermove', self._boundOnPreMove); self._boundOnPreMove = null; } } catch (e) {}
+            try { if (self._boundOnPreUp) { window.removeEventListener('mouseup', self._boundOnPreUp); window.removeEventListener('pointerup', self._boundOnPreUp); self._boundOnPreUp = null; } } catch(e) {}
             startDragMove(e, self.feature, self, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
           }
         }
         // bind with correct `this` for inside onPreMove and keep reference so it can be removed
         this._boundOnPreMove = onPreMove.bind(this);
+        this._boundOnPreUp = (function onUp(ev){
+          try {
+            if (self._boundOnPreMove) {
+              window.removeEventListener('mousemove', self._boundOnPreMove);
+              window.removeEventListener('pointermove', self._boundOnPreMove);
+              self._boundOnPreMove = null;
+            }
+          } catch (e) {}
+          try {
+            window.removeEventListener('mouseup', self._boundOnPreUp);
+            window.removeEventListener('pointerup', self._boundOnPreUp);
+            self._boundOnPreUp = null;
+          } catch(e) {}
+        }).bind(this);
         window.addEventListener('mousemove', this._boundOnPreMove);
         window.addEventListener('pointermove', this._boundOnPreMove);
+        window.addEventListener('mouseup', this._boundOnPreUp);
+        window.addEventListener('pointerup', this._boundOnPreUp);
       });
     } catch (e) {}
   }
@@ -326,7 +344,7 @@ export class FeatureCardLit extends LitElement {
     try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
     try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
     try { if (this._onHostMouseDown) this.removeEventListener('mousedown', this._onHostMouseDown); } catch (e) {}
-    try { if (this._boundOnPreMove) { window.removeEventListener('mousemove', this._boundOnPreMove); window.removeEventListener('pointermove', this._boundOnPreMove); this._boundOnPreMove = null; } } catch (e) {}
+      try { if (this._boundOnPreUp) { window.removeEventListener('mouseup', this._boundOnPreUp); window.removeEventListener('pointerup', this._boundOnPreUp); this._boundOnPreUp = null; } } catch (e) {}
     super.disconnectedCallback();
   }
 
@@ -371,6 +389,11 @@ export class FeatureCardLit extends LitElement {
       if (cameFromHandle) return;
     } catch (err) { /* ignore path errors and continue */ }
 
+    // If this click is part of a double-click it should be ignored (double-click handles revert)
+    if (e.detail && e.detail === 2) {
+      return;
+    }
+
     // Emit the SELECTED events for other components to subscribe to.
     // Use the latest effective feature from state to ensure changedFields/dirty
     // are present for the details panel (handles queued optimistic updates).
@@ -378,6 +401,23 @@ export class FeatureCardLit extends LitElement {
     this.bus.emit(FeatureEvents.SELECTED, eff);
     if (featureFlags && featureFlags.serviceInstrumentation)
       console.log('[FeatureCardLit] emitted SELECTED for feature', this.feature.id, eff);
+  }
+
+  _handleDoubleClick(e) {
+    // If the dblclick originated from the resize handle, ignore it
+    try {
+      const path = (e.composedPath && e.composedPath()) || [];
+      const cameFromHandle = path.some(p => p && p.classList && p.classList.contains && p.classList.contains('drag-handle'));
+      if (cameFromHandle) return;
+    } catch (err) { /* ignore */ }
+
+    try {
+      // Revert changes for this feature via state service
+      if (this.feature && this.feature.id) {
+        state.revertFeature(this.feature.id);
+        if (featureFlags && featureFlags.serviceInstrumentation) console.log('[FeatureCardLit] reverted feature', this.feature.id);
+      }
+    } catch (err) { /* swallow errors to avoid breaking UI */ }
   }
 
   _renderTeamLoadRow() {
@@ -438,6 +478,7 @@ export class FeatureCardLit extends LitElement {
         role="listitem"
         draggable="false"
         @click=${this._handleClick}
+        @dblclick=${this._handleDoubleClick}
         part="feature-card"
       >
         ${this._renderTeamLoadRow()}
