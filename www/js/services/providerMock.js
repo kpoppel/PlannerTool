@@ -179,5 +179,27 @@ export class ProviderMock {
         const data = await resp.json();
         return data;
     }
+    
+    async getCostTeams(){
+        this.logCall('getCostTeams', arguments);
+        // Build a simple teams summary from mock features and teams
+        const teamsMap = {};
+        for(const t of this.teams){ teamsMap[t.id] = { id: t.id, name: t.name, members: [], costFactor: 1.0 }; }
+        // Pull assignees and capacity entries from features
+        for(const f of this.features){
+            if(f.assignee){
+                // Map simple member listing by assignee name to first team found in capacity
+                const teamEntry = (f.capacity && f.capacity[0] && f.capacity[0].team) ? f.capacity[0].team : null;
+                if(teamEntry && teamsMap[teamEntry]){
+                    if(!teamsMap[teamEntry].members.includes(f.assignee)) teamsMap[teamEntry].members.push(f.assignee);
+                }
+            }
+            if(f.capacity && Array.isArray(f.capacity)){
+                for(const c of f.capacity){ if(teamsMap[c.team]) teamsMap[c.team].costFactor = Math.max(teamsMap[c.team].costFactor, (c.costFactor||1.0)); }
+            }
+        }
+        const out = Object.values(teamsMap).map(t => ({ ...t, members: t.members }));
+        return out;
+    }
   // ...other methods will be added in later steps
 }

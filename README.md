@@ -63,6 +63,16 @@ curl -s -X POST -H "X-Session-Id: $SESSION_ID" -H "Content-Type: application/jso
 curl -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost | jq .
 curl -s -X GET http://localhost:8000/api/cost | jq .
 
+# Cost scenario
+Practical client-side rules (what you should send)
+
+To calculate a server-stored scenario: POST { "scenarioId": "<id>" }
+This lets the server load the scenario and apply overrides, and response meta will show scenario_id and applied_overrides.
+To calculate a local/unsaved scenario (temporary overrides applied on the client): POST { "features": [ ...effective features with overrides...] }
+Send the full features list where each item has keys: id, project, start, end, capacity, plus optional title, type, state.
+Response meta.scenario_id will be null (unless you also pass a scenarioId).
+GET /api/cost is fine for baseline cached result when session is authenticated.
+
 
 ## Scenario POST data example:
 {"op":"save","data":{"id":"scen_1766146121427_4976","name":"12-19 Scenario 1","overrides":{"516154":{"start":"2025-10-24","end":"2025-11-23"},"516364":{"start":"2025-10-24","end":"2025-11-23"},"516412":{"start":"2025-10-24","end":"2025-11-23"},"516413":{"start":"2025-10-24","end":"2025-11-23"},"516419":{"start":"2025-10-24","end":"2025-11-23"},"534751":{"start":"2025-10-24","end":"2025-11-23"},"535825":{"start":"2025-10-24","end":"2025-11-23"},"682664":{"start":"2025-12-17","end":"2026-06-22"},"688048":{"start":"2026-04-19","end":"2026-05-19"},"688049":{"start":"2026-02-20","end":"2026-04-18"},"688050":{"start":"2025-12-26","end":"2026-02-19"},"688051":{"start":"2026-05-23","end":"2026-06-22"}},"filters":{"projects":["project-a","project-b"],"teams":["team-a","team-b","team-c","team-d"]},"view":{"capacityViewMode":"team","condensedCards":false,"featureSortMode":"rank"}}}

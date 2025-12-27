@@ -28,6 +28,12 @@ export const featureFlags = {
   ...(typeof window !== 'undefined' && window.__featureFlags ? window.__featureFlags : {})
 };
 
+// Visible features for components
+// Enable cost teams tab in UI
+export const UIFeatureFlags = {
+  SHOW_COST_TEAMS_TAB: true
+};
+
 /**
  * Check if a feature is enabled
  * @param {string} flagName - Name of the feature flag
