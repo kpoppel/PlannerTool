@@ -56,16 +56,16 @@ function renderStateFilter(container){
   const title = document.createElement('div'); title.className='group-label'; title.textContent = 'State Filter:';
   const group = document.createElement('div'); group.className='chip-group';
   // Determine current selection set
-  const selSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter || []);
+  const selSet = state.selectedFeatureStateFilter instanceof Set ? state.selectedFeatureStateFilter : new Set(state.selectedFeatureStateFilter || []);
   // All/None chip: label toggles between 'All' (when some are deselected) and 'None' when all are selected
-  const allSelected = selSet.size === (state.availableStates || []).length && (state.availableStates || []).length > 0;
-  const anyDeselected = selSet.size < (state.availableStates || []).length;
+  const allSelected = selSet.size === (state.availableFeatureStates || []).length && (state.availableFeatureStates || []).length > 0;
+  const anyDeselected = selSet.size < (state.availableFeatureStates || []).length;
   const allLabel = allSelected ? 'None' : 'All';
   const allChip = makeChip(allLabel, { active: allSelected, onClick: ()=> { state.setAllStatesSelected(!allSelected); }, ariaPressed: allSelected });
   group.appendChild(allChip);
-  (state.availableStates || []).forEach(s => {
+  (state.availableFeatureStates || []).forEach(s => {
     const active = selSet.has(s);
-    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active, color: state.getStateColor(s) });
+    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active, color: state.getFeatureStateColor(s) });
     group.appendChild(chip);
   });
   wrapper.appendChild(title); wrapper.appendChild(group);

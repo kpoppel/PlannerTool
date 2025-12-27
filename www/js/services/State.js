@@ -96,8 +96,8 @@ class State {
     this.baselineFeatureById = new Map();
     this.childrenByEpic = new Map();
     // State filters
-    this.availableStates = [];
-    this.selectedStateFilter = new Set();
+    this.availableFeatureStates = [];
+    this.selectedFeatureStateFilter = new Set();
     // Setup autosave if configured
     dataService.getLocalPref('autosave.interval').then(initialAutosave => {
       if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
@@ -136,13 +136,54 @@ class State {
 
   // Return a hex color for a given state name. Lookup in default map first,
   // then fallback to selecting a color from PALETTE deterministically.
-  getStateColor(stateName) {
+  getFeatureStateColor(stateName) {
     if (!stateName) return PALETTE[0];
     if (this.defaultStateColorMap && this.defaultStateColorMap[stateName]) return this.defaultStateColorMap[stateName];
     // Deterministic fallback: hash the state name to pick a palette color
     let hash = 0; for (let i = 0; i < stateName.length; i++) { hash = ((hash << 5) - hash) + stateName.charCodeAt(i); hash |= 0; }
     const idx = Math.abs(hash) % PALETTE.length;
     return PALETTE[idx];
+  }
+
+  // Return a hex color for a given project id. If the project exists in the
+  // working `this.projects` array and has a `color` property, return it.
+  // Otherwise pick a deterministic color from `PALETTE` based on the id.
+  getProjectColor(projectId) {
+    if (!projectId) return PALETTE[0];
+    // Try to find project in working copy first
+    const p = (this.projects || []).find(pr => pr.id === projectId);
+    if (p && p.color) return p.color;
+    // If no working copy color, try baseline projects
+    const bp = (this.baselineProjects || []).find(pr => pr.id === projectId);
+    if (bp && bp.color) return bp.color;
+    // Deterministic fallback: hash the id string to pick a palette color
+    const idStr = String(projectId);
+    let hash = 0; for (let i = 0; i < idStr.length; i++) { hash = ((hash << 5) - hash) + idStr.charCodeAt(i); hash |= 0; }
+    const idx = Math.abs(hash) % PALETTE.length;
+    return PALETTE[idx];
+  }
+
+  // Return a mapping of state name -> { background, text } colors for all
+  // available states. Uses `getFeatureStateColor` for background and picks either
+  // black or white for readable text depending on contrast.
+  getFeatureStateColors() {
+    const colors = {};
+    const states = this.availableFeatureStates || [];
+    const pickTextColor = (hex) => {
+      if (!hex) return '#000';
+      const h = hex.replace('#','');
+      const r = parseInt(h.substring(0,2),16);
+      const g = parseInt(h.substring(2,4),16);
+      const b = parseInt(h.substring(4,6),16);
+      // YIQ formula to determine light/dark text
+      const yiq = ((r*299)+(g*587)+(b*114))/1000;
+      return yiq >= 128 ? '#000' : '#fff';
+    };
+    for(const s of states){
+      const bg = this.getFeatureStateColor(s);
+      colors[s] = { background: bg, text: pickTextColor(bg) };
+    }
+    return colors;
   }
 
   setupAutosave(intervalMin) {
@@ -219,10 +260,10 @@ class State {
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     try { this._baselineStore.setFeatures(this.baselineFeatures); } catch (e) { /* noop on failure */ }
     // Compute available states from baseline features
-    this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    this.availableFeatureStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     // Default selection: select all available states unless user has an explicit selection
-    if(!(this.selectedStateFilter && this.selectedStateFilter.size > 0)){
-      this.selectedStateFilter = new Set(this.availableStates);
+    if(!(this.selectedFeatureStateFilter && this.selectedFeatureStateFilter.size > 0)){
+      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates);
     }
     this.initBaselineScenario();
     await this.initColors();
@@ -230,7 +271,7 @@ class State {
     this.emitScenarioActivated();
     bus.emit(ProjectEvents.CHANGED, this.projects);
     bus.emit(TeamEvents.CHANGED, this.teams);
-    bus.emit(StateFilterEvents.CHANGED, this.availableStates);
+    bus.emit(StateFilterEvents.CHANGED, this.availableFeatureStates);
     bus.emit(FeatureEvents.UPDATED);
     // Compute capacity metrics for charts/analytics
     this.recomputeCapacityMetrics();
@@ -277,10 +318,10 @@ class State {
     Object.freeze(this.baselineFeatures);
     this.initBaselineScenario();
     // Recompute available states
-    this.availableStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    this.availableFeatureStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     // If there is no explicit selection, default to selecting all discovered states
-    if(!(this.selectedStateFilter && this.selectedStateFilter.size > 0)){
-      this.selectedStateFilter = new Set(this.availableStates);
+    if(!(this.selectedFeatureStateFilter && this.selectedFeatureStateFilter.size > 0)){
+      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates);
     }
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
@@ -288,7 +329,7 @@ class State {
     this.emitScenarioActivated();
     bus.emit(ProjectEvents.CHANGED, this.projects);
     bus.emit(TeamEvents.CHANGED, this.teams);
-    bus.emit(StateFilterEvents.CHANGED, this.availableStates);
+    bus.emit(StateFilterEvents.CHANGED, this.availableFeatureStates);
     bus.emit(FeatureEvents.UPDATED);
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
@@ -299,35 +340,35 @@ class State {
     // Backwards-compatible wrapper: if `null` is passed, select all states;
     // otherwise set single-state selection (legacy behavior).
     if(stateName === null){
-      this.selectedStateFilter = new Set(this.availableStates || []);
+      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates || []);
     } else {
-      this.selectedStateFilter = new Set(stateName ? [stateName] : []);
+      this.selectedFeatureStateFilter = new Set(stateName ? [stateName] : []);
     }
-    bus.emit(FilterEvents.CHANGED, { selectedStateFilter: Array.from(this.selectedStateFilter) });
+    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
     bus.emit(FeatureEvents.UPDATED);
   }
 
   // Toggle a single state's selection on/off
   toggleStateSelected(stateName){
     if(!stateName) return;
-    if(this.selectedStateFilter.has(stateName)) this.selectedStateFilter.delete(stateName);
-    else this.selectedStateFilter.add(stateName);
-    console.debug('[state] toggleStateSelected ->', Array.from(this.selectedStateFilter));
+    if(this.selectedFeatureStateFilter.has(stateName)) this.selectedFeatureStateFilter.delete(stateName);
+    else this.selectedFeatureStateFilter.add(stateName);
+    console.debug('[state] toggleStateSelected ->', Array.from(this.selectedFeatureStateFilter));
     // Recompute capacity metrics (graphs) whenever state filter changes
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(FilterEvents.CHANGED, { selectedStateFilter: Array.from(this.selectedStateFilter) });
+    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
     bus.emit(FeatureEvents.UPDATED);
   }
 
   // Select or clear all states
   setAllStatesSelected(selectAll){
-    if(selectAll){ this.selectedStateFilter = new Set(this.availableStates || []); }
-    else { this.selectedStateFilter = new Set(); }
+    if(selectAll){ this.selectedFeatureStateFilter = new Set(this.availableFeatureStates || []); }
+    else { this.selectedFeatureStateFilter = new Set(); }
     // Recompute capacity metrics (graphs) when toggling all/none
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(FilterEvents.CHANGED, { selectedStateFilter: Array.from(this.selectedStateFilter) });
+    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
     bus.emit(FeatureEvents.UPDATED);
   }
 
@@ -339,6 +380,10 @@ class State {
       if(override.end && override.end !== featureBase.end) changedFields.push('end');
     }
     return { changedFields, dirty: changedFields.length > 0 };
+  }
+
+  getFeatureStatuses() {
+    return this.availableFeatureStates;
   }
 
   // Bulk update the state
@@ -668,14 +713,14 @@ class State {
     const projects = this.baselineProjects || [];
     const selectedProjects = (this.projects || []).filter(p => p.selected).map(p => p.id);
     const selectedTeams = (this.teams || []).filter(t => t.selected).map(t => t.id);
-    const selectedStateIds = this.selectedStateFilter instanceof Set 
-      ? Array.from(this.selectedStateFilter) 
-      : (this.selectedStateFilter || []);
+    const selectedStateIds = this.selectedFeatureStateFilter instanceof Set 
+      ? Array.from(this.selectedFeatureStateFilter) 
+      : (this.selectedFeatureStateFilter || []);
     
     // Check for empty selections
     if ((this.projects && this.projects.length > 0 && selectedProjects.length === 0) ||
         (this.teams && this.teams.length > 0 && selectedTeams.length === 0) ||
-        (this.selectedStateFilter && selectedStateIds.length === 0)) {
+        (this.selectedFeatureStateFilter && selectedStateIds.length === 0)) {
       // Clear metrics
       this.capacityDates = [];
       this.teamDailyCapacity = [];

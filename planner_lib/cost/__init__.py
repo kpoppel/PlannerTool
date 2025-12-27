@@ -1,17 +1,7 @@
 from .config import load_cost_config
-from .service import estimate_costs
+from .service import estimate_costs, build_cost_schema
 
-__all__ = ["load_cost_config", "estimate_costs"]
+__all__ = ["load_cost_config", "estimate_costs", "build_cost_schema"]
 
 # Data structure returned from the cost module:
-#{
-#  "architecture": {
-#    "516412": {
-#      "internal_cost": 0.0,
-#      "internal_hours": 0.0,
-#      "external_cost": 0.0,
-#      "external_hours": 0.0
-#    },
-#    ...
-#  },
-#}
+#  Call /api/cost without a session_id to get this structure

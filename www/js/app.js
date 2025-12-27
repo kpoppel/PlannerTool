@@ -83,7 +83,17 @@ async function init(){
       if ('requestIdleCallback' in window) requestIdleCallback(()=> import('./components/modalHelpers.js'));
       else setTimeout(()=> import('./components/modalHelpers.js'), 3000);
     }catch(e){ /* ignore prefetch failures */ }
-    // Phase 7: Plugin system
+    //Populate the app state from backend
+    const { dataService } = await import('./services/dataService.js');
+    await dataService.init();
+    await state.initState();
+    try{
+      // Let the timeline module manage its own initial scroll behavior
+      const mod = await import('./components/Timeline.lit.js');
+      if(mod) mod.ensureScrollToMonth();
+    }catch(e){ /* ignore */ }
+
+    // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {
       try {
         let cfg;
@@ -110,15 +120,7 @@ async function init(){
         console.error('[App] Failed to load plugin modules', err);
       }
     }
-    //Populate the app state from backend
-    const { dataService } = await import('./services/dataService.js');
-    await dataService.init();
-    await state.initState();
-    try{
-      // Let the timeline module manage its own initial scroll behavior
-      const mod = await import('./components/Timeline.lit.js');
-      if(mod) mod.ensureScrollToMonth();
-    }catch(e){ /* ignore */ }
+
     // Initialize complete
     hideModal();
     bus.emit(AppEvents.READY);

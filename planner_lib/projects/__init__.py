@@ -165,6 +165,8 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
                     team_ids.append(slugify(str(name), prefix="team-"))
         except Exception:
             pass
+        return [{"team": p, "capacity": 0} for p in team_ids if p[0]!='_']
+    
         import random
         random.seed()  # non-deterministic
         k = max(1, min(4, random.randint(1, 4)))
