@@ -221,20 +221,34 @@ export class ProviderREST {
         }catch(err){ return {}; }
     }
     
-    // Fetch cost data (GET) or request a recalculation with overrides (POST)
-    async getCost(overrides){
+    // Fetch cost data (GET) or request a recalculation with payload (POST)
+    async getCost(payload){
         try{
-            if(overrides && Array.isArray(overrides)){
-                // POST to request recalculation with overrides (feature id + start/end)
-                const res = await fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify({ overrides }) });
-                if(!res.ok) throw new Error(`HTTP ${res.status}`);
-                return await res.json();
-            }else{
-                // GET the cached cost data
+            // If no payload provided, GET cached cost for session (or schema when unauthenticated)
+            if(!payload){
                 const res = await fetch('/api/cost', { headers: this._headers() });
                 if(!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             }
+
+            // If payload is an array, treat as legacy overrides array
+            if(Array.isArray(payload)){
+                const res = await fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify({ overrides: payload }) });
+                if(!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            }
+
+            // If payload is an object, forward it directly (supports { features }, { scenarioId } etc.)
+            if(typeof payload === 'object'){
+                const res = await fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
+                if(!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            }
+
+            // Fallback to GET
+            const res = await fetch('/api/cost', { headers: this._headers() });
+            if(!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
         }catch(err){
             console.error('providerREST:getCost error', err);
             throw err;
