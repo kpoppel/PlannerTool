@@ -56,6 +56,7 @@ export class DetailsPanelLit extends LitElement {
     .relation-content > * { margin: 0; padding: 0; }
     .relation-title { margin: 0; line-height: 1.1; }
     .relation-title a.details-link { display: inline; color: var(--color-accent, #3498db); text-decoration: underline; line-height: 1.1; }
+    .state-chip { display:inline-block; padding:4px 8px; border-radius:12px; font-weight:600; font-size:13px; vertical-align:middle; }
   `;
 
   constructor(){
@@ -117,6 +118,9 @@ export class DetailsPanelLit extends LitElement {
     if(!this.open || !this.feature) return html`<div class="panel closed"></div>`;
     const feature = this.feature;
     const statusClass = feature.state==='In Progress'? 'status-inprogress' : feature.state==='Done'? 'status-done' : 'status-new';
+    // Build a state color chip using state service helper
+    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    const stateColor = (feature && feature.state && stateColors[feature.state]) ? stateColors[feature.state] : null;
     const orgBox = html`<span class="team-load-box" style="background:#23344d" title="Org Load">Org: ${feature.orgLoad||'0%'}</span>`;
     const teamBoxes = (feature.capacity||[]).map(tl => {
       const t = state.teams.find(x=>x.id===tl.team);
@@ -179,7 +183,7 @@ export class DetailsPanelLit extends LitElement {
           <button class="details-close" @click=${()=>this.hide()} aria-label="Close details">✕</button>
           <div class="details-label">Feature ${feature.title}</div>
           <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
-          <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span></div>
+          <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span> ${stateColor ? html`<span class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}">${feature.state}</span>` : ''}</div>
         </div>
         <div class="details-content">
           ${this._renderField('Assignee','assignee', feature.assignee)}

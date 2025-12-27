@@ -70,7 +70,13 @@ def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
     # Aggregate by team_name key present in people entries
     for p in people:
-        team = slugify(p.get("team_name") or p.get("team") or "")
+        # Normalize team identifiers to the canonical frontend id format 'team-<slug>'.
+        # Use slugify without a prefix to avoid doubling 'team-' when the
+        # original name already contains the word 'Team'. Then ensure the
+        # final id starts with 'team-'.
+        raw = p.get("team_name") or p.get("team") or ""
+        base = slugify(raw)
+        team = base if base.startswith("team-") else f"team-{base}"
         if not team:
             continue
         site = p.get("site") or ""
@@ -129,15 +135,15 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
     for team in capacity:
         #logger.debug("Calculating costs for team '%s' with capacity %s", team["team"], team["capacity"])
         if team["team"] not in team_aggregates:
-            logger.debug("No team aggregate data for team '%s'", team["team"])
+            logger.error("No team aggregate data for team '%s'", team["team"])
             continue
         team_summary = team_aggregates[team["team"]]
         #logger.debug("Team summary for '%s': %s", team["team"], team_summary)
         # Calculate estimated cost and hours spent by this team on the task
-        entry["internal_hours"] += _hours_between(start, end, team_summary["internal_hours_total"]) * team["capacity"] / 100
-        entry["external_hours"] += _hours_between(start, end, team_summary["external_hours_total"]) * team["capacity"] / 100
-        entry["internal_cost"] += team_summary["internal_hourly_rate_total"] * entry["internal_hours"]
-        entry["external_cost"] += team_summary["external_hourly_rate_total"] * entry["external_hours"]
+        entry["internal_hours"] += round(_hours_between(start, end, team_summary["internal_hours_total"]) * team["capacity"] / 100, 2)
+        entry["external_hours"] += round(_hours_between(start, end, team_summary["external_hours_total"]) * team["capacity"] / 100, 2)
+        entry["internal_cost"] += round(team_summary["internal_hourly_rate_total"] * entry["internal_hours"], 2)
+        entry["external_cost"] += round(team_summary["external_hourly_rate_total"] * entry["external_hours"], 2)
         #logger.debug("Team '%s' default hours per month: internal %s, external %s", team["team"], team_summary["internal_hours_total"], team_summary["external_hours_total"])
         #logger.debug("Team '%s' task hours: internal %.2f, external %.2f", team["team"], entry["internal_hours"], entry["external_hours"])
         #logger.debug("Team '%s' task costs: internal %.2f, external %.2f", team["team"], entry["internal_cost"], entry["external_cost"])

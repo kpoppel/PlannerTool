@@ -26,9 +26,7 @@ The server will run a setup first time. If you need to run the setup again, eith
   `node ./scripts/run_js_tests.mjs`
 
 # Run a session from CLI
-export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com"}' \
-  localhost:8000/api/session | jq -r .sessionId)
+export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' localhost:8000/api/session | jq -r .sessionId)
 
 echo "$SESSION_ID"
 
@@ -54,9 +52,16 @@ curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/teams
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario?id=
 curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenario
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost  # Return the cost JSON scheme
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost
 curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/admin/reload-config
+# assume session created and $SESSION_ID set and scenario id 'scen123' saved for the user
+curl -s -X POST -H "X-Session-Id: $SESSION_ID" -H "Content-Type: application/json" \
+  -d '{"scenarioId":"scen123"}' \
+  http://localhost:8000/api/cost | jq .
+  export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
+curl -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/cost | jq .
+curl -s -X GET http://localhost:8000/api/cost | jq .
 
 
 ## Scenario POST data example:

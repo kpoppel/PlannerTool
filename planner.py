@@ -40,12 +40,34 @@ logging.getLogger('requests').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 logger.info("Starting AZ Planner Server")
 
+# Load and validate cost configuration at startup so any inconsistencies
+# are visible in the server logs immediately.
+try:
+    from planner_lib.cost.config import load_cost_config
+    try:
+        load_cost_config()
+    except Exception as e:
+        logger.exception('Initial cost configuration validation failed: %s', e)
+        # Also write to stderr to ensure the message is visible when the
+        # server is started under external servers (uvicorn) that may
+        # capture or reconfigure Python logging.
+        try:
+            import sys
+            sys.stderr.write('Initial cost configuration validation failed: ' + str(e) + '\n')
+        except Exception:
+            pass
+except Exception:
+    # If cost config module not available, continue silently
+    pass
+
 # FastAPI imports
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException, Request, Response
 from fastapi import Body
 import uuid
+from datetime import datetime
+from typing import Dict, Any
 
 # Application imports
 from planner_lib.config.health import get_health
@@ -63,7 +85,6 @@ from planner_lib.storage.scenario_store import (
 # Parse CLI args for setup-related actions
 ##########################################
 from planner_lib.setup import parse_args, get_parser, setup, has_feature_flag
-import os
 
 _setup_args = parse_args(sys.argv[1:])
 if _setup_args.help:
@@ -175,9 +196,9 @@ async def save_config(payload: AccountPayload):
 
 @app.get('/api/projects')
 async def api_projects(request: Request):
-    logger.debug("Fetching projects for session for %s", request.cookies.get(SESSION_COOKIE))
     # Require a valid session
-    _ = get_session_id(request)
+    sid = get_session_id(request)
+    logger.debug("Fetching projects for session for %s", sid)
     try:
         from planner_lib.projects import list_projects
         return list_projects()
@@ -251,7 +272,9 @@ async def api_teams(request: Request):
 
 @app.get('/api/scenario')
 async def api_scenario_get(request: Request):
+    # Require a valid session
     sid = get_session_id(request)
+    logger.debug("Fetching scenario(s) for session %s", sid)
     ctx = SESSIONS.get(sid) or {}
     user_id = ctx.get('email')
     if not user_id:
@@ -270,7 +293,9 @@ async def api_scenario_get(request: Request):
 
 @app.post('/api/scenario')
 async def api_scenario_post(request: Request, payload: dict = Body(default={})): 
+    # Require a valid session
     sid = get_session_id(request)
+    logger.debug("Saving/deleting scenario for session %s", sid)
     ctx = SESSIONS.get(sid) or {}
     user_id = ctx.get('email')
     if not user_id:
@@ -302,40 +327,117 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
 
 
 @app.post('/api/cost')
-# TODO: This looks like total imagination from the LLM. The frontend can ask for recalculation of a single task's cost.
 async def api_cost_post(request: Request, payload: dict = Body(default={})):
     # Require a valid session
     sid = get_session_id(request)
     logger.debug("Calculating cost for session %s", sid)
-    # try:
-    #     from planner_lib.cost import estimate_costs
-    #     # Payload can include optional 'scenario' and 'revisions'
-    #     scenario = (payload or {}).get('scenario')
-    #     revisions = (payload or {}).get('revisions')
+    try:
+        from planner_lib.cost import estimate_costs, build_cost_schema
+        from planner_lib.projects import list_tasks
+        from planner_lib.storage.scenario_store import load_user_scenario
 
-    #     # Bind any available features/tasks from session context for local compute
-    #     ctx = SESSIONS.get(sid) or {}
-    #     # Optionally client may include 'features' in payload to avoid extra calls
-    #     features = (payload or {}).get('features')
-    #     if features is not None:
-    #         ctx = dict(ctx)
-    #         ctx['features'] = features
+        # Build session context and determine features to estimate
+        ctx = SESSIONS.get(sid) or {}
+        email = ctx.get('email')
+        pat = ctx.get('pat')
 
-    #     result = estimate_costs(ctx, scenario=scenario, revisions=revisions)
-    #     return result
-    # except HTTPException:
-    #     raise
-    # except Exception as e:
-    #     logger.exception('Failed to calculate cost: %s', e)
-    #     raise HTTPException(status_code=500, detail=str(e))
+        # If client provided explicit features in payload, prefer them
+        features = (payload or {}).get('features')
+        scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
+
+        # If features not provided, fetch baseline tasks for the user (requires PAT)
+        if features is None:
+            try:
+                # ensure PAT is loaded into ctx if missing
+                if email and not pat:
+                    loaded = config_manager.load(email)
+                    pat = loaded.get('pat')
+                    ctx['pat'] = pat
+                    SESSIONS[sid] = ctx
+            except Exception:
+                pass
+            tasks = list_tasks(pat=pat)
+            # normalize baseline tasks to expected cost input
+            features = []
+            for t in (tasks or []):
+                features.append({
+                    'id': t.get('id'),
+                    'project': t.get('project'),
+                    'start': t.get('start'),
+                    'end': t.get('end'),
+                    'capacity': t.get('capacity') or 1.0,
+                    'title': t.get('title'),
+                    'type': t.get('type'),
+                    'state': t.get('state'),
+                })
+
+        # If a scenario id was provided, load the scenario and apply its overrides
+        applied_overrides = None
+        if scenario_id:
+            try:
+                if not email:
+                    raise HTTPException(status_code=401, detail='Missing user context for scenario')
+                scen = load_user_scenario(scenarios_storage, email, scenario_id)
+                # scen is expected to be a dict with 'overrides' mapping featureId->{start,end}
+                overrides = scen.get('overrides') if isinstance(scen, dict) else None
+                if overrides:
+                    applied_overrides = {}
+                    new_features = []
+                    for f in features:
+                        fid = str(f.get('id'))
+                        f_copy = dict(f)
+                        if fid in overrides:
+                            ov = overrides[fid]
+                            if isinstance(ov, dict):
+                                if 'start' in ov:
+                                    f_copy['start'] = ov.get('start')
+                                if 'end' in ov:
+                                    f_copy['end'] = ov.get('end')
+                            applied_overrides[fid] = ov
+                        new_features.append(f_copy)
+                    features = new_features
+            except KeyError:
+                raise HTTPException(status_code=404, detail='Scenario not found')
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception('Failed to load scenario %s: %s', scenario_id, e)
+
+        # Prepare context for estimate_costs
+        ctx = dict(ctx)
+        ctx['features'] = features
+
+        raw = estimate_costs(ctx) or {}
+        # Attach meta information about applied scenario overrides
+        if scenario_id:
+            raw = dict(raw)
+            raw_meta = raw.get('meta') if isinstance(raw.get('meta'), dict) else {}
+            raw_meta.update({'scenario_id': scenario_id, 'applied_overrides': applied_overrides})
+            raw['meta'] = raw_meta
+
+        return build_cost_schema(raw, mode='full', session_features=ctx.get('features'))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to calculate cost: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get('/api/cost')
 async def api_cost_get(request: Request):
-    # Return calculated cost for all loaded tasks/projects for this session
+    # Return calculated cost for the session; if no valid session provided,
+    # return a canned schema response from the cost module so clients can
+    # discover the expected shape without authentication.
+    sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
+    if not sid or sid not in SESSIONS:
+        # No valid session: let the cost module return the canned schema
+        from planner_lib.cost import build_cost_schema
+        # Return an empty/raw schema so callers can see expected keys
+        return build_cost_schema({}, mode='schema', session_features=None)
+
+    # Valid session — resolve PAT and build session context
     sid = get_session_id(request)
     logger.debug("Fetching calculated cost for session %s", sid)
-    # Ensure session has user PAT
     ctx = SESSIONS.get(sid) or {}
     email = ctx.get('email')
     pat = ctx.get('pat')
@@ -347,12 +449,12 @@ async def api_cost_get(request: Request):
             SESSIONS[sid] = ctx
         except Exception as e:
             logger.exception('Failed to load user config for %s: %s', email, e)
+
     try:
         from planner_lib.projects import list_tasks
-        from planner_lib.cost import estimate_costs
+        from planner_lib.cost import build_cost_schema, estimate_costs
 
         tasks = list_tasks(pat=pat)
-        # Normalize task data for engine (send only expected fields)
         features = []
         for t in tasks or []:
             features.append({
@@ -361,12 +463,16 @@ async def api_cost_get(request: Request):
                 'start': t.get('start'),
                 'end': t.get('end'),
                 'capacity': t.get('capacity'),
+                'title': t.get('title'),
+                'type': t.get('type'),
+                'state': t.get('state'),
             })
 
         ctx = dict(ctx)
         ctx['features'] = features
-        res = estimate_costs(ctx)
-        return res
+        raw = estimate_costs(ctx)
+        return build_cost_schema(raw, mode='full', session_features=features)
+    
     except Exception as e:
         logger.exception('Failed to fetch cost data: %s', e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -415,4 +521,78 @@ async def api_admin_reload_config(request: Request):
         return { 'ok': True }
     except Exception as e:
         logger.exception('Failed to reload configuration: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/cost/teams')
+async def api_cost_teams(request: Request):
+    """Return discovered teams and member details derived from cost/database config.
+
+    Response shape:
+    { teams: [ { id, name, members: [ { name, external, site, hourly_rate, hours_per_month } ], totals: { ... } } ] }
+    """
+    try:
+        from planner_lib.cost.config import load_cost_config
+        from planner_lib.util import slugify
+
+        cfg = load_cost_config() or {}
+        cost_cfg = cfg.get('cost', {}) or {}
+        db_cfg = cfg.get('database', {}) or {}
+        people = db_cfg.get('people', []) or []
+
+        site_hours_map = cost_cfg.get('working_hours', {}) or {}
+        external_cfg = cost_cfg.get('external_cost', {}) or {}
+        ext_rates = external_cfg.get('external', {}) or {}
+        default_ext_rate = float(external_cfg.get('default_hourly_rate', 0) or 0)
+        internal_default_rate = float(cost_cfg.get('internal_cost', {}).get('default_hourly_rate', 0) or 0)
+
+        teams_map = {}
+        for p in people:
+            raw_team = p.get('team_name') or p.get('team') or ''
+            team_key = slugify(raw_team)
+            if not team_key:
+                # skip people without a team
+                continue
+            entry = teams_map.setdefault(team_key, {
+                'id': 'team-' + team_key,
+                'name': raw_team or team_key,
+                'members': [],
+                'totals': {
+                    'internal_count': 0,
+                    'external_count': 0,
+                    'internal_hours_total': 0,
+                    'external_hours_total': 0,
+                    'internal_hourly_rate_total': 0.0,
+                    'external_hourly_rate_total': 0.0,
+                }
+            })
+
+            name = p.get('name') or ''
+            site = p.get('site') or ''
+            is_external = bool(p.get('external'))
+            if is_external:
+                hourly_rate = float(ext_rates.get(name, default_ext_rate) or 0)
+                hours = int(site_hours_map.get(site, {}).get('external', 0) or 0)
+                entry['totals']['external_count'] += 1
+                entry['totals']['external_hourly_rate_total'] += hourly_rate
+                entry['totals']['external_hours_total'] += hours
+            else:
+                hourly_rate = float(internal_default_rate or 0)
+                hours = int(site_hours_map.get(site, {}).get('internal', 0) or 0)
+                entry['totals']['internal_count'] += 1
+                entry['totals']['internal_hourly_rate_total'] += hourly_rate
+                entry['totals']['internal_hours_total'] += hours
+
+            entry['members'].append({
+                'name': name,
+                'external': is_external,
+                'site': site,
+                'hourly_rate': hourly_rate,
+                'hours_per_month': hours,
+            })
+
+        teams = list(teams_map.values())
+        return { 'teams': teams }
+    except Exception as e:
+        logger.exception('Failed to build teams data: %s', e)
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,5 +1,8 @@
 import yaml
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path("data/config")
 
@@ -17,4 +20,68 @@ def load_cost_config() -> dict:
     """
     cost_cfg = load_yaml_file(CONFIG_PATH / "cost_config.yml")
     db_cfg = load_yaml_file(CONFIG_PATH / "database.yaml")
+    # Validate consistency between server/team config and database people
+    try:
+        _validate_team_consistency(cost_cfg, db_cfg)
+    except Exception as e:
+        # Log the configuration consistency error so it is visible during
+        # startup. Do not raise here to allow the server to start in
+        # environments where strict validation is not desired.
+        logger.warning("Cost configuration validation failed: %s", e)
     return {"cost": cost_cfg, "database": db_cfg["database"]}
+
+
+def _validate_team_consistency(cost_cfg: dict, db_cfg: dict) -> None:
+    """Ensure teams declared in server config `team_map` are used by people in `database`.
+
+    Raises ValueError if inconsistencies are found. The check builds the canonical
+    set of team ids from `team_map` (slugified as `team-<slug>`) and the set of
+    team ids present in people entries (slugified similarly). If some configured
+    teams are not referenced by any person, this function raises a ValueError
+    listing the missing team names.
+    """
+    from planner_lib.util import slugify
+
+    # Extract configured team names from cost_cfg/ or server config structure
+    configured = []
+    # cost_cfg may contain a server-like structure with 'team_map'
+    if isinstance(cost_cfg, dict) and cost_cfg.get('team_map'):
+        for t in cost_cfg.get('team_map'):
+            if isinstance(t, dict) and t.get('name'):
+                configured.append(str(t.get('name')))
+
+    # If cost_cfg did not contain team_map, attempt to read server_config.yml
+    # located in the same directory as database.yaml
+    if not configured:
+        try:
+            server_cfg = load_yaml_file(CONFIG_PATH / 'server_config.yml')
+            for t in server_cfg.get('team_map', []):
+                if isinstance(t, dict) and t.get('name'):
+                    configured.append(str(t.get('name')))
+        except Exception:
+            pass
+
+    configured_ids = set(slugify(name, prefix='team-') for name in configured if name)
+
+    # Extract team names referenced by people
+    people = (db_cfg or {}).get('database', {}).get('people', []) if isinstance(db_cfg, dict) else []
+    people_team_ids = set()
+    for p in people or []:
+        raw = p.get('team_name') or p.get('team') or ''
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        people_team_ids.add(slugify(raw, prefix='team-'))
+
+    # Find configured but unused teams, and teams present in database but not configured
+    missing_configured = sorted(list(configured_ids - people_team_ids))
+    missing_in_db = sorted(list(people_team_ids - configured_ids))
+    if missing_configured or missing_in_db:
+        parts = []
+        if missing_configured:
+            human_missing = ', '.join(sorted([m.replace('team-', '') for m in missing_configured]))
+            parts.append(f"configured-but-unused: {human_missing}")
+        if missing_in_db:
+            human_extra = ', '.join(sorted([m.replace('team-', '') for m in missing_in_db]))
+            parts.append(f"in-database-but-not-configured: {human_extra}")
+        raise ValueError("Team configuration mismatch: " + '; '.join(parts))

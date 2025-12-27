@@ -29,19 +29,19 @@ describe('State small function coverage', () => {
   });
 
   it('setStateFilter, toggleStateSelected, setAllStatesSelected behave', () => {
-    state.availableStates = ['Open', 'Done'];
-    state.selectedStateFilter = new Set(['Open']);
+    state.availableFeatureStates = ['Open', 'Done'];
+    state.selectedFeatureStateFilter = new Set(['Open']);
     state.setStateFilter(null);
-    expect(Array.from(state.selectedStateFilter)).to.include.members(['Open', 'Done']);
+    expect(Array.from(state.selectedFeatureStateFilter)).to.include.members(['Open', 'Done']);
     state.setStateFilter('Done');
-    expect(Array.from(state.selectedStateFilter)).to.deep.equal(['Done']);
+    expect(Array.from(state.selectedFeatureStateFilter)).to.deep.equal(['Done']);
 
     state.toggleStateSelected('Done');
-    expect(state.selectedStateFilter.size).to.equal(0);
+    expect(state.selectedFeatureStateFilter.size).to.equal(0);
     state.setAllStatesSelected(true);
-    expect(state.selectedStateFilter.size).to.be.at.least(1);
+    expect(state.selectedFeatureStateFilter.size).to.be.at.least(1);
     state.setAllStatesSelected(false);
-    expect(state.selectedStateFilter.size).to.equal(0);
+    expect(state.selectedFeatureStateFilter.size).to.equal(0);
   });
 
   it('computeFeatureOrgLoad computes percentage based on selected teams', () => {
@@ -92,7 +92,7 @@ describe('State small function coverage', () => {
     state.baselineProjects = [];
     state.projects = [{ id: 'p1' }];
     state.teams = [{ id: 't1' }];
-    state.selectedStateFilter = new Set();
+    state.selectedFeatureStateFilter = new Set();
     state.recomputeCapacityMetrics();
     expect(Array.isArray(state.capacityDates)).to.equal(true);
   });

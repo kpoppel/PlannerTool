@@ -195,7 +195,7 @@ export class PluginGraph extends LitElement {
     const showFeatures = !!state.showFeatures;
     const selectedTeams = teams.filter(t=>t.selected).map(t=>t.id);
     const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
-    const selectedStates = (state.selectedStateFilter instanceof Set) ? Array.from(state.selectedStateFilter) : (state.selectedStateFilter ? [state.selectedStateFilter] : []);
+    const selectedStates = (state.selectedFeatureStateFilter instanceof Set) ? Array.from(state.selectedFeatureStateFilter) : (state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
     const projectSetSelected = new Set(selectedProjects);
     const teamSetSelected = new Set(selectedTeams);
     const stateSetSelected = new Set(selectedStates);

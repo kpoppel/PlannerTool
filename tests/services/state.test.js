@@ -24,9 +24,9 @@ describe('State core behaviors', () => {
     // Working copies (no selection filtering)
     state.projects = [{ id: 'p1', selected: true }];
     state.teams = [{ id: 't1', selected: true }];
-    // Ensure selectedStateFilter includes the feature status so it isn't filtered out
-    state.availableStates = ['New'];
-    state.selectedStateFilter = new Set(['New']);
+    // Ensure selectedFeatureStateFilter includes the feature status so it isn't filtered out
+    state.availableFeatureStates = ['New'];
+    state.selectedFeatureStateFilter = new Set(['New']);
     state.scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
     state.activeScenarioId = 'baseline';
     // Ensure getEffectiveFeatures returns the baseline features for this test
@@ -44,7 +44,7 @@ describe('State core behaviors', () => {
   it('setStateFilter toggles selection and emits updates', async () => {
     const mod = await import('../../www/js/services/State.js?bust=' + Math.random());
     const state = mod.state;
-    state.availableStates = ['New','Done'];
+    state.availableFeatureStates = ['New','Done'];
     // capture events on a fresh bus instance
     const busMod = await import('../../www/js/core/EventBus.js?b=' + Math.random());
     const bus = busMod.bus;

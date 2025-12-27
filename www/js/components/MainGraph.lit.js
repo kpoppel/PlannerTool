@@ -175,7 +175,7 @@ export class MainGraphLit extends LitElement {
     const capacityViewMode = data.capacityViewMode || 'team';
     const selectedTeamIds = new Set(data.selectedTeamIds || (teams.filter(t=>t.selected).map(t=>t.id)));
     const selectedProjectIds = new Set(data.selectedProjectIds || (projects.filter(p=>p.selected).map(p=>p.id)));
-    const selectedStateFilter = data.selectedStateFilter || null;
+    const selectedFeatureStateFilter = data.selectedFeatureStateFilter || null;
 
     // Get canvas context
     const ctx = this._canvasRef.getContext('2d');
@@ -202,7 +202,7 @@ export class MainGraphLit extends LitElement {
     ctx.clearRect(0, 0, this._canvasRef.width, this._canvasRef.height);
 
     // Delegate to full renderer
-    this._fullRender(ctx, { months, teams, projects, capacityDates, teamDailyCapacity, teamDailyCapacityMap, projectDailyCapacity, projectDailyCapacityMap, totalOrgDailyPerTeamAvg, capacityViewMode, selectedTeamIds, selectedProjectIds, selectedStateFilter });
+    this._fullRender(ctx, { months, teams, projects, capacityDates, teamDailyCapacity, teamDailyCapacityMap, projectDailyCapacity, projectDailyCapacityMap, totalOrgDailyPerTeamAvg, capacityViewMode, selectedTeamIds, selectedProjectIds, selectedFeatureStateFilter });
   }
 
   /**

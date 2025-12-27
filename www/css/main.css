@@ -20,10 +20,13 @@
 
 /* Global resets and base styles */
 * { box-sizing: border-box; }
-body,html { margin:0; padding:0; font-family: Arial, sans-serif; background: var(--color-bg); height:100%; }
+.html, html, body { margin:0; padding:0; font-family: Arial, sans-serif; background: var(--color-bg); height:100%; }
+/* Ensure app root and main fill the viewport so children can flex to available space */
+.app-container { display:flex; height:100vh; overflow:hidden; min-height:0; }
 /* Important main content area styling */
-.main { flex:1; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; }
-.app-container { display:flex; height:100vh; overflow:hidden; }
+.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; }
+/* Ensure direct children that are flex containers can shrink/grow properly inside .main */
+.main > * { min-height:0; }
 .sidebar { width:var(--sidebar-width); min-width:var(--sidebar-width); background:var(--color-sidebar-bg); color:var(--color-sidebar-text); padding:16px 12px; display:flex; flex-direction:column; gap:18px; position:relative; z-index:var(--z-sidebar); font-size:14px; overflow-y:auto; padding-bottom:96px; height:100vh; }
 
 /* The main scrollable area inside the sidebar; reserve bottom space for the fixed footer */

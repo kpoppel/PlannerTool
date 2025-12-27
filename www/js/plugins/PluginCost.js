@@ -2,6 +2,7 @@ import { pluginManager } from '../core/PluginManager.js';
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
+import { dataService } from '../services/dataService.js';
 
 class PluginCostPlugin {
   constructor(id, opts){
@@ -12,6 +13,7 @@ class PluginCostPlugin {
     this._componentLoaded = false;
     this.initialized = false;
     this.active = false;
+    this._costData = null;
   }
 
   getMetadata(){
@@ -42,6 +44,14 @@ class PluginCostPlugin {
     if(!this._el){
       this._el = document.createElement('plugin-cost');
       this._host.appendChild(this._el);
+    }
+    // Load cost data from the datasource (no internal fallback here)
+    try{
+      this._costData = await dataService.getCost();
+      console.info(`[${this.id}] Loaded cost data from dataService`);
+      if(this._el){ this._el._data = this._costData; try{ this._el.requestUpdate(); }catch(e){} }
+    }catch(err){
+      console.error(`[${this.id}] Failed to load cost data from dataService`, err);
     }
     if(this._el && typeof this._el.open === 'function') this._el.open(this.config.mode);
     this.active = true;

@@ -59,6 +59,7 @@ class DataService {
     async getProjects() { return this.providers['rest'].getProjects(); }
     async getTeams() { return this.providers['rest'].getTeams(); }
     async getFeatures() { return this.providers['rest'].getFeatures(); }
+    async getCost(){ return this.providers['rest'].getCost(); }
     async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }

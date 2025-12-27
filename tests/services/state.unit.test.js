@@ -9,8 +9,8 @@ describe('State (unit)', () => {
     backup = {
       teams: JSON.parse(JSON.stringify(S.teams || [])),
       projects: JSON.parse(JSON.stringify(S.projects || [])),
-      availableStates: JSON.parse(JSON.stringify(S.availableStates || [])),
-      selectedStateFilter: new Set(Array.from(S.selectedStateFilter || [])),
+      availableFeatureStates: JSON.parse(JSON.stringify(S.availableFeatureStates || [])),
+      selectedFeatureStateFilter: new Set(Array.from(S.selectedFeatureStateFilter || [])),
       timelineScale: S.timelineScale,
       showEpics: S.showEpics,
       showFeatures: S.showFeatures,
@@ -23,8 +23,8 @@ describe('State (unit)', () => {
   afterEach(() => {
     S.teams = JSON.parse(JSON.stringify(backup.teams));
     S.projects = JSON.parse(JSON.stringify(backup.projects));
-    S.availableStates = JSON.parse(JSON.stringify(backup.availableStates));
-    S.selectedStateFilter = new Set(Array.from(backup.selectedStateFilter || []));
+    S.availableFeatureStates = JSON.parse(JSON.stringify(backup.availableFeatureStates));
+    S.selectedFeatureStateFilter = new Set(Array.from(backup.selectedFeatureStateFilter || []));
     S.timelineScale = backup.timelineScale;
     S.showEpics = backup.showEpics;
     S.showFeatures = backup.showFeatures;
@@ -61,23 +61,23 @@ describe('State (unit)', () => {
 
   it('setStateFilter toggles selection and emits events (no throw)', () => {
     // Ensure available states present
-    S.availableStates = ['A','B'];
+    S.availableFeatureStates = ['A','B'];
     S.setStateFilter(null);
-    expect(S.selectedStateFilter.size).to.be.greaterThan(0);
+    expect(S.selectedFeatureStateFilter.size).to.be.greaterThan(0);
     S.setStateFilter('A');
-    expect(S.selectedStateFilter.has('A')).to.equal(true);
+    expect(S.selectedFeatureStateFilter.has('A')).to.equal(true);
   });
 
   it('toggleStateSelected handles add/remove safely', () => {
-    S.availableStates = ['A','B']; S.selectedStateFilter = new Set(['A']);
-    S.toggleStateSelected('A'); expect(S.selectedStateFilter.has('A')).to.equal(false);
-    S.toggleStateSelected('B'); expect(S.selectedStateFilter.has('B')).to.equal(true);
+    S.availableFeatureStates = ['A','B']; S.selectedFeatureStateFilter = new Set(['A']);
+    S.toggleStateSelected('A'); expect(S.selectedFeatureStateFilter.has('A')).to.equal(false);
+    S.toggleStateSelected('B'); expect(S.selectedFeatureStateFilter.has('B')).to.equal(true);
   });
 
   it('setAllStatesSelected sets/clears all', () => {
-    S.availableStates = ['A','B'];
-    S.setAllStatesSelected(true); expect(S.selectedStateFilter.size).to.equal(2);
-    S.setAllStatesSelected(false); expect(S.selectedStateFilter.size).to.equal(0);
+    S.availableFeatureStates = ['A','B'];
+    S.setAllStatesSelected(true); expect(S.selectedFeatureStateFilter.size).to.equal(2);
+    S.setAllStatesSelected(false); expect(S.selectedFeatureStateFilter.size).to.equal(0);
   });
 
   it('view toggles set values and do not throw', () => {

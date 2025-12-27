@@ -114,7 +114,7 @@ class FeatureBoard extends LitElement {
     const renderList = [];
     for (const f of ordered) {
       if (!state.projects.find(p => p.id === f.project && p.selected)) continue;
-      const selStateSet = state.selectedStateFilter instanceof Set ? state.selectedStateFilter : new Set(state.selectedStateFilter ? [state.selectedStateFilter] : []);
+      const selStateSet = state.selectedFeatureStateFilter instanceof Set ? state.selectedFeatureStateFilter : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
       if (selStateSet.size === 0) continue;
       const fState = f.status || f.state;
       if (!selStateSet.has(fState)) continue;
