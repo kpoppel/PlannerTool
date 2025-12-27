@@ -2,7 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents } from '../core/EventRegistry.js';
+import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 
 function toDate(d){ return d ? new Date(d+'T00:00:00Z') : null; }
 function firstOfMonth(dt){ return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1)); }
@@ -68,6 +68,15 @@ export class PluginCostComponent extends LitElement {
 
   connectedCallback(){
     super.connectedCallback();
+    // Listen for scenario activation so cost view updates to selected scenario
+    // Debounce to coalesce duplicate events emitted by multiple managers
+    this._onScenarioActivated = ({ scenarioId }) => {
+      try{
+        if(this._scenarioDebounceTimer) clearTimeout(this._scenarioDebounceTimer);
+        this._scenarioDebounceTimer = setTimeout(()=>{ this._scenarioDebounceTimer = null; try{ this.loadCostForScenario(scenarioId); }catch(e){} }, 60);
+      }catch(e){}
+    };
+    try{ bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated); }catch(e){}
     this.loadData();
   }
 
@@ -94,9 +103,49 @@ export class PluginCostComponent extends LitElement {
   }
 
   async loadData(){
+    // Load cost for the currently active scenario if available, otherwise baseline
+    const activeId = (state && state.activeScenarioId) ? state.activeScenarioId : 'baseline';
+    await this.loadCostForScenario(activeId || 'baseline');
+  }
+
+  async loadCostForScenario(scenarioId){
     try{
-      const json = await dataService.getCost();
-      if(!json) throw new Error('no cost data');
+      // Baseline: GET cached cost
+      if(!scenarioId || scenarioId === 'baseline'){
+        const json = await dataService.getCost();
+        if(!json) throw new Error('no cost data');
+        this.data = json;
+        this.buildMonths(json.configuration);
+        this.buildProjects(json.projects || []);
+        this.requestUpdate();
+        return;
+      }
+
+      // Try to read scenario from state first, fallback to dataService.getScenario
+      let scenario = (state && state.scenarios) ? state.scenarios.find(s => s.id === scenarioId) : null;
+      if(!scenario){
+        try{ scenario = await dataService.getScenario(scenarioId); }catch(e){}
+      }
+
+      // If scenario exists and appears saved (not locally dirty), ask backend to load it by id
+      const isUnsaved = scenario && scenario.isChanged;
+      if(scenario && !isUnsaved){
+        const json = await dataService.getCost({ scenarioId: scenarioId });
+        if(!json) throw new Error('no cost data for scenario');
+        this.data = json;
+        this.buildMonths(json.configuration);
+        this.buildProjects(json.projects || []);
+        this.requestUpdate();
+        return;
+      }
+
+      // Unsaved or transient scenario: POST effective features so server can calculate
+      // Build features list from state.getEffectiveFeatures() which already merges overrides
+      const eff = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : null;
+      const featuresPayload = (eff || []).map(f => ({ id: f.id, project: f.project, start: f.start, end: f.end, capacity: f.capacity || 1.0, title: f.title || f.name || '', type: f.type || f.feature_type || '', state: f.state || f.status || '' }));
+
+      const json = await dataService.getCost({ features: featuresPayload });
+      if(!json) throw new Error('no cost data for scenario');
       this.data = json;
       this.buildMonths(json.configuration);
       this.buildProjects(json.projects || []);
@@ -104,6 +153,12 @@ export class PluginCostComponent extends LitElement {
     }catch(e){
       console.error('PluginCost load error', e);
     }
+  }
+
+  disconnectedCallback(){
+    try{ if(this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated); }catch(e){}
+    try{ if(this._scenarioDebounceTimer){ clearTimeout(this._scenarioDebounceTimer); this._scenarioDebounceTimer = null; } }catch(e){}
+    if(super.disconnectedCallback) super.disconnectedCallback();
   }
 
   buildMonths(cfg){
