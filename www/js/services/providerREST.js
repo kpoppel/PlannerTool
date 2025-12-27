@@ -254,5 +254,15 @@ export class ProviderREST {
             throw err;
         }
     }
+    
+    async getCostTeams(){
+        try{
+            const res = await fetch('/api/cost/teams', { headers: this._headers() });
+            if(!res.ok) return [];
+            const data = await res.json();
+            console.log('providerREST:getCostTeams - Fetched cost teams', data);
+            return data;
+        }catch(err){ console.error('providerREST:getCostTeams error', err); return []; }
+    }
   // ...other methods will be added in later steps
 }

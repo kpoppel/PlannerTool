@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
+import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 
@@ -36,6 +37,8 @@ export class PluginCostComponent extends LitElement {
     this.expandedProjects = new Set();
     this.expandedEpics = new Set();
     this.viewMode = 'cost'; // 'cost' or 'hours'
+    this.activeTab = 'cost'; // 'cost' or 'teams'
+    this.teamsData = null;
   }
 
   static styles = css`
@@ -64,6 +67,9 @@ export class PluginCostComponent extends LitElement {
     .toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
     .toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
     .toggle button.active{ background:#eee; font-weight:600; }
+    .tab-toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
+    .tab-toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
+    .tab-toggle button.active{ background:var(--accent-color,#dfeffd); color:var(--accent-text,#072b52); font-weight:600; }
   `;
 
   connectedCallback(){
@@ -106,6 +112,12 @@ export class PluginCostComponent extends LitElement {
     // Load cost for the currently active scenario if available, otherwise baseline
     const activeId = (state && state.activeScenarioId) ? state.activeScenarioId : 'baseline';
     await this.loadCostForScenario(activeId || 'baseline');
+    // If teams tab is enabled, preload teams data
+    try{
+      if(UIFeatureFlags.SHOW_COST_TEAMS_TAB){
+        this.teamsData = await dataService.getCostTeams();
+      }
+    }catch(e){ console.error('Failed to load cost teams', e); }
   }
 
   async loadCostForScenario(scenarioId){
@@ -266,9 +278,12 @@ export class PluginCostComponent extends LitElement {
     return html`
       <div>
         <div class="controls">
-          <div class="toggle" role="tablist" aria-label="View mode">
-            <button class=${this.viewMode==='cost' ? 'active':''} @click=${()=>{ this.viewMode='cost'; this.requestUpdate(); }}>Cost</button>
-            <button class=${this.viewMode==='hours' ? 'active':''} @click=${()=>{ this.viewMode='hours'; this.requestUpdate(); }}>Hours</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="toggle" role="tablist" aria-label="View mode">
+              <button class=${this.viewMode==='cost' ? 'active':''} @click=${()=>{ this.viewMode='cost'; this.requestUpdate(); }}>Cost</button>
+              <button class=${this.viewMode==='hours' ? 'active':''} @click=${()=>{ this.viewMode='hours'; this.requestUpdate(); }}>Hours</button>
+            </div>
+            ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ? html`<div class="tab-toggle"><button class=${this.activeTab==='cost' ? 'active':''} @click=${()=>{ this.activeTab='cost'; this.requestUpdate(); }}>Cost Table</button><button class=${this.activeTab==='teams' ? 'active':''} @click=${async ()=>{ this.activeTab='teams'; if(!this.teamsData){ try{ this.teamsData = await dataService.getCostTeams(); }catch(e){ console.error('Failed to load cost teams', e); this.teamsData = []; } } this.requestUpdate(); }}>Teams</button></div>` : ''}
           </div>
         </div>
         <div class="legend">
@@ -278,97 +293,195 @@ export class PluginCostComponent extends LitElement {
             return html`<div class="legend-item"><span class="swatch" style="background:${c}; border:1px solid #eee"></span><span style="color:${text}">${s}</span></div>`;
           })}
         </div>
-        <div class="table-wrapper">
-          <table class="table">
-          <thead>
-            <tr>
-              <th class="left" rowspan="2">Project / Feature</th>
-              ${months.map(m=>html`<th colspan="2">${monthLabel(m)}</th>`) }
-              <th class="total-head" rowspan="2">Total</th>
-              <th class="total-extra" rowspan="2"></th>
-            </tr>
-            <tr>
-              ${months.map(m=>html`<th>Int</th><th>Ext</th>`) }
-            </tr>
-          </thead>
-          <tbody>
-            ${this.projects.map(p=>
-              html`
-              <tr class="project-row" @click=${()=>this.toggleProject(p.id)}>
-                      <td class="left" style=${`background:#fff;
-                          background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(p.id),0.14)} 0px, ${hexToRgba(state.getProjectColor(p.id),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${((state.projects||[]).find(sp=>String(sp.id)===String(p.id))||{color:'#ddd'}).color};` }>${p.name}</td>
-                ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (p.totals.internal[k]||0).toFixed(2) : ((p.totals.hours.internal[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (p.totals.external[k]||0).toFixed(2) : ((p.totals.hours.external[k]||0).toFixed(2)))}</td>`)}
-                <td class="total-cell">${(this.viewMode==='cost' ? p.total.toFixed(2) : (p.totalHours||0).toFixed(2))}</td>
-                <td></td>
+        ${UIFeatureFlags.SHOW_COST_TEAMS_TAB && this.activeTab === 'teams' ? html`
+          <div class="table-wrapper">
+            ${this.renderTeamsView()}
+          </div>
+        ` : html`
+          <div class="table-wrapper">
+            <table class="table">
+            <thead>
+              <tr>
+                <th class="left" rowspan="2">Project / Feature</th>
+                ${months.map(m=>html`<th colspan="2">${monthLabel(m)}</th>`) }
+                <th class="total-head" rowspan="2">Total</th>
+                <th class="total-extra" rowspan="2"></th>
               </tr>
-              ${this.expandedProjects.has(p.id) ? (() => {
-                  // Group features under epics if present. We'll build a map of epicId -> [features]
-                  const epicMap = new Map();
-                  const standalone = [];
-                  for(const f of p.features || []){
-                    // Try to resolve effective feature to inspect relations (parentEpic may not be present)
-                    const eff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
-                    const parent = eff && (eff.parentEpic || eff.parentEpic === 0) ? eff.parentEpic : (f.parentEpic || null);
-                    if(parent){
-                      if(!epicMap.has(parent)) epicMap.set(parent, []);
-                      epicMap.get(parent).push({ base: f, eff });
-                    } else {
-                      // Could be an epic (has children in state) or a standalone feature
-                      // Mark epics by presence in state.childrenByEpic
-                      const children = state.childrenByEpic && state.childrenByEpic.get && state.childrenByEpic.get(f.id);
-                      if(children && children.length){
-                        // This is an epic - ensure it exists in map
-                        if(!epicMap.has(f.id)) epicMap.set(f.id, []);
+              <tr>
+                ${months.map(m=>html`<th>Int</th><th>Ext</th>`) }
+              </tr>
+            </thead>
+            <tbody>
+              ${this.projects.map(p=>
+                html`
+                <tr class="project-row" @click=${()=>this.toggleProject(p.id)}>
+                        <td class="left" style=${`background:#fff;
+                            background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(p.id),0.14)} 0px, ${hexToRgba(state.getProjectColor(p.id),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${((state.projects||[]).find(sp=>String(sp.id)===String(p.id))||{color:'#ddd'}).color};` }>${p.name}</td>
+                  ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (p.totals.internal[k]||0).toFixed(2) : ((p.totals.hours.internal[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (p.totals.external[k]||0).toFixed(2) : ((p.totals.hours.external[k]||0).toFixed(2)))}</td>`) }
+                  <td class="total-cell">${(this.viewMode==='cost' ? p.total.toFixed(2) : (p.totalHours||0).toFixed(2))}</td>
+                  <td></td>
+                </tr>
+                ${this.expandedProjects.has(p.id) ? (() => {
+                    // Group features under epics if present. We'll build a map of epicId -> [features]
+                    const epicMap = new Map();
+                    const standalone = [];
+                    for(const f of p.features || []){
+                      // Try to resolve effective feature to inspect relations (parentEpic may not be present)
+                      const eff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
+                      const parent = eff && (eff.parentEpic || eff.parentEpic === 0) ? eff.parentEpic : (f.parentEpic || null);
+                      if(parent){
+                        if(!epicMap.has(parent)) epicMap.set(parent, []);
+                        epicMap.get(parent).push({ base: f, eff });
+                      } else {
+                        // Could be an epic (has children in state) or a standalone feature
+                        // Mark epics by presence in state.childrenByEpic
+                        const children = state.childrenByEpic && state.childrenByEpic.get && state.childrenByEpic.get(f.id);
+                        if(children && children.length){
+                          // This is an epic - ensure it exists in map
+                          if(!epicMap.has(f.id)) epicMap.set(f.id, []);
+                        }
+                        standalone.push({ base: f, eff });
                       }
-                      standalone.push({ base: f, eff });
                     }
-                  }
-                  // Render epics first (preserve insertion order from p.features)
-                  const rendered = [];
-                  const seenEpics = new Set();
-                  for(const f of p.features || []){
-                    // render epic rows
-                    if(epicMap.has(f.id) && !seenEpics.has(f.id)){
-                      seenEpics.add(f.id);
-                      const epicChildren = epicMap.get(f.id) || [];
-                      const epicBase = f;
-                      const epicStateColor = state.getFeatureStateColor(epicBase.state);
-                      const epicBg = hexToRgba(epicStateColor, 0.08);
-                      rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(epicStateColor,0.12)} 0px, ${hexToRgba(epicStateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${epicStateColor};">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0).toFixed(2) : ((epicBase.hours?.internal?.[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0).toFixed(2) : ((epicBase.hours?.external?.[k]||0).toFixed(2)))}</td>`) }<td class="total-cell">${(this.viewMode==='cost' ? (epicBase.total||0).toFixed(2) : (epicBase.totalHours||0).toFixed(2))}</td><td></td></tr>`);
-                      if(this.expandedEpics.has(f.id)){
-                        for(const child of epicChildren){
-                          const fb = child.base;
-                          const base = state.getFeatureStateColor(fb.state);
-                          const bg = hexToRgba(base, 0.10);
-                          rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
+                    // Render epics first (preserve insertion order from p.features)
+                    const rendered = [];
+                    const seenEpics = new Set();
+                    for(const f of p.features || []){
+                      // render epic rows
+                      if(epicMap.has(f.id) && !seenEpics.has(f.id)){
+                        seenEpics.add(f.id);
+                        const epicChildren = epicMap.get(f.id) || [];
+                        const epicBase = f;
+                        const epicStateColor = state.getFeatureStateColor(epicBase.state);
+                        const epicBg = hexToRgba(epicStateColor, 0.08);
+                        rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(epicStateColor,0.12)} 0px, ${hexToRgba(epicStateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${epicStateColor};">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0).toFixed(2) : ((epicBase.hours?.internal?.[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0).toFixed(2) : ((epicBase.hours?.external?.[k]||0).toFixed(2)))}</td>`) }<td class="total-cell">${(this.viewMode==='cost' ? (epicBase.total||0).toFixed(2) : (epicBase.totalHours||0).toFixed(2))}</td><td></td></tr>`);
+                        if(this.expandedEpics.has(f.id)){
+                          for(const child of epicChildren){
+                            const fb = child.base;
+                            const base = state.getFeatureStateColor(fb.state);
+                            const bg = hexToRgba(base, 0.10);
+                            rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
+                          }
                         }
                       }
                     }
-                  }
-                  // Render standalone features that are not part of any epic
-                  for(const s of standalone){
-                    // if this standalone is actually an epic (has children) it was already rendered
-                    if(epicMap.has(s.base.id)) continue;
-                    const fb = s.base;
-                    const base = state.getFeatureStateColor(fb.state);
-                    const bg = hexToRgba(base, 0.10);
-                    rendered.push(html`<tr class="feature-row"><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
-                  }
-                  return rendered;
-                })() : ''}
-            `)}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td class="left">Totals</td>
-              ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (footerInternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.internal[k]||0).toFixed(2): '0.00'))}</td><td>${(this.viewMode==='cost' ? (footerExternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.external[k]||0).toFixed(2): '0.00'))}</td>`)}
-              <td class="total-cell" colspan="2">${(this.viewMode==='cost' ? combinedTotal.toFixed(2) : (this._footerTotalHours||0).toFixed(2))}</td>
-            </tr>
-          </tfoot>
-          </table>
-        </div>
+                    // Render standalone features that are not part of any epic
+                    for(const s of standalone){
+                      // if this standalone is actually an epic (has children) it was already rendered
+                      if(epicMap.has(s.base.id)) continue;
+                      const fb = s.base;
+                      const base = state.getFeatureStateColor(fb.state);
+                      const bg = hexToRgba(base, 0.10);
+                      rendered.push(html`<tr class="feature-row"><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
+                    }
+                    return rendered;
+                  })() : ''}
+              `)}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td class="left">Totals</td>
+                ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (footerInternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.internal[k]||0).toFixed(2): '0.00'))}</td><td>${(this.viewMode==='cost' ? (footerExternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.external[k]||0).toFixed(2): '0.00'))}</td>`)}
+                <td class="total-cell" colspan="2">${(this.viewMode==='cost' ? combinedTotal.toFixed(2) : (this._footerTotalHours||0).toFixed(2))}</td>
+              </tr>
+            </tfoot>
+            </table>
+          </div>
+        `}
       </div>
     `;
+  }
+
+  renderTeamsView(){
+    let teams = this.teamsData;
+    // Accept different shapes: null, array, object with `teams`, or object map
+    if(!teams) return html`<div style="padding:12px">No teams data available.</div>`;
+    if(!Array.isArray(teams) && typeof teams === 'object'){
+      if(Array.isArray(teams.teams)) teams = teams.teams;
+      else teams = Object.values(teams || {});
+    }
+    if(!Array.isArray(teams) || teams.length === 0) return html`<div style="padding:12px">No teams data available.</div>`;
+
+    const fmtCurrency = v => (typeof v === 'number' ? v : (v && v.parsedValue ? v.parsedValue : Number(v) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    return html`<div style="display:flex; flex-direction:column; gap:12px; padding:8px">
+      ${teams.map(team => {
+        const totals = team.totals || {};
+        const internalCount = totals.internal_count || 0;
+        const externalCount = totals.external_count || 0;
+        const internalHours = totals.internal_hours_total || 0;
+        const externalHours = totals.external_hours_total || 0;
+        const internalRateTotal = totals.internal_hourly_rate_total || 0;
+        const externalRateTotal = totals.external_hourly_rate_total || 0;
+        const members = Array.isArray(team.members) ? team.members : [];
+        return html`
+          <div style="border:1px solid #e6e6e6; padding:10px; border-radius:6px; background:#fff">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px">
+              <div style="font-weight:600">${team.name || team.id}</div>
+              <div style="display:flex; gap:12px; font-size:13px; color:#333">
+                <div>Internal: ${internalCount} members</div>
+                <div>External: ${externalCount} members</div>
+                <div>Internal hours: ${internalHours}</div>
+                <div>External hours: ${externalHours}</div>
+                <div>Internal rate total: ${fmtCurrency(internalRateTotal)}</div>
+                <div>External rate total: ${fmtCurrency(externalRateTotal)}</div>
+              </div>
+            </div>
+            <div>
+              <table class="table" style="min-width:700px; margin-bottom:4px">
+                <thead>
+                  <tr>
+                    <th class="left">Member</th>
+                    <th>Site</th>
+                    <th>Budget Hourly Rate</th>
+                    <th>Budget Hours / mo</th>
+                    <th>Budget Monthly Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(() => {
+                    const externals = members.filter(x => x && x.external).slice().sort((a,b)=>String((a.name||'')).localeCompare(String((b.name||''))));
+                    const internals = members.filter(x => !x || !x.external ? true : false).slice().sort((a,b)=>String((a.name||'')).localeCompare(String((b.name||''))));
+                    const rows = [];
+                    if(internals.length){
+                      rows.push(html`<tr><td class="left" colspan="5" style="background:#f6fff6; font-weight:600">Internal Members</td></tr>`);
+                      for(const m of internals){
+                        const rate = (m && m.hourly_rate && (typeof m.hourly_rate.parsedValue === 'number' ? m.hourly_rate.parsedValue : Number(m.hourly_rate.source || m.hourly_rate) || 0)) || 0;
+                        const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
+                        const monthly = +(rate * hours || 0);
+                        rows.push(html`<tr>
+                          <td class="left">${m && m.name}</td>
+                          <td>${m && m.site}</td>
+                          <td style="text-align:right">${fmtCurrency(m && m.hourly_rate)}</td>
+                          <td style="text-align:right">${hours}</td>
+                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
+                        </tr>`);
+                      }
+                    }
+                    if(externals.length){
+                      rows.push(html`<tr><td class="left" colspan="5" style="background:#f9f9fb; font-weight:600">External Members</td></tr>`);
+                      for(const m of externals){
+                        const rate = (m && m.hourly_rate && (typeof m.hourly_rate.parsedValue === 'number' ? m.hourly_rate.parsedValue : Number(m.hourly_rate.source || m.hourly_rate) || 0)) || 0;
+                        const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
+                        const monthly = +(rate * hours || 0);
+                        rows.push(html`<tr>
+                          <td class="left">${m && m.name}</td>
+                          <td>${m && m.site}</td>
+                          <td style="text-align:right">${fmtCurrency(m && m.hourly_rate)}</td>
+                          <td style="text-align:right">${hours}</td>
+                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
+                        </tr>`);
+                      }
+                    }
+                    if(rows.length === 0) rows.push(html`<tr><td class="left" colspan="5">No members</td></tr>`);
+                    return rows;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>`;
+      })}
+    </div>`;
   }
 
 }

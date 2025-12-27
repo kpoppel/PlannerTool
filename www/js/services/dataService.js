@@ -58,6 +58,7 @@ class DataService {
     // --- Feature Data Management ---
     async getProjects() { return this.providers['rest'].getProjects(); }
     async getTeams() { return this.providers['rest'].getTeams(); }
+    async getCostTeams() { return this.providers['rest'].getCostTeams ? this.providers['rest'].getCostTeams() : []; }
     async getFeatures() { return this.providers['rest'].getFeatures(); }
     async getCost(overrides){ return this.providers['rest'].getCost(overrides); }
     async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }

@@ -134,6 +134,16 @@ export class ProviderLocalStorage {
         const projects = JSON.parse(localStorage.getItem('projects') || '[]');
         return projects;
     }
+    async getCostTeams(){
+        this.logCall('getCostTeams', arguments);
+        // Read teams summary from localStorage key `cost_teams` if present
+        try{
+            const raw = localStorage.getItem('cost_teams');
+            if(!raw) return [];
+            const data = JSON.parse(raw);
+            return data;
+        }catch(err){ return []; }
+    }
     // --- Color and Preference Management ---
     async loadColors() {
         this.logCall('loadColors', arguments);
