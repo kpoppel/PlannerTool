@@ -37,11 +37,6 @@ import {
   ViewEvents
 } from '../core/EventRegistry.js';
 
-// Epic capacity handling modes:
-// 'ignoreIfHasChildren' - Ignore epic capacity entirely if the epic has any children
-// 'fillGapsIfNoChildCoversDate' - Use epic capacity only on days where no child feature covers the date
-const EPIC_CAPACITY_MODE = 'ignoreIfHasChildren';
-
 class State {
   constructor() {
     // Immutable baseline data

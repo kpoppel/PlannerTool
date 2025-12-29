@@ -5,8 +5,7 @@
  */
 
 import { CapacityEvents } from '../core/EventRegistry.js';
-
-const EPIC_CAPACITY_MODE = 'ignoreIfHasChildren';
+import { isEnabled } from '../config.js';
 
 export class CapacityCalculator {
   constructor(eventBus, childrenByEpicMap = null) {
@@ -198,7 +197,7 @@ export class CapacityCalculator {
 
       if (f.type === 'epic') {
         const childIds = this.childrenByEpic.get(f.id) || [];
-        if (EPIC_CAPACITY_MODE === 'ignoreIfHasChildren' && childIds.length) continue;
+        if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS') && childIds.length) continue;
       }
 
       const startIdx = dateIndex.get(f.start);
@@ -207,7 +206,7 @@ export class CapacityCalculator {
 
       const tls = f.capacity || [];
       for (let di = startIdx; di <= endIdx; di++) {
-        if (f.type === 'epic' && EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate') {
+        if (f.type === 'epic' && isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
           const childIds = this.childrenByEpic.get(f.id) || [];
           if (childIds.length) {
             let childCovers = false;
@@ -288,7 +287,7 @@ export class CapacityCalculator {
 
         if (f.type === 'epic') {
           const childIds = this.childrenByEpic.get(f.id) || [];
-          if (EPIC_CAPACITY_MODE === 'ignoreIfHasChildren' && childIds.length) return;
+          if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS') && childIds.length) return;
         }
 
         const startIdx = dateIndex.get(f.start);
@@ -297,7 +296,7 @@ export class CapacityCalculator {
 
         const tls = f.capacity || [];
         for (let di = startIdx; di <= endIdx; di++) {
-          if (f.type === 'epic' && EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate') {
+          if (f.type === 'epic' && isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
             const childIds = this.childrenByEpic.get(f.id) || [];
             if (childIds.length) {
               let childCovers = false;
@@ -430,10 +429,10 @@ export class CapacityCalculator {
         
         // Handle epic capacity based on mode
         if (f.type === 'epic') {
-          if (EPIC_CAPACITY_MODE === 'ignoreIfHasChildren') {
+          if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
             const childIds = this.childrenByEpic.get(f.id) || [];
             if (childIds.length) continue; // Skip epic if has children
-          } else if (EPIC_CAPACITY_MODE === 'fillGapsIfNoChildCoversDate') {
+          } else if (isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
             const childIds = this.childrenByEpic.get(f.id) || [];
             if (childIds.length) {
               // Check if any child covers this day
