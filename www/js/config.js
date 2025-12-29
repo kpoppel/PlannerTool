@@ -23,6 +23,11 @@ export const featureFlags = {
   // Enable the experimental queued/idle processing FeatureService
   USE_QUEUED_FEATURE_SERVICE: false,
   
+  // Epic capacity handling/cost calculation modes:
+  // false: 'ignoreIfHasChildren' - Ignore epic capacity entirely if the epic has any children
+  // true: 'fillGapsIfNoChildCoversDate' - Use epic capacity only on days where no child feature covers the date
+  USE_EPIC_CAPACITY_GAP_FILLS: false,
+
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };
   ...(typeof window !== 'undefined' && window.__featureFlags ? window.__featureFlags : {})

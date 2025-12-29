@@ -4,13 +4,7 @@ import { dataService } from '../services/dataService.js';
 import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
-
-function toDate(d){ return d ? new Date(d+'T00:00:00Z') : null; }
-function firstOfMonth(dt){ return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1)); }
-function lastOfMonth(dt){ return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth()+1, 0)); }
-function addMonths(dt, n){ return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth()+n, 1)); }
-function monthKey(dt){ return dt.getUTCFullYear() + '-' + String(dt.getUTCMonth()+1).padStart(2,'0'); }
-function monthLabel(dt){ return dt.toLocaleString(undefined, { month: 'short', year: 'numeric' }); }
+import { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, buildMonths, buildProjects } from './PluginCostCalculator.js';
 function hexToRgba(hex, alpha = 0.12){
   if(!hex) return `rgba(0,0,0,${alpha})`;
   const h = hex.replace('#','');
@@ -174,78 +168,14 @@ export class PluginCostComponent extends LitElement {
   }
 
   buildMonths(cfg){
-    if(!cfg) return;
-    const ds = toDate(cfg.dataset_start);
-    const de = toDate(cfg.dataset_end);
-    if(!ds || !de) return;
-    const start = firstOfMonth(ds);
-    const end = firstOfMonth(de);
-    const months = [];
-    let cur = start;
-    while(cur <= end){ months.push(new Date(cur)); cur = addMonths(cur,1); }
-    this.months = months;
+    this.months = buildMonths(cfg);
   }
 
   buildProjects(projects){
-    const months = this.months;
-    const monthKeys = months.map(m=>monthKey(m));
-    const projectsOut = projects.map(p=>{
-      const feats = (p.features||[]).map(f=>{
-        const start = toDate(f.start || f.start_date || f.starts_at);
-        const end = toDate(f.end || f.end_date || f.ends_at);
-        const internalTotal = (f.metrics && (f.metrics.internal?.cost || 0)) || 0;
-        const externalTotal = (f.metrics && (f.metrics.external?.cost || 0)) || 0;
-        const internalHoursTotal = (f.metrics && (f.metrics.internal?.hours || 0)) || 0;
-        const externalHoursTotal = (f.metrics && (f.metrics.external?.hours || 0)) || 0;
-        const feature_name = f.title || f.name || String(f.id || f.id === 0 ? f.id : '');
-        const feature_state = f.state || f.status || '';
-        // distribute evenly across full months between start and end inclusive
-        const sMonth = firstOfMonth(start || months[0]);
-        const eMonth = firstOfMonth(end || months[months.length-1]);
-        const monthsCovered = [];
-        let cur = new Date(sMonth);
-        while(cur <= eMonth){ monthsCovered.push(monthKey(cur)); cur = addMonths(cur,1); }
-        const perMonthInternal = monthsCovered.length ? (internalTotal / monthsCovered.length) : 0;
-        const perMonthExternal = monthsCovered.length ? (externalTotal / monthsCovered.length) : 0;
-        const perMonthInternalHours = monthsCovered.length ? (internalHoursTotal / monthsCovered.length) : 0;
-        const perMonthExternalHours = monthsCovered.length ? (externalHoursTotal / monthsCovered.length) : 0;
-        const internalValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
-        const externalValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
-        const internalHoursValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
-        const externalHoursValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
-        for(const mk of monthsCovered){ if(mk in internalValues) internalValues[mk] = +(perMonthInternal.toFixed(2)); if(mk in externalValues) externalValues[mk] = +(perMonthExternal.toFixed(2)); if(mk in internalHoursValues) internalHoursValues[mk] = +(perMonthInternalHours.toFixed(2)); if(mk in externalHoursValues) externalHoursValues[mk] = +(perMonthExternalHours.toFixed(2)); }
-        // adjust rounding differences on last covered month separately
-        const sumInt = Object.values(internalValues).reduce((a,b)=>a+b,0);
-        if(monthsCovered.length && Math.abs(sumInt - internalTotal) > 0.001){ const last = monthsCovered[monthsCovered.length-1]; internalValues[last] = +(internalValues[last] + (internalTotal - sumInt)).toFixed(2); }
-        const sumExt = Object.values(externalValues).reduce((a,b)=>a+b,0);
-        if(monthsCovered.length && Math.abs(sumExt - externalTotal) > 0.001){ const last = monthsCovered[monthsCovered.length-1]; externalValues[last] = +(externalValues[last] + (externalTotal - sumExt)).toFixed(2); }
-        const sumIntH = Object.values(internalHoursValues).reduce((a,b)=>a+b,0);
-        if(monthsCovered.length && Math.abs(sumIntH - internalHoursTotal) > 0.001){ const last = monthsCovered[monthsCovered.length-1]; internalHoursValues[last] = +(internalHoursValues[last] + (internalHoursTotal - sumIntH)).toFixed(2); }
-        const sumExtH = Object.values(externalHoursValues).reduce((a,b)=>a+b,0);
-        if(monthsCovered.length && Math.abs(sumExtH - externalHoursTotal) > 0.001){ const last = monthsCovered[monthsCovered.length-1]; externalHoursValues[last] = +(externalHoursValues[last] + (externalHoursTotal - sumExtH)).toFixed(2); }
-        const total = +(internalTotal + externalTotal).toFixed(2);
-        const totalHours = +(internalHoursTotal + externalHoursTotal).toFixed(2);
-        return { id: String(f.id), name: feature_name, state: feature_state, values: { internal: internalValues, external: externalValues }, hours: { internal: internalHoursValues, external: externalHoursValues }, internalTotal, externalTotal, total, internalHoursTotal, externalHoursTotal, totalHours, start: f.start, end: f.end, metrics: f.metrics||{}, capacity: f.capacity||[], description: f.description||'', url: f.url||'' };
-      });
-      const totals = { internal: Object.fromEntries(monthKeys.map(k=>[k,0])), external: Object.fromEntries(monthKeys.map(k=>[k,0])), hours: { internal: Object.fromEntries(monthKeys.map(k=>[k,0])), external: Object.fromEntries(monthKeys.map(k=>[k,0])) } };
-      let projectTotal = 0;
-      let projectTotalHours = 0;
-      for(const f of feats){ for(const k of Object.keys(f.values.internal)){ totals.internal[k] += f.values.internal[k]; } for(const k of Object.keys(f.values.external)){ totals.external[k] += f.values.external[k]; } for(const k of Object.keys(f.hours.internal)){ totals.hours.internal[k] += f.hours.internal[k]; } for(const k of Object.keys(f.hours.external)){ totals.hours.external[k] += f.hours.external[k]; } projectTotal += f.total; projectTotalHours += f.totalHours || 0; }
-      return { id: p.id, name: p.name, features: feats, totals, total: +(projectTotal.toFixed(2)), totalHours: +(projectTotalHours.toFixed(2)) };
-    });
-    this.projects = projectsOut;
-    // compute footer hours totals for quick render
-    const footerHours = { internal: Object.fromEntries(monthKeys.map(k=>[k,0])), external: Object.fromEntries(monthKeys.map(k=>[k,0])) };
-    let footerTotalHours = 0;
-    for(const p of this.projects || []){
-      if(p.totals && p.totals.hours){
-        for(const k of Object.keys(p.totals.hours.internal || {})){ footerHours.internal[k] += p.totals.hours.internal[k] || 0; }
-        for(const k of Object.keys(p.totals.hours.external || {})){ footerHours.external[k] += p.totals.hours.external[k] || 0; }
-      }
-      footerTotalHours += +(p.totalHours || 0);
-    }
-    this._footerHours = footerHours;
-    this._footerTotalHours = +(footerTotalHours.toFixed(2));
+    const res = buildProjects(projects, this.months || [], state);
+    this.projects = res.projects;
+    this._footerHours = res.footerHours;
+    this._footerTotalHours = +(res.footerTotalHours.toFixed ? res.footerTotalHours.toFixed(2) : Number(res.footerTotalHours) || 0);
   }
 
   toggleProject(id){
