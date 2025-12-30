@@ -61,6 +61,9 @@ export class PluginCostComponent extends LitElement {
     .toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
     .toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
     .toggle button.active{ background:#eee; font-weight:600; }
+    /* Totals footer styling */
+    .table tfoot td{ background: #eaf4ff; color: #0b61c9; font-weight:700; border-top:2px solid #c7e3ff; }
+    .table tfoot td.left{ background: linear-gradient(90deg, #eaf4ff 0%, #e6f2ff 60%); }
     .tab-toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
     .tab-toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
     .tab-toggle button.active{ background:var(--accent-color,#dfeffd); color:var(--accent-text,#072b52); font-weight:600; }
