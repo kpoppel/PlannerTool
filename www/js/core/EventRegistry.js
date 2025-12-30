@@ -1,6 +1,12 @@
 /**
- * EventRegistry - Typed Event Constants
- * Enables type-safe event handling while maintaining backward compatibility
+ * Module: EventRegistry
+ * Intent: central place for typed Symbol event constants used across the app.
+ * Purpose: prefer Symbols to avoid accidental collisions with string events,
+ * while keeping readable descriptions for debugging and namespace extraction.
+ * Exports: grouped event collections (e.g. FeatureEvents) where each
+ * value is a unique Symbol('namespace:action').
+ *
+ * @typedef {Object<string, Symbol>} EventGroup
  */
 
 // Feature-related events
