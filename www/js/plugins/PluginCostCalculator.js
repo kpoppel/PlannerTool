@@ -46,15 +46,45 @@ Final epic totals are computed as the sum of these filled month values and round
       const monthsCovered = [];
       let cur = new Date(sMonth);
       while(cur <= eMonth){ monthsCovered.push(monthKey(cur)); cur = addMonths(cur,1); }
-      const perMonthInternal = monthsCovered.length ? (internalTotal / monthsCovered.length) : 0;
-      const perMonthExternal = monthsCovered.length ? (externalTotal / monthsCovered.length) : 0;
-      const perMonthInternalHours = monthsCovered.length ? (internalHoursTotal / monthsCovered.length) : 0;
-      const perMonthExternalHours = monthsCovered.length ? (externalHoursTotal / monthsCovered.length) : 0;
       const internalValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
       const externalValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
       const internalHoursValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
       const externalHoursValues = Object.fromEntries(monthKeys.map(k=>[k,0]));
-      for(const mk of monthsCovered){ if(mk in internalValues) internalValues[mk] = +(perMonthInternal.toFixed(2)); if(mk in externalValues) externalValues[mk] = +(perMonthExternal.toFixed(2)); if(mk in internalHoursValues) internalHoursValues[mk] = +(perMonthInternalHours.toFixed(2)); if(mk in externalHoursValues) externalHoursValues[mk] = +(perMonthExternalHours.toFixed(2)); }
+      // Distribute by days overlap in each month
+      const monthStartMap = Object.fromEntries(months.map(m=>[monthKey(m), new Date(firstOfMonth(m))]));
+      const msPerDay = 24*60*60*1000;
+      let totalDaysCovered = 0;
+      const daysByMonth = {};
+      for(const mk of monthsCovered){
+        const mStart = monthStartMap[mk];
+        const mEnd = lastOfMonth(mStart);
+        const overlapStart = start ? (start > mStart ? start : mStart) : mStart;
+        const overlapEnd = end ? (end < mEnd ? end : mEnd) : mEnd;
+        let days = 0;
+        if(overlapEnd >= overlapStart){ days = Math.floor((overlapEnd.getTime() - overlapStart.getTime())/msPerDay) + 1; }
+        daysByMonth[mk] = days;
+        totalDaysCovered += days;
+      }
+      if(totalDaysCovered > 0){
+        const perDayInternal = internalTotal / totalDaysCovered;
+        const perDayExternal = externalTotal / totalDaysCovered;
+        const perDayInternalHours = internalHoursTotal / totalDaysCovered;
+        const perDayExternalHours = externalHoursTotal / totalDaysCovered;
+        for(const mk of monthsCovered){
+          if(mk in internalValues) internalValues[mk] = +((perDayInternal * (daysByMonth[mk]||0)).toFixed(2));
+          if(mk in externalValues) externalValues[mk] = +((perDayExternal * (daysByMonth[mk]||0)).toFixed(2));
+          if(mk in internalHoursValues) internalHoursValues[mk] = +((perDayInternalHours * (daysByMonth[mk]||0)).toFixed(2));
+          if(mk in externalHoursValues) externalHoursValues[mk] = +((perDayExternalHours * (daysByMonth[mk]||0)).toFixed(2));
+        }
+      } else {
+        // fallback: even distribution
+        const perMonthInternal = monthsCovered.length ? (internalTotal / monthsCovered.length) : 0;
+        const perMonthExternal = monthsCovered.length ? (externalTotal / monthsCovered.length) : 0;
+        const perMonthInternalHours = monthsCovered.length ? (internalHoursTotal / monthsCovered.length) : 0;
+        const perMonthExternalHours = monthsCovered.length ? (externalHoursTotal / monthsCovered.length) : 0;
+        for(const mk of monthsCovered){ if(mk in internalValues) internalValues[mk] = +(perMonthInternal.toFixed(2)); if(mk in externalValues) externalValues[mk] = +(perMonthExternal.toFixed(2)); if(mk in internalHoursValues) internalHoursValues[mk] = +(perMonthInternalHours.toFixed(2)); if(mk in externalHoursValues) externalHoursValues[mk] = +(perMonthExternalHours.toFixed(2)); }
+      }
+      // adjust rounding differences on last covered month separately
       const sumInt = Object.values(internalValues).reduce((a,b)=>a+b,0);
       if(monthsCovered.length && Math.abs(sumInt - internalTotal) > 0.001){ const last = monthsCovered[monthsCovered.length-1]; internalValues[last] = +(internalValues[last] + (internalTotal - sumInt)).toFixed(2); }
       const sumExt = Object.values(externalValues).reduce((a,b)=>a+b,0);
