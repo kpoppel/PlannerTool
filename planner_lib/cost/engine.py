@@ -19,12 +19,17 @@ def invalidate_team_rates_cache() -> None:
 
 def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_month: int) -> float:
     """ Calculate working hours between two ISO date strings.
-        The hours per month number is assuming 20 working days per month.
+        Uses average 52 weeks / 12 months == 4.333... weeks per month
+        and computes the working-day fraction of a month to scale the
+        provided `default_hours_per_month` (which represents total available
+        hours for the team or role in a typical month).
     """
-    hours_per_day = default_hours_per_month / 20 # 4 weeks of 5 days
+    # Average working days per month (5 working days per week * 52 weeks / 12 months)
+    avg_working_days_per_month = 5 * 52.0 / 12.0  # ~= 21.6667
     try:
         if not start or not end:
-            return hours_per_day
+            # return a single-month worth of hours
+            return float(default_hours_per_month)
         s = datetime.fromisoformat(start)
         e = datetime.fromisoformat(end)
         total_days = (e - s).days + 1
@@ -34,11 +39,12 @@ def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_m
         for i in range(rem):
             if (start_wd + i) % 7 < 5:  # 0-4 are Mon-Fri
                 extra += 1
-        days = full_weeks * 5 + extra
-        days = max(1, days)
-        return days * hours_per_day
+        working_days = full_weeks * 5 + extra
+        working_days = max(0, working_days)
+        # Scale the default monthly hours by the fraction of working days covered
+        return (working_days / avg_working_days_per_month) * float(default_hours_per_month)
     except Exception:
-        return hours_per_day
+        return float(default_hours_per_month)
 
 def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Return aggregated team information.
@@ -96,12 +102,20 @@ def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             name = p.get("name")
             rate = ext_rates.get(name, default_ext_rate)
             logger.debug("Looking up external rate for '%s': %s", name, rate)
-            entry["external_hourly_rate_total"] += float(rate or 0)
-            entry["external_hours_total"] += int(site_hours_map.get(site, {}).get("external", 0))
+            rate_val = float(rate or 0)
+            hrs = int(site_hours_map.get(site, {}).get("external", 0))
+            entry["external_hourly_rate_total"] += rate_val
+            entry["external_hours_total"] += hrs
+            entry.setdefault("external_monthly_cost_total", 0.0)
+            entry["external_monthly_cost_total"] += rate_val * hrs
         else:
             entry["internal_count"] += 1
-            entry["internal_hourly_rate_total"] += float(cost_cfg.get("internal_cost", {}).get("default_hourly_rate", 0) or 0)
-            entry["internal_hours_total"] += int(site_hours_map.get(site, {}).get("internal", 0))
+            rate_val = float(cost_cfg.get("internal_cost", {}).get("default_hourly_rate", 0) or 0)
+            hrs = int(site_hours_map.get(site, {}).get("internal", 0))
+            entry["internal_hourly_rate_total"] += rate_val
+            entry["internal_hours_total"] += hrs
+            entry.setdefault("internal_monthly_cost_total", 0.0)
+            entry["internal_monthly_cost_total"] += rate_val * hrs
     # logger.debug("Computed team aggregates for %d teams", len(res))
     # logger.debug(res)
     team_rates_cache = res
@@ -139,11 +153,27 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
             continue
         team_summary = team_aggregates[team["team"]]
         #logger.debug("Team summary for '%s': %s", team["team"], team_summary)
-        # Calculate estimated cost and hours spent by this team on the task
-        entry["internal_hours"] += round(_hours_between(start, end, team_summary["internal_hours_total"]) * team["capacity"] / 100, 2)
-        entry["external_hours"] += round(_hours_between(start, end, team_summary["external_hours_total"]) * team["capacity"] / 100, 2)
-        entry["internal_cost"] += round(team_summary["internal_hourly_rate_total"] * entry["internal_hours"], 2)
-        entry["external_cost"] += round(team_summary["external_hourly_rate_total"] * entry["external_hours"], 2)
+        # Calculate estimated cost and hours spent by this team on the task.
+        # Use a monthly-cost-based approach to avoid double-counting when a
+        # team contains multiple members. Compute the fraction of a month the
+        # span covers (derived from _hours_between) and scale the team's
+        # monthly cost by that fraction and by the requested capacity percent.
+        if team_summary.get("internal_hours_total"):
+            base_hours_internal = _hours_between(start, end, team_summary["internal_hours_total"])
+            # hours allocated to the task (scaled by capacity percent)
+            alloc_hours_internal = round(base_hours_internal * team["capacity"] / 100, 2)
+            entry["internal_hours"] += alloc_hours_internal
+            # fraction of a typical month covered by the span
+            fraction_internal = base_hours_internal / max(1.0, float(team_summary["internal_hours_total"]))
+            team_monthly_cost_internal = float(team_summary.get("internal_monthly_cost_total", 0.0))
+            entry["internal_cost"] += round(team_monthly_cost_internal * (team["capacity"] / 100.0) * fraction_internal, 2)
+        if team_summary.get("external_hours_total"):
+            base_hours_external = _hours_between(start, end, team_summary["external_hours_total"])
+            alloc_hours_external = round(base_hours_external * team["capacity"] / 100, 2)
+            entry["external_hours"] += alloc_hours_external
+            fraction_external = base_hours_external / max(1.0, float(team_summary["external_hours_total"]))
+            team_monthly_cost_external = float(team_summary.get("external_monthly_cost_total", 0.0))
+            entry["external_cost"] += round(team_monthly_cost_external * (team["capacity"] / 100.0) * fraction_external, 2)
         #logger.debug("Team '%s' default hours per month: internal %s, external %s", team["team"], team_summary["internal_hours_total"], team_summary["external_hours_total"])
         #logger.debug("Team '%s' task hours: internal %.2f, external %.2f", team["team"], entry["internal_hours"], entry["external_hours"])
         #logger.debug("Team '%s' task costs: internal %.2f, external %.2f", team["team"], entry["internal_cost"], entry["external_cost"])
