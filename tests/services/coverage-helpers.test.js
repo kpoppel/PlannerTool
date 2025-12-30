@@ -7,9 +7,6 @@ describe('Coverage helpers', () => {
   it('exercise EventBus utilities', () => {
     // register, on/off, emit, once
     const sym = Symbol('test:event');
-    if(bus instanceof EventBus){
-      bus.registerEventType(sym, 'test:event');
-    }
     let called = false;
     const h = (p)=> { called = true; };
     const unsub = bus.on(sym, h);

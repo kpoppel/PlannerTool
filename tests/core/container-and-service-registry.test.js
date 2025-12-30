@@ -50,7 +50,8 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
     try {
       registerCoreServices();
 
-      const containerLog = logs.find(log => log.includes('[Container] Core services registered'));
+      // Expect the ServiceRegistry prefix used in production
+      const containerLog = logs.find(log => log.includes('[ServiceRegistry] Core services registered'));
       expect(containerLog).to.exist;
       expect(containerLog).to.include('EventBus');
     } finally {
@@ -71,7 +72,8 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
       registerService('TestService', () => ({ name: 'test' }));
       registerService('TestService', () => ({ name: 'test2' }));
 
-      const warning = warnings.find(w => w.includes('[Container] Service already registered: TestService'));
+      // Match the exact warning prefix emitted by ServiceRegistry
+      const warning = warnings.find(w => w.includes('[ServiceRegistry] Service already registered: TestService'));
       expect(warning).to.exist;
     } finally {
       console.warn = originalWarn;
