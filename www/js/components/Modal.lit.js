@@ -79,26 +79,27 @@ export class ModalLit extends LitElement {
     this.open = false;
     this.wide = false;
     this.noClose = false;
-    this._escHandler = this._escHandler.bind(this);
   }
 
+  // Use class field-style handler so we don't need to bind in ctor
+  _escHandler = (e) => { if (e.key === 'Escape') this.close(); };
+
   updated(changed){
-    if(changed.has('open')){
-      const ctor = this.constructor;
-      if(this.open){
-        window.addEventListener('keydown', this._escHandler);
-        ctor._openCount = (ctor._openCount || 0) + 1;
-        if(ctor._openCount === 1) document.body.classList.add('has-modal');
-      }
-      else {
-        window.removeEventListener('keydown', this._escHandler);
-        ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
-        if(ctor._openCount === 0) document.body.classList.remove('has-modal');
-      }
+    if (!changed.has('open')) return;
+    const ctor = this.constructor;
+    ctor._openCount = ctor._openCount || 0;
+    if (this.open) {
+      window.addEventListener('keydown', this._escHandler);
+      ctor._openCount += 1;
+      if (ctor._openCount === 1) document.body.classList.add('has-modal');
+    } else {
+      window.removeEventListener('keydown', this._escHandler);
+      ctor._openCount = Math.max(0, ctor._openCount - 1);
+      if (ctor._openCount === 0) document.body.classList.remove('has-modal');
     }
   }
 
-  _escHandler(e){ if(e.key === 'Escape') this.close(); }
+  // _escHandler implemented as class field above
 
   _overlayClick(e){ if(e.target.classList.contains('modal-overlay')) this.close(); }
 
@@ -111,13 +112,10 @@ export class ModalLit extends LitElement {
   }
 
   disconnectedCallback(){
-    super.disconnectedCallback && super.disconnectedCallback();
-    // If the element is removed while still open, decrement the global counter
+    super.disconnectedCallback();
     const ctor = this.constructor;
-    if(this.open){
-      ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
-    }
-    if(!(ctor._openCount || 0)) document.body.classList.remove('has-modal');
+    if (this.open) ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
+    if (!ctor._openCount) document.body.classList.remove('has-modal');
     window.removeEventListener('keydown', this._escHandler);
   }
 

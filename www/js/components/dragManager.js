@@ -4,45 +4,39 @@ import { state } from '../services/State.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 
-// Derive month width from CSS variable to stay in sync with layout
 const monthWidth = (() => {
-  try{
-    const val = getComputedStyle(document.documentElement).getPropertyValue('--timeline-month-width');
-    const n = parseFloat(val);
-    return isNaN(n) ? 120 : n;
-  }catch(e){ return 120; }
+  const val = getComputedStyle(document.documentElement).getPropertyValue('--timeline-month-width');
+  const n = parseFloat(val);
+  return Number.isNaN(n) ? 120 : n;
 })();
 
-function getBoardOffset(){
+const getBoardOffset = () => {
   const board = document.querySelector('feature-board');
-  if(!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft,10);
-  return isNaN(pl)?0:pl;
-}
+  if (!board) return 0;
+  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
+  return Number.isNaN(pl) ? 0 : pl;
+};
 
 export function startDragMove(e, feature, card, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const months = getTimelineMonths();
   const boardOffset = getBoardOffset();
   const startDateOrig = parseDate(feature.start);
   const endDateOrig = parseDate(feature.end);
-  const durationDays = Math.round((endDateOrig - startDateOrig)/(1000*60*60*24)) + 1; // inclusive span
-  let startX = e.clientX; const origLeft = parseInt(card.style.left,10);
-  // Support feature-dates living inside shadowRoot for Lit-based cards
+  const durationDays = Math.round((endDateOrig - startDateOrig) / (1000*60*60*24)) + 1;
+  let startX = e.clientX;
+  const origLeft = parseInt(card.style.left, 10);
   const datesEl = (card.shadowRoot && card.shadowRoot.querySelector('.feature-dates')) || card.querySelector('.feature-dates');
 
   function dateFromLeft(px){
-    const relative = (px - boardOffset) / monthWidth; // month index + fraction
+    const relative = (px - boardOffset) / monthWidth;
     let monthIndex = Math.floor(relative);
     let fraction = relative - monthIndex;
-    if(monthIndex < 0){ monthIndex = 0; fraction = 0; }
-    if(monthIndex >= months.length){ monthIndex = months.length - 1; fraction = 0.999; }
+    if (monthIndex < 0) { monthIndex = 0; fraction = 0; }
+    if (monthIndex >= months.length) { monthIndex = months.length - 1; fraction = 0.999; }
     const monthStart = months[monthIndex];
     const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
-    const epsilon = 0.0001;
-    // Map fraction -> day offset using rounded mapping so 100% fraction hits last day
-    let dayOffset = Math.round(fraction * (daysInMonth - 1)); // 0..daysInMonth-1
-    if(dayOffset < 0) dayOffset = 0;
-    if(dayOffset >= daysInMonth) dayOffset = daysInMonth - 1;
+    let dayOffset = Math.round(fraction * (daysInMonth - 1));
+    dayOffset = Math.max(0, Math.min(dayOffset, daysInMonth - 1));
     return new Date(monthStart.getFullYear(), monthStart.getMonth(), 1 + dayOffset);
   }
 
@@ -51,22 +45,21 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const newStartDate = dateFromLeft(newLeft);
     const newEndDate = addDays(newStartDate, durationDays - 1);
     const liveDatesText = formatDate(newStartDate) + ' → ' + formatDate(newEndDate);
-    try {
-      if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesText);
-      else if(datesEl){ datesEl.textContent = liveDatesText; }
-    } catch (e) { if(datesEl) datesEl.textContent = liveDatesText; }
+    if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesText);
+    else if (datesEl) datesEl.textContent = liveDatesText;
     // Notify listeners so dependency lines can update live
     bus.emit(DragEvents.MOVE, { featureId: feature.id, left: newLeft });
   }
 
   function onUp(){
-    window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
     const finalLeft = parseInt(card.style.left,10);
     const newStartDate = dateFromLeft(finalLeft);
     const newEndDate = addDays(newStartDate, durationDays - 1);
     const newStartStr = formatDate(newStartDate);
     const newEndStr = formatDate(newEndDate);
-    if(newStartStr !== feature.start || newEndStr !== feature.end){
+    if (newStartStr !== feature.start || newEndStr !== feature.end) {
       const updates = computeMoveUpdates(feature, newStartDate, newEndDate, featuresSource);
       applyUpdates(updates, updateDatesCb);
       bus.emit(DragEvents.END, { featureId: feature.id, start: newStartStr, end: newEndStr });
@@ -82,7 +75,7 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
 export function startResize(e, feature, card, datesEl, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const startDate = parseDate(feature.start);
   let startX = e.clientX;
-  const origWidth = parseInt(card.style.width,10);
+  const origWidth = parseInt(card.style.width, 10);
 
   function endDateFromWidth(width){
     let remaining = width;
@@ -90,18 +83,15 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     while(true){
       const daysInMonth = new Date(current.getFullYear(), current.getMonth()+1, 0).getDate();
       const sizePerDay = monthWidth / daysInMonth;
-      const startDayIndex = current.getDate()-1; // 0-based
+      const startDayIndex = current.getDate() - 1;
       const daysLeftInMonth = daysInMonth - startDayIndex;
       const widthForRemainingMonth = daysLeftInMonth * sizePerDay;
-      if(remaining <= widthForRemainingMonth){
-        const epsilon = 0.0001; // float safety
-        // Use rounding so width that covers most of a day snaps to that day
-        let daySpan = Math.max(1, Math.min(daysLeftInMonth, Math.round((remaining) / sizePerDay)));
-        return addDays(current, daySpan-1);
-      } else {
-        remaining -= widthForRemainingMonth;
-        current = new Date(current.getFullYear(), current.getMonth()+1, 1); // next month start
+      if (remaining <= widthForRemainingMonth) {
+        const daySpan = Math.max(1, Math.min(daysLeftInMonth, Math.round(remaining / sizePerDay)));
+        return addDays(current, daySpan - 1);
       }
+      remaining -= widthForRemainingMonth;
+      current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
     }
   }
 
@@ -139,10 +129,8 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     const snappedWidth = widthForSpan(startDate, tentativeEnd);
     card.style.width = snappedWidth + 'px';
     const liveDatesTextR = feature.start + ' → ' + formatDate(tentativeEnd);
-    try {
-      if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesTextR);
-      else if(datesEl){ datesEl.textContent = liveDatesTextR; }
-    } catch (e) { if(datesEl) datesEl.textContent = liveDatesTextR; }
+    if (card && typeof card.setLiveDates === 'function') card.setLiveDates(liveDatesTextR);
+    else if (datesEl) datesEl.textContent = liveDatesTextR;
     bus.emit(DragEvents.MOVE, { featureId: feature.id });
   }
 
@@ -153,7 +141,7 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     const finalEnd = endDateFromWidth(finalWidth);
     let adjustedFinalEnd = finalEnd;
     const newEndStr = formatDate(adjustedFinalEnd);
-    if(newEndStr !== feature.end){
+    if (newEndStr !== feature.end) {
       const updates = computeResizeUpdates(feature, adjustedFinalEnd, featuresSource);
       applyUpdates(updates, updateDatesCb);
       bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
