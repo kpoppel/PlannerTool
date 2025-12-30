@@ -26,7 +26,7 @@ class PluginCostPlugin {
   getMetadata(){
     return {
       id: this.id,
-      title: this.config.title || 'Plugin Cost',
+      name: this.config.name || 'Cost Analysis',
       description: this.config.description || 'Cost analysis plugin',
       icon: this.config.icon || 'attach_money',
       section: 'tools',

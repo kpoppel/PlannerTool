@@ -21,8 +21,8 @@ class PluginGraphPlugin {
   getMetadata(){
     return {
       id: this.id,
-      title: this.config.title || 'Plugin Graph',
-      description: this.config.description || 'Large mountain-view graph',
+      name: this.config.name || 'Graph Viewer',
+      description: this.config.description || 'Large capacity allocation graph',
       icon: this.config.icon || 'bar_chart',
       section: 'tools',
       autoActivate: false
