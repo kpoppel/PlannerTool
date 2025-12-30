@@ -1,8 +1,10 @@
 /**
  * PluginCostPlugin
- * Lightweight plugin wrapper that mounts the `plugin-cost` component and
- * coordinates its lifecycle. Assumes configuration and feature validation
- * are handled by the app; keeps surface area minimal.
+ * Single-responsibility: lifecycle wrapper that mounts/unmounts the
+ * `plugin-cost` component and coordinates initial data loading.
+ *
+ * Methods are deliberately small; the heavy lifting happens in the
+ * component and the `dataService`.
  */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
@@ -10,9 +12,9 @@ import { PluginEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 
 class PluginCostPlugin {
-  constructor(id, opts){
-    this.id = id || 'plugin-cost';
-    this.config = opts || {};
+  constructor(id = 'plugin-cost', config = {}){
+    this.id = id;
+    this.config = config;
     this._el = null;
     this._host = null;
     this._componentLoaded = false;
@@ -43,6 +45,11 @@ class PluginCostPlugin {
     this.initialized = true;
   }
 
+  /**
+   * Activate the plugin: ensure component exists, load cost data and open UI.
+   * @returns {Promise<void>}
+   */
+
   async activate(){
     if(!this._componentLoaded) await this.init();
     if(!this._host){ const selector = this.config.mountPoint || 'main'; this._host = document.querySelector(selector) || document.body; }
@@ -51,13 +58,9 @@ class PluginCostPlugin {
       this._host.appendChild(this._el);
     }
     // Load cost data from the datasource (no internal fallback here)
-    try{
-      this._costData = await dataService.getCost();
-      console.info(`[${this.id}] Loaded cost data from dataService`);
-      if(this._el){ this._el._data = this._costData; try{ this._el.requestUpdate(); }catch(e){} }
-    }catch(err){
-      console.error(`[${this.id}] Failed to load cost data from dataService`, err);
-    }
+    this._costData = await dataService.getCost();
+    console.info(`[${this.id}] Loaded cost data from dataService`);
+    if(this._el){ this._el._data = this._costData; this._el.requestUpdate(); }
     if(this._el && typeof this._el.open === 'function') this._el.open(this.config.mode);
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
@@ -77,7 +80,7 @@ class PluginCostPlugin {
   }
 
   toggle(){
-    if(!this._el || this._el.style.display === 'none') this.activate(); else this.deactivate();
+    this.active ? this.deactivate() : this.activate();
   }
 }
 

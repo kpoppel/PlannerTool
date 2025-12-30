@@ -1,8 +1,36 @@
 /**
  * PluginCostComponent
- * Renders a cost / hours table using results from the cost service.
- * This component assumes validated input from the app and focuses on
- * a compact, high-signal render path. Helpers are small and local.
+ * Single-responsibility: render cost and hours tables for features and
+ * projects. This LitElement component consumes the JSON produced by the
+ * cost service and focuses on presenting per-month internal/external
+ * allocations plus totals.
+ *
+ * Dependencies: `PluginCostCalculator` helpers, `state` service, `dataService`.
+ */
+
+/**
+ * @typedef {Object} PluginFeature
+ * @property {string} id
+ * @property {string} name
+ * @property {string} state
+ * @property {Object<string,number>} values.internal
+ * @property {Object<string,number>} values.external
+ * @property {Object<string,number>} hours.internal
+ * @property {Object<string,number>} hours.external
+ * @property {number} total
+ * @property {number} totalHours
+ */
+
+/**
+ * @typedef {Object} PluginProject
+ * @property {string|number} id
+ * @property {string} name
+ * @property {PluginFeature[]} features
+ * @property {Object<string,number>} totals.internal
+ * @property {Object<string,number>} totals.external
+ * @property {Object<string,object>} totals.hours
+ * @property {number} total
+ * @property {number} totalHours
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
@@ -11,6 +39,13 @@ import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 import { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, buildMonths, buildProjects } from './PluginCostCalculator.js';
+/**
+ * Convert a hex color (#rrggbb) to an rgba string with supplied alpha.
+ * Defensive: returns a sensible fallback when `hex` is falsy.
+ * @param {string} hex
+ * @param {number} [alpha=0.12]
+ * @returns {string}
+ */
 function hexToRgba(hex, alpha = 0.12){
   if(!hex) return `rgba(0,0,0,${alpha})`;
   const h = hex.replace('#','');
@@ -88,13 +123,31 @@ export class PluginCostComponent extends LitElement {
     this.loadData();
   }
 
+  /**
+   * Format a numeric cell value as a fixed 2-decimal string.
+   * Accepts numeric or string-like input and coerces to number.
+   * @param {number|string} v
+   * @returns {string}
+   */
   fmtCell(v){ return (typeof v === 'number' ? v : Number(v || 0)).toFixed(2); }
 
+  /**
+   * Compute inline style for the left (frozen) project cell. Uses project
+   * color and a subtle gradient to aid visual grouping.
+   * @param {string|number} pid
+   * @returns {string}
+   */
   projectLeftStyle(pid){
     const color = (state.projects || []).find(sp=>String(sp.id)===String(pid))?.color || '#ddd';
     return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(pid),0.14)} 0px, ${hexToRgba(state.getProjectColor(pid),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${color};`;
   }
 
+  /**
+   * Compute inline style used for feature/epic rows. Shows a subtle
+   * gradient and left accent using the feature state color.
+   * @param {string} stateColor
+   * @returns {string}
+   */
   featureBgStyle(stateColor){ return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(stateColor,0.14)} 0px, ${hexToRgba(stateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${stateColor}; cursor:pointer;`; }
 
   open(){
@@ -132,6 +185,14 @@ export class PluginCostComponent extends LitElement {
   }
 
   async loadCostForScenario(scenarioId){
+    /**
+     * Load cost data for a given scenario id. Supports 3 cases:
+     * - baseline (cached GET)
+     * - saved scenario (GET by id)
+     * - unsaved/transient scenario (POST features payload for on-the-fly calc)
+     *
+     * @param {string} scenarioId
+     */
     try{
       // Baseline: GET cached cost
       if(!scenarioId || scenarioId === 'baseline'){
@@ -145,9 +206,9 @@ export class PluginCostComponent extends LitElement {
       }
 
       // Try to read scenario from state first, fallback to dataService.getScenario
-      let scenario = (state && state.scenarios) ? state.scenarios.find(s => s.id === scenarioId) : null;
+      let scenario = state?.scenarios ? state.scenarios.find(s => s.id === scenarioId) : null;
       if(!scenario){
-        try{ scenario = await dataService.getScenario(scenarioId); }catch(e){}
+        scenario = await dataService.getScenario(scenarioId);
       }
 
       // If scenario exists and appears saved (not locally dirty), ask backend to load it by id
@@ -179,15 +240,25 @@ export class PluginCostComponent extends LitElement {
   }
 
   disconnectedCallback(){
-    try{ if(this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated); }catch(e){}
-    try{ if(this._scenarioDebounceTimer){ clearTimeout(this._scenarioDebounceTimer); this._scenarioDebounceTimer = null; } }catch(e){}
+    if(this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    if(this._scenarioDebounceTimer){ clearTimeout(this._scenarioDebounceTimer); this._scenarioDebounceTimer = null; }
     if(super.disconnectedCallback) super.disconnectedCallback();
   }
 
+  /**
+   * Wrapper to build months for the component from configuration.
+   * @param {Object} cfg - configuration object with dataset_start/dataset_end
+   * @returns {void}
+   */
   buildMonths(cfg){
     this.months = buildMonths(cfg);
   }
 
+  /**
+   * Build projects using calculator helpers and store footer hour totals.
+   * @param {Array} projects
+   * @returns {void}
+   */
   buildProjects(projects){
     const res = buildProjects(projects, this.months || [], state);
     this.projects = res.projects;
@@ -206,6 +277,12 @@ export class PluginCostComponent extends LitElement {
     else this.expandedEpics.add(id);
     this.requestUpdate();
   }
+
+  /**
+   * Render the teams tab view showing team-level summaries and members.
+   * Accepts several server shapes (array, object with `teams`, or map).
+   * @returns {import('lit').TemplateResult}
+   */
 
   render(){
     if(!this.data) return html`<div>Loading cost data...</div>`;
@@ -230,7 +307,7 @@ export class PluginCostComponent extends LitElement {
               <button class=${this.viewMode==='cost' ? 'active':''} @click=${()=>{ this.viewMode='cost'; this.requestUpdate(); }}>Cost</button>
               <button class=${this.viewMode==='hours' ? 'active':''} @click=${()=>{ this.viewMode='hours'; this.requestUpdate(); }}>Hours</button>
             </div>
-            ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ? html`<div class="tab-toggle"><button class=${this.activeTab==='cost' ? 'active':''} @click=${()=>{ this.activeTab='cost'; this.requestUpdate(); }}>Cost Table</button><button class=${this.activeTab==='teams' ? 'active':''} @click=${async ()=>{ this.activeTab='teams'; if(!this.teamsData){ try{ this.teamsData = await dataService.getCostTeams(); }catch(e){ console.error('Failed to load cost teams', e); this.teamsData = []; } } this.requestUpdate(); }}>Teams</button></div>` : ''}
+            ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ? html`<div class="tab-toggle"><button class=${this.activeTab==='cost' ? 'active':''} @click=${()=>{ this.activeTab='cost'; this.requestUpdate(); }}>Cost Table</button><button class=${this.activeTab==='teams' ? 'active':''} @click=${async ()=>{ this.activeTab='teams'; if(!this.teamsData){ this.teamsData = await dataService.getCostTeams().catch(e=>{ console.error('Failed to load cost teams', e); return []; }); } this.requestUpdate(); }}>Teams</button></div>` : ''}
           </div>
         </div>
         <div class="legend">
@@ -337,6 +414,12 @@ export class PluginCostComponent extends LitElement {
     `;
   }
 
+  /**
+   * Render a teams-oriented view for cost allocation. Handles multiple
+   * shapes returned by the server and renders member rows with budget
+   * and hourly totals.
+   * @returns {import('lit').TemplateResult}
+   */
   renderTeamsView(){
     let teams = this.teamsData;
     // Accept different shapes: null, array, object with `teams`, or object map

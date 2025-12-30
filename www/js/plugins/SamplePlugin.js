@@ -1,7 +1,7 @@
 /**
  * SamplePlugin
- * Minimal example plugin demonstrating event subscription lifecycle.
- * Keeps logic tiny and relies on the host Plugin base class for common work.
+ * Minimal example plugin demonstrating lifecycle and event subscription.
+ * Used as documentation/example of the plugin API.
  */
 import { Plugin } from '../core/Plugin.js';
 import { bus } from '../core/EventBus.js';
@@ -19,6 +19,11 @@ export class SamplePlugin extends Plugin {
     console.log(`[SamplePlugin] init ${this.id}`);
   }
 
+  /**
+   * Activate plugin and subscribe to example events.
+   * @returns {Promise<void>}
+   */
+
   async activate() {
     // Subscribe to a representative event to demonstrate plugin behavior
     bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
@@ -34,7 +39,7 @@ export class SamplePlugin extends Plugin {
 
   async destroy() {
     // Ensure listeners cleaned up
-    try { bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect); } catch (e) {}
+    bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
     this.initialized = false;
     console.log(`[SamplePlugin] destroy ${this.id}`);
   }

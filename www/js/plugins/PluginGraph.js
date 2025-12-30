@@ -1,16 +1,16 @@
 /**
  * PluginGraphPlugin
- * Mounts a visual mountain-view graph component. Keeps lifecycle simple and
- * trusts upstream state/data; defensive checks are minimal.
+ * Single-responsibility: lifecycle wrapper that mounts the `plugin-graph`
+ * component. Delegates rendering and data computation to the component.
  */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 
 class PluginGraphPlugin {
-  constructor(id, opts){
-    this.id = id || 'plugin-graph';
-    this.config = opts || {};
+  constructor(id = 'plugin-graph', config = {}){
+    this.id = id;
+    this.config = config;
     this._el = null;
     this._host = null;
     this._componentLoaded = false;
@@ -68,7 +68,7 @@ class PluginGraphPlugin {
   }
 
   toggle(){
-    if(!this._el || this._el.style.display === 'none') this.activate(); else this.deactivate();
+    this.active ? this.deactivate() : this.activate();
   }
 }
 
