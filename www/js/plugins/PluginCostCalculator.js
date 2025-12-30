@@ -1,19 +1,97 @@
 /**
  * PluginCostCalculator
- * Pure helper utilities that convert feature-level cost and hours data into
- * per-month allocations suitable for table rendering. Designed for single-pass
- * computation and numeric stability.
+ * Single-responsibility: convert raw feature-level cost/hours metrics into
+ * per-month allocations and project summaries consumed by the cost UI.
+ *
+ * Purpose: Provide pure, side-effect free helper utilities used by the
+ * `plugin-cost` component to build consistent month lists, allocate values
+ * across calendar months, and aggregate project/footer totals.
+ *
+ * Dependencies: none (only uses standard Date math). Exported functions are
+ * intentionally small and testable.
+ */
+
+/**
+ * @typedef {Object} FeatureMetricRaw
+ * @property {string|number} id
+ * @property {string} title
+ * @property {string} start - ISO date string (e.g. "2023-01-01")
+ * @property {string} end - ISO date string
+ * @property {Object} metrics
+ * @property {Object} metrics.internal
+ * @property {number} metrics.internal.cost
+ * @property {number} metrics.internal.hours
+ * @property {Object} metrics.external
+ * @property {number} metrics.external.cost
+ * @property {number} metrics.external.hours
+ */
+
+/**
+ * @typedef {Object} ProjectRaw
+ * @property {string|number} id
+ * @property {string} name
+ * @property {Array<FeatureMetricRaw>} features
+ */
+
+/**
+ * @typedef {Object} MonthsRange
+ * @property {Date} dataset_start
+ * @property {Date} dataset_end
  */
 
 import { isEnabled } from '../config.js';
 
+/**
+ * Parse an ISO date-only string into a Date in UTC at midnight.
+ * @param {string|Date} d
+ * @returns {Date}
+ */
 const toDate = d => new Date(`${d}T00:00:00Z`);
+
+/**
+ * Return the first instant (UTC) of the month for the given date.
+ * @param {Date} dt
+ * @returns {Date}
+ */
 const firstOfMonth = dt => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
+
+/**
+ * Return the last instant (UTC) of the month for the given date.
+ * @param {Date} dt
+ * @returns {Date}
+ */
 const lastOfMonth = dt => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+
+/**
+ * Add N months to a UTC-based date and return a new Date at the first of
+ * that resulting month (UTC).
+ * @param {Date} dt
+ * @param {number} n
+ * @returns {Date}
+ */
 const addMonths = (dt, n) => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n, 1));
+
+/**
+ * Create a stable month key in YYYY-MM format using UTC month/year.
+ * @param {Date} dt
+ * @returns {string}
+ */
 const monthKey = dt => `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+
+/**
+ * Human friendly month label used in the table header.
+ * @param {Date} dt
+ * @returns {string}
+ */
 const monthLabel = dt => dt.toLocaleString(undefined, { month: 'short', year: 'numeric' });
 
+/**
+ * Build an ordered array of Date objects representing each month between the
+ * provided dataset start and end (inclusive). Uses UTC-first-of-month
+ * semantics to avoid timezone drift.
+ * @param {MonthsRange} cfg
+ * @returns {Date[]}
+ */
 const buildMonths = ({ dataset_start, dataset_end }) => {
   const start = firstOfMonth(toDate(dataset_start));
   const end = firstOfMonth(toDate(dataset_end));
@@ -22,9 +100,28 @@ const buildMonths = ({ dataset_start, dataset_end }) => {
   return out;
 };
 
+/**
+ * Helper: create an object mapping each key to zero.
+ * @param {string[]} keys
+ * @returns {Object<string, number>}
+ */
 const zerosFor = keys => Object.fromEntries(keys.map(k => [k, 0]));
+
+/**
+ * Numeric sum helper.
+ * @param {number[]} arr
+ * @returns {number}
+ */
 const sum = arr => arr.reduce((a, b) => a + b, 0);
 
+/**
+ * Calculate inclusive number of overlapping days between [start, end] and the
+ * month starting at mStart. All dates are treated as UTC-midnights.
+ * @param {Date} start
+ * @param {Date} end
+ * @param {Date} mStart - first of month
+ * @returns {number} inclusive number of days overlapping the month
+ */
 const overlapDays = (start, end, mStart) => {
   const mEnd = lastOfMonth(mStart);
   const s = start > mStart ? start : mStart;
@@ -33,6 +130,20 @@ const overlapDays = (start, end, mStart) => {
   return Math.floor((e.getTime() - s.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 };
 
+/**
+ * Normalize a raw feature metric entry into per-month allocations.
+ * Allocation strategy:
+ * - If overlapping days can be computed, allocate per-day and multiply by
+ *   number of overlapping days for each month (more accurate across partial
+ *   months).
+ * - If no overlapping day resolution is possible, fall back to equal per-month
+ *   distribution across months fully covered by the feature.
+ *
+ * @param {FeatureMetricRaw} raw
+ * @param {string[]} monthKeys - keys for all months in the table (YYYY-MM)
+ * @param {Date[]} months - Date objects for months used to build monthStartMap
+ * @returns {Object} built feature with per-month allocations
+ */
 const buildFeature = (raw, monthKeys, months) => {
   const start = toDate(raw.start);
   const end = toDate(raw.end);
@@ -101,6 +212,16 @@ const buildFeature = (raw, monthKeys, months) => {
   };
 };
 
+/**
+ * Build normalized project objects from raw project payloads. This function
+ * applies epic gap-fill logic (when enabled via feature flag) and performs
+ * final rounding/adjustments so that month-sums match feature totals.
+ *
+ * @param {ProjectRaw[]} projects
+ * @param {Date[]} months
+ * @param {Object} state - global app state used to resolve epic children
+ * @returns {Object} { projects: Array, footerHours: Object, footerTotalHours: number }
+ */
 const buildProjects = (projects, months, state) => {
   const monthKeys = months.map(monthKey);
   const useEpicGapFills = isEnabled('USE_EPIC_CAPACITY_GAP_FILLS');
@@ -109,15 +230,21 @@ const buildProjects = (projects, months, state) => {
     const feats = (p.features || []).map(f => buildFeature(f, monthKeys, months));
     const featById = new Map(feats.map(f => [f.id, f]));
 
-    const childrenMap = new Map();
-    if (state && state.childrenByEpic && typeof state.childrenByEpic.get === 'function') {
-      for (const f of p.features || []) {
-        const raw = state.childrenByEpic.get(Number(f.id)) || state.childrenByEpic.get(String(f.id)) || [];
-        if (raw && raw.length) childrenMap.set(String(f.id), raw.map(String));
+      const childrenMap = new Map();
+      const featuresList = p.features || [];
+      if (state?.childrenByEpic?.get) {
+        for (const f of featuresList) {
+          const raw = state.childrenByEpic.get(Number(f.id)) || state.childrenByEpic.get(String(f.id)) || [];
+          if (raw.length) childrenMap.set(String(f.id), raw.map(String));
+        }
+      } else {
+        for (const f of featuresList) {
+          if (f.parentEpic || f.parentEpic === 0) {
+            const key = String(f.parentEpic);
+            childrenMap.set(key, (childrenMap.get(key) || []).concat(String(f.id)));
+          }
+        }
       }
-    } else {
-      for (const f of p.features || []) if (f.parentEpic || f.parentEpic === 0) childrenMap.set(String(f.parentEpic), (childrenMap.get(String(f.parentEpic)) || []).concat(String(f.id)));
-    }
 
     for (const [epicId, childIds] of childrenMap.entries()) {
       const childList = childIds.map(id => featById.get(String(id))).filter(Boolean);
@@ -129,10 +256,10 @@ const buildProjects = (projects, months, state) => {
       const childIH = zerosFor(monthKeys);
       const childEH = zerosFor(monthKeys);
       for (const c of childList) {
-        for (const k of Object.keys(c.valuesInternal)) childInt[k] += c.valuesInternal[k] || 0;
-        for (const k of Object.keys(c.valuesExternal)) childExt[k] += c.valuesExternal[k] || 0;
-        for (const k of Object.keys(c.hoursInternal)) childIH[k] += c.hoursInternal[k] || 0;
-        for (const k of Object.keys(c.hoursExternal)) childEH[k] += c.hoursExternal[k] || 0;
+        for (const [k, v] of Object.entries(c.valuesInternal || {})) childInt[k] += v;
+        for (const [k, v] of Object.entries(c.valuesExternal || {})) childExt[k] += v;
+        for (const [k, v] of Object.entries(c.hoursInternal || {})) childIH[k] += v;
+        for (const [k, v] of Object.entries(c.hoursExternal || {})) childEH[k] += v;
       }
 
       if (!useEpicGapFills) {

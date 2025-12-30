@@ -1,8 +1,13 @@
 /**
  * PluginGraph component
- * Renders an SVG-based mountain view. The component assumes that the
- * application provides the relevant timeline and capacity data; logic is
- * intentionally compact and focuses on the happy path.
+ * Single-responsibility: render an interactive SVG 'mountain view' showing
+ * capacity across days. This component reads global `state` to compute
+ * per-day totals and renders either project stacked bars or team lines.
+ *
+ * Notes on intent:
+ * - The component prefers simple, performant DOM updates using native SVG
+ *   primitives rather than complex chart libraries to keep bundle size low.
+ * - Date math uniformly uses UTC-localized days to avoid timezone surprises.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
@@ -30,6 +35,14 @@ export class PluginGraph extends LitElement {
     this.lastRenderedData = null;
     this.xScale = 1;
   }
+
+  /**
+   * Compute inclusive day count between two dates (UTC day boundaries).
+   * @param {Date} d0
+   * @param {Date} d1
+   * @returns {number}
+   */
+  _daysBetween(d0, d1){ const ms = new Date(d1).setHours(0,0,0,0) - new Date(d0).setHours(0,0,0,0); return Math.max(0, Math.floor(ms / (24*3600*1000)) + 1); }
 
   static styles = css`
     :host { display: block; position: absolute; left:0; top:0; right:0; bottom:0; z-index:50; box-sizing: border-box; }
@@ -87,45 +100,35 @@ export class PluginGraph extends LitElement {
   }
 
   _initDateRangeDefaults(){
-    // If already set, keep values
-    try{
-      const needCompute = !(this.startDate && this.endDate);
-      if(needCompute){
-        // 1) Try timeline months
-        const months = typeof getTimelineMonths === 'function' ? getTimelineMonths() : null;
-        if(months && months.length){
-          const d0 = months[0];
-          const last = months[months.length-1];
-          const d1 = new Date(last.getFullYear(), last.getMonth()+1, 0);
-          this.startDate = new Date(d0);
-          this.endDate = new Date(d1);
-        } else if(state && Array.isArray(state.capacityDates) && state.capacityDates.length){
-          // 2) Use computed capacity dates in state
-          const firstIso = state.capacityDates[0];
-          const lastIso = state.capacityDates[state.capacityDates.length-1];
-          this.startDate = new Date(firstIso);
-          this.endDate = new Date(lastIso);
-        } else {
-          // 3) Fallback to today + 30 days
-          const now = new Date();
-          this.startDate = new Date(now);
-          this.endDate = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
-        }
+    const needCompute = !(this.startDate && this.endDate);
+    if(needCompute){
+      const months = typeof getTimelineMonths === 'function' ? getTimelineMonths() : null;
+      if(months && months.length){
+        const d0 = months[0];
+        const last = months[months.length-1];
+        const d1 = new Date(last.getFullYear(), last.getMonth()+1, 0);
+        this.startDate = new Date(d0);
+        this.endDate = new Date(d1);
+      } else if(Array.isArray(state?.capacityDates) && state.capacityDates.length){
+        const firstIso = state.capacityDates[0];
+        const lastIso = state.capacityDates[state.capacityDates.length-1];
+        this.startDate = new Date(firstIso);
+        this.endDate = new Date(lastIso);
+      } else {
+        const now = new Date();
+        this.startDate = new Date(now);
+        this.endDate = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
       }
-      // Update inputs if present
-      const setInputs = ()=>{
-        const startInp = this.renderRoot && this.renderRoot.querySelector ? this.renderRoot.querySelector('#mvStart') : null;
-        const endInp = this.renderRoot && this.renderRoot.querySelector ? this.renderRoot.querySelector('#mvEnd') : null;
-        if(startInp) startInp.value = this._fmtDate(this.startDate);
-        if(endInp) endInp.value = this._fmtDate(this.endDate);
-        return !!(startInp || endInp);
-      };
-      const ok = setInputs();
-      if(!ok){
-        // retry next microtask / frame
-        requestAnimationFrame(()=> setInputs());
-      }
-    }catch(e){ console.warn('[plugin-graph] failed to init date range', e); }
+    }
+    const setInputs = ()=>{
+      const startInp = this.renderRoot.querySelector('#mvStart');
+      const endInp = this.renderRoot.querySelector('#mvEnd');
+      if(startInp) startInp.value = this._fmtDate(this.startDate);
+      if(endInp) endInp.value = this._fmtDate(this.endDate);
+      return !!(startInp || endInp);
+    };
+    const ok = setInputs();
+    if(!ok) requestAnimationFrame(()=> setInputs());
   }
 
   _ensureTooltip(){
@@ -157,7 +160,14 @@ export class PluginGraph extends LitElement {
     return host;
   }
 
-  _scheduleRender(delay=80){ if(this.style.display === 'none') return; if(this._scheduledRenderTimer) clearTimeout(this._scheduledRenderTimer); this._scheduledRenderTimer = setTimeout(()=>{ this._scheduledRenderTimer = null; try{ this._render(); }catch(e){ console.error('[plugin-graph] scheduled render error', e); } }, delay); }
+  _scheduleRender(delay = 80){
+    if(this.style.display === 'none') return;
+    if(this._scheduledRenderTimer) clearTimeout(this._scheduledRenderTimer);
+    this._scheduledRenderTimer = setTimeout(() => {
+      this._scheduledRenderTimer = null;
+      try { this._render(); } catch (e) { console.error('[plugin-graph] scheduled render error', e); }
+    }, delay);
+  }
 
   open(mode){
     // prefer provided mode, fall back to state setting, then default
