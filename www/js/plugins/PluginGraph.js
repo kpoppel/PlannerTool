@@ -1,4 +1,8 @@
-import { pluginManager } from '../core/PluginManager.js';
+/**
+ * PluginGraphPlugin
+ * Mounts a visual mountain-view graph component. Keeps lifecycle simple and
+ * trusts upstream state/data; defensive checks are minimal.
+ */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';

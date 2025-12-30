@@ -1,3 +1,9 @@
+/**
+ * PluginGraph component
+ * Renders an SVG-based mountain view. The component assumes that the
+ * application provides the relevant timeline and capacity data; logic is
+ * intentionally compact and focuses on the happy path.
+ */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
@@ -64,7 +70,7 @@ export class PluginGraph extends LitElement {
     const applyBtn = this.renderRoot.querySelector('#mvApply');
     const exportSvgBtn = this.renderRoot.querySelector('#mvExportSvg');
     const exportPngBtn = this.renderRoot.querySelector('#mvExportPng');
-    if(applyBtn){ applyBtn.addEventListener('click', ()=>{ this.startDate = new Date(startInp.value); this.endDate = new Date(endInp.value); this._render(); }); }
+    if(applyBtn) applyBtn.addEventListener('click', ()=>{ this.startDate = new Date(startInp.value); this.endDate = new Date(endInp.value); this._render(); });
     if(exportSvgBtn) exportSvgBtn.addEventListener('click', ()=>this.exportSvg());
     if(exportPngBtn) exportPngBtn.addEventListener('click', ()=>this.exportPng());
 
@@ -76,9 +82,7 @@ export class PluginGraph extends LitElement {
     bus.on(CapacityEvents.UPDATED, ()=> this._scheduleRender());
     // Re-render once app/state is ready
     bus.on(AppEvents.READY, ()=> { this._initDateRangeDefaults(); this._scheduleRender(20); });
-    // Initialize mode from state if present
-    try{ if(state && typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode; }catch(e){}
-    // Initialize date range inputs now if possible
+    if(typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode;
     this._initDateRangeDefaults();
   }
 

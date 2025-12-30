@@ -1,4 +1,9 @@
-import { pluginManager } from '../core/PluginManager.js';
+/**
+ * PluginCostPlugin
+ * Lightweight plugin wrapper that mounts the `plugin-cost` component and
+ * coordinates its lifecycle. Assumes configuration and feature validation
+ * are handled by the app; keeps surface area minimal.
+ */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
