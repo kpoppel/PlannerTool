@@ -1,5 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { buildMonths, buildProjects, monthKey } from '../../../www/js/plugins/PluginCostCalculator.js';
+import { toDate, firstOfMonth, lastOfMonth, addMonths, monthLabel } from '../../../www/js/plugins/PluginCostCalculator.js';
+import { enable, disable } from '../../../www/js/config.js';
 
 // Helper to create minimal project/feature structure returned by backend
 function makeFeature(id, start, end, internalCost, externalCost, internalHours=0, externalHours=0){
@@ -53,5 +55,54 @@ describe('PluginCostCalculator - day-overlap distribution', ()=>{
     const feat = res.projects[0].features[0];
     const mkJun = monthKey(months[0]);
     expect(feat.values.internal[mkJun]).to.equal(10);
+  });
+});
+
+describe('PluginCostCalculator - helpers and epic handling', ()=>{
+  it('date helpers produce expected values', ()=>{
+    const d = toDate('2026-12-15');
+    expect(d.getUTCFullYear()).to.equal(2026);
+    const f = firstOfMonth(d);
+    const l = lastOfMonth(d);
+    expect(f.getUTCDate()).to.equal(1);
+    expect(f.getUTCMonth()).to.equal(11);
+    expect(l.getUTCMonth()).to.equal(11);
+    const nxt = addMonths(f, 1);
+    // addMonths moves to first of next month in UTC; January is month 0
+    expect(nxt.getUTCMonth()).to.equal(0);
+    // monthLabel should return a non-empty string
+    expect(monthLabel(f)).to.be.a('string').and.to.not.equal('');
+  });
+
+  it('epic ignores children when USE_EPIC_CAPACITY_GAP_FILLS is false', ()=>{
+    const cfg = { dataset_start: '2026-01-01', dataset_end: '2026-03-31' };
+    const months = buildMonths(cfg);
+    const epic = { id: 100, name: 'P1', features: [
+      { id: 100, title: 'EPIC', start: '2026-01-01', end: '2026-03-31', metrics: { internal: { cost: 300, hours: 30 }, external: { cost: 0, hours: 0 } } },
+      { id: 101, title: 'C1', parentEpic: 100, start: '2026-01-01', end: '2026-01-31', metrics: { internal: { cost: 100, hours: 10 }, external: { cost: 0, hours: 0 } } },
+      { id: 102, title: 'C2', parentEpic: 100, start: '2026-02-01', end: '2026-02-28', metrics: { internal: { cost: 100, hours: 10 }, external: { cost: 0, hours: 0 } } }
+    ] };
+    const res = buildProjects([epic], months, {});
+    const project = res.projects[0];
+    const featMap = Object.fromEntries(project.features.map(f=>[f.id,f]));
+    // Since gap fills default is false in config.js, epic internalTotal should be sum of children (200)
+    expect(featMap['100'].internalTotal).to.equal(200);
+  });
+
+  it('epic fills gaps when USE_EPIC_CAPACITY_GAP_FILLS is true', ()=>{
+    // Enable the feature via the runtime API so config.featureFlags is updated
+    enable('USE_EPIC_CAPACITY_GAP_FILLS');
+    const cfg = { dataset_start: '2026-01-01', dataset_end: '2026-03-31' };
+    const months = buildMonths(cfg);
+    const epic = { id: 200, name: 'P2', features: [
+      { id: 200, title: 'EPIC2', start: '2026-01-01', end: '2026-03-31', metrics: { internal: { cost: 300, hours: 30 }, external: { cost: 0, hours: 0 } } },
+      { id: 201, title: 'C1', parentEpic: 200, start: '2026-01-01', end: '2026-01-31', metrics: { internal: { cost: 100, hours: 10 }, external: { cost: 0, hours: 0 } } }
+    ] };
+    const res = buildProjects([epic], months, {});
+    const project = res.projects[0];
+    const featMap = Object.fromEntries(project.features.map(f=>[f.id,f]));
+    const mkFeb = monthKey(months[1]);
+    // With gap fills enabled, epic should provide values in Feb (where no child exists)
+    expect(featMap['200'].values.internal[mkFeb]).to.be.greaterThan(0);
   });
 });
