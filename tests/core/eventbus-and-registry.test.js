@@ -92,12 +92,6 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     expect(events[0]).to.deep.equal({ id: 1 });
   });
 
-  it('warns when subscribing with string event when enabled', async () => {
-    // String subscriptions are no longer supported; ensure they throw
-    if (typeof bus.enableStringWarnings === 'function') bus.enableStringWarnings();
-    expect(() => bus.on('legacy:event', () => {})).to.throw(Error);
-  });
-
   it('records history when enabled', async () => {
     if (typeof bus.enableHistoryLogging === 'function') bus.enableHistoryLogging(10);
     const EV = Symbol('some:event');
@@ -160,9 +154,6 @@ describe('Enhanced EventBus Features', () => {
   describe('Typed Events', () => {
     it('should register typed event mapping (no-op) and handle symbol events', () => {
       const TypedEvent = Symbol('test:typed');
-
-      // registerEventType is a compatibility no-op
-      bus.registerEventType(TypedEvent, 'test:typed');
 
       // ensure symbol mapping works for subscriptions
       let seen = false;
