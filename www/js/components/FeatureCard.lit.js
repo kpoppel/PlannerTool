@@ -5,8 +5,6 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
-import { getTimelineMonths } from './Timeline.lit.js';
-import { formatDate, parseDate, addMonths } from './util.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { featureFlags } from '../config.js';
 
@@ -234,16 +232,15 @@ export class FeatureCardLit extends LitElement {
     this._roQueue = [];
     this._roScheduled = false;
     this._skipRo = false; // set true while dragging to avoid layout reads
-    this._unsubDragMove = null;
-    this._unsubDragEnd = null;
+    this._abortController = new AbortController();
   }
 
   updated(changed) {
     // Reflect dirty state to inner card immediately so visual updates (resize/move) show the style
-    const inner = this.shadowRoot && this.shadowRoot.querySelector && this.shadowRoot.querySelector('.feature-card');
+    const inner = this.shadowRoot?.querySelector?.('.feature-card');
     if (inner) inner.classList.toggle('dirty', this.feature.dirty);
     // reflect dirty on host as well for external styles/tests
-    this.classList.toggle('dirty', this.feature && this.feature.dirty);
+    this.classList.toggle('dirty', this.feature?.dirty);
     this.setAttribute('data-feature-id', String(this.feature.id));
   }
 
@@ -253,18 +250,18 @@ export class FeatureCardLit extends LitElement {
    */
   applyVisuals({ left, width, selected, dirty, project } = {}) {
     // Optional instrumentation
-    if (featureFlags && featureFlags.serviceInstrumentation) {
+    if (featureFlags?.serviceInstrumentation) {
       console.log('[FeatureCard] applyVisuals', this.feature.id, { left, width, selected, dirty, project });
     }
     try {
-      const px = typeof left === 'number' ? left + 'px' : left;
+      const px = typeof left === 'number' ? `${left}px` : left;
       this.style.left = px;
-      const pxw = typeof width === 'number' ? width + 'px' : width;
+      const pxw = typeof width === 'number' ? `${width}px` : width;
       this.style.width = pxw;
       this.selected = selected;
       // immediate visual update for dirty flag to handle external visuals (drag/resize)
-      this.feature = Object.assign({}, this.feature, { dirty });
-      if (this.shadowRoot) this.shadowRoot.classList.toggle('dirty', dirty);
+      this.feature = { ...this.feature, dirty };
+      this.shadowRoot?.classList.toggle('dirty', dirty);
       // Also reflect dirty on host to support tests and external styles
       this.classList.toggle('dirty', dirty);
       this.project = project;
@@ -278,12 +275,17 @@ export class FeatureCardLit extends LitElement {
   // a temporary date string; `clearLiveDates()` restores the lit-rendered value.
   setLiveDates(text) {
     try {
-      const container = this.shadowRoot && this.shadowRoot.querySelector && this.shadowRoot.querySelector('.feature-dates');
+      const container = this.shadowRoot?.querySelector?.('.feature-dates');
       if (!container) return;
       const live = container.querySelector('.dates-live');
       const def = container.querySelector('.dates-default');
-      if (live) { live.textContent = text || ''; live.style.display = text ? '' : 'none'; }
-      if (def) { def.style.display = text ? 'none' : ''; }
+      if (live) { 
+        live.textContent = text ?? ''; 
+        live.style.display = text ? '' : 'none'; 
+      }
+      if (def) { 
+        def.style.display = text ? 'none' : ''; 
+      }
     } catch (e) { }
   }
 
