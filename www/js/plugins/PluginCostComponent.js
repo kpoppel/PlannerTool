@@ -1,3 +1,9 @@
+/**
+ * PluginCostComponent
+ * Renders a cost / hours table using results from the cost service.
+ * This component assumes validated input from the app and focuses on
+ * a compact, high-signal render path. Helpers are small and local.
+ */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
@@ -13,6 +19,7 @@ function hexToRgba(hex, alpha = 0.12){
   const b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
+
 
 export class PluginCostComponent extends LitElement {
   static properties = {
@@ -74,14 +81,21 @@ export class PluginCostComponent extends LitElement {
     // Listen for scenario activation so cost view updates to selected scenario
     // Debounce to coalesce duplicate events emitted by multiple managers
     this._onScenarioActivated = ({ scenarioId }) => {
-      try{
-        if(this._scenarioDebounceTimer) clearTimeout(this._scenarioDebounceTimer);
-        this._scenarioDebounceTimer = setTimeout(()=>{ this._scenarioDebounceTimer = null; try{ this.loadCostForScenario(scenarioId); }catch(e){} }, 60);
-      }catch(e){}
+      if(this._scenarioDebounceTimer) clearTimeout(this._scenarioDebounceTimer);
+      this._scenarioDebounceTimer = setTimeout(()=>{ this._scenarioDebounceTimer = null; this.loadCostForScenario(scenarioId); }, 60);
     };
-    try{ bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated); }catch(e){}
+    bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     this.loadData();
   }
+
+  fmtCell(v){ return (typeof v === 'number' ? v : Number(v || 0)).toFixed(2); }
+
+  projectLeftStyle(pid){
+    const color = (state.projects || []).find(sp=>String(sp.id)===String(pid))?.color || '#ddd';
+    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(pid),0.14)} 0px, ${hexToRgba(state.getProjectColor(pid),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${color};`;
+  }
+
+  featureBgStyle(stateColor){ return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(stateColor,0.14)} 0px, ${hexToRgba(stateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${stateColor}; cursor:pointer;`; }
 
   open(){
     const main = document.querySelector('main');
@@ -248,10 +262,9 @@ export class PluginCostComponent extends LitElement {
               ${this.projects.map(p=>
                 html`
                 <tr class="project-row" @click=${()=>this.toggleProject(p.id)}>
-                        <td class="left" style=${`background:#fff;
-                            background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(p.id),0.14)} 0px, ${hexToRgba(state.getProjectColor(p.id),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${((state.projects||[]).find(sp=>String(sp.id)===String(p.id))||{color:'#ddd'}).color};` }>${p.name}</td>
-                  ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (p.totals.internal[k]||0).toFixed(2) : ((p.totals.hours.internal[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (p.totals.external[k]||0).toFixed(2) : ((p.totals.hours.external[k]||0).toFixed(2)))}</td>`) }
-                  <td class="total-cell">${(this.viewMode==='cost' ? p.total.toFixed(2) : (p.totalHours||0).toFixed(2))}</td>
+                        <td class="left" style=${this.projectLeftStyle(p.id)}>${p.name}</td>
+                  ${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.internal[k]||0) : (p.totals.hours.internal[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.external[k]||0) : (p.totals.hours.external[k]||0))}</td>`) }
+                  <td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? p.total : (p.totalHours||0))}</td>
                   <td></td>
                 </tr>
                 ${this.expandedProjects.has(p.id) ? (() => {
@@ -286,14 +299,13 @@ export class PluginCostComponent extends LitElement {
                         const epicChildren = epicMap.get(f.id) || [];
                         const epicBase = f;
                         const epicStateColor = state.getFeatureStateColor(epicBase.state);
-                        const epicBg = hexToRgba(epicStateColor, 0.08);
-                        rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(epicStateColor,0.12)} 0px, ${hexToRgba(epicStateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${epicStateColor};">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0).toFixed(2) : ((epicBase.hours?.internal?.[k]||0).toFixed(2)))}</td><td>${(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0).toFixed(2) : ((epicBase.hours?.external?.[k]||0).toFixed(2)))}</td>`) }<td class="total-cell">${(this.viewMode==='cost' ? (epicBase.total||0).toFixed(2) : (epicBase.totalHours||0).toFixed(2))}</td><td></td></tr>`);
+                        rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="${this.featureBgStyle(epicStateColor)}">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0) : (epicBase.hours?.internal?.[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0) : (epicBase.hours?.external?.[k]||0))}</td>`) }<td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? (epicBase.total||0) : (epicBase.totalHours||0))}</td><td></td></tr>`);
                         if(this.expandedEpics.has(f.id)){
                           for(const child of epicChildren){
                             const fb = child.base;
                             const base = state.getFeatureStateColor(fb.state);
                             const bg = hexToRgba(base, 0.10);
-                            rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
+                            rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                           }
                         }
                       }
@@ -305,7 +317,7 @@ export class PluginCostComponent extends LitElement {
                       const fb = s.base;
                       const base = state.getFeatureStateColor(fb.state);
                       const bg = hexToRgba(base, 0.10);
-                      rendered.push(html`<tr class="feature-row"><td class="left" style="background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(base,0.14)} 0px, ${hexToRgba(base,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${base}; cursor:pointer;" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.internal[k]||0).toFixed(2) : ((fb.hours.internal[k]||0).toFixed(2)))}</td><td style="background:${bg};">${(this.viewMode==='cost' ? (fb.values.external[k]||0).toFixed(2) : ((fb.hours.external[k]||0).toFixed(2)))}</td>`) }<td class="total-cell" style="background:${bg};">${(this.viewMode==='cost' ? fb.total.toFixed(2) : (fb.totalHours||0).toFixed(2))}</td><td style="background:${bg};"></td></tr>`);
+                      rendered.push(html`<tr class="feature-row"><td class="left" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                     }
                     return rendered;
                   })() : ''}
@@ -314,8 +326,8 @@ export class PluginCostComponent extends LitElement {
             <tfoot>
               <tr>
                 <td class="left">Totals</td>
-                ${monthKeys.map(k=>html`<td>${(this.viewMode==='cost' ? (footerInternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.internal[k]||0).toFixed(2): '0.00'))}</td><td>${(this.viewMode==='cost' ? (footerExternal[k]||0).toFixed(2) : (this._footerHours? (this._footerHours.external[k]||0).toFixed(2): '0.00'))}</td>`)}
-                <td class="total-cell" colspan="2">${(this.viewMode==='cost' ? combinedTotal.toFixed(2) : (this._footerTotalHours||0).toFixed(2))}</td>
+                ${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (footerInternal[k]||0) : (this._footerHours? (this._footerHours.internal[k]||0): 0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (footerExternal[k]||0) : (this._footerHours? (this._footerHours.external[k]||0): 0))}</td>`)}
+                <td class="total-cell" colspan="2">${this.fmtCell(this.viewMode==='cost' ? combinedTotal : (this._footerTotalHours||0))}</td>
               </tr>
             </tfoot>
             </table>

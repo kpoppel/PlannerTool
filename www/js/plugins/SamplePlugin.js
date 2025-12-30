@@ -1,3 +1,8 @@
+/**
+ * SamplePlugin
+ * Minimal example plugin demonstrating event subscription lifecycle.
+ * Keeps logic tiny and relies on the host Plugin base class for common work.
+ */
 import { Plugin } from '../core/Plugin.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';

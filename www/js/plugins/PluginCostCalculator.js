@@ -1,4 +1,10 @@
-// Minimalist, single-pass PluginCostCalculator.js
+/**
+ * PluginCostCalculator
+ * Pure helper utilities that convert feature-level cost and hours data into
+ * per-month allocations suitable for table rendering. Designed for single-pass
+ * computation and numeric stability.
+ */
+
 import { isEnabled } from '../config.js';
 
 const toDate = d => new Date(`${d}T00:00:00Z`);
