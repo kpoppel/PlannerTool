@@ -477,11 +477,15 @@ class State {
   setShowEpics(val) {
     this.showEpics = !!val;
     bus.emit(FilterEvents.CHANGED, { showEpics: this.showEpics, showFeatures: this.showFeatures });
+    // Notify that features changed so dependent renderers (like dependency lines) refresh
+    bus.emit(FeatureEvents.UPDATED);
   }
 
   setShowFeatures(val) {
     this.showFeatures = !!val;
     bus.emit(FilterEvents.CHANGED, { showEpics: this.showEpics, showFeatures: this.showFeatures });
+    // Notify that features changed so dependent renderers (like dependency lines) refresh
+    bus.emit(FeatureEvents.UPDATED);
   }
 
   setCondensedCards(val) {

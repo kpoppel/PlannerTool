@@ -70,21 +70,21 @@ export class SpinnerModal extends LitElement {
     super();
     this.open = false;
     this.message = 'Loading';
-    this._escHandler = (e) => { if(e.key === 'Escape') this.close(); };
+    this._escHandler = (e) => { if (e.key === 'Escape') this.close(); };
   }
 
   updated(changed){
     const ctor = this.constructor;
-    if(changed.has('open')){
-      if(this.open){
-        ctor._openCount = (ctor._openCount || 0) + 1;
-        document.body.classList.add('has-modal');
-        window.addEventListener('keydown', this._escHandler);
-      } else {
-        ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
-        if(!(ctor._openCount || 0)) document.body.classList.remove('has-modal');
-        window.removeEventListener('keydown', this._escHandler);
-      }
+    if (!changed.has('open')) return;
+    ctor._openCount = ctor._openCount || 0;
+    if (this.open) {
+      ctor._openCount += 1;
+      document.body.classList.add('has-modal');
+      window.addEventListener('keydown', this._escHandler);
+    } else {
+      ctor._openCount = Math.max(0, ctor._openCount - 1);
+      if (ctor._openCount === 0) document.body.classList.remove('has-modal');
+      window.removeEventListener('keydown', this._escHandler);
     }
   }
 
@@ -96,12 +96,9 @@ export class SpinnerModal extends LitElement {
 
   disconnectedCallback(){
     super.disconnectedCallback && super.disconnectedCallback();
-    // If the element is removed while still open, decrement the global counter
     const ctor = this.constructor;
-    if(this.open){
-      ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
-    }
-    if(!(ctor._openCount || 0)) document.body.classList.remove('has-modal');
+    if (this.open) ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
+    if (!ctor._openCount) document.body.classList.remove('has-modal');
     window.removeEventListener('keydown', this._escHandler);
   }
 
