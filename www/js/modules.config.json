@@ -14,9 +14,9 @@
     },
     {
       "id": "plugin-graph",
-      "name": "Graph View",
+      "name": "Graph Viewer",
       "version": "1.0.0",
-      "description": "Large mountain-view graph",
+      "description": "Large capacity allocation graph",
       "path": "../plugins/PluginGraph.js",
       "export": "default",
       "enabled": true,
@@ -26,7 +26,7 @@
     },
     {
       "id": "plugin-cost",
-      "name": "Cost View",
+      "name": "Cost Analysis",
       "version": "1.0.0",
       "description": "Cost analysis plugin",
       "path": "../plugins/PluginCost.js",
