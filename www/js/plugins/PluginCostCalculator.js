@@ -1,5 +1,4 @@
-// PluginCostCalculator.js
-// Extracted calculation helpers from PluginCostComponent
+// Minimalist, single-pass PluginCostCalculator.js
 import { isEnabled } from '../config.js';
 
 const toDate = d => new Date(`${d}T00:00:00Z`);
@@ -17,101 +16,82 @@ const buildMonths = ({ dataset_start, dataset_end }) => {
   return out;
 };
 
+const zerosFor = keys => Object.fromEntries(keys.map(k => [k, 0]));
 const sum = arr => arr.reduce((a, b) => a + b, 0);
 
-const buildFeature = (f, monthKeys, months) => {
-  const start = toDate(f.start || f.start_date || f.starts_at);
-  const end = toDate(f.end || f.end_date || f.ends_at);
-  const internalTotal = f.metrics.internal.cost;
-  const externalTotal = f.metrics.external.cost;
-  const internalHoursTotal = f.metrics.internal.hours;
-  const externalHoursTotal = f.metrics.external.hours;
+const overlapDays = (start, end, mStart) => {
+  const mEnd = lastOfMonth(mStart);
+  const s = start > mStart ? start : mStart;
+  const e = end < mEnd ? end : mEnd;
+  if (e < s) return 0;
+  return Math.floor((e.getTime() - s.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+};
+
+const buildFeature = (raw, monthKeys, months) => {
+  const start = toDate(raw.start);
+  const end = toDate(raw.end);
+  const internalTotal = raw.metrics.internal.cost;
+  const externalTotal = raw.metrics.external.cost;
+  const internalHoursTotal = raw.metrics.internal.hours;
+  const externalHoursTotal = raw.metrics.external.hours;
 
   const sMonth = firstOfMonth(start);
   const eMonth = firstOfMonth(end);
   const monthsCovered = [];
   for (let cur = new Date(sMonth); cur <= eMonth; cur = addMonths(cur, 1)) monthsCovered.push(monthKey(cur));
 
-  const zeros = Object.fromEntries(monthKeys.map(k => [k, 0]));
-  const internalValues = { ...zeros };
-  const externalValues = { ...zeros };
-  const internalHoursValues = { ...zeros };
-  const externalHoursValues = { ...zeros };
-
   const monthStartMap = Object.fromEntries(months.map(m => [monthKey(m), firstOfMonth(m)]));
-  const msPerDay = 24 * 60 * 60 * 1000;
-
   const daysByMonth = {};
   let totalDays = 0;
   for (const mk of monthsCovered) {
-    const mStart = monthStartMap[mk];
-    const mEnd = lastOfMonth(mStart);
-    const overlapStart = start > mStart ? start : mStart;
-    const overlapEnd = end < mEnd ? end : mEnd;
-    const days = Math.max(0, Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / msPerDay) + 1);
-    daysByMonth[mk] = days;
-    totalDays += days;
+    const d = overlapDays(start, end, monthStartMap[mk]);
+    daysByMonth[mk] = d;
+    totalDays += d;
   }
+
+  const valuesInternal = zerosFor(monthKeys);
+  const valuesExternal = zerosFor(monthKeys);
+  const hoursInternal = zerosFor(monthKeys);
+  const hoursExternal = zerosFor(monthKeys);
 
   if (totalDays > 0) {
-    const perDayInternal = internalTotal / totalDays;
-    const perDayExternal = externalTotal / totalDays;
-    const perDayInternalHours = internalHoursTotal / totalDays;
-    const perDayExternalHours = externalHoursTotal / totalDays;
+    const perDayInt = internalTotal / totalDays;
+    const perDayExt = externalTotal / totalDays;
+    const perDayIntH = internalHoursTotal / totalDays;
+    const perDayExtH = externalHoursTotal / totalDays;
     for (const mk of monthsCovered) {
-      internalValues[mk] = +((perDayInternal * (daysByMonth[mk] || 0)).toFixed(2));
-      externalValues[mk] = +((perDayExternal * (daysByMonth[mk] || 0)).toFixed(2));
-      internalHoursValues[mk] = +((perDayInternalHours * (daysByMonth[mk] || 0)).toFixed(2));
-      externalHoursValues[mk] = +((perDayExternalHours * (daysByMonth[mk] || 0)).toFixed(2));
+      valuesInternal[mk] = perDayInt * (daysByMonth[mk] || 0);
+      valuesExternal[mk] = perDayExt * (daysByMonth[mk] || 0);
+      hoursInternal[mk] = perDayIntH * (daysByMonth[mk] || 0);
+      hoursExternal[mk] = perDayExtH * (daysByMonth[mk] || 0);
     }
-  } else {
-    const perMonthInternal = internalTotal / monthsCovered.length;
-    const perMonthExternal = externalTotal / monthsCovered.length;
-    const perMonthInternalHours = internalHoursTotal / monthsCovered.length;
-    const perMonthExternalHours = externalHoursTotal / monthsCovered.length;
+  } else if (monthsCovered.length) {
+    const perMonInt = internalTotal / monthsCovered.length;
+    const perMonExt = externalTotal / monthsCovered.length;
+    const perMonIntH = internalHoursTotal / monthsCovered.length;
+    const perMonExtH = externalHoursTotal / monthsCovered.length;
     for (const mk of monthsCovered) {
-      internalValues[mk] = +perMonthInternal.toFixed(2);
-      externalValues[mk] = +perMonthExternal.toFixed(2);
-      internalHoursValues[mk] = +perMonthInternalHours.toFixed(2);
-      externalHoursValues[mk] = +perMonthExternalHours.toFixed(2);
+      valuesInternal[mk] = perMonInt;
+      valuesExternal[mk] = perMonExt;
+      hoursInternal[mk] = perMonIntH;
+      hoursExternal[mk] = perMonExtH;
     }
   }
 
-  const adjustLast = (values, total) => {
-    const sumVals = sum(Object.values(values));
-    if (monthsCovered.length && Math.abs(sumVals - total) > 0.001) {
-      const last = monthsCovered[monthsCovered.length - 1];
-      values[last] = +(values[last] + (total - sumVals)).toFixed(2);
-    }
-  };
-
-  adjustLast(internalValues, internalTotal);
-  adjustLast(externalValues, externalTotal);
-  adjustLast(internalHoursValues, internalHoursTotal);
-  adjustLast(externalHoursValues, externalHoursTotal);
-
-  const total = +(internalTotal + externalTotal).toFixed(2);
-  const totalHours = +(internalHoursTotal + externalHoursTotal).toFixed(2);
-
   return {
-    id: String(f.id),
-    name: f.title || f.name || String(f.id),
-    state: f.state || f.status || '',
-    values: { internal: internalValues, external: externalValues },
-    hours: { internal: internalHoursValues, external: externalHoursValues },
+    id: String(raw.id),
+    title: raw.title,
+    start: raw.start_date,
+    end: raw.end_date,
+    monthsCovered,
+    valuesInternal,
+    valuesExternal,
+    hoursInternal,
+    hoursExternal,
     internalTotal,
     externalTotal,
-    total,
     internalHoursTotal,
-    externalHoursTotal,
-    totalHours,
-    start: f.start,
-    end: f.end,
-    monthsCovered,
-    metrics: f.metrics,
-    capacity: f.capacity,
-    description: f.description || '',
-    url: f.url || ''
+    externalHoursTotal
   };
 };
 
@@ -119,118 +99,132 @@ const buildProjects = (projects, months, state) => {
   const monthKeys = months.map(monthKey);
   const useEpicGapFills = isEnabled('USE_EPIC_CAPACITY_GAP_FILLS');
 
-  const childrenFor = id => (state && state.childrenByEpic && typeof state.childrenByEpic.get === 'function') ? (state.childrenByEpic.get(Number(id)) || state.childrenByEpic.get(String(id)) || state.childrenByEpic.get(id) || []) : [];
+  const projectsOut = (projects || []).map(p => {
+    const feats = (p.features || []).map(f => buildFeature(f, monthKeys, months));
+    const featById = new Map(feats.map(f => [f.id, f]));
 
-  const projectsOut = projects.map(p => {
-    const featsPre = p.features.map(f => buildFeature(f, monthKeys, months));
-    const featById = new Map(featsPre.map(f => [f.id, f]));
+    const childrenMap = new Map();
+    if (state && state.childrenByEpic && typeof state.childrenByEpic.get === 'function') {
+      for (const f of p.features || []) {
+        const raw = state.childrenByEpic.get(Number(f.id)) || state.childrenByEpic.get(String(f.id)) || [];
+        if (raw && raw.length) childrenMap.set(String(f.id), raw.map(String));
+      }
+    } else {
+      for (const f of p.features || []) if (f.parentEpic || f.parentEpic === 0) childrenMap.set(String(f.parentEpic), (childrenMap.get(String(f.parentEpic)) || []).concat(String(f.id)));
+    }
 
-    const feats = featsPre.map(fObj => {
-      const childrenRaw = childrenFor(fObj.id);
-      const childrenIds = childrenRaw.length ? childrenRaw.map(String) : p.features.filter(r => String(r.parentEpic) === String(fObj.id)).map(r => String(r.id));
-      if (!childrenIds.length) return fObj;
+    for (const [epicId, childIds] of childrenMap.entries()) {
+      const childList = childIds.map(id => featById.get(String(id))).filter(Boolean);
+      if (!childList.length) continue;
+      const epic = featById.get(String(epicId));
 
-      const children = childrenIds.map(id => featById.get(String(id))).filter(Boolean);
+      const childInt = zerosFor(monthKeys);
+      const childExt = zerosFor(monthKeys);
+      const childIH = zerosFor(monthKeys);
+      const childEH = zerosFor(monthKeys);
+      for (const c of childList) {
+        for (const k of Object.keys(c.valuesInternal)) childInt[k] += c.valuesInternal[k] || 0;
+        for (const k of Object.keys(c.valuesExternal)) childExt[k] += c.valuesExternal[k] || 0;
+        for (const k of Object.keys(c.hoursInternal)) childIH[k] += c.hoursInternal[k] || 0;
+        for (const k of Object.keys(c.hoursExternal)) childEH[k] += c.hoursExternal[k] || 0;
+      }
 
       if (!useEpicGapFills) {
-        const childMonthlyInternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-        const childMonthlyExternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-        const childMonthlyIntH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-        const childMonthlyExtH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-        for (const c of children) {
-          for (const k of Object.keys(c.values.internal)) childMonthlyInternal[k] += c.values.internal[k];
-          for (const k of Object.keys(c.values.external)) childMonthlyExternal[k] += c.values.external[k];
-          for (const k of Object.keys(c.hours.internal)) childMonthlyIntH[k] += c.hours.internal[k];
-          for (const k of Object.keys(c.hours.external)) childMonthlyExtH[k] += c.hours.external[k];
+        if (epic) {
+          epic.valuesInternal = childInt;
+          epic.valuesExternal = childExt;
+          epic.hoursInternal = childIH;
+          epic.hoursExternal = childEH;
+          epic.internalTotal = sum(Object.values(childInt));
+          epic.externalTotal = sum(Object.values(childExt));
+          epic.internalHoursTotal = sum(Object.values(childIH));
+          epic.externalHoursTotal = sum(Object.values(childEH));
         }
-        const finalInternalTotal = +sum(Object.values(childMonthlyInternal)).toFixed(2);
-        const finalExternalTotal = +sum(Object.values(childMonthlyExternal)).toFixed(2);
-        const finalTotal = +(finalInternalTotal + finalExternalTotal).toFixed(2);
-        const finalIntHTotal = +sum(Object.values(childMonthlyIntH)).toFixed(2);
-        const finalExtHTotal = +sum(Object.values(childMonthlyExtH)).toFixed(2);
-        const finalTotalHours = +(finalIntHTotal + finalExtHTotal).toFixed(2);
-        return { ...fObj, values: { internal: childMonthlyInternal, external: childMonthlyExternal }, hours: { internal: childMonthlyIntH, external: childMonthlyExtH }, internalTotal: finalInternalTotal, externalTotal: finalExternalTotal, total: finalTotal, internalHoursTotal: finalIntHTotal, externalHoursTotal: finalExtHTotal, totalHours: finalTotalHours };
+        continue;
       }
 
-      // useEpicGapFills === true
-      const childMonthlyInternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      const childMonthlyExternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      for (const c of children) {
-        for (const k of Object.keys(c.values.internal)) childMonthlyInternal[k] += c.values.internal[k];
-        for (const k of Object.keys(c.values.external)) childMonthlyExternal[k] += c.values.external[k];
+      if (!epic) continue;
+      const monthsWithChild = monthKeys.filter(k => (childInt[k] + childExt[k]) > 0);
+      const avgChildInt = monthsWithChild.length ? sum(monthsWithChild.map(k => childInt[k])) / monthsWithChild.length : 0;
+      const avgChildExt = monthsWithChild.length ? sum(monthsWithChild.map(k => childExt[k])) / monthsWithChild.length : 0;
+
+      const newInt = zerosFor(monthKeys);
+      const newExt = zerosFor(monthKeys);
+      const newIH = zerosFor(monthKeys);
+      const newEH = zerosFor(monthKeys);
+      for (const k of monthKeys) {
+        if ((childInt[k] || 0) + (childExt[k] || 0) > 0) {
+          newInt[k] = 0; newExt[k] = 0; newIH[k] = 0; newEH[k] = 0;
+        } else {
+          newInt[k] = epic.valuesInternal[k] || avgChildInt || 0;
+          newExt[k] = epic.valuesExternal[k] || avgChildExt || 0;
+          newIH[k] = epic.hoursInternal[k] || 0;
+          newEH[k] = epic.hoursExternal[k] || 0;
+        }
       }
+      epic.valuesInternal = newInt;
+      epic.valuesExternal = newExt;
+      epic.hoursInternal = newIH;
+      epic.hoursExternal = newEH;
+      epic.internalTotal = sum(Object.values(newInt));
+      epic.externalTotal = sum(Object.values(newExt));
+      epic.internalHoursTotal = sum(Object.values(newIH));
+      epic.externalHoursTotal = sum(Object.values(newEH));
+    }
 
-      const epicMonths = fObj.monthsCovered;
-      let childInternalSum = 0, childExternalSum = 0, monthsWithChildren = 0;
-      for (const k of epicMonths) {
-        const ci = childMonthlyInternal[k];
-        const ce = childMonthlyExternal[k];
-        if (ci + ce > 0) { childInternalSum += ci; childExternalSum += ce; monthsWithChildren++; }
-      }
-      const avgChildInternal = monthsWithChildren ? (childInternalSum / monthsWithChildren) : 0;
-      const avgChildExternal = monthsWithChildren ? (childExternalSum / monthsWithChildren) : 0;
+    const normalizedFeatures = feats.map(f => {
+      const lastMk = f.monthsCovered.length ? f.monthsCovered[f.monthsCovered.length - 1] : monthKeys[monthKeys.length - 1];
+      const roundMap = (src, total) => {
+        const out = {};
+        for (const k of monthKeys) out[k] = +((src[k] || 0).toFixed(2));
+        const diff = +(total - sum(Object.values(out))).toFixed(2);
+        if (Math.abs(diff) > 0.001 && lastMk) out[lastMk] = +((out[lastMk] || 0) + diff).toFixed(2);
+        return out;
+      };
 
-      const epicInternalValues = { ...fObj.values.internal };
-      const epicExternalValues = { ...fObj.values.external };
+      const internal = roundMap(f.valuesInternal || {}, f.internalTotal || 0);
+      const external = roundMap(f.valuesExternal || {}, f.externalTotal || 0);
+      const hoursI = roundMap(f.hoursInternal || {}, f.internalHoursTotal || 0);
+      const hoursE = roundMap(f.hoursExternal || {}, f.externalHoursTotal || 0);
 
-      const newInternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      const newExternal = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      for (const k of epicMonths) {
-        const childSum = (childMonthlyInternal[k] || 0) + (childMonthlyExternal[k] || 0);
-        if (childSum > 0) { newInternal[k] = 0; newExternal[k] = 0; }
-        else { newInternal[k] = +(epicInternalValues[k] || avgChildInternal); newExternal[k] = +(epicExternalValues[k] || avgChildExternal); }
-      }
+      const total = +(sum(Object.values(internal)) + sum(Object.values(external))).toFixed(2);
+      const totalHours = +(sum(Object.values(hoursI)) + sum(Object.values(hoursE))).toFixed(2);
 
-      const finalInternalTotal = +sum(Object.values(newInternal)).toFixed(2);
-      const finalExternalTotal = +sum(Object.values(newExternal)).toFixed(2);
-      const finalTotal = +(finalInternalTotal + finalExternalTotal).toFixed(2);
-
-      const childMonthlyIntH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      const childMonthlyExtH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      for (const c of children) { for (const k of Object.keys(c.hours.internal)) childMonthlyIntH[k] += c.hours.internal[k]; for (const k of Object.keys(c.hours.external)) childMonthlyExtH[k] += c.hours.external[k]; }
-      let childIntHSum = 0, childExtHSum = 0, monthsWithChildH = 0;
-      for (const k of epicMonths) { const ch = (childMonthlyIntH[k] || 0) + (childMonthlyExtH[k] || 0); if (ch > 0) { childIntHSum += (childMonthlyIntH[k] || 0); childExtHSum += (childMonthlyExtH[k] || 0); monthsWithChildH++; } }
-      const avgChildIntH = monthsWithChildH ? (childIntHSum / monthsWithChildH) : 0;
-      const avgChildExtH = monthsWithChildH ? (childExtHSum / monthsWithChildH) : 0;
-      const newIntH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      const newExtH = Object.fromEntries(monthKeys.map(k => [k, 0]));
-      for (const k of epicMonths) { const ch = (childMonthlyIntH[k] || 0) + (childMonthlyExtH[k] || 0); if (ch > 0) { newIntH[k] = 0; newExtH[k] = 0; } else { newIntH[k] = +avgChildIntH; newExtH[k] = +avgChildExtH; } }
-      const finalIntHTotal = +sum(Object.values(newIntH)).toFixed(2);
-      const finalExtHTotal = +sum(Object.values(newExtH)).toFixed(2);
-      const finalTotalHours = +(finalIntHTotal + finalExtHTotal).toFixed(2);
-
-      return { ...fObj, values: { internal: newInternal, external: newExternal }, hours: { internal: newIntH, external: newExtH }, internalTotal: finalInternalTotal, externalTotal: finalExternalTotal, total: finalTotal, internalHoursTotal: finalIntHTotal, externalHoursTotal: finalExtHTotal, totalHours: finalTotalHours };
+      return {
+        id: f.id,
+        name: f.title,
+        state: '',
+        values: { internal, external },
+        hours: { internal: hoursI, external: hoursE },
+        internalTotal: +(sum(Object.values(internal)).toFixed(2)),
+        externalTotal: +(sum(Object.values(external)).toFixed(2)),
+        total,
+        internalHoursTotal: +(sum(Object.values(hoursI)).toFixed(2)),
+        externalHoursTotal: +(sum(Object.values(hoursE)).toFixed(2)),
+        totalHours,
+        start: f.start,
+        end: f.end,
+        monthsCovered: f.monthsCovered
+      };
     });
 
-    const totals = { internal: Object.fromEntries(monthKeys.map(k => [k, 0])), external: Object.fromEntries(monthKeys.map(k => [k, 0])), hours: { internal: Object.fromEntries(monthKeys.map(k => [k, 0])), external: Object.fromEntries(monthKeys.map(k => [k, 0])) } };
-    let projectTotal = 0;
-    let projectTotalHours = 0;
-
-    const allChildIds = new Set();
-    for (const raw of p.features) {
-      if (raw.parentEpic === 0 || raw.parentEpic) allChildIds.add(String(raw.id));
-      const children = childrenFor(raw.id);
-      for (const c of children) allChildIds.add(String(c));
-    }
-
-    for (const f of feats) {
+    const allChildIds = new Set([].concat(...Array.from(childrenMap.values()).map(a => a.map(String))));
+    const totals = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) } };
+    let projectTotal = 0, projectTotalHours = 0;
+    for (const f of normalizedFeatures) {
       if (allChildIds.has(String(f.id))) continue;
-      for (const k of Object.keys(f.values.internal)) totals.internal[k] += f.values.internal[k];
-      for (const k of Object.keys(f.values.external)) totals.external[k] += f.values.external[k];
-      for (const k of Object.keys(f.hours.internal)) totals.hours.internal[k] += f.hours.internal[k];
-      for (const k of Object.keys(f.hours.external)) totals.hours.external[k] += f.hours.external[k];
-      projectTotal += f.total;
-      projectTotalHours += f.totalHours;
+      for (const k of monthKeys) { totals.internal[k] += f.values.internal[k] || 0; totals.external[k] += f.values.external[k] || 0; totals.hours.internal[k] += f.hours.internal[k] || 0; totals.hours.external[k] += f.hours.external[k] || 0; }
+      projectTotal += f.total; projectTotalHours += f.totalHours;
     }
 
-    return { id: p.id, name: p.name, features: feats, totals, total: +projectTotal.toFixed(2), totalHours: +projectTotalHours.toFixed(2) };
+    return { id: p.id, name: p.name, features: normalizedFeatures, totals, total: +projectTotal.toFixed(2), totalHours: +projectTotalHours.toFixed(2) };
   });
 
-  const footerHours = { internal: Object.fromEntries(monthKeys.map(k => [k, 0])), external: Object.fromEntries(monthKeys.map(k => [k, 0])) };
+  const footerHours = { internal: zerosFor(months.map(monthKey)), external: zerosFor(months.map(monthKey)) };
   let footerTotalHours = 0;
   for (const p of projectsOut) {
-    for (const k of Object.keys(p.totals.hours.internal)) footerHours.internal[k] += p.totals.hours.internal[k];
-    for (const k of Object.keys(p.totals.hours.external)) footerHours.external[k] += p.totals.hours.external[k];
+    for (const k of Object.keys(p.totals.hours.internal)) footerHours.internal[k] += p.totals.hours.internal[k] || 0;
+    for (const k of Object.keys(p.totals.hours.external)) footerHours.external[k] += p.totals.hours.external[k] || 0;
     footerTotalHours += +p.totalHours;
   }
 
