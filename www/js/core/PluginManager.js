@@ -1,6 +1,17 @@
 import { bus } from './EventBus.js';
 import { PluginEvents } from './EventRegistry.js';
 
+/**
+ * Module: PluginManager
+ * Intent: manage plugin lifecycle in the application.
+ * Responsibilities:
+ * - register/unregister plugins
+ * - manage activation order (respecting dependencies)
+ * - provide introspection (list/has/get)
+ * Data schemes:
+ * - `plugins`: Map<id, Plugin>
+ * - `loadOrder`: Array<string>
+ */
 export class PluginManager {
   constructor() {
     this.plugins = new Map();
@@ -8,26 +19,29 @@ export class PluginManager {
   }
 
   async register(plugin) {
-    if (this.plugins.has(plugin.id)) {
-      throw new Error(`Plugin ${plugin.id} is already registered`);
-    }
-
+    /**
+     * Register a plugin instance.
+     * @param {Plugin} plugin - plugin instance to register
+     * @returns {Promise<void>}
+     * @throws {Error} when plugin already registered or missing dependencies
+     */
+    if (this.plugins.has(plugin.id)) throw new Error(`Plugin ${plugin.id} is already registered`);
     const missing = this._checkDependencies(plugin);
-    if (missing.length > 0) {
-      throw new Error(`Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`);
-    }
+    if (missing.length) throw new Error(`Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`);
 
     this.plugins.set(plugin.id, plugin);
-
     await plugin.init();
     plugin.initialized = true;
-
     this._addToLoadOrder(plugin);
     bus.emit(PluginEvents.REGISTERED, { plugin: plugin.id });
   }
 
   /**
-   * Unregister a plugin
+   * Unregister a plugin by id.
+   * Purpose: remove plugin from manager after ensuring no other plugins depend on it.
+   * @param {string} pluginId - plugin identifier
+   * @returns {Promise<void>}
+   * @throws {Error} when dependent plugins exist
    */
   async unregister(pluginId) {
     const plugin = this.plugins.get(pluginId);
@@ -42,16 +56,17 @@ export class PluginManager {
     if (plugin.active) {
       await this.deactivate(pluginId);
     }
-
     await plugin.destroy();
     this.plugins.delete(pluginId);
     this.loadOrder = this.loadOrder.filter(id => id !== pluginId);
-
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
   }
   
   /**
-   * Activate a plugin
+   * Activate a plugin and its dependencies.
+   * @param {string} pluginId - plugin identifier to activate
+   * @returns {Promise<void>}
+   * @throws {Error} when plugin is not registered
    */
   async activate(pluginId) {
     const plugin = this.plugins.get(pluginId);
@@ -72,19 +87,19 @@ export class PluginManager {
     // Activate dependencies first
     const deps = plugin.getMetadata().dependencies || [];
     for (const depId of deps) {
-      if (!this.isActive(depId)) {
-        await this.activate(depId);
-      }
+      if (!this.isActive(depId)) await this.activate(depId);
     }
-    
+
     await plugin.activate();
     plugin.active = true;
-    
     bus.emit(PluginEvents.ACTIVATED, { plugin: pluginId });
   }
   
   /**
-   * Deactivate a plugin
+   * Deactivate a plugin and any dependents that require it.
+   * @param {string} pluginId - plugin identifier to deactivate
+   * @returns {Promise<void>}
+   * @throws {Error} when plugin is not registered
    */
   async deactivate(pluginId) {
     const plugin = this.plugins.get(pluginId);
@@ -100,19 +115,18 @@ export class PluginManager {
     // Deactivate dependents first
     const dependents = this._findDependents(pluginId);
     for (const depId of dependents) {
-      if (this.isActive(depId)) {
-        await this.deactivate(depId);
-      }
+      if (this.isActive(depId)) await this.deactivate(depId);
     }
-    
+
     await plugin.deactivate();
     plugin.active = false;
-    
     bus.emit(PluginEvents.DEACTIVATED, { plugin: pluginId });
   }
   
   /**
    * Get a plugin by ID
+   * @param {string} pluginId
+   * @returns {Plugin|undefined}
    */
   get(pluginId) {
     return this.plugins.get(pluginId);
@@ -120,6 +134,8 @@ export class PluginManager {
   
   /**
    * Check if plugin is registered
+   * @param {string} pluginId
+   * @returns {boolean}
    */
   has(pluginId) {
     return this.plugins.has(pluginId);
@@ -127,28 +143,33 @@ export class PluginManager {
   
   /**
    * Check if plugin is active
+   * @param {string} pluginId
+   * @returns {boolean}
    */
   isActive(pluginId) {
     const plugin = this.plugins.get(pluginId);
-    return plugin ? plugin.active : false;
+    return !!(plugin && plugin.active);
   }
   
   /**
    * List all plugins
+   * @returns {Array<object>} array of plugin metadata
    */
   list() {
-    return Array.from(this.plugins.values()).map(p => p.getMetadata());
+    return [...this.plugins.values()].map(p => p.getMetadata());
   }
   
   /**
    * Load plugins from config
+   * @param {{modules: Array<object>}} config
+   * @returns {Promise<void>}
    */
   async loadFromConfig(config) {
     const modules = config.modules || [];
     
     // Sort by dependencies
     const sorted = this._topologicalSort(modules);
-    
+
     for (const moduleConfig of sorted) {
       try {
         // If module is explicitly disabled, skip loading/registering it entirely
@@ -159,9 +180,7 @@ export class PluginManager {
         const module = await import(moduleConfig.path);
         // Expect the module to export a plugin class (constructor) which we instantiate.
         const exported = module[moduleConfig.export];
-        if (typeof exported !== 'function') {
-          throw new Error('Unsupported plugin export type for ' + moduleConfig.id);
-        }
+        if (typeof exported !== 'function') throw new Error('Unsupported plugin export type for ' + moduleConfig.id);
 
         const pluginInstance = new exported(moduleConfig.id, moduleConfig);
         await this.register(pluginInstance);
@@ -179,17 +198,13 @@ export class PluginManager {
   // Private helpers
   
   _checkDependencies(plugin) {
-    const deps = plugin.getMetadata().dependencies || [];
-    return deps.filter(depId => !this.plugins.has(depId));
+    return (plugin.getMetadata().dependencies || []).filter(id => !this.plugins.has(id));
   }
   
   _findDependents(pluginId) {
     const dependents = [];
     for (const plugin of this.plugins.values()) {
-      const deps = plugin.getMetadata().dependencies || [];
-      if (deps.includes(pluginId)) {
-        dependents.push(plugin.id);
-      }
+      if ((plugin.getMetadata().dependencies || []).includes(pluginId)) dependents.push(plugin.id);
     }
     return dependents;
   }
@@ -201,11 +216,8 @@ export class PluginManager {
     let insertIndex = 0;
     for (const depId of deps) {
       const depIndex = this.loadOrder.indexOf(depId);
-      if (depIndex >= insertIndex) {
-        insertIndex = depIndex + 1;
-      }
+      if (depIndex >= insertIndex) insertIndex = depIndex + 1;
     }
-    
     this.loadOrder.splice(insertIndex, 0, plugin.id);
   }
   
