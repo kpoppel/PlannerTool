@@ -133,7 +133,7 @@ class State {
   // then fallback to selecting a color from PALETTE deterministically.
   getFeatureStateColor(stateName) {
     if (!stateName) return PALETTE[0];
-    if (this.defaultStateColorMap && this.defaultStateColorMap[stateName]) return this.defaultStateColorMap[stateName];
+    if (this.defaultStateColorMap[stateName]) return this.defaultStateColorMap[stateName];
     // Deterministic fallback: hash the state name to pick a palette color
     let hash = 0; for (let i = 0; i < stateName.length; i++) { hash = ((hash << 5) - hash) + stateName.charCodeAt(i); hash |= 0; }
     const idx = Math.abs(hash) % PALETTE.length;

@@ -36,7 +36,8 @@ export const featureFlags = {
 // Visible features for components
 // Enable cost teams tab in UI
 export const UIFeatureFlags = {
-  SHOW_COST_TEAMS_TAB: true
+  SHOW_COST_TEAMS_TAB: true,
+  MUTE_ZERO_CELLS: true
 };
 
 /**

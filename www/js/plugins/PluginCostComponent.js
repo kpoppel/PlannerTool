@@ -48,7 +48,10 @@ import { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, bui
  */
 function hexToRgba(hex, alpha = 0.12){
   if(!hex) return `rgba(0,0,0,${alpha})`;
-  const h = hex.replace('#','');
+  // Accept either a hex string or an object with a `background` property
+  let val = hex;
+  if(typeof hex === 'object' && hex !== null){ val = hex.background || hex; }
+  const h = String(val).replace('#','');
   const r = parseInt(h.substring(0,2),16);
   const g = parseInt(h.substring(2,4),16);
   const b = parseInt(h.substring(4,6),16);
@@ -129,7 +132,17 @@ export class PluginCostComponent extends LitElement {
    * @param {number|string} v
    * @returns {string}
    */
-  fmtCell(v){ return (typeof v === 'number' ? v : Number(v || 0)).toFixed(2); }
+  //fmtCell(v){ return (typeof v === 'number' ? v : Number(v || 0)).toFixed(2); }
+  fmtCell(value, decimals = 1) {
+    // If the feature flag is on, render exact zeros as empty to de-emphasize them
+    if (UIFeatureFlags.MUTE_ZERO_CELLS && (value === 0)) {
+      return '';
+    }
+    if (value == null || value === '') return '';
+    const num = Number(value);
+    if (Number.isNaN(num)) return String(value);
+    return num.toFixed(decimals);
+  }
 
   /**
    * Compute inline style for the left (frozen) project cell. Uses project
@@ -148,7 +161,11 @@ export class PluginCostComponent extends LitElement {
    * @param {string} stateColor
    * @returns {string}
    */
-  featureBgStyle(stateColor){ return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(stateColor,0.14)} 0px, ${hexToRgba(stateColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${stateColor}; cursor:pointer;`; }
+  featureBgStyle(stateColor){
+    // Normalize input: accept either a hex string or an object { background, text }
+    const c = (stateColor && typeof stateColor === 'object') ? (stateColor.background || '') : (stateColor || '');
+    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(c,0.14)} 0px, ${hexToRgba(c,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${c}; cursor:pointer;`;
+  }
 
   open(){
     const main = document.querySelector('main');
@@ -311,11 +328,15 @@ export class PluginCostComponent extends LitElement {
           </div>
         </div>
         <div class="legend">
-          ${(state.availableFeatureStates || []).map(s=>{
-            const c = state.getFeatureStateColor(s).background;
-            const text = state.getFeatureStateColors()[s]?.text;
-            return html`<div class="legend-item"><span class="swatch" style="background:${c}; border:1px solid #eee"></span><span style="color:${text}">${s}</span></div>`;
-          })}
+          ${(() => {
+            const stateColors = state.getFeatureStateColors();
+            const keys = Object.keys(stateColors);
+            return keys.map(s => {
+              const c = stateColors[s].background;
+              const text = stateColors[s].text;
+              return html`<div class="legend-item"><span class="swatch" style="background:${c}; border:1px solid #eee"></span><span style="color:${text}">${s}</span></div>`;
+            });
+          })()}
         </div>
         ${UIFeatureFlags.SHOW_COST_TEAMS_TAB && this.activeTab === 'teams' ? html`
           <div class="table-wrapper">
@@ -375,12 +396,16 @@ export class PluginCostComponent extends LitElement {
                         seenEpics.add(f.id);
                         const epicChildren = epicMap.get(f.id) || [];
                         const epicBase = f;
-                        const epicStateColor = state.getFeatureStateColor(epicBase.state);
+                        const epicEff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(epicBase.id) : null;
+                        const epicStateName = (epicEff && epicEff.state) ? epicEff.state : (epicBase.state || '');
+                        const epicStateColor = state.getFeatureStateColor(epicStateName);
                         rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="${this.featureBgStyle(epicStateColor)}">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0) : (epicBase.hours?.internal?.[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0) : (epicBase.hours?.external?.[k]||0))}</td>`) }<td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? (epicBase.total||0) : (epicBase.totalHours||0))}</td><td></td></tr>`);
                         if(this.expandedEpics.has(f.id)){
                           for(const child of epicChildren){
                             const fb = child.base;
-                            const base = state.getFeatureStateColor(fb.state);
+                            const effState = (child.eff && child.eff.state) ? child.eff.state : (state.getEffectiveFeatureById ? (state.getEffectiveFeatureById(fb.id) || {}).state : null);
+                            const stateName = effState || fb.state || '';
+                            const base = state.getFeatureStateColor(stateName);
                             const bg = hexToRgba(base, 0.10);
                             rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                           }
@@ -392,7 +417,9 @@ export class PluginCostComponent extends LitElement {
                       // if this standalone is actually an epic (has children) it was already rendered
                       if(epicMap.has(s.base.id)) continue;
                       const fb = s.base;
-                      const base = state.getFeatureStateColor(fb.state);
+                      const effState = (s.eff && s.eff.state) ? s.eff.state : (state.getEffectiveFeatureById ? (state.getEffectiveFeatureById(fb.id) || {}).state : null);
+                      const stateName = effState || fb.state || '';
+                      const base = state.getFeatureStateColor(stateName);
                       const bg = hexToRgba(base, 0.10);
                       rendered.push(html`<tr class="feature-row"><td class="left" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                     }
