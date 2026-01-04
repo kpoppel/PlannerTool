@@ -27,6 +27,8 @@ export class QueuedFeatureService {
 
   setChildrenByEpic(childrenMap) { this._childrenByEpic = childrenMap; }
 
+  setProjectTeamService(projectTeamService) { this._projectTeamService = projectTeamService; }
+
   getEffectiveFeatures() {
     // fallback simple implementation: mirror baseline + overrides
     let baselineFeatures = [];
@@ -39,6 +41,12 @@ export class QueuedFeatureService {
       const derived = this._recomputeDerived(base, ov);
       effective.changedFields = derived.changedFields;
       effective.dirty = derived.dirty;
+      
+      // Always recalculate orgLoad based on effective capacity to ensure it's current
+      if (this._projectTeamService && effective.capacity) {
+        effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
+      }
+      
       return effective;
     });
   }
@@ -48,6 +56,7 @@ export class QueuedFeatureService {
     if (override) {
       if (override.start && override.start !== featureBase.start) changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
+      if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -64,6 +73,15 @@ export class QueuedFeatureService {
     if(field === 'start' || field === 'end'){
       const ov = activeScenario.overrides[id] || { start: base.start, end: base.end };
       ov[field] = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+      try{ bus.emit(FeatureEvents.UPDATED, { ids: [id] }); }catch(e){ bus.emit(FeatureEvents.UPDATED); }
+      if(capacityCallback){ try{ setTimeout(()=>{ try{ capacityCallback(); }catch(e){} },0);}catch(e){ try{ capacityCallback(); }catch(e){} } }
+      return true;
+    }
+    if(field === 'capacity'){
+      const ov = activeScenario.overrides[id] || {};
+      ov.capacity = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
       try{ bus.emit(FeatureEvents.UPDATED, { ids: [id] }); }catch(e){ bus.emit(FeatureEvents.UPDATED); }

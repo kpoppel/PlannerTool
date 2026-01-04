@@ -259,6 +259,39 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# @app.put('/api/tasks/{work_item_id}/capacity')
+# async def api_update_capacity(request: Request, work_item_id: int, capacity: list[dict] = Body(default=[])):
+#     """Update capacity allocation for a work item."""
+#     sid = get_session_id(request)
+#     logger.debug("Updating capacity for work item %d, session %s", work_item_id, sid)
+    
+#     # Ensure session has user PAT
+#     ctx = SESSIONS.get(sid) or {}
+#     email = ctx.get('email')
+#     pat = ctx.get('pat')
+#     if email and not pat:
+#         try:
+#             loaded = config_manager.load(email)
+#             pat = loaded.get('pat')
+#             ctx['pat'] = pat
+#             SESSIONS[sid] = ctx
+#         except Exception as e:
+#             logger.exception('Failed to load user config for %s: %s', email, e)
+    
+#     try:
+#         from planner_lib.projects import update_work_item_capacity
+#         result = update_work_item_capacity(work_item_id, capacity or [], pat=pat)
+#         if not result.get('ok', False):
+#             error_msg = result.get('error', 'Unknown error')
+#             logger.error("Failed to update capacity for work item %d: %s", work_item_id, error_msg)
+#             raise HTTPException(status_code=500, detail=error_msg)
+#         return result
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.exception("Error updating capacity for work item %d: %s", work_item_id, e)
+#         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get('/api/teams')
 async def api_teams(request: Request):
     # Require a valid session

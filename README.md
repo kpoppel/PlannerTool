@@ -143,12 +143,6 @@ systemctl start plannertool
     another (like "team-"). This is only to display them in different places. All other handling is the same.
     However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
     A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
-- feat:Add filter to sort away tasks without start/target dates.
-  Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
-  TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.
-- feat: Make a modal to configure team capacity spend.
-  Iteration 1: Just output the text to put in Azure Devops manually
-  Iteration 2: Make the change when syncing to Azure
 - feature: Cost estimation
   Using the capacity estimation calculate this:
   1. (/) Cost per feature/Epic
@@ -159,7 +153,6 @@ systemctl start plannertool
 Next:
 
 Later:
-- Feature: Make it possible to edit team load in the UI
 - Feature: Make it possible to edit description in the UI
 - Feature (convenience): Make a 'shrink-wrap' feature to pull in an Epic to fir the content (change start and end date)
 - Feature (convenience): Make it possible to drag deft side of cards too
@@ -169,6 +162,13 @@ Later:
 - Feature (convenience) Export mountain view data to Excel format.
 
 Solved:
+- (/) feat:Add filter to sort away tasks without start/target dates.
+  Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
+  TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.
+- (/) Feature: Make it possible to edit team load in the UI
+  - feat: Make a modal to configure team capacity spend.
+    Iteration 1: Just output the text to put in Azure Devops manually
+    Iteration 2: Make the change when syncing to Azure
 - (/) feature: Cost estimation - first iteration
       Cost per Epic/Feature is estimated on tasks where capacity estimation is present.
       The estimation is opinionated (via feature flag) so that Epic estimates are ignored

@@ -82,6 +82,18 @@ class DataService {
      * ]);
      */
     async updateTasksWithCapacity(updates) { return this.providers['rest'].updateTasksWithCapacity(updates); }
+    /**
+     * Update capacity for a specific work item.
+     * @param {string} workItemId - The work item ID
+     * @param {Array<{team:string, capacity:number}>} capacity - Array of team allocations
+     * @returns {Promise<{ok:boolean, work_item_id:number, error?:string}>}
+     * @example
+     * await dataService.updateWorkItemCapacity('12345', [
+     *   { team: 'team-frontend', capacity: 80 },
+     *   { team: 'team-backend', capacity: 20 }
+     * ]);
+     */
+    async updateWorkItemCapacity(workItemId, capacity) { return this.providers['rest'].updateWorkItemCapacity(workItemId, capacity); }
     // --- Scenario Management ---
     async publishBaseline(selectedOverrides) { return this.providers['rest'].publishBaseline(selectedOverrides); }
     async listScenarios() { return this.providers['rest'].listScenarios(); }

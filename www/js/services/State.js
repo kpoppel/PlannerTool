@@ -284,6 +284,7 @@ class State {
     if(override){
       if(override.start && override.start !== featureBase.start) changedFields.push('start');
       if(override.end && override.end !== featureBase.end) changedFields.push('end');
+      if(override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -300,8 +301,12 @@ class State {
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
+        teamDailyCapacityMap: this.teamDailyCapacityMap,
+        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
         projectDailyCapacity: this.projectDailyCapacity, 
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity 
+        projectDailyCapacityMap: this.projectDailyCapacityMap,
+        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg
       });
     };
     
@@ -319,8 +324,12 @@ class State {
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
+        teamDailyCapacityMap: this.teamDailyCapacityMap,
+        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
         projectDailyCapacity: this.projectDailyCapacity, 
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity 
+        projectDailyCapacityMap: this.projectDailyCapacityMap,
+        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg
       });
     };
     
@@ -338,8 +347,12 @@ class State {
       bus.emit(CapacityEvents.UPDATED, { 
         dates: this.capacityDates, 
         teamDailyCapacity: this.teamDailyCapacity, 
+        teamDailyCapacityMap: this.teamDailyCapacityMap,
+        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
         projectDailyCapacity: this.projectDailyCapacity, 
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity 
+        projectDailyCapacityMap: this.projectDailyCapacityMap,
+        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg
       });
     };
     
@@ -449,6 +462,7 @@ class State {
       // Provide fallback to baselineFeatures if BaselineStore returns empty
       this._featureService._getBaselineFallback = () => this.baselineFeatures;
       this._featureService.setChildrenByEpic(this.childrenByEpic);
+      this._featureService.setProjectTeamService(this._projectTeamService);
     }
     return this._featureService;
   }
