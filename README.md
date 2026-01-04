@@ -146,20 +146,16 @@ systemctl start plannertool
 - feat:Add filter to sort away tasks without start/target dates.
   Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
   TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.
-- feat: Improve filter for task state to be additive not exclusive
 - feat: Make a modal to configure team capacity spend.
   Iteration 1: Just output the text to put in Azure Devops manually
   Iteration 2: Make the change when syncing to Azure
 - feature: Cost estimation
-  Based on the calendar people ledger we know the size of our teams and how many externals each team has.
-  Need to enrich the externals with their hourly cost
-  Need to enrich the data with worked hours: permanent: 116 h/month (could be different per site), externals 160h/month
+
   Using the capacity estimation calculate this:
-  1. Cost per feature/Epic
+  1. (/) Cost per feature/Epic
   2. Sum of cost per project (unfinished work)
   3. Sum of cost this fiscal year (configurable WSA 1/10-31/9)
   4. Sum of cost all time
-  First iteration: Use the team yaml file to avoid extra data orouces. Use serverside configuration in a separate configuration file for working 
 
 Next:
 
@@ -174,6 +170,15 @@ Later:
 - Feature (convenience) Export mountain view data to Excel format.
 
 Solved:
+- (/) feature: Cost estimation - first iteration
+      Cost per Epic/Feature is estimated on tasks where capacity estimation is present.
+      The estimation is opinionated (via feature flag) so that Epic estimates are ignored
+      if it has children assuming a breakdown is more precise even if there are gaps in date spans.
+      Based on the calendar people ledger we know the size of our teams and how many externals each team has.
+      Need to enrich the externals with their hourly cost
+      Need to enrich the data with worked hours: permanent: 116 h/month (could be different per site), externals 160h/month      
+      First iteration: Use the team yaml file to avoid extra data sources. Use serverside configuration in a separate configuration file for working 
+- (/) feat: Improve filter for task state to be additive not exclusive
 - (/) Feature: Make the sidebar more nice to look at.
 - (/) Feature: Page with mountain view large on it's own page with labels.
 - (/) Feature count: 3 digits
