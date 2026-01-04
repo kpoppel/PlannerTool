@@ -24,7 +24,7 @@ describe('DependencyRenderer Consolidated Tests', () => {
     a.style.position = 'absolute'; a.style.left='10px'; a.style.top='20px'; a.style.width='100px'; a.style.height='40px';
     b.style.position = 'absolute'; b.style.left='200px'; b.style.top='20px'; b.style.width='100px'; b.style.height='40px';
     board.appendChild(a); board.appendChild(b);
-    state.showDependencies = true; state.condensedCards = false; state.getEffectiveFeatures = () => [ { id: 'A', relations: ['B'] }, { id: 'B', relations: [] } ];
+    state._viewService.setShowDependencies(true); state._viewService.setCondensedCards(false); state.getEffectiveFeatures = () => [ { id: 'A', relations: ['B'] }, { id: 'B', relations: [] } ];
     initDependencyRenderer();
     bus.emit(FeatureEvents.UPDATED);
     await new Promise(r => setTimeout(r, 300));
@@ -38,7 +38,7 @@ describe('DependencyRenderer Consolidated Tests', () => {
     state.baselineFeatures = [ { id: 1001 }, { id: 1002 } ];
     state.getEffectiveFeatures = () => [ { id: 1001, relations: [1002] }, { id: 1002, relations: [] } ];
     state.baselineProjects = [];
-    state.showDependencies = true;
+    state._viewService.setShowDependencies(true);
     initDependencyRenderer();
 
     const board = document.createElement('feature-board'); board.id = 'featureBoard'; board.style.width = '800px'; board.style.height = '400px'; document.body.appendChild(board);
@@ -62,7 +62,7 @@ describe('DependencyRenderer Consolidated Tests', () => {
       { id: 2, relations: [{ id:3, type: 'Related' }] },
       { id: 3, relations: [] }
     ];
-    state.showDependencies = true;
+    state._viewService.setShowDependencies(true);
     initDependencyRenderer();
     const board = document.createElement('feature-board'); board.id = 'featureBoard'; board.style.width = '800px'; board.style.height = '400px'; document.body.appendChild(board);
     const a = await fixture(html`<feature-card-lit data-feature-id="1" style="position:absolute;left:20px;top:20px;width:80px;height:40px"></feature-card-lit>`);

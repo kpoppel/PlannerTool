@@ -58,14 +58,24 @@ function renderStateFilter(container){
   // Determine current selection set
   const selSet = state.selectedFeatureStateFilter instanceof Set ? state.selectedFeatureStateFilter : new Set(state.selectedFeatureStateFilter || []);
   // All/None chip: label toggles between 'All' (when some are deselected) and 'None' when all are selected
-  const allSelected = selSet.size === (state.availableFeatureStates || []).length && (state.availableFeatureStates || []).length > 0;
-  const anyDeselected = selSet.size < (state.availableFeatureStates || []).length;
+  const availableStates = state._stateFilterService.availableFeatureStates;
+  const allSelected = selSet.size === availableStates.length && availableStates.length > 0;
+  const anyDeselected = selSet.size < availableStates.length;
   const allLabel = allSelected ? 'None' : 'All';
-  const allChip = makeChip(allLabel, { active: allSelected, onClick: ()=> { state.setAllStatesSelected(!allSelected); }, ariaPressed: allSelected });
+  const allChip = makeChip(allLabel, { 
+    active: allSelected, 
+    onClick: ()=> state._stateFilterService.setAllStatesSelected(!allSelected), 
+    ariaPressed: allSelected 
+  });
   group.appendChild(allChip);
-  (state.availableFeatureStates || []).forEach(s => {
+  availableStates.forEach(s => {
     const active = selSet.has(s);
-    const chip = makeChip(s, { active, onClick: ()=> state.toggleStateSelected(s), ariaPressed: active, color: state.getFeatureStateColor(s) });
+    const chip = makeChip(s, { 
+      active, 
+      onClick: ()=> state._stateFilterService.toggleStateSelected(s), 
+      ariaPressed: active, 
+      color: state._colorService.getFeatureStateColor(s) 
+    });
     group.appendChild(chip);
   });
   wrapper.appendChild(title); wrapper.appendChild(group);
@@ -76,28 +86,44 @@ export function initViewOptions(container){
   const root = container || document.getElementById('viewOptionsContainer');
   if(!root) return;
   root.innerHTML = '';
-  // Condensed cards
-  renderToggle(root, 'Condensed', ()=> state.condensedCards, (val)=> state.setCondensedCards(val));
-  // Dependencies
-  renderToggle(root, 'Dependencies', ()=> state.showDependencies, (val)=> state.setShowDependencies(val));
+  // Condensed cards - use ViewService directly
+  renderToggle(root, 'Condensed', 
+    ()=> state._viewService.condensedCards, 
+    (val)=> state._viewService.setCondensedCards(val)
+  );
+  // Dependencies - use ViewService directly
+  renderToggle(root, 'Dependencies', 
+    ()=> state._viewService.showDependencies, 
+    (val)=> state._viewService.setShowDependencies(val)
+  );
   // Capacity selector + Open Graph action (moved here)
   const capWrapper = document.createElement('div');
   const capTitle = document.createElement('div'); capTitle.className = 'group-label'; capTitle.textContent = 'Capacity:';
   const capGroup = document.createElement('div'); capGroup.className = 'chip-group'; capGroup.setAttribute('role','radiogroup');
-  const teamChip = makeChip('Team', { active: state.capacityViewMode==='team', onClick: ()=> state.setcapacityViewMode('team'), role:'radio', ariaChecked: state.capacityViewMode==='team' });
-  const projectChip = makeChip('Project', { active: state.capacityViewMode==='project', onClick: ()=> state.setcapacityViewMode('project'), role:'radio', ariaChecked: state.capacityViewMode==='project' });
+  const teamChip = makeChip('Team', { 
+    active: state._viewService.capacityViewMode==='team', 
+    onClick: ()=> state._viewService.setCapacityViewMode('team'), 
+    role:'radio', 
+    ariaChecked: state._viewService.capacityViewMode==='team' 
+  });
+  const projectChip = makeChip('Project', { 
+    active: state._viewService.capacityViewMode==='project', 
+    onClick: ()=> state._viewService.setCapacityViewMode('project'), 
+    role:'radio', 
+    ariaChecked: state._viewService.capacityViewMode==='project' 
+  });
   capGroup.appendChild(teamChip); capGroup.appendChild(projectChip);
   capWrapper.appendChild(capTitle); capWrapper.appendChild(capGroup);
   root.appendChild(capWrapper);
-  // Sort mode
+  // Sort mode - use ViewService directly
   renderRadioGroup(root, 'Sort', [
-    { label:'Rank', active: state.featureSortMode==='rank', onClick: ()=> state.setFeatureSortMode('rank') },
-    { label:'Date', active: state.featureSortMode==='date', onClick: ()=> state.setFeatureSortMode('date') },
+    { label:'Rank', active: state._viewService.featureSortMode==='rank', onClick: ()=> state._viewService.setFeatureSortMode('rank') },
+    { label:'Date', active: state._viewService.featureSortMode==='date', onClick: ()=> state._viewService.setFeatureSortMode('date') },
   ]);
-  // Task types
+  // Task types - use ViewService directly
   renderMultiSelect(root, 'Task Types', [
-    { label:'Epics', active: state.showEpics, onClick: ()=> state.setShowEpics(!state.showEpics) },
-    { label:'Features', active: state.showFeatures, onClick: ()=> state.setShowFeatures(!state.showFeatures) },
+    { label:'Epics', active: state._viewService.showEpics, onClick: ()=> state._viewService.setShowEpics(!state._viewService.showEpics) },
+    { label:'Features', active: state._viewService.showFeatures, onClick: ()=> state._viewService.setShowFeatures(!state._viewService.showFeatures) },
   ]);
   // State filter
   renderStateFilter(root);

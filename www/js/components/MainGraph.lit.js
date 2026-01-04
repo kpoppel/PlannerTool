@@ -96,7 +96,7 @@ export class MainGraphLit extends LitElement {
         projectDailyCapacity: state.projectDailyCapacity || [],
         projectDailyCapacityMap: state.projectDailyCapacityMap || null,
         totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg || [],
-        capacityViewMode: state.capacityViewMode || 'team',
+        capacityViewMode: state._viewService.capacityViewMode || 'team',
         selectedTeamIds: (state.teams || []).filter(t=>t.selected).map(t=>t.id),
         selectedProjectIds: (state.projects || []).filter(p=>p.selected).map(p=>p.id)
       };

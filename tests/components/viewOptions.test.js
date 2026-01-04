@@ -10,14 +10,14 @@ describe('viewOptions', () => {
     container.id = 'viewOptionsContainer';
     document.body.appendChild(container);
     // predictable state
-    state.condensedCards = false;
-    state.showDependencies = false;
-    state.capacityViewMode = 'team';
-    state.featureSortMode = 'rank';
-    state.showEpics = true;
-    state.showFeatures = true;
-    state.availableFeatureStates = ['New','In Progress','Done'];
-    state.selectedFeatureStateFilter = new Set(['New','In Progress','Done']);
+    state._viewService.setCondensedCards(false);
+    state._viewService.setShowDependencies(false);
+    state._viewService.setCapacityViewMode('team');
+    state._viewService.setFeatureSortMode('rank');
+    state._viewService.setShowEpics(true);
+    state._viewService.setShowFeatures(true);
+    state._stateFilterService.setAvailableStates(['New','In Progress','Done']);
+    state._stateFilterService._selectedStates = ['New','In Progress','Done'];
     state.getFeatureStateColor = (s) => ({ background: s==='Done' ? '#0f0' : '#ccc' });
   });
 
@@ -48,7 +48,7 @@ describe('viewOptions', () => {
   it('responds to external StateFilterEvents.CHANGED by reinit', () => {
     initViewOptions(container);
     // mutate selected set and emit change
-    state.selectedFeatureStateFilter = new Set(['New']);
+    state._stateFilterService._selectedStates = ['New'];
     bus.emit('StateFilter:changed');
     const chips = container.querySelectorAll('.chip');
     expect(chips.length).to.be.greaterThan(0);

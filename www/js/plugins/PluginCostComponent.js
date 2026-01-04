@@ -39,6 +39,8 @@ import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 import { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, buildMonths, buildProjects } from './PluginCostCalculator.js';
+import '../components/SpinnerModal.js';
+import '../components/SpinnerModal.js';
 /**
  * Convert a hex color (#rrggbb) to an rgba string with supplied alpha.
  * Defensive: returns a sensible fallback when `hex` is falsy.
@@ -152,7 +154,9 @@ export class PluginCostComponent extends LitElement {
    */
   projectLeftStyle(pid){
     const color = (state.projects || []).find(sp=>String(sp.id)===String(pid))?.color || '#ddd';
-    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(state.getProjectColor(pid),0.14)} 0px, ${hexToRgba(state.getProjectColor(pid),0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${color};`;
+    // Use ColorService directly
+    const projectColor = state._colorService.getProjectColor(pid, state.projects, state.baselineProjects);
+    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(projectColor,0.14)} 0px, ${hexToRgba(projectColor,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${color};`;
   }
 
   /**
@@ -190,15 +194,26 @@ export class PluginCostComponent extends LitElement {
   }
 
   async loadData(){
-    // Load cost for the currently active scenario if available, otherwise baseline
-    const activeId = (state && state.activeScenarioId) ? state.activeScenarioId : 'baseline';
-    await this.loadCostForScenario(activeId || 'baseline');
-    // If teams tab is enabled, preload teams data
+    // Show spinner using the app-level spinner modal
+    const spinner = document.getElementById('appSpinner');
+    if(spinner){
+      spinner.message = 'Loading cost data...';
+      spinner.open = true;
+    }
     try{
-      if(UIFeatureFlags.SHOW_COST_TEAMS_TAB){
-        this.teamsData = await dataService.getCostTeams();
-      }
-    }catch(e){ console.error('Failed to load cost teams', e); }
+      // Load cost for the currently active scenario if available, otherwise baseline
+      const activeId = (state && state.activeScenarioId) ? state.activeScenarioId : 'baseline';
+      await this.loadCostForScenario(activeId || 'baseline');
+      // If teams tab is enabled, preload teams data
+      try{
+        if(UIFeatureFlags.SHOW_COST_TEAMS_TAB){
+          this.teamsData = await dataService.getCostTeams();
+        }
+      }catch(e){ console.error('Failed to load cost teams', e); }
+    }finally{
+      // Hide spinner
+      if(spinner) spinner.open = false;
+    }
   }
 
   async loadCostForScenario(scenarioId){
@@ -210,6 +225,12 @@ export class PluginCostComponent extends LitElement {
      *
      * @param {string} scenarioId
      */
+    // Show spinner using the app-level spinner modal
+    const spinner = document.getElementById('appSpinner');
+    if(spinner){
+      spinner.message = 'Loading cost data...';
+      spinner.open = true;
+    }
     try{
       // Baseline: GET cached cost
       if(!scenarioId || scenarioId === 'baseline'){
@@ -253,6 +274,10 @@ export class PluginCostComponent extends LitElement {
       this.requestUpdate();
     }catch(e){
       console.error('PluginCost load error', e);
+    }finally{
+      // Hide spinner
+      const spinner = document.getElementById('appSpinner');
+      if(spinner) spinner.open = false;
     }
   }
 
@@ -302,10 +327,11 @@ export class PluginCostComponent extends LitElement {
    */
 
   render(){
-    if(!this.data) return html`<div>Loading cost data...</div>`;
+    if(!this.data) return html`<div></div>`;
     const months = this.months || [];
     const monthKeys = months.map(m=>monthKey(m));
-    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    // Use ColorService directly
+    const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
     // compute footer totals
     const footerInternal = Object.fromEntries(monthKeys.map(k=>[k,0]));
     const footerExternal = Object.fromEntries(monthKeys.map(k=>[k,0]));
@@ -329,7 +355,8 @@ export class PluginCostComponent extends LitElement {
         </div>
         <div class="legend">
           ${(() => {
-            const stateColors = state.getFeatureStateColors();
+            // Use ColorService directly
+            const stateColors = state._colorService.getFeatureStateColors(state.availableFeatureStates);
             const keys = Object.keys(stateColors);
             return keys.map(s => {
               const c = stateColors[s].background;
@@ -398,14 +425,16 @@ export class PluginCostComponent extends LitElement {
                         const epicBase = f;
                         const epicEff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(epicBase.id) : null;
                         const epicStateName = (epicEff && epicEff.state) ? epicEff.state : (epicBase.state || '');
-                        const epicStateColor = state.getFeatureStateColor(epicStateName);
+                        // Use ColorService directly
+                        const epicStateColor = state._colorService.getFeatureStateColor(epicStateName);
                         rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="${this.featureBgStyle(epicStateColor)}">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0) : (epicBase.hours?.internal?.[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0) : (epicBase.hours?.external?.[k]||0))}</td>`) }<td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? (epicBase.total||0) : (epicBase.totalHours||0))}</td><td></td></tr>`);
                         if(this.expandedEpics.has(f.id)){
                           for(const child of epicChildren){
                             const fb = child.base;
                             const effState = (child.eff && child.eff.state) ? child.eff.state : (state.getEffectiveFeatureById ? (state.getEffectiveFeatureById(fb.id) || {}).state : null);
                             const stateName = effState || fb.state || '';
-                            const base = state.getFeatureStateColor(stateName);
+                            // Use ColorService directly
+                            const base = state._colorService.getFeatureStateColor(stateName);
                             const bg = hexToRgba(base, 0.10);
                             rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                           }
@@ -419,7 +448,8 @@ export class PluginCostComponent extends LitElement {
                       const fb = s.base;
                       const effState = (s.eff && s.eff.state) ? s.eff.state : (state.getEffectiveFeatureById ? (state.getEffectiveFeatureById(fb.id) || {}).state : null);
                       const stateName = effState || fb.state || '';
-                      const base = state.getFeatureStateColor(stateName);
+                      // Use ColorService directly
+                      const base = state._colorService.getFeatureStateColor(stateName);
                       const bg = hexToRgba(base, 0.10);
                       rendered.push(html`<tr class="feature-row"><td class="left" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
                     }

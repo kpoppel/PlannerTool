@@ -47,9 +47,8 @@ describe('Coverage helpers', () => {
 
   it('exercise some state helpers', () => {
     // shallow calls that do not hit network
-    state.availableFeatureStates = ['Open','Done'];
-    state.selectedFeatureStateFilter = new Set(['Open']);
-    state.toggleStateSelected('Open');
+    state._stateFilterService.setAvailableStates(['Open','Done']);
+    state._stateFilterService.toggleStateSelected('Open');
     expect(state.selectedFeatureStateFilter instanceof Set).to.equal(true);
     state.setAllStatesSelected(true);
     expect(state.selectedFeatureStateFilter.size).to.be.at.least(1);

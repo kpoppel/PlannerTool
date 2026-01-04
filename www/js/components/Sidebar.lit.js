@@ -214,14 +214,19 @@ export class SidebarLit extends LitElement {
 
   _renderEntityList(type, items, onToggle){
     return html`${items.map(item => {
+      // For teams, only count features with non-zero allocation
       const epicsCount = state.baselineFeatures.filter(f => 
         f.type === 'epic' && (
-          type === 'project' ? f.project === item.id : f.capacity.some(tl => tl.team === item.id)
+          type === 'project' 
+            ? f.project === item.id 
+            : (f.capacity && f.capacity.some(tl => tl.team === item.id && tl.capacity > 0))
         )
       ).length;
       const featuresCount = state.baselineFeatures.filter(f => 
         f.type === 'feature' && (
-          type === 'project' ? f.project === item.id : f.capacity.some(tl => tl.team === item.id)
+          type === 'project' 
+            ? f.project === item.id 
+            : (f.capacity && f.capacity.some(tl => tl.team === item.id && tl.capacity > 0))
         )
       ).length;
       
@@ -242,7 +247,6 @@ export class SidebarLit extends LitElement {
               <span class="chip-badge">${epicsCount}</span>
               <span class="chip-badge">${featuresCount}</span>
             </div>
-            <input type="checkbox" style="display:none;" data-${type}="${item.id}" ?checked=${item.selected} />
           </div>
         </li>`;
     })}`;
@@ -270,7 +274,6 @@ export class SidebarLit extends LitElement {
         <span class="scenario-controls">
           <button type="button" class="scenario-btn" title="Scenario actions" @click=${(e)=>this._onScenarioMenuClick(e, s)}>${'⋯'}</button>
         </span>
-        <input type="checkbox" style="display:none;" data-scenario="${s.id}" ?checked=${s.id===state.activeScenarioId} />
       </li>
     `)}`;
   }

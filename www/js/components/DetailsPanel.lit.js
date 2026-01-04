@@ -119,7 +119,8 @@ export class DetailsPanelLit extends LitElement {
     const feature = this.feature;
     const statusClass = feature.state==='In Progress'? 'status-inprogress' : feature.state==='Done'? 'status-done' : 'status-new';
     // Build a state color chip using state service helper
-    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    // Use ColorService directly
+    const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
     const stateColor = (feature && feature.state && stateColors[feature.state]) ? stateColors[feature.state] : null;
     const orgBox = html`<span class="team-load-box" style="background:#23344d" title="Org Load">Org: ${feature.orgLoad||'0%'}</span>`;
     const teamBoxes = (feature.capacity||[]).map(tl => {

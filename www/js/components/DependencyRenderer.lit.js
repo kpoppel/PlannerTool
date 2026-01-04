@@ -101,7 +101,7 @@ class DependencyRenderer extends LitElement {
     const scrollLeft = board.scrollLeft || 0;
     const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
     const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
-    const laneHeight = (state && state.condensedCards) ? 40 : 100;
+    const laneHeight = (state && state._viewService.condensedCards) ? 40 : 100;
 
     const computeRect = (el) => {
       try {
@@ -304,7 +304,7 @@ export async function initDependencyRenderer() {
   }
 
   async function render() {
-    if (!(state && state.showDependencies)) {
+    if (!(state && state._viewService.showDependencies)) {
       const lits = Array.from(document.querySelectorAll('dependency-renderer'));
       const boards = Array.from(document.querySelectorAll('feature-board'));
 

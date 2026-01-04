@@ -1,28 +1,17 @@
 import { bus } from '../core/EventBus.js';
 import { dataService } from './dataService.js';
-export const PALETTE = [
-  '#3498db','#2980b9','#1abc9c','#16a085',
-  '#27ae60','#2ecc71','#f1c40f','#f39c12',
-  '#e67e22','#d35400','#e74c3c','#c0392b',
-  '#9b59b6','#8e44ad','#34495e','#7f8c8d'
-];
-// Default mapping from feature status/state to color. Exported for reuse.
-export const DEFAULT_STATE_COLOR_MAP = {
-  'New': '#3498db',
-  'Defined': '#2ecc71',
-  'In Progress': '#f1c40f',
-  'Completed': '#9b59b6',
-  'Done': '#9b59b6',
-  'Archived': '#7f8c8d',
-  'Blocked': '#e74c3c',
-  'On Hold': '#e67e22'
-};
 import { featureFlags } from '../config.js';
 import { FilterManager } from './FilterManager.js';
 import { CapacityCalculator } from './CapacityCalculator.js';
 import { BaselineStore } from './BaselineStore.js';
 import { ScenarioManager } from './ScenarioManager.js';
 import { FeatureService } from './FeatureService.js';
+import { ViewService } from './ViewService.js';
+import { ColorService } from './ColorService.js';
+import { ConfigService } from './ConfigService.js';
+import { StateFilterService } from './StateFilterService.js';
+// Re-export color constants for backward compatibility
+export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
   FeatureEvents,
   ScenarioEvents,
@@ -48,23 +37,12 @@ class State {
     this.teams = [];
     //TODO: delete:: Backward compatibility: legacy mutable features array (mirrors baseline; not authoritative)
     //TODO: delete::this.originalFeatureOrder = [];
-    this.timelineScale = 'months';
-    this.showEpics = true;
-    this.showFeatures = true;
-    this.condensedCards = false;
-    this.capacityViewMode = 'team';
-    this.featureSortMode = 'rank';
-    this.showDependencies = false;
+    
     this.scenarios = [];
     this.activeScenarioId = null;
-    this.autosaveTimer = null;
-    this.autosaveIntervalMin = 0;
     
     // FilterManager - lazy init after data loads
     this._filterManager = null;
-
-    // Default state->color mapping (can be overridden by config later)
-    this.defaultStateColorMap = DEFAULT_STATE_COLOR_MAP;
     
     // ScenarioManager - lazy init
     this._scenarioManager = null;
@@ -78,6 +56,19 @@ class State {
     // FeatureService - lazy init after scenario manager
     this._featureService = null;
     
+    // ========== Service Layer ==========
+    // ViewService - manages view state (timeline scale, visibility, modes)
+    this._viewService = new ViewService(bus);
+    
+    // ColorService - manages color mappings for projects, teams, states
+    this._colorService = new ColorService(dataService);
+    
+    // ConfigService - manages configuration and autosave
+    this._configService = new ConfigService(bus, dataService);
+    
+    // StateFilterService - manages feature state filtering
+    this._stateFilterService = new StateFilterService(bus);
+    
     // Capacity metrics
     this.capacityDates = [];
     this.teamDailyCapacity = [];
@@ -90,17 +81,14 @@ class State {
     // Feature lookups
     this.baselineFeatureById = new Map();
     this.childrenByEpic = new Map();
-    // State filters
-    this.availableFeatureStates = [];
-    this.selectedFeatureStateFilter = new Set();
-    // Setup autosave if configured
-    dataService.getLocalPref('autosave.interval').then(initialAutosave => {
-      if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
-    });
-    //if (initialAutosave && initialAutosave > 0) this.setupAutosave(initialAutosave);
-    bus.on(ConfigEvents.AUTOSAVE, ({ autosaveInterval }) => {
-      this.setupAutosave(autosaveInterval);
-    });
+    
+    // ConfigService handles autosave initialization and configuration changes
+    // Register the autosave callback - ConfigService will handle timer management
+    this._configService.setupAutosave(
+      this._configService.autosaveIntervalMin,
+      () => this._performAutosave(),
+      true // silent = true on initial setup to avoid emitting event
+    );
 
     // Load scenarios from backend on startup and keep state in sync
     bus.on(DataEvents.SCENARIOS_CHANGED, async (metas) => {
@@ -130,86 +118,68 @@ class State {
       bus.emit(FeatureEvents.UPDATED);
     });
   }
+  
+  // ========== Backward Compatibility Property Accessors ==========
+  // Delegate to services for backward compatibility with existing code
+  
+  // ViewService properties
+  get timelineScale() { return this._viewService.timelineScale; }
+  get showEpics() { return this._viewService.showEpics; }
+  get showFeatures() { return this._viewService.showFeatures; }
+  get showDependencies() { return this._viewService.showDependencies; }
+  get condensedCards() { return this._viewService.condensedCards; }
+  get capacityViewMode() { return this._viewService.capacityViewMode; }
+  get featureSortMode() { return this._viewService.featureSortMode; }
+  
+  // ConfigService properties
+  get autosaveIntervalMin() { return this._configService.autosaveIntervalMin; }
+  get autosaveTimer() { return this._configService._autosaveTimer; }
+  
+  // ColorService properties (for compatibility)
+  get defaultStateColorMap() { return this._colorService.defaultStateColorMap; }
+  
+  // StateFilterService properties
+  get availableFeatureStates() { return this._stateFilterService.availableFeatureStates; }
+  get selectedFeatureStateFilter() { return this._stateFilterService.selectedFeatureStateFilter; }
+  
+  // ========== Autosave Helper ==========
+  
+  /**
+   * Perform autosave of all unsaved scenarios
+   * @private
+   */
+  _performAutosave() {
+    // Autosave any non-readonly scenarios with unsaved changes
+    for(const s of this.scenarios){
+      if(s.readonly) continue; // Skip readonly scenarios
+      if(this.isScenarioUnsaved(s)) {
+        dataService.saveScenario(s).catch(()=>{});
+      }
+    }
+  }
 
   // Return a hex color for a given state name. Lookup in default map first,
   // then fallback to selecting a color from PALETTE deterministically.
   getFeatureStateColor(stateName) {
-    if (!stateName) return PALETTE[0];
-    if (this.defaultStateColorMap[stateName]) return this.defaultStateColorMap[stateName];
-    // Deterministic fallback: hash the state name to pick a palette color
-    let hash = 0; for (let i = 0; i < stateName.length; i++) { hash = ((hash << 5) - hash) + stateName.charCodeAt(i); hash |= 0; }
-    const idx = Math.abs(hash) % PALETTE.length;
-    return PALETTE[idx];
+    return this._colorService.getFeatureStateColor(stateName);
   }
 
   // Return a hex color for a given project id. If the project exists in the
   // working `this.projects` array and has a `color` property, return it.
   // Otherwise pick a deterministic color from `PALETTE` based on the id.
   getProjectColor(projectId) {
-    if (!projectId) return PALETTE[0];
-    // Try to find project in working copy first
-    const p = (this.projects || []).find(pr => pr.id === projectId);
-    if (p && p.color) return p.color;
-    // If no working copy color, try baseline projects
-    const bp = (this.baselineProjects || []).find(pr => pr.id === projectId);
-    if (bp && bp.color) return bp.color;
-    // Deterministic fallback: hash the id string to pick a palette color
-    const idStr = String(projectId);
-    let hash = 0; for (let i = 0; i < idStr.length; i++) { hash = ((hash << 5) - hash) + idStr.charCodeAt(i); hash |= 0; }
-    const idx = Math.abs(hash) % PALETTE.length;
-    return PALETTE[idx];
+    return this._colorService.getProjectColor(projectId, this.projects, this.baselineProjects);
   }
 
   // Return a mapping of state name -> { background, text } colors for all
   // available states. Uses `getFeatureStateColor` for background and picks either
   // black or white for readable text depending on contrast.
   getFeatureStateColors() {
-    const colors = {};
-    const states = this.availableFeatureStates || [];
-    const pickTextColor = (hex) => {
-      if (!hex) return '#000';
-      const h = hex.replace('#','');
-      const r = parseInt(h.substring(0,2),16);
-      const g = parseInt(h.substring(2,4),16);
-      const b = parseInt(h.substring(4,6),16);
-      // YIQ formula to determine light/dark text
-      const yiq = ((r*299)+(g*587)+(b*114))/1000;
-      return yiq >= 128 ? '#000' : '#fff';
-    };
-    for(const s of states){
-      const bg = this.getFeatureStateColor(s);
-      colors[s] = { background: bg, text: pickTextColor(bg) };
-    }
-    return colors;
-  }
-
-  setupAutosave(intervalMin) {
-    if (this.autosaveTimer) { clearInterval(this.autosaveTimer); this.autosaveTimer = null; }
-    this.autosaveIntervalMin = intervalMin;
-    if (intervalMin > 0) {
-      this.autosaveTimer = setInterval(() => {
-        // Autosave any non-readonly scenarios with unsaved changes
-        for(const s of this.scenarios){
-          if(s.readonly) continue; // Skip readonly scenarios
-          if(this.isScenarioUnsaved(s)) {
-            dataService.saveScenario(s).catch(()=>{});
-          }
-        }
-      }, intervalMin * 60 * 1000);
-    }
+    return this._colorService.getFeatureStateColors(this.availableFeatureStates);
   }
 
   async initColors() {
-    const { projectColors, teamColors } = await dataService.getColorMappings();
-    let pi = 0; let ti = 0;
-    this.projects.forEach(p => {
-      if(projectColors[p.id]) { p.color = projectColors[p.id]; }
-      else { p.color = PALETTE[pi % PALETTE.length]; pi++; }
-    });
-    this.teams.forEach(t => {
-      if(teamColors[t.id]) { t.color = teamColors[t.id]; }
-      else { t.color = PALETTE[ti % PALETTE.length]; ti++; }
-    });
+    await this._colorService.initColors(this.projects, this.teams);
   }
 
 // Compute organization load for a feature based on selected teams.
@@ -256,12 +226,9 @@ class State {
     // Precompute orgLoad on baseline features based on current team selection
     this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
     try { this._baselineStore.setFeatures(this.baselineFeatures); } catch (e) { /* noop on failure */ }
-    // Compute available states from baseline features
-    this.availableFeatureStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
-    // Default selection: select all available states unless user has an explicit selection
-    if(!(this.selectedFeatureStateFilter && this.selectedFeatureStateFilter.size > 0)){
-      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates);
-    }
+    // Compute available states from baseline features and initialize state filter
+    const discoveredStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    this._stateFilterService.setAvailableStates(discoveredStates);
     this.initDefaultScenario();
     await this.initColors();
     this.emitScenarioList();
@@ -314,19 +281,15 @@ class State {
     Object.freeze(this.baselineTeams);
     Object.freeze(this.baselineFeatures);
     this.initDefaultScenario();
-    // Recompute available states
-    this.availableFeatureStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
-    // If there is no explicit selection, default to selecting all discovered states
-    if(!(this.selectedFeatureStateFilter && this.selectedFeatureStateFilter.size > 0)){
-      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates);
-    }
+    // Recompute available states and update state filter service
+    const discoveredStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
+    this._stateFilterService.setAvailableStates(discoveredStates);
     console.log('Re-initializing colors after baseline refresh');
     await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
     bus.emit(ProjectEvents.CHANGED, this.projects);
     bus.emit(TeamEvents.CHANGED, this.teams);
-    bus.emit(StateFilterEvents.CHANGED, this.availableFeatureStates);
     bus.emit(FeatureEvents.UPDATED);
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
@@ -334,39 +297,47 @@ class State {
   }
 
   setStateFilter(stateName){
-    // Backwards-compatible wrapper: if `null` is passed, select all states;
-    // otherwise set single-state selection (legacy behavior).
-    if(stateName === null){
-      this.selectedFeatureStateFilter = new Set(this.availableFeatureStates || []);
-    } else {
-      this.selectedFeatureStateFilter = new Set(stateName ? [stateName] : []);
-    }
-    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
-    bus.emit(FeatureEvents.UPDATED);
+    this._stateFilterService.setStateFilter(stateName);
+    // Recompute capacity metrics when filter changes
+    this.recomputeCapacityMetrics();
+    bus.emit(CapacityEvents.UPDATED, { 
+      dates: this.capacityDates, 
+      teamDailyCapacity: this.teamDailyCapacity, 
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw, 
+      projectDailyCapacity: this.projectDailyCapacity, 
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity, 
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg 
+    });
   }
 
   // Toggle a single state's selection on/off
   toggleStateSelected(stateName){
-    if(!stateName) return;
-    if(this.selectedFeatureStateFilter.has(stateName)) this.selectedFeatureStateFilter.delete(stateName);
-    else this.selectedFeatureStateFilter.add(stateName);
-    console.debug('[state] toggleStateSelected ->', Array.from(this.selectedFeatureStateFilter));
+    this._stateFilterService.toggleStateSelected(stateName);
     // Recompute capacity metrics (graphs) whenever state filter changes
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
-    bus.emit(FeatureEvents.UPDATED);
+    bus.emit(CapacityEvents.UPDATED, { 
+      dates: this.capacityDates, 
+      teamDailyCapacity: this.teamDailyCapacity, 
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw, 
+      projectDailyCapacity: this.projectDailyCapacity, 
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity, 
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg 
+    });
   }
 
   // Select or clear all states
   setAllStatesSelected(selectAll){
-    if(selectAll){ this.selectedFeatureStateFilter = new Set(this.availableFeatureStates || []); }
-    else { this.selectedFeatureStateFilter = new Set(); }
+    this._stateFilterService.setAllStatesSelected(selectAll);
     // Recompute capacity metrics (graphs) when toggling all/none
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.selectedFeatureStateFilter) });
-    bus.emit(FeatureEvents.UPDATED);
+    bus.emit(CapacityEvents.UPDATED, { 
+      dates: this.capacityDates, 
+      teamDailyCapacity: this.teamDailyCapacity, 
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw, 
+      projectDailyCapacity: this.projectDailyCapacity, 
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity, 
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg 
+    });
   }
 
   // Dirty/changed fields now derived against baseline when creating effective feature objects.
@@ -472,51 +443,31 @@ class State {
   }
 
   setTimelineScale(scale) {
-    this.timelineScale = scale;
-    bus.emit(TimelineEvents.SCALE_CHANGED, scale);
+    this._viewService.setTimelineScale(scale);
   }
 
   setShowEpics(val) {
-    this.showEpics = !!val;
-    bus.emit(FilterEvents.CHANGED, { showEpics: this.showEpics, showFeatures: this.showFeatures });
-    // Notify that features changed so dependent renderers (like dependency lines) refresh
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setShowEpics(val);
   }
 
   setShowFeatures(val) {
-    this.showFeatures = !!val;
-    bus.emit(FilterEvents.CHANGED, { showEpics: this.showEpics, showFeatures: this.showFeatures });
-    // Notify that features changed so dependent renderers (like dependency lines) refresh
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setShowFeatures(val);
   }
 
   setCondensedCards(val) {
-    this.condensedCards = !!val;
-    bus.emit(ViewEvents.CONDENSED, this.condensedCards);
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setCondensedCards(val);
   }
 
   setShowDependencies(val){
-    this.showDependencies = !!val;
-    console.debug('[state] setShowDependencies ->', this.showDependencies);
-    bus.emit(ViewEvents.DEPENDENCIES, this.showDependencies);
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setShowDependencies(val);
   }
 
   setcapacityViewMode(mode) {
-    if(mode !== 'team' && mode !== 'project') return;
-    if(this.capacityViewMode === mode) return;
-    this.capacityViewMode = mode;
-    bus.emit(ViewEvents.CAPACITY_MODE, this.capacityViewMode);
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setCapacityViewMode(mode);
   }
 
   setFeatureSortMode(mode) {
-    if(mode !== 'date' && mode !== 'rank') return;
-    if(this.featureSortMode === mode) return;
-    this.featureSortMode = mode;
-    bus.emit(ViewEvents.SORT_MODE, this.featureSortMode);
-    bus.emit(FeatureEvents.UPDATED);
+    this._viewService.setFeatureSortMode(mode);
   }
 
   // ---------- Scenario State Management ----------
@@ -577,11 +528,7 @@ class State {
   }
 
   captureCurrentView() {
-    return {
-      capacityViewMode: this.capacityViewMode,
-      condensedCards: this.condensedCards,
-      featureSortMode: this.featureSortMode
-    };
+    return this._viewService.captureCurrentView();
   }
 
   emitScenarioList() {
