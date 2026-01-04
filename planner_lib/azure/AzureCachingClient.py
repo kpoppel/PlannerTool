@@ -177,6 +177,9 @@ class AzureCachingClient(AzureClient):
         cached_count = len(area_cache)
         logger.debug("Area '%s' cache loaded: %d items", area_key, cached_count)
 
+        # Get list of invalidated work items that need explicit refetch
+        invalidated_ids = set(index.get('_invalidated', []))
+        
         last_update = None
         if index.get(area_key) and index[area_key].get('last_update'):
             last_update = index[area_key]['last_update']
@@ -201,7 +204,18 @@ class AzureCachingClient(AzureClient):
         candidate_ws = getattr(result, 'work_items', []) or []
         task_ids = [getattr(wi, 'id', None) for wi in candidate_ws]
         task_ids = [int(t) for t in task_ids if t is not None]
-        logger.debug("WIQL returned %d candidate ids for area '%s' (since=%s)", len(task_ids), area_key, last_update)
+        
+        # Add any invalidated items that are in this area's cache to the fetch list
+        # This ensures we refetch items we just updated, even if their ChangedDate hasn't caught up
+        cached_ids_in_area = {int(cid) for cid in area_cache.keys() if cid}
+        invalidated_in_area = invalidated_ids & cached_ids_in_area
+        if invalidated_in_area:
+            task_ids = list(set(task_ids) | invalidated_in_area)
+            logger.debug("Added %d invalidated work items to fetch list for area '%s'", 
+                        len(invalidated_in_area), area_key)
+        
+        logger.debug("WIQL returned %d candidate ids for area '%s' (since=%s), total to fetch: %d", 
+                    len(candidate_ws), area_key, last_update, len(task_ids))
 
         updated_items = []
         if task_ids:
@@ -272,6 +286,15 @@ class AzureCachingClient(AzureClient):
             index = self._read_index()
             index.setdefault(area_key, {})
             index[area_key]['last_update'] = new_last
+            
+            # Clear successfully fetched invalidated items from the global invalidated set
+            if invalidated_in_area:
+                current_invalidated = set(index.get('_invalidated', []))
+                current_invalidated -= invalidated_in_area
+                index['_invalidated'] = list(current_invalidated)
+                logger.debug("Cleared %d invalidated items from index after successful fetch", 
+                           len(invalidated_in_area))
+            
             try:
                 self._write_area_cache(area_key, list(area_cache.values()))
             except Exception:
@@ -313,6 +336,29 @@ class AzureCachingClient(AzureClient):
         except Exception as e:
             raise RuntimeError(f"Failed to fetch work items for project {project}: {e}")
 
+    def invalidate_work_items(self, work_item_ids: List[int]):
+        """Invalidate cache for specific work items by ID.
+        
+        Marks the specified work items as invalidated in the index, forcing them to be
+        refetched from Azure on the next request, regardless of their ChangedDate.
+        """
+        if not work_item_ids:
+            return
+        
+        with self._lock:
+            index = self._read_index()
+            
+            # Add invalidated IDs to a global set in the index
+            invalidated = set(index.get('_invalidated', []))
+            invalidated.update(work_item_ids)
+            index['_invalidated'] = list(invalidated)
+            
+            try:
+                self._write_index(index)
+                logger.debug("Marked %d work items as invalidated in cache index", len(work_item_ids))
+            except Exception as e:
+                logger.warning("Failed to update index with invalidated items: %s", e)
+
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
         logger.debug("Updating work item %d: start=%s, end=%s", work_item_id, start, end)
         wit = self.conn.clients.get_work_item_tracking_client()
@@ -324,7 +370,10 @@ class AzureCachingClient(AzureClient):
         if not ops:
             return None
         try:
-            return wit.update_work_item(document=ops, id=work_item_id)
+            result = wit.update_work_item(document=ops, id=work_item_id)
+            # Invalidate cache for this work item
+            self.invalidate_work_items([work_item_id])
+            return result
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id}: {e}")
 
@@ -337,6 +386,9 @@ class AzureCachingClient(AzureClient):
         wit = self.conn.clients.get_work_item_tracking_client()
         ops = [{"op": "add", "path": "/fields/System.Description", "value": description}]
         try:
-            return wit.update_work_item(document=ops, id=work_item_id)
+            result = wit.update_work_item(document=ops, id=work_item_id)
+            # Invalidate cache for this work item
+            self.invalidate_work_items([work_item_id])
+            return result
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
