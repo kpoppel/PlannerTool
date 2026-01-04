@@ -306,6 +306,10 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
         raise HTTPException(status_code=400, detail='Missing op')
     try:
         if op == 'save':
+            # Server-side validation: Prevent saving readonly scenarios
+            if isinstance(data, dict) and data.get('readonly'):
+                raise HTTPException(status_code=400, detail='Cannot save readonly scenario')
+            
             scenario_id = None
             if isinstance(data, dict):
                 scenario_id = data.get('id')
@@ -314,6 +318,16 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
         elif op == 'delete':
             if not isinstance(data, dict) or not data.get('id'):
                 raise HTTPException(status_code=400, detail='Missing scenario id for delete')
+            
+            # Server-side validation: Prevent deleting readonly scenarios
+            # Load the scenario first to check if it's readonly
+            try:
+                scenario = load_user_scenario(scenarios_storage, user_id, data['id'])
+                if isinstance(scenario, dict) and scenario.get('readonly'):
+                    raise HTTPException(status_code=400, detail='Cannot delete readonly scenario')
+            except KeyError:
+                raise HTTPException(status_code=404, detail='Scenario not found')
+            
             ok = delete_user_scenario(scenarios_storage, user_id, data['id'])
             if not ok:
                 raise HTTPException(status_code=404, detail='Scenario not found')

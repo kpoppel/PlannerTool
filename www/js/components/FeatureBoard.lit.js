@@ -380,7 +380,9 @@ export async function initBoard() {
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
     
-    if (scenarioId !== 'baseline') {
+    // Apply scenario-mode styling for non-readonly scenarios
+    const activeScenario = state.scenarios.find(s => s.id === scenarioId);
+    if (activeScenario && !activeScenario.readonly) {
       board.classList.add('scenario-mode');
     } else {
       board.classList.remove('scenario-mode');

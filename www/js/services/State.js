@@ -108,20 +108,22 @@ class State {
       this.emitScenarioList();
     });
     bus.on(DataEvents.SCENARIOS_DATA, (scenarios) => {
-      // Merge fetched scenarios into state (preserve baseline)
-      const baseline = this.scenarios.find(s=>s.id==='baseline');
+      // Merge fetched scenarios into state (preserve readonly scenarios like baseline)
+      const readonly = this.scenarios.filter(s=>s.readonly);
       this.scenarios = [];
-      if(baseline){ this.scenarios.push(baseline); }
+      // Re-add readonly scenarios first
+      this.scenarios.push(...readonly);
       for(const s of (scenarios || [])){
-        // Ensure required fields
-        const merged = Object.assign({ overrides:{}, filters: this.captureCurrentFilters(), view: this.captureCurrentView(), isChanged: false }, s);
-        // Avoid duplicate baseline
-        if(merged.id === 'baseline') continue;
+        // Ensure required fields, preserve readonly flag from server
+        const merged = Object.assign({ overrides:{}, filters: this.captureCurrentFilters(), view: this.captureCurrentView(), isChanged: false, readonly: false }, s);
+        // Skip if already added as readonly scenario
+        if(this.scenarios.some(existing => existing.id === merged.id)) continue;
         this.scenarios.push(merged);
       }
-      // Keep active scenario valid
+      // Keep active scenario valid - default to first readonly scenario if active is missing
       if(!this.scenarios.find(x=>x.id===this.activeScenarioId)){
-        this.activeScenarioId = 'baseline';
+        const firstReadonly = this.scenarios.find(s => s.readonly);
+        this.activeScenarioId = firstReadonly ? firstReadonly.id : (this.scenarios[0]?.id || 'baseline');
       }
       this.emitScenarioList();
       this.emitScenarioActivated();
@@ -186,9 +188,9 @@ class State {
     this.autosaveIntervalMin = intervalMin;
     if (intervalMin > 0) {
       this.autosaveTimer = setInterval(() => {
-        // Autosave any non-baseline scenarios with unsaved changes
+        // Autosave any non-readonly scenarios with unsaved changes
         for(const s of this.scenarios){
-          if(s.id === 'baseline') continue;
+          if(s.readonly) continue; // Skip readonly scenarios
           if(this.isScenarioUnsaved(s)) {
             dataService.saveScenario(s).catch(()=>{});
           }
@@ -260,7 +262,7 @@ class State {
     if(!(this.selectedFeatureStateFilter && this.selectedFeatureStateFilter.size > 0)){
       this.selectedFeatureStateFilter = new Set(this.availableFeatureStates);
     }
-    this.initBaselineScenario();
+    this.initDefaultScenario();
     await this.initColors();
     this.emitScenarioList();
     this.emitScenarioActivated();
@@ -311,7 +313,7 @@ class State {
     Object.freeze(this.baselineProjects);
     Object.freeze(this.baselineTeams);
     Object.freeze(this.baselineFeatures);
-    this.initBaselineScenario();
+    this.initDefaultScenario();
     // Recompute available states
     this.availableFeatureStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
     // If there is no explicit selection, default to selecting all discovered states
@@ -530,8 +532,8 @@ class State {
       
       this._scenarioManager = new ScenarioManager(bus, this._baselineStore, stateContext);
       
-      // Sync existing scenarios (excluding baseline)
-      this._scenarioManager.scenarios = this.scenarios.filter(s => s.id !== 'baseline');
+      // Sync existing scenarios (excluding readonly scenarios which aren't managed by ScenarioManager)
+      this._scenarioManager.scenarios = this.scenarios.filter(s => !s.readonly);
       this._scenarioManager.activeScenarioId = this.activeScenarioId;
     }
     return this._scenarioManager;
@@ -588,7 +590,7 @@ class State {
       name: s.name,
       overridesCount: Object.keys(s.overrides).length,
       unsaved: this.isScenarioUnsaved(s),
-      isBaseline: s.id === 'baseline'
+      readonly: s.readonly === true // Expose readonly flag for UI
     })), activeScenarioId: this.activeScenarioId });
   }
 
@@ -601,23 +603,26 @@ class State {
     this.emitScenarioList();
   }
 
-  initBaselineScenario() {
-    // Initialise or reset the baseline scenario
-    const baseline = this.scenarios.find(s => s.id === 'baseline');
-    if (baseline) {
-      baseline.overrides = {};
-      baseline.isChanged = false;
+  initDefaultScenario() {
+    // Initialise or reset the default readonly scenario (baseline)
+    const DEFAULT_ID = 'baseline';
+    const existing = this.scenarios.find(s => s.id === DEFAULT_ID);
+    if (existing) {
+      existing.overrides = {};
+      existing.isChanged = false;
+      existing.readonly = true; // Ensure readonly flag is set
     } else {
-      const newbaseline = {
-        id: 'baseline',
+      const defaultScenario = {
+        id: DEFAULT_ID,
         name: 'Baseline',
         overrides: {},
         filters: this.captureCurrentFilters(),
         view: this.captureCurrentView(),
         isChanged: false,
+        readonly: true, // Default scenario is readonly
       };
-      this.scenarios.push(newbaseline);
-      this.activeScenarioId = newbaseline.id;
+      this.scenarios.push(defaultScenario);
+      this.activeScenarioId = defaultScenario.id;
     }
   }
 
@@ -625,8 +630,9 @@ class State {
     const scenario = this._getScenarioManager().cloneScenario(sourceId, name);
     
     // Keep scenarios array in sync
+    const readonlyScenarios = this.scenarios.filter(s => s.readonly);
     this.scenarios = [
-      this.scenarios.find(s => s.id === 'baseline'),
+      ...readonlyScenarios,
       ...this._getScenarioManager().getAllScenarios()
     ];
     
@@ -656,8 +662,9 @@ class State {
     this.activeScenarioId = this._getScenarioManager().activeScenarioId;
     
     // Keep scenarios array in sync
+    const readonlyScenarios = this.scenarios.filter(s => s.readonly);
     this.scenarios = [
-      this.scenarios.find(s => s.id === 'baseline'),
+      ...readonlyScenarios,
       ...this._getScenarioManager().getAllScenarios()
     ];
     

@@ -19,7 +19,7 @@ export class ScenarioManager {
   }
   
   /**
-   * Clone an existing scenario or create from baseline
+   * Clone an existing scenario or create from a readonly scenario (like baseline)
    * @param {string} sourceId - Source scenario ID
    * @param {string} name - Scenario name (optional, generates default if omitted)
    * @returns {Object} Created scenario
@@ -27,8 +27,8 @@ export class ScenarioManager {
   cloneScenario(sourceId, name) {
     const source = this.scenarios.find(s => s.id === sourceId);
     
-    // If cloning baseline or source not found in our array, use baseline defaults
-    const isBaseline = sourceId === 'baseline' || !source;
+    // If source not found in our managed array, assume cloning from readonly scenario (use defaults)
+    const isFromReadonly = !source;
     
     const baseName = name ? name.trim() : this.generateScenarioDefaultName();
     const uniqueName = this.ensureUniqueScenarioName(baseName);
@@ -38,11 +38,11 @@ export class ScenarioManager {
     const scenario = {
       id,
       name: uniqueName,
-      overrides: isBaseline ? {} : { ...source.overrides },
-      filters: isBaseline 
+      overrides: isFromReadonly ? {} : { ...source.overrides },
+      filters: isFromReadonly 
         ? this.stateContext.captureCurrentFilters()
         : { ...source.filters },
-      view: isBaseline
+      view: isFromReadonly
         ? this.stateContext.captureCurrentView()
         : { ...source.view },
       isChanged: true
@@ -97,22 +97,18 @@ export class ScenarioManager {
   /**
    * Activate a scenario
    * @param {string} id - Scenario ID to activate
-   * @returns {Object|null} Activated scenario or null if baseline
+   * @returns {Object|null} Activated scenario or null if readonly scenario
    */
   activateScenario(id) {
     // Early exit if already active
     if (this.activeScenarioId === id) return null;
     
-    // Allow activating baseline (special case)
-    if (id === 'baseline') {
-      this.activeScenarioId = id;
-      this.eventBus.emit(ScenarioEvents.ACTIVATED, { scenarioId: id });
-      return null;
-    }
-    
+    // Allow activating readonly scenarios (they're not in our managed array)
     const scenario = this.scenarios.find(s => s.id === id);
     if (!scenario) {
-      // Silent fail to match legacy behavior
+      // Scenario not found in managed array - might be readonly scenario
+      this.activeScenarioId = id;
+      this.eventBus.emit(ScenarioEvents.ACTIVATED, { scenarioId: id });
       return null;
     }
     
@@ -127,9 +123,6 @@ export class ScenarioManager {
    * @param {string} id - Scenario ID to delete
    */
   deleteScenario(id) {
-    // Cannot delete baseline - silent fail
-    if (id === 'baseline') return;
-    
     const index = this.scenarios.findIndex(s => s.id === id);
     if (index === -1) return; // Silent fail
     
@@ -138,9 +131,9 @@ export class ScenarioManager {
     
     this.eventBus.emit(ScenarioEvents.UPDATED, { scenarioId: id, change: { type: 'delete' } });
     
-    // If deleted active scenario, switch to baseline
+    // If deleted active scenario, switch to first available readonly scenario (baseline)
     if (wasActive) {
-      this.activeScenarioId = 'baseline';
+      this.activeScenarioId = 'baseline'; // fallback to default readonly scenario
       this.eventBus.emit(ScenarioEvents.ACTIVATED, { scenarioId: 'baseline' });
     }
   }
@@ -154,8 +147,8 @@ export class ScenarioManager {
   setScenarioOverride(featureId, start, end) {
     const scenario = this.getActiveScenario();
     
-    // Silent fail if baseline or not found
-    if (!scenario || this.activeScenarioId === 'baseline') {
+    // Silent fail if no active scenario or scenario is readonly
+    if (!scenario || scenario.readonly) {
       return;
     }
     
@@ -172,12 +165,10 @@ export class ScenarioManager {
   
   /**
    * Get the currently active scenario
-   * @returns {Object|undefined} Active scenario or undefined if baseline
+   * @returns {Object|undefined} Active scenario or undefined if readonly scenario is active
    */
   getActiveScenario() {
-    if (this.activeScenarioId === 'baseline') {
-      return undefined;
-    }
+    // Readonly scenarios (like baseline) are not in our managed array
     return this.scenarios.find(s => s.id === this.activeScenarioId);
   }
   
@@ -195,9 +186,6 @@ export class ScenarioManager {
    * @param {string} newName - New name
    */
   renameScenario(id, newName) {
-    // Cannot rename baseline - silent fail
-    if (id === 'baseline') return;
-    
     const scenario = this.scenarios.find(s => s.id === id);
     if (!scenario) return; // Silent fail
     
