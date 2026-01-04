@@ -15,7 +15,8 @@ export const FeatureEvents = {
   CREATED: Symbol('feature:created'),
   DELETED: Symbol('feature:deleted'),
   DATES_CHANGED: Symbol('feature:dates-changed'),
-  SELECTED: Symbol('feature:selected')
+  SELECTED: Symbol('feature:selected'),
+  CAPACITY_UPDATED: Symbol('feature:capacity-updated')
 };
 
 // Scenario-related events

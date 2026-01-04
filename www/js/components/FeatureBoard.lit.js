@@ -331,8 +331,10 @@ class FeatureBoard extends LitElement {
 
       const project = state.projects.find(p => p.id === feature.project);
 
-      // Update card properties
-      existing.feature = feature;
+      console.log('[FeatureBoard] updateCardsById - updating card', id, 'dirty:', feature.dirty, 'changedFields:', feature.changedFields);
+
+      // Update card properties - create new object reference to ensure Lit detects change
+      existing.feature = { ...feature };
       existing.selected = !!feature.selected;
       existing.project = project;
       existing.applyVisuals({ 

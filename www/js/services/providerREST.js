@@ -154,6 +154,25 @@ export class ProviderREST {
         }catch(err){ return { ok:false, error: String(err) }; }
     }
 
+    async updateWorkItemCapacity(workItemId, capacity) {
+        // Update capacity for a specific work item
+        // Expected format: capacity is [{team: 'team-id', capacity: number}]
+        try{
+            const res = await fetch(`/api/tasks/${workItemId}/capacity`, { 
+                method:'PUT', 
+                headers: this._headers({ 'Content-Type':'application/json' }), 
+                body: JSON.stringify(capacity) 
+            });
+            if(!res.ok){ 
+                const errorText = await res.text();
+                return { ok:false, error:`HTTP ${res.status}: ${errorText}` }; 
+            }
+            return await res.json();
+        }catch(err){ 
+            return { ok:false, error: String(err) }; 
+        }
+    }
+
     async saveConfig(config) {
         try{
             const res = await fetch('/api/config', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(config) });

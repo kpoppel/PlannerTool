@@ -272,14 +272,17 @@ export class FeatureCardLit extends LitElement {
     if (featureFlags?.serviceInstrumentation) {
       console.log('[FeatureCard] applyVisuals', this.feature.id, { left, width, selected, dirty, project });
     }
+    console.log('[FeatureCard] applyVisuals', this.feature?.id, 'dirty:', dirty, 'current feature.dirty:', this.feature?.dirty);
     try {
       const px = typeof left === 'number' ? `${left}px` : left;
       this.style.left = px;
       const pxw = typeof width === 'number' ? `${width}px` : width;
       this.style.width = pxw;
       this.selected = selected;
-      // immediate visual update for dirty flag to handle external visuals (drag/resize)
-      this.feature = { ...this.feature, dirty };
+      // Update dirty flag without overwriting the entire feature object
+      if (this.feature && dirty !== undefined) {
+        this.feature.dirty = dirty;
+      }
       this.shadowRoot?.classList.toggle('dirty', dirty);
       // Also reflect dirty on host to support tests and external styles
       this.classList.toggle('dirty', dirty);

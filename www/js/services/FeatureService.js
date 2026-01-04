@@ -29,6 +29,13 @@ export class FeatureService {
   }
 
   /**
+   * Set the ProjectTeamService for orgLoad calculations
+   */
+  setProjectTeamService(projectTeamService) {
+    this._projectTeamService = projectTeamService;
+  }
+
+  /**
    * Get effective features with scenario overrides applied
    */
   getEffectiveFeatures() {
@@ -53,6 +60,12 @@ export class FeatureService {
       const derived = this._recomputeDerived(base, ov);
       effective.changedFields = derived.changedFields;
       effective.dirty = derived.dirty;
+      
+      // Always recalculate orgLoad based on effective capacity to ensure it's current
+      if (this._projectTeamService && effective.capacity) {
+        effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
+      }
+      
       return effective;
     });
   }
@@ -75,6 +88,14 @@ export class FeatureService {
     const derived = this._recomputeDerived(base, ov);
     effective.changedFields = derived.changedFields;
     effective.dirty = derived.dirty;
+    
+    console.log('[FeatureService] getEffectiveFeatureById', id, 'override:', ov, 'changedFields:', derived.changedFields, 'dirty:', derived.dirty);
+    
+    // Always recalculate orgLoad based on effective capacity to ensure it's current
+    if (this._projectTeamService && effective.capacity) {
+      effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
+    }
+    
     return effective;
   }
 
@@ -87,6 +108,7 @@ export class FeatureService {
     if (override) {
       if (override.start && override.start !== featureBase.start) changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
+      if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -246,7 +268,7 @@ export class FeatureService {
     const base = baselineFeatures.find(f => f.id === id);
     if (!base) return false;
 
-    // Only supporting date fields for overrides right now
+    // Support date and capacity fields for overrides
     if (field === 'start' || field === 'end') {
       const ov = activeScenario.overrides[id] || { start: base.start, end: base.end };
       ov[field] = value;
@@ -262,6 +284,25 @@ export class FeatureService {
         const childIds = this._childrenByEpic.get(base.id) || [];
         for (const cid of childIds) idsToEmit.add(cid);
       }
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+
+      // Trigger capacity recalculation if callback provided
+      if (capacityCallback) {
+        capacityCallback();
+      }
+
+      return true;
+    }
+    
+    if (field === 'capacity') {
+      const ov = activeScenario.overrides[id] || {};
+      ov.capacity = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+
+      // Emit events so UI updates
+      const idsToEmit = new Set([id]);
+      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // Trigger capacity recalculation if callback provided

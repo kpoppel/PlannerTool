@@ -333,9 +333,16 @@ export class CapacityCalculator {
       if (oldF) processFeature(oldF, -1);
       if (newF) processFeature(newF, +1);
 
-      // update stored feature snapshot
-      if (newF) this._lastFeaturesById.set(id, newF);
-      else this._lastFeaturesById.delete(id);
+      // update stored feature snapshot (deep copy capacity array to avoid reference issues)
+      if (newF) {
+        const snapshot = { ...newF };
+        if (Array.isArray(newF.capacity)) {
+          snapshot.capacity = newF.capacity.map(c => ({ ...c }));
+        }
+        this._lastFeaturesById.set(id, snapshot);
+      } else {
+        this._lastFeaturesById.delete(id);
+      }
     }
   }
   
