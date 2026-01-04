@@ -150,7 +150,6 @@ systemctl start plannertool
   Iteration 1: Just output the text to put in Azure Devops manually
   Iteration 2: Make the change when syncing to Azure
 - feature: Cost estimation
-
   Using the capacity estimation calculate this:
   1. (/) Cost per feature/Epic
   2. Sum of cost per project (unfinished work)
