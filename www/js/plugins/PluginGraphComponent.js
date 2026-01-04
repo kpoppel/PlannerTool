@@ -95,7 +95,7 @@ export class PluginGraph extends LitElement {
     bus.on(CapacityEvents.UPDATED, ()=> this._scheduleRender());
     // Re-render once app/state is ready
     bus.on(AppEvents.READY, ()=> { this._initDateRangeDefaults(); this._scheduleRender(20); });
-    if(typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode;
+    if(typeof state._viewService.capacityViewMode !== 'undefined') this.mode = state._viewService.capacityViewMode;
     this._initDateRangeDefaults();
   }
 
@@ -172,7 +172,7 @@ export class PluginGraph extends LitElement {
   open(mode){
     // prefer provided mode, fall back to state setting, then default
     if(mode) this.mode = mode;
-    else if(state && typeof state.capacityViewMode !== 'undefined') this.mode = state.capacityViewMode;
+    else if(state && typeof state._viewService.capacityViewMode !== 'undefined') this.mode = state._viewService.capacityViewMode;
     else this.mode = 'project';
     const main = document.querySelector('main');
     if(main && !this._savedMainStyles){ this._savedMainStyles = []; Array.from(main.children).forEach(child=>{ if(child === this) return; this._savedMainStyles.push({ el: child, display: child.style.display || '' }); child.style.display = 'none'; }); }
@@ -205,8 +205,8 @@ export class PluginGraph extends LitElement {
     const effective = state.getEffectiveFeatures();
     const teams = state.teams || [];
     const projects = state.projects || [];
-    const showEpics = !!state.showEpics;
-    const showFeatures = !!state.showFeatures;
+    const showEpics = !!state._viewService.showEpics;
+    const showFeatures = !!state._viewService.showFeatures;
     const selectedTeams = teams.filter(t=>t.selected).map(t=>t.id);
     const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
     const selectedStates = (state.selectedFeatureStateFilter instanceof Set) ? Array.from(state.selectedFeatureStateFilter) : (state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);

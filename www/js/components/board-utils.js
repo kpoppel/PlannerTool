@@ -14,7 +14,7 @@ const _buildMonthCache = (months) => {
   _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
 };
 
-export const laneHeight = () => state.condensedCards ? 40 : 64;
+export const laneHeight = () => state._viewService.condensedCards ? 40 : 64;
 
 export const getBoardOffset = () => {
   const board = document.querySelector('feature-board');

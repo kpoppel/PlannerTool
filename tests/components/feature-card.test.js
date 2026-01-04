@@ -20,7 +20,7 @@ describe('FeatureCard Consolidated Tests', () => {
       state.teams = [{ id: 't1', selected: true, color: '#abc' }];
       state.scenarios = [{ id: 'baseline' }];
       state.activeScenarioId = 'baseline';
-      state.condensedCards = false;
+      state._viewService.setCondensedCards(false);
     });
 
     it('laneHeight returns numeric value', () => {
@@ -53,12 +53,12 @@ describe('FeatureCard Consolidated Tests', () => {
       const original = featureFlags ? featureFlags.USE_LIT_COMPONENTS : undefined;
       try{
         if(featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
-        state.condensedCards = true;
+        state._viewService.setCondensedCards(true);
         const h = laneHeight();
         expect(typeof h).to.equal('number');
       } finally {
         if(featureFlags && original !== undefined) featureFlags.USE_LIT_COMPONENTS = original;
-        state.condensedCards = false;
+        state._viewService.setCondensedCards(false);
       }
     });
 

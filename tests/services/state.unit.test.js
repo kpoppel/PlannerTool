@@ -23,15 +23,16 @@ describe('State (unit)', () => {
   afterEach(() => {
     S.teams = JSON.parse(JSON.stringify(backup.teams));
     S.projects = JSON.parse(JSON.stringify(backup.projects));
-    S.availableFeatureStates = JSON.parse(JSON.stringify(backup.availableFeatureStates));
-    S.selectedFeatureStateFilter = new Set(Array.from(backup.selectedFeatureStateFilter || []));
-    S.timelineScale = backup.timelineScale;
-    S.showEpics = backup.showEpics;
-    S.showFeatures = backup.showFeatures;
-    S.condensedCards = backup.condensedCards;
-    S.capacityViewMode = backup.capacityViewMode;
-    S.featureSortMode = backup.featureSortMode;
-    S.showDependencies = backup.showDependencies;
+    S._stateFilterService.setAvailableStates(JSON.parse(JSON.stringify(backup.availableFeatureStates)));
+    // Restore selected states
+    S._stateFilterService._selectedStates = new Set(Array.from(backup.selectedFeatureStateFilter || []));
+    S._viewService._timelineScale = backup.timelineScale;
+    S._viewService._showEpics = backup.showEpics;
+    S._viewService._showFeatures = backup.showFeatures;
+    S._viewService._condensedCards = backup.condensedCards;
+    S._viewService._capacityViewMode = backup.capacityViewMode;
+    S._viewService._featureSortMode = backup.featureSortMode;
+    S._viewService._showDependencies = backup.showDependencies;
   });
 
   it('computeFeatureOrgLoad calculates percent correctly', () => {
@@ -61,7 +62,7 @@ describe('State (unit)', () => {
 
   it('setStateFilter toggles selection and emits events (no throw)', () => {
     // Ensure available states present
-    S.availableFeatureStates = ['A','B'];
+    S._stateFilterService.setAvailableStates(['A','B']);
     S.setStateFilter(null);
     expect(S.selectedFeatureStateFilter.size).to.be.greaterThan(0);
     S.setStateFilter('A');
@@ -69,13 +70,13 @@ describe('State (unit)', () => {
   });
 
   it('toggleStateSelected handles add/remove safely', () => {
-    S.availableFeatureStates = ['A','B']; S.selectedFeatureStateFilter = new Set(['A']);
+    S._stateFilterService.setAvailableStates(['A','B']); S._stateFilterService._selectedStates = ['A'];
     S.toggleStateSelected('A'); expect(S.selectedFeatureStateFilter.has('A')).to.equal(false);
     S.toggleStateSelected('B'); expect(S.selectedFeatureStateFilter.has('B')).to.equal(true);
   });
 
   it('setAllStatesSelected sets/clears all', () => {
-    S.availableFeatureStates = ['A','B'];
+    S._stateFilterService.setAvailableStates(['A','B']);
     S.setAllStatesSelected(true); expect(S.selectedFeatureStateFilter.size).to.equal(2);
     S.setAllStatesSelected(false); expect(S.selectedFeatureStateFilter.size).to.equal(0);
   });

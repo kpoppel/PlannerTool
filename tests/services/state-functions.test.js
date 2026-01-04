@@ -19,9 +19,9 @@ describe('State small function coverage', () => {
     expect(filters.projects).to.deep.equal(['p1']);
     expect(filters.teams).to.deep.equal(['t2']);
 
-    state.capacityViewMode = 'project';
-    state.condensedCards = true;
-    state.featureSortMode = 'date';
+    state._viewService._capacityViewMode = 'project';
+    state._viewService._condensedCards = true;
+    state._viewService._featureSortMode = 'date';
     const view = state.captureCurrentView();
     expect(view.capacityViewMode).to.equal('project');
     expect(view.condensedCards).to.equal(true);
@@ -29,8 +29,8 @@ describe('State small function coverage', () => {
   });
 
   it('setStateFilter, toggleStateSelected, setAllStatesSelected behave', () => {
-    state.availableFeatureStates = ['Open', 'Done'];
-    state.selectedFeatureStateFilter = new Set(['Open']);
+    state._stateFilterService.setAvailableStates(['Open', 'Done']);
+    state._stateFilterService.toggleStateSelected('Open'); // Start with Open selected
     state.setStateFilter(null);
     expect(Array.from(state.selectedFeatureStateFilter)).to.include.members(['Open', 'Done']);
     state.setStateFilter('Done');
@@ -92,7 +92,7 @@ describe('State small function coverage', () => {
     state.baselineProjects = [];
     state.projects = [{ id: 'p1' }];
     state.teams = [{ id: 't1' }];
-    state.selectedFeatureStateFilter = new Set();
+    state._stateFilterService._selectedStates = new Set();
     state.recomputeCapacityMetrics();
     expect(Array.isArray(state.capacityDates)).to.equal(true);
   });

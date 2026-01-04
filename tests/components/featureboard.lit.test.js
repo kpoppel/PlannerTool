@@ -27,7 +27,7 @@ describe('feature-board', () => {
     // ensure projects include p1 selected
     state.projects = [{ id: 'p1', selected: true }];
     state.teams = [];
-    state.selectedFeatureStateFilter = new Set();
+    state._stateFilterService._selectedStates = [];
     board.renderFeatures();
     // after renderFeatures, board.features should be an array containing items mapped from feats
     expect(board.features).to.be.an('array');

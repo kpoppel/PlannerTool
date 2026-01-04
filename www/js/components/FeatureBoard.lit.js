@@ -148,8 +148,9 @@ class FeatureBoard extends LitElement {
     const featureState = feature.status || feature.state;
     if (!stateFilter.has(featureState)) return false;
 
-    if (feature.type === 'epic' && !state.showEpics) return false;
-    if (feature.type === 'feature' && !state.showFeatures) return false;
+    // Use ViewService for visibility checks
+    if (feature.type === 'epic' && !state._viewService.showEpics) return false;
+    if (feature.type === 'feature' && !state._viewService.showFeatures) return false;
 
     if (feature.type === 'epic') {
       const children = childrenMap.get(feature.id) || [];
@@ -174,7 +175,8 @@ class FeatureBoard extends LitElement {
   // Compute and render features from current state
   renderFeatures() {
     const sourceFeatures = state.getEffectiveFeatures();
-    const ordered = this._orderFeaturesHierarchically(sourceFeatures, state.featureSortMode);
+    // Use ViewService for sort mode
+    const ordered = this._orderFeaturesHierarchically(sourceFeatures, state._viewService.featureSortMode);
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
 
@@ -198,7 +200,8 @@ class FeatureBoard extends LitElement {
         width,
         top: laneIndex * laneHeight(),
         teams: state.teams,
-        condensed: state.condensedCards,
+        // Use ViewService for condensed cards setting
+        condensed: state._viewService.condensedCards,
         project
       });
       laneIndex++;
@@ -311,7 +314,8 @@ class FeatureBoard extends LitElement {
       node.feature = featureObj.feature;
       node.bus = bus;
       node.teams = featureObj.teams || state.teams;
-      node.condensed = featureObj.condensed ?? state.condensedCards;
+      // Use ViewService for condensed fallback
+      node.condensed = featureObj.condensed ?? state._viewService.condensedCards;
       node.project = featureObj.project || state.projects.find(p => p.id === featureObj.feature?.project);
 
       // Update card map

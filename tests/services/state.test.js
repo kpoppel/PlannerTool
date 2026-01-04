@@ -1,9 +1,8 @@
 import { expect } from '@open-wc/testing';
+import { state } from '../../www/js/services/State.js';
 
 describe('State core behaviors', () => {
-  it('computeFeatureOrgLoad respects selected teams', async () => {
-    const mod = await import('../../www/js/services/State.js?bust=' + Math.random());
-    const state = mod.state;
+  it('computeFeatureOrgLoad respects selected teams', () => {
     // Setup baseline teams and selection
     state.teams = [{ id: 't1', selected: true }, { id: 't2', selected: false }];
     const feature = { capacity: [ { team: 't1', capacity: 3 }, { team: 't2', capacity: 2 } ] };
@@ -14,9 +13,7 @@ describe('State core behaviors', () => {
     expect(pct).to.equal('1.5%');
   });
 
-  it('recomputeCapacityMetrics computes dates and tuples', async () => {
-    const mod = await import('../../www/js/services/State.js?bust=' + Math.random());
-    const state = mod.state;
+  it('recomputeCapacityMetrics computes dates and tuples', () => {
     // Minimal baseline data: one team, one project, one feature spanning 3 days
     state.baselineTeams = [{ id: 't1' }];
     state.baselineProjects = [{ id: 'p1' }];
@@ -25,8 +22,8 @@ describe('State core behaviors', () => {
     state.projects = [{ id: 'p1', selected: true }];
     state.teams = [{ id: 't1', selected: true }];
     // Ensure selectedFeatureStateFilter includes the feature status so it isn't filtered out
-    state.availableFeatureStates = ['New'];
-    state.selectedFeatureStateFilter = new Set(['New']);
+    state._stateFilterService.setAvailableStates(['New']);
+    state._stateFilterService._selectedStates = new Set(['New']);
     state.scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
     state.activeScenarioId = 'baseline';
     // Ensure getEffectiveFeatures returns the baseline features for this test
@@ -42,17 +39,17 @@ describe('State core behaviors', () => {
   });
 
   it('setStateFilter toggles selection and emits updates', async () => {
-    const mod = await import('../../www/js/services/State.js?bust=' + Math.random());
-    const state = mod.state;
-    state.availableFeatureStates = ['New','Done'];
-    // capture events on a fresh bus instance
-    const busMod = await import('../../www/js/core/EventBus.js?b=' + Math.random());
-    const bus = busMod.bus;
-    if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
+    state._stateFilterService.setAvailableStates(['New','Done']);
+    // Track events
     const events = [];
+    const { bus } = await import('../../www/js/core/EventBus.js');
     const { FilterEvents } = await import('../../www/js/core/EventRegistry.js');
-    bus.on(FilterEvents.CHANGED, (p) => events.push(p));
+    const unsub = bus.on(FilterEvents.CHANGED, (p) => events.push(p));
+    
     state.setStateFilter('New');
     expect(events.length).to.be.greaterThan(0);
+    
+    // Cleanup
+    unsub();
   });
 });
