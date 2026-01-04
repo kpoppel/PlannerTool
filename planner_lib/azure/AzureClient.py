@@ -20,6 +20,11 @@ class AzureClient(ABC):
         return []
     
     @abstractmethod
+    def invalidate_work_items(self, work_item_ids: List[int]) -> None:
+        """Invalidate cache for specific work items (no-op for non-caching clients)."""
+        pass
+    
+    @abstractmethod
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None) -> None:
         pass
     

@@ -220,6 +220,10 @@ class AzureNativeClient(AzureClient):
         except Exception as e:
             raise RuntimeError(f"Failed to fetch work items for project {project}: {e}")
 
+    def invalidate_work_items(self, work_item_ids: List[int]):
+        """No-op for AzureNativeClient as it doesn't use caching."""
+        pass
+
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
         """Update StartDate and/or TargetDate on a work item by ID.
 

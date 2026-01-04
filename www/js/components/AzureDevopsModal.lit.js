@@ -11,9 +11,8 @@ export class AzureDevopsModal extends LitElement {
   createRenderRoot(){ return this; }
 
   firstUpdated(){
-    // initialize selected to all present overrides
-    const entries = Object.keys(this.overrides || {});
-    entries.forEach(k=> this._selected.add(k));
+    // Start with no items selected by default for safety
+    // User must explicitly check items they want to annotate
     // open the inner modal once rendered
     const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
   }
@@ -36,6 +35,7 @@ export class AzureDevopsModal extends LitElement {
   _onCheckboxChange(e){
     const id = e.target.dataset.id;
     if(e.target.checked) this._selected.add(id); else this._selected.delete(id);
+    this.requestUpdate();
   }
 
   _onSave(){

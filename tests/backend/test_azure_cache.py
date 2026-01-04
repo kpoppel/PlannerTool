@@ -207,3 +207,68 @@ def test_cache_prune_removed_state(patch_config, data_dir):
         area_items = pickle.load(f)
     assert any(it.get("id") == '1' for it in (area_items or []))
 
+
+def test_cache_invalidation_after_update(patch_config, data_dir):
+    """Test that updating a work item invalidates its cache entry and forces refetch."""
+    # Prepopulate cache with multiple items
+    if os.path.exists(data_dir):
+        shutil.rmtree(data_dir)
+    
+    client = get_client("org", "pat")
+    client.data_dir = Path(data_dir)
+    client.data_dir.mkdir(parents=True, exist_ok=True)
+    client.index_path = client.data_dir / "_index.pkl"
+    area_file = client._file_for_area("A")
+    
+    # Create cache with items 1, 2, 3
+    cached_items = [
+        {"id": "1", "title": "Item1", "startDate": "2025-01-01", "finishDate": "2025-02-01"},
+        {"id": "2", "title": "Item2", "startDate": "2025-03-01", "finishDate": "2025-04-01"},
+        {"id": "3", "title": "Item3", "startDate": "2025-05-01", "finishDate": "2025-06-01"},
+    ]
+    with open(area_file, 'wb') as f:
+        pickle.dump(cached_items, f)
+    with open(client.index_path, 'wb') as f:
+        pickle.dump({"A": {"last_update": "2025-12-22"}}, f)
+    
+    # Mock the wit client for the update operation
+    class MockWit:
+        def update_work_item(self, document, id):
+            return SimpleNamespace(id=id)
+    
+    client.conn.clients.get_work_item_tracking_client = lambda: MockWit()
+    
+    # Update work item 2 - this should mark it as invalidated
+    client.update_work_item_dates(2, start="2025-03-15", end="2025-04-15")
+    
+    # Verify that item 2 is in the invalidated set
+    with open(client.index_path, 'rb') as f:
+        index = pickle.load(f)
+    assert 2 in index.get('_invalidated', [])
+    
+    # Verify cache file still contains all items (we don't remove them anymore)
+    with open(area_file, 'rb') as f:
+        cached_after_update = pickle.load(f)
+    assert len(cached_after_update) == 3
+    
+    # Now simulate a get_work_items call - it should fetch the invalidated item
+    # even though WIQL might not return it
+    item2_updated = FakeWorkItem(2, title="Item2-Updated", state="Active", 
+                                  changed_date="2025-12-23T00:00:00Z")
+    wit = FakeWitClient(ids_to_items_map={2: item2_updated}, wiql_ids=[])  # WIQL returns nothing
+    client.conn.clients.get_work_item_tracking_client = lambda: wit
+    
+    result = client.get_work_items("A")
+    
+    # Should have all 3 items, with item 2 updated
+    assert len(result) == 3
+    item2_result = next((it for it in result if it.get('id') == '2'), None)
+    assert item2_result is not None
+    assert item2_result.get('title') == 'Item2-Updated'
+    
+    # Verify invalidated set is now cleared
+    with open(client.index_path, 'rb') as f:
+        index_after = pickle.load(f)
+    assert 2 not in index_after.get('_invalidated', [])
+
+
