@@ -144,6 +144,16 @@ export class ProviderREST {
         }catch(err){ return { ok:false, error: String(err) }; }
     }
 
+    async updateTasksWithCapacity(updates) {
+        // Send task updates with optional capacity data to /api/tasks
+        // Expected format: [{ id, start?, end?, capacity?: [{team, capacity}] }]
+        try{
+            const res = await fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(updates) });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            return await res.json();
+        }catch(err){ return { ok:false, error: String(err) }; }
+    }
+
     async saveConfig(config) {
         try{
             const res = await fetch('/api/config', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(config) });

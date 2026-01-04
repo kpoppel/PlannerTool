@@ -22,3 +22,7 @@ class AzureClient(ABC):
     @abstractmethod
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None) -> None:
         pass
+    
+    @abstractmethod
+    def update_work_item_description(self, work_item_id: int, description: str) -> None:
+        pass

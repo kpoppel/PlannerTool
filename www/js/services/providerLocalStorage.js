@@ -93,6 +93,13 @@ export class ProviderLocalStorage {
         localStorage.setItem('features', JSON.stringify(features));
         return results;
     }
+
+    async updateTasksWithCapacity(updates) {
+        this.logCall('updateTasksWithCapacity', arguments);
+        // LocalStorage stub - just echo back the updates
+        return { ok: true, updated: updates.length, errors: [] };
+    }
+
     async setFeatureDates(id, start, end) {
         this.logCall('setFeatureDates', arguments);
         // Update feature dates in localStorage
