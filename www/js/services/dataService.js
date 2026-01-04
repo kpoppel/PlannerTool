@@ -16,6 +16,7 @@
  * @property {function(string,string,string):Promise<Object>} updateFeatureDates
  * @property {function(string,string,any):Promise<Object>} updateFeatureField
  * @property {function(Array<{id:string,start:string,end:string}>):Promise<Array<Object>>} batchUpdateFeatureDates
+ * @property {function(Array<{id:string,start?:string,end?:string,capacity?:Array}>):Promise<Object>} updateTasksWithCapacity
  * @property {function(Object):Promise<Object>} saveScenario
  * @property {function(string, Array<string>=):Promise<Object>} annotateScenario
  * @property {function(string):Promise<boolean>} deleteScenario
@@ -64,6 +65,23 @@ class DataService {
     async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
+    /**
+     * Update tasks with optional dates and/or capacity data.
+     * @param {Array<{id:string, start?:string, end?:string, capacity?:Array<{team:string, capacity:number}>}>} updates
+     * @returns {Promise<{ok:boolean, updated:number, errors:Array<string>}>}
+     * @example
+     * await dataService.updateTasksWithCapacity([
+     *   { id: '12345', start: '2026-01-01', end: '2026-01-31' },
+     *   { id: '67890', capacity: [
+     *     { team: 'team-frontend', capacity: 80 },
+     *     { team: 'team-backend', capacity: 20 }
+     *   ]},
+     *   { id: '11111', start: '2026-02-01', capacity: [
+     *     { team: 'team-architecture', capacity: 100 }
+     *   ]}
+     * ]);
+     */
+    async updateTasksWithCapacity(updates) { return this.providers['rest'].updateTasksWithCapacity(updates); }
     // --- Scenario Management ---
     async publishBaseline(selectedOverrides) { return this.providers['rest'].publishBaseline(selectedOverrides); }
     async listScenarios() { return this.providers['rest'].listScenarios(); }

@@ -138,6 +138,13 @@ export class ProviderMock {
         }
         return res;
     }
+
+    async updateTasksWithCapacity(updates) {
+        this.logCall('updateTasksWithCapacity', arguments);
+        // Mock implementation - just echo back the updates
+        return { ok: true, updated: updates.length, errors: [] };
+    }
+
     async setFeatureDates(id, start, end) {
         this.logCall('setFeatureDates', arguments);
         const f = this.features.find(x => x.id === id);

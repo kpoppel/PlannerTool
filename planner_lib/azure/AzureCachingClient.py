@@ -327,3 +327,16 @@ class AzureCachingClient(AzureClient):
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id}: {e}")
+
+    def update_work_item_description(self, work_item_id: int, description: str):
+        """Update the Description field on a work item by ID.
+
+        Description should be HTML-formatted string. Returns SDK response object.
+        """
+        logger.debug("Updating work item %d description", work_item_id)
+        wit = self.conn.clients.get_work_item_tracking_client()
+        ops = [{"op": "add", "path": "/fields/System.Description", "value": description}]
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
