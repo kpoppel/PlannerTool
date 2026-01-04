@@ -139,6 +139,9 @@ export class FeatureCardLit extends LitElement {
       gap: 4px;
       margin-bottom: 2px;
       font-size: 0.75em;
+      /* Always constrain to card width to prevent overflow */
+      max-width: 100%;
+      overflow: hidden;
     }
 
     .team-load-box {
@@ -146,20 +149,17 @@ export class FeatureCardLit extends LitElement {
       border-radius: 2px;
       color: white;
       font-weight: bold;
+      flex-shrink: 0;
     }
 
-    /* When narrow, clip the capacity row visually; */
+    /* When narrow, prevent wrapping and show ellipsis */
     .feature-card.narrow .team-load-row {
       white-space: nowrap;
-      overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 100%;
     }
     .feature-card.selected .team-load-row {
       white-space: nowrap;
-      overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 100%;
     }
     /* When fully culled, hide the capacity row entirely */
     .feature-card.culled .team-load-row { display: none; }
