@@ -71,7 +71,8 @@ export class ProviderREST {
         const metas = await this.listScenarios();
         const scenarios = [];
         for(const m of metas){
-            if(!m || !m.id || m.id==='baseline') continue;
+            // Load all scenarios from server (server should not send baseline, but we can handle it)
+            if(!m || !m.id) continue;
             const data = await this.getScenario(m.id);
             if(data){ scenarios.push(data); }
         }
@@ -90,6 +91,12 @@ export class ProviderREST {
     }
 
     async saveScenario(scenario) {
+        // Client-side guard: Don't attempt to save readonly scenarios
+        if (scenario.readonly) {
+            console.warn('[providerREST] Attempted to save readonly scenario:', scenario.id);
+            return { ok: false, error: 'Cannot save readonly scenario' };
+        }
+        
         try{
             const body = JSON.stringify({ op: 'save', data: scenario });
             const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });

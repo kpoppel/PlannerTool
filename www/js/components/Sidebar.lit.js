@@ -258,8 +258,9 @@ export class SidebarLit extends LitElement {
 
   renderScenarios(){
     const sorted = [...state.scenarios].sort((a,b)=>{
-      if(a.id==='baseline' && b.id!=='baseline') return -1;
-      if(b.id==='baseline' && a.id!=='baseline') return 1;
+      // Sort readonly scenarios (like baseline) first
+      if(a.readonly && !b.readonly) return -1;
+      if(b.readonly && !a.readonly) return 1;
       return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
     });
     return html`${sorted.map(s=> html`
@@ -307,7 +308,8 @@ export class SidebarLit extends LitElement {
       await openScenarioCloneModal({ id: s.id, name: defaultCloneName }); 
     });
     
-    if(s.id === 'baseline'){
+    if(s.readonly){
+      // Readonly scenarios (like baseline) can only be refreshed, not modified
       addItem('Refresh Baseline', '🔄', () => state.refreshBaseline());
     } else {
       addItem('Rename', '✏️', async ()=>{ 
