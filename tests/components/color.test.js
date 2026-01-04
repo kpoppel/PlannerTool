@@ -23,7 +23,8 @@ describe('Color Components Consolidated', () => {
     const state = stateMod.state;
     const busMod = await import('../../www/js/core/EventBus.js?b=' + Math.random());
     const bus = busMod.bus;
-    state.projects = [{ id: 'p1', selected: true }];
+    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
+    state._projectTeamService.setProjectSelected('p1', true);
     const events = [];
     const { ColorEvents } = await import('../../www/js/core/EventRegistry.js');
     bus.on(ColorEvents.CHANGED, (p) => events.push(p));

@@ -149,7 +149,9 @@ describe('ViewService', () => {
       expect(snapshot).to.deep.equal({
         capacityViewMode: 'project',
         condensedCards: true,
-        featureSortMode: 'date'
+        featureSortMode: 'date',
+        showUnassignedCards: true,
+        showUnplannedWork: true
       });
     });
     
@@ -157,7 +159,8 @@ describe('ViewService', () => {
       const snapshot = {
         capacityViewMode: 'project',
         condensedCards: true,
-        featureSortMode: 'date'
+        featureSortMode: 'date',
+        showUnassignedCards: false
       };
       
       viewService.restoreView(snapshot);
@@ -165,6 +168,7 @@ describe('ViewService', () => {
       expect(viewService.capacityViewMode).to.equal('project');
       expect(viewService.condensedCards).to.equal(true);
       expect(viewService.featureSortMode).to.equal('date');
+      expect(viewService.showUnassignedCards).to.equal(false);
     });
     
     it('should handle null snapshot gracefully', () => {

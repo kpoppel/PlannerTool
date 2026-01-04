@@ -1,13 +1,14 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents } from '../core/EventRegistry.js';
 // Legacy modal helper removed; create Lit modal components directly when needed
 import { dataService } from '../services/dataService.js';
 import { initViewOptions } from './viewOptions.js';
 import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { isEnabled } from '../config.js';
+import { SidebarPersistenceService } from '../services/SidebarPersistenceService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -28,6 +29,7 @@ export class SidebarLit extends LitElement {
     super();
     this.open = true;
     this.serverStatus = 'loading';
+    this._persistenceService = new SidebarPersistenceService(dataService);
   }
 
   // Render into light DOM so legacy selectors (IDs) can still be used if needed.
@@ -43,6 +45,17 @@ export class SidebarLit extends LitElement {
     bus.on(ScenarioEvents.UPDATED, onUpdate);
     bus.on(DataEvents.SCENARIOS_DATA, onUpdate);
     this._updateHandler = onUpdate;
+
+    // Listen for view option changes to trigger sidebar state save
+    const onViewOptionChange = () => this._saveSidebarState();
+    bus.on(ViewEvents.CONDENSED, onViewOptionChange);
+    bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
+    bus.on(ViewEvents.CAPACITY_MODE, onViewOptionChange);
+    bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
+    bus.on(FilterEvents.CHANGED, onViewOptionChange);
+    bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
+    this._viewOptionChangeHandler = onViewOptionChange;
+
     this.refreshServerStatus();
     this.requestUpdate();
   }
@@ -57,6 +70,8 @@ export class SidebarLit extends LitElement {
       const toggleSection = () => {
         const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
         if(chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
+        // Save sidebar state when section is toggled
+        this._saveSidebarState();
       };
 
       const onHeaderClick = () => toggleSection();
@@ -78,6 +93,11 @@ export class SidebarLit extends LitElement {
     this._onPluginsChanged = onPluginsChanged;
     [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
       .forEach(evt => bus.on(evt, onPluginsChanged));
+
+    // Restore sidebar state from localStorage after initial render
+    setTimeout(() => {
+      this._restoreSidebarState();
+    }, 100);
   }
 
   disconnectedCallback(){
@@ -89,6 +109,17 @@ export class SidebarLit extends LitElement {
       bus.off(ScenarioEvents.ACTIVATED, handler);
       bus.off(ScenarioEvents.UPDATED, handler);
       bus.off(DataEvents.SCENARIOS_DATA, handler);
+    }
+
+    // Clean up view option change listeners
+    const viewHandler = this._viewOptionChangeHandler;
+    if(viewHandler){
+      bus.off(ViewEvents.CONDENSED, viewHandler);
+      bus.off(ViewEvents.DEPENDENCIES, viewHandler);
+      bus.off(ViewEvents.CAPACITY_MODE, viewHandler);
+      bus.off(ViewEvents.SORT_MODE, viewHandler);
+      bus.off(FilterEvents.CHANGED, viewHandler);
+      bus.off(StateFilterEvents.CHANGED, viewHandler);
     }
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
@@ -164,6 +195,8 @@ export class SidebarLit extends LitElement {
     const newVal = !(current && current.selected);
     state.setProjectSelected(pid, newVal);
     this.requestUpdate();
+    // Save sidebar state when project selection changes
+    this._saveSidebarState();
   }
 
   toggleTeam(tid){
@@ -171,6 +204,8 @@ export class SidebarLit extends LitElement {
     const newVal = !(current && current.selected);
     state.setTeamSelected(tid, newVal);
     this.requestUpdate();
+    // Save sidebar state when team selection changes
+    this._saveSidebarState();
   }
 
   setAllInList(type, checked){
@@ -180,6 +215,8 @@ export class SidebarLit extends LitElement {
       state.teams.forEach(t=> state.setTeamSelected(t.id, checked));
     }
     this.requestUpdate();
+    // Save sidebar state when all projects/teams are toggled
+    this._saveSidebarState();
   }
 
   _anyUncheckedProjects(){
@@ -341,6 +378,22 @@ export class SidebarLit extends LitElement {
     });
     document.body.appendChild(pop);
     setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
+  }
+
+  /**
+   * Save current sidebar state to localStorage (debounced)
+   */
+  _saveSidebarState() {
+    if (!this._persistenceService) return;
+    this._persistenceService.saveSidebarState(state, state._viewService, this);
+  }
+
+  /**
+   * Restore sidebar state from localStorage
+   */
+  async _restoreSidebarState() {
+    if (!this._persistenceService) return;
+    await this._persistenceService.restoreSidebarState(state, state._viewService, this);
   }
 
   _onScenarioClick(e, s){

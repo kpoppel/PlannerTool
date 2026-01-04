@@ -162,14 +162,38 @@ function computeRange(){
     const today = new Date(); 
     return { min: today, max: addMonths(today, 6) }; 
   }
-  let min = parseDate(feats[0].start); 
-  let max = parseDate(feats[0].end);
-  for(const f of feats){ 
-    const s = parseDate(f.start); 
-    const e = parseDate(f.end); 
-    if(s<min) min = s; 
-    if(e>max) max = e; 
+  
+  // Filter out unplanned features (those without dates) when SHOW_UNPLANNED_WORK is true
+  const plannedFeats = featureFlags.SHOW_UNPLANNED_WORK 
+    ? feats.filter(f => f.start && f.end)
+    : feats;
+  
+  if(!plannedFeats?.length){ 
+    const today = new Date(); 
+    return { min: today, max: addMonths(today, 6) }; 
   }
+  
+  // Find first valid date to initialize min/max
+  let min = null;
+  let max = null;
+  
+  for(const f of plannedFeats){ 
+    const s = parseDate(f.start); 
+    const e = parseDate(f.end);
+    
+    // Skip features with invalid dates
+    if(!s || !e || isNaN(s.getTime()) || isNaN(e.getTime())) continue;
+    
+    if(!min || s < min) min = s;
+    if(!max || e > max) max = e;
+  }
+  
+  // If no valid dates found, fall back to today
+  if(!min || !max){
+    const today = new Date(); 
+    return { min: today, max: addMonths(today, 6) }; 
+  }
+  
   min = addMonths(min, -1); 
   max = addMonths(max, 2); 
   return {min, max};
@@ -264,6 +288,17 @@ function renderTimelineHeader(payload){
 
   const {min, max} = computeRange(); 
   let baseMonths = dateRangeInclusiveMonths(min, max);
+  
+  // Check if the month range changed significantly (different start/end months)
+  const rangeChanged = monthsCache.length === 0 || 
+    monthsCache[0].getTime() !== baseMonths[0].getTime() ||
+    monthsCache[monthsCache.length - 1].getTime() !== baseMonths[baseMonths.length - 1].getTime();
+  
+  // Reset scroll flag if range changed so we re-scroll to today
+  if(rangeChanged){
+    didInitialScroll = false;
+  }
+  
   // Ensure months fill the visible timeline width so header spans entire card area
   const monthWidth = TIMELINE_CONFIG.monthWidth;
   const section = document.getElementById('timelineSection');
@@ -300,7 +335,7 @@ function renderTimelineHeader(payload){
   if(!didInitialScroll){
     const today = new Date();
     const idx = monthsCache.findIndex(m => m.getFullYear()===today.getFullYear() && m.getMonth()===today.getMonth());
-    if(idx > 0){
+    if(idx >= 0){
       const section = document.getElementById('timelineSection');
       if(section){ 
         requestAnimationFrame(()=>{ 

@@ -10,6 +10,9 @@ import { ViewService } from './ViewService.js';
 import { ColorService } from './ColorService.js';
 import { ConfigService } from './ConfigService.js';
 import { StateFilterService } from './StateFilterService.js';
+import { ProjectTeamService } from './ProjectTeamService.js';
+import { DataInitService } from './DataInitService.js';
+import { ScenarioEventService } from './ScenarioEventService.js';
 // Re-export color constants for backward compatibility
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
@@ -32,14 +35,6 @@ class State {
     this.baselineProjects = [];
     this.baselineTeams = [];
     this.baselineFeatures = [];
-    // Convenience current selections (projects/teams with selected/color used directly by UI)
-    this.projects = [];
-    this.teams = [];
-    //TODO: delete:: Backward compatibility: legacy mutable features array (mirrors baseline; not authoritative)
-    //TODO: delete::this.originalFeatureOrder = [];
-    
-    this.scenarios = [];
-    this.activeScenarioId = null;
     
     // FilterManager - lazy init after data loads
     this._filterManager = null;
@@ -47,27 +42,42 @@ class State {
     // ScenarioManager - lazy init
     this._scenarioManager = null;
     
-    // CapacityCalculator
-    this._capacityCalculator = new CapacityCalculator(bus);
-    
-    // BaselineStore
-    this._baselineStore = new BaselineStore();
-    
     // FeatureService - lazy init after scenario manager
     this._featureService = null;
     
     // ========== Service Layer ==========
-    // ViewService - manages view state (timeline scale, visibility, modes)
+    // Core services
+    this._baselineStore = new BaselineStore();
+    this._capacityCalculator = new CapacityCalculator(bus);
+    
+    // View and configuration services
     this._viewService = new ViewService(bus);
-    
-    // ColorService - manages color mappings for projects, teams, states
     this._colorService = new ColorService(dataService);
-    
-    // ConfigService - manages configuration and autosave
     this._configService = new ConfigService(bus, dataService);
-    
-    // StateFilterService - manages feature state filtering
     this._stateFilterService = new StateFilterService(bus);
+    
+    // Project/team management service
+    this._projectTeamService = new ProjectTeamService(bus);
+    
+    // Data initialization service
+    this._dataInitService = new DataInitService(
+      bus,
+      dataService,
+      this._baselineStore,
+      this._projectTeamService,
+      this._stateFilterService,
+      this._colorService
+    );
+    
+    // Initialize ScenarioManager early for ScenarioEventService
+    this._initScenarioManager();
+    
+    // Scenario event service
+    this._scenarioEventService = new ScenarioEventService(
+      bus,
+      this._scenarioManager,
+      this._viewService
+    );
     
     // Capacity metrics
     this.capacityDates = [];
@@ -78,9 +88,6 @@ class State {
     this.projectDailyCapacity = [];
     this.totalOrgDailyCapacity = [];
     this.totalOrgDailyPerTeamAvg = [];
-    // Feature lookups
-    this.baselineFeatureById = new Map();
-    this.childrenByEpic = new Map();
     
     // ConfigService handles autosave initialization and configuration changes
     // Register the autosave callback - ConfigService will handle timer management
@@ -89,34 +96,6 @@ class State {
       () => this._performAutosave(),
       true // silent = true on initial setup to avoid emitting event
     );
-
-    // Load scenarios from backend on startup and keep state in sync
-    bus.on(DataEvents.SCENARIOS_CHANGED, async (metas) => {
-      // Only update list UI; full data comes via scenarios:data
-      this.emitScenarioList();
-    });
-    bus.on(DataEvents.SCENARIOS_DATA, (scenarios) => {
-      // Merge fetched scenarios into state (preserve readonly scenarios like baseline)
-      const readonly = this.scenarios.filter(s=>s.readonly);
-      this.scenarios = [];
-      // Re-add readonly scenarios first
-      this.scenarios.push(...readonly);
-      for(const s of (scenarios || [])){
-        // Ensure required fields, preserve readonly flag from server
-        const merged = Object.assign({ overrides:{}, filters: this.captureCurrentFilters(), view: this.captureCurrentView(), isChanged: false, readonly: false }, s);
-        // Skip if already added as readonly scenario
-        if(this.scenarios.some(existing => existing.id === merged.id)) continue;
-        this.scenarios.push(merged);
-      }
-      // Keep active scenario valid - default to first readonly scenario if active is missing
-      if(!this.scenarios.find(x=>x.id===this.activeScenarioId)){
-        const firstReadonly = this.scenarios.find(s => s.readonly);
-        this.activeScenarioId = firstReadonly ? firstReadonly.id : (this.scenarios[0]?.id || 'baseline');
-      }
-      this.emitScenarioList();
-      this.emitScenarioActivated();
-      bus.emit(FeatureEvents.UPDATED);
-    });
   }
   
   // ========== Backward Compatibility Property Accessors ==========
@@ -142,6 +121,19 @@ class State {
   get availableFeatureStates() { return this._stateFilterService.availableFeatureStates; }
   get selectedFeatureStateFilter() { return this._stateFilterService.selectedFeatureStateFilter; }
   
+  // ProjectTeamService properties
+  get projects() { return this._projectTeamService.getProjects(); }
+  get teams() { return this._projectTeamService.getTeams(); }
+  
+  // ScenarioEventService properties
+  get scenarios() { return this._scenarioEventService.getScenarios(); }
+  get activeScenarioId() { return this._scenarioEventService.getActiveScenarioId(); }
+  set activeScenarioId(id) { this._scenarioEventService.setActiveScenarioId(id); }
+  
+  // DataInitService properties
+  get baselineFeatureById() { return this._dataInitService.baselineFeatureById; }
+  get childrenByEpic() { return this._dataInitService.getChildrenByEpicMap(); }
+  
   // ========== Autosave Helper ==========
   
   /**
@@ -152,7 +144,7 @@ class State {
     // Autosave any non-readonly scenarios with unsaved changes
     for(const s of this.scenarios){
       if(s.readonly) continue; // Skip readonly scenarios
-      if(this.isScenarioUnsaved(s)) {
+      if(this._scenarioEventService.isScenarioUnsaved(s)) {
         dataService.saveScenario(s).catch(()=>{});
       }
     }
@@ -182,115 +174,61 @@ class State {
     await this._colorService.initColors(this.projects, this.teams);
   }
 
-// Compute organization load for a feature based on selected teams.
-// Returns a percentage string like '45.0%'.
+  // Compute organization load for a feature based on selected teams.
+  // Returns a percentage string like '45.0%'.
   computeFeatureOrgLoad(feature) {
-    const teams = this.teams || [];
-    const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
-    let sum = 0;
-    for (const tl of feature.capacity || []) {
-      const t = teams.find(x => x.id === tl.team && x.selected);
-      if (!t) continue;
-      sum += tl.capacity;
-    }
-    return (sum / numTeamsGlobal).toFixed(1) + '%';
+    return this._projectTeamService.computeFeatureOrgLoad(feature);
   }  
 
   async initState() {
-    const projects = await dataService.getProjects();
-    const teams = await dataService.getTeams();
-    const features = await dataService.getFeatures();
+    // Delegate to DataInitService
+    const result = await this._dataInitService.initState();
     
-    // Store baseline data using BaselineStore service
-    this._baselineStore.loadBaseline({ projects, teams, features });
     // Sync to state properties for backward compatibility
-    this.baselineProjects = this._baselineStore.getProjects();
-    this.baselineTeams = this._baselineStore.getTeams();
-    this.baselineFeatures = this._baselineStore.getFeatures();
-    //TODO: delete:: this.originalFeatureOrder = this._baselineStore.getOriginalOrder();
-    
-    this.baselineFeatures.forEach((f,i)=>{ f.originalRank = i; });
-    // Build lookup maps for fast updates
-    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
-    this.childrenByEpic = new Map();
-    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
+    this.baselineProjects = result.baselineProjects;
+    this.baselineTeams = result.baselineTeams;
+    this.baselineFeatures = result.baselineFeatures;
     
     // Update FeatureService with new childrenByEpic if it exists
     if (this._featureService) {
       this._featureService.setChildrenByEpic(this.childrenByEpic);
     }
     
-    // Working copies for selection & colors (do not mutate baseline)
-    this.projects = this.baselineProjects.map(p=>({ ...p }));
-    this.teams = this.baselineTeams.map(t=>({ ...t }));
-    // Precompute orgLoad on baseline features based on current team selection
-    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
-    try { this._baselineStore.setFeatures(this.baselineFeatures); } catch (e) { /* noop on failure */ }
-    // Compute available states from baseline features and initialize state filter
-    const discoveredStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
-    this._stateFilterService.setAvailableStates(discoveredStates);
-    this.initDefaultScenario();
-    await this.initColors();
-    this.emitScenarioList();
-    this.emitScenarioActivated();
-    bus.emit(ProjectEvents.CHANGED, this.projects);
-    bus.emit(TeamEvents.CHANGED, this.teams);
-    bus.emit(StateFilterEvents.CHANGED, this.availableFeatureStates);
-    bus.emit(FeatureEvents.UPDATED);
+    // Initialize default scenario
+    this._scenarioEventService.initDefaultScenario(
+      () => this._projectTeamService.captureCurrentFilters()
+    );
+    
+    this._scenarioEventService.emitScenarioList();
+    this._scenarioEventService.emitScenarioActivated();
+    
     // Compute capacity metrics for charts/analytics
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   async refreshBaseline() {
-    // Fetch fresh data from backend
-    const projects = await dataService.getProjects();
-    const teams = await dataService.getTeams();
-    const features = await dataService.getFeatures();
+    // Delegate to DataInitService
+    const result = await this._dataInitService.refreshBaseline();
     
-    // Build features with originalRank first
-    const featuresWithRank = features.map((f, i) => ({ ...f, originalRank: i }));
-    this._baselineStore.loadBaseline({ projects, teams, features: featuresWithRank });
     // Sync to state properties
-    this.baselineProjects = this._baselineStore.getProjects();
-    this.baselineTeams = this._baselineStore.getTeams();
-    this.baselineFeatures = this._baselineStore.getFeatures();
-    //TODO: delete:: this.originalFeatureOrder = this._baselineStore.getOriginalOrder();
-    
-    // Refresh working copies FIRST (preserve selection flags if exist) so computeFeatureOrgLoad has correct team selection
-    const selectedProjects = new Set(this.projects.filter(p=>p.selected).map(p=>p.id));
-    const selectedTeams = new Set(this.teams.filter(t=>t.selected).map(t=>t.id));
-    this.projects = this.baselineProjects.map(p=>({ ...p, selected: selectedProjects.has(p.id) }));
-    this.teams = this.baselineTeams.map(t=>({ ...t, selected: selectedTeams.has(t.id) }));
-    
-    // Add orgLoad to features
-    this.baselineFeatures = this.baselineFeatures.map(f => ({ ...f, orgLoad: this.computeFeatureOrgLoad(f) }));
-    try { this._baselineStore.setFeatures(this.baselineFeatures); } catch (e) { /* noop on failure */ }
-    // Rebuild lookup maps
-    this.baselineFeatureById = new Map(this.baselineFeatures.map(f=>[f.id, f]));
-    this.childrenByEpic = new Map();
-    for(const f of this.baselineFeatures){ if(f.parentEpic){ if(!this.childrenByEpic.has(f.parentEpic)) this.childrenByEpic.set(f.parentEpic, []); this.childrenByEpic.get(f.parentEpic).push(f.id); } }
+    this.baselineProjects = result.baselineProjects;
+    this.baselineTeams = result.baselineTeams;
+    this.baselineFeatures = result.baselineFeatures;
     
     // Update FeatureService with new childrenByEpic if it exists
     if (this._featureService) {
       this._featureService.setChildrenByEpic(this.childrenByEpic);
     }
     
-    // Now freeze baseline copies after all modifications are complete
-    Object.freeze(this.baselineProjects);
-    Object.freeze(this.baselineTeams);
-    Object.freeze(this.baselineFeatures);
-    this.initDefaultScenario();
-    // Recompute available states and update state filter service
-    const discoveredStates = Array.from(new Set(this.baselineFeatures.map(f => f.status || f.state).filter(x=>!!x)));
-    this._stateFilterService.setAvailableStates(discoveredStates);
-    console.log('Re-initializing colors after baseline refresh');
-    await this.initColors();
-    this.emitScenarioList();
-    this.emitScenarioActivated();
-    bus.emit(ProjectEvents.CHANGED, this.projects);
-    bus.emit(TeamEvents.CHANGED, this.teams);
-    bus.emit(FeatureEvents.UPDATED);
+    // Reinitialize default scenario
+    this._scenarioEventService.initDefaultScenario(
+      () => this._projectTeamService.captureCurrentFilters()
+    );
+    
+    this._scenarioEventService.emitScenarioList();
+    this._scenarioEventService.emitScenarioActivated();
+    
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
@@ -422,23 +360,17 @@ class State {
 
   setProjectSelected(id, selected) {
     this._ensureFilterManager();
-    const p = this.projects.find(x => x.id === id);
-    if (!p) return;
-    p.selected = selected;
+    if (!this._projectTeamService.setProjectSelected(id, selected)) return;
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(ProjectEvents.CHANGED, this.projects);
     bus.emit(FeatureEvents.UPDATED);
   }
 
   setTeamSelected(id, selected) {
     this._ensureFilterManager();
-    const t = this.teams.find(x => x.id === id);
-    if (!t) return;
-    t.selected = selected;
+    if (!this._projectTeamService.setTeamSelected(id, selected)) return;
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-    bus.emit(TeamEvents.CHANGED, this.teams);
     bus.emit(FeatureEvents.UPDATED);
   }
 
@@ -472,21 +404,22 @@ class State {
 
   // ---------- Scenario State Management ----------
   
+  // Initialize scenario manager
+  _initScenarioManager() {
+    if (this._scenarioManager) return;
+    
+    // Create state context for ScenarioManager
+    const stateContext = {
+      captureCurrentFilters: () => this.captureCurrentFilters(),
+      captureCurrentView: () => this.captureCurrentView()
+    };
+    
+    this._scenarioManager = new ScenarioManager(bus, this._baselineStore, stateContext);
+  }
+  
   // Get or create scenario manager (lazy initialization)
   _getScenarioManager() {
-    if (!this._scenarioManager) {
-      // Create state context for ScenarioManager
-      const stateContext = {
-        captureCurrentFilters: () => this.captureCurrentFilters(),
-        captureCurrentView: () => this.captureCurrentView()
-      };
-      
-      this._scenarioManager = new ScenarioManager(bus, this._baselineStore, stateContext);
-      
-      // Sync existing scenarios (excluding readonly scenarios which aren't managed by ScenarioManager)
-      this._scenarioManager.scenarios = this.scenarios.filter(s => !s.readonly);
-      this._scenarioManager.activeScenarioId = this.activeScenarioId;
-    }
+    this._initScenarioManager();
     return this._scenarioManager;
   }
   
@@ -521,10 +454,7 @@ class State {
   }
   
   captureCurrentFilters() {
-    return {
-      projects: this.projects.filter(p=>p.selected).map(p=>p.id),
-      teams: this.teams.filter(t=>t.selected).map(t=>t.id)
-    };
+    return this._projectTeamService.captureCurrentFilters();
   }
 
   captureCurrentView() {
@@ -532,66 +462,38 @@ class State {
   }
 
   emitScenarioList() {
-    bus.emit(ScenarioEvents.LIST, { scenarios: this.scenarios.map(s => ({
-      id: s.id,
-      name: s.name,
-      overridesCount: Object.keys(s.overrides).length,
-      unsaved: this.isScenarioUnsaved(s),
-      readonly: s.readonly === true // Expose readonly flag for UI
-    })), activeScenarioId: this.activeScenarioId });
+    this._scenarioEventService.emitScenarioList();
   }
 
   emitScenarioActivated() {
-    bus.emit(ScenarioEvents.ACTIVATED, { scenarioId: this.activeScenarioId });
+    this._scenarioEventService.emitScenarioActivated();
   }
   
   emitScenarioUpdated(id, change) {
-    bus.emit(ScenarioEvents.UPDATED, { scenarioId: id, change });
-    this.emitScenarioList();
+    this._scenarioEventService.emitScenarioUpdated(id, change);
   }
 
   initDefaultScenario() {
-    // Initialise or reset the default readonly scenario (baseline)
-    const DEFAULT_ID = 'baseline';
-    const existing = this.scenarios.find(s => s.id === DEFAULT_ID);
-    if (existing) {
-      existing.overrides = {};
-      existing.isChanged = false;
-      existing.readonly = true; // Ensure readonly flag is set
-    } else {
-      const defaultScenario = {
-        id: DEFAULT_ID,
-        name: 'Baseline',
-        overrides: {},
-        filters: this.captureCurrentFilters(),
-        view: this.captureCurrentView(),
-        isChanged: false,
-        readonly: true, // Default scenario is readonly
-      };
-      this.scenarios.push(defaultScenario);
-      this.activeScenarioId = defaultScenario.id;
-    }
+    this._scenarioEventService.initDefaultScenario(
+      () => this._projectTeamService.captureCurrentFilters()
+    );
   }
 
   cloneScenario(sourceId, name) {
     const scenario = this._getScenarioManager().cloneScenario(sourceId, name);
     
-    // Keep scenarios array in sync
-    const readonlyScenarios = this.scenarios.filter(s => s.readonly);
-    this.scenarios = [
-      ...readonlyScenarios,
-      ...this._getScenarioManager().getAllScenarios()
-    ];
+    // Sync scenarios with ScenarioEventService
+    this._scenarioEventService.syncScenariosFromManager();
     
-    this.emitScenarioList();
+    this._scenarioEventService.emitScenarioList();
     return scenario;
   }
 
   activateScenario(id) {
     if (this.activeScenarioId === id) return;
     this._getScenarioManager().activateScenario(id);
-    this.activeScenarioId = this._getScenarioManager().activeScenarioId;
-    this.emitScenarioActivated();
+    this._scenarioEventService.setActiveScenarioId(this._getScenarioManager().activeScenarioId);
+    this._scenarioEventService.emitScenarioActivated();
     // Recompute capacity metrics to reflect active scenario overrides
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity });
@@ -600,23 +502,19 @@ class State {
 
   renameScenario(id, newName) {
     this._getScenarioManager().renameScenario(id, newName);
-    this.emitScenarioUpdated(id, { type:'rename', name: newName });
+    this._scenarioEventService.emitScenarioUpdated(id, { type:'rename', name: newName });
   }
 
   deleteScenario(id) {
     const wasActive = id === this.activeScenarioId;
     this._getScenarioManager().deleteScenario(id);
-    this.activeScenarioId = this._getScenarioManager().activeScenarioId;
+    this._scenarioEventService.setActiveScenarioId(this._getScenarioManager().activeScenarioId);
     
-    // Keep scenarios array in sync
-    const readonlyScenarios = this.scenarios.filter(s => s.readonly);
-    this.scenarios = [
-      ...readonlyScenarios,
-      ...this._getScenarioManager().getAllScenarios()
-    ];
+    // Sync scenarios with ScenarioEventService
+    this._scenarioEventService.syncScenariosFromManager();
     
-    this.emitScenarioUpdated(id, { type:'delete' });
-    if (wasActive) { this.emitScenarioActivated(); }
+    this._scenarioEventService.emitScenarioUpdated(id, { type:'delete' });
+    if (wasActive) { this._scenarioEventService.emitScenarioActivated(); }
     bus.emit(FeatureEvents.UPDATED);
   }
 
@@ -624,7 +522,7 @@ class State {
     this._getScenarioManager().setScenarioOverride(featureId, start, end);
     const activeId = this._getScenarioManager().activeScenarioId;
     if (activeId !== 'baseline') {
-      this.emitScenarioUpdated(activeId, { type:'override', featureId });
+      this._scenarioEventService.emitScenarioUpdated(activeId, { type:'override', featureId });
     }
     // Recompute capacity metrics after setting override
     this.recomputeCapacityMetrics([featureId]);
@@ -645,15 +543,16 @@ class State {
   }
 
   isScenarioUnsaved(scen){
-    return scen.isChanged;
+    return this._scenarioEventService.isScenarioUnsaved(scen);
   }
 
   async saveScenario(id){
-    const scen = this.scenarios.find(s=>s.id===id); if(!scen) return;
+    const scen = this._scenarioEventService.getScenarioById(id);
+    if(!scen) return;
     // Persist via provider
     await dataService.saveScenario({ id: scen.id, name: scen.name, overrides: scen.overrides, filters: scen.filters, view: scen.view });
-    scen.isChanged = false;
-    this.emitScenarioUpdated(scen.id, { type:'saved' });
+    this._scenarioEventService.markScenarioSaved(scen.id);
+    this._scenarioEventService.emitScenarioUpdated(scen.id, { type:'saved' });
   }
 
   // -------- Capacity Metrics ---------
@@ -688,7 +587,7 @@ class State {
     }
     
     // Ensure childrenByEpic map is set in calculator
-    this._capacityCalculator.setChildrenByEpic(this.childrenByEpic);
+    this._capacityCalculator.setChildrenByEpic(this._dataInitService.getChildrenByEpicMap());
     
     const filters = {
       selectedProjects,

@@ -92,7 +92,14 @@ class FeatureBoard extends LitElement {
 
   // Helper: sort features by date
   _sortByDate(features) {
-    return features.sort((a, b) => a.start.localeCompare(b.start));
+    return features.sort((a, b) => {
+      // Handle unplanned features (no start date) - sort them to the end
+      if (!a.start && !b.start) return 0;
+      if (!a.start) return 1;  // a goes to end
+      if (!b.start) return -1; // b goes to end
+      
+      return a.start.localeCompare(b.start);
+    });
   }
 
   // Helper: build children map
@@ -134,6 +141,11 @@ class FeatureBoard extends LitElement {
     return ordered;
   }
 
+  // Helper: check if feature is unplanned (no dates set)
+  _isUnplanned(feature) {
+    return !feature.start || !feature.end;
+  }
+
   // Helper: check if feature passes filters
   _featurePassesFilters(feature, childrenMap) {
     const project = state.projects.find(p => p.id === feature.project && p.selected);
@@ -152,20 +164,56 @@ class FeatureBoard extends LitElement {
     if (feature.type === 'epic' && !state._viewService.showEpics) return false;
     if (feature.type === 'feature' && !state._viewService.showFeatures) return false;
 
+    // Check unplanned work filter (only when feature flag is ON)
+    if (featureFlags.SHOW_UNPLANNED_WORK) {
+      const isUnplanned = this._isUnplanned(feature);
+      if (isUnplanned && !state._viewService.showUnplannedWork) {
+        return false;
+      }
+    }
+
     if (feature.type === 'epic') {
       const children = childrenMap.get(feature.id) || [];
-      const anyChildVisible = children.some(child => 
-        state.projects.find(p => p.id === child.project && p.selected) &&
-        child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))
-      );
-      const epicVisible = feature.capacity.some(tl => 
-        state.teams.find(t => t.id === tl.team && t.selected)
-      ) || anyChildVisible;
+      const anyChildVisible = children.some(child => {
+        const childProject = state.projects.find(p => p.id === child.project && p.selected);
+        if (!childProject) return false;
+        
+        // Check unplanned work for children (when feature flag is ON)
+        if (featureFlags.SHOW_UNPLANNED_WORK) {
+          const isChildUnplanned = this._isUnplanned(child);
+          if (isChildUnplanned && !state._viewService.showUnplannedWork) {
+            return false;
+          }
+        }
+        
+        // Check if child has capacity
+        const hasCapacity = child.capacity && child.capacity.length > 0;
+        if (!hasCapacity) {
+          // Show/hide based on showUnassignedCards setting
+          return state._viewService.showUnassignedCards;
+        }
+        
+        return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
+      });
       
-      if (!epicVisible) return false;
+      // Check if epic itself has capacity
+      const hasCapacity = feature.capacity && feature.capacity.length > 0;
+      const epicVisible = hasCapacity 
+        ? feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))
+        : state._viewService.showUnassignedCards;
+      
+      if (!epicVisible && !anyChildVisible) return false;
     } else {
-      if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) {
-        return false;
+      // For features, check if they have capacity
+      const hasCapacity = feature.capacity && feature.capacity.length > 0;
+      if (!hasCapacity) {
+        // Show/hide based on showUnassignedCards setting
+        if (!state._viewService.showUnassignedCards) return false;
+      } else {
+        // Has capacity - check if any team matches selected teams
+        if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) {
+          return false;
+        }
       }
     }
 

@@ -1,5 +1,6 @@
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, CapacityEvents } from '../core/EventRegistry.js';
+import { featureFlags } from '../config.js';
 
 /**
  * FeatureService - Manages feature operations and scenario overrides
@@ -35,6 +36,12 @@ export class FeatureService {
     const activeScenario = this._getActiveScenario();
 
     let baselineFeatures = this._baselineStore.getFeatures();
+    
+    // Apply date defaulting for features without dates when feature flag is OFF
+    if (!featureFlags.SHOW_UNPLANNED_WORK) {
+      baselineFeatures = this._applyDefaultDates(baselineFeatures);
+    }
+    
     if (!activeScenario) {
       return baselineFeatures; //.map(f => ({ ...f }));
     }
@@ -307,4 +314,35 @@ export class FeatureService {
     const f = baselineFeatures.find(x => x.id === id);
     return f ? f.title : id;
   }
+
+  /**
+   * Apply default dates to features without start/end dates
+   * Used when SHOW_UNPLANNED_WORK feature flag is OFF
+   * Mimics backend behavior: today-120 to today-90
+   * @private
+   */
+  _applyDefaultDates(features) {
+    const today = new Date();
+    const todayMinus120 = new Date(today);
+    todayMinus120.setDate(today.getDate() - 120);
+    const todayMinus90 = new Date(today);
+    todayMinus90.setDate(today.getDate() - 90);
+    
+    const defaultStart = todayMinus120.toISOString().split('T')[0];
+    const defaultEnd = todayMinus90.toISOString().split('T')[0];
+    
+    return features.map(f => {
+      // Only add default dates if both start and end are missing
+      if (!f.start || !f.end) {
+        return {
+          ...f,
+          start: f.start || defaultStart,
+          end: f.end || defaultEnd,
+          hasDefaultDates: true // Mark for potential future use
+        };
+      }
+      return f;
+    });
+  }
 }
+

@@ -3,6 +3,7 @@ import { DragEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths } from './Timeline.lit.js';
+import { featureFlags } from '../config.js';
 
 const monthWidth = (() => {
   const val = getComputedStyle(document.documentElement).getPropertyValue('--timeline-month-width');
@@ -20,9 +21,24 @@ const getBoardOffset = () => {
 export function startDragMove(e, feature, card, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const months = getTimelineMonths();
   const boardOffset = getBoardOffset();
-  const startDateOrig = parseDate(feature.start);
-  const endDateOrig = parseDate(feature.end);
-  const durationDays = Math.round((endDateOrig - startDateOrig) / (1000*60*60*24)) + 1;
+  
+  // Check if feature is unplanned (ghosted)
+  const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
+  
+  // For unplanned features, use today's date as start and 1-month duration
+  let startDateOrig, endDateOrig, durationDays;
+  if (isUnplanned) {
+    startDateOrig = new Date();
+    const oneMonthLater = new Date(startDateOrig);
+    oneMonthLater.setMonth(startDateOrig.getMonth() + 1);
+    endDateOrig = oneMonthLater;
+    durationDays = Math.round((endDateOrig - startDateOrig) / (1000*60*60*24)) + 1;
+  } else {
+    startDateOrig = parseDate(feature.start);
+    endDateOrig = parseDate(feature.end);
+    durationDays = Math.round((endDateOrig - startDateOrig) / (1000*60*60*24)) + 1;
+  }
+  
   let startX = e.clientX;
   const origLeft = parseInt(card.style.left, 10);
   const datesEl = (card.shadowRoot && card.shadowRoot.querySelector('.feature-dates')) || card.querySelector('.feature-dates');
@@ -61,6 +77,16 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const newEndStr = formatDate(newEndDate);
     if (newStartStr !== feature.start || newEndStr !== feature.end) {
       const updates = computeMoveUpdates(feature, newStartDate, newEndDate, featuresSource);
+      
+      // If planning an unplanned child feature, also plan its parent epic
+      if (isUnplanned && feature.parentEpic) {
+        const epic = featuresSource.find(f => f.id === feature.parentEpic);
+        if (epic && (!epic.start || !epic.end)) {
+          // Plan the epic with the same dates as the child
+          updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
+        }
+      }
+      
       applyUpdates(updates, updateDatesCb);
       bus.emit(DragEvents.END, { featureId: feature.id, start: newStartStr, end: newEndStr });
     } else {
@@ -73,7 +99,11 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
 }
 
 export function startResize(e, feature, card, datesEl, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
-  const startDate = parseDate(feature.start);
+  // Check if feature is unplanned (ghosted)
+  const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
+  
+  // For unplanned features, fix start date at today's date
+  const startDate = isUnplanned ? new Date() : parseDate(feature.start);
   let startX = e.clientX;
   const origWidth = parseInt(card.style.width, 10);
 
@@ -140,13 +170,37 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     const finalWidth = parseInt(card.style.width,10);
     const finalEnd = endDateFromWidth(finalWidth);
     let adjustedFinalEnd = finalEnd;
+    const newStartStr = formatDate(startDate);
     const newEndStr = formatDate(adjustedFinalEnd);
-    if (newEndStr !== feature.end) {
-      const updates = computeResizeUpdates(feature, adjustedFinalEnd, featuresSource);
-      applyUpdates(updates, updateDatesCb);
-      bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
+    
+    // For unplanned features, we need to set both start and end dates
+    if (isUnplanned) {
+      if (newEndStr !== feature.end || newStartStr !== feature.start) {
+        const updates = [{ id: feature.id, start: newStartStr, end: newEndStr }];
+        
+        // If planning an unplanned child feature, also plan its parent epic
+        if (feature.parentEpic) {
+          const epic = featuresSource.find(f => f.id === feature.parentEpic);
+          if (epic && (!epic.start || !epic.end)) {
+            // Plan the epic with the same dates as the child
+            updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
+          }
+        }
+        
+        applyUpdates(updates, updateDatesCb);
+        bus.emit(DragEvents.END, { featureId: feature.id, start: newStartStr, end: newEndStr });
+      } else {
+        card.style.width = origWidth + 'px';
+      }
     } else {
-      card.style.width = origWidth + 'px';
+      // Normal resize for planned features (only end date changes)
+      if (newEndStr !== feature.end) {
+        const updates = computeResizeUpdates(feature, adjustedFinalEnd, featuresSource);
+        applyUpdates(updates, updateDatesCb);
+        bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
+      } else {
+        card.style.width = origWidth + 'px';
+      }
     }
     // Clear any live-date overlay left from a drag/resize so the
     // lit-rendered default dates (bound to `feature.start/end`) become visible.
@@ -167,24 +221,46 @@ function clampEpicEndAgainstChildren(epic, features, proposedEndStr){
 // Build list of update ops {id,start,end}
 function computeMoveUpdates(feature, newStartDate, newEndDate, features){
   const updates = [];
-  const origStart = parseDate(feature.start);
-  const deltaDays = Math.round((newStartDate - origStart)/(1000*60*60*24));
+  const isUnplannedEpic = featureFlags.SHOW_UNPLANNED_WORK && feature.type === 'epic' && (!feature.start || !feature.end);
+  const origStart = feature.start ? parseDate(feature.start) : null;
+  const deltaDays = origStart ? Math.round((newStartDate - origStart)/(1000*60*60*24)) : 0;
   const newStartStr = formatDate(newStartDate);
-    const newEndStr = formatDate(newEndDate);
+  const newEndStr = formatDate(newEndDate);
+  
   if(feature.type === 'epic'){
       // Move children first so scenario/baseline callbacks can react before epic final dates if desired.
       // Epic retains original duration; no clamping during a pure move.
       updates.push({ id: feature.id, start: newStartStr, end: newEndStr });
-      if(deltaDays !== 0){
+      
+      if(deltaDays !== 0 || isUnplannedEpic){
         const children = features.filter(ch => ch.parentEpic === feature.id);
         for(const ch of children){
-          const chStart = parseDate(ch.start);
-          const chEnd = parseDate(ch.end);
-          const shiftedStart = addDays(chStart, deltaDays);
-          const shiftedEnd = addDays(chEnd, deltaDays);
-          // Mark child updates as originating from an epic move so upstream
-          // processing can decide whether to overwrite existing child overrides.
-          updates.push({ id: ch.id, start: formatDate(shiftedStart), end: formatDate(shiftedEnd), fromEpicMove: true });
+          const isUnplannedChild = featureFlags.SHOW_UNPLANNED_WORK && (!ch.start || !ch.end);
+          
+          if (isUnplannedChild) {
+            // Unplanned child gets 1-month default duration starting from epic's new start date
+            const childStart = new Date(newStartDate);
+            const childEnd = new Date(childStart);
+            childEnd.setMonth(childStart.getMonth() + 1);
+            updates.push({ 
+              id: ch.id, 
+              start: formatDate(childStart), 
+              end: formatDate(childEnd), 
+              fromEpicMove: true 
+            });
+          } else {
+            // Planned child gets shifted by delta
+            const chStart = parseDate(ch.start);
+            const chEnd = parseDate(ch.end);
+            const shiftedStart = addDays(chStart, deltaDays);
+            const shiftedEnd = addDays(chEnd, deltaDays);
+            updates.push({ 
+              id: ch.id, 
+              start: formatDate(shiftedStart), 
+              end: formatDate(shiftedEnd), 
+              fromEpicMove: true 
+            });
+          }
         }
       }
   }

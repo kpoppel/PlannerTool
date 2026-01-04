@@ -65,6 +65,25 @@ export class FeatureCardLit extends LitElement {
       /* border-right: 4px solid var(--color-dirty-accent, #ffb84d); */
     }
 
+    .feature-card.ghosted {
+      /* Visual styling for unplanned features (no start/end dates) */
+      opacity: 0.6;
+      background: repeating-linear-gradient(
+        45deg,
+        #f8f8f8,
+        #f8f8f8 10px,
+        #efefef 10px,
+        #efefef 20px
+      );
+      border-style: dashed;
+      border-color: #999;
+    }
+
+    .feature-card.ghosted:hover {
+      opacity: 0.8;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
     .feature-card.condensed {
       height: 40px;
       padding: 4px 8px;
@@ -481,11 +500,14 @@ export class FeatureCardLit extends LitElement {
   }
 
   render() {
+    const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
+    
     const cardClasses = {
       'feature-card': true,
       'selected': this.selected,
       'dirty': this.feature.dirty,
-      'condensed': this.condensed
+      'condensed': this.condensed,
+      'ghosted': isUnplanned
     };
 
     const borderColor = this.project?.color || '#666';

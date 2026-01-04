@@ -41,6 +41,8 @@ export class ViewService {
     this._showEpics = true;
     this._showFeatures = true;
     this._showDependencies = false;
+    this._showUnassignedCards = true; // Show features without capacity by default
+    this._showUnplannedWork = true; // Show features without dates by default (when feature flag is ON)
     
     // Display modes
     this._condensedCards = false;
@@ -133,6 +135,48 @@ export class ViewService {
     this.bus.emit(FeatureEvents.UPDATED);
   }
   
+  /**
+   * Get whether unassigned cards (features without capacity) are visible
+   * @returns {boolean}
+   */
+  get showUnassignedCards() {
+    return this._showUnassignedCards;
+  }
+  
+  /**
+   * Set unassigned cards visibility and emit change events
+   * @param {boolean} val - Whether to show features without capacity
+   */
+  setShowUnassignedCards(val) {
+    this._showUnassignedCards = !!val;
+    console.debug('[ViewService] setShowUnassignedCards ->', this._showUnassignedCards);
+    this.bus.emit(FilterEvents.CHANGED, { 
+      showUnassignedCards: this._showUnassignedCards 
+    });
+    this.bus.emit(FeatureEvents.UPDATED);
+  }
+  
+  /**
+   * Get whether unplanned work (features without dates) is visible
+   * @returns {boolean}
+   */
+  get showUnplannedWork() {
+    return this._showUnplannedWork;
+  }
+  
+  /**
+   * Set unplanned work visibility and emit change events
+   * @param {boolean} val - Whether to show features without dates
+   */
+  setShowUnplannedWork(val) {
+    this._showUnplannedWork = !!val;
+    console.debug('[ViewService] setShowUnplannedWork ->', this._showUnplannedWork);
+    this.bus.emit(FilterEvents.CHANGED, { 
+      showUnplannedWork: this._showUnplannedWork 
+    });
+    this.bus.emit(FeatureEvents.UPDATED);
+  }
+  
   // ========== Display Modes ==========
   
   /**
@@ -203,7 +247,9 @@ export class ViewService {
     return {
       capacityViewMode: this._capacityViewMode,
       condensedCards: this._condensedCards,
-      featureSortMode: this._featureSortMode
+      featureSortMode: this._featureSortMode,
+      showUnassignedCards: this._showUnassignedCards,
+      showUnplannedWork: this._showUnplannedWork
     };
   }
   
@@ -222,6 +268,12 @@ export class ViewService {
     }
     if (viewState.featureSortMode) {
       this.setFeatureSortMode(viewState.featureSortMode);
+    }
+    if (typeof viewState.showUnassignedCards !== 'undefined') {
+      this.setShowUnassignedCards(viewState.showUnassignedCards);
+    }
+    if (typeof viewState.showUnplannedWork !== 'undefined') {
+      this.setShowUnplannedWork(viewState.showUnplannedWork);
     }
   }
 }

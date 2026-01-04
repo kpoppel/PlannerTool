@@ -16,9 +16,10 @@ describe('FeatureCard Consolidated Tests', () => {
 
   describe('helpers and computePosition', () => {
     before(() => {
-      state.projects = [{ id: 'p1', color: '#123', selected: true }];
-      state.teams = [{ id: 't1', selected: true, color: '#abc' }];
-      state.scenarios = [{ id: 'baseline' }];
+      state._projectTeamService.initFromBaseline([{ id: 'p1', color: '#123' }], [{ id: 't1', color: '#abc' }]);
+      state._projectTeamService.setProjectSelected('p1', true);
+      state._projectTeamService.setTeamSelected('t1', true);
+      state._scenarioEventService._scenarios = [{ id: 'baseline' }];
       state.activeScenarioId = 'baseline';
       state._viewService.setCondensedCards(false);
     });
