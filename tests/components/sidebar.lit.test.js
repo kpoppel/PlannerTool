@@ -14,7 +14,7 @@ describe('app-sidebar', () => {
   });
 
   it('toggleProject calls state.setProjectSelected with flipped value', () => {
-    state.projects = [{ id: 'p1', selected: false }];
+    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
     let called = null;
     const orig = state.setProjectSelected;
     state.setProjectSelected = (pid, val) => { called = { pid, val }; };
@@ -24,7 +24,8 @@ describe('app-sidebar', () => {
   });
 
   it('toggleTeam calls state.setTeamSelected with flipped value', () => {
-    state.teams = [{ id: 't1', selected: true }];
+    state._projectTeamService.initFromBaseline([], [{ id: 't1' }]);
+    state._projectTeamService.setTeamSelected('t1', true);
     let called = null;
     const orig = state.setTeamSelected;
     state.setTeamSelected = (tid, val) => { called = { tid, val }; };
@@ -34,7 +35,7 @@ describe('app-sidebar', () => {
   });
 
   it('renderScenarios produces markup containing scenario names and active marker', async () => {
-    state.scenarios = [ { id: 's1', name: 'One' }, { id: 'baseline', name: 'Base' } ];
+    state._scenarioEventService._scenarios = [ { id: 's1', name: 'One' }, { id: 'baseline', name: 'Base' } ];
     state.activeScenarioId = 's1';
     // call renderScenarios and render into temporary container
     const tpl = sidebar.renderScenarios();

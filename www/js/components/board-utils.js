@@ -1,6 +1,7 @@
 import { getTimelineMonths } from './Timeline.lit.js';
 import { parseDate } from './util.js';
 import { state } from '../services/State.js';
+import { featureFlags } from '../config.js';
 
 const monthWidth = 120;
 
@@ -26,6 +27,55 @@ export const getBoardOffset = () => {
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();
   if (!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || _cachedMonthsRef[0].getTime() !== months[0].getTime()) _buildMonthCache(months);
+  
+  // Handle unplanned features (when feature flag is ON)
+  if (featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end)) {
+    // Position at today's date with 1-month default duration
+    const today = new Date();
+    const oneMonthLater = new Date(today);
+    oneMonthLater.setMonth(today.getMonth() + 1);
+    
+    const startDate = today;
+    const endDate = oneMonthLater;
+    
+    const ms = startDate.getTime();
+    const ems = endDate.getTime();
+    
+    const findMonthIndexFor = (msVal) => {
+      const arr = _cachedMonthStarts; let lo = 0, hi = arr.length - 1;
+      if (msVal < arr[0]) return -1;
+      if (msVal >= arr[hi]) return hi;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const midStart = arr[mid];
+        const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
+        if (msVal >= midStart && msVal < midEnd) return mid;
+        if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
+      }
+      return -1;
+    };
+    
+    let startIdx = findMonthIndexFor(ms);
+    startIdx = startIdx < 0 ? (ms < _cachedMonthStarts[0] ? 0 : months.length - 1) : startIdx;
+    let endIdx = findMonthIndexFor(ems);
+    endIdx = endIdx < 0 ? (ems < _cachedMonthStarts[0] ? 0 : months.length - 1) : endIdx;
+
+    const startDays = _cachedMonthDays[startIdx];
+    const endDays = _cachedMonthDays[endIdx];
+    const startFraction = (startDate.getDate() - 1) / startDays;
+    const endFraction = (endDate.getDate()) / endDays;
+
+    const boardOffset = getBoardOffset();
+    const left = boardOffset + (startIdx + startFraction) * monthWidth;
+    const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
+    let width = spanContinuous * monthWidth;
+    const minVisualWidth = 40;
+    if (width < minVisualWidth) width = minVisualWidth;
+
+    return { left, width };
+  }
+  
+  // Normal processing for planned features
   let startDate = parseDate(feature.start) || new Date('2025-01-01');
   let endDate = parseDate(feature.end) || new Date('2025-01-15');
 

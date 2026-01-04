@@ -8,8 +8,8 @@ describe('feature-board updateCardsById', () => {
     board = document.createElement('feature-board');
     document.body.appendChild(board);
     // minimal state
-    state.projects = [{ id: 'p1', selected: true }];
-    state.teams = [];
+    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
+    state._projectTeamService.setProjectSelected('p1', true);
   });
 
   afterEach(() => {

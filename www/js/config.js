@@ -28,6 +28,11 @@ export const featureFlags = {
   // true: 'fillGapsIfNoChildCoversDate' - Use epic capacity only on days where no child feature covers the date
   USE_EPIC_CAPACITY_GAP_FILLS: false,
 
+  // Unplanned work visualization:
+  // false: Add default dates (today-120 to today-90) to features with no dates
+  // true: Show unplanned features as ghosted cards at today's date, user can drag to set dates
+  SHOW_UNPLANNED_WORK: true,
+
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };
   ...(typeof window !== 'undefined' && window.__featureFlags ? window.__featureFlags : {})

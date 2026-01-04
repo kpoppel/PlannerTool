@@ -1,6 +1,7 @@
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { StateFilterEvents } from '../core/EventRegistry.js';
+import { featureFlags } from '../config.js';
 
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
   const btn = document.createElement('button');
@@ -96,6 +97,18 @@ export function initViewOptions(container){
     ()=> state._viewService.showDependencies, 
     (val)=> state._viewService.setShowDependencies(val)
   );
+  // Show Unassigned Cards - use ViewService directly
+  renderToggle(root, 'Show Unassigned', 
+    ()=> state._viewService.showUnassignedCards, 
+    (val)=> state._viewService.setShowUnassignedCards(val)
+  );
+  // Show Unplanned Work - only when feature flag is enabled
+  if (featureFlags.SHOW_UNPLANNED_WORK) {
+    renderToggle(root, 'Show Unplanned', 
+      ()=> state._viewService.showUnplannedWork, 
+      (val)=> state._viewService.setShowUnplannedWork(val)
+    );
+  }
   // Capacity selector + Open Graph action (moved here)
   const capWrapper = document.createElement('div');
   const capTitle = document.createElement('div'); capTitle.className = 'group-label'; capTitle.textContent = 'Capacity:';

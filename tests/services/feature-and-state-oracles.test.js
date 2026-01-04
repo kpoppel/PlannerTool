@@ -98,21 +98,21 @@ describe('Feature Service and State Oracles (consolidated)', () => {
         { id: 'e1', title: 'Epic 1', type: 'epic', start: '2024-01-01', end: '2024-01-20', team: 't1', project: 'p1', state: 'active' }
       ];
       state._baselineStore.setFeatures(state.baselineFeatures);
-      state.baselineFeatureById = new Map();
-      state.childrenByEpic = new Map();
+      state._dataInitService.baselineFeatureById = new Map();
+      state._dataInitService.childrenByEpic = new Map();
       for (const f of state.baselineFeatures) {
-        state.baselineFeatureById.set(f.id, f);
+        state._dataInitService.baselineFeatureById.set(f.id, f);
       }
       for (const f of state.baselineFeatures) {
         if (f.type === 'feature' && f.parentEpic) {
-          if (!state.childrenByEpic.has(f.parentEpic)) {
-            state.childrenByEpic.set(f.parentEpic, []);
+          if (!state._dataInitService.childrenByEpic.has(f.parentEpic)) {
+            state._dataInitService.childrenByEpic.set(f.parentEpic, []);
           }
-          state.childrenByEpic.get(f.parentEpic).push(f.id);
+          state._dataInitService.childrenByEpic.get(f.parentEpic).push(f.id);
         }
       }
-      state.scenarios = [ { id: 'test-scenario', name: 'Test', overrides: {}, isChanged: false } ];
-      state.activeScenarioId = 'test-scenario';
+      state._scenarioEventService._scenarios = [ { id: 'test-scenario', name: 'Test', overrides: {}, isChanged: false } ];
+      state._scenarioEventService.setActiveScenarioId('test-scenario');
       state._featureService = null;
     });
 

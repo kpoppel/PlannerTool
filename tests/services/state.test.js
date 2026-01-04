@@ -3,8 +3,12 @@ import { state } from '../../www/js/services/State.js';
 
 describe('State core behaviors', () => {
   it('computeFeatureOrgLoad respects selected teams', () => {
-    // Setup baseline teams and selection
-    state.teams = [{ id: 't1', selected: true }, { id: 't2', selected: false }];
+    // Setup baseline teams and selection using ProjectTeamService
+    const teams = [{ id: 't1' }, { id: 't2' }];
+    state._projectTeamService.initFromBaseline([], teams);
+    state._projectTeamService.setTeamSelected('t1', true);
+    state._projectTeamService.setTeamSelected('t2', false);
+    
     const feature = { capacity: [ { team: 't1', capacity: 3 }, { team: 't2', capacity: 2 } ] };
     const pct = state.computeFeatureOrgLoad(feature);
     expect(pct).to.be.a('string');
@@ -18,14 +22,16 @@ describe('State core behaviors', () => {
     state.baselineTeams = [{ id: 't1' }];
     state.baselineProjects = [{ id: 'p1' }];
     state.baselineFeatures = [{ id: 'f1', start: '2024-01-01', end: '2024-01-03', project: 'p1', status: 'New', capacity: [{ team: 't1', capacity: 2 }] }];
-    // Working copies (no selection filtering)
-    state.projects = [{ id: 'p1', selected: true }];
-    state.teams = [{ id: 't1', selected: true }];
+    // Working copies (no selection filtering) - use ProjectTeamService
+    state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
+    state._projectTeamService.setProjectSelected('p1', true);
+    state._projectTeamService.setTeamSelected('t1', true);
     // Ensure selectedFeatureStateFilter includes the feature status so it isn't filtered out
     state._stateFilterService.setAvailableStates(['New']);
     state._stateFilterService._selectedStates = new Set(['New']);
-    state.scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
-    state.activeScenarioId = 'baseline';
+    // Setup scenarios using ScenarioEventService
+    state._scenarioEventService._scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
+    state._scenarioEventService.setActiveScenarioId('baseline');
     // Ensure getEffectiveFeatures returns the baseline features for this test
     state.getEffectiveFeatures = () => state.baselineFeatures;
     // Run recompute

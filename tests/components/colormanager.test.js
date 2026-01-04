@@ -15,8 +15,9 @@ describe('Color manager utilities', () => {
     const bus = busMod.bus;
 
     // Prepare state
-    state.projects = [{ id: 'p1', selected: true }];
-    state.teams = [{ id: 't1', selected: true }];
+    state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
+    state._projectTeamService.setProjectSelected('p1', true);
+    state._projectTeamService.setTeamSelected('t1', true);
 
     // Stub dataService
     const ds = await import('../../www/js/services/dataService.js');
