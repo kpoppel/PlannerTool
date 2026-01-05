@@ -161,10 +161,13 @@ export class FeatureService {
         }
       }
 
-      // Apply override
-      const existing = activeScenario.overrides[id] || {};
+      // Apply override - merge with any existing override so we don't drop other
+      // fields (like capacity) when updating dates.
+      const existing = activeScenario.overrides[id] || { start: base.start, end: base.end };
       if (existing.start === start && existing.end === end) continue;
-      activeScenario.overrides[id] = { start, end };
+      existing.start = start;
+      existing.end = end;
+      activeScenario.overrides[id] = existing;
       updateCount++;
       // Track changed id
       changedIdsCollector.push(id);
@@ -177,7 +180,7 @@ export class FeatureService {
           const newStart = start || priorStart;
           const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
           const childIds = this._childrenByEpic.get(base.id) || [];
-          if (!isNaN(deltaMs) && deltaMs !== 0) {
+            if (!isNaN(deltaMs) && deltaMs !== 0) {
             for (const cid of childIds) {
               const chBase = baselineFeatureById.get(cid);
               if (!chBase) continue;
@@ -192,7 +195,11 @@ export class FeatureService {
               const shiftIsoByMs = (iso, ms) => { try { return new Date(Date.parse(iso) + ms).toISOString().slice(0,10); } catch (e) { return iso; } };
               const shiftedStart = shiftIsoByMs(chBase.start, deltaMs);
               const shiftedEnd = shiftIsoByMs(chBase.end, deltaMs);
-              activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
+              // Merge with any existing override to preserve other fields (e.g., capacity)
+              const childOv = activeScenario.overrides[cid] || { start: chBase.start, end: chBase.end };
+              childOv.start = shiftedStart;
+              childOv.end = shiftedEnd;
+              activeScenario.overrides[cid] = childOv;
               changedIdsCollector.push(cid);
             }
           } else {

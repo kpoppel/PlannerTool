@@ -50,143 +50,177 @@ export class DetailsPanelLit extends LitElement {
     .details-close { position: absolute; right: 18px; top: 18px; cursor: pointer; border: none; background: transparent; font-size: 18px; }
     .team-load-box { padding: 4px 8px; border-radius: 6px; color: white; font-weight: 600; margin-right: 6px; font-size: 12px; }
     .azure-relations-list { list-style: none; padding: 0; margin: 0; }
-    /* Capacity Pills */
+    /* Capacity Progress Bars */
     .capacity-section { margin-top: 12px; }
-    .capacity-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .capacity-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      border-radius: 16px;
-      color: white;
-      font-weight: 600;
-      font-size: 11px;
+    .capacity-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .capacity-bar-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
       position: relative;
-      cursor: pointer;
-      transition: all 0.2s ease;
     }
-    .capacity-pill:hover {
-      filter: brightness(1.1);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    }
-    .capacity-pill-name { flex: 0 0 auto; }
-    .capacity-pill-value {
-      display: inline-flex;
+    .capacity-bar-header {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 2px;
-      padding: 2px 6px;
-      background: rgba(255,255,255,0.3);
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 11px;
-      font-weight: bold;
-      cursor: text;
+      height: 16px;
     }
-    .capacity-pill:hover .capacity-pill-value {
-      background: rgba(255,255,255,0.5);
+    .capacity-bar-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #2c3e50;
     }
-    .capacity-pill-value.editing {
-      background: white;
-      color: #333;
-      padding: 2px 4px;
-    }
-    .capacity-pill-value input {
-      width: 30px;
-      border: none;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      text-align: center;
-      outline: none;
-      -moz-appearance: textfield;
-    }
-    .capacity-pill-value input::-webkit-outer-spin-button,
-    .capacity-pill-value input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .capacity-pill-delete {
+    .capacity-bar-delete {
       display: none;
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.3);
+      background: #ffffff;
+      border: 1.5px solid #dc3545;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       font-size: 10px;
       line-height: 1;
-      transition: background 0.2s ease;
+      opacity: 0.7;
+      transition: all 0.2s ease;
     }
-    .capacity-pill:hover .capacity-pill-delete {
+    .capacity-bar-row:hover .capacity-bar-delete {
       display: flex;
-      background: #e74c3c;
     }
-    .capacity-pill-delete:hover {
-      background: #c0392b !important;
+    .capacity-bar-delete:hover {
+      background: #dc3545 !important;
+      opacity: 1;
     }
-    .add-team-btn {
-      display: inline-flex;
+    .capacity-bar-delete:hover::before {
+      color: #ffffff;
+    }
+    .capacity-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 18px;
+    }
+    .capacity-bar-bg {
+      flex: 1;
+      height: 18px;
+      background: #e9ecef;
+      border-radius: 9px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow 0.2s ease;
+    }
+    .capacity-bar-row:hover .capacity-bar-bg {
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+    }
+    .capacity-bar-fill {
+      height: 100%;
+      border-radius: 9px;
+      transition: width 0.3s ease;
+      display: flex;
       align-items: center;
       justify-content: center;
-      padding: 8px 14px;
+    }
+    .capacity-bar-label {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .capacity-bar-input-container {
+      flex: 0 0 auto;
+      position: relative;
+    }
+    .capacity-bar-input {
+      width: 50px;
+      height: 14px;
+      padding: 2px 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.9);
+      font-family: monospace;
+      font-size: 10px;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+      cursor: text;
+      transition: border-color 0.2s ease;
+    }
+    .capacity-bar-input:focus {
+      border-color: #3498db;
+      border-width: 2px;
+      background: white;
+    }
+    .capacity-bar-input::-webkit-outer-spin-button,
+    .capacity-bar-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .add-team-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .add-team-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 18px;
       border: 1.5px dashed #3498db;
-      border-radius: 16px;
+      border-radius: 9px;
       background: white;
       color: #3498db;
       font-weight: 600;
       font-size: 11px;
       cursor: pointer;
       transition: all 0.2s ease;
-      position: relative;
+      margin-top: 8px;
     }
     .add-team-btn:hover {
       background: #f0f8ff;
       border-color: #2980b9;
     }
-    .add-team-popover {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      left: auto;
-      margin-top: 4px;
-      padding: 12px;
-      background: white;
+    .add-team-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: #f8f9fa;
       border: 1px solid #ddd;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      z-index: 1000;
-      min-width: 200px;
+      border-radius: 6px;
     }
-    .add-team-popover select {
+    .add-team-form select {
       width: 100%;
       padding: 6px 8px;
-      margin: 4px 0;
       border: 1px solid #ddd;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
     }
-    .add-team-popover input {
-      width: 80px;
+    .add-team-form-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .add-team-form input {
+      flex: 1;
       padding: 6px 8px;
-      margin: 4px 0;
       border: 1px solid #ddd;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
       -moz-appearance: textfield;
     }
-    .add-team-popover input::-webkit-outer-spin-button,
-    .add-team-popover input::-webkit-inner-spin-button {
+    .add-team-form input::-webkit-outer-spin-button,
+    .add-team-form input::-webkit-inner-spin-button {
       -webkit-appearance: none;
       margin: 0;
     }
-    .add-team-popover-buttons {
+    .add-team-form-buttons {
       display: flex;
       gap: 6px;
-      margin-top: 8px;
     }
-    .add-team-popover button {
+    .add-team-form button {
       flex: 1;
       padding: 6px 10px;
       border: 1px solid #ddd;
@@ -197,18 +231,18 @@ export class DetailsPanelLit extends LitElement {
       cursor: pointer;
       font-weight: 600;
     }
-    .add-team-popover button:hover {
+    .add-team-form button:hover {
       background: #2980b9;
     }
-    .add-team-popover button.cancel {
+    .add-team-form button.cancel {
       background: transparent;
       color: #666;
     }
-    .add-team-popover button.cancel:hover {
+    .add-team-form button.cancel:hover {
       background: #f5f5f5;
     }
     .total-allocation-box {
-      margin-top: 12px;
+      margin-top: 16px;
       padding: 12px;
       background: #fff8e6;
       border: 1.5px solid #f39c12;
@@ -219,19 +253,20 @@ export class DetailsPanelLit extends LitElement {
       align-items: center;
       gap: 8px;
       font-weight: bold;
-      color: #e67e22;
-      font-size: 11px;
-      margin-bottom: 4px;
+      color: #856404;
+      font-size: 10px;
+      margin-bottom: 8px;
     }
-    .total-allocation-value {
-      font-size: 13px;
-      font-weight: bold;
-      color: #e67e22;
+    .total-allocation-summary-bar {
+      height: 20px;
+      background: #e9ecef;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
     }
-    .total-allocation-note {
-      font-size: 9px;
-      color: #7f8c8d;
-      margin-top: 4px;
+    .total-allocation-segment {
+      height: 100%;
+      transition: width 0.3s ease;
     }
     /* align icon with text baseline for pixel-accurate centering */
     .azure-relation-item { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
@@ -357,27 +392,14 @@ export class DetailsPanelLit extends LitElement {
 
   _handleCapacityClick(teamId, e) {
     e.stopPropagation();
-    if (!e.target.closest('.capacity-pill-delete')) {
-      this.editingCapacityTeam = teamId;
-      this.requestUpdate();
-      // Focus the input after render
-      setTimeout(() => {
-        const input = this.shadowRoot.querySelector('.capacity-pill-value.editing input');
-        if (input) {
-          input.focus();
-          input.select();
-          // Add wheel event listener for 10% increments
-          input.addEventListener('wheel', (wheelEvent) => {
-            wheelEvent.preventDefault();
-            const currentValue = parseInt(input.value) || 0;
-            const delta = wheelEvent.deltaY < 0 ? 10 : -10; // Scroll up = +10, down = -10
-            const newValue = Math.max(0, Math.min(100, currentValue + delta));
-            // Round to nearest 10
-            const roundedValue = Math.round(newValue / 10) * 10;
-            input.value = roundedValue;
-          }, { passive: false });
-        }
-      }, 0);
+    // Click on bar focuses the input
+    const row = e.target.closest('.capacity-bar-row');
+    if (row) {
+      const input = row.querySelector('.capacity-bar-input');
+      if (input) {
+        input.focus();
+        input.select();
+      }
     }
   }
 
@@ -426,22 +448,6 @@ export class DetailsPanelLit extends LitElement {
     e.stopPropagation();
     this.showAddTeamPopover = !this.showAddTeamPopover;
     this.requestUpdate();
-    // Add wheel event listener to the input after it renders
-    if (this.showAddTeamPopover) {
-      setTimeout(() => {
-        const input = this.shadowRoot.querySelector('.add-team-popover input[type="number"]');
-        if (input) {
-          input.addEventListener('wheel', (wheelEvent) => {
-            wheelEvent.preventDefault();
-            const currentValue = parseInt(input.value) || 0;
-            const delta = wheelEvent.deltaY < 0 ? 10 : -10;
-            const newValue = Math.max(0, Math.min(100, currentValue + delta));
-            const roundedValue = Math.round(newValue / 10) * 10;
-            input.value = roundedValue;
-          }, { passive: false });
-        }
-      }, 0);
-    }
   }
 
   _handleAddTeamSubmit(e) {
@@ -496,33 +502,47 @@ export class DetailsPanelLit extends LitElement {
     const orgLoad = feature.orgLoad || '0%';
     const orgLoadValue = String(orgLoad).replace('%', '');
     
-    // Render capacity pills
-    const capacityPills = (feature.capacity || []).map(tl => {
+    // Render capacity bars
+    const capacityBars = (feature.capacity || []).map(tl => {
       const t = state.teams.find(x => x.id === tl.team);
       if (!t) return null;
       
-      const isEditing = this.editingCapacityTeam === tl.team;
       const cap = tl.capacity || 0;
+      const barWidth = `${Math.min(cap, 100)}%`;
       
       return html`
-        <div class="capacity-pill" 
-             style="background: ${t.color}"
-             @click=${(e) => this._handleCapacityClick(tl.team, e)}>
-          <span class="capacity-pill-name">${t.name}</span>
-          <span class="capacity-pill-value ${isEditing ? 'editing' : ''}">
-            ${isEditing 
-              ? html`<input type="number" 
-                            min="0" 
-                            max="100" 
-                            value="${cap}"
-                            @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
-                            @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}/>`
-              : html`${cap}`
-            }
-            <span>%</span>
-          </span>
-          <span class="capacity-pill-delete" 
-                @click=${(e) => this._handleDeleteCapacity(tl.team, e)}>✕</span>
+        <div class="capacity-bar-row">
+          <div class="capacity-bar-header">
+            <span class="capacity-bar-name">${t.name}</span>
+            <span class="capacity-bar-delete" 
+                  @click=${(e) => this._handleDeleteCapacity(tl.team, e)}>✕</span>
+          </div>
+          <div class="capacity-bar-container">
+            <div class="capacity-bar-bg" @click=${(e) => this._handleCapacityClick(tl.team, e)}>
+              <div class="capacity-bar-fill" style="width: ${barWidth}; background: ${t.color};">
+                <span class="capacity-bar-label">${cap}%</span>
+              </div>
+            </div>
+            <div class="capacity-bar-input-container">
+              <input type="number" 
+                     class="capacity-bar-input"
+                     min="0" 
+                     max="100" 
+                     value="${cap}"
+                     @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
+                     @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}
+                     @focus=${(e) => { e.target.select(); }}
+                     @wheel=${(e) => {
+                       e.preventDefault();
+                       const currentValue = parseInt(e.target.value) || 0;
+                       const delta = e.deltaY < 0 ? 10 : -10;
+                       const newValue = Math.max(0, Math.min(100, currentValue + delta));
+                       const roundedValue = Math.round(newValue / 10) * 10;
+                       e.target.value = roundedValue;
+                       this._saveCapacityEdit(tl.team, roundedValue);
+                     }}/>
+            </div>
+          </div>
         </div>
       `;
     });
@@ -531,37 +551,66 @@ export class DetailsPanelLit extends LitElement {
     const allocatedTeamIds = new Set((feature.capacity || []).map(c => c.team));
     const availableTeams = state.teams.filter(t => !allocatedTeamIds.has(t.id));
     
-    // Add team button with popover
+    // Add team button with inline form
     const addTeamButton = html`
-      <div style="position: relative;">
-        <div class="add-team-btn" @click=${(e) => this._handleAddTeamClick(e)}>
-          + Add Team
-        </div>
+      <div class="add-team-row">
         ${this.showAddTeamPopover ? html`
-          <form class="add-team-popover" @submit=${(e) => this._handleAddTeamSubmit(e)}>
+          <form class="add-team-form" @submit=${(e) => this._handleAddTeamSubmit(e)}>
             <select required>
               <option value="">Select Team...</option>
               ${availableTeams.map(t => html`<option value="${t.id}">${t.name}</option>`)}
             </select>
-            <input type="number" min="0" max="100" placeholder="Capacity %" required />
-            <div class="add-team-popover-buttons">
+            <div class="add-team-form-input-row">
+              <input type="number" min="0" max="100" placeholder="Capacity %" required 
+                     @wheel=${(e) => {
+                       e.preventDefault();
+                       const currentValue = parseInt(e.target.value) || 0;
+                       const delta = e.deltaY < 0 ? 10 : -10;
+                       const newValue = Math.max(0, Math.min(100, currentValue + delta));
+                       const roundedValue = Math.round(newValue / 10) * 10;
+                       e.target.value = roundedValue;
+                     }}/>
+            </div>
+            <div class="add-team-form-buttons">
               <button type="submit">Add</button>
               <button type="button" class="cancel" @click=${() => this._handleAddTeamCancel()}>Cancel</button>
             </div>
           </form>
-        ` : ''}
+        ` : html`
+          <div class="add-team-btn" @click=${(e) => this._handleAddTeamClick(e)}>
+            + Add Team
+          </div>
+        `}
       </div>
     `;
     
-    // Total allocation box - displays organizational capacity
-    const totalAllocationBox = orgLoadValue && parseFloat(orgLoadValue) > 0 ? html`
-      <div class="total-allocation-box">
-        <div class="total-allocation-header">
-          Total Allocation:
-          <span class="total-allocation-value">${orgLoad}</span>
+    // Total allocation box - displays organizational capacity with visual summary
+    let totalAllocationBox = '';
+    if (orgLoadValue && parseFloat(orgLoadValue) > 0) {
+      const totalCapacity = (feature.capacity || []).reduce((sum, c) => sum + (c.capacity || 0), 0);
+      const teamCount = (feature.capacity || []).length;
+      
+      // Build segments for visual bar
+      const segments = (feature.capacity || []).map(tl => {
+        const t = state.teams.find(x => x.id === tl.team);
+        if (!t) return null;
+        const cap = tl.capacity || 0;
+        // Calculate width as percentage of total available width (scale to max 100% visual width)
+        const widthPercent = totalCapacity > 0 ? (cap / Math.max(totalCapacity, 100)) * 100 : 0;
+        return html`<div class="total-allocation-segment" style="width: ${widthPercent}%; background: ${t.color};"></div>`;
+      }).filter(s => s);
+      
+      totalAllocationBox = html`
+        <div class="total-allocation-box">
+          <div class="total-allocation-header">
+            Total Capacity Overview: <span style="color: #e67e22;">${orgLoad} across ${teamCount} team${teamCount !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="total-allocation-summary-bar">
+            ${segments}
+          </div>
         </div>
-      </div>
-    ` : '';
+      `;
+    }
     
     // Strip capacity section from description
     const cleanDescription = this._stripCapacityFromDescription(feature.description);
@@ -627,10 +676,10 @@ export class DetailsPanelLit extends LitElement {
           
           <div class="capacity-section">
             <div class="details-label">Allocated Capacity:</div>
-            <div class="capacity-pills">
-              ${capacityPills}
-              ${addTeamButton}
+            <div class="capacity-bars">
+              ${capacityBars}
             </div>
+            ${addTeamButton}
             ${totalAllocationBox}
           </div>
           
