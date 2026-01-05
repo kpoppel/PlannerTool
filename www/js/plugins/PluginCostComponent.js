@@ -67,7 +67,9 @@ export class PluginCostComponent extends LitElement {
     months: { state: true },
     projects: { state: true },
     expandedProjects: { state: true },
-    expandedEpics: { state: true }
+    expandedEpics: { state: true },
+    showBudgetDeviations: { state: true },
+    deviationThreshold: { state: true }
   };
 
   constructor(){
@@ -81,6 +83,8 @@ export class PluginCostComponent extends LitElement {
     this.activeTab = 'cost'; // 'cost' or 'teams'
     this.teamsData = null;
     this._subscribed = false;
+    this.showBudgetDeviations = false;
+    this.deviationThreshold = 10; // Default 10%
   }
 
   static styles = css`
@@ -105,6 +109,28 @@ export class PluginCostComponent extends LitElement {
       max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
     .table thead th.left{ top:0; z-index:6; }
+    /* Freeze last two columns (Total + extra) on the right */
+    .table th.right, .table td.right{
+      position:sticky; right:0; z-index:4; background:#fff !important;
+    }
+    .table th.right-extra, .table td.right-extra{
+      position:sticky; right:0; z-index:4; background:#fff !important;
+    }
+    .table th.right-total, .table td.right-total{
+      position:sticky; right:30px; z-index:4; background:#fff !important;
+    }
+    /* When deviation mode is off, Total column moves to right edge */
+    :host([no-deviation]) .table th.right-total, 
+    :host([no-deviation]) .table td.right-total{
+      right:0;
+    }
+    .table thead th.right-total, .table thead th.right-extra{ top:0; z-index:6; }
+    .table tfoot td.right-total, .table tfoot td.right-extra{ background: #eaf4ff; }
+    /* Ensure opaque backgrounds for sticky cells in different row types */
+    .project-row td.right-total, .project-row td.right-extra{ background:#fafafa !important; }
+    .epic-row td.right-total, .epic-row td.right-extra{ background:#f6f9ff !important; }
+    .feature-row td.right-total, .feature-row td.right-extra{ background:#fff !important; }
+    .feature-row:hover td.right-total, .feature-row:hover td.right-extra{ background:#fbfbfe !important; }
     .controls{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
     .toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
@@ -115,6 +141,12 @@ export class PluginCostComponent extends LitElement {
     .tab-toggle{ display:inline-flex; border:1px solid #ddd; border-radius:6px; overflow:hidden; }
     .tab-toggle button{ background:transparent; border:0; padding:6px 10px; cursor:pointer; font-size:13px; }
     .tab-toggle button.active{ background:var(--accent-color,#dfeffd); color:var(--accent-text,#072b52); font-weight:600; }
+    /* Budget deviation controls */
+    .deviation-controls{ display:inline-flex; gap:6px; align-items:center; padding:4px 8px; border:1px solid #ddd; border-radius:6px; background:#fff; }
+    .deviation-toggle{ display:inline-flex; align-items:center; gap:4px; }
+    .deviation-toggle input[type="checkbox"]{ cursor:pointer; }
+    .deviation-input{ width:50px; padding:4px 6px; border:1px solid #ddd; border-radius:4px; font-size:13px; text-align:center; }
+    .deviation-warning{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; background:#fff3cd; border:1px solid #ffc107; border-radius:50%; color:#856404; font-size:14px; font-weight:bold; cursor:help; }
   `;
 
   connectedCallback(){
@@ -126,7 +158,7 @@ export class PluginCostComponent extends LitElement {
       this._scenarioDebounceTimer = setTimeout(()=>{ this._scenarioDebounceTimer = null; this.loadCostForScenario(scenarioId); }, 60);
     };
     this._subscribe();
-    this.loadData();
+    // Don't load data here - wait until open() is called
   }
 
   _subscribe(){
@@ -188,6 +220,51 @@ export class PluginCostComponent extends LitElement {
     return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(c,0.14)} 0px, ${hexToRgba(c,0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${c}; cursor:pointer;`;
   }
 
+  /**
+   * Check if an Epic's original allocated budget deviates from the sum of 
+   * its children's totals by more than the configured threshold percentage.
+   * 
+   * Note: When an Epic has children, the table displays the children's sum,
+   * but the Epic's original budget (what planners estimated) is preserved
+   * for comparison.
+   * 
+   * @param {Object} epicBase - The epic feature object (contains originalTotal)
+   * @param {Array} children - Array of child feature objects
+   * @returns {{hasDeviation: boolean, epicOriginal: number, childrenSum: number, deviationPercent: number}}
+   */
+  checkBudgetDeviation(epicBase, children){
+    if(!this.showBudgetDeviations || !children || children.length === 0){
+      return { hasDeviation: false, epicOriginal: 0, childrenSum: 0, deviationPercent: 0 };
+    }
+    
+    // Get Epic's original allocated budget (before it was replaced by children sum)
+    const epicOriginal = this.viewMode === 'cost' 
+      ? (epicBase.originalTotal ?? 0)  // Use nullish coalescing to handle undefined
+      : (epicBase.originalTotalHours ?? 0);
+    
+    // The children sum is what's currently displayed (epicBase.total after replacement)
+    const childrenSum = this.viewMode === 'cost' 
+      ? (epicBase.total ?? 0) 
+      : (epicBase.totalHours ?? 0);
+    
+    // If both are zero, no deviation
+    if(epicOriginal === 0 && childrenSum === 0){
+      return { hasDeviation: false, epicOriginal, childrenSum, deviationPercent: 0 };
+    }
+    
+    // If Epic has no original allocation (0), this means all work is allocated to children
+    // This is the correct pattern - no deviation warning needed
+    if(epicOriginal === 0){
+      return { hasDeviation: false, epicOriginal, childrenSum, deviationPercent: 0 };
+    }
+    
+    // Calculate deviation percentage: |original - actual| / original * 100
+    const deviationPercent = Math.abs(epicOriginal - childrenSum) / epicOriginal * 100;
+    const hasDeviation = deviationPercent > this.deviationThreshold;
+    
+    return { hasDeviation, epicOriginal, childrenSum, deviationPercent };
+  }
+
   open(){
     const main = document.querySelector('main');
     // Ensure we are subscribed to scenario events when shown
@@ -201,6 +278,8 @@ export class PluginCostComponent extends LitElement {
       });
     }
     this.style.display = 'block';
+    // Reload cost data for current scenario (capacity may have changed)
+    this.loadData();
   }
 
   close(){
@@ -215,6 +294,10 @@ export class PluginCostComponent extends LitElement {
   }
 
   async loadData(){
+    // Prevent duplicate loads
+    if(this._isLoading) return;
+    this._isLoading = true;
+    
     // Show spinner using the app-level spinner modal
     const spinner = document.getElementById('appSpinner');
     if(spinner){
@@ -234,6 +317,7 @@ export class PluginCostComponent extends LitElement {
     }finally{
       // Hide spinner
       if(spinner) spinner.open = false;
+      this._isLoading = false;
     }
   }
 
@@ -285,7 +369,23 @@ export class PluginCostComponent extends LitElement {
       // Unsaved or transient scenario: POST effective features so server can calculate
       // Build features list from state.getEffectiveFeatures() which already merges overrides
       const eff = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : null;
-      const featuresPayload = (eff || []).map(f => ({ id: f.id, project: f.project, start: f.start, end: f.end, capacity: f.capacity || 1.0, title: f.title || f.name || '', type: f.type || f.feature_type || '', state: f.state || f.status || '' }));
+      const featuresPayload = (eff || []).map(f => {
+        // Capacity must be a list of {team, capacity} objects, not a float
+        let capacity = f.capacity;
+        if (!Array.isArray(capacity)) {
+          capacity = [];
+        }
+        return {
+          id: f.id,
+          project: f.project,
+          start: f.start,
+          end: f.end,
+          capacity: capacity,
+          title: f.title || f.name || '',
+          type: f.type || f.feature_type || '',
+          state: f.state || f.status || ''
+        };
+      });
 
       const json = await dataService.getCost({ features: featuresPayload });
       if(!json) throw new Error('no cost data for scenario');
@@ -330,6 +430,42 @@ export class PluginCostComponent extends LitElement {
     this._footerTotalHours = +(res.footerTotalHours.toFixed ? res.footerTotalHours.toFixed(2) : Number(res.footerTotalHours) || 0);
   }
 
+  /**
+   * Check if a project has any Epic with budget deviations.
+   * @param {Object} project - The project object with features
+   * @returns {boolean}
+   */
+  projectHasDeviations(project){
+    if(!this.showBudgetDeviations || !project || !project.features) return false;
+    
+    // Build epic map to identify which features are epics with children
+    const epicMap = new Map();
+    for(const f of project.features || []){
+      const eff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
+      const parent = eff && (eff.parentEpic || eff.parentEpic === 0) ? eff.parentEpic : (f.parentEpic || null);
+      if(parent){
+        if(!epicMap.has(parent)) epicMap.set(parent, []);
+        epicMap.get(parent).push({ base: f, eff });
+      } else {
+        const children = state.childrenByEpic && state.childrenByEpic.get && state.childrenByEpic.get(f.id);
+        if(children && children.length){
+          if(!epicMap.has(f.id)) epicMap.set(f.id, []);
+        }
+      }
+    }
+    
+    // Check each epic for deviations
+    for(const f of project.features || []){
+      if(epicMap.has(f.id)){
+        const epicChildren = epicMap.get(f.id) || [];
+        const deviation = this.checkBudgetDeviation(f, epicChildren);
+        if(deviation.hasDeviation) return true;
+      }
+    }
+    
+    return false;
+  }
+
   toggleProject(id){
     if(this.expandedProjects.has(id)) this.expandedProjects.delete(id);
     else this.expandedProjects.add(id);
@@ -364,6 +500,34 @@ export class PluginCostComponent extends LitElement {
     }
     // ensure footer hours exist
     if(!this._footerHours){ this._footerHours = { internal: Object.fromEntries(monthKeys.map(k=>[k,0])), external: Object.fromEntries(monthKeys.map(k=>[k,0])) }; this._footerTotalHours = 0; }
+    
+    // Filter out months where all rows have zero values
+    const nonZeroMonthIndices = [];
+    const nonZeroMonths = [];
+    const nonZeroMonthKeys = [];
+    for(let i = 0; i < monthKeys.length; i++){
+      const k = monthKeys[i];
+      const hasValue = (this.viewMode === 'cost') 
+        ? (footerInternal[k] + footerExternal[k]) > 0
+        : (this._footerHours.internal[k] + this._footerHours.external[k]) > 0;
+      if(hasValue){
+        nonZeroMonthIndices.push(i);
+        nonZeroMonths.push(months[i]);
+        nonZeroMonthKeys.push(k);
+      }
+    }
+    
+    // Use filtered months for rendering
+    const displayMonths = nonZeroMonths.length > 0 ? nonZeroMonths : months;
+    const displayMonthKeys = nonZeroMonthKeys.length > 0 ? nonZeroMonthKeys : monthKeys;
+    
+    // Update host attribute to control Total column positioning
+    if(!this.showBudgetDeviations){
+      this.setAttribute('no-deviation', '');
+    } else {
+      this.removeAttribute('no-deviation');
+    }
+    
     return html`
       <div>
         <div class="controls">
@@ -373,6 +537,20 @@ export class PluginCostComponent extends LitElement {
               <button class=${this.viewMode==='hours' ? 'active':''} @click=${()=>{ this.viewMode='hours'; this.requestUpdate(); }}>Hours</button>
             </div>
             ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ? html`<div class="tab-toggle"><button class=${this.activeTab==='cost' ? 'active':''} @click=${()=>{ this.activeTab='cost'; this.requestUpdate(); }}>Cost Table</button><button class=${this.activeTab==='teams' ? 'active':''} @click=${async ()=>{ this.activeTab='teams'; if(!this.teamsData){ this.teamsData = await dataService.getCostTeams().catch(e=>{ console.error('Failed to load cost teams', e); return []; }); } this.requestUpdate(); }}>Teams</button></div>` : ''}
+            <div class="deviation-controls">
+              <div class="deviation-toggle">
+                <input type="checkbox" id="deviation-check" 
+                       ?checked=${this.showBudgetDeviations}
+                       @change=${(e)=>{ this.showBudgetDeviations = e.target.checked; this.requestUpdate(); }}/>
+                <label for="deviation-check" style="font-size:13px; cursor:pointer;">Budget Deviations</label>
+              </div>
+              <input type="number" class="deviation-input" 
+                     min="0" max="100" step="1"
+                     .value=${this.deviationThreshold}
+                     @input=${(e)=>{ this.deviationThreshold = parseInt(e.target.value) || 10; this.requestUpdate(); }}
+                     placeholder="%"
+                     title="Deviation threshold percentage"/>%
+            </div>
           </div>
         </div>
         <div class="legend">
@@ -397,22 +575,24 @@ export class PluginCostComponent extends LitElement {
             <thead>
               <tr>
                 <th class="left" rowspan="2">Project / Feature</th>
-                ${months.map(m=>html`<th colspan="2">${monthLabel(m)}</th>`) }
-                <th class="total-head" rowspan="2">Total</th>
-                <th class="total-extra" rowspan="2"></th>
+                ${displayMonths.map(m=>html`<th colspan="2">${monthLabel(m)}</th>`) }
+                <th class="total-head right-total" rowspan="2">Total</th>
+                ${this.showBudgetDeviations ? html`<th class="total-extra right-extra" rowspan="2"></th>` : ''}
               </tr>
               <tr>
-                ${months.map(m=>html`<th>Int</th><th>Ext</th>`) }
+                ${displayMonths.map(m=>html`<th>Int</th><th>Ext</th>`) }
               </tr>
             </thead>
             <tbody>
-              ${this.projects.map(p=>
-                html`
+              ${this.projects.map(p=>{
+                const projectDeviation = this.projectHasDeviations(p);
+                const projectDeviationIndicator = projectDeviation ? html`<span class="deviation-warning" title="This project contains Epics with budget deviations">⚠</span>` : '';
+                return html`
                 <tr class="project-row" @click=${()=>this.toggleProject(p.id)}>
                         <td class="left" style=${this.projectLeftStyle(p.id)}>${p.name}</td>
-                  ${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.internal[k]||0) : (p.totals.hours.internal[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.external[k]||0) : (p.totals.hours.external[k]||0))}</td>`) }
-                  <td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? p.total : (p.totalHours||0))}</td>
-                  <td></td>
+                  ${displayMonthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.internal[k]||0) : (p.totals.hours.internal[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.external[k]||0) : (p.totals.hours.external[k]||0))}</td>`) }
+                  <td class="total-cell right-total">${this.fmtCell(this.viewMode==='cost' ? p.total : (p.totalHours||0))}</td>
+                  ${this.showBudgetDeviations ? html`<td class="right-extra">${projectDeviationIndicator}</td>` : ''}
                 </tr>
                 ${this.expandedProjects.has(p.id) ? (() => {
                     // Group features under epics if present. We'll build a map of epicId -> [features]
@@ -449,7 +629,10 @@ export class PluginCostComponent extends LitElement {
                         const epicStateName = (epicEff && epicEff.state) ? epicEff.state : (epicBase.state || '');
                         // Use ColorService directly
                         const epicStateColor = state._colorService.getFeatureStateColor(epicStateName);
-                        rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="${this.featureBgStyle(epicStateColor)}">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0) : (epicBase.hours?.internal?.[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0) : (epicBase.hours?.external?.[k]||0))}</td>`) }<td class="total-cell">${this.fmtCell(this.viewMode==='cost' ? (epicBase.total||0) : (epicBase.totalHours||0))}</td><td></td></tr>`);
+                        // Check for budget deviation
+                        const deviation = this.checkBudgetDeviation(epicBase, epicChildren);
+                        const deviationIndicator = deviation.hasDeviation ? html`<span class="deviation-warning" title="Budget deviation: Epic allocated ${this.viewMode==='cost'?'cost':'hours'} (${this.fmtCell(deviation.epicOriginal)}) differs from children sum (${this.fmtCell(deviation.childrenSum)}) by ${deviation.deviationPercent.toFixed(1)}%">⚠</span>` : '';
+                        rendered.push(html`<tr class="epic-row" @click=${()=>this.toggleEpic(epicBase.id)}><td class="left" style="${this.featureBgStyle(epicStateColor)}">&nbsp;&nbsp;<span class="feat-icon">📁</span>${epicBase.name}</td>${displayMonthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.internal?.[k]||0) : (epicBase.hours?.internal?.[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (epicBase.values?.external?.[k]||0) : (epicBase.hours?.external?.[k]||0))}</td>`) }<td class="total-cell right-total">${this.fmtCell(this.viewMode==='cost' ? (epicBase.total||0) : (epicBase.totalHours||0))}</td>${this.showBudgetDeviations ? html`<td class="right-extra">${deviationIndicator}</td>` : ''}</tr>`);
                         if(this.expandedEpics.has(f.id)){
                           for(const child of epicChildren){
                             const fb = child.base;
@@ -458,7 +641,7 @@ export class PluginCostComponent extends LitElement {
                             // Use ColorService directly
                             const base = state._colorService.getFeatureStateColor(stateName);
                             const bg = hexToRgba(base, 0.10);
-                            rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
+                            rendered.push(html`<tr class="feature-row"><td class="left nested-feature" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${displayMonthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell right-total" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td>${this.showBudgetDeviations ? html`<td class="right-extra" style="background:${bg};"></td>` : ''}</tr>`);
                           }
                         }
                       }
@@ -473,17 +656,19 @@ export class PluginCostComponent extends LitElement {
                       // Use ColorService directly
                       const base = state._colorService.getFeatureStateColor(stateName);
                       const bg = hexToRgba(base, 0.10);
-                      rendered.push(html`<tr class="feature-row"><td class="left" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${monthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td><td style="background:${bg};"></td></tr>`);
+                      rendered.push(html`<tr class="feature-row"><td class="left" style="${this.featureBgStyle(base)}" @click=${(ev)=>{ ev.stopPropagation(); const feat = state.getEffectiveFeatureById(fb.id); bus.emit(UIEvents.DETAILS_SHOW, feat); }}>&nbsp;&nbsp;<span class="feat-icon" title="Feature">🔹</span>${fb.name}</td>${displayMonthKeys.map(k=>html`<td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.internal[k]||0) : (fb.hours.internal[k]||0))}</td><td style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? (fb.values.external[k]||0) : (fb.hours.external[k]||0))}</td>`) }<td class="total-cell right-total" style="background:${bg};">${this.fmtCell(this.viewMode==='cost' ? fb.total : (fb.totalHours||0))}</td>${this.showBudgetDeviations ? html`<td class="right-extra" style="background:${bg};"></td>` : ''}</tr>`);
                     }
                     return rendered;
                   })() : ''}
-              `)}
+              `;
+              })}}
             </tbody>
             <tfoot>
               <tr>
                 <td class="left">Totals</td>
-                ${monthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (footerInternal[k]||0) : (this._footerHours? (this._footerHours.internal[k]||0): 0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (footerExternal[k]||0) : (this._footerHours? (this._footerHours.external[k]||0): 0))}</td>`)}
-                <td class="total-cell" colspan="2">${this.fmtCell(this.viewMode==='cost' ? combinedTotal : (this._footerTotalHours||0))}</td>
+                ${displayMonthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (footerInternal[k]||0) : (this._footerHours? (this._footerHours.internal[k]||0): 0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (footerExternal[k]||0) : (this._footerHours? (this._footerHours.external[k]||0): 0))}</td>`)}
+                <td class="total-cell right-total">${this.fmtCell(this.viewMode==='cost' ? combinedTotal : (this._footerTotalHours||0))}</td>
+                ${this.showBudgetDeviations ? html`<td class="right-extra"></td>` : ''}
               </tr>
             </tfoot>
             </table>
