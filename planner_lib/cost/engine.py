@@ -127,7 +127,7 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
     Args:
       config: dict with keys 'cost' and 'database' (as returned by load_cost_config()).
       start/end: ISO date strings.
-      capacity: fraction of full-time (0.0-1.0+).
+      capacity: list of team allocations [{"team": "team-name", "capacity": 80}, ...]
       team: team name to lookup internal members in config['database']['teams'].
 
     Returns a dict: { 'internal_cost', 'external_cost', 'internal_hours', 'external_hours' }
@@ -139,6 +139,10 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
     logger.debug("Team aggregates: %s", team_aggregates)
 
     # The capacity is a [{"team": p, "capacity": c}, ...]
+    # Handle None or non-list capacity gracefully
+    if not isinstance(capacity, list):
+        capacity = []
+    
     # Run through all teams and sum up their costs/hours
     entry = {
         "internal_cost": 0.0,

@@ -246,6 +246,13 @@ const buildProjects = (projects, months, state) => {
         }
       }
 
+    // IMPORTANT: Preserve original totals for ALL features BEFORE any epic aggregation
+    // This ensures deviation detection works correctly on initial load
+    for (const f of feats) {
+      f.originalTotal = f.internalTotal + f.externalTotal;
+      f.originalTotalHours = f.internalHoursTotal + f.externalHoursTotal;
+    }
+
     for (const [epicId, childIds] of childrenMap.entries()) {
       const childList = childIds.map(id => featById.get(String(id))).filter(Boolean);
       if (!childList.length) continue;
@@ -264,6 +271,7 @@ const buildProjects = (projects, months, state) => {
 
       if (!useEpicGapFills) {
         if (epic) {
+          // Replace Epic values with children sum (originalTotal already set above)
           epic.valuesInternal = childInt;
           epic.valuesExternal = childExt;
           epic.hoursInternal = childIH;
@@ -277,6 +285,8 @@ const buildProjects = (projects, months, state) => {
       }
 
       if (!epic) continue;
+      // originalTotal already set above for all features
+      
       const monthsWithChild = monthKeys.filter(k => (childInt[k] + childExt[k]) > 0);
       const avgChildInt = monthsWithChild.length ? sum(monthsWithChild.map(k => childInt[k])) / monthsWithChild.length : 0;
       const avgChildExt = monthsWithChild.length ? sum(monthsWithChild.map(k => childExt[k])) / monthsWithChild.length : 0;
@@ -337,7 +347,10 @@ const buildProjects = (projects, months, state) => {
         totalHours,
         start: f.start,
         end: f.end,
-        monthsCovered: f.monthsCovered
+        monthsCovered: f.monthsCovered,
+        // Preserve original Epic totals for deviation comparison
+        originalTotal: f.originalTotal,
+        originalTotalHours: f.originalTotalHours
       };
     });
 
