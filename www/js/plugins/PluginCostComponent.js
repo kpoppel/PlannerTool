@@ -80,6 +80,7 @@ export class PluginCostComponent extends LitElement {
     this.viewMode = 'cost'; // 'cost' or 'hours'
     this.activeTab = 'cost'; // 'cost' or 'teams'
     this.teamsData = null;
+    this._subscribed = false;
   }
 
   static styles = css`
@@ -124,8 +125,24 @@ export class PluginCostComponent extends LitElement {
       if(this._scenarioDebounceTimer) clearTimeout(this._scenarioDebounceTimer);
       this._scenarioDebounceTimer = setTimeout(()=>{ this._scenarioDebounceTimer = null; this.loadCostForScenario(scenarioId); }, 60);
     };
-    bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    this._subscribe();
     this.loadData();
+  }
+
+  _subscribe(){
+    if(this._subscribed) return;
+    if(this._onScenarioActivated) {
+      bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+      this._subscribed = true;
+    }
+  }
+
+  _unsubscribe(){
+    if(!this._subscribed) return;
+    if(this._onScenarioActivated){
+      try{ bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated); }catch(e){}
+    }
+    this._subscribed = false;
   }
 
   /**
@@ -173,6 +190,8 @@ export class PluginCostComponent extends LitElement {
 
   open(){
     const main = document.querySelector('main');
+    // Ensure we are subscribed to scenario events when shown
+    this._subscribe();
     if(main && !this._savedMainStyles){
       this._savedMainStyles = [];
       Array.from(main.children).forEach(child => {
@@ -186,6 +205,8 @@ export class PluginCostComponent extends LitElement {
 
   close(){
     this.style.display = 'none';
+    // When closed (hidden but not removed) unsubscribe to avoid background reloads
+    this._unsubscribe();
     const main = document.querySelector('main');
     if(main && this._savedMainStyles){
       this._savedMainStyles.forEach(s => { s.el.style.display = s.display; });
@@ -282,7 +303,8 @@ export class PluginCostComponent extends LitElement {
   }
 
   disconnectedCallback(){
-    if(this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    // Ensure any subscriptions are cleaned up when element is removed
+    this._unsubscribe();
     if(this._scenarioDebounceTimer){ clearTimeout(this._scenarioDebounceTimer); this._scenarioDebounceTimer = null; }
     if(super.disconnectedCallback) super.disconnectedCallback();
   }

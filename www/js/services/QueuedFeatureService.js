@@ -150,7 +150,10 @@ export class QueuedFeatureService {
                         }
                         const shiftedStart = shiftIsoByMs(existingChild.start, deltaMs);
                         const shiftedEnd = shiftIsoByMs(existingChild.end, deltaMs);
-                        activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
+                        const childOv = activeScenario.overrides[cid] || { start: existingChild.start, end: existingChild.end };
+                        childOv.start = shiftedStart;
+                        childOv.end = shiftedEnd;
+                        activeScenario.overrides[cid] = childOv;
                         actuallyAppliedQuickIds.push(cid);
                     if(minChildStart === null || shiftedStart < minChildStart) minChildStart = shiftedStart;
                     if(maxChildEnd === null || shiftedEnd > maxChildEnd) maxChildEnd = shiftedEnd;
@@ -182,11 +185,17 @@ export class QueuedFeatureService {
                 const finalStart = startCandidates.length ? startCandidates.reduce((a,b)=> a < b ? a : b) : candidateStart;
                 const finalEnd = endCandidates.length ? endCandidates.reduce((a,b)=> a > b ? a : b) : candidateEnd;
 
-                activeScenario.overrides[u.id] = { start: finalStart, end: finalEnd };
+                const epicOv = activeScenario.overrides[u.id] || { start: base.start, end: base.end };
+                epicOv.start = finalStart;
+                epicOv.end = finalEnd;
+                activeScenario.overrides[u.id] = epicOv;
                 actuallyAppliedQuickIds.push(u.id);
               }catch(e){
                 // Fallback behavior: apply candidate directly
-                activeScenario.overrides[u.id] = { start: u.start, end: u.end };
+                const fallbackOv = activeScenario.overrides[u.id] || { start: base.start, end: base.end };
+                fallbackOv.start = u.start;
+                fallbackOv.end = u.end;
+                activeScenario.overrides[u.id] = fallbackOv;
                 actuallyAppliedQuickIds.push(u.id);
               }
             }
@@ -285,7 +294,10 @@ export class QueuedFeatureService {
                   const existingChild = { start: chBase.start, end: chBase.end };
                   const shiftedStart = shiftIsoByMs(existingChild.start, epicMovedDeltaMs);
                   const shiftedEnd = shiftIsoByMs(existingChild.end, epicMovedDeltaMs);
-                  activeScenario.overrides[cid] = { start: shiftedStart, end: shiftedEnd };
+                  const childOv2 = activeScenario.overrides[cid] || { start: chBase.start, end: chBase.end };
+                  childOv2.start = shiftedStart;
+                  childOv2.end = shiftedEnd;
+                  activeScenario.overrides[cid] = childOv2;
                   newOverrides[cid] = { start: shiftedStart, end: shiftedEnd };
                   if(!appliedIds.includes(cid)) appliedIds.push(cid);
                   if(maxChildEnd === null || shiftedEnd > maxChildEnd) maxChildEnd = shiftedEnd;
@@ -339,7 +351,9 @@ export class QueuedFeatureService {
         }
 
         if(existing.start === start && existing.end === end) continue;
-        activeScenario.overrides[id] = { start, end };
+        existing.start = start;
+        existing.end = end;
+        activeScenario.overrides[id] = existing;
         newOverrides[id] = { start, end };
         appliedIds.push(id);
 
