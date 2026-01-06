@@ -407,12 +407,18 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
             # normalize baseline tasks to expected cost input
             features = []
             for t in (tasks or []):
+                # Capacity should be a list of {team, capacity} dicts
+                # If missing or empty, use empty list (cost engine will handle it)
+                capacity = t.get('capacity')
+                if not isinstance(capacity, list):
+                    capacity = []
+                
                 features.append({
                     'id': t.get('id'),
                     'project': t.get('project'),
                     'start': t.get('start'),
                     'end': t.get('end'),
-                    'capacity': t.get('capacity') or 1.0,
+                    'capacity': capacity,
                     'title': t.get('title'),
                     'type': t.get('type'),
                     'state': t.get('state'),
@@ -440,6 +446,11 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
                                     f_copy['start'] = ov.get('start')
                                 if 'end' in ov:
                                     f_copy['end'] = ov.get('end')
+                                if 'capacity' in ov:
+                                    # Apply capacity override from scenario
+                                    capacity_override = ov.get('capacity')
+                                    if isinstance(capacity_override, list):
+                                        f_copy['capacity'] = capacity_override
                             applied_overrides[fid] = ov
                         new_features.append(f_copy)
                     features = new_features
