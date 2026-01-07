@@ -1,9 +1,11 @@
-import { getTimelineMonths } from './Timeline.lit.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { parseDate } from './util.js';
 import { state } from '../services/State.js';
 import { featureFlags } from '../config.js';
+import { bus } from '../core/EventBus.js';
+import { TimelineEvents } from '../core/EventRegistry.js';
 
-const monthWidth = 120;
+const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 let _cachedMonthsRef = null;
 let _cachedMonthStarts = null;
@@ -26,6 +28,7 @@ export const getBoardOffset = () => {
 
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();
+  const monthWidth = getMonthWidth();
   if (!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || _cachedMonthsRef[0].getTime() !== months[0].getTime()) _buildMonthCache(months);
   
   // Handle unplanned features (when feature flag is ON)
@@ -69,7 +72,9 @@ export const computePosition = (feature, monthsArg) => {
     const left = boardOffset + (startIdx + startFraction) * monthWidth;
     const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
     let width = spanContinuous * monthWidth;
-    const minVisualWidth = 40;
+    
+    // Dynamic minimum width based on zoom level
+    const minVisualWidth = Math.max(5, monthWidth / 6);
     if (width < minVisualWidth) width = minVisualWidth;
 
     return { left, width };
@@ -108,10 +113,21 @@ export const computePosition = (feature, monthsArg) => {
   const left = boardOffset + (startIdx + startFraction) * monthWidth;
   const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
   let width = spanContinuous * monthWidth;
-  const minVisualWidth = 40;
+  
+  // Dynamic minimum width based on zoom level
+  // At weeks (240px/month): min 40px (keeps large features usable)
+  // At months (120px/month): min 20px (scales down)
+  // At quarters (60px/month): min 10px (scales down further)
+  // At years (30px/month): min 5px (allows very small features)
+  const minVisualWidth = Math.max(5, monthWidth / 6);
   if (width < minVisualWidth) width = minVisualWidth;
 
   return { left, width };
 };
 
 export const _test_resetCache = () => { _cachedMonthsRef = null; _cachedMonthStarts = null; _cachedMonthDays = null; };
+
+// Listen for scale changes and reset cache
+bus.on(TimelineEvents.SCALE_CHANGED, () => {
+  _test_resetCache();
+});

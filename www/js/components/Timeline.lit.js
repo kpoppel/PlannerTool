@@ -17,9 +17,29 @@ export const TIMELINE_CONFIG = {
   overloadBgColor: '#ff3b30'
 };
 
+// Zoom level configurations
+export const ZOOM_LEVELS = {
+  weeks: { monthWidth: 240, pixelsPerDay: 8 },
+  months: { monthWidth: 120, pixelsPerDay: 4 },
+  quarters: { monthWidth: 60, pixelsPerDay: 2 },
+  years: { monthWidth: 30, pixelsPerDay: 1 }
+};
+
+/**
+ * Get monthWidth for a given scale
+ * @param {string} scale - Scale name ('weeks', 'months', 'quarters', 'years')
+ * @returns {number} Month width in pixels
+ */
+export function getMonthWidthForScale(scale) {
+  return ZOOM_LEVELS[scale]?.monthWidth ?? 120;
+}
+
 let monthsCache = [];
 let didInitialScroll = false;
 let timelineElement = null; // Reference to mounted component instance
+let _headerScheduled = false;
+let _headerPendingPayload = null;
+let _headerScheduledPromise = null;
 
 /**
  * Timeline - Lit-based timeline component
@@ -238,15 +258,37 @@ export async function initTimeline(){
     // callers can provide changed ids and allow the header logic to short-circuit
     // when the visible month range does not need to change.
     bus.on(FeatureEvents.UPDATED, (p) => scheduleRenderTimelineHeader(p));
-    bus.on(TimelineEvents.SCALE_CHANGED, (p) => scheduleRenderTimelineHeader(p));
+    bus.on(TimelineEvents.SCALE_CHANGED, (payload) => {
+      // Capture center date BEFORE scale change
+      const centerDate = getCenterDate();
+      
+      // Update TIMELINE_CONFIG with new monthWidth
+      TIMELINE_CONFIG.monthWidth = payload.monthWidth;
+      
+      // Update CSS variable for background stripes and other CSS-based positioning
+      document.documentElement.style.setProperty('--timeline-month-width', `${payload.monthWidth}px`);
+      
+      // Trigger re-render and wait for it to complete
+      const renderPromise = scheduleRenderTimelineHeader(payload);
+      
+      // Restore center date position after render completes
+      renderPromise.then(() => {
+        if (centerDate && monthsCache.length) {
+          scrollToCenterDate(centerDate, monthsCache);
+        }
+        // Signal that scale change is complete and scroll position is updated
+        bus.emit(TimelineEvents.SCALE_COMPLETE, payload);
+      });
+    });
     window.addEventListener('resize', () => { requestAnimationFrame(() => scheduleRenderTimelineHeader()); });
     enableTimelinePanning();
+    
     // initial render
     renderTimelineHeader();
   }catch(e){ console.warn('[timeline-lit adapter] init failed', e); }
 }
 
-function renderTimelineHeader(payload){
+async function renderTimelineHeader(payload){
   const shouldInstrument = featureFlags?.timelineInstrumentation;
   let t0;
   if(shouldInstrument && typeof performance !== 'undefined' && performance.now) t0 = performance.now();
@@ -320,7 +362,7 @@ function renderTimelineHeader(payload){
   if(comp?.renderMonths){
     comp.bus = bus;
     comp.monthWidth = TIMELINE_CONFIG.monthWidth;
-    comp.renderMonths(monthsCache).catch(()=>{});
+    await comp.renderMonths(monthsCache).catch(()=>{});
     try{ bus.emit(TimelineEvents.MONTHS, monthsCache); }catch(e){}
     const totalWidth = monthsCache.length * TIMELINE_CONFIG.monthWidth;
     header.style.width = (totalWidth + 10) + 'px';
@@ -356,17 +398,100 @@ function renderTimelineHeader(payload){
 }
 
 // Coalesced scheduler to avoid repeated heavy header work during bursts
-let _headerScheduled = false;
-let _headerPendingPayload = null;
 function scheduleRenderTimelineHeader(payload){
   _headerPendingPayload = payload || _headerPendingPayload;
-  if(_headerScheduled) return;
-  _headerScheduled = true;
-  const run = () => { _headerScheduled = false; const p = _headerPendingPayload; _headerPendingPayload = null; renderTimelineHeader(p); };
-  if(typeof window !== 'undefined' && window.requestIdleCallback){
-    try{ window.requestIdleCallback(run, {timeout: 50}); return; }catch(e){}
-  }
-  requestAnimationFrame(run);
+  if(_headerScheduled) return _headerScheduledPromise;
+  
+  _headerScheduledPromise = new Promise(resolve => {
+    _headerScheduled = true;
+    const run = async () => { 
+      _headerScheduled = false; 
+      const p = _headerPendingPayload; 
+      _headerPendingPayload = null; 
+      await renderTimelineHeader(p);
+      resolve();
+    };
+    if(typeof window !== 'undefined' && window.requestIdleCallback){
+      try{ window.requestIdleCallback(run, {timeout: 50}); return; }catch(e){}
+    }
+    requestAnimationFrame(run);
+  });
+  
+  return _headerScheduledPromise;
+}
+
+/**
+ * Get board offset (left padding)
+ * @returns {number} Board offset in pixels
+ */
+function getBoardOffset() {
+  const board = document.querySelector('feature-board');
+  if (!board) return 0;
+  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
+  return Number.isNaN(pl) ? 0 : pl;
+}
+
+/**
+ * Calculate the date currently at viewport center
+ * @returns {Date|null} Center date or null if timeline not ready
+ */
+function getCenterDate() {
+  const section = document.getElementById('timelineSection');
+  if (!section || !monthsCache.length) return null;
+  
+  const monthWidth = TIMELINE_CONFIG.monthWidth;
+  const centerScrollPos = section.scrollLeft + (section.clientWidth / 2);
+  const boardOffset = getBoardOffset();
+  const relative = (centerScrollPos - boardOffset) / monthWidth;
+  
+  const monthIndex = Math.max(0, Math.min(Math.floor(relative), monthsCache.length - 1));
+  const fraction = relative - monthIndex;
+  
+  const monthStart = monthsCache[monthIndex];
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const dayOffset = Math.floor(fraction * daysInMonth);
+  
+  const centerDate = new Date(monthStart);
+  centerDate.setDate(1 + dayOffset);
+  
+  return centerDate;
+}
+
+/**
+ * Scroll timeline to center a specific date in viewport
+ * @param {Date} targetDate - Date to center in viewport
+ * @param {Array} months - Current months array
+ */
+function scrollToCenterDate(targetDate, months) {
+  const section = document.getElementById('timelineSection');
+  if (!section || !targetDate || !months.length) return;
+  
+  const monthWidth = TIMELINE_CONFIG.monthWidth;
+  const boardOffset = getBoardOffset();
+  const firstMonthDate = months[0];
+  
+  if (!firstMonthDate || typeof firstMonthDate.toISOString !== 'function') return;
+  
+  // Extract year/month from ISO strings to avoid timezone issues
+  const firstMonthISO = firstMonthDate.toISOString();
+  const targetDateISO = targetDate.toISOString();
+  
+  const firstYear = parseInt(firstMonthISO.slice(0, 4));
+  const firstMonth = parseInt(firstMonthISO.slice(5, 7)) - 1;
+  const targetYear = parseInt(targetDateISO.slice(0, 4));
+  const targetMonth = parseInt(targetDateISO.slice(5, 7)) - 1;
+  const targetDay = parseInt(targetDateISO.slice(8, 10));
+  
+  // Calculate total months from timeline start to target date
+  const totalMonths = (targetYear - firstYear) * 12 + (targetMonth - firstMonth);
+  
+  // Add fractional month based on day position
+  const daysInMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const fraction = (targetDay - 1) / daysInMonth;
+  
+  // Calculate scroll position and center in viewport
+  const targetScrollPos = boardOffset + (totalMonths + fraction) * monthWidth;
+  section.scrollLeft = targetScrollPos - (section.clientWidth / 2);
 }
 
 function enableTimelinePanning(){

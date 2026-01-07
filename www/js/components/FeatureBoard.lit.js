@@ -447,6 +447,7 @@ export async function initBoard() {
   bus.on(ProjectEvents.CHANGED, renderFeatures);
   bus.on(TeamEvents.CHANGED, renderFeatures);
   bus.on(TimelineEvents.MONTHS, renderFeatures);
+  bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures); // Re-render when zoom changes
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);

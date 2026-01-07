@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents, TimelineEvents } from '../core/EventRegistry.js';
 // Legacy modal helper removed; create Lit modal components directly when needed
 import { dataService } from '../services/dataService.js';
 import { initViewOptions } from './viewOptions.js';
@@ -54,6 +54,7 @@ export class SidebarLit extends LitElement {
     bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
     bus.on(FilterEvents.CHANGED, onViewOptionChange);
     bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
+    bus.on(TimelineEvents.SCALE_CHANGED, onViewOptionChange); // Save when timeline zoom changes
     this._viewOptionChangeHandler = onViewOptionChange;
 
     this.refreshServerStatus();
@@ -120,6 +121,7 @@ export class SidebarLit extends LitElement {
       bus.off(ViewEvents.SORT_MODE, viewHandler);
       bus.off(FilterEvents.CHANGED, viewHandler);
       bus.off(StateFilterEvents.CHANGED, viewHandler);
+      bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
     }
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));

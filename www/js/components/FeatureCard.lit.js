@@ -164,6 +164,42 @@ export class FeatureCardLit extends LitElement {
     /* When fully culled, hide the capacity row entirely */
     .feature-card.culled .team-load-row { display: none; }
 
+    /* Small feature styling - for features <40px wide */
+    .feature-card.small-feature {
+      min-width: 8px !important;
+      padding: 2px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .feature-card.small-feature .title-row,
+    .feature-card.small-feature .team-load-row,
+    .feature-card.small-feature .feature-dates,
+    .feature-card.small-feature .drag-handle {
+      display: none !important;
+    }
+
+    .small-feature-indicator {
+      display: none; /* Hidden by default */
+      width: 100%;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+    }
+    
+    .feature-card.small-feature .small-feature-indicator {
+      display: flex; /* Only show for small features */
+    }
+
+    .small-feature-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.8;
+    }
+
     .title-row {
       display: flex;
       align-items: center;
@@ -340,6 +376,13 @@ export class FeatureCardLit extends LitElement {
     // attach mousedown handlers for dragging and resizing directly on the host
     try {
       this.addEventListener('mousedown', this._onHostMouseDown = (e) => {
+        // Check if this is a small feature - don't allow dragging
+        const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
+        if (rootCard && rootCard.classList.contains('small-feature')) {
+          // Small features are click-only, no drag
+          return;
+        }
+        
         const path = (e.composedPath && e.composedPath()) || [];
         const rh = this.shadowRoot && this.shadowRoot.querySelector('.drag-handle');
         const cameFromResizeHandle = path.includes(rh);
@@ -405,6 +448,17 @@ export class FeatureCardLit extends LitElement {
 
       // Use entry.contentRect.width (cheap) for host width; scrollWidth reads happen here but only once per rAF
       const w = entry.contentRect ? entry.contentRect.width : (rootCard.clientWidth || 0);
+      
+      // Check if feature is too small (<40px) - treat as small feature
+      if (w < 40) {
+        rootCard.classList.add('small-feature');
+        this.classList.add('small-feature');
+        return; // Skip other layout checks for small features
+      } else {
+        rootCard.classList.remove('small-feature');
+        this.classList.remove('small-feature');
+      }
+      
       const teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
       const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
       const contentFits = teamFits && titleFits;
@@ -526,6 +580,9 @@ export class FeatureCardLit extends LitElement {
         @dblclick=${this._handleDoubleClick}
         part="feature-card"
       >
+        <div class="small-feature-indicator">
+          <span class="small-feature-dot"></span>
+        </div>
         ${this._renderTeamLoadRow()}
         <div class="title-row">
           ${this._renderTypeIcon()}

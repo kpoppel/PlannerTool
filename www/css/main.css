@@ -226,6 +226,63 @@
 .chip.active .chip-badge { background:#23344d; color:#fff; }
 .chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
 
+/* Segmented control for timeline zoom */
+.view-option-section { margin: 12px 0; }
+.group-label { font-weight: 600; font-size: 0.85rem; opacity: 0.9; margin-bottom: 6px; }
+
+.segmented-control {
+  display: flex;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.segment {
+  flex: 1;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-sidebar-text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  user-select: none;
+  line-height: 1;
+}
+
+.segment:last-child {
+  border-right: none;
+}
+
+.segment:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.segment.active {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.segment.first {
+  border-top-left-radius: 7px;
+  border-bottom-left-radius: 7px;
+}
+
+.segment.last {
+  border-top-right-radius: 7px;
+  border-bottom-right-radius: 7px;
+}
+
+.segment:focus-visible {
+  outline: 2px solid #5cc8ff;
+  outline-offset: -2px;
+  z-index: 1;
+}
+
 /* Accent-enabled chip variant: shows a colored left accent using CSS variable */
 .chip-with-accent.active {
   background: #fff;

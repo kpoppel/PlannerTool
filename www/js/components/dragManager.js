@@ -2,14 +2,10 @@ import { bus } from '../core/EventBus.js';
 import { DragEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 import { formatDate, parseDate, addDays } from './util.js';
-import { getTimelineMonths } from './Timeline.lit.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
 
-const monthWidth = (() => {
-  const val = getComputedStyle(document.documentElement).getPropertyValue('--timeline-month-width');
-  const n = parseFloat(val);
-  return Number.isNaN(n) ? 120 : n;
-})();
+const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 const getBoardOffset = () => {
   const board = document.querySelector('feature-board');
@@ -20,6 +16,7 @@ const getBoardOffset = () => {
 
 export function startDragMove(e, feature, card, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const months = getTimelineMonths();
+  const monthWidth = getMonthWidth();
   const boardOffset = getBoardOffset();
   
   // Check if feature is unplanned (ghosted)
@@ -99,6 +96,8 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
 }
 
 export function startResize(e, feature, card, datesEl, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
+  const monthWidth = getMonthWidth();
+  
   // Check if feature is unplanned (ghosted)
   const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
   
