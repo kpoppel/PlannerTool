@@ -5,7 +5,7 @@ configuration when available, falling back to stored projects in the
 file-backed storage under the `projects` namespace.
 """
 from __future__ import annotations
-from typing import Any, List
+from typing import Any, List, Optional
 import re
 from planner_lib.storage.file_backend import FileStorageBackend
 from planner_lib.util import slugify
@@ -149,7 +149,7 @@ def _serialize_team_capacity_with_mapping(capacity_list: List[dict], cfg) -> str
     [/PlannerTool Team Capacity]
     
     Converts team IDs (e.g., 'team-architecture') to their short_name (e.g., 'Arch')
-    before serializing.
+    before serializing. Unknown team IDs (not present in cfg.team_map) are skipped.
     """
     if not capacity_list:
         return ""
@@ -160,6 +160,8 @@ def _serialize_team_capacity_with_mapping(capacity_list: List[dict], cfg) -> str
         if team_id:
             # Convert team ID to short_name
             short_name = _map_team_id_to_short_name(team_id, cfg)
+            if short_name is None:
+                continue
             lines.append(f"{short_name}: {capacity}")
     lines.append("[/PlannerTool Team Capacity]")
     return "\n".join(lines)
@@ -198,33 +200,34 @@ def _update_description_with_capacity(description: str | None, capacity_list: Li
     return desc
 
 
-def _map_team_token_to_id(token: str, cfg) -> str:
+def _map_team_token_to_id(token: str, cfg) -> Optional[str]:
     """Map a team token (name or short_name) to the canonical frontend team id.
 
     Returns slugified id with prefix 'team-' if a match is found; otherwise
-    returns the original token.
+    returns None to indicate no mapping was found.
     """
     if not token:
-        return token
+        return None
     if not cfg or not getattr(cfg, "team_map", None):
-        return token
+        return None
     tkn = str(token).strip()
     for tm in getattr(cfg, "team_map", []):
         name = str(tm.get("name", ""))
         short = str(tm.get("short_name", ""))
         if tkn.lower() == name.lower() or (short and tkn.lower() == short.lower()):
             return slugify(name, prefix="team-")
-    return token
+    return None
 
 
-def _map_team_id_to_short_name(team_id: str, cfg) -> str:
+def _map_team_id_to_short_name(team_id: str, cfg) -> Optional[str]:
     """Map a team ID (e.g., 'team-architecture') to its short_name.
 
-    Returns short_name if found in config, otherwise returns the original team_id.
+    Returns short_name (or full name if short_name not provided) if found in config,
+    otherwise returns None to indicate unknown team id.
     This is the reverse of _map_team_token_to_id.
     """
     if not team_id or not cfg or not getattr(cfg, "team_map", None):
-        return team_id
+        return None
     
     # Remove 'team-' prefix and convert to name
     tid = str(team_id).strip()
@@ -237,7 +240,7 @@ def _map_team_id_to_short_name(team_id: str, cfg) -> str:
             short = tm.get("short_name", "")
             return short if short else name
     
-    return team_id
+    return None
 
 
 
@@ -298,7 +301,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             pid = slugify(name, prefix="project-")
             if pid != project_id:
                 continue
-        wis = client.get_work_items(path)
+        wis = client.get_work_items(path) # type: ignore
         # Returned data is list of dict:
         # [{'id': 535825, 'type': 'Feature', 'title': 'Architecture team requests incoming',
         #   'state': 'Active', 'tags': None, 'areaPath': 'Platform_Development\\eSW\\Teams\\Architecture',
@@ -317,10 +320,13 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
             #today_minus_120 = str((date.today() - timedelta(days=120)).isoformat())
             #today_minus_90 = str((date.today() - timedelta(days=90)).isoformat())
             parsed_capacity = _parse_team_capacity(wi.get("description"))
-            parsed_capacity = [
-                {"team": _map_team_token_to_id(str(entry.get("team") or ""), cfg), "capacity": entry.get("capacity", 0)}
-                for entry in parsed_capacity
-            ]
+            filtered_capacity: List[dict] = []
+            for entry in parsed_capacity:
+                mapped = _map_team_token_to_id(str(entry.get("team") or ""), cfg)
+                if mapped is None:
+                    continue
+                filtered_capacity.append({"team": mapped, "capacity": entry.get("capacity", 0)})
+            parsed_capacity = filtered_capacity
             # TODO: Very noisy:
             #logger.debug(f"Parsed team capacity for work item {wi['id']}: {parsed_capacity} based on description {wi.get('description')}.")
             # Enrich the existing work item dict instead of rebuilding it from scratch.
@@ -372,7 +378,7 @@ def update_tasks(updates: List[dict], pat: str | None = None) -> dict:
         # Update dates if provided
         if start is not None or end is not None:
             try:
-                client.update_work_item_dates(wid, start=start, end=end)
+                client.update_work_item_dates(wid, start=start, end=end) # type: ignore
                 item_updated = True
             except Exception as e:
                 errors.append(f"{wid} (dates): {e}")
@@ -381,7 +387,7 @@ def update_tasks(updates: List[dict], pat: str | None = None) -> dict:
         if capacity is not None and isinstance(capacity, list):
             try:
                 # Fetch current work item to get existing description
-                wit = client.conn.clients.get_work_item_tracking_client()
+                wit = client.conn.clients.get_work_item_tracking_client() # type: ignore
                 work_item = wit.get_work_item(wid)
                 current_description = work_item.fields.get("System.Description", "")
                 
@@ -389,7 +395,7 @@ def update_tasks(updates: List[dict], pat: str | None = None) -> dict:
                 updated_description = _update_description_with_capacity(current_description, capacity, cfg)
                 
                 # Save back to Azure
-                client.update_work_item_description(wid, updated_description)
+                client.update_work_item_description(wid, updated_description) # type: ignore
                 item_updated = True
             except Exception as e:
                 errors.append(f"{wid} (capacity): {e}")
@@ -418,7 +424,7 @@ def update_work_item_capacity(work_item_id: int, capacity_list: List[dict], pat:
     
     try:
         # Fetch current work item to get existing description
-        wit = client.conn.clients.get_work_item_tracking_client()
+        wit = client.conn.clients.get_work_item_tracking_client() # type: ignore
         work_item = wit.get_work_item(work_item_id)
         current_description = work_item.fields.get("System.Description", "")
         
@@ -426,7 +432,7 @@ def update_work_item_capacity(work_item_id: int, capacity_list: List[dict], pat:
         updated_description = _update_description_with_capacity(current_description, capacity_list, cfg)
         
         # Save back to Azure
-        client.update_work_item_description(work_item_id, updated_description)
+        client.update_work_item_description(work_item_id, updated_description) # type: ignore
         
         return { "ok": True, "work_item_id": work_item_id }
     except Exception as e:
