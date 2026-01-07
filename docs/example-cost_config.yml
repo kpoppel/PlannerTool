@@ -1,0 +1,24 @@
+# Cost configuration for PlannerTool
+# Define working hours per site and default hourly rates for internal and external staff.
+# Hours are per-month totals
+
+working_hours:
+  SITE1:
+    internal: 110
+    external: 120
+  SITE2:
+    internal: 120
+    external: 130
+  SITE3:
+    internal: 130
+    external: 140
+
+# Default internal hourly rate (used when people entries are internal)
+internal_cost:
+  default_hourly_rate: 50
+
+# External cost config: default hourly rate for contractors and optional named overrides
+external_cost:
+  default_hourly_rate: 100
+  external:
+    "John Smith": 150

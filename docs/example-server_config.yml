@@ -1,0 +1,18 @@
+azure_devops_organization: <Azure azure_devops_organization>
+log_level: <level: DEBUG, INFO, WARNING, ERRRR, CRITICAL>
+# Feature flags to enable/disable specific features
+feature_flags:
+  azure_cache_enabled: true
+  planner_use_brotli: false
+# Optional: Relative or absolute path to the database directory or full path and filename
+database_path: </path/to/database/directory/or/file.yaml>
+# Root area paths to consider for projects
+area_paths:
+- <some/azure/path>
+project_map:
+- name: <project name>
+  area_path: <relative path after the root area path>
+# Team mappings - copy the list of teams from the database YAML which should be recognized
+team_map:
+- name: Team 1
+  short_name: TNT

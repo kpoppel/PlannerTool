@@ -1,0 +1,27 @@
+# Version is the last modification time of the file in YYYYMMDD format
+# This is for informational purposes and potential future migrations
+version: "20301231"
+database:
+  people:
+    # List of people in the database
+    - name: John Smith
+      birthday: 1977-05-22
+      title: Team Developer
+      external: true
+      team_name: Team 1
+      # Virtual team memberships is a list of team names
+      virtual_team: []
+      legal_manager: Jane Doe
+      functional_manager: Jane Doe
+      carry_over_holidays: 0
+      site: SITE1
+  # Teams are defined by a name a short name and associated people
+  teams:
+    - name: Team 1
+      short_name: T1
+      product_owner: Bridget Hansen
+      functional_manager: Jane Doe
+  # Projects are defined by a name and a project lead
+  projects:
+    - name: Project 1
+      project_lead: Bridget Hansen
