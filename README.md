@@ -14,6 +14,28 @@
   `uvicorn planner:app --reload`
 - Use the application by browsing to `http://localhost:8000`
 
+Configuring `database.yaml` location
+-----------------------------------
+
+You can override where the server loads the `database.yaml` file by adding
+one of the following keys to `data/config/server_config.yml`:
+
+- `database_path`: path to the YAML file (absolute or relative to `data/config`)
+
+Examples:
+
+Absolute path:
+```
+database_path: /etc/plannertool/teamdb/database.yaml
+```
+
+Relative to `data/config`:
+```
+database_path: ../shared-configs/database.yaml
+```
+
+If neither key is present the server will fall back to `data/config/database.yaml`.
+
 The server will run a setup first time. If you need to run the setup again, either delete the `data/config/server_config.yml` file or run `python3 planner.py --setup`.
 
 # Testing
@@ -70,6 +92,12 @@ To calculate a server-stored scenario: POST { "scenarioId": "<id>" }
 This lets the server load the scenario and apply overrides, and response meta will show scenario_id and applied_overrides.
 To calculate a local/unsaved scenario (temporary overrides applied on the client): POST { "features": [ ...effective features with overrides...] }
 Send the full features list where each item has keys: id, project, start, end, capacity, plus optional title, type, state.
+
+**IMPORTANT**: `capacity` must be a list of team allocations: `[{"team": "team-name", "capacity": 80}, ...]`
+- Empty list `[]` is valid (feature has no capacity allocated)
+- Float values like `1.0` are **NOT** valid and will cause `'float' object is not iterable` error
+- The backend `list_tasks()` always returns capacity as a list
+
 Response meta.scenario_id will be null (unless you also pass a scenarioId).
 GET /api/cost is fine for baseline cached result when session is authenticated.
 
@@ -149,7 +177,8 @@ systemctl start plannertool
   2. Sum of cost per project (unfinished work)
   3. Sum of cost this fiscal year (configurable WSA 1/10-31/9)
   4. Sum of cost all time
-
+- bug: Show Unplanned depends on Show Unassigned also being selected.
+- feat: Enable flagging cost smells.
 Next:
 
 Later:
@@ -162,6 +191,14 @@ Later:
 - Feature (convenience) Export mountain view data to Excel format.
 
 Solved:
+- (/) bug: Changing scenarios does not refresh cost calculation data (this worked before)
+  response: {"detail":"'float' object is not iterable"}
+  GET works.  Should simplify to use POST for any scenario including the baseline.
+- (/) bug: After opening the Cost plugin, changing scenarios shows the spinner modal with the text "Loading Cost Data".  Cost data is loaded
+  for each scenario change from this point onwards. The plugin must unregister from the scenario change event when closed.
+- (/) bug: When assigning capacity to a feature and moving or resizing it, the capacity override is lost. It does not matter if the feature
+  already has a capacity allocation or not.
+- (/) bug: The team selection popover in the details panel shows below the <main> element. Redesigned this part.
 - (/) feat:Add filter to sort away tasks without start/target dates.
   Reasoning: The iteration view in Azure is used in a way that items without iteration and start/target dates are not shown in the delivery plan page. Those without dates are not ready for primetime.
   TODO: Add field to the data signaling the data was originally without date, or don't add it from the server side and add it in the UI.

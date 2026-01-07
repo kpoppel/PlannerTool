@@ -14,12 +14,45 @@ def load_yaml_file(path: Path) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _resolve_database_path() -> Path:
+    """Determine the path to the database YAML file.
+
+    Priority:
+    - If the setup module has a loaded config and contains `database_file`
+      or `database_path`, use that value. If it's a relative path, resolve
+      it relative to `CONFIG_PATH`.
+    - Otherwise, attempt to read `server_config.yml` for the same keys.
+    - Finally, fall back to `CONFIG_PATH / 'database.yaml'`.
+    """
+    default = CONFIG_PATH / "database.yaml"
+    # Prefer the loaded server config via planner_lib.setup; otherwise use default
+    try:
+        from planner_lib.setup import get_property
+        db_path_val = get_property('database_path')
+        if db_path_val:
+            p = Path(str(db_path_val))
+            if not p.is_absolute():
+                p = (CONFIG_PATH / p).resolve()
+            # If the provided path looks like a directory or doesn't have a YAML
+            # extension, append the expected filename so we load the YAML file.
+            if p.is_dir() or p.suffix.lower() not in ('.yml', '.yaml'):
+                p = p / 'database.yaml'
+            return p
+    except Exception:
+        # If planner_lib.setup is not available or has no loaded config,
+        # fall back to the default location.
+        pass
+
+    return default
+
+
 def load_cost_config() -> dict:
     """Load cost configuration from `data/config/cost_config.yml` and `database.yaml`.
     Returns a combined dict with keys 'cost' and 'database'.
     """
     cost_cfg = load_yaml_file(CONFIG_PATH / "cost_config.yml")
-    db_cfg = load_yaml_file(CONFIG_PATH / "database.yaml")
+    db_path = _resolve_database_path()
+    db_cfg = load_yaml_file(db_path)
     # Validate consistency between server/team config and database people
     try:
         _validate_team_consistency(cost_cfg, db_cfg)
@@ -28,7 +61,13 @@ def load_cost_config() -> dict:
         # startup. Do not raise here to allow the server to start in
         # environments where strict validation is not desired.
         logger.warning("Cost configuration validation failed: %s", e)
-    return {"cost": cost_cfg, "database": db_cfg["database"]}
+    # Ensure we always return a dict for the 'database' key
+    database = {}
+    if isinstance(db_cfg, dict) and isinstance(db_cfg.get('database'), dict):
+        database = db_cfg.get('database')
+    else:
+        logger.debug('Database YAML at %s did not contain expected "database" key', db_path)
+    return {"cost": cost_cfg, "database": database}
 
 
 def _validate_team_consistency(cost_cfg: dict, db_cfg: dict) -> None:
@@ -46,7 +85,7 @@ def _validate_team_consistency(cost_cfg: dict, db_cfg: dict) -> None:
     configured = []
     # cost_cfg may contain a server-like structure with 'team_map'
     if isinstance(cost_cfg, dict) and cost_cfg.get('team_map'):
-        for t in cost_cfg.get('team_map'):
+        for t in cost_cfg.get('team_map'): # type: ignore
             if isinstance(t, dict) and t.get('name'):
                 configured.append(str(t.get('name')))
 
