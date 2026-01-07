@@ -24,12 +24,10 @@ export const addMonths = (date, n) => {
 
 export const dateRangeInclusiveMonths = (start, end) => {
   const arr = [];
-  const d = new Date(start);
-  d.setDate(1);
-  const limit = new Date(end);
-  limit.setDate(1);
+  const d = new Date(start.getFullYear(), start.getMonth(), 1);
+  const limit = new Date(end.getFullYear(), end.getMonth(), 1);
   while (d <= limit) {
-    arr.push(new Date(d));
+    arr.push(new Date(d.getFullYear(), d.getMonth(), 1));
     d.setMonth(d.getMonth() + 1);
   }
   return arr;

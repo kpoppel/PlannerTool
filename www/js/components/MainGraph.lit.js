@@ -4,7 +4,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { getTimelineMonths } from '../components/Timeline.lit.js';
+import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { FeatureEvents, CapacityEvents, ProjectEvents, TeamEvents, FilterEvents, TimelineEvents, ViewEvents } from '../core/EventRegistry.js';
 
 /**
@@ -122,6 +122,7 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs.push(bus.on(TeamEvents.CHANGED, scheduleRender));
     this._maingraphUnsubs.push(bus.on(FilterEvents.CHANGED, scheduleRender));
     this._maingraphUnsubs.push(bus.on(TimelineEvents.MONTHS, scheduleRender));
+    this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_COMPLETE, scheduleRender));
     this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleRender));
 
     // Also listen for scroll on timelineSection
@@ -232,10 +233,15 @@ export class MainGraphLit extends LitElement {
     // Ported rendering logic adapted from www/js/mainGraph.js
     const { months, teams, projects, capacityDates, teamDailyCapacity, teamDailyCapacityMap, projectDailyCapacity, projectDailyCapacityMap, totalOrgDailyPerTeamAvg, capacityViewMode, selectedTeamIds, selectedProjectIds } = stateSnapshot;
 
-    const TIMELINE_CONFIG = (window.TIMELINE_CONFIG || { monthWidth: 120, overloadBgColor: '#e74c3c', overloadBgAlpha: 0.2 });
     const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth;
 
     function daysInMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); }
+    function hexToRgba(hex, alpha){
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if(!m){ return `rgba(231,76,60,${alpha})`; }
+      const r = parseInt(m[1],16), g = parseInt(m[2],16), b = parseInt(m[3],16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
     function hexToRgba(hex, alpha){
       const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       if(!m){ return `rgba(231,76,60,${alpha})`; }
@@ -252,9 +258,13 @@ export class MainGraphLit extends LitElement {
     // Visible range: use timelineSection scroll if present, otherwise assume full months range
     const section = document.getElementById('timelineSection');
     let range = { startDate: months[0], endDate: months[months.length-1] };
+    let viewportOffsetPx = 0; // Offset from the start of visibleStartIdx to the viewport left edge
+    
     if(section){
       const scrollLeft = section.scrollLeft;
       const width = section.clientWidth;
+      
+      // Calculate which dates are visible in the viewport
       const startMonthIdx = Math.floor(scrollLeft / MONTH_WIDTH);
       const startMonthOffsetPx = scrollLeft - (startMonthIdx * MONTH_WIDTH);
       const startMonthDate = months[clamp(startMonthIdx,0,months.length-1)];
@@ -270,6 +280,14 @@ export class MainGraphLit extends LitElement {
       const endDay = Math.floor((endMonthOffsetPx / MONTH_WIDTH) * endMonthDays);
       const endDate = new Date(endMonthDate.getFullYear(), endMonthDate.getMonth(), 1 + endDay);
       range = { startDate, endDate };
+      
+      // Calculate the pixel offset: how many pixels from the start of startDate's day to the viewport edge
+      // startDay tells us which day of the month we're on (0-indexed from calculation)
+      // We need the sub-day offset as well
+      const pxPerDayInStartMonth = MONTH_WIDTH / startMonthDays;
+      const exactDayInMonth = (startMonthOffsetPx / MONTH_WIDTH) * startMonthDays;
+      const subDayOffset = (exactDayInMonth - startDay) * pxPerDayInStartMonth;
+      viewportOffsetPx = subDayOffset;
     }
 
     // Build date map
@@ -288,7 +306,10 @@ export class MainGraphLit extends LitElement {
     const dayCount = dayCursor;
     const dayX = new Array(visibleEndIdx - visibleStartIdx + 2); // include nextX
     const dayWidth = new Array(visibleEndIdx - visibleStartIdx + 1);
-    let cumX = 0;
+    
+    // Start cumX at negative offset to account for the portion of the first day before viewport
+    let cumX = -viewportOffsetPx;
+    
     // compute starting month index
     let mi = 0; while(mi < months.length && monthStartDayIdx[mi] + monthDayCounts[mi] <= visibleStartIdx) mi++;
     for(; mi<months.length; mi++){

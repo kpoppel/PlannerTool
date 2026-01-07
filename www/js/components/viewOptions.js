@@ -52,6 +52,47 @@ function renderMultiSelect(container, label, options){
   container.appendChild(wrapper);
 }
 
+function renderSegmentedControl(container, label, segments){
+  const wrapper = document.createElement('div');
+  wrapper.className = 'view-option-section';
+  
+  const title = document.createElement('div');
+  title.className = 'group-label';
+  title.textContent = label;
+  
+  const segmentedControl = document.createElement('div');
+  segmentedControl.className = 'segmented-control';
+  segmentedControl.setAttribute('role', 'radiogroup');
+  
+  segments.forEach((seg, idx) => {
+    const segment = document.createElement('button');
+    segment.type = 'button';
+    segment.className = `segment ${seg.active ? 'active' : ''}`;
+    if (idx === 0) segment.classList.add('first');
+    if (idx === segments.length - 1) segment.classList.add('last');
+    segment.textContent = seg.label;
+    segment.setAttribute('role', 'radio');
+    segment.setAttribute('aria-checked', seg.active ? 'true' : 'false');
+    segment.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (seg.onClick) seg.onClick();
+      reinit();
+    });
+    segment.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (seg.onClick) seg.onClick();
+        reinit();
+      }
+    });
+    segmentedControl.appendChild(segment);
+  });
+  
+  wrapper.appendChild(title);
+  wrapper.appendChild(segmentedControl);
+  container.appendChild(wrapper);
+}
+
 function renderStateFilter(container){
   const wrapper = document.createElement('div');
   const title = document.createElement('div'); title.className='group-label'; title.textContent = 'State Filter:';
@@ -87,6 +128,16 @@ export function initViewOptions(container){
   const root = container || document.getElementById('viewOptionsContainer');
   if(!root) return;
   root.innerHTML = '';
+  
+  // Timeline Scale - segmented control for zoom levels
+  const currentScale = state._viewService.timelineScale;
+  renderSegmentedControl(root, 'Timeline Scale', [
+    { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
+    { label: 'Months', active: currentScale === 'months', onClick: () => state._viewService.setTimelineScale('months') },
+    { label: 'Quarters', active: currentScale === 'quarters', onClick: () => state._viewService.setTimelineScale('quarters') },
+    { label: 'Years', active: currentScale === 'years', onClick: () => state._viewService.setTimelineScale('years') }
+  ]);
+  
   // Condensed cards - use ViewService directly
   renderToggle(root, 'Condensed', 
     ()=> state._viewService.condensedCards, 

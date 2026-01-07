@@ -25,6 +25,7 @@ import {
   ViewEvents, 
   FeatureEvents 
 } from '../core/EventRegistry.js';
+import { getMonthWidthForScale } from '../components/Timeline.lit.js';
 
 export class ViewService {
   /**
@@ -54,7 +55,7 @@ export class ViewService {
   
   /**
    * Get current timeline scale
-   * @returns {string} 'months' | 'weeks' | 'quarters'
+   * @returns {string} 'weeks' | 'months' | 'quarters' | 'years'
    */
   get timelineScale() {
     return this._timelineScale;
@@ -62,12 +63,21 @@ export class ViewService {
   
   /**
    * Set timeline scale and emit change event
-   * @param {string} scale - Timeline scale ('months', 'weeks', 'quarters')
+   * @param {string} scale - Timeline scale ('weeks', 'months', 'quarters', 'years')
    */
   setTimelineScale(scale) {
+    const validScales = ['weeks', 'months', 'quarters', 'years'];
+    if (!validScales.includes(scale)) {
+      console.warn(`Invalid timeline scale: ${scale}, defaulting to 'months'`);
+      scale = 'months';
+    }
     if (this._timelineScale === scale) return;
+    
+    const oldScale = this._timelineScale;
     this._timelineScale = scale;
-    this.bus.emit(TimelineEvents.SCALE_CHANGED, scale);
+    const monthWidth = getMonthWidthForScale(scale);
+    
+    this.bus.emit(TimelineEvents.SCALE_CHANGED, { scale, monthWidth, oldScale });
   }
   
   // ========== Visibility Toggles ==========
@@ -249,7 +259,8 @@ export class ViewService {
       condensedCards: this._condensedCards,
       featureSortMode: this._featureSortMode,
       showUnassignedCards: this._showUnassignedCards,
-      showUnplannedWork: this._showUnplannedWork
+      showUnplannedWork: this._showUnplannedWork,
+      timelineScale: this._timelineScale
     };
   }
   
@@ -274,6 +285,9 @@ export class ViewService {
     }
     if (typeof viewState.showUnplannedWork !== 'undefined') {
       this.setShowUnplannedWork(viewState.showUnplannedWork);
+    }
+    if (viewState.timelineScale) {
+      this.setTimelineScale(viewState.timelineScale);
     }
   }
 }

@@ -102,7 +102,8 @@ export const ConfigEvents = {
 // Timeline events
 export const TimelineEvents = {
   MONTHS: Symbol('timeline:months'),
-  SCALE_CHANGED: Symbol('timeline:scale-changed')
+  SCALE_CHANGED: Symbol('timeline:scale-changed'),
+  SCALE_COMPLETE: Symbol('timeline:scale-complete')
 };
 
 // Data provider events

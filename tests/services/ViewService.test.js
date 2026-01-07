@@ -40,15 +40,59 @@ describe('ViewService', () => {
   });
   
   describe('Timeline Scale', () => {
-    it('should update timeline scale', () => {
+    it('should update timeline scale to weeks', () => {
       viewService.setTimelineScale('weeks');
       expect(viewService.timelineScale).to.equal('weeks');
     });
     
-    it('should emit SCALE_CHANGED event', () => {
+    it('should update timeline scale to quarters', () => {
+      viewService.setTimelineScale('quarters');
+      expect(viewService.timelineScale).to.equal('quarters');
+    });
+    
+    it('should update timeline scale to years', () => {
+      viewService.setTimelineScale('years');
+      expect(viewService.timelineScale).to.equal('years');
+    });
+    
+    it('should support all 4 zoom levels', () => {
+      const scales = ['weeks', 'months', 'quarters', 'years'];
+      scales.forEach(scale => {
+        viewService.setTimelineScale(scale);
+        expect(viewService.timelineScale).to.equal(scale);
+      });
+    });
+    
+    it('should emit SCALE_CHANGED event with payload', () => {
       emitCalls = [];
       viewService.setTimelineScale('quarters');
-      expect(emitCalls.some(call => call.event === TimelineEvents.SCALE_CHANGED && call.data === 'quarters')).to.equal(true);
+      const scaleEvent = emitCalls.find(call => call.event === TimelineEvents.SCALE_CHANGED);
+      expect(scaleEvent).to.exist;
+      expect(scaleEvent.data).to.be.an('object');
+      expect(scaleEvent.data.scale).to.equal('quarters');
+    });
+    
+    it('should emit monthWidth with SCALE_CHANGED event', () => {
+      emitCalls = [];
+      viewService.setTimelineScale('weeks');
+      const scaleEvent = emitCalls.find(call => call.event === TimelineEvents.SCALE_CHANGED);
+      expect(scaleEvent).to.exist;
+      expect(scaleEvent.data.monthWidth).to.equal(240); // weeks = 240px
+    });
+    
+    it('should emit correct monthWidth for each scale', () => {
+      const expectedWidths = { weeks: 240, months: 120, quarters: 60, years: 30 };
+      Object.entries(expectedWidths).forEach(([scale, width]) => {
+        emitCalls = [];
+        viewService.setTimelineScale(scale);
+        const scaleEvent = emitCalls.find(call => call.event === TimelineEvents.SCALE_CHANGED);
+        expect(scaleEvent.data.monthWidth).to.equal(width);
+      });
+    });
+    
+    it('should validate scale and default to months on invalid input', () => {
+      viewService.setTimelineScale('invalid-scale');
+      expect(viewService.timelineScale).to.equal('months');
     });
     
     it('should not emit event if scale unchanged', () => {
@@ -139,10 +183,11 @@ describe('ViewService', () => {
   });
   
   describe('State Capture and Restore', () => {
-    it('should capture current view state', () => {
+    it('should capture current view state including timeline scale', () => {
       viewService.setCapacityViewMode('project');
       viewService.setCondensedCards(true);
       viewService.setFeatureSortMode('date');
+      viewService.setTimelineScale('quarters');
       
       const snapshot = viewService.captureCurrentView();
       
@@ -151,16 +196,18 @@ describe('ViewService', () => {
         condensedCards: true,
         featureSortMode: 'date',
         showUnassignedCards: true,
-        showUnplannedWork: true
+        showUnplannedWork: true,
+        timelineScale: 'quarters'
       });
     });
     
-    it('should restore view state from snapshot', () => {
+    it('should restore view state from snapshot including timeline scale', () => {
       const snapshot = {
         capacityViewMode: 'project',
         condensedCards: true,
         featureSortMode: 'date',
-        showUnassignedCards: false
+        showUnassignedCards: false,
+        timelineScale: 'weeks'
       };
       
       viewService.restoreView(snapshot);
@@ -169,6 +216,7 @@ describe('ViewService', () => {
       expect(viewService.condensedCards).to.equal(true);
       expect(viewService.featureSortMode).to.equal('date');
       expect(viewService.showUnassignedCards).to.equal(false);
+      expect(viewService.timelineScale).to.equal('weeks');
     });
     
     it('should handle null snapshot gracefully', () => {
