@@ -4,7 +4,8 @@
  */
 
 import { expect } from '@esm-bundle/chai';
-import { ViewService } from '../../www/js/services/ViewService.js';
+// Import only lightweight services statically. Defer heavier imports that
+// may participate in circular initialization to beforeEach via dynamic import.
 import { ColorService } from '../../www/js/services/ColorService.js';
 import { ConfigService } from '../../www/js/services/ConfigService.js';
 import { StateFilterService } from '../../www/js/services/StateFilterService.js';
@@ -25,7 +26,7 @@ describe('Service Integration Tests', () => {
   let stateFilterService;
   let emitCalls;
   
-  beforeEach(() => {
+  beforeEach(async () => {
     emitCalls = [];
     mockBus = {
       emit: (event, data) => {
@@ -44,6 +45,11 @@ describe('Service Integration Tests', () => {
       setLocalPref: async () => undefined
     };
     
+    // Dynamically import ViewService to avoid circular import/TDZ with State
+    // (State constructs ViewService at module import time). This keeps tests
+    // isolated and deterministic.
+    const ViewServiceModule = await import('../../www/js/services/ViewService.js');
+    const ViewService = ViewServiceModule.ViewService;
     viewService = new ViewService(mockBus);
     colorService = new ColorService(mockDataService);
     configService = new ConfigService(mockBus, mockDataService);
