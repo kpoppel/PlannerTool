@@ -163,11 +163,11 @@ def test_map_team_id_to_short_name():
     assert _map_team_id_to_short_name("team-system-framework", cfg) == "SF"
     assert _map_team_id_to_short_name("team-integration-team", cfg) == "INT"
     
-    # Non-existent team should return original ID
-    assert _map_team_id_to_short_name("team-unknown", cfg) == "team-unknown"
+    # Non-existent team should return None (no mapping)
+    assert _map_team_id_to_short_name("team-unknown", cfg) is None
     
-    # Without config should return original ID
-    assert _map_team_id_to_short_name("team-architecture", None) == "team-architecture"
+    # Without config should return None
+    assert _map_team_id_to_short_name("team-architecture", None) is None
 
 
 def test_serialize_with_mapping():

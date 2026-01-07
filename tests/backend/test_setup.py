@@ -45,6 +45,8 @@ def test_save_and_load_roundtrip():
             {"name": "ProjectB", "area_path": "\\Area\\B"},
         ],
         team_map=[],
+        feature_flags={},
+        data_dir=None,
     )
 
     store.save("project_config.yml", cfg)

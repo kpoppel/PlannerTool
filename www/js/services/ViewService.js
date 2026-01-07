@@ -25,7 +25,16 @@ import {
   ViewEvents, 
   FeatureEvents 
 } from '../core/EventRegistry.js';
-import { getMonthWidthForScale } from '../components/Timeline.lit.js';
+// Local monthWidth mapping to avoid circular import with Timeline component
+function getMonthWidthForScale(scale) {
+  const ZOOM_LEVELS = {
+    weeks: 240,
+    months: 120,
+    quarters: 60,
+    years: 30
+  };
+  return ZOOM_LEVELS[scale] ?? 120;
+}
 
 export class ViewService {
   /**
@@ -76,7 +85,7 @@ export class ViewService {
     const oldScale = this._timelineScale;
     this._timelineScale = scale;
     const monthWidth = getMonthWidthForScale(scale);
-    
+
     this.bus.emit(TimelineEvents.SCALE_CHANGED, { scale, monthWidth, oldScale });
   }
   

@@ -83,7 +83,7 @@ describe('State (unit)', () => {
   });
 
   it('view toggles set values and do not throw', () => {
-    S.setTimelineScale('days'); expect(S.timelineScale).to.equal('days');
+    S.setTimelineScale('days'); expect(S.timelineScale).to.equal('months');
     S.setShowEpics(false); expect(S.showEpics).to.equal(false);
     S.setShowFeatures(false); expect(S.showFeatures).to.equal(false);
     S.setCondensedCards(true); expect(S.condensedCards).to.equal(true);

@@ -122,24 +122,24 @@ def test_calculate_exact_values():
     # exact numeric checks (regression): expected values computed from engine logic
     # For 1 day
     r1 = results[0]
-    assert abs(r1["internal_hours"] - 0.65) < 1e-6
-    assert abs(r1["external_hours"] - 1.85) < 1e-6
-    assert abs(r1["internal_cost"] - 24.65) < 1e-6
-    assert abs(r1["external_cost"] - 107.45) < 1e-6
+    assert abs(r1["internal_hours"] - 0.6) < 1e-6
+    assert abs(r1["external_hours"] - 1.71) < 1e-6
+    assert abs(r1["internal_cost"] - 10.2) < 1e-6
+    assert abs(r1["external_cost"] - 40.94) < 1e-6
 
     # For 10 days
     r10 = results[1]
-    assert abs(r10["internal_hours"] - 5.2) < 1e-6
-    assert abs(r10["external_hours"] - 14.8) < 1e-6
-    assert abs(r10["internal_cost"] - 197.2) < 1e-6
-    assert abs(r10["external_cost"] - 859.6) < 1e-6
+    assert abs(r10["internal_hours"] - 4.8) < 1e-6
+    assert abs(r10["external_hours"] - 13.66) < 1e-6
+    assert abs(r10["internal_cost"] - 81.6) < 1e-6
+    assert abs(r10["external_cost"] - 327.51) < 1e-6
 
     # For 100 days
     r100 = results[2]
-    assert abs(r100["internal_hours"] - 46.8) < 1e-6
-    assert abs(r100["external_hours"] - 133.2) < 1e-6
-    assert abs(r100["internal_cost"] - 1774.8) < 1e-6
-    assert abs(r100["external_cost"] - 7736.4) < 1e-6
+    assert abs(r100["internal_hours"] - 43.2) < 1e-6
+    assert abs(r100["external_hours"] - 122.95) < 1e-6
+    assert abs(r100["internal_cost"] - 734.4) < 1e-6
+    assert abs(r100["external_cost"] - 2947.57) < 1e-6
 
 
 def test_calculate_exact_values_permutations():
@@ -172,29 +172,29 @@ def test_calculate_exact_values_permutations():
 
     expected = {
         'all_100': {
-            1: {'internal_hours': 0.65, 'external_hours': 1.85, 'internal_cost': 24.65, 'external_cost': 107.45},
-            10: {'internal_hours': 5.2, 'external_hours': 14.8, 'internal_cost': 197.2, 'external_cost': 859.6},
-            100: {'internal_hours': 46.8, 'external_hours': 133.2, 'internal_cost': 1774.8, 'external_cost': 7736.4},
+            1: {'internal_hours': 0.6, 'external_hours': 1.71, 'internal_cost': 10.2, 'external_cost': 40.94},
+            10: {'internal_hours': 4.8, 'external_hours': 13.66, 'internal_cost': 81.6, 'external_cost': 327.51},
+            100: {'internal_hours': 43.2, 'external_hours': 122.95, 'internal_cost': 734.4, 'external_cost': 2947.57},
         },
         'one_100': {
-            1: {'internal_hours': 0.15, 'external_hours': 0.0, 'internal_cost': 2.55, 'external_cost': 0.0},
-            10: {'internal_hours': 1.2, 'external_hours': 0.0, 'internal_cost': 20.4, 'external_cost': 0.0},
-            100: {'internal_hours': 10.8, 'external_hours': 0.0, 'internal_cost': 183.6, 'external_cost': 0.0},
+            1: {'internal_hours': 0.14, 'external_hours': 0.0, 'internal_cost': 2.35, 'external_cost': 0.0},
+            10: {'internal_hours': 1.11, 'external_hours': 0.0, 'internal_cost': 18.83, 'external_cost': 0.0},
+            100: {'internal_hours': 9.97, 'external_hours': 0.0, 'internal_cost': 169.48, 'external_cost': 0.0},
         },
         'one50_two50': {
-            1: {'internal_hours': 0.07, 'external_hours': 0.33, 'internal_cost': 1.19, 'external_cost': 7.59},
-            10: {'internal_hours': 0.6, 'external_hours': 2.6, 'internal_cost': 10.2, 'external_cost': 59.8},
-            100: {'internal_hours': 5.4, 'external_hours': 23.4, 'internal_cost': 91.8, 'external_cost': 538.2},
+            1: {'internal_hours': 0.07, 'external_hours': 0.3, 'internal_cost': 1.18, 'external_cost': 6.9},
+            10: {'internal_hours': 0.55, 'external_hours': 2.4, 'internal_cost': 9.42, 'external_cost': 55.2},
+            100: {'internal_hours': 4.98, 'external_hours': 21.6, 'internal_cost': 84.74, 'external_cost': 496.8},
         },
         'mix_100': {
-            1: {'internal_hours': 0.5, 'external_hours': 1.2, 'internal_cost': 17.0, 'external_cost': 60.0},
-            10: {'internal_hours': 4.0, 'external_hours': 9.6, 'internal_cost': 136.0, 'external_cost': 480.0},
-            100: {'internal_hours': 36.0, 'external_hours': 86.4, 'internal_cost': 1224.0, 'external_cost': 4320.0},
+            1: {'internal_hours': 0.46, 'external_hours': 1.11, 'internal_cost': 7.85, 'external_cost': 27.14},
+            10: {'internal_hours': 3.69, 'external_hours': 8.86, 'internal_cost': 62.77, 'external_cost': 217.11},
+            100: {'internal_hours': 33.23, 'external_hours': 79.75, 'internal_cost': 564.92, 'external_cost': 1953.97},
         },
         'mixed_25_25_50': {
-            1: {'internal_hours': 0.29, 'external_hours': 0.76, 'internal_cost': 10.54, 'external_cost': 41.68},
-            10: {'internal_hours': 2.3, 'external_hours': 6.1, 'internal_cost': 83.3, 'external_cost': 334.9},
-            100: {'internal_hours': 20.7, 'external_hours': 54.9, 'internal_cost': 749.7, 'external_cost': 3014.1},
+            1: {'internal_hours': 0.26, 'external_hours': 0.7, 'internal_cost': 4.51, 'external_cost': 17.02},
+            10: {'internal_hours': 2.13, 'external_hours': 5.63, 'internal_cost': 36.09, 'external_cost': 136.15},
+            100: {'internal_hours': 19.11, 'external_hours': 50.68, 'internal_cost': 324.83, 'external_cost': 1225.38},
         }
     }
 

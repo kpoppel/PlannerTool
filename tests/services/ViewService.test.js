@@ -4,7 +4,7 @@
  */
 
 import { expect } from '@esm-bundle/chai';
-import { ViewService } from '../../www/js/services/ViewService.js';
+import { state } from '../../www/js/services/State.js';
 import { 
   TimelineEvents, 
   FilterEvents, 
@@ -24,7 +24,20 @@ describe('ViewService', () => {
         emitCalls.push({ event, data });
       }
     };
-    viewService = new ViewService(mockBus);
+    // Use the singleton view service created by State to avoid circular import
+    viewService = state._viewService;
+    // Override the bus so emits are captured locally
+    viewService.bus = mockBus;
+    // Reset internals to defaults to avoid test cross-contamination
+    viewService._timelineScale = 'months';
+    viewService._showEpics = true;
+    viewService._showFeatures = true;
+    viewService._showDependencies = false;
+    viewService._showUnassignedCards = true;
+    viewService._showUnplannedWork = true;
+    viewService._condensedCards = false;
+    viewService._capacityViewMode = 'team';
+    viewService._featureSortMode = 'rank';
   });
   
   describe('Initialization', () => {
@@ -84,8 +97,11 @@ describe('ViewService', () => {
       const expectedWidths = { weeks: 240, months: 120, quarters: 60, years: 30 };
       Object.entries(expectedWidths).forEach(([scale, width]) => {
         emitCalls = [];
+        // Ensure internal scale differs so setTimelineScale will emit
+        viewService._timelineScale = (scale === 'weeks') ? 'months' : 'weeks';
         viewService.setTimelineScale(scale);
         const scaleEvent = emitCalls.find(call => call.event === TimelineEvents.SCALE_CHANGED);
+        expect(scaleEvent).to.exist;
         expect(scaleEvent.data.monthWidth).to.equal(width);
       });
     });
@@ -156,6 +172,8 @@ describe('ViewService', () => {
     
     it('should emit ViewEvents.CAPACITY_MODE when changing mode', () => {
       emitCalls = [];
+      viewService._capacityViewMode = 'team';
+      emitCalls = [];
       viewService.setCapacityViewMode('project');
       expect(emitCalls.some(call => call.event === ViewEvents.CAPACITY_MODE)).to.equal(true);
     });
@@ -172,6 +190,7 @@ describe('ViewService', () => {
     
     it('should emit ViewEvents.SORT_MODE when changing mode', () => {
       emitCalls = [];
+      viewService._featureSortMode = 'rank';
       viewService.setFeatureSortMode('date');
       expect(emitCalls.some(call => call.event === ViewEvents.SORT_MODE)).to.equal(true);
     });
@@ -220,12 +239,15 @@ describe('ViewService', () => {
     });
     
     it('should handle null snapshot gracefully', () => {
+      // Ensure starting default
+      viewService._capacityViewMode = 'team';
       viewService.restoreView(null);
       // Should not throw, state unchanged
       expect(viewService.capacityViewMode).to.equal('team');
     });
     
     it('should handle partial snapshot', () => {
+      viewService._capacityViewMode = 'team';
       viewService.restoreView({ condensedCards: true });
       expect(viewService.condensedCards).to.equal(true);
       expect(viewService.capacityViewMode).to.equal('team'); // Unchanged
