@@ -1,6 +1,6 @@
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { StateFilterEvents } from '../core/EventRegistry.js';
+import { StateFilterEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
 
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
@@ -133,6 +133,7 @@ export function initViewOptions(container){
   const currentScale = state._viewService.timelineScale;
   renderSegmentedControl(root, 'Timeline Scale', [
     { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
+    { label: '3 Months', active: currentScale === 'threeMonths', onClick: () => state._viewService.setTimelineScale('threeMonths') },
     { label: 'Months', active: currentScale === 'months', onClick: () => state._viewService.setTimelineScale('months') },
     { label: 'Quarters', active: currentScale === 'quarters', onClick: () => state._viewService.setTimelineScale('quarters') },
     { label: 'Years', active: currentScale === 'years', onClick: () => state._viewService.setTimelineScale('years') }
@@ -203,6 +204,14 @@ bus.on(StateFilterEvents.CHANGED, ()=>{
   const node = document.getElementById('viewOptionsContainer');
   if(!node) return;
   // Rebuild only the state filter portion: simplest is full re-init to sync active flags
+  initViewOptions(node);
+});
+
+// Re-init view options when timeline scale changes so the segmented control
+// reflects restored or programmatic changes to the timeline scale.
+bus.on(TimelineEvents.SCALE_CHANGED, ()=>{
+  const node = document.getElementById('viewOptionsContainer');
+  if(!node) return;
   initViewOptions(node);
 });
 
