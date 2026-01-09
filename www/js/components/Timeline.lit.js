@@ -40,6 +40,7 @@ let timelineElement = null; // Reference to mounted component instance
 let _headerScheduled = false;
 let _headerPendingPayload = null;
 let _headerScheduledPromise = null;
+let _currentTimelineScale = 'months';
 
 /**
  * Timeline - Lit-based timeline component
@@ -261,26 +262,97 @@ export async function initTimeline(){
     bus.on(TimelineEvents.SCALE_CHANGED, (payload) => {
       // Capture center date BEFORE scale change
       const centerDate = getCenterDate();
-      
+
+      // Track current scale
+      _currentTimelineScale = payload.scale;
+
+      // If a special 'threeMonths' scale is requested, compute monthWidth
+      // so that exactly 3 months fill the timelineSection viewport width.
+      let newMonthWidth = payload.monthWidth;
+      if(payload.scale === 'threeMonths'){
+        try{
+          const section = document.getElementById('timelineSection');
+          if(section && section.clientWidth){
+            newMonthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
+          }
+        }catch(e){ /* ignore */ }
+      }
+
       // Update TIMELINE_CONFIG with new monthWidth
-      TIMELINE_CONFIG.monthWidth = payload.monthWidth;
-      
+      TIMELINE_CONFIG.monthWidth = newMonthWidth;
+
       // Update CSS variable for background stripes and other CSS-based positioning
-      document.documentElement.style.setProperty('--timeline-month-width', `${payload.monthWidth}px`);
-      
+      document.documentElement.style.setProperty('--timeline-month-width', `${newMonthWidth}px`);
+
       // Trigger re-render and wait for it to complete
       const renderPromise = scheduleRenderTimelineHeader(payload);
-      
+
       // Restore center date position after render completes
       renderPromise.then(() => {
-        if (centerDate && monthsCache.length) {
-          scrollToCenterDate(centerDate, monthsCache);
-        }
+        try{
+          if (payload && payload.scale === 'threeMonths'){
+            // Left-align current month as the viewport's leftmost month
+            const today = new Date();
+            const idx = monthsCache.findIndex(m => m.getFullYear()===today.getFullYear() && m.getMonth()===today.getMonth());
+            const section = document.getElementById('timelineSection');
+            if(idx >= 0 && section){
+              section.scrollLeft = idx * newMonthWidth;
+            }
+          } else {
+            if (centerDate && monthsCache.length) {
+              scrollToCenterDate(centerDate, monthsCache);
+            }
+          }
+        }catch(e){}
         // Signal that scale change is complete and scroll position is updated
-        bus.emit(TimelineEvents.SCALE_COMPLETE, payload);
+        bus.emit(TimelineEvents.SCALE_COMPLETE, Object.assign({}, payload, { monthWidth: newMonthWidth }));
       });
     });
-    window.addEventListener('resize', () => { requestAnimationFrame(() => scheduleRenderTimelineHeader()); });
+    // Ensure any restored timeline scale from ViewService is applied now
+    try{
+      const savedScale = state && state._viewService && state._viewService.timelineScale;
+      if(savedScale){
+        _currentTimelineScale = savedScale;
+        if(savedScale === 'threeMonths'){
+          const section = document.getElementById('timelineSection');
+          if(section && section.clientWidth){
+            TIMELINE_CONFIG.monthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
+            document.documentElement.style.setProperty('--timeline-month-width', `${TIMELINE_CONFIG.monthWidth}px`);
+          }
+        } else {
+          const w = getMonthWidthForScale(savedScale);
+          TIMELINE_CONFIG.monthWidth = w;
+          document.documentElement.style.setProperty('--timeline-month-width', `${w}px`);
+        }
+      }
+    }catch(e){}
+
+    window.addEventListener('resize', () => {
+      requestAnimationFrame(() => {
+        try{
+          if(_currentTimelineScale === 'threeMonths'){
+            const section = document.getElementById('timelineSection');
+            if(section && section.clientWidth){
+              // Preserve the leftmost month index and fractional offset so the
+              // visible left edge remains on the same logical date after resize.
+              const oldW = TIMELINE_CONFIG.monthWidth || 120;
+              const scrollLeft = section.scrollLeft || 0;
+              const leftIndex = Math.floor(scrollLeft / oldW);
+              const fraction = (scrollLeft / oldW) - leftIndex; // fractional part within month
+
+              const newW = Math.max(30, Math.floor(section.clientWidth / 3));
+              TIMELINE_CONFIG.monthWidth = newW;
+              document.documentElement.style.setProperty('--timeline-month-width', `${newW}px`);
+
+              // Restore scroll to the same logical leftmost position (index + fraction)
+              const newScroll = Math.max(0, Math.floor((leftIndex + fraction) * newW));
+              section.scrollLeft = newScroll;
+            }
+          }
+        }catch(e){}
+        scheduleRenderTimelineHeader();
+      });
+    });
     enableTimelinePanning();
     
     // initial render

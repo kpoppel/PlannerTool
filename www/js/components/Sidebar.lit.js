@@ -79,7 +79,17 @@ export class SidebarLit extends LitElement {
     bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
     bus.on(TimelineEvents.SCALE_CHANGED, onViewOptionChange); // Save when timeline zoom changes
     this._viewOptionChangeHandler = onViewOptionChange;
-
+    // Initialize reactive properties from current state in case events were
+    // emitted before this element was connected. This ensures the component
+    // renders current projects/teams immediately instead of waiting for
+    // subsequent change events.
+    try {
+      this._onProjectsChanged(state.projects);
+      this._onTeamsChanged(state.teams);
+      this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
+    } catch (e) {
+      // Defensive: ignore if state is not yet ready
+    }
     this.refreshServerStatus();
     this.requestUpdate();
   }

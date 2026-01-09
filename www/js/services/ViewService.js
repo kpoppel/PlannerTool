@@ -30,9 +30,19 @@ function getMonthWidthForScale(scale) {
   const ZOOM_LEVELS = {
     weeks: 240,
     months: 120,
+    threeMonths: null,
     quarters: 60,
     years: 30
   };
+  if (scale === 'threeMonths'){
+    try{
+      const section = typeof document !== 'undefined' ? document.getElementById('timelineSection') : null;
+      if(section && section.clientWidth){
+        return Math.max(30, Math.floor(section.clientWidth / 3));
+      }
+    }catch(e){/* ignore */}
+    return 120;
+  }
   return ZOOM_LEVELS[scale] ?? 120;
 }
 
@@ -75,7 +85,7 @@ export class ViewService {
    * @param {string} scale - Timeline scale ('weeks', 'months', 'quarters', 'years')
    */
   setTimelineScale(scale) {
-    const validScales = ['weeks', 'months', 'quarters', 'years'];
+    const validScales = ['weeks', 'months', 'quarters', 'years', 'threeMonths'];
     if (!validScales.includes(scale)) {
       console.warn(`Invalid timeline scale: ${scale}, defaulting to 'months'`);
       scale = 'months';
