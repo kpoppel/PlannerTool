@@ -37,6 +37,9 @@ describe('app-sidebar', () => {
   it('renderScenarios produces markup containing scenario names and active marker', async () => {
     state._scenarioEventService._scenarios = [ { id: 's1', name: 'One' }, { id: 'baseline', name: 'Base' } ];
     state.activeScenarioId = 's1';
+    // Emit events so components listening to ScenarioEvents update accordingly
+    state._scenarioEventService.emitScenarioList();
+    state._scenarioEventService.emitScenarioActivated();
     // call renderScenarios and render into temporary container
     const tpl = sidebar.renderScenarios();
     // Lit TemplateResult stringification is environment-specific; simply call requestUpdate to ensure DOM updated
