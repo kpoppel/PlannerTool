@@ -19,6 +19,58 @@ export class FeatureService {
       this._getActiveScenario = () => null;
     }
     this._childrenByEpic = new Map();
+    // Cache for aggregated counts to avoid repeated expensive traversals
+    this._countsCache = null;
+
+    // Invalidate cached counts when features change elsewhere
+    try{
+      bus.on(FeatureEvents.UPDATED, () => this.invalidateCounts());
+    }catch(e){}
+  }
+
+  /**
+   * Invalidate cached aggregated counts
+   */
+  invalidateCounts(){ this._countsCache = null; }
+
+  /**
+   * Compute aggregated counts for projects and teams in a single pass.
+   * Returns an object { projectCounts: { [projectId]: { epics, features } },
+   *                      teamCounts: { [teamId]: { epics, features } } }
+   */
+  _ensureCounts(){
+    if(this._countsCache) return this._countsCache;
+    const projectCounts = Object.create(null);
+    const teamCounts = Object.create(null);
+
+    const feats = this.getEffectiveFeatures() || [];
+    for(const f of feats){
+      const projId = f.project || '__unknown__';
+      if(!projectCounts[projId]) projectCounts[projId] = { epics: 0, features: 0 };
+      if(f.type === 'epic') projectCounts[projId].epics++;
+      else if(f.type === 'feature') projectCounts[projId].features++;
+
+      // For team-level counts, count a feature/epic once per team if it has
+      // any non-zero allocation for that team (avoid double-counting multiple
+      // capacity entries for same team).
+      if(Array.isArray(f.capacity)){
+        const seen = new Set();
+        for(const tl of f.capacity){
+          if(!tl || !tl.team) continue;
+          const cap = Number(tl.capacity) || 0;
+          if(cap <= 0) continue;
+          const teamId = tl.team;
+          if(seen.has(teamId)) continue;
+          seen.add(teamId);
+          if(!teamCounts[teamId]) teamCounts[teamId] = { epics: 0, features: 0 };
+          if(f.type === 'epic') teamCounts[teamId].epics++;
+          else if(f.type === 'feature') teamCounts[teamId].features++;
+        }
+      }
+    }
+
+    this._countsCache = { projectCounts, teamCounts };
+    return this._countsCache;
   }
 
   /**
@@ -397,32 +449,36 @@ export class FeatureService {
    * Count epics for a given project id
    */
   countEpicsForProject(projectId) {
-    const feats = this.getEffectiveFeatures();
-    return feats.filter(f => f.type === 'epic' && f.project === projectId).length;
+    const counts = this._ensureCounts();
+    const proj = counts.projectCounts[projectId] || { epics: 0, features: 0 };
+    return proj.epics;
   }
 
   /**
    * Count features for a given project id
    */
   countFeaturesForProject(projectId) {
-    const feats = this.getEffectiveFeatures();
-    return feats.filter(f => f.type === 'feature' && f.project === projectId).length;
+    const counts = this._ensureCounts();
+    const proj = counts.projectCounts[projectId] || { epics: 0, features: 0 };
+    return proj.features;
   }
 
   /**
    * Count epics that have non-zero allocation for a team
    */
   countEpicsForTeam(teamId) {
-    const feats = this.getEffectiveFeatures();
-    return feats.filter(f => f.type === 'epic' && (f.capacity && f.capacity.some(tl => tl.team === teamId && tl.capacity > 0))).length;
+    const counts = this._ensureCounts();
+    const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
+    return t.epics;
   }
 
   /**
    * Count features that have non-zero allocation for a team
    */
   countFeaturesForTeam(teamId) {
-    const feats = this.getEffectiveFeatures();
-    return feats.filter(f => f.type === 'feature' && (f.capacity && f.capacity.some(tl => tl.team === teamId && tl.capacity > 0))).length;
+    const counts = this._ensureCounts();
+    const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
+    return t.features;
   }
 }
 
