@@ -30,6 +30,7 @@ export class SidebarLit extends LitElement {
     this.open = true;
     this.serverStatus = 'loading';
     this._persistenceService = new SidebarPersistenceService(dataService);
+    this._didRestoreSidebarState = false;
   }
 
   // Render into light DOM so legacy selectors (IDs) can still be used if needed.
@@ -96,9 +97,24 @@ export class SidebarLit extends LitElement {
       .forEach(evt => bus.on(evt, onPluginsChanged));
 
     // Restore sidebar state from localStorage after initial render
-    setTimeout(() => {
-      this._restoreSidebarState();
-    }, 100);
+    // Defer restore until projects/teams have been initialized. Listen for
+    // ProjectEvents.CHANGED / TeamEvents.CHANGED and run restore once when
+    // data is available. Also try once immediately in case data is already loaded.
+    this._restoreOnDataHandler = async () => {
+      if (this._didRestoreSidebarState) return;
+      const hasProjects = Array.isArray(state.projects) && state.projects.length > 0;
+      const hasTeams = Array.isArray(state.teams) && state.teams.length > 0;
+      if (hasProjects || hasTeams) {
+        this._didRestoreSidebarState = true;
+        await this._restoreSidebarState();
+        bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
+        bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
+      }
+    };
+    bus.on(ProjectEvents.CHANGED, this._restoreOnDataHandler);
+    bus.on(TeamEvents.CHANGED, this._restoreOnDataHandler);
+    // Try once immediately (microtask) in case projects/teams were loaded earlier
+    setTimeout(() => this._restoreOnDataHandler(), 0);
   }
 
   disconnectedCallback(){
@@ -122,6 +138,12 @@ export class SidebarLit extends LitElement {
       bus.off(FilterEvents.CHANGED, viewHandler);
       bus.off(StateFilterEvents.CHANGED, viewHandler);
       bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
+    }
+    // Clean up restore-on-data handler if still registered
+    if (this._restoreOnDataHandler) {
+      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
+      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
+      this._restoreOnDataHandler = null;
     }
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
