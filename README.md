@@ -191,6 +191,8 @@ Later:
 - Feature (convenience) Export mountain view data to Excel format.
 
 Solved:
+- bug: The side panel must persist settings for teams and projects in addition to open closed sections.
+- feature: Add a 3-month view to timeline scale. Left border is start of month. If window is resized view will scale.
 - (/) bug: Changing scenarios does not refresh cost calculation data (this worked before)
   response: {"detail":"'float' object is not iterable"}
   GET works.  Should simplify to use POST for any scenario including the baseline.
