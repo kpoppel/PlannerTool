@@ -251,6 +251,8 @@
   border-right: 1px solid rgba(255, 255, 255, 0.15);
   user-select: none;
   line-height: 1;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .segment:last-child {
@@ -262,9 +264,11 @@
 }
 
 .segment.active {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  color: white;
-  font-weight: 600;
+  /* background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); */
+  background: white;
+  /* color: white; */
+  color: black;
+  /* font-weight: 600; */
 }
 
 .segment.first {

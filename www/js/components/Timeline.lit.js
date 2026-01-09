@@ -41,6 +41,7 @@ let _headerScheduled = false;
 let _headerPendingPayload = null;
 let _headerScheduledPromise = null;
 let _currentTimelineScale = 'months';
+let _resizeDebounceTimer = null;
 
 /**
  * Timeline - Lit-based timeline component
@@ -327,8 +328,10 @@ export async function initTimeline(){
       }
     }catch(e){}
 
+    // Debounced resize handler: wait until user stops resizing before heavy work
     window.addEventListener('resize', () => {
-      requestAnimationFrame(() => {
+      if (_resizeDebounceTimer) clearTimeout(_resizeDebounceTimer);
+      _resizeDebounceTimer = setTimeout(() => {
         try{
           if(_currentTimelineScale === 'threeMonths'){
             const section = document.getElementById('timelineSection');
@@ -351,7 +354,8 @@ export async function initTimeline(){
           }
         }catch(e){}
         scheduleRenderTimelineHeader();
-      });
+        _resizeDebounceTimer = null;
+      }, 120);
     });
     enableTimelinePanning();
     
