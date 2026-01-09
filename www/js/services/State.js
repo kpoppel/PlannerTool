@@ -293,6 +293,23 @@ class State {
     return this.availableFeatureStates;
   }
 
+  // Delegation helpers to FeatureService for counts used by UI
+  countEpicsForProject(projectId) {
+    return this._getFeatureService().countEpicsForProject(projectId);
+  }
+
+  countFeaturesForProject(projectId) {
+    return this._getFeatureService().countFeaturesForProject(projectId);
+  }
+
+  countEpicsForTeam(teamId) {
+    return this._getFeatureService().countEpicsForTeam(teamId);
+  }
+
+  countFeaturesForTeam(teamId) {
+    return this._getFeatureService().countFeaturesForTeam(teamId);
+  }
+
   // Bulk update the state
   updateFeatureDates(updates){
     const capacityCallback = () => {

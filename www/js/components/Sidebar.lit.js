@@ -1,8 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents, TimelineEvents } from '../core/EventRegistry.js';
-// Legacy modal helper removed; create Lit modal components directly when needed
+import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { initViewOptions } from './viewOptions.js';
 import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
@@ -12,7 +11,12 @@ import { SidebarPersistenceService } from '../services/SidebarPersistenceService
 
 export class SidebarLit extends LitElement {
   static properties = {
-    open: { type: Boolean }
+    open: { type: Boolean },
+    projects: { type: Array },
+    teams: { type: Array },
+    scenarios: { type: Array },
+    activeScenarioId: { type: String },
+    serverStatus: { type: String },
   };
 
   static styles = css`
@@ -31,6 +35,12 @@ export class SidebarLit extends LitElement {
     this.serverStatus = 'loading';
     this._persistenceService = new SidebarPersistenceService(dataService);
     this._didRestoreSidebarState = false;
+
+    // Reactive properties
+    this.projects = [];
+    this.teams = [];
+    this.scenarios = [];
+    this.activeScenarioId = null;
   }
 
   // Render into light DOM so legacy selectors (IDs) can still be used if needed.
@@ -38,15 +48,27 @@ export class SidebarLit extends LitElement {
 
   connectedCallback(){
     super.connectedCallback();
-    const onUpdate = () => this.requestUpdate();
-    bus.on(ProjectEvents.CHANGED, onUpdate);
-    bus.on(TeamEvents.CHANGED, onUpdate);
-    bus.on(ScenarioEvents.LIST, onUpdate);
-    bus.on(ScenarioEvents.ACTIVATED, onUpdate);
-    bus.on(ScenarioEvents.UPDATED, onUpdate);
-    bus.on(DataEvents.SCENARIOS_DATA, onUpdate);
-    this._updateHandler = onUpdate;
+    // Wire event handlers to update reactive properties
+    this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
+    this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
+    this._onScenariosList = (payload) => {
+      const list = payload && payload.scenarios ? payload.scenarios : [];
+      this.scenarios = Array.isArray(list) ? [...list] : [];
+      if (payload && payload.activeScenarioId) this.activeScenarioId = payload.activeScenarioId;
+    };
+    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId; };
+    this._onScenariosUpdated = () => {
+      const sc = state.scenarios || [];
+      this.scenarios = [...sc];
+      this.activeScenarioId = state.activeScenarioId;
+    };
 
+    bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
+    bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
+    bus.on(ScenarioEvents.LIST, this._onScenariosList);
+    bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
+    bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     // Listen for view option changes to trigger sidebar state save
     const onViewOptionChange = () => this._saveSidebarState();
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
@@ -102,8 +124,8 @@ export class SidebarLit extends LitElement {
     // data is available. Also try once immediately in case data is already loaded.
     this._restoreOnDataHandler = async () => {
       if (this._didRestoreSidebarState) return;
-      const hasProjects = Array.isArray(state.projects) && state.projects.length > 0;
-      const hasTeams = Array.isArray(state.teams) && state.teams.length > 0;
+      const hasProjects = Array.isArray(this.projects) && this.projects.length > 0;
+      const hasTeams = Array.isArray(this.teams) && this.teams.length > 0;
       if (hasProjects || hasTeams) {
         this._didRestoreSidebarState = true;
         await this._restoreSidebarState();
@@ -118,14 +140,14 @@ export class SidebarLit extends LitElement {
   }
 
   disconnectedCallback(){
-    const handler = this._updateHandler;
-    if(handler){
-      bus.off(ProjectEvents.CHANGED, handler);
-      bus.off(TeamEvents.CHANGED, handler);
-      bus.off(ScenarioEvents.LIST, handler);
-      bus.off(ScenarioEvents.ACTIVATED, handler);
-      bus.off(ScenarioEvents.UPDATED, handler);
-      bus.off(DataEvents.SCENARIOS_DATA, handler);
+    // Remove reactive property handlers
+    if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
+    if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
+    if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
+    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    if (this._onScenariosUpdated) {
+      bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
+      bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
 
     // Clean up view option change listeners
@@ -152,6 +174,13 @@ export class SidebarLit extends LitElement {
     if(this._onPluginsChanged){
       [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
         .forEach(evt => bus.off(evt, this._onPluginsChanged));
+    }
+    
+    // Clean up restore-on-data handler if still registered
+    if (this._restoreOnDataHandler) {
+      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
+      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
+      this._restoreOnDataHandler = null;
     }
     super.disconnectedCallback();
   }
@@ -215,40 +244,35 @@ export class SidebarLit extends LitElement {
   }
 
   toggleProject(pid){
-    const current = state.projects.find(p=>p.id===pid);
+    const current = (this.projects || []).find(p=>p.id===pid);
     const newVal = !(current && current.selected);
     state.setProjectSelected(pid, newVal);
-    this.requestUpdate();
-    // Save sidebar state when project selection changes
+    // persistence will be triggered; state change will update this.projects via bus
     this._saveSidebarState();
   }
 
   toggleTeam(tid){
-    const current = state.teams.find(t=>t.id===tid);
+    const current = (this.teams || []).find(t=>t.id===tid);
     const newVal = !(current && current.selected);
     state.setTeamSelected(tid, newVal);
-    this.requestUpdate();
-    // Save sidebar state when team selection changes
     this._saveSidebarState();
   }
 
   setAllInList(type, checked){
     if(type === 'project'){
-      state.projects.forEach(p=> state.setProjectSelected(p.id, checked));
+      (this.projects || []).forEach(p=> state.setProjectSelected(p.id, checked));
     } else if(type === 'team'){
-      state.teams.forEach(t=> state.setTeamSelected(t.id, checked));
+      (this.teams || []).forEach(t=> state.setTeamSelected(t.id, checked));
     }
-    this.requestUpdate();
-    // Save sidebar state when all projects/teams are toggled
     this._saveSidebarState();
   }
 
   _anyUncheckedProjects(){
-    return state.projects.some(p => !p.selected);
+    return (this.projects || []).some(p => !p.selected);
   }
 
   _anyUncheckedTeams(){
-    return state.teams.some(t => !t.selected);
+    return (this.teams || []).some(t => !t.selected);
   }
 
   _handleProjectToggle(){
@@ -276,20 +300,15 @@ export class SidebarLit extends LitElement {
   _renderEntityList(type, items, onToggle){
     return html`${items.map(item => {
       // For teams, only count features with non-zero allocation
-      const epicsCount = state.baselineFeatures.filter(f => 
-        f.type === 'epic' && (
-          type === 'project' 
-            ? f.project === item.id 
-            : (f.capacity && f.capacity.some(tl => tl.team === item.id && tl.capacity > 0))
-        )
-      ).length;
-      const featuresCount = state.baselineFeatures.filter(f => 
-        f.type === 'feature' && (
-          type === 'project' 
-            ? f.project === item.id 
-            : (f.capacity && f.capacity.some(tl => tl.team === item.id && tl.capacity > 0))
-        )
-      ).length;
+      let epicsCount = 0;
+      let featuresCount = 0;
+      if (type === 'project') {
+        epicsCount = state.countEpicsForProject(item.id);
+        featuresCount = state.countFeaturesForProject(item.id);
+      } else {
+        epicsCount = state.countEpicsForTeam(item.id);
+        featuresCount = state.countFeaturesForTeam(item.id);
+      }
       
       return html`
         <li class="sidebar-list-item">
@@ -314,24 +333,24 @@ export class SidebarLit extends LitElement {
   }
 
   renderProjects(){
-    return this._renderEntityList('project', state.projects, (id) => this.toggleProject(id));
+    return this._renderEntityList('project', this.projects || [], (id) => this.toggleProject(id));
   }
 
   renderTeams(){
-    return this._renderEntityList('team', state.teams, (id) => this.toggleTeam(id));
+    return this._renderEntityList('team', this.teams || [], (id) => this.toggleTeam(id));
   }
 
   renderScenarios(){
-    const sorted = [...state.scenarios].sort((a,b)=>{
+    const sorted = [...(this.scenarios || [])].sort((a,b)=>{
       // Sort readonly scenarios (like baseline) first
       if(a.readonly && !b.readonly) return -1;
       if(b.readonly && !a.readonly) return 1;
       return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
     });
     return html`${sorted.map(s=> html`
-      <li class="sidebar-list-item scenario-item sidebar-chip ${s.id===state.activeScenarioId? 'active':''}" @click=${(e)=>this._onScenarioClick(e, s)}>
+      <li class="sidebar-list-item scenario-item sidebar-chip ${s.id===this.activeScenarioId? 'active':''}" @click=${(e)=>this._onScenarioClick(e, s)}>
         <span class="scenario-name" title="${s.name}">${s.name}</span>
-        ${state.isScenarioUnsaved && state.isScenarioUnsaved(s) ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>` : ''}
+        ${state.isScenarioUnsaved(s) ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>` : ''}
         <span class="scenario-controls">
           <button type="button" class="scenario-btn" title="Scenario actions" @click=${(e)=>this._onScenarioMenuClick(e, s)}>${'⋯'}</button>
         </span>
@@ -360,7 +379,7 @@ export class SidebarLit extends LitElement {
       const now = new Date();
       const mm = String(now.getMonth()+1).padStart(2,'0');
       const dd = String(now.getDate()).padStart(2,'0');
-      const maxN = Math.max(0, ...state.scenarios
+      const maxN = Math.max(0, ...(this.scenarios || [])
         .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
         .filter(Boolean)
         .map(n => parseInt(n, 10)));

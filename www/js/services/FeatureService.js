@@ -392,5 +392,37 @@ export class FeatureService {
       return f;
     });
   }
+
+  /**
+   * Count epics for a given project id
+   */
+  countEpicsForProject(projectId) {
+    const feats = this.getEffectiveFeatures();
+    return feats.filter(f => f.type === 'epic' && f.project === projectId).length;
+  }
+
+  /**
+   * Count features for a given project id
+   */
+  countFeaturesForProject(projectId) {
+    const feats = this.getEffectiveFeatures();
+    return feats.filter(f => f.type === 'feature' && f.project === projectId).length;
+  }
+
+  /**
+   * Count epics that have non-zero allocation for a team
+   */
+  countEpicsForTeam(teamId) {
+    const feats = this.getEffectiveFeatures();
+    return feats.filter(f => f.type === 'epic' && (f.capacity && f.capacity.some(tl => tl.team === teamId && tl.capacity > 0))).length;
+  }
+
+  /**
+   * Count features that have non-zero allocation for a team
+   */
+  countFeaturesForTeam(teamId) {
+    const feats = this.getEffectiveFeatures();
+    return feats.filter(f => f.type === 'feature' && (f.capacity && f.capacity.some(tl => tl.team === teamId && tl.capacity > 0))).length;
+  }
 }
 
