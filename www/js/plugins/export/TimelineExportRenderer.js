@@ -392,6 +392,9 @@ export class TimelineExportRenderer {
    * Render dependency lines between cards
    */
   _renderDependencies(yOffset, viewport) {
+    // Respect view setting: if dependencies are hidden in the view, don't export them
+    if (!state.showDependencies) return;
+
     const featureBoard = document.querySelector('feature-board');
     if (!featureBoard) return;
     
