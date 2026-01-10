@@ -83,9 +83,52 @@ export class PluginManager {
       console.warn(`Plugin ${pluginId} is already active`);
       return;
     }
-    
-    // Activate dependencies first
+
+    // Determine dependency list for the target plugin (to avoid closing deps)
     const deps = plugin.getMetadata().dependencies || [];
+
+    // Build a dependency set for this plugin (recursively)
+    const depsSet = new Set();
+    const collectDeps = (id) => {
+      const p = this.plugins.get(id);
+      if (!p) return;
+      const dlist = p.getMetadata().dependencies || [];
+      for (const d of dlist) {
+        if (!depsSet.has(d)) {
+          depsSet.add(d);
+          collectDeps(d);
+        }
+      }
+    };
+    for (const d of deps) { depsSet.add(d); collectDeps(d); }
+
+    // Decide shareability: a plugin may declare `config.exclusive = false` to
+    // allow co-existence with other shareable plugins. Default is exclusive
+    // (true) to preserve current single-open UX.
+    const targetExclusive = !(plugin.config && plugin.config.exclusive === false);
+
+    for (const other of this.plugins.values()) {
+      if (other.id === pluginId) continue;
+      if (!other.active) continue;
+      // Never deactivate dependencies required by the target plugin
+      if (depsSet.has(other.id)) continue;
+
+      const otherExclusive = !(other.config && other.config.exclusive === false);
+
+      // If both target and other are explicitly shareable (exclusive === false),
+      // allow them to remain active together. Otherwise, deactivate the other
+      // so the target may become active alone.
+      const bothShareable = (targetExclusive === false && otherExclusive === false);
+      if (bothShareable) continue;
+
+      try {
+        await this.deactivate(other.id);
+      } catch (err) {
+        console.warn(`[PluginManager] Failed to deactivate plugin ${other.id}:`, err);
+      }
+    }
+
+    // Activate dependencies first (after ensuring incompatible actives were closed)
     for (const depId of deps) {
       if (!this.isActive(depId)) await this.activate(depId);
     }

@@ -9,6 +9,7 @@
       "export": "SamplePlugin",
       "enabled": false,
       "activated": false,
+      "exclusive": true,
       "mountPoint": "main",
       "dependencies": []
     },
@@ -21,6 +22,7 @@
       "export": "default",
       "enabled": true,
       "activated": false,
+      "exclusive": true,
       "mountPoint": "main",
       "dependencies": []
     },
@@ -33,6 +35,7 @@
       "export": "default",
       "enabled": true,
       "activated": false,
+      "exclusive": true,
       "mountPoint": "main",
       "dependencies": []
     }
@@ -46,6 +49,7 @@
       "export": "default",
       "enabled": true,
       "activated": false,
+      "exclusive": true,
       "mountPoint": "main",
       "dependencies": []
     },
@@ -58,6 +62,7 @@
       "export": "default",
       "enabled": true,
       "activated": false,
+      "exclusive": true,
       "mountPoint": "main",
       "dependencies": []
     }
