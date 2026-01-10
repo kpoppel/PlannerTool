@@ -18,6 +18,7 @@ export const featureFlags = {
   
   // Phase 10: Command Pattern (Undo/Redo)
   USE_COMMAND_PATTERN: false,
+
   serviceInstrumentation: false,
   
   // Enable the experimental queued/idle processing FeatureService

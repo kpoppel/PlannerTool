@@ -41,19 +41,19 @@ async function init(){
       if(mod && mod.initSidebar) await mod.initSidebar();
     }catch(e){ console.warn('Failed to mount Lit sidebar', e); }
 
-    let modFeatureBoard;
-    try{
-      modFeatureBoard = await import('./components/FeatureBoard.lit.js');
-      if (modFeatureBoard && modFeatureBoard.initBoard) await modFeatureBoard.initBoard();
-    }catch(e){ console.warn('Failed to load or init feature-board', e); }
+    // Ensure TimelineBoard is registered so the element in index.html is upgraded
+    try{ await import('./components/TimelineBoard.lit.js'); }catch(e){ console.warn('Failed to load timeline-board', e); }
 
-    try{
-      const mod = await import('./components/Timeline.lit.js');
-      if(mod && mod.initTimeline) await mod.initTimeline();
-    }catch(e){ console.warn('Failed to init Lit timeline', e); }
+    // FeatureBoard is mounted and initialized by TimelineBoard; ensure module available
+    //try{ await import('./components/FeatureBoard.lit.js'); }catch(e){ /* ignore */ }
+
+    // Timeline initialization is handled by TimelineBoard; ensure module available for other consumers
+    //try{ await import('./components/Timeline.lit.js'); }catch(e){ /* ignore */ }
 
     // Ensure card component is registered (no board init here anymore)
+    // TODO: The featureboard must import this component itself
     try{ await import('./components/FeatureCard.lit.js'); }catch(e){ console.warn('Failed to load feature-card', e); }
+
     // Initialize the details panel by importing the Lit component and ensuring a host exists.
     const modDetailsPanel = await import('./components/DetailsPanel.lit.js');
     if(modDetailsPanel){
@@ -63,20 +63,8 @@ async function init(){
     }
     // Preload Lit-based color popover to avoid runtime race in tests
     try{ await import('./components/ColorPopover.lit.js'); }catch(e){}
-    // Ensure MainGraph lit component is loaded and a host instance exists
-    try{
-      if(!customElements.get('maingraph-lit')){
-        await import('./components/MainGraph.lit.js');
-      }
-      let mg = document.querySelector('maingraph-lit');
-      if(!mg){
-        const canvas = document.getElementById('mainGraphCanvas');
-        const el = document.createElement('maingraph-lit');
-        if(canvas && canvas.parentNode){ canvas.parentNode.insertBefore(el, canvas); try{ canvas.style.display = 'none'; }catch(e){} }
-        else { const section = document.getElementById('timelineSection'); if(section && section.appendChild) section.appendChild(el); else document.body.appendChild(el); }
-        mg = el;
-      }
-    }catch(e){ console.warn('[App] failed to init maingraph-lit', e); }
+    // MainGraph is initialized by TimelineBoard; ensure the module is available for other consumers
+    //try{ await import('./components/MainGraph.lit.js'); }catch(e){ /* ignore if not available */ }
     initDependencyRenderer();
     // Prefetch lightweight modal helpers during idle to improve perceived performance
     try{
@@ -87,11 +75,7 @@ async function init(){
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
     await state.initState();
-    try{
-      // Let the timeline module manage its own initial scroll behavior
-      const mod = await import('./components/Timeline.lit.js');
-      if(mod) mod.ensureScrollToMonth();
-    }catch(e){ /* ignore */ }
+    // TimelineBoard handles initial scroll behavior
 
     // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {
