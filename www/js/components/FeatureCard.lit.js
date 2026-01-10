@@ -288,6 +288,7 @@ export class FeatureCardLit extends LitElement {
     this._roScheduled = false;
     this._skipRo = false; // set true while dragging to avoid layout reads
     this._abortController = new AbortController();
+    this._suppressClickUntil = 0; // ignore clicks shortly after drag end
   }
 
   updated(changed) {
@@ -371,7 +372,16 @@ export class FeatureCardLit extends LitElement {
     // Pause RO measurement during drag moves to avoid layout thrash; resume and process after drag end
     try {
       this._unsubDragMove = bus.on(DragEvents.MOVE, () => { this._skipRo = true; });
-      this._unsubDragEnd = bus.on(DragEvents.END, () => { this._skipRo = false; this._processRoNow(); });
+      this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
+        this._skipRo = false;
+        this._processRoNow();
+        try {
+          if (p && String(p.featureId) === String(this.feature?.id)) {
+            // Suppress clicks fired immediately after a drop
+            this._suppressClickUntil = Date.now() + 250;
+          }
+        } catch (e) { }
+      });
     } catch (e) { }
     // attach mousedown handlers for dragging and resizing directly on the host
     try {
@@ -477,6 +487,9 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleClick(e) {
+    // If this click happened shortly after a drag end for this card, ignore it
+    if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
+
     // If the click originated from the resize handle, ignore it
     try {
       const path = (e.composedPath && e.composedPath()) || [];
