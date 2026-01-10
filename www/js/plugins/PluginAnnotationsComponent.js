@@ -186,7 +186,7 @@ export class PluginAnnotationsComponent extends LitElement {
       <annotation-overlay id="annotationOverlay"></annotation-overlay>
       
       <div class="floating-toolbar">
-        <button class="close-btn" @click="${this.close}" title="Close">✕</button>
+        <!-- Close button removed; plugin visibility is controlled via the toolbar/plugin toggle -->
         
         <div class="toolbar-title">
           Annotations

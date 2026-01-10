@@ -223,11 +223,7 @@ export class PluginExportTimeline extends LitElement {
           <div class="info-text">Export timeline data and capacity information for external processing.</div>
         </div>
         
-        <div class="section">
-          <div class="row" style="justify-content: flex-end;">
-            <button @click="${this.close}">Close</button>
-          </div>
-        </div>
+        <!-- Closing is handled by the plugin toggle in the toolbar; removed internal Close button -->
       </div>
     `;
   }
