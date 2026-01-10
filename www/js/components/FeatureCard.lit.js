@@ -96,8 +96,10 @@ export class FeatureCardLit extends LitElement {
     }
 
     /* Compact layout for narrow cards: tighten spacing but keep content visible */
+    /* Narrow layout: visually tighten spacing but preserve card height
+       to avoid layout shifts between narrow and regular cards. */
     .feature-card.narrow {
-      height: auto;
+      /* Do not change height here — keep the same height as regular cards. */
       padding: 4px 8px;
       overflow: hidden;
       line-height: 1;
@@ -131,8 +133,12 @@ export class FeatureCardLit extends LitElement {
       display: block;
     }
 
+    /* Culled: hide title visually but preserve card height so boards
+       remain aligned. Use visibility/opacity rather than display. */
     .feature-card.culled .feature-title {
-      display: none;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .team-load-row {
@@ -162,22 +168,41 @@ export class FeatureCardLit extends LitElement {
       white-space: nowrap;
       text-overflow: ellipsis;
     }
-    /* When fully culled, hide the capacity row entirely */
-    .feature-card.culled .team-load-row { display: none; }
+    /* When fully culled, visually hide the capacity row but preserve layout height */
+    .feature-card.culled .team-load-row {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
 
     /* Small feature styling - for features <40px wide */
     .feature-card.small-feature {
       min-width: 8px !important;
-      padding: 2px;
+      /* Make small features visually compact while preserving alignment
+         Use a smaller min-height and reduced vertical padding (~32px total) */
+      min-height: 32px;
+      padding: 2px 6px;
       overflow: hidden;
       cursor: pointer;
     }
 
-    .feature-card.small-feature .title-row,
+    /* Hide most internal content visually but keep the title-row visible
+       so the small-feature indicator can occupy its space without adding
+       an extra line. */
     .feature-card.small-feature .team-load-row,
     .feature-card.small-feature .feature-dates,
     .feature-card.small-feature .drag-handle {
-      display: none !important;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Keep the title-row itself visible for layout, but hide its children
+       (icon and title) so the indicator appears in-place. */
+    .feature-card.small-feature .title-row > *:not(.small-feature-indicator) {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .small-feature-indicator {
@@ -186,7 +211,7 @@ export class FeatureCardLit extends LitElement {
       height: 100%;
       align-items: center;
       justify-content: center;
-      min-height: 32px;
+      min-height: 24px;
     }
     
     .feature-card.small-feature .small-feature-indicator {
@@ -587,11 +612,11 @@ export class FeatureCardLit extends LitElement {
         @dblclick=${this._handleDoubleClick}
         part="feature-card"
       >
-        <div class="small-feature-indicator">
-          <span class="small-feature-dot"></span>
-        </div>
         ${this._renderTeamLoadRow()}
         <div class="title-row">
+          <div class="small-feature-indicator">
+            <span class="small-feature-dot"></span>
+          </div>
           ${this._renderTypeIcon()}
           <div class="feature-title" title=${this.feature.title}>
             ${this.feature.title}
