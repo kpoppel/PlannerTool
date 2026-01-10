@@ -1,11 +1,9 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
-import { formatDate, parseDate, addMonths } from './util.js';
-import { laneHeight, computePosition, getBoardOffset, _test_resetCache } from './board-utils.js';
-import { startDragMove, startResize } from './dragManager.js';
+import { laneHeight, computePosition, _test_resetCache } from './board-utils.js';
 import { featureFlags } from '../config.js';
 
 class FeatureBoard extends LitElement {
@@ -62,6 +60,7 @@ class FeatureBoard extends LitElement {
   }
 
   render() {
+    console.log('[FeatureBoard] render - features count:', this.features?.length);
     if (!this.features?.length) {
       return html`<slot></slot>`;
     }
