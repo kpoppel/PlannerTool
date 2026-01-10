@@ -2,7 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
-import { epicTemplate } from '../services/IconService.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
@@ -43,6 +43,7 @@ export class DetailsPanelLit extends LitElement {
     /* match app font sizing and rhythm */
     :host { font-size: 14px; }
     .details-label { font-weight: bold; margin-top: 6px; font-size: 14px; }
+    .title-icon { display:inline-flex; width:20px; height:20px; vertical-align:middle; margin-right:8px; }
     .details-value { margin-bottom: 8px; font-size: 14px; }
     .details-changed { background: #fadd92ff; }
     .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
@@ -670,7 +671,10 @@ export class DetailsPanelLit extends LitElement {
       <div class="panel">
         <div class="details-header">
           <button class="details-close" @click=${()=>this.hide()} aria-label="Close details">✕</button>
-          <div class="details-label">Feature ${feature.title}</div>
+          <div class="details-label">
+            <span class="title-icon">${feature.type === 'epic' ? epicTemplate : featureTemplate}</span>
+            ${feature.title}
+          </div>
           <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
           <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span> ${stateColor ? html`<span class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}">${feature.state}</span>` : ''}</div>
         </div>
