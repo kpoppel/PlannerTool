@@ -6,6 +6,7 @@ import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents,
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { startDragMove, startResize } from './dragManager.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';
 
 /**
@@ -220,7 +221,6 @@ export class FeatureCardLit extends LitElement {
     .feature-card-icon svg {
       width: 16px;
       height: 16px;
-      color: #8b5cf6;
     }
 
     .feature-title {
@@ -545,15 +545,9 @@ export class FeatureCardLit extends LitElement {
 
   _renderTypeIcon() {
     if (this.feature.type === 'epic') {
-      return html`<span class="feature-card-icon epic">👑</span>`;
+      return html`<span class="feature-card-icon epic">${epicTemplate}</span>`;
     }
-    return html`
-      <span class="feature-card-icon feature">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5zm-1.75 4h11.5c.276 0 .5.224.5.5v1c0 .276-.224.5-.5.5H6.75a.5.5 0 01-.5-.5v-1c0-.276.224-.5.5-.5z"/>
-        </svg>
-      </span>
-    `;
+    return html`<span class="feature-card-icon feature">${featureTemplate}</span>`;
   }
 
   render() {

@@ -1,9 +1,10 @@
 /**
- * AnnotationTools.js
- * Tool definitions and annotation state management
+ * AnnotationState.js
+ * Tool definitions and annotation state management for the Annotations plugin
  */
 
-import { ANNOTATION_COLORS, generateId, saveAnnotations, loadAnnotations } from './ExportUtils.js';
+import { ANNOTATION_COLORS, getRandomColor } from './AnnotationColors.js';
+import { generateId, saveAnnotations, loadAnnotations } from './AnnotationStorage.js';
 
 // ============================================================================
 // Tool Definitions
@@ -60,8 +61,7 @@ export const TOOL_DEFINITIONS = [
  * @returns {Object} Note annotation object
  */
 export function createNoteAnnotation(x, y, text = 'Note', options = {}) {
-  const colorIdx = Math.floor(Math.random() * ANNOTATION_COLORS.palette.length);
-  const color = ANNOTATION_COLORS.palette[colorIdx];
+  const color = getRandomColor();
   
   return {
     id: generateId(),
@@ -87,8 +87,7 @@ export function createNoteAnnotation(x, y, text = 'Note', options = {}) {
  * @returns {Object} Rectangle annotation object
  */
 export function createRectAnnotation(x, y, width, height, options = {}) {
-  const colorIdx = Math.floor(Math.random() * ANNOTATION_COLORS.palette.length);
-  const color = ANNOTATION_COLORS.palette[colorIdx];
+  const color = getRandomColor();
   
   return {
     id: generateId(),
@@ -137,6 +136,7 @@ export class AnnotationState {
     this._currentTool = TOOLS.SELECT;
     this._currentColor = ANNOTATION_COLORS.palette[0];
     this._listeners = new Set();
+    this._enabled = false;
     
     // Load persisted annotations
     this._annotations = loadAnnotations();
@@ -164,6 +164,37 @@ export class AnnotationState {
   
   get currentColor() {
     return this._currentColor;
+  }
+  
+  get enabled() {
+    return this._enabled;
+  }
+  
+  get count() {
+    return this._annotations.length;
+  }
+  
+  // ---------------------------
+  // Enable/Disable
+  // ---------------------------
+  
+  enable() {
+    this._enabled = true;
+    this._notify();
+  }
+  
+  disable() {
+    this._enabled = false;
+    this._selectedId = null;
+    this._notify();
+  }
+  
+  toggle() {
+    if (this._enabled) {
+      this.disable();
+    } else {
+      this.enable();
+    }
   }
   
   // ---------------------------

@@ -48,6 +48,18 @@
       "activated": false,
       "mountPoint": "main",
       "dependencies": []
+    },
+    {
+      "id": "plugin-annotations",
+      "name": "Annotations",
+      "version": "1.0.0",
+      "description": "Add notes, shapes and lines to the timeline view",
+      "path": "../plugins/PluginAnnotations.js",
+      "export": "default",
+      "enabled": false,
+      "activated": false,
+      "mountPoint": "main",
+      "dependencies": []
     }
   ]
 }

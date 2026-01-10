@@ -2,27 +2,46 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
+import { pluginManager } from '../core/PluginManager.js';
 import { exportTimelineToPng } from './export/TimelineExportRenderer.js';
-import { TOOLS, TOOL_DEFINITIONS, getAnnotationState } from './export/AnnotationTools.js';
-import { ANNOTATION_COLORS } from './export/ExportUtils.js';
-import './export/AnnotationOverlay.js';
 
 export class PluginExportTimeline extends LitElement {
   static properties = { 
     visible: { type: Boolean },
-    annotateMode: { type: Boolean },
-    currentTool: { type: String },
-    exporting: { type: Boolean }
+    exporting: { type: Boolean },
+    includeAnnotations: { type: Boolean },
+    annotationsAvailable: { type: Boolean }
   };
   
   constructor(){ 
     super(); 
     this.visible = false;
-    this.annotateMode = false;
-    this.currentTool = TOOLS.SELECT;
     this.exporting = false;
-    this._annotationState = getAnnotationState();
-    this._overlay = null;
+    this.includeAnnotations = true;
+    this.annotationsAvailable = false;
+    this._annotationState = null;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    // Capture scroll position on any mousedown to preserve it before click handlers run
+    // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
+    this._mouseDownHandler = () => {
+      const timelineSection = document.getElementById('timelineSection');
+      const featureBoard = document.querySelector('feature-board');
+      if (timelineSection && featureBoard) {
+        this._lastKnownScrollLeft = timelineSection.scrollLeft;
+        this._lastKnownScrollTop = featureBoard.scrollTop;
+      }
+    };
+    document.addEventListener('mousedown', this._mouseDownHandler);
+  }
+  
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._mouseDownHandler) {
+      document.removeEventListener('mousedown', this._mouseDownHandler);
+    }
   }
 
   static styles = css`
@@ -125,54 +144,9 @@ export class PluginExportTimeline extends LitElement {
       cursor: not-allowed;
     }
     
-    button.active {
-      background: #E3F2FD;
-      border-color: #2196F3;
-      color: #1976D2;
-    }
-    
-    button.danger {
-      color: #d32f2f;
-      border-color: #ffcdd2;
-    }
-    
-    button.danger:hover {
-      background: #ffebee;
-    }
-    
-    .tool-btn {
-      width: 36px;
-      height: 36px;
-      padding: 0;
-      justify-content: center;
-      font-size: 18px;
-    }
-    
-    .tool-btn .tool-icon {
-      font-size: 18px;
-      line-height: 1;
-    }
-    
     .btn-icon {
       font-size: 16px;
       line-height: 1;
-    }
-    
-    .color-swatch {
-      width: 24px;
-      height: 24px;
-      border-radius: 4px;
-      border: 2px solid transparent;
-      cursor: pointer;
-      transition: transform 0.1s ease;
-    }
-    
-    .color-swatch:hover {
-      transform: scale(1.1);
-    }
-    
-    .color-swatch.selected {
-      border-color: #333;
     }
     
     .info-text {
@@ -181,88 +155,29 @@ export class PluginExportTimeline extends LitElement {
       margin-top: 8px;
     }
     
-    .status-text {
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .checkbox-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    
+    .checkbox-row label {
       font-size: 13px;
-      color: #666;
-      padding: 8px 12px;
-      background: #f5f5f5;
-      border-radius: 4px;
-    }
-    
-    .annotation-count {
-      font-size: 11px;
-      background: #E3F2FD;
-      color: #1976D2;
-      padding: 2px 6px;
-      border-radius: 10px;
-      margin-left: 4px;
-    }
-
-    /* Floating toolbar for annotation mode */
-    .floating-toolbar {
-      position: fixed;
-      top: 80px;
-      right: 20px;
-      background: white;
-      padding: 12px;
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      z-index: 100;
-      pointer-events: auto;
-    }
-    
-    .floating-toolbar .row {
-      margin-bottom: 8px;
-    }
-    
-    .floating-toolbar .row:last-child {
-      margin-bottom: 0;
+      color: #333;
+      cursor: pointer;
     }
   `;
 
   render(){
-    const annotationCount = this._annotationState.annotations.length;
-    
-    // If in annotate mode, show floating toolbar instead of panel
-    if (this.annotateMode) {
-      return html`
-        <div class="floating-toolbar">
-          <div class="row">
-            ${TOOL_DEFINITIONS.map(tool => html`
-              <button 
-                class="tool-btn ${this.currentTool === tool.id ? 'active' : ''}"
-                title="${tool.name}: ${tool.description}"
-                @click="${() => this._setTool(tool.id)}"
-              >
-                <span class="tool-icon">${tool.icon}</span>
-              </button>
-            `)}
-          </div>
-          <div class="row">
-            ${ANNOTATION_COLORS.palette.map(color => html`
-              <div
-                class="color-swatch ${this._isColorSelected(color) ? 'selected' : ''}"
-                style="background: ${color.fill}; border-color: ${this._isColorSelected(color) ? color.stroke : 'transparent'}"
-                title="${color.name}"
-                @click="${() => this._setColor(color)}"
-              ></div>
-            `)}
-          </div>
-          <div class="row" style="margin-top: 12px;">
-            <button class="primary" @click="${this._exportPng}" ?disabled="${this.exporting}">
-              ${this.exporting ? 'Exporting...' : '📷 Export PNG'}
-            </button>
-            <button @click="${this._exitAnnotateMode}">Done</button>
-            ${annotationCount > 0 ? html`
-              <button class="danger" @click="${this._clearAnnotations}" title="Clear all annotations">
-                🗑
-              </button>
-            ` : ''}
-          </div>
-        </div>
-        ${this._renderOverlay()}
-      `;
-    }
+    const annotationCount = this._getAnnotationCount();
+    const showAnnotationOption = this.annotationsAvailable && annotationCount > 0;
     
     // Main export panel
     return html`
@@ -272,19 +187,24 @@ export class PluginExportTimeline extends LitElement {
         <div class="section">
           <div class="section-title">Image Export</div>
           <div class="row">
-            <button class="primary" @click="${this._startAnnotateMode}">
-              <span class="btn-icon">✏️</span>
-              Annotate & Export PNG
-              ${annotationCount > 0 ? html`<span class="annotation-count">${annotationCount}</span>` : ''}
-            </button>
-            <button @click="${this._exportPngDirect}" ?disabled="${this.exporting}">
+            <button class="primary" @click="${this._exportPng}" ?disabled="${this.exporting}">
               <span class="btn-icon">📷</span>
-              ${this.exporting ? 'Exporting...' : 'Quick Export PNG'}
+              ${this.exporting ? 'Exporting...' : 'Export PNG'}
             </button>
           </div>
+          ${showAnnotationOption ? html`
+            <div class="checkbox-row">
+              <input 
+                type="checkbox" 
+                id="includeAnnotations"
+                .checked="${this.includeAnnotations}"
+                @change="${this._toggleIncludeAnnotations}"
+              />
+              <label for="includeAnnotations">Include annotations (${annotationCount})</label>
+            </div>
+          ` : ''}
           <div class="info-text">
             PNG export captures the visible timeline viewport with full vertical board content.
-            ${annotationCount > 0 ? html`<br><strong>${annotationCount} annotation(s)</strong> will be included.` : ''}
           </div>
         </div>
         
@@ -312,44 +232,48 @@ export class PluginExportTimeline extends LitElement {
     `;
   }
 
-  _renderOverlay() {
-    return html`
-      <annotation-overlay 
-        id="annotationOverlay"
-        ?active="${this.annotateMode}"
-      ></annotation-overlay>
-    `;
-  }
-
   firstUpdated(){
     bus.on(AppEvents.READY, ()=>{ /* ensure state available */ });
-    
-    // Subscribe to annotation state changes
-    this._annotationState.subscribe(() => {
-      this.requestUpdate();
-    });
   }
 
-  updated(changedProps) {
-    if (changedProps.has('annotateMode')) {
-      this._updateOverlay();
+  /**
+   * Check if the Annotations plugin is available and get its state
+   */
+  _checkAnnotationsPlugin() {
+    // Check if the annotations plugin is registered (doesn't need to be active)
+    const annotationsPlugin = pluginManager.get('plugin-annotations');
+    this.annotationsAvailable = !!annotationsPlugin;
+    
+    if (this.annotationsAvailable) {
+      // Dynamically import and get the annotation state
+      import('./annotations/index.js').then(module => {
+        this._annotationState = module.getAnnotationState();
+        // Subscribe to changes
+        this._annotationState.subscribe(() => {
+          this.requestUpdate();
+        });
+        this.requestUpdate();
+      });
+    } else {
+      this._annotationState = null;
     }
   }
-
-  _updateOverlay() {
-    // Get or create overlay
-    this._overlay = this.shadowRoot?.querySelector('#annotationOverlay');
-    
-    if (this._overlay) {
-      if (this.annotateMode) {
-        this._overlay.show();
-      } else {
-        this._overlay.hide();
-      }
-    }
+  
+  _getAnnotationCount() {
+    return this._annotationState ? this._annotationState.annotations.length : 0;
   }
 
   open(mode){ 
+    // Use scroll position captured on mousedown (before any DOM changes)
+    // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
+    const timelineSection = document.getElementById('timelineSection');
+    const featureBoard = document.querySelector('feature-board');
+    this._capturedScrollLeft = this._lastKnownScrollLeft ?? timelineSection?.scrollLeft ?? 0;
+    this._capturedScrollTop = this._lastKnownScrollTop ?? featureBoard?.scrollTop ?? 0;
+    
+    // Check annotations plugin status when opening
+    this._checkAnnotationsPlugin();
+    
     this.style.display = 'block'; 
     this.visible = true;
     this.setAttribute('visible', '');
@@ -358,47 +282,11 @@ export class PluginExportTimeline extends LitElement {
   close(){ 
     this.style.display = 'none'; 
     this.visible = false;
-    this.annotateMode = false;
     this.removeAttribute('visible');
   }
-
-  // --- Annotation Mode ---
   
-  _startAnnotateMode() {
-    this.annotateMode = true;
-    this.currentTool = TOOLS.SELECT;
-    this._annotationState.setTool(TOOLS.SELECT);
-  }
-  
-  _exitAnnotateMode() {
-    this.annotateMode = false;
-  }
-  
-  _setTool(tool) {
-    this.currentTool = tool;
-    this._annotationState.setTool(tool);
-    if (this._overlay) {
-      this._overlay.setTool(tool);
-    }
-  }
-  
-  _setColor(color) {
-    this._annotationState.setColor(color);
-    this.requestUpdate();
-  }
-  
-  _isColorSelected(color) {
-    const current = this._annotationState.currentColor;
-    return current && current.fill === color.fill;
-  }
-  
-  _clearAnnotations() {
-    if (confirm('Clear all annotations? This cannot be undone.')) {
-      this._annotationState.clear();
-      if (this._overlay) {
-        this._overlay.clearAll();
-      }
-    }
+  _toggleIncludeAnnotations(e) {
+    this.includeAnnotations = e.target.checked;
   }
 
   // --- PNG Export ---
@@ -406,19 +294,14 @@ export class PluginExportTimeline extends LitElement {
   async _exportPng() {
     this.exporting = true;
     try {
-      await exportTimelineToPng({ includeAnnotations: true });
-    } catch (e) {
-      console.error('[PluginExportTimeline] PNG export failed:', e);
-      alert('Export failed. Check console for details.');
-    } finally {
-      this.exporting = false;
-    }
-  }
-  
-  async _exportPngDirect() {
-    this.exporting = true;
-    try {
-      await exportTimelineToPng({ includeAnnotations: true });
+      // Only include annotations if the plugin is available and checkbox is checked
+      const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
+      // Pass captured scroll position from when dialog was opened
+      await exportTimelineToPng({ 
+        includeAnnotations,
+        scrollLeft: this._capturedScrollLeft,
+        scrollTop: this._capturedScrollTop
+      });
     } catch (e) {
       console.error('[PluginExportTimeline] PNG export failed:', e);
       alert('Export failed. Check console for details.');
