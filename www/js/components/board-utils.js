@@ -9,12 +9,46 @@ const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 let _cachedMonthsRef = null;
 let _cachedMonthStarts = null;
+let _cachedMonthEnds = null;  // Use actual next month start times to handle DST correctly
 let _cachedMonthDays = null;
 
 const _buildMonthCache = (months) => {
   _cachedMonthsRef = months;
   _cachedMonthStarts = months.map(m => m.getTime());
   _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
+  // Cache the actual end time for each month (start of next month)
+  // This correctly handles DST transitions where days != 24 hours
+  _cachedMonthEnds = months.map((m, i) => {
+    if (i < months.length - 1) {
+      return months[i + 1].getTime();
+    }
+    // For the last month, calculate the next month's start
+    return new Date(m.getFullYear(), m.getMonth() + 1, 1).getTime();
+  });
+};
+
+/**
+ * Binary search to find which month contains a given timestamp.
+ * Uses cached month end times to correctly handle DST transitions.
+ * @param {number} msVal - Timestamp in milliseconds
+ * @returns {number} Month index, or -1 if before first month
+ */
+const findMonthIndexFor = (msVal) => {
+  const arr = _cachedMonthStarts;
+  if (!arr || arr.length === 0) return -1;
+  let lo = 0, hi = arr.length - 1;
+  if (msVal < arr[0]) return -1;
+  if (msVal >= arr[hi]) return hi;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const midStart = arr[mid];
+    // Use the actual next month's start time instead of calculating with days * msPerDay
+    // This correctly handles DST transitions
+    const midEnd = _cachedMonthEnds[mid];
+    if (msVal >= midStart && msVal < midEnd) return mid;
+    if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
+  }
+  return -1;
 };
 
 export const laneHeight = () => state._viewService.condensedCards ? 40 : 64;
@@ -44,20 +78,6 @@ export const computePosition = (feature, monthsArg) => {
     const ms = startDate.getTime();
     const ems = endDate.getTime();
     
-    const findMonthIndexFor = (msVal) => {
-      const arr = _cachedMonthStarts; let lo = 0, hi = arr.length - 1;
-      if (msVal < arr[0]) return -1;
-      if (msVal >= arr[hi]) return hi;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        const midStart = arr[mid];
-        const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
-        if (msVal >= midStart && msVal < midEnd) return mid;
-        if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
-      }
-      return -1;
-    };
-    
     let startIdx = findMonthIndexFor(ms);
     startIdx = startIdx < 0 ? (ms < _cachedMonthStarts[0] ? 0 : months.length - 1) : startIdx;
     let endIdx = findMonthIndexFor(ems);
@@ -86,19 +106,6 @@ export const computePosition = (feature, monthsArg) => {
 
   const ms = startDate.getTime();
   const ems = endDate.getTime();
-  const findMonthIndexFor = (msVal) => {
-    const arr = _cachedMonthStarts; let lo = 0, hi = arr.length - 1;
-    if (msVal < arr[0]) return -1;
-    if (msVal >= arr[hi]) return hi;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const midStart = arr[mid];
-      const midEnd = midStart + (_cachedMonthDays[mid] * 24 * 60 * 60 * 1000);
-      if (msVal >= midStart && msVal < midEnd) return mid;
-      if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
-    }
-    return -1;
-  };
   let startIdx = findMonthIndexFor(ms);
   startIdx = startIdx < 0 ? (ms < _cachedMonthStarts[0] ? 0 : months.length - 1) : startIdx;
   let endIdx = findMonthIndexFor(ems);
@@ -125,7 +132,7 @@ export const computePosition = (feature, monthsArg) => {
   return { left, width };
 };
 
-export const _test_resetCache = () => { _cachedMonthsRef = null; _cachedMonthStarts = null; _cachedMonthDays = null; };
+export const _test_resetCache = () => { _cachedMonthsRef = null; _cachedMonthStarts = null; _cachedMonthEnds = null; _cachedMonthDays = null; };
 
 // Listen for scale changes and reset cache
 bus.on(TimelineEvents.SCALE_CHANGED, () => {
