@@ -11,15 +11,7 @@
   <modal-spinner id="appSpinner"></modal-spinner>
   <div id="app" class="app-container">
     <app-sidebar></app-sidebar>
-    <main class="main">
-      <section aria-label="Organisational Load Graph">
-        <maingraph-lit></maingraph-lit>
-      </section>
-      <section id="timelineSection" class="timeline-section" aria-label="Timeline and Features">
-        <timeline-lit class="timeline-header" role="row"></timeline-lit>
-        <feature-board id="featureBoard" class="feature-board"></feature-board>
-      </section>
-    </main>
+    <timeline-board class="main"></timeline-board>
   </div>
   <script type="module" src="js/app.js"></script>
 </body>
