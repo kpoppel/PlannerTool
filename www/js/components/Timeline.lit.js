@@ -42,6 +42,14 @@ let _headerPendingPayload = null;
 let _headerScheduledPromise = null;
 let _currentTimelineScale = 'months';
 let _resizeDebounceTimer = null;
+// Control whether timeline panning is allowed. Other components can toggle this
+// (e.g., when drawing annotations we want to disable panning so the board
+// doesn't move while the user draws).
+let timelinePanningAllowed = true;
+
+export function setTimelinePanningAllowed(val) {
+  timelinePanningAllowed = !!val;
+}
 
 /**
  * Timeline - Lit-based timeline component
@@ -91,6 +99,10 @@ export class Timeline extends LitElement {
       ),
       var(--color-sidebar-bg, #23344d);
     }
+    /* Prevent month label wrapping in year-scale to keep header height stable */
+    :host(.scale-years) .timeline-cell {
+      white-space: nowrap;
+    }
   `;
 
   render() {
@@ -119,7 +131,7 @@ export class Timeline extends LitElement {
         role="columnheader"
         aria-label="${month.toLocaleString('default', { month: 'long', year: 'numeric' })}"
       >
-        ${label}
+        <span class="month-label">${label}</span>
       </div>
     `;
   }
@@ -266,6 +278,15 @@ export async function initTimeline(){
 
       // Track current scale
       _currentTimelineScale = payload.scale;
+      // Toggle class on the mounted timeline element so components/styles
+      // can react to the 'years' zoom (prevent wrapping of labels)
+      try {
+        const t = document.querySelector('timeline-lit');
+        if (t) {
+          if (payload.scale === 'years') t.classList.add('scale-years');
+          else t.classList.remove('scale-years');
+        }
+      } catch (e) { /* ignore */ }
 
       // If a special 'threeMonths' scale is requested, compute monthWidth
       // so that exactly 3 months fill the timelineSection viewport width.
@@ -577,6 +598,9 @@ function enableTimelinePanning(){
   let startX = 0, startY = 0;
   let startScrollLeft = 0, startScrollTop = 0;
   section.addEventListener('mousedown', e => {
+    // If panning is currently disabled by other UI (e.g., annotation drawing),
+    // ignore the mousedown so drawing/drag behavior isn't interrupted.
+    if (!timelinePanningAllowed) return;
     if (e.target.closest('.feature-card') || e.target.classList.contains('drag-handle')) return;
     isPanning = true; 
     startX = e.clientX; 

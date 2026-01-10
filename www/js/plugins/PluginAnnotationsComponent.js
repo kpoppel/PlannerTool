@@ -8,6 +8,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { TOOLS, TOOL_DEFINITIONS, getAnnotationState } from './annotations/AnnotationState.js';
 import { ANNOTATION_COLORS } from './annotations/AnnotationColors.js';
 import './annotations/AnnotationOverlay.js';
+import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
 
 export class PluginAnnotationsComponent extends LitElement {
   static properties = { 
@@ -29,7 +30,10 @@ export class PluginAnnotationsComponent extends LitElement {
   static styles = css`
     :host { 
       display: none;
-      position: fixed;
+      /* When this component is appended into feature-board we want it
+         to be positioned relative to the board so child overlays are
+         clipped by the board. Use absolute positioning instead of fixed. */
+      position: absolute;
       z-index: 100;
       pointer-events: none;
     }
@@ -167,6 +171,14 @@ export class PluginAnnotationsComponent extends LitElement {
     this._unsubscribe = this._annotationState.subscribe(() => {
       this.currentTool = this._annotationState.currentTool;
       this.annotationCount = this._annotationState.count;
+      // Disable timeline panning when an annotation tool (note/rect/line)
+      // is active so drawing/dragging won't pan the board. Re-enable
+      // panning when the select tool is active.
+      if (this.currentTool === TOOLS.SELECT) {
+        setTimelinePanningAllowed(true);
+      } else {
+        setTimelinePanningAllowed(false);
+      }
       this.requestUpdate();
     });
     
@@ -183,8 +195,6 @@ export class PluginAnnotationsComponent extends LitElement {
 
   render() {
     return html`
-      <annotation-overlay id="annotationOverlay"></annotation-overlay>
-      
       <div class="floating-toolbar">
         <!-- Close button removed; plugin visibility is controlled via the toolbar/plugin toggle -->
         
@@ -230,7 +240,40 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   firstUpdated() {
-    this._overlay = this.shadowRoot?.querySelector('#annotationOverlay');
+    // Ensure a single `annotation-overlay` exists inside the feature board
+    // host root (shadowRoot or light DOM). This prevents duplicates and
+    // follows the same attachment strategy as DependencyRenderer.
+    try {
+      const board = document.querySelector('feature-board');
+      if (!board) return;
+      const hostRoot = board.shadowRoot || board;
+
+      // Reuse existing overlay if present in the board host, otherwise create it
+      let overlay = (hostRoot.querySelector && hostRoot.querySelector('annotation-overlay')) || document.querySelector('annotation-overlay');
+      if (!overlay) {
+        overlay = document.createElement('annotation-overlay');
+        try {
+          // Append into the board hostRoot so it's scoped to the board
+          hostRoot.appendChild(overlay);
+        } catch (e) {
+          // Fallback to appending to document if hostRoot append fails
+          try { document.body.appendChild(overlay); } catch (err) { /* ignore */ }
+        }
+      }
+
+      // Ensure overlay fills the board and is positioned/clipped by it
+      try {
+        overlay.style.position = 'absolute';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.right = '0';
+        overlay.style.bottom = '0';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.zIndex = '10';
+      } catch (e) { /* ignore */ }
+
+      this._overlay = overlay;
+    } catch (e) { /* ignore */ }
   }
 
   updated(changedProps) {
@@ -249,6 +292,8 @@ export class PluginAnnotationsComponent extends LitElement {
     this.visible = true;
     this.setAttribute('visible', '');
     this._annotationState.enable();
+    // Reset to select tool on open so panning is enabled by default
+    try { this._annotationState.setTool(TOOLS.SELECT); setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
     
     // Ensure overlay is shown
     this.updateComplete.then(() => {
@@ -266,6 +311,8 @@ export class PluginAnnotationsComponent extends LitElement {
     if (this._overlay) {
       this._overlay.hide();
     }
+    // Re-enable timeline panning when the plugin is closed
+    try { setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
   }
   
   toggle() {

@@ -14,6 +14,8 @@ import {
   createLineAnnotation
 } from './AnnotationState.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
+import { bus } from '../../core/EventBus.js';
+import { TimelineEvents } from '../../core/EventRegistry.js';
 import { getBoardOffset } from '../../components/board-utils.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -43,6 +45,10 @@ export class AnnotationOverlay extends LitElement {
     this._drawState = null;
     this._editingNote = null;
     this._svgEl = null;
+    this._globalPointerAttached = false;
+    this._globalMove = null;
+    this._globalUp = null;
+    this._lastMonthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
     
     // Track clicks for double-click detection
     this._lastClickTime = 0;
@@ -52,7 +58,11 @@ export class AnnotationOverlay extends LitElement {
   static styles = css`
     :host {
       display: none;
-      position: fixed;
+      /* Make the overlay position absolute so when the element is a child
+        of feature-board it is positioned relative to the board and will
+        be clipped by the board's overflow (preventing overlap with the
+        sidebar). Using fixed positions it would float above page chrome. */
+      position: absolute;
       z-index: 50;
       pointer-events: none;
       overflow: hidden;
@@ -141,6 +151,149 @@ export class AnnotationOverlay extends LitElement {
     
     // Attach scroll listener - may need to wait for DOM
     this._attachScrollListener();
+
+    // Listen for timeline scale changes so we can rescale annotations that
+    // store pixel widths (notes/rects) to match the new timeline scale.
+    try {
+      this._onScaleChanged = () => {
+        const newMonthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+        const old = this._lastMonthWidth || newMonthWidth;
+        if (newMonthWidth !== old) {
+          const scale = newMonthWidth / old;
+          // Rescale annotations that use pixel sizes — only scale rects.
+          // Notes contain text and should remain the same pixel size
+          // regardless of timeline zoom; they remain anchored by date.
+          const anns = this._state.annotations || [];
+          for (const ann of anns) {
+            if (ann.type === 'rect') {
+              try {
+                const newW = Math.max(1, Math.round((ann.width || 0) * scale));
+                const updates = { width: newW };
+                this._state.update(ann.id, updates);
+              } catch (e) { /* ignore individual update failures */ }
+            }
+          }
+          this._lastMonthWidth = newMonthWidth;
+          this._updateSvg();
+        }
+      };
+      bus.on(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
+    } catch (e) { /* ignore */ }
+  }
+
+  _attachGlobalPointerHandlers() {
+    if (this._globalPointerAttached) return;
+    this._globalPointerAttached = true;
+    this._globalMove = (e) => this._onGlobalMouseMove(e);
+    this._globalUp = (e) => this._onGlobalMouseUp(e);
+    window.addEventListener('mousemove', this._globalMove);
+    window.addEventListener('mouseup', this._globalUp);
+  }
+
+  _removeGlobalPointerHandlers() {
+    if (!this._globalPointerAttached) return;
+    try {
+      window.removeEventListener('mousemove', this._globalMove);
+    } catch (e) { /* ignore */ }
+    try {
+      window.removeEventListener('mouseup', this._globalUp);
+    } catch (e) { /* ignore */ }
+    this._globalMove = null;
+    this._globalUp = null;
+    this._globalPointerAttached = false;
+  }
+
+  _onGlobalMouseMove(e) {
+    this._processPointerMove(e);
+  }
+
+  _onGlobalMouseUp(e) {
+    // Process a final move (in case pointer moved before up) then end
+    this._processPointerMove(e);
+    this._processPointerUp(e);
+    this._removeGlobalPointerHandlers();
+  }
+
+  _processPointerMove(e) {
+    // core of previous _onMouseMove
+    if (!this._drawState && !this._dragState) return;
+    const ev = this._getEventCoords(e);
+    if (ev.outside) return;
+    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
+
+    if (this._drawState) {
+      this._drawState.currentX = x;
+      this._drawState.currentY = y;
+      this._drawState.currentContentX = (typeof contentX !== 'undefined' && contentX !== null)
+        ? contentX
+        : (this._drawState.currentContentX ?? x);
+      this._updateSvg();
+    }
+
+    if (this._dragState) {
+      const dx = x - this._dragState.lastX;
+      const dy = y - this._dragState.lastY;
+
+      if (this._dragState.mode === 'move') {
+        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        if (ann) {
+          const pointerContentX = (contentX ?? x);
+          const offset = this._dragState.offsetContent ?? 0;
+          const newContentX = pointerContentX - offset;
+          const newDate = this._contentXToDateMs(newContentX);
+          if (ann.type === 'line') {
+            // Use the original stored endpoints from drag start to compute a
+            // stable delta. This avoids feedback where the live-state values
+            // move under the pointer and shrink the line.
+            const orig1 = this._dragState.origContentX1 ?? this._dateToContentX(ann.date1 || ann.x1 || newContentX);
+            const orig2 = this._dragState.origContentX2 ?? this._dateToContentX(ann.date2 || ann.x2 || newContentX);
+            const origLeft = this._dragState.origLeft ?? Math.min(orig1, orig2);
+            const delta = newContentX - origLeft;
+            const newDate1 = this._contentXToDateMs(orig1 + delta);
+            const newDate2 = this._contentXToDateMs(orig2 + delta);
+            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
+          } else {
+            this._state.update(this._dragState.id, { date: newDate, y: ann.y + dy });
+          }
+        }
+      } else if (this._dragState.mode === 'resize') {
+        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        if (ann) {
+          this._state.resize(this._dragState.id,
+            Math.max(50, ann.width + dx),
+            Math.max(30, ann.height + dy)
+          );
+        }
+      } else if (this._dragState.mode === 'line-endpoint') {
+        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        if (ann) {
+          const newDate = this._contentXToDateMs(contentX ?? x);
+          if (this._dragState.endpoint === 'start') {
+            this._state.update(this._dragState.id, { date1: newDate, y1: ann.y1 + dy });
+          } else {
+            this._state.update(this._dragState.id, { date2: newDate, y2: ann.y2 + dy });
+          }
+        }
+      }
+
+      this._dragState.lastX = x;
+      this._dragState.lastY = y;
+      this._dragState.lastContentX = contentX ?? this._dragState.lastContentX;
+    }
+  }
+
+  _processPointerUp(e) {
+    if (this._drawState) {
+      this._finishDrawing();
+    }
+    if (this._dragState) {
+      this._dragState = null;
+    }
+    // Ensure container stays focused for keyboard events
+    if (this._state.selectedId) {
+      const container = this.shadowRoot?.querySelector('.overlay-container');
+      if (container) container.focus();
+    }
   }
   
   _attachScrollListener() {
@@ -180,6 +333,7 @@ export class AnnotationOverlay extends LitElement {
       this._scrollTargetH.removeEventListener('scroll', this._scrollHandler);
       this._scrollTargetH = null;
     }
+    try { if (this._onScaleChanged) bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged); } catch (e) { /* ignore */ }
   }
 
   render() {
@@ -582,16 +736,25 @@ export class AnnotationOverlay extends LitElement {
    * stable content coordinates.
    */
   _getEventCoords(e) {
-    const rect = this.getBoundingClientRect();
+    // Prefer the feature-board bounding rect so we ignore events outside
+    // the board (e.g., over the sidebar) even if the overlay is mis-positioned.
+    const featureBoard = document.querySelector('feature-board');
+    const rect = featureBoard ? featureBoard.getBoundingClientRect() : this.getBoundingClientRect();
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
 
-    const viewportX = e.clientX - rect.left;
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const outside = clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom;
+
+    const viewportX = clientX - rect.left;
+    const viewportY = clientY - rect.top;
     const contentX = viewportX + scrollLeft; // content coordinate inside feature board
 
     return {
       x: viewportX,
-      y: e.clientY - rect.top + scrollTop,
-      contentX
+      y: viewportY + scrollTop,
+      contentX,
+      outside
     };
   }
 
@@ -619,6 +782,8 @@ export class AnnotationOverlay extends LitElement {
     if (e.target.closest('.annotation')) return;
     
     const ev = this._getEventCoords(e);
+    // If pointer is outside the feature board, ignore the down event
+    if (ev.outside) return;
     const x = ev.x; const y = ev.y; const contentX = ev.contentX;
     
     // Deselect on background click in select mode
@@ -647,6 +812,8 @@ export class AnnotationOverlay extends LitElement {
     if (!this._drawState && !this._dragState) return;
     
     const ev = this._getEventCoords(e);
+    // If pointer moved outside the board, clamp updates (don't create new drawing extents)
+    if (ev.outside) return;
     const x = ev.x;
     const y = ev.y;
     const contentX = ev.contentX;
@@ -668,19 +835,24 @@ export class AnnotationOverlay extends LitElement {
       const dy = y - this._dragState.lastY;
       
       if (this._dragState.mode === 'move') {
-        // Move annotation horizontally by converting content delta to new date
+        // Move annotation horizontally using the pointer's offset so the
+        // clicked point remains stable (avoids snapping when clicking near
+        // edges). Convert resulting contentX back to date.
         const ann = this._state.annotations.find(a => a.id === this._dragState.id);
         if (ann) {
-          const oldContentX = (ann.date) ? this._dateToContentX(ann.date) : (ann.x ?? 0);
-          const deltaContent = (contentX ?? x) - (this._dragState.lastContentX ?? this._dragState.lastX ?? x);
-          const newContentX = oldContentX + deltaContent;
+          const pointerContentX = (contentX ?? x);
+          const offset = this._dragState.offsetContent ?? 0;
+          const newContentX = pointerContentX - offset;
           const newDate = this._contentXToDateMs(newContentX);
           if (ann.type === 'line') {
-            // Move both endpoints proportionally
-            const oldContentX2 = this._dateToContentX(ann.date2 || ann.x2 || newContentX);
-            const newContentX2 = oldContentX2 + deltaContent;
-            const newDate2 = this._contentXToDateMs(newContentX2);
-            this._state.update(this._dragState.id, { date1: newDate, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
+            // For lines, compute delta against the stored original endpoints
+            const orig1 = this._dragState.origContentX1 ?? this._dateToContentX(ann.date1 || ann.x1 || newContentX);
+            const orig2 = this._dragState.origContentX2 ?? this._dateToContentX(ann.date2 || ann.x2 || newContentX);
+            const origLeft = this._dragState.origLeft ?? Math.min(orig1, orig2);
+            const delta = newContentX - origLeft;
+            const newDate1 = this._contentXToDateMs(orig1 + delta);
+            const newDate2 = this._contentXToDateMs(orig2 + delta);
+            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
           } else {
             this._state.update(this._dragState.id, { date: newDate, y: ann.y + dy });
           }
@@ -803,13 +975,36 @@ export class AnnotationOverlay extends LitElement {
     if (container) container.focus();
     
     if (this.currentTool === TOOLS.SELECT) {
+      // Record the pointer offset within the annotation so the clicked point
+      // remains under the cursor during the drag (prevents snapping to edges).
+      // For lines, use the leftmost endpoint as the annotation origin so we
+      // shift both endpoints by the same delta during move.
+      let annContentX;
+      if (ann.type === 'line') {
+        const c1 = this._dateToContentX(ann.date1 || ann.x1 || 0);
+        const c2 = this._dateToContentX(ann.date2 || ann.x2 || 0);
+        annContentX = Math.min(c1, c2);
+      } else {
+        annContentX = (ann.date) ? this._dateToContentX(ann.date) : (ann.x ?? 0);
+      }
+      const clickOffset = (typeof contentX !== 'undefined' && contentX !== null) ? (contentX - annContentX) : 0;
       this._dragState = {
         id: ann.id,
         mode: 'move',
         lastX: x,
         lastY: y,
-        lastContentX: contentX
+        lastContentX: contentX,
+        offsetContent: clickOffset
       };
+      if (ann.type === 'line') {
+        const orig1 = this._dateToContentX(ann.date1 || ann.x1 || 0);
+        const orig2 = this._dateToContentX(ann.date2 || ann.x2 || 0);
+        this._dragState.origContentX1 = orig1;
+        this._dragState.origContentX2 = orig2;
+        this._dragState.origLeft = Math.min(orig1, orig2);
+      }
+      // Ensure global handlers so dragging remains responsive outside overlay
+      this._attachGlobalPointerHandlers();
     }
   }
   
@@ -857,6 +1052,7 @@ export class AnnotationOverlay extends LitElement {
       lastY: y,
       lastContentX: contentX
     };
+    this._attachGlobalPointerHandlers();
   }
 
   _onLineEndpointStart(e, ann, endpoint) {
@@ -875,6 +1071,7 @@ export class AnnotationOverlay extends LitElement {
       lastY: y,
       lastContentX: contentX
     };
+    this._attachGlobalPointerHandlers();
   }
 
   _onDoubleClick(e) {
@@ -1031,10 +1228,29 @@ export class AnnotationOverlay extends LitElement {
     if (!featureBoard) return;
     
     const rect = featureBoard.getBoundingClientRect();
-    this.style.top = `${rect.top}px`;
-    this.style.left = `${rect.left}px`;
-    this.style.width = `${rect.width}px`;
-    this.style.height = `${rect.height}px`;
+    // If this overlay is a child of the featureBoard (or its host root)
+    // then position it relative to that container (fill the container).
+    // Otherwise fall back to absolute viewport coordinates so the overlay
+    // still lines up when mounted elsewhere.
+    try {
+      const parent = this.parentElement || (this.getRootNode && this.getRootNode().host) || null;
+      if (parent && (parent === featureBoard || featureBoard.contains(parent))) {
+        this.style.top = '0px';
+        this.style.left = '0px';
+        this.style.width = '100%';
+        this.style.height = '100%';
+      } else {
+        this.style.top = `${rect.top}px`;
+        this.style.left = `${rect.left}px`;
+        this.style.width = `${rect.width}px`;
+        this.style.height = `${rect.height}px`;
+      }
+    } catch (e) {
+      this.style.top = `${rect.top}px`;
+      this.style.left = `${rect.left}px`;
+      this.style.width = `${rect.width}px`;
+      this.style.height = `${rect.height}px`;
+    }
   }
 
   setTool(tool) {

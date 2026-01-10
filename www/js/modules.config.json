@@ -63,7 +63,7 @@
       "enabled": true,
       "activated": false,
       "exclusive": true,
-      "mountPoint": "timeline-board",
+      "mountPoint": "feature-board",
       "dependencies": []
     }
   ]
