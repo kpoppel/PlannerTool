@@ -4,6 +4,8 @@
  */
 
 import { ANNOTATION_COLORS, getRandomColor } from './AnnotationColors.js';
+import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
+import { getBoardOffset } from '../../components/board-utils.js';
 import { generateId, saveAnnotations, loadAnnotations } from './AnnotationStorage.js';
 
 // ============================================================================
@@ -60,13 +62,13 @@ export const TOOL_DEFINITIONS = [
  * @param {Object} options - { fill, stroke, width, height }
  * @returns {Object} Note annotation object
  */
-export function createNoteAnnotation(x, y, text = 'Note', options = {}) {
+export function createNoteAnnotation(dateMs, y, text = 'Note', options = {}) {
   const color = getRandomColor();
-  
+
   return {
     id: generateId(),
     type: 'note',
-    x,
+    date: dateMs, // logical timestamp for left edge
     y,
     width: options.width || 150,
     height: options.height || 60,
@@ -86,13 +88,13 @@ export function createNoteAnnotation(x, y, text = 'Note', options = {}) {
  * @param {Object} options - { fill, stroke, strokeWidth }
  * @returns {Object} Rectangle annotation object
  */
-export function createRectAnnotation(x, y, width, height, options = {}) {
+export function createRectAnnotation(dateMs, y, width, height, options = {}) {
   const color = getRandomColor();
-  
+
   return {
     id: generateId(),
     type: 'rect',
-    x,
+    date: dateMs,
     y,
     width,
     height,
@@ -111,13 +113,13 @@ export function createRectAnnotation(x, y, width, height, options = {}) {
  * @param {Object} options - { stroke, strokeWidth, arrow }
  * @returns {Object} Line annotation object
  */
-export function createLineAnnotation(x1, y1, x2, y2, options = {}) {
+export function createLineAnnotation(date1, y1, date2, y2, options = {}) {
   return {
     id: generateId(),
     type: 'line',
-    x1,
+    date1,
     y1,
-    x2,
+    date2,
     y2,
     stroke: options.stroke || ANNOTATION_COLORS.lineColor,
     strokeWidth: options.strokeWidth || 2,
@@ -274,16 +276,53 @@ export class AnnotationState {
     const ann = this._annotations.find(a => a.id === id);
     if (!ann) return null;
     
+    // If annotation uses date-based X, convert dx (pixels) to date shift
+    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const months = getTimelineMonths() || [];
+    const boardOffset = getBoardOffset() || 0;
+
+    const contentXForDate = (dateMs) => {
+      if (!months.length) return boardOffset;
+      const d = new Date(dateMs);
+      let idx = months.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    };
+
+    const contentXToDateMs = (contentX) => {
+      if (!months.length) return Date.now();
+      const rel = (contentX - boardOffset) / monthWidth;
+      let idx = Math.floor(rel);
+      if (idx < 0) idx = 0;
+      if (idx >= months.length) idx = months.length - 1;
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      const fraction = rel - idx;
+      const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1));
+      const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
+      return date.getTime();
+    };
+
     if (ann.type === 'line') {
+      // Move both endpoints horizontally by dx -> convert to date shift
+      const x1 = ann.date1 ? contentXForDate(ann.date1) : (ann.x1 || 0);
+      const x2 = ann.date2 ? contentXForDate(ann.date2) : (ann.x2 || 0);
+      const newDate1 = contentXToDateMs(x1 + dx);
+      const newDate2 = contentXToDateMs(x2 + dx);
       return this.update(id, {
-        x1: ann.x1 + dx,
+        date1: newDate1,
         y1: ann.y1 + dy,
-        x2: ann.x2 + dx,
+        date2: newDate2,
         y2: ann.y2 + dy
       });
     } else {
+      const x = ann.date ? contentXForDate(ann.date) : (ann.x || 0);
+      const newDate = contentXToDateMs(x + dx);
       return this.update(id, {
-        x: ann.x + dx,
+        date: newDate,
         y: ann.y + dy
       });
     }

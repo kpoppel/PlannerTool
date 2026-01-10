@@ -35,14 +35,14 @@ class PluginGraphPlugin {
       await import('./PluginGraphComponent.js');
       this._componentLoaded = true;
     }
-    const selector = this.config.mountPoint || 'main';
+    const selector = this.config.mountPoint || 'timeline-board';
     this._host = document.querySelector(selector) || document.body;
     this.initialized = true;
   }
 
   async activate(){
     if(!this._componentLoaded) await this.init();
-    if(!this._host){ const selector = this.config.mountPoint || 'main'; this._host = document.querySelector(selector) || document.body; }
+    if(!this._host){ const selector = this.config.mountPoint || 'timeline-board'; this._host = document.querySelector(selector) || document.body; }
     if(!this._el){
       this._el = document.createElement('plugin-graph');
       this._host.appendChild(this._el);

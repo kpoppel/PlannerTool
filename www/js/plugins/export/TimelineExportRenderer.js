@@ -13,6 +13,7 @@
 import { state } from '../../services/State.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight, computePosition } from '../../components/board-utils.js';
+import { getBoardOffset } from '../../components/board-utils.js';
 import { 
   createSvgElement, 
   createSvgText, 
@@ -519,7 +520,20 @@ export class TimelineExportRenderer {
   }
 
   _renderNoteAnnotation(ann, xOffset = 0, yOffset = 0) {
-    const x = ann.x + xOffset;
+    const contentX = (ann.date) ? (function(){
+      const months = getTimelineMonths() || [];
+      const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+      const boardOffset = getBoardOffset() || 0;
+      if (!months.length) return boardOffset;
+      const d = new Date(ann.date);
+      let idx = months.findIndex(m => m.getFullYear()===d.getFullYear() && m.getMonth()===d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate()-1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    })() : (ann.x || 0);
+    const x = contentX + xOffset;
     const y = ann.y + yOffset;
     
     // Skip if completely outside visible export area
@@ -562,7 +576,20 @@ export class TimelineExportRenderer {
   }
 
   _renderRectAnnotation(ann, xOffset = 0, yOffset = 0) {
-    const x = ann.x + xOffset;
+    const contentX = (ann.date) ? (function(){
+      const months = getTimelineMonths() || [];
+      const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+      const boardOffset = getBoardOffset() || 0;
+      if (!months.length) return boardOffset;
+      const d = new Date(ann.date);
+      let idx = months.findIndex(m => m.getFullYear()===d.getFullYear() && m.getMonth()===d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate()-1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    })() : (ann.x || 0);
+    const x = contentX + xOffset;
     const y = ann.y + yOffset;
     
     // Skip if completely outside visible export area
@@ -583,9 +610,35 @@ export class TimelineExportRenderer {
   }
 
   _renderLineAnnotation(ann, xOffset = 0, yOffset = 0) {
-    const x1 = ann.x1 + xOffset;
+    const contentX1 = (ann.date1) ? (function(){
+      const months = getTimelineMonths() || [];
+      const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+      const boardOffset = getBoardOffset() || 0;
+      if (!months.length) return boardOffset;
+      const d = new Date(ann.date1);
+      let idx = months.findIndex(m => m.getFullYear()===d.getFullYear() && m.getMonth()===d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate()-1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    })() : (ann.x1 || 0);
+    const contentX2 = (ann.date2) ? (function(){
+      const months = getTimelineMonths() || [];
+      const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+      const boardOffset = getBoardOffset() || 0;
+      if (!months.length) return boardOffset;
+      const d = new Date(ann.date2);
+      let idx = months.findIndex(m => m.getFullYear()===d.getFullYear() && m.getMonth()===d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate()-1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    })() : (ann.x2 || 0);
+    const x1 = contentX1 + xOffset;
     const y1 = ann.y1 + yOffset;
-    const x2 = ann.x2 + xOffset;
+    const x2 = contentX2 + xOffset;
     const y2 = ann.y2 + yOffset;
     
     // Skip if completely outside (rough check)

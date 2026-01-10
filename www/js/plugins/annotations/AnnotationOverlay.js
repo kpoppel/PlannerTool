@@ -13,6 +13,8 @@ import {
   createRectAnnotation,
   createLineAnnotation
 } from './AnnotationState.js';
+import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
+import { getBoardOffset } from '../../components/board-utils.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -184,7 +186,8 @@ export class AnnotationOverlay extends LitElement {
     // Convert note position to viewport coords for the text input
     let textareaStyle = '';
     if (this._editingNote) {
-      const { x: vx, y: vy } = this._contentToViewport(this._editingNote.x, this._editingNote.y);
+      const contentX = this._editingNote.date ? this._dateToContentX(this._editingNote.date) : (this._editingNote.x || 0);
+      const { x: vx, y: vy } = this._contentToViewport(contentX, this._editingNote.y);
       const fontSize = this._editingNote.fontSize || 12;
       const bgColor = this._editingNote.fill || ANNOTATION_COLORS.defaultFill;
       textareaStyle = `left: ${vx}px; top: ${vy}px; width: ${this._editingNote.width}px; height: ${this._editingNote.height}px; font-size: ${fontSize}px; background: ${bgColor};`;
@@ -278,8 +281,9 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderNoteToSvg(ann, isSelected) {
-    // Convert content coordinates to viewport coordinates for display
-    const { x: vx, y: vy } = this._contentToViewport(ann.x, ann.y);
+    // Convert logical date to content coordinates then to viewport for display
+    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
     
     const g = this._createSvgElement('g', {
       class: `annotation annotation-note ${isSelected ? 'selected' : ''}`,
@@ -344,8 +348,9 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderRectToSvg(ann, isSelected) {
-    // Convert content coordinates to viewport coordinates for display
-    const { x: vx, y: vy } = this._contentToViewport(ann.x, ann.y);
+    // Convert logical date to content coordinates then to viewport for display
+    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
     
     const g = this._createSvgElement('g', {
       class: `annotation annotation-rect ${isSelected ? 'selected' : ''}`,
@@ -390,9 +395,11 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderLineToSvg(ann, isSelected) {
-    // Convert content coordinates to viewport coordinates for display
-    const { x: vx1, y: vy1 } = this._contentToViewport(ann.x1, ann.y1);
-    const { x: vx2, y: vy2 } = this._contentToViewport(ann.x2, ann.y2);
+    // Convert logical dates to content coordinates then to viewport for display
+    const contentX1 = ann.date1 ? this._dateToContentX(ann.date1) : (ann.x1 || 0);
+    const contentX2 = ann.date2 ? this._dateToContentX(ann.date2) : (ann.x2 || 0);
+    const { x: vx1, y: vy1 } = this._contentToViewport(contentX1, ann.y1);
+    const { x: vx2, y: vy2 } = this._contentToViewport(contentX2, ann.y2);
     
     const g = this._createSvgElement('g', {
       class: `annotation annotation-line ${isSelected ? 'selected' : ''}`,
@@ -484,11 +491,16 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderDrawPreviewToSvg() {
-    const { tool, startX, startY, currentX, currentY } = this._drawState;
-    
+    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } = this._drawState;
+
+    // Prefer content coordinates if available (startContentX/currentContentX),
+    // otherwise fall back to the viewport coordinates stored in startX/currentX.
+    const startContent = (typeof startContentX !== 'undefined' && startContentX !== null) ? startContentX : startX;
+    const currentContent = (typeof currentContentX !== 'undefined' && currentContentX !== null) ? currentContentX : currentX;
+
     // Convert content coordinates to viewport for preview display
-    const { x: vs_x, y: vs_y } = this._contentToViewport(startX, startY);
-    const { x: vc_x, y: vc_y } = this._contentToViewport(currentX, currentY);
+    const { x: vs_x, y: vs_y } = this._contentToViewport(startContent, startY);
+    const { x: vc_x, y: vc_y } = this._contentToViewport(currentContent, currentY);
     
     if (tool === TOOLS.NOTE || tool === TOOLS.RECT) {
       const x = Math.min(vs_x, vc_x);
@@ -555,8 +567,8 @@ export class AnnotationOverlay extends LitElement {
     // Use || which treats 0 as falsy - this way if featureBoard.scrollLeft is 0,
     // we fall back to timelineSection.scrollLeft (which is where panning puts horizontal scroll)
     return {
-      scrollLeft: featureBoard?.scrollLeft || timelineSection?.scrollLeft || 0,
-      scrollTop: featureBoard?.scrollTop || timelineSection?.scrollTop || 0
+      scrollLeft: featureBoard?.scrollLeft ?? timelineSection?.scrollLeft ?? 0,
+      scrollTop: featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0
     };
   }
 
@@ -571,11 +583,15 @@ export class AnnotationOverlay extends LitElement {
    */
   _getEventCoords(e) {
     const rect = this.getBoundingClientRect();
-    const { scrollTop } = this._getScrollOffsets();
-    
+    const { scrollTop, scrollLeft } = this._getScrollOffsets();
+
+    const viewportX = e.clientX - rect.left;
+    const contentX = viewportX + scrollLeft; // content coordinate inside feature board
+
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top + scrollTop
+      x: viewportX,
+      y: e.clientY - rect.top + scrollTop,
+      contentX
     };
   }
 
@@ -589,10 +605,11 @@ export class AnnotationOverlay extends LitElement {
    * subtract scrollTop to position annotations correctly.
    */
   _contentToViewport(x, y) {
-    const { scrollTop } = this._getScrollOffsets();
-    // Only adjust for vertical scroll - horizontal is handled by overlay repositioning
+    const { scrollTop, scrollLeft } = this._getScrollOffsets();
+    // x is contentX (pixels from content origin). Convert to viewport X by removing scrollLeft
+    const viewportX = x - scrollLeft;
     return {
-      x: x,
+      x: viewportX,
       y: y - scrollTop
     };
   }
@@ -601,11 +618,13 @@ export class AnnotationOverlay extends LitElement {
     // Check if click is on an annotation (handled separately)
     if (e.target.closest('.annotation')) return;
     
-    const { x, y } = this._getEventCoords(e);
+    const ev = this._getEventCoords(e);
+    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
     
     // Deselect on background click in select mode
     if (this.currentTool === TOOLS.SELECT) {
       this._state.deselect();
+      // continue so focus remains on container but no drawing starts
       return;
     }
     
@@ -616,7 +635,9 @@ export class AnnotationOverlay extends LitElement {
         startX: x,
         startY: y,
         currentX: x,
-        currentY: y
+        currentY: y,
+        startContentX: contentX ?? x,
+        currentContentX: contentX ?? x
       };
       this._updateSvg();
     }
@@ -625,11 +646,20 @@ export class AnnotationOverlay extends LitElement {
   _onMouseMove(e) {
     if (!this._drawState && !this._dragState) return;
     
-    const { x, y } = this._getEventCoords(e);
+    const ev = this._getEventCoords(e);
+    const x = ev.x;
+    const y = ev.y;
+    const contentX = ev.contentX;
     
     if (this._drawState) {
       this._drawState.currentX = x;
       this._drawState.currentY = y;
+      // Use the contentX computed from _getEventCoords rather than reading it from
+      // the native event (which doesn't have contentX). Keep previous value
+      // as fallback so startContentX remains available.
+      this._drawState.currentContentX = (typeof contentX !== 'undefined' && contentX !== null)
+        ? contentX
+        : (this._drawState.currentContentX ?? x);
       this._updateSvg();
     }
     
@@ -638,7 +668,23 @@ export class AnnotationOverlay extends LitElement {
       const dy = y - this._dragState.lastY;
       
       if (this._dragState.mode === 'move') {
-        this._state.move(this._dragState.id, dx, dy);
+        // Move annotation horizontally by converting content delta to new date
+        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        if (ann) {
+          const oldContentX = (ann.date) ? this._dateToContentX(ann.date) : (ann.x ?? 0);
+          const deltaContent = (contentX ?? x) - (this._dragState.lastContentX ?? this._dragState.lastX ?? x);
+          const newContentX = oldContentX + deltaContent;
+          const newDate = this._contentXToDateMs(newContentX);
+          if (ann.type === 'line') {
+            // Move both endpoints proportionally
+            const oldContentX2 = this._dateToContentX(ann.date2 || ann.x2 || newContentX);
+            const newContentX2 = oldContentX2 + deltaContent;
+            const newDate2 = this._contentXToDateMs(newContentX2);
+            this._state.update(this._dragState.id, { date1: newDate, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
+          } else {
+            this._state.update(this._dragState.id, { date: newDate, y: ann.y + dy });
+          }
+        }
       } else if (this._dragState.mode === 'resize') {
         const ann = this._state.annotations.find(a => a.id === this._dragState.id);
         if (ann) {
@@ -648,15 +694,20 @@ export class AnnotationOverlay extends LitElement {
           );
         }
       } else if (this._dragState.mode === 'line-endpoint') {
-        if (this._dragState.endpoint === 'start') {
-          this._state.update(this._dragState.id, { x1: x, y1: y });
-        } else {
-          this._state.update(this._dragState.id, { x2: x, y2: y });
+        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        if (ann) {
+          const newDate = this._contentXToDateMs(contentX ?? x);
+          if (this._dragState.endpoint === 'start') {
+            this._state.update(this._dragState.id, { date1: newDate, y1: ann.y1 + dy });
+          } else {
+            this._state.update(this._dragState.id, { date2: newDate, y2: ann.y2 + dy });
+          }
         }
       }
       
       this._dragState.lastX = x;
       this._dragState.lastY = y;
+      this._dragState.lastContentX = contentX ?? this._dragState.lastContentX;
     }
   }
 
@@ -677,11 +728,11 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _finishDrawing() {
-    const { tool, startX, startY, currentX, currentY } = this._drawState;
-    
-    const x = Math.min(startX, currentX);
+    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } = this._drawState;
+
+    const contentLeft = Math.min(startContentX ?? startX, currentContentX ?? currentX);
     const y = Math.min(startY, currentY);
-    const width = Math.abs(currentX - startX);
+    const width = Math.abs((currentContentX ?? currentX) - (startContentX ?? startX));
     const height = Math.abs(currentY - startY);
     
     // Minimum size threshold
@@ -689,7 +740,8 @@ export class AnnotationOverlay extends LitElement {
     
     if (tool === TOOLS.NOTE && width > minSize && height > minSize) {
       const color = this._state.currentColor || ANNOTATION_COLORS.palette[0];
-      const note = createNoteAnnotation(x, y, 'Note', {
+      const dateMs = this._contentXToDateMs(contentLeft);
+      const note = createNoteAnnotation(dateMs, y, 'Note', {
         width,
         height,
         fill: color.fill,
@@ -699,15 +751,20 @@ export class AnnotationOverlay extends LitElement {
       this._state.select(note.id);
     } else if (tool === TOOLS.RECT && width > minSize && height > minSize) {
       const color = this._state.currentColor || ANNOTATION_COLORS.palette[0];
-      const rect = createRectAnnotation(x, y, width, height, {
+      const dateMs = this._contentXToDateMs(contentLeft);
+      const rect = createRectAnnotation(dateMs, y, width, height, {
         stroke: color.stroke
       });
       this._state.add(rect);
       this._state.select(rect.id);
     } else if (tool === TOOLS.LINE) {
-      const length = Math.sqrt(width * width + height * height);
+      const contentStart = startContentX ?? startX;
+      const contentEnd = currentContentX ?? currentX;
+      const length = Math.sqrt((contentEnd - contentStart) * (contentEnd - contentStart) + height * height);
       if (length > minSize) {
-        const line = createLineAnnotation(startX, startY, currentX, currentY);
+        const date1 = this._contentXToDateMs(contentStart);
+        const date2 = this._contentXToDateMs(contentEnd);
+        const line = createLineAnnotation(date1, startY, date2, currentY);
         this._state.add(line);
         this._state.select(line.id);
       }
@@ -720,7 +777,8 @@ export class AnnotationOverlay extends LitElement {
   _onAnnotationMouseDown(e, ann) {
     e.stopPropagation();
     
-    const { x, y } = this._getEventCoords(e);
+    const ev = this._getEventCoords(e);
+    const { x, y, contentX } = ev;
     const now = Date.now();
     
     // Check for double-click (two clicks on same annotation within 400ms)
@@ -749,7 +807,8 @@ export class AnnotationOverlay extends LitElement {
         id: ann.id,
         mode: 'move',
         lastX: x,
-        lastY: y
+        lastY: y,
+        lastContentX: contentX
       };
     }
   }
@@ -786,7 +845,8 @@ export class AnnotationOverlay extends LitElement {
   _onResizeStart(e, ann) {
     e.stopPropagation();
     
-    const { x, y } = this._getEventCoords(e);
+    const ev = this._getEventCoords(e);
+    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
     
     this._state.select(ann.id);
     
@@ -794,14 +854,16 @@ export class AnnotationOverlay extends LitElement {
       id: ann.id,
       mode: 'resize',
       lastX: x,
-      lastY: y
+      lastY: y,
+      lastContentX: contentX
     };
   }
 
   _onLineEndpointStart(e, ann, endpoint) {
     e.stopPropagation();
     
-    const { x, y } = this._getEventCoords(e);
+    const ev = this._getEventCoords(e);
+    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
     
     this._state.select(ann.id);
     
@@ -810,7 +872,8 @@ export class AnnotationOverlay extends LitElement {
       mode: 'line-endpoint',
       endpoint,
       lastX: x,
-      lastY: y
+      lastY: y,
+      lastContentX: contentX
     };
   }
 
@@ -893,6 +956,48 @@ export class AnnotationOverlay extends LitElement {
     }
     
     return lines.length ? lines : [text];
+  }
+
+  // ---------------------------
+  // Date <-> Content X conversions
+  // ---------------------------
+  _dateToContentX(dateMs) {
+    const months = getTimelineMonths() || [];
+    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const boardOffset = getBoardOffset() || 0;
+    if (!months.length) return boardOffset;
+
+    const d = new Date(dateMs);
+    // Find month index by scanning (months array contains month start dates)
+    let idx = months.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
+    if (idx === -1) {
+      // fallback: find nearest earlier month
+      idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+    }
+    const monthStart = months[idx];
+    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+    const day = d.getDate();
+    const fraction = Math.max(0, Math.min(1, (day - 1) / daysInMonth));
+    const x = boardOffset + (idx + fraction) * monthWidth;
+    return Math.round(x);
+  }
+
+  _contentXToDateMs(contentX) {
+    const months = getTimelineMonths() || [];
+    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const boardOffset = getBoardOffset() || 0;
+    if (!months.length) return Date.now();
+
+    const rel = (contentX - boardOffset) / monthWidth;
+    let idx = Math.floor(rel);
+    if (idx < 0) idx = 0;
+    if (idx >= months.length) idx = months.length - 1;
+    const monthStart = months[idx];
+    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+    const fraction = rel - idx;
+    const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1));
+    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
+    return date.getTime();
   }
 
   // --------------------------------------------------------------------------
