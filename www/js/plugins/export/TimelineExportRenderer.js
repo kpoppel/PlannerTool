@@ -23,6 +23,7 @@ import {
   generateFilename
 } from './ExportUtils.js';
 import { getAnnotationState, ANNOTATION_COLORS } from '../annotations/index.js';
+import { epicSvgElement, featureSvgElement } from '../../services/IconService.js';
 
 // ============================================================================
 // Constants
@@ -35,6 +36,8 @@ const CARD_BORDER_LEFT_WIDTH = 6;
 const CARD_PADDING = 8;
 const CARD_FONT_SIZE = 11;
 const CARD_TITLE_FONT_SIZE = 12;
+const ICON_SIZE = 16;
+const ICON_GAP = 4;
 
 // ============================================================================
 // Main Export Class
@@ -293,6 +296,9 @@ export class TimelineExportRenderer {
       
       if (visibleWidth <= 0) continue;
       
+      // Create a group for this card so we can control drawing order
+      const cardGroup = createSvgElement('g', { transform: `translate(0,0)` });
+
       // Card background - adjust corner radius based on clipping
       const cardBg = createSvgElement('rect', {
         x: visibleX,
@@ -305,7 +311,7 @@ export class TimelineExportRenderer {
         stroke: '#cccccc',
         'stroke-width': 1
       });
-      this._svg.appendChild(cardBg);
+      cardGroup.appendChild(cardBg);
       
       // Project color border on left - only show if left edge is visible
       if (!isLeftClipped) {
@@ -319,7 +325,7 @@ export class TimelineExportRenderer {
           ry: CARD_BORDER_RADIUS,
           fill: projectColor
         });
-        this._svg.appendChild(borderLeft);
+        cardGroup.appendChild(borderLeft);
         
         // Clip the right side of the border to match card shape
         const borderClip = createSvgElement('rect', {
@@ -329,22 +335,27 @@ export class TimelineExportRenderer {
           height: cardHeight - 4,
           fill: projectColor
         });
-        this._svg.appendChild(borderClip);
+        cardGroup.appendChild(borderClip);
       }
       
       // Title text - show if card is wide enough
       // For left-clipped cards, show title starting at left edge (may overflow right)
       if (visibleWidth > 40) {
         const title = feature.title || feature.name || `#${feature.id}`;
-        const textX = isLeftClipped 
+        const baseTextX = isLeftClipped 
           ? visibleX + CARD_PADDING  // Start from visible left edge
           : visibleX + CARD_BORDER_LEFT_WIDTH + CARD_PADDING;  // After project color border
-        
+
+        // Determine if we should render a type icon (match FeatureCard.lit layout)
+        const hasTypeIcon = !isLeftClipped && (feature.type === 'epic' || feature.type === 'feature');
+        const iconReserve = hasTypeIcon ? (ICON_SIZE + ICON_GAP) : 0;
+        const textX = baseTextX + iconReserve;
+
         // For left-clipped cards, allow text to overflow; otherwise truncate to fit
         const truncatedTitle = isLeftClipped 
           ? title  // Allow overflow
-          : this._truncateText(title, visibleWidth - CARD_PADDING * 2 - CARD_BORDER_LEFT_WIDTH);
-        
+          : this._truncateText(title, visibleWidth - CARD_PADDING * 2 - CARD_BORDER_LEFT_WIDTH - iconReserve);
+
         const titleText = createSvgText(
           truncatedTitle,
           textX,
@@ -355,8 +366,25 @@ export class TimelineExportRenderer {
             anchor: 'start'
           }
         );
-        this._svg.appendChild(titleText);
+        cardGroup.appendChild(titleText);
+
+        // Render type icon (if applicable) to the left of the title
+        if (hasTypeIcon) {
+          const iconX = baseTextX; // place icon at base text start (before textX)
+          const iconY = cardY + (cardHeight - ICON_SIZE) / 2;
+
+          if (feature.type === 'epic') {
+            const node = epicSvgElement({ x: iconX, y: iconY, width: ICON_SIZE, height: ICON_SIZE });
+            if (node) cardGroup.appendChild(node);
+          } else if (feature.type === 'feature') {
+            const node = featureSvgElement({ x: iconX, y: iconY, width: ICON_SIZE, height: ICON_SIZE });
+            if (node) cardGroup.appendChild(node);
+          }
+        }
       }
+
+      // Append the assembled card group to the root svg so it sits above board background
+      this._svg.appendChild(cardGroup);
     }
   }
 
