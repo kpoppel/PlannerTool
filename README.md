@@ -163,11 +163,6 @@ systemctl start plannertool
 ```
 
 # Known issues and future features
-- feature: add a way to export a png of the visible section of the timeline.
-- feature: Move png export to 'export' plugin to export png. Default to visible timeline. Allow selecting date range.
-- feature: extend 'export' plugin with export in other formats, like CSV: id, title, capacity, cost estimate
-- feature: extend 'export' plugin with tools to add notes and lines before export (not persisted)
-- feature: Add tool overlay plugin to add notes to the timeline and cards? SVG overlay like the dependency lines? (persisted)
 - Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
   Teams and projects in Azure is a floating thing. It is all tasks with an area path associated. Only the area path
   sets projects and teams apart. In our context we should only put "Epics" in projects, and only "Features" (and below") in teams.
@@ -196,6 +191,14 @@ Later:
 - Feature (convenience) Export mountain view data to Excel format.
 
 Solved:
+- (/) feature: add a way to export a png of the visible section of the timeline.
+- (/) feature: Move png export to 'export' plugin to export png. Default to visible timeline. Allow selecting date range.
+- (/) feature: extend 'export' plugin with export in other formats, like CSV: id, title, capacity, cost estimate
+- (/) feature: extend 'export' plugin with tools to add notes and lines before export (not persisted)
+- (/) feature: Add tool overlay plugin to add notes to the timeline and cards? SVG overlay like the dependency lines? (persisted)
+- (/) Use of Icons: Use the same icons everywhere - perhaps material icons?
+- (/) Add for plugins an "exclusive" or "single" property. When false, the plugin can be opened alongside other plugins.
+  When false it will close all other plugins when opening. And when opening anothe plugin it will be closed itself.
 - (/) bug: The side panel must persist settings for teams and projects in addition to open closed sections.
 - (/) feature: Add a 3-month view to timeline scale. Left border is start of month. If window is resized view will scale.
 - (/) bug: Changing scenarios does not refresh cost calculation data (this worked before)

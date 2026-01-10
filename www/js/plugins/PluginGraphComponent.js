@@ -36,6 +36,16 @@ export class PluginGraph extends LitElement {
     this.xScale = 1;
   }
 
+  // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
+  _getAppHost(){
+    const host = document.querySelector('timeline-board');
+    if(!host){
+      console.error('[PluginGraph] required host <timeline-board> not found in DOM');
+      throw new Error('Missing required host element: <timeline-board>');
+    }
+    return host;
+  }
+
   /**
    * Compute inclusive day count between two dates (UTC day boundaries).
    * @param {Date} d0
@@ -45,10 +55,10 @@ export class PluginGraph extends LitElement {
   _daysBetween(d0, d1){ const ms = new Date(d1).setHours(0,0,0,0) - new Date(d0).setHours(0,0,0,0); return Math.max(0, Math.floor(ms / (24*3600*1000)) + 1); }
 
   static styles = css`
-    :host { display: block; position: absolute; left:0; top:0; right:0; bottom:0; z-index:50; box-sizing: border-box; }
+    :host { display: block; position: absolute; left:0; top:0; right:0; bottom:0; z-index:50; box-sizing: border-box; background: #fff; }
     .container { width:100%; height:100%; display:flex; flex-direction:column; padding:0 8px; box-sizing:border-box; }
     .field-row { display:flex; gap:12px; align-items:center; padding:8px 12px; }
-    #mountainViewHost { width:100%; flex:1 1 auto; min-height:0; position:relative; background:transparent; }
+    #mountainViewHost { width:100%; flex:1 1 auto; min-height:0; position:relative; background:#fff; }
     h3 { margin:8px 0; }
   `;
 
@@ -174,7 +184,7 @@ export class PluginGraph extends LitElement {
     if(mode) this.mode = mode;
     else if(state && typeof state._viewService.capacityViewMode !== 'undefined') this.mode = state._viewService.capacityViewMode;
     else this.mode = 'project';
-    const main = document.querySelector('main');
+    const main = this._getAppHost();
     if(main && !this._savedMainStyles){ this._savedMainStyles = []; Array.from(main.children).forEach(child=>{ if(child === this) return; this._savedMainStyles.push({ el: child, display: child.style.display || '' }); child.style.display = 'none'; }); }
     const months = getTimelineMonths();
     let d0, d1;
@@ -191,7 +201,7 @@ export class PluginGraph extends LitElement {
     this._scheduleRender(20);
   }
 
-  close(){ this.style.display = 'none'; const main = document.querySelector('main'); if(main && this._savedMainStyles){ this._savedMainStyles.forEach(s=>{ s.el.style.display = s.display; }); this._savedMainStyles = null; } }
+  close(){ this.style.display = 'none'; const main = this._getAppHost(); if(main && this._savedMainStyles){ this._savedMainStyles.forEach(s=>{ s.el.style.display = s.display; }); this._savedMainStyles = null; } }
 
   exportSvg(){ if(!this.svgEl) return; const serializer = new XMLSerializer(); const svgStr = serializer.serializeToString(this.svgEl); const blob = new Blob([svgStr], { type:'image/svg+xml' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mountain-view.svg'; a.click(); URL.revokeObjectURL(url); }
 

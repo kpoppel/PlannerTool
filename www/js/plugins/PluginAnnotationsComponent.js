@@ -287,6 +287,34 @@ export class PluginAnnotationsComponent extends LitElement {
   }
   
   _setColor(color) {
+    // If there's a selected annotation, update it directly depending on type
+    const selected = this._annotationState.selectedAnnotation;
+    if (selected) {
+      // Rectangles are transparent-filled by design; only update the stroke
+      if (selected.type === 'rect') {
+        const updates = {};
+        if (color.stroke) updates.stroke = color.stroke;
+        this._annotationState.update(selected.id, updates);
+        // Update current color's stroke so future rects use same stroke
+        const cur = this._annotationState.currentColor || {};
+        this._annotationState.setColor({ ...cur, stroke: color.stroke });
+        this.requestUpdate();
+        return;
+      }
+
+      // Notes can change both fill and stroke
+      if (selected.type === 'note') {
+        const updates = {};
+        if (color.fill) updates.fill = color.fill;
+        if (color.stroke) updates.stroke = color.stroke;
+        this._annotationState.update(selected.id, updates);
+        this._annotationState.setColor(color);
+        this.requestUpdate();
+        return;
+      }
+    }
+
+    // No selected annotation - just set the current drawing color
     this._annotationState.setColor(color);
     this.requestUpdate();
   }

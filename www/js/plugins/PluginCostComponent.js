@@ -161,6 +161,16 @@ export class PluginCostComponent extends LitElement {
     // Don't load data here - wait until open() is called
   }
 
+  // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
+  _getAppHost(){
+    const host = document.querySelector('timeline-board');
+    if(!host){
+      console.error('[PluginCostComponent] required host <timeline-board> not found in DOM');
+      throw new Error('Missing required host element: <timeline-board>');
+    }
+    return host;
+  }
+
   _subscribe(){
     if(this._subscribed) return;
     if(this._onScenarioActivated) {
@@ -266,7 +276,7 @@ export class PluginCostComponent extends LitElement {
   }
 
   open(){
-    const main = document.querySelector('main');
+    const main = this._getAppHost();
     // Ensure we are subscribed to scenario events when shown
     this._subscribe();
     if(main && !this._savedMainStyles){
@@ -286,7 +296,7 @@ export class PluginCostComponent extends LitElement {
     this.style.display = 'none';
     // When closed (hidden but not removed) unsubscribe to avoid background reloads
     this._unsubscribe();
-    const main = document.querySelector('main');
+    const main = this._getAppHost();
     if(main && this._savedMainStyles){
       this._savedMainStyles.forEach(s => { s.el.style.display = s.display; });
       this._savedMainStyles = null;

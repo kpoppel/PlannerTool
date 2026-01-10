@@ -43,11 +43,16 @@ class PluginExportTimeline {
   async activate(){
     if(!this._componentLoaded) await this.init();
     if(!this._host){ const selector = this.config.mountPoint || 'main'; this._host = document.querySelector(selector) || document.body; }
-    if(!this._el){
+    // If element was previously created but removed from DOM, re-append it.
+    if (!this._el) {
       this._el = document.createElement('plugin-export-timeline');
+    }
+    if (this._el && !this._el.parentNode) {
       this._host.appendChild(this._el);
     }
-    if(this._el && typeof this._el.open === 'function') this._el.open(this.config.mode);
+    if (this._el && typeof this._el.open === 'function') {
+      this._el.open(this.config.mode);
+    }
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
