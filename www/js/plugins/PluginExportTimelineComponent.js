@@ -54,11 +54,12 @@ export class PluginExportTimeline extends LitElement {
       bottom: 0; 
       z-index: 60; 
       box-sizing: border-box;
-      pointer-events: none;
+      pointer-events: none; /* let clicks pass through by default */
     }
     
+    /* Keep host non-interactive; only the panel receives pointer events */
     :host([visible]) {
-      pointer-events: auto;
+      pointer-events: none;
     }
     
     .panel { 
@@ -69,7 +70,7 @@ export class PluginExportTimeline extends LitElement {
       padding: 20px; 
       margin: 40px auto; 
       border-radius: 8px;
-      pointer-events: auto;
+      pointer-events: auto; /* panel should handle pointer events */
     }
     
     .panel h3 {
@@ -279,6 +280,8 @@ export class PluginExportTimeline extends LitElement {
     this.style.display = 'none'; 
     this.visible = false;
     this.removeAttribute('visible');
+    // Remove element from DOM so lifecycle matches other plugin components
+    if (this.parentNode) this.parentNode.removeChild(this);
   }
   
   _toggleIncludeAnnotations(e) {
@@ -292,11 +295,16 @@ export class PluginExportTimeline extends LitElement {
     try {
       // Only include annotations if the plugin is available and checkbox is checked
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
-      // Pass captured scroll position from when dialog was opened
-      await exportTimelineToPng({ 
+      // Read current viewport scroll positions at the moment of export
+      const timelineSection = document.getElementById('timelineSection');
+      const featureBoard = document.querySelector('feature-board');
+      const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
+      const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
+
+      await exportTimelineToPng({
         includeAnnotations,
-        scrollLeft: this._capturedScrollLeft,
-        scrollTop: this._capturedScrollTop
+        scrollLeft: currentScrollLeft,
+        scrollTop: currentScrollTop
       });
     } catch (e) {
       console.error('[PluginExportTimeline] PNG export failed:', e);
@@ -320,6 +328,7 @@ export class PluginExportTimeline extends LitElement {
         capacityMode: state._viewService ? state._viewService.capacityViewMode : undefined,
         showEpics: state._viewService ? !!state._viewService.showEpics : undefined,
         showFeatures: state._viewService ? !!state._viewService.showFeatures : undefined
+        ,showDependencies: state._viewService ? !!state._viewService.showDependencies : undefined
       }
     };
     return out;
