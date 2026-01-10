@@ -8,6 +8,7 @@ import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { isEnabled } from '../config.js';
 import { SidebarPersistenceService } from '../services/SidebarPersistenceService.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -26,7 +27,10 @@ export class SidebarLit extends LitElement {
     .chip.active { opacity: 0.95; }
     .color-dot { width:16px; height:16px; border-radius:4px; flex:0 0 auto; }
     .chip-badge { padding:2px 6px; border-radius:10px; font-size:12px; background: rgba(255,255,255,0.06); }
-    .counts-header { display:grid; grid-template-columns: 24px 28px 1fr 44px 44px; align-items:center; gap:8px; margin-bottom:4px; color:#ddd; }
+    /* Make the last two columns square so icons can be square boxes */
+    .counts-header { display:grid; grid-template-columns: 24px 28px 1fr 32px 32px; align-items:center; gap:8px; margin-bottom:4px; color:#ddd; min-height:32px; }
+    .type-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; box-sizing:border-box; }
+    .type-icon svg { width: 100%; height: 100%; display: block; }
   `;
 
   constructor(){
@@ -296,7 +300,7 @@ export class SidebarLit extends LitElement {
   }
 
   _featureIconSvg(){
-    return html`<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:16px;height:16px;display:inline-block;vertical-align:middle"><path fill="currentColor" d="M7 3h10v3c0 2.761-2.239 5-5 5s-5-2.239-5-5V3zm5 10c3.314 0 6-2.686 6-6V2H6v5c0 3.314 2.686 6 6 6zm-3.5 2h7a.5.5 0 01.5.5c0 .828-.672 1.5-1.5 1.5h-5a1.5 1.5 0 01-1.5-1.5.5.5 0 01.5-.5z"/></svg>`;
+    return featureTemplate;
   }
 
   async _openColorPopover(e, type, id){
@@ -472,8 +476,8 @@ export class SidebarLit extends LitElement {
                     ${this._anyUncheckedProjects() ? 'All' : 'None'}
                   </button>
                   <span></span>
-                  <span class="type-icon epic" title="Epics">👑</span>
-                  <span class="type-icon feature" title="Features">${this._featureIconSvg()}</span>
+                  <span class="type-icon epic" title="Epics">${epicTemplate}</span>
+                  <span class="type-icon feature" title="Features">${featureTemplate}</span>
             </div>
             <ul class="sidebar-list" id="projectList">${this.renderProjects()}</ul>
           </div>
@@ -482,14 +486,14 @@ export class SidebarLit extends LitElement {
         <section class="sidebar-section" id="teamsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Teams</span></div>
           <div>
-            <div class="counts-header" aria-hidden="true">
+              <div class="counts-header" aria-hidden="true">
               <span></span>
               <button id="teamToggleBtn" class="chip list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all teams" @click=${()=>this._handleTeamToggle()}>
                 ${this._anyUncheckedTeams() ? 'All' : 'None'}
               </button>
               <span></span>
-              <span class="type-icon epic" title="Epics">👑</span>
-              <span class="type-icon feature" title="Features">${this._featureIconSvg()}</span>
+              <span class="type-icon epic" title="Epics">${epicTemplate}</span>
+              <span class="type-icon feature" title="Features">${featureTemplate}</span>
             </div>
             <ul class="sidebar-list" id="teamList">${this.renderTeams()}</ul>
           </div>

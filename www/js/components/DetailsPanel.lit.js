@@ -2,6 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { epicTemplate } from '../services/IconService.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
@@ -652,8 +653,12 @@ export class DetailsPanelLit extends LitElement {
             let metaParts = [];
             try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.status) metaParts.push(linked.status); }catch(e){}
             const meta = metaParts.join(' • ');
-            const icon = type === 'Parent' ? '👑' : (type === 'Successor' ? '➡️' : (type === 'Predecessor' ? '⬅️' : '🔗'));
-            return html`<li class="azure-relation-item"><div class="relation-icon">${icon}</div><div class="relation-content"><div class="relation-title"><a class="details-link" href="${href}" target="_blank">${otherId? otherId : ''}${title? ' ' + title : ''}</a></div></div></li>`;
+            let iconTemplate = '';
+            if (type === 'Parent') iconTemplate = epicTemplate;
+            else if (type === 'Successor') iconTemplate = '➡️';
+            else if (type === 'Predecessor') iconTemplate = '⬅️';
+            else iconTemplate = '🔗';
+            return html`<li class="azure-relation-item"><div class="relation-icon">${iconTemplate}</div><div class="relation-content"><div class="relation-title"><a class="details-link" href="${href}" target="_blank">${otherId? otherId : ''}${title? ' ' + title : ''}</a></div></div></li>`;
           });
           return html`<div class="relations-group"><div class="group-title">${type}</div><ul class="azure-relations-list">${items}</ul></div>`;
         });

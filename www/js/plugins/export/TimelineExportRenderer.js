@@ -20,10 +20,9 @@ import {
   getViewportBounds,
   svgToPngBlob,
   downloadBlob,
-  generateFilename,
-  ANNOTATION_COLORS
+  generateFilename
 } from './ExportUtils.js';
-import { getAnnotationState } from './AnnotationTools.js';
+import { getAnnotationState, ANNOTATION_COLORS } from '../annotations/index.js';
 
 // ============================================================================
 // Constants
@@ -52,14 +51,16 @@ export class TimelineExportRenderer {
    * Export the current timeline view to PNG
    * @param {Object} options - Export options
    * @param {boolean} options.includeAnnotations - Whether to include annotations
+   * @param {number} options.scrollLeft - Override scroll left position
+   * @param {number} options.scrollTop - Override scroll top position
    * @returns {Promise<void>}
    */
   async exportToPng(options = {}) {
-    const { includeAnnotations = true } = options;
+    const { includeAnnotations = true, scrollLeft, scrollTop } = options;
     
     try {
       // Build the SVG
-      const svg = await this.buildExportSvg({ includeAnnotations });
+      const svg = await this.buildExportSvg({ includeAnnotations, scrollLeft, scrollTop });
       
       // Convert to PNG
       const blob = await svgToPngBlob(svg, this._width, this._height);
@@ -77,14 +78,14 @@ export class TimelineExportRenderer {
 
   /**
    * Build the complete export SVG
-   * @param {Object} options - { includeAnnotations }
+   * @param {Object} options - { includeAnnotations, scrollLeft, scrollTop }
    * @returns {Promise<SVGElement>}
    */
   async buildExportSvg(options = {}) {
-    const { includeAnnotations = true } = options;
+    const { includeAnnotations = true, scrollLeft, scrollTop } = options;
     
-    // Get viewport bounds
-    const viewport = getViewportBounds();
+    // Get viewport bounds, with optional scroll position override
+    const viewport = getViewportBounds({ scrollLeft, scrollTop });
     
     // Calculate dimensions: visible width, full vertical height
     this._width = Math.floor(viewport.width);
@@ -128,7 +129,7 @@ export class TimelineExportRenderer {
     
     // Layer 6: Annotations (if enabled)
     if (includeAnnotations) {
-      this._renderAnnotations();
+      this._renderAnnotations(viewport);
     }
     
     return this._svg;
@@ -239,10 +240,19 @@ export class TimelineExportRenderer {
       const x = (i * monthWidth) - scrollLeft;
       const fill = i % 2 === 0 ? '#f7f7f7' : '#ececec';
       
+      // Calculate visible portion of the stripe
+      const visibleX = Math.max(0, x);
+      const stripeEnd = x + monthWidth;
+      const visibleEnd = Math.min(stripeEnd, this._width);
+      const visibleWidth = visibleEnd - visibleX;
+      
+      // Skip if not visible
+      if (visibleWidth <= 0) continue;
+      
       const stripe = createSvgElement('rect', {
-        x: Math.max(0, x),
+        x: visibleX,
         y: yOffset,
-        width: Math.min(monthWidth, this._width - x),
+        width: visibleWidth,
         height: boardHeight,
         fill
       });
@@ -445,31 +455,49 @@ export class TimelineExportRenderer {
 
   /**
    * Render user annotations
+   * Annotations are stored in content coordinates (relative to timeline section content).
+   * The timeline section contains both the timeline header AND the feature board.
+   * In the export, we need to:
+   * - Subtract scrollLeft for X (since export starts at scrollLeft)
+   * - Add mainGraphHeight for Y (export has MainGraph at top, then timeline section)
+   * Note: We do NOT add TIMELINE_HEADER_HEIGHT because the timelineSection already
+   * includes the timeline header - annotations at y=0 are at the top of the header.
    */
-  _renderAnnotations() {
+  _renderAnnotations(viewport) {
     const annotationState = getAnnotationState();
     const annotations = annotationState.annotations;
+    
+    // Offset: MainGraph is above timelineSection in export
+    // Timeline header is PART of timelineSection, so no need to add TIMELINE_HEADER_HEIGHT
+    const yOffset = viewport.mainGraphHeight;
+    const xOffset = -viewport.scrollLeft;  // Subtract scroll to get export coords
     
     for (const ann of annotations) {
       switch (ann.type) {
         case 'note':
-          this._renderNoteAnnotation(ann);
+          this._renderNoteAnnotation(ann, xOffset, yOffset);
           break;
         case 'rect':
-          this._renderRectAnnotation(ann);
+          this._renderRectAnnotation(ann, xOffset, yOffset);
           break;
         case 'line':
-          this._renderLineAnnotation(ann);
+          this._renderLineAnnotation(ann, xOffset, yOffset);
           break;
       }
     }
   }
 
-  _renderNoteAnnotation(ann) {
+  _renderNoteAnnotation(ann, xOffset = 0, yOffset = 0) {
+    const x = ann.x + xOffset;
+    const y = ann.y + yOffset;
+    
+    // Skip if completely outside visible export area
+    if (x + ann.width < 0 || x > this._width) return;
+    
     // Background rect
     const bg = createSvgElement('rect', {
-      x: ann.x,
-      y: ann.y,
+      x,
+      y,
       width: ann.width,
       height: ann.height,
       rx: 4,
@@ -483,12 +511,12 @@ export class TimelineExportRenderer {
     // Text with wrapping
     const lines = wrapText(ann.text || '', ann.width - 12, ann.fontSize || 12);
     const lineHeight = (ann.fontSize || 12) * 1.3;
-    const startY = ann.y + 12;
+    const startY = y + 12;
     
     for (let i = 0; i < lines.length; i++) {
       const text = createSvgText(
         lines[i],
-        ann.x + 6,
+        x + 6,
         startY + i * lineHeight,
         {
           fontSize: ann.fontSize || 12,
@@ -502,10 +530,16 @@ export class TimelineExportRenderer {
     }
   }
 
-  _renderRectAnnotation(ann) {
+  _renderRectAnnotation(ann, xOffset = 0, yOffset = 0) {
+    const x = ann.x + xOffset;
+    const y = ann.y + yOffset;
+    
+    // Skip if completely outside visible export area
+    if (x + ann.width < 0 || x > this._width) return;
+    
     const rect = createSvgElement('rect', {
-      x: ann.x,
-      y: ann.y,
+      x,
+      y,
       width: ann.width,
       height: ann.height,
       fill: ann.fill || 'transparent',
@@ -517,12 +551,22 @@ export class TimelineExportRenderer {
     this._svg.appendChild(rect);
   }
 
-  _renderLineAnnotation(ann) {
+  _renderLineAnnotation(ann, xOffset = 0, yOffset = 0) {
+    const x1 = ann.x1 + xOffset;
+    const y1 = ann.y1 + yOffset;
+    const x2 = ann.x2 + xOffset;
+    const y2 = ann.y2 + yOffset;
+    
+    // Skip if completely outside (rough check)
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    if (maxX < 0 || minX > this._width) return;
+    
     const line = createSvgElement('line', {
-      x1: ann.x1,
-      y1: ann.y1,
-      x2: ann.x2,
-      y2: ann.y2,
+      x1,
+      y1,
+      x2,
+      y2,
       stroke: ann.stroke || ANNOTATION_COLORS.lineColor,
       'stroke-width': ann.strokeWidth || 2,
       'stroke-linecap': 'round'
@@ -531,17 +575,17 @@ export class TimelineExportRenderer {
     
     // Arrow head if enabled
     if (ann.arrow) {
-      const angle = Math.atan2(ann.y2 - ann.y1, ann.x2 - ann.x1);
+      const angle = Math.atan2(y2 - y1, x2 - x1);
       const arrowLen = 10;
       const arrowAngle = Math.PI / 6;
       
-      const x3 = ann.x2 - arrowLen * Math.cos(angle - arrowAngle);
-      const y3 = ann.y2 - arrowLen * Math.sin(angle - arrowAngle);
-      const x4 = ann.x2 - arrowLen * Math.cos(angle + arrowAngle);
-      const y4 = ann.y2 - arrowLen * Math.sin(angle + arrowAngle);
+      const ax3 = x2 - arrowLen * Math.cos(angle - arrowAngle);
+      const ay3 = y2 - arrowLen * Math.sin(angle - arrowAngle);
+      const ax4 = x2 - arrowLen * Math.cos(angle + arrowAngle);
+      const ay4 = y2 - arrowLen * Math.sin(angle + arrowAngle);
       
       const arrowHead = createSvgElement('path', {
-        d: `M ${ann.x2} ${ann.y2} L ${x3} ${y3} M ${ann.x2} ${ann.y2} L ${x4} ${y4}`,
+        d: `M ${x2} ${y2} L ${ax3} ${ay3} M ${x2} ${y2} L ${ax4} ${ay4}`,
         fill: 'none',
         stroke: ann.stroke || ANNOTATION_COLORS.lineColor,
         'stroke-width': ann.strokeWidth || 2,
