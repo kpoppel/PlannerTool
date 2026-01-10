@@ -36,5 +36,18 @@
       "mountPoint": "main",
       "dependencies": []
     }
+    ,
+    {
+      "id": "plugin-export-timeline",
+      "name": "Export Timeline",
+      "version": "0.1.0",
+      "description": "Export timeline and capacity data",
+      "path": "../plugins/PluginExportTimeline.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "mountPoint": "main",
+      "dependencies": []
+    }
   ]
 }
