@@ -194,6 +194,7 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   render() {
+    const ICONS = ['⭐','✔️','🚀','📅','🎯','🐞','🔗','💰','⚠️','🟢','🔴','🟠','❌'];
     return html`
       <div class="floating-toolbar">
         <!-- Close button removed; plugin visibility is controlled via the toolbar/plugin toggle -->
@@ -216,6 +217,8 @@ export class PluginAnnotationsComponent extends LitElement {
             </button>
           `)}
         </div>
+
+        <!-- Icon picker appears on the board when user clicks while Icon tool is active -->
         
         <div class="row">
           ${ANNOTATION_COLORS.palette.map(color => html`
@@ -369,6 +372,15 @@ export class PluginAnnotationsComponent extends LitElement {
   _isColorSelected(color) {
     const current = this._annotationState.currentColor;
     return current && current.fill === color.fill;
+  }
+
+  _setIcon(icon) {
+    this._annotationState.setIcon(icon);
+    // ensure overlay uses latest icon
+    if (this._overlay && typeof this._overlay.setIcon === 'function') {
+      this._overlay.setIcon(icon);
+    }
+    this.requestUpdate();
   }
   
   _clearAnnotations() {

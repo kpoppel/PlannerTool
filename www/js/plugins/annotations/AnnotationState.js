@@ -16,7 +16,8 @@ export const TOOLS = {
   SELECT: 'select',
   NOTE: 'note',
   RECT: 'rect',
-  LINE: 'line'
+  LINE: 'line',
+  ICON: 'icon'
 };
 
 export const TOOL_DEFINITIONS = [
@@ -47,6 +48,13 @@ export const TOOL_DEFINITIONS = [
     icon: '↗',
     cursor: 'crosshair',
     description: 'Draw a line or arrow'
+  }
+  ,{
+    id: TOOLS.ICON,
+    name: 'Icon',
+    icon: '⭐',
+    cursor: 'pointer',
+    description: 'Place a small icon marker'
   }
 ];
 
@@ -127,6 +135,24 @@ export function createLineAnnotation(date1, y1, date2, y2, options = {}) {
   };
 }
 
+/**
+ * Create a new icon annotation
+ * @param {number} dateMs - anchor date
+ * @param {number} y - vertical position
+ * @param {string} icon - emoji/string id for the icon
+ * @param {Object} options - { size }
+ */
+export function createIconAnnotation(dateMs, y, icon = '⭐', options = {}) {
+  return {
+    id: generateId(),
+    type: 'icon',
+    date: dateMs,
+    y,
+    icon: icon,
+    size: options.size || 18
+  };
+}
+
 // ============================================================================
 // Annotation State Manager
 // ============================================================================
@@ -137,6 +163,7 @@ export class AnnotationState {
     this._selectedId = null;
     this._currentTool = TOOLS.SELECT;
     this._currentColor = ANNOTATION_COLORS.palette[0];
+    this._currentIcon = '⭐';
     this._listeners = new Set();
     this._enabled = false;
     
@@ -166,6 +193,10 @@ export class AnnotationState {
   
   get currentColor() {
     return this._currentColor;
+  }
+
+  get currentIcon() {
+    return this._currentIcon;
   }
   
   get enabled() {
@@ -212,6 +243,11 @@ export class AnnotationState {
   
   setColor(color) {
     this._currentColor = color;
+    this._notify();
+  }
+
+  setIcon(icon) {
+    this._currentIcon = icon;
     this._notify();
   }
   

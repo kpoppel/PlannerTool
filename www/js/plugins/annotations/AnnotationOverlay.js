@@ -11,7 +11,8 @@ import {
   getAnnotationState,
   createNoteAnnotation,
   createRectAnnotation,
-  createLineAnnotation
+  createLineAnnotation,
+  createIconAnnotation
 } from './AnnotationState.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
 import { bus } from '../../core/EventBus.js';
@@ -53,6 +54,8 @@ export class AnnotationOverlay extends LitElement {
     // Track clicks for double-click detection
     this._lastClickTime = 0;
     this._lastClickId = null;
+    this._iconPickerEl = null;
+    this._iconPickerTarget = null; // { contentX, y }
   }
 
   static styles = css`
@@ -119,6 +122,12 @@ export class AnnotationOverlay extends LitElement {
       border-radius: 4px;
       pointer-events: auto;
     }
+
+    /* Contextual icon picker inserted dynamically */
+    .icon-picker button {
+      background: transparent;
+      border: none;
+    }
   `;
 
   connectedCallback() {
@@ -129,6 +138,7 @@ export class AnnotationOverlay extends LitElement {
       this.annotations = this._state.annotations;
       this.currentTool = this._state.currentTool;
       this.selectedId = this._state.selectedId;
+      try { console.debug('[AnnotationOverlay] state.subscribe newTool:', this.currentTool, 'selectedId:', this.selectedId); } catch (err) {}
       this._updateSvg();
     });
     
@@ -219,7 +229,7 @@ export class AnnotationOverlay extends LitElement {
     if (!this._drawState && !this._dragState) return;
     const ev = this._getEventCoords(e);
     if (ev.outside) return;
-    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
+    const x = ev.x; const y = ev.y; const vx = ev.vx; const vy = ev.vy; const contentX = ev.contentX;
 
     if (this._drawState) {
       this._drawState.currentX = x;
@@ -349,7 +359,9 @@ export class AnnotationOverlay extends LitElement {
     
     // Only make the overlay interactive when using a drawing tool
     // This allows scroll events to pass through when in SELECT mode
-    const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE].includes(this.currentTool);
+    // Include ICON so clicks when the Icon tool is active are captured
+    const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(this.currentTool);
+    try { console.debug('[AnnotationOverlay] render() active:', this.active, 'currentTool:', this.currentTool, 'isDrawingTool:', isDrawingTool); } catch (err) {}
     const containerClass = isDrawingTool ? 'overlay-container interactive' : 'overlay-container';
     
     return html`
@@ -385,6 +397,7 @@ export class AnnotationOverlay extends LitElement {
 
   updated(changedProps) {
     if (changedProps.has('annotations') || changedProps.has('selectedId')) {
+      try { console.debug('[AnnotationOverlay] updated changedProps:', Array.from(changedProps.keys())); } catch (err) {}
       this._updateSvg();
     }
   }
@@ -423,7 +436,31 @@ export class AnnotationOverlay extends LitElement {
       case 'line':
         this._renderLineToSvg(ann, isSelected);
         break;
+      case 'icon':
+        this._renderIconToSvg(ann, isSelected);
+        break;
     }
+  }
+
+  _renderIconToSvg(ann, isSelected) {
+    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
+    const g = this._createSvgElement('g', {
+      class: `annotation annotation-icon ${isSelected ? 'selected' : ''}`,
+      'data-id': ann.id
+    });
+    const size = ann.size || 18;
+    const text = this._createSvgElement('text', {
+      x: vx,
+      y: vy + size / 2,
+      'font-size': size,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle'
+    });
+    text.textContent = ann.icon || '⭐';
+    g.appendChild(text);
+    g.addEventListener('mousedown', (e) => this._onAnnotationMouseDown(e, ann));
+    this._svgEl.appendChild(g);
   }
 
   _createSvgElement(tag, attrs = {}) {
@@ -753,6 +790,8 @@ export class AnnotationOverlay extends LitElement {
     return {
       x: viewportX,
       y: viewportY + scrollTop,
+      vx: viewportX,
+      vy: viewportY,
       contentX,
       outside
     };
@@ -778,23 +817,35 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _onMouseDown(e) {
+    // Debugging: trace clicks and tool state
+    try { console.debug('[AnnotationOverlay] _onMouseDown target:', e.target, 'currentTool:', this.currentTool); } catch (err) {}
+
     // Check if click is on an annotation (handled separately)
-    if (e.target.closest('.annotation')) return;
+    if (e.target.closest('.annotation')) {
+      try { console.debug('[AnnotationOverlay] _onMouseDown - click on existing annotation, ignoring'); } catch (err) {}
+      return;
+    }
     
     const ev = this._getEventCoords(e);
+    try { console.debug('[AnnotationOverlay] _onMouseDown coords:', ev); } catch (err) {}
     // If pointer is outside the feature board, ignore the down event
-    if (ev.outside) return;
-    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
+    if (ev.outside) {
+      try { console.debug('[AnnotationOverlay] _onMouseDown - outside board, ignoring'); } catch (err) {}
+      return;
+    }
+    const x = ev.x; const y = ev.y; const vx = ev.vx; const vy = ev.vy; const contentX = ev.contentX;
     
     // Deselect on background click in select mode
     if (this.currentTool === TOOLS.SELECT) {
+      try { console.debug('[AnnotationOverlay] _onMouseDown - SELECT background click, deselecting'); } catch (err) {}
       this._state.deselect();
       // continue so focus remains on container but no drawing starts
       return;
     }
     
-    // Start drawing
+    // Start drawing (except ICON which uses a contextual picker)
     if ([TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE].includes(this.currentTool)) {
+      try { console.debug('[AnnotationOverlay] _onMouseDown - start drawing', this.currentTool, { x, y, contentX }); } catch (err) {}
       this._drawState = {
         tool: this.currentTool,
         startX: x,
@@ -805,6 +856,139 @@ export class AnnotationOverlay extends LitElement {
         currentContentX: contentX ?? x
       };
       this._updateSvg();
+    } else if (this.currentTool === TOOLS.ICON) {
+      // Show contextual icon picker at the clicked location (use viewport coords)
+      try { console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', { vx, vy, contentX }); } catch (err) {}
+      // Add a transient visual marker so we can see the click position
+      try {
+        const featureBoard = document.querySelector('feature-board');
+        const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+        const pageX = (boardRect.left || 0) + vx;
+        const pageY = (boardRect.top || 0) + vy;
+        const marker = document.createElement('div');
+        marker.style.position = 'fixed';
+        marker.style.left = `${Math.round(pageX)}px`;
+        marker.style.top = `${Math.round(pageY)}px`;
+        marker.style.width = '12px';
+        marker.style.height = '12px';
+        marker.style.borderRadius = '6px';
+        marker.style.background = 'rgba(255,0,0,0.9)';
+        marker.style.zIndex = 12000;
+        document.body.appendChild(marker);
+        setTimeout(() => { try { marker.remove(); } catch (e) {} }, 800);
+      } catch (e) { /* ignore */ }
+      this._showIconPicker(e.clientX, e.clientY, contentX);
+    }
+  }
+  _showIconPicker(clientX, clientY, contentX) {
+    this._hideIconPicker();
+
+    // Icons ordered by priority (most likely first)
+    const ICONS = ['⭐','✔️','⚠️','❌','🟢','🟠','🔴','🚀','📅','🎯','🐞','🔗','💰',];
+    const cols = 6;
+    const btnSize = 20; // px (compact per request)
+    const gap = 4; // px (gap between buttons)
+
+    const container = document.createElement('div');
+    container.className = 'icon-picker-grid';
+    container.style.position = 'absolute';
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = `repeat(${cols}, ${btnSize}px)`;
+    container.style.gap = `${gap}px`;
+    container.style.padding = `4px`;
+    container.style.background = 'white';
+    container.style.border = '1px solid rgba(0,0,0,0.12)';
+    container.style.borderRadius = '8px';
+    container.style.boxShadow = '0 8px 24px rgba(0,0,0,0.16)';
+    container.style.zIndex = '10000';
+    container.style.pointerEvents = 'auto';
+
+    // Compute content Y and fallbackContentX for annotation creation
+    const featureBoard = document.querySelector('feature-board');
+    const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+    const { scrollTop } = this._getScrollOffsets();
+    const contentY = (clientY - (boardRect.top || 0)) + (scrollTop || 0);
+    const fallbackContentX = (typeof contentX !== 'undefined' && contentX !== null) ? contentX : (clientX - (boardRect.left || 0));
+
+    ICONS.forEach((ic, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'icon-picker-btn';
+      btn.textContent = ic;
+      btn.style.width = `${btnSize}px`;
+      btn.style.height = `${btnSize}px`;
+      btn.style.display = 'flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+      btn.style.fontSize = '20px';
+      btn.style.border = '1px solid rgba(0,0,0,0.04)';
+      btn.style.borderRadius = '4px';
+      btn.style.background = 'white';
+      btn.style.cursor = 'pointer';
+      btn.style.padding = '0';
+      btn.dataset.icon = ic;
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        this._hideIconPicker();
+        const dateMs = this._contentXToDateMs(fallbackContentX);
+        const iconAnn = createIconAnnotation(dateMs, contentY, ic, { size: 18 });
+        this._state.add(iconAnn);
+        this._state.select(iconAnn.id);
+        this._updateSvg();
+      });
+      container.appendChild(btn);
+    });
+
+    // Position: upper-left corner + half button height at mouse click point
+    // That means placement where container.left = clientX, container.top = clientY - btnSize/2
+    const pageX = clientX;
+    const pageY = clientY - Math.round(btnSize / 2);
+
+    // Place inside app container if available to respect stacking context
+    const appHost = document.querySelector('.app-container');
+    if (appHost) {
+      const hostRect = appHost.getBoundingClientRect();
+      container.style.left = `${Math.max(6, Math.round(pageX - hostRect.left))}px`;
+      container.style.top = `${Math.max(6, Math.round(pageY - hostRect.top))}px`;
+      appHost.appendChild(container);
+    } else {
+      container.style.position = 'fixed';
+      container.style.left = `${Math.max(6, Math.round(pageX))}px`;
+      container.style.top = `${Math.max(6, Math.round(pageY))}px`;
+      document.body.appendChild(container);
+    }
+
+    // Clamp to viewport: if overflow, nudge left/up as needed
+    const clampRect = container.getBoundingClientRect();
+    const vw = window.innerWidth; const vh = window.innerHeight;
+    let adjustX = 0; let adjustY = 0;
+    if (clampRect.right > vw - 8) adjustX = vw - 8 - clampRect.right;
+    if (clampRect.bottom > vh - 8) adjustY = vh - 8 - clampRect.bottom;
+    if (adjustX !== 0 || adjustY !== 0) {
+      container.style.left = `${Math.max(6, (parseInt(container.style.left || '0', 10) + adjustX))}px`;
+      container.style.top = `${Math.max(6, (parseInt(container.style.top || '0', 10) + adjustY))}px`;
+    }
+
+    const onDocClick = (ev) => { if (!container.contains(ev.target)) this._hideIconPicker(); };
+    container._onDocClick = onDocClick;
+    setTimeout(() => window.addEventListener('mousedown', onDocClick), 0);
+    // Keyboard: Esc closes
+    const onKey = (ev) => { if (ev.key === 'Escape') this._hideIconPicker(); };
+    container._onKey = onKey;
+    window.addEventListener('keydown', onKey);
+
+    this._iconPickerEl = container;
+    this._iconPickerTarget = { contentX, pageX: container.style.left, pageY: container.style.top };
+  }
+
+  _hideIconPicker() {
+    if (this._iconPickerEl) {
+      try { window.removeEventListener('mousedown', this._iconPickerEl._onDocClick); } catch (e) {}
+      try {
+        const p = this._iconPickerEl.parentNode;
+        if (p) p.removeChild(this._iconPickerEl);
+      } catch (e) {}
+      this._iconPickerEl = null;
+      this._iconPickerTarget = null;
     }
   }
 
@@ -940,6 +1124,14 @@ export class AnnotationOverlay extends LitElement {
         this._state.add(line);
         this._state.select(line.id);
       }
+    } else if (tool === TOOLS.ICON) {
+      // Place a single icon at the click/start position (icons are fixed-size)
+      const contentPos = startContentX ?? startX;
+      const dateMs = this._contentXToDateMs(contentPos);
+      const iconChar = this._state.currentIcon || this._currentIcon || '⭐';
+      const iconAnn = createIconAnnotation(dateMs, startY, iconChar, { size: 18 });
+      this._state.add(iconAnn);
+      this._state.select(iconAnn.id);
     }
     
     this._drawState = null;
@@ -1255,6 +1447,10 @@ export class AnnotationOverlay extends LitElement {
 
   setTool(tool) {
     this._state.setTool(tool);
+  }
+
+  setIcon(icon) {
+    this._currentIcon = icon;
   }
 
   setColor(color) {
