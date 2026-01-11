@@ -10,7 +10,9 @@ export {
   wrapText,
   generateFilename,
   svgToPngBlob,
-  downloadBlob
+  downloadBlob,
+  copySvgToClipboard,
+  copyPngBlobToClipboard
 } from './ExportUtils.js';
 
 export {

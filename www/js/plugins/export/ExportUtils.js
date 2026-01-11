@@ -199,3 +199,60 @@ export function downloadBlob(blob, filename) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
+
+    /**
+     * Copy SVG element as text to clipboard (fallback for copying SVG markup)
+     * @param {SVGElement} svg
+     * @returns {Promise<void>}
+     */
+    export async function copySvgToClipboard(svg) {
+        const serializer = new XMLSerializer();
+        const svgString = serializer.serializeToString(svg);
+
+        const hasClipboard = !!(navigator.clipboard);
+        const hasClipboardItem = !!(window.ClipboardItem);
+
+        const supportsType = (mime) => {
+            try {
+                if (!hasClipboardItem) return false;
+                if (typeof window.ClipboardItem.supports === 'function') {
+                    return window.ClipboardItem.supports(mime);
+                }
+                // If supports() isn't available, be permissive and return true so we can try
+                return true;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        // 1) Preferred: write as image/svg+xml when supported
+        if (hasClipboard && hasClipboardItem && supportsType('image/svg+xml')) {
+            try {
+                const blob = new Blob([svgString], { type: 'image/svg+xml' });
+                await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                return;
+            } catch (err) {
+                console.warn('[ExportUtils] write image/svg+xml to clipboard unsupported on this browser:', err);
+            }
+        }
+        throw new Error('Clipboard API not available');
+    }
+
+    /**
+     * Copy PNG Blob to clipboard (requires ClipboardItem support)
+     * @param {Blob} pngBlob
+     * @returns {Promise<void>}
+     */
+    export async function copyPngBlobToClipboard(pngBlob) {
+        try {
+            if (navigator.clipboard && window.ClipboardItem) {
+                const item = new ClipboardItem({ 'image/png': pngBlob });
+                await navigator.clipboard.write([item]);
+                return;
+            }
+            throw new Error('Clipboard API ClipboardItem not supported');
+        } catch (err) {
+            console.warn('[ExportUtils] copyPngBlobToClipboard failed:', err);
+            throw err;
+        }
+    }
