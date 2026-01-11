@@ -119,10 +119,21 @@ export class Timeline extends LitElement {
   }
 
   _renderMonthCell(month) {
-    const label = month.toLocaleString('default', {
-      month: 'short',
-      year: '2-digit'
-    });
+    // Use short labels for normal scales, but when viewing by 'years'
+    // shorten month to single-letter to avoid wrapping in narrow cells.
+    let label;
+    if (_currentTimelineScale === 'years') {
+      // Single-letter month (first char of short month) + 2-digit year, e.g. "M26"
+      const shortMonth = month.toLocaleString('default', { month: 'short' });
+      const letter = shortMonth ? shortMonth.charAt(0) : '';
+      const y = month.toLocaleString('default', { year: '2-digit' });
+      label = `${letter}${y}`;
+    } else {
+      label = month.toLocaleString('default', {
+        month: 'short',
+        year: '2-digit'
+      });
+    }
 
     return html`
       <div 
