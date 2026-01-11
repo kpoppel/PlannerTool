@@ -500,9 +500,15 @@ export class TimelineExportRenderer {
     const annotations = annotationState.annotations;
     
     // Offset: MainGraph is above timelineSection in export
-    // Timeline header is PART of timelineSection, so no need to add TIMELINE_HEADER_HEIGHT
-    const yOffset = viewport.mainGraphHeight;
-    const xOffset = -viewport.scrollLeft;  // Subtract scroll to get export coords
+    // The export layout places the timeline header below the main graph and
+    // above the feature board. Annotations are stored relative to the
+    // timelineSection content origin (which includes the timeline header at y=0),
+    // so we must add both the main graph height AND the explicit timeline
+    // header height to align annotations with the exported board content.
+    const yOffset = viewport.mainGraphHeight + TIMELINE_HEADER_HEIGHT;
+    // X offset: subtract scrollLeft so content X coordinates map into the
+    // exported viewport (contentX + xOffset -> svg X coordinate)
+    const xOffset = -viewport.scrollLeft;
     
     for (const ann of annotations) {
       switch (ann.type) {
@@ -515,8 +521,41 @@ export class TimelineExportRenderer {
         case 'line':
           this._renderLineAnnotation(ann, xOffset, yOffset);
           break;
+        case 'icon':
+          this._renderIconAnnotation(ann, xOffset, yOffset);
+          break;
       }
     }
+  }
+
+  _renderIconAnnotation(ann, xOffset = 0, yOffset = 0) {
+    const contentX = (ann.date) ? (function(){
+      const months = getTimelineMonths() || [];
+      const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+      const boardOffset = getBoardOffset() || 0;
+      if (!months.length) return boardOffset;
+      const d = new Date(ann.date);
+      let idx = months.findIndex(m => m.getFullYear()===d.getFullYear() && m.getMonth()===d.getMonth());
+      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      const monthStart = months[idx];
+      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0).getDate();
+      const fraction = Math.max(0, Math.min(1, (d.getDate()-1) / daysInMonth));
+      return Math.round(boardOffset + (idx + fraction) * monthWidth);
+    })() : (ann.x || 0);
+
+    const x = contentX + xOffset;
+    const y = ann.y + yOffset;
+    const size = ann.size || 18;
+
+    // Skip if off-canvas
+    if (x + size < 0 || x - size > this._width) return;
+
+    const txt = createSvgText(ann.icon || '⭐', x, y + size / 2, {
+      'font-size': size,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle'
+    });
+    this._svg.appendChild(txt);
   }
 
   _renderNoteAnnotation(ann, xOffset = 0, yOffset = 0) {
