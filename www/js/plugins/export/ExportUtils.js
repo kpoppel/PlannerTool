@@ -51,6 +51,9 @@ export function getViewportBounds(options = {}) {
     };
 }
 
+// Use the same font stack as the app so exported SVG text matches in-app text
+const EXPORT_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
+
 /**
  * Create an SVG element with namespace
  * @param {string} tag - SVG tag name
@@ -74,10 +77,15 @@ export function createSvgElement(tag, attrs = {}) {
  * @returns {SVGTextElement}
  */
 export function createSvgText(text, x, y, attrs = {}) {
+    // Ensure a consistent font-family is set when not provided by caller
+    const mergedAttrs = Object.assign({
+        'font-family': EXPORT_FONT_FAMILY
+    }, attrs);
+
     const el = createSvgElement('text', {
         x: String(x),
         y: String(y),
-        ...attrs
+        ...mergedAttrs
     });
     el.textContent = text;
     return el;
