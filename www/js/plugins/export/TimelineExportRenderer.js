@@ -60,19 +60,19 @@ export class TimelineExportRenderer {
    * @returns {Promise<void>}
    */
   async exportToPng(options = {}) {
-    const { includeAnnotations = true, scrollLeft, scrollTop } = options;
+    const { includeAnnotations = true, includeDependencies = true, scrollLeft, scrollTop } = options;
     
     try {
       // Build the SVG
-      const svg = await this.buildExportSvg({ includeAnnotations, scrollLeft, scrollTop });
+      const svg = await this.buildExportSvg({ includeAnnotations, includeDependencies, scrollLeft, scrollTop });
       
       // Convert to PNG
       const blob = await svgToPngBlob(svg, this._width, this._height);
-      
-      // Download
+
+      // Download by default
       const filename = generateFilename('timeline-export', 'png');
       downloadBlob(blob, filename);
-      
+
       return { success: true, filename };
     } catch (error) {
       console.error('[TimelineExportRenderer] Export failed:', error);
@@ -86,7 +86,7 @@ export class TimelineExportRenderer {
    * @returns {Promise<SVGElement>}
    */
   async buildExportSvg(options = {}) {
-    const { includeAnnotations = true, scrollLeft, scrollTop } = options;
+    const { includeAnnotations = true, includeDependencies = true, scrollLeft, scrollTop } = options;
     
     // Get viewport bounds, with optional scroll position override
     const viewport = getViewportBounds({ scrollLeft, scrollTop });
@@ -129,7 +129,7 @@ export class TimelineExportRenderer {
     this._renderFeatureCards(boardY, viewport);
     
     // Layer 5: Dependency lines
-    this._renderDependencies(boardY, viewport);
+    this._renderDependencies(boardY, viewport, includeDependencies);
     
     // Layer 6: Annotations (if enabled)
     if (includeAnnotations) {
@@ -137,6 +137,27 @@ export class TimelineExportRenderer {
     }
     
     return this._svg;
+  }
+
+  /**
+   * Build SVG and return the SVG element (public)
+   * @param {Object} options
+   * @returns {Promise<SVGElement>}
+   */
+  async getExportSvg(options = {}) {
+    // Ensure buildExportSvg sets internal width/height
+    return this.buildExportSvg(options);
+  }
+
+  /**
+   * Return PNG blob for given options without downloading
+   * @param {Object} options
+   * @returns {Promise<Blob>}
+   */
+  async exportToPngBlob(options = {}) {
+    const svg = await this.buildExportSvg(options);
+    const blob = await svgToPngBlob(svg, this._width, this._height);
+    return blob;
   }
 
   // --------------------------------------------------------------------------
@@ -392,9 +413,11 @@ export class TimelineExportRenderer {
   /**
    * Render dependency lines between cards
    */
-  _renderDependencies(yOffset, viewport) {
-    // Respect view setting: if dependencies are hidden in the view, don't export them
-    if (!state.showDependencies) return;
+  _renderDependencies(yOffset, viewport, includeDependencies = undefined) {
+    // If the caller explicitly requests dependencies disabled, skip rendering
+    if (includeDependencies === false) return;
+    // If caller did not specify, fall back to the global view setting
+    if (includeDependencies === undefined && !state.showDependencies) return;
 
     const featureBoard = document.querySelector('feature-board');
     if (!featureBoard) return;

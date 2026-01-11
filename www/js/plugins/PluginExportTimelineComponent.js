@@ -3,14 +3,16 @@ import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { exportTimelineToPng } from './export/TimelineExportRenderer.js';
+import { exportTimelineToPng, getExportRenderer } from './export/TimelineExportRenderer.js';
+import { copyPngBlobToClipboard } from './export/ExportUtils.js';
 
 export class PluginExportTimeline extends LitElement {
   static properties = { 
     visible: { type: Boolean },
     exporting: { type: Boolean },
     includeAnnotations: { type: Boolean },
-    annotationsAvailable: { type: Boolean }
+    annotationsAvailable: { type: Boolean },
+    includeDependencies: { type: Boolean }
   };
   
   constructor(){ 
@@ -18,6 +20,7 @@ export class PluginExportTimeline extends LitElement {
     this.visible = false;
     this.exporting = false;
     this.includeAnnotations = true;
+    this.includeDependencies = true;
     this.annotationsAvailable = false;
     this._annotationState = null;
   }
@@ -63,14 +66,18 @@ export class PluginExportTimeline extends LitElement {
     }
     
     .panel { 
-      width: 520px; 
+      width: 200px; 
       max-width: 95%; 
       background: #fff; 
       box-shadow: 0 8px 30px rgba(0,0,0,0.2); 
-      padding: 20px; 
-      margin: 40px auto; 
+      padding: 16px; 
+      margin: 0; 
       border-radius: 8px;
       pointer-events: auto; /* panel should handle pointer events */
+      position: fixed;
+      top: 56px;
+      right: 16px;
+      z-index: 200;
     }
     
     .panel h3 {
@@ -103,26 +110,54 @@ export class PluginExportTimeline extends LitElement {
     .row { 
       display: flex; 
       gap: 8px; 
-      align-items: center;
-      flex-wrap: wrap;
+      align-items: stretch;
+      flex-wrap: nowrap;
+      flex-direction: column;
     }
+
+    /* Chip-style toggles (matches sidebar chips) */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(0,0,0,0.06);
+      color: #333;
+      background: #f3f4f6; /* pale grey when not active */
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+      justify-content: flex-start;
+      width: 100%;
+    }
+      /* Active state: soft amber fill with dark text (calm) */
+      .chip.active { background: var(--chip-active-bg, #FFECB3); color: var(--chip-active-text, #5A3A00); border-color: var(--chip-active-bg, #FFECB3); }
+      .chip .chip-badge { background: rgba(0,0,0,0.06); color: inherit; padding: 2px 8px; border-radius: 12px; font-weight:600; font-size:12px; }
+      /* Force badge to the right regardless of DOM order */
+      .chip > .chip-badge { order: 2; margin-left: auto; }
+      .chip > span:not(.chip-badge) { order: 1; }
+      /* Check indicator shown only when active */
+      .chip .chip-check { display: none; font-size: 12px; margin-right: 4px; color: var(--chip-active-text, #5A3A00); }
+      .chip.active .chip-check { display: inline-flex; }
     
     button {
-      padding: 8px 16px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #fff;
+      padding: 6px 12px;
+      border-radius: 16px;
+      background: var(--color-sidebar-bg, rgba(35, 52, 77, 1));
+      border: 1px solid rgba(0,0,0,0.06);
+      color: var(--color-sidebar-text, #ffffff);
       cursor: pointer;
       font-size: 13px;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       transition: all 0.15s ease;
+      justify-content: flex-start;
     }
     
     button:hover {
-      background: #f5f5f5;
-      border-color: #ccc;
+      filter: brightness(1.05);
     }
     
     button:active {
@@ -130,9 +165,9 @@ export class PluginExportTimeline extends LitElement {
     }
     
     button.primary {
-      background: #2196F3;
-      border-color: #1976D2;
-      color: white;
+      background: white;
+      border-color: #fff;
+      color: #23344d;
     }
     
     button.primary:hover {
@@ -148,6 +183,7 @@ export class PluginExportTimeline extends LitElement {
     .btn-icon {
       font-size: 16px;
       line-height: 1;
+      width: 22px; display:inline-flex; align-items:center; justify-content:center;
     }
     
     .info-text {
@@ -188,22 +224,44 @@ export class PluginExportTimeline extends LitElement {
         <div class="section">
           <div class="section-title">Image Export</div>
           <div class="row">
-            <button class="primary" @click="${this._exportPng}" ?disabled="${this.exporting}">
+            <button class="button" @click="${this._exportPng}" ?disabled="${this.exporting}">
               <span class="btn-icon">📷</span>
               ${this.exporting ? 'Exporting...' : 'Export PNG'}
             </button>
-          </div>
-          ${showAnnotationOption ? html`
-            <div class="checkbox-row">
-              <input 
-                type="checkbox" 
-                id="includeAnnotations"
-                .checked="${this.includeAnnotations}"
-                @change="${this._toggleIncludeAnnotations}"
-              />
-              <label for="includeAnnotations">Include annotations (${annotationCount})</label>
+            <button @click="${this._downloadSvg}" ?disabled="${this.exporting}">
+              <span class="btn-icon">🖼️</span>
+              Export SVG
+            </button>
+            <button @click="${this._copyPng}" ?disabled="${this.exporting}">
+              <span class="btn-icon">📋</span>
+              Copy PNG
+            </button>
+
+            <div class="info-text">
+              Include:
             </div>
-          ` : ''}
+            ${showAnnotationOption ? html`
+              <button
+                class="chip ${this.includeAnnotations ? 'active' : ''}"
+                @click="${this._toggleIncludeAnnotations}"
+                aria-pressed="${this.includeAnnotations}"
+                title="Toggle annotations"
+              >
+              <span class="chip-badge">${this.includeAnnotations ? 'On' : 'Off'}</span>
+                <span>Annotations (${annotationCount})</span>
+              </button>
+            ` : ''}
+
+            <button
+              class="chip ${this.includeDependencies ? 'active' : ''}"
+              @click="${this._toggleIncludeDependencies}"
+              aria-pressed="${this.includeDependencies}"
+              title="Toggle dependency relations"
+            >
+              <span class="chip-badge">${this.includeDependencies ? 'On' : 'Off'}</span>
+              <span>Dependencies</span>
+            </button>
+          </div>
           <div class="info-text">
             PNG export captures the visible timeline viewport with full vertical board content.
           </div>
@@ -285,7 +343,21 @@ export class PluginExportTimeline extends LitElement {
   }
   
   _toggleIncludeAnnotations(e) {
-    this.includeAnnotations = e.target.checked;
+    if (e && e.target && typeof e.target.checked === 'boolean') {
+      this.includeAnnotations = e.target.checked;
+    } else {
+      this.includeAnnotations = !this.includeAnnotations;
+    }
+    this.requestUpdate();
+  }
+
+  _toggleIncludeDependencies(e) {
+    if (e && e.target && typeof e.target.checked === 'boolean') {
+      this.includeDependencies = e.target.checked;
+    } else {
+      this.includeDependencies = !this.includeDependencies;
+    }
+    this.requestUpdate();
   }
 
   // --- PNG Export ---
@@ -303,12 +375,65 @@ export class PluginExportTimeline extends LitElement {
 
       await exportTimelineToPng({
         includeAnnotations,
+        includeDependencies: this.includeDependencies,
         scrollLeft: currentScrollLeft,
         scrollTop: currentScrollTop
       });
     } catch (e) {
       console.error('[PluginExportTimeline] PNG export failed:', e);
       alert('Export failed. Check console for details.');
+    } finally {
+      this.exporting = false;
+    }
+  }
+
+
+
+  async _downloadSvg() {
+    this.exporting = true;
+    try {
+      const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
+      const timelineSection = document.getElementById('timelineSection');
+      const featureBoard = document.querySelector('feature-board');
+      const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
+      const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
+
+      const renderer = getExportRenderer();
+      const svg = await renderer.getExportSvg({ includeAnnotations, includeDependencies: this.includeDependencies, scrollLeft: currentScrollLeft, scrollTop: currentScrollTop });
+
+      // Serialize and download
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg);
+      const filename = 'timeline-export.svg';
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('[PluginExportTimeline] Download SVG failed:', e);
+      alert('Download SVG failed. See console for details.');
+    } finally {
+      this.exporting = false;
+    }
+  }
+
+  async _copyPng() {
+    this.exporting = true;
+    try {
+      const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
+      const timelineSection = document.getElementById('timelineSection');
+      const featureBoard = document.querySelector('feature-board');
+      const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
+      const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
+
+      const renderer = getExportRenderer();
+      const blob = await renderer.exportToPngBlob({ includeAnnotations, includeDependencies: this.includeDependencies, scrollLeft: currentScrollLeft, scrollTop: currentScrollTop });
+
+      await copyPngBlobToClipboard(blob);
+      alert('PNG image copied to clipboard');
+    } catch (e) {
+      console.error('[PluginExportTimeline] Copy PNG failed:', e);
+      alert('Copy PNG failed. Your browser may not support copying images to clipboard.');
     } finally {
       this.exporting = false;
     }
