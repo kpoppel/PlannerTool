@@ -200,6 +200,161 @@ export class DetailsPanelLit extends LitElement {
       border-radius: 4px;
       font-size: 11px;
     }
+    .details-changed { background: #fadd92ff; }
+    .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
+    .details-revert { background: transparent; border: 1px solid #ccc; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .original-date { color: #666; font-size: 12px; margin-left: 6px; }
+    .details-close { position: absolute; right: 18px; top: 18px; cursor: pointer; border: none; background: transparent; font-size: 18px; }
+    .team-load-box { padding: 4px 8px; border-radius: 6px; color: white; font-weight: 600; margin-right: 6px; font-size: 12px; }
+    .azure-relations-list { list-style: none; padding: 0; margin: 0; }
+    /* Capacity Progress Bars */
+    .capacity-section { margin-top: 12px; }
+    .capacity-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .capacity-bar-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+    }
+    .capacity-bar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 16px;
+    }
+    .capacity-bar-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+    .capacity-bar-delete {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 1.5px solid #dc3545;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 10px;
+      line-height: 1;
+      opacity: 0.7;
+      transition: all 0.2s ease;
+    }
+    .capacity-bar-row:hover .capacity-bar-delete {
+      display: flex;
+    }
+    .capacity-bar-delete:hover {
+      background: #dc3545 !important;
+      opacity: 1;
+    }
+    .capacity-bar-delete:hover::before {
+      color: #ffffff;
+    }
+    .capacity-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 18px;
+    }
+    .capacity-bar-bg {
+      flex: 1;
+      height: 18px;
+      background: #e9ecef;
+      border-radius: 9px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow 0.2s ease;
+    }
+    .capacity-bar-row:hover .capacity-bar-bg {
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+    }
+    .capacity-bar-fill {
+      height: 100%;
+      border-radius: 9px;
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .capacity-bar-label {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .capacity-bar-input-container {
+      flex: 0 0 auto;
+      position: relative;
+    }
+    .capacity-bar-input {
+      width: 50px;
+      height: 14px;
+      padding: 2px 4px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.9);
+      font-family: monospace;
+      font-size: 10px;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+      cursor: text;
+      transition: border-color 0.2s ease;
+    }
+    .capacity-bar-input:focus {
+      border-color: #3498db;
+      border-width: 2px;
+      background: white;
+    }
+    .capacity-bar-input::-webkit-outer-spin-button,
+    .capacity-bar-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .add-team-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .add-team-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 18px;
+      border: 1.5px dashed #3498db;
+      border-radius: 9px;
+      background: white;
+      color: #3498db;
+      font-weight: 600;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 8px;
+    }
+    .add-team-btn:hover {
+      background: #f0f8ff;
+      border-color: #2980b9;
+    }
+    .add-team-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+    .add-team-form select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 11px;
+    }
     .add-team-form-input-row {
       display: flex;
       gap: 8px;
@@ -289,6 +444,8 @@ export class DetailsPanelLit extends LitElement {
     this.showAddTeamPopover = false; // Track if add team popover is visible
     this._onShow = this._onShow.bind(this);
   }
+
+  // Note: use component's shadow DOM (default) so component styles apply correctly
 
   /**
    * Strip [PlannerTool Team Capacity] block from description HTML for display.
@@ -388,6 +545,47 @@ export class DetailsPanelLit extends LitElement {
     this.feature = feature;
     this.open = true;
     this.requestUpdate();
+  }
+
+  async _shrinkwrapEpic(e){
+    e && e.stopPropagation();
+    if(!this.feature) return;
+    const f = this.feature;
+    if(f.type !== 'epic') return;
+
+    try{
+      // childrenByEpic uses baseline ids as keys; try both string/number
+      const childIds = state.childrenByEpic.get(f.id) || state.childrenByEpic.get(String(f.id)) || state.childrenByEpic.get(Number(f.id)) || [];
+      if(!childIds || !childIds.length) return;
+
+      // Use effective feature dates (respecting active scenario overrides)
+      let minStartMs = null;
+      let maxEndMs = null;
+      for(const cid of childIds){
+        const eff = state.getEffectiveFeatureById(cid);
+        if(!eff) continue;
+        const s = eff.start;
+        const e = eff.end;
+        if(s){
+          const sMs = Date.parse(s);
+          if(!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
+        }
+        if(e){
+          const eMs = Date.parse(e);
+          if(!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
+        }
+      }
+      if(minStartMs === null || maxEndMs === null) return;
+
+      const toIsoDate = (ms) => new Date(ms).toISOString().slice(0,10);
+      const newStart = toIsoDate(minStartMs);
+      const newEnd = toIsoDate(maxEndMs);
+
+      // Use state.updateFeatureDates to update both start and end together
+      state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
+    }catch(err){
+      console.error('Shrinkwrap epic failed', err);
+    }
   }
 
   hide(){ this.open = false; this.requestUpdate(); }
@@ -667,6 +865,10 @@ export class DetailsPanelLit extends LitElement {
       }
     } catch(e){ relationsTemplate = html`<div class="details-value">—</div>`; }
 
+    if (feature && feature.type && String(feature.type).toLowerCase() === 'epic') {
+      console.debug('[DetailsPanel] rendering shrinkwrap button for epic', feature.id);
+    }
+
     return html`
       <div class="panel">
         <div class="details-header">
@@ -680,8 +882,36 @@ export class DetailsPanelLit extends LitElement {
         </div>
         <div class="details-content">
           ${this._renderField('Assignee','assignee', feature.assignee)}
-          ${this._renderField('Start Date','start', feature.start)}
-          ${this._renderField('End Date','end', feature.end)}
+          ${(() => {
+            // stacked dates section
+            const orig = feature.original || {};
+            const startOrig = orig.start;
+            const endOrig = orig.end;
+            const startChanged = startOrig !== undefined && feature.start !== startOrig;
+            const endChanged = endOrig !== undefined && feature.end !== endOrig;
+              return html`
+                <div class="details-label">Dates</div>
+                <div style="display:flex;flex-direction:row;gap:12px;align-items:flex-start;">
+                  <div style="flex:1;min-width:0;">
+                    <div class="details-label">Start</div>
+                    <div class="details-value ${startChanged ? 'details-changed' : ''}">${feature.start || '—'}</div>
+                    ${startChanged ? html`<div class="original-date">(was ${startOrig})</div>` : ''}
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    <div class="details-label">End</div>
+                    <div class="details-value ${endChanged ? 'details-changed' : ''}">${feature.end || '—'}</div>
+                    ${endChanged ? html`<div class="original-date">(was ${endOrig})</div>` : ''}
+                  </div>
+                </div>
+              ${feature && feature.type && String(feature.type).toLowerCase() === 'epic' ? html`<div style="margin-top:8px;"><button data-test="shrinkwrap-chip" class="chip" @click=${(e)=>this._shrinkwrapEpic(e)} title="Shrinkwrap epic to children" aria-label="Shrinkwrap epic to children" style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"><svg width="20" height="16" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" style="flex:0 0 auto;">
+                        <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor" />
+                        <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor" />
+                        <polygon points="6.5,4 10,8 6.5,12" fill="currentColor" />
+                        <polygon points="13.5,4 10,8 13.5,12" fill="currentColor" />
+                        <rect x="9" y="7.2" width="2" height="1.6" fill="currentColor" />
+                    </svg><span style="display:inline-block;line-height:1;">Shink Epic</span></button></div>` : ''}
+              `;
+          })()}
           
           <div class="capacity-section">
             <div class="details-label">Allocated Capacity:</div>
