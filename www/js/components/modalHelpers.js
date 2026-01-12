@@ -33,6 +33,14 @@ export const openHelpModal = async (opts={ parent: document.body }) => {
   });
 };
 
+export const openOnboardingModal = async (opts={ parent: document.body }) => {
+  const { el, cleanup } = await _createModal('./OnboardingModal.lit.js', 'onboarding-modal', { parent: opts.parent });
+  return new Promise(resolve => {
+    const onClose = (e) => { cleanup(e, [['modal-close', onClose]]); resolve(e?.detail ?? null); };
+    el.addEventListener('modal-close', onClose);
+  });
+};
+
 export const openAzureDevopsModal = async ({ overrides = {}, state = null, parent = document.body } = {}) => {
   const { el, cleanup } = await _createModal('./AzureDevopsModal.lit.js', 'azure-devops-modal', { parent, attrs: { overrides, state } });
   return new Promise(resolve => {
