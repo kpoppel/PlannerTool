@@ -154,30 +154,43 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
         
         const img = new Image();
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = width * scale;
-            canvas.height = height * scale;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.scale(scale, scale);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            URL.revokeObjectURL(url);
-            
-            canvas.toBlob(blob => {
-                if (blob) {
-                    resolve(blob);
-                } else {
-                    reject(new Error('Failed to create PNG blob'));
-                }
-            }, 'image/png');
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = width * scale;
+                canvas.height = height * scale;
+
+                const ctx = canvas.getContext('2d');
+                ctx.scale(scale, scale);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Ensure the object URL is revoked even if toBlob is async
+                URL.revokeObjectURL(url);
+
+                canvas.toBlob(blob => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Failed to create PNG blob'));
+                    }
+                }, 'image/png');
+            } catch (err) {
+                // Revoke URL and reject with a helpful message so callers can show an alert
+                try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+                const msg = 'Canvas operation failed during PNG creation — the export may be too large for your browser. Try showing fewer items and try again.';
+                const wrapped = new Error(msg + (err && err.message ? ` (${err.message})` : ''));
+                wrapped.originalError = err;
+                reject(wrapped);
+            }
         };
-        
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('Failed to load SVG as image'));
+
+        img.onerror = (ev) => {
+            try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+            const msg = 'Failed to load SVG as image — export may be too large or malformed.';
+            const err = new Error(msg);
+            err.event = ev;
+            reject(err);
         };
         
         img.src = url;
