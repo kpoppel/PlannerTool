@@ -107,6 +107,15 @@ async function init(){
 
     // Initialize complete
     hideModal();
+    // Show onboarding on first use if no stored user prefs present
+    try{
+      if(typeof window !== 'undefined' && window.localStorage){
+        const seen = localStorage.getItem('az_planner:onboarding_seen');
+        if(!seen){
+          try{ const mh = await import('./components/modalHelpers.js'); mh.openOnboardingModal(); }catch(e){ /* ignore */ }
+        }
+      }
+    }catch(e){}
     bus.emit(AppEvents.READY);
   } catch(e) {
     hideModal();
