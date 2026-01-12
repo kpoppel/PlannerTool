@@ -20,18 +20,31 @@ function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, 
   return btn;
 }
 
-function renderToggle(container, label, getCurrent, setter){
-  const group = document.createElement('div'); group.className='chip-group';
+function renderToggle(container, label, getCurrent, setter, extraAttributes={}){
+  // extraAttributes: {name: value}
+  const group = document.createElement('div');
+  group.className='chip-group ';
+  // Apply extra attributes to group div if provided
+  if(typeof extraAttributes === 'object' && extraAttributes !== null){
+    Object.entries(extraAttributes).forEach(([attrName, attrValue]) => {
+      if(attrName && attrValue){
+        group.setAttribute(attrName, attrValue);
+      }
+    });
+  }
   const current = !!getCurrent();
   const chip = makeChip(label, { active: current, onClick: ()=> setter(!getCurrent()), ariaPressed: current });
   group.appendChild(chip);
   container.appendChild(group);
 }
 
-function renderRadioGroup(container, label, options){
+function renderRadioGroup(container, label, options, extraAttributes=[]){
   const wrapper = document.createElement('div');
+  if (extraAttributes.length > 0) wrapper.setAttribute(extraAttributes[0], extraAttributes[1]);
+  console.log(extraAttributes.length);
   const title = document.createElement('div'); title.className='group-label'; title.textContent = label;
   const group = document.createElement('div'); group.className='chip-group'; group.setAttribute('role','radiogroup');
+
   options.forEach(opt => {
     const chip = makeChip(opt.label, { active: !!opt.active, onClick: opt.onClick, role:'radio', ariaChecked: !!opt.active });
     group.appendChild(chip);
@@ -40,8 +53,9 @@ function renderRadioGroup(container, label, options){
   container.appendChild(wrapper);
 }
 
-function renderMultiSelect(container, label, options){
+function renderMultiSelect(container, label, options, extraAttributes=[]){
   const wrapper = document.createElement('div');
+  if (extraAttributes.length > 0) wrapper.setAttribute(extraAttributes[0], extraAttributes[1]);
   const title = document.createElement('div'); title.className='group-label'; title.textContent = label;
   const group = document.createElement('div'); group.className='chip-group';
   options.forEach(opt => {
@@ -128,49 +142,64 @@ export function initViewOptions(container){
   const root = container || document.getElementById('viewOptionsContainer');
   if(!root) return;
   root.innerHTML = '';
-  
-  // Timeline Scale - segmented control for zoom levels
+
+  // Timeline Scale - segmented control for zoom levels (wrap so Shepherd can attach)
   const currentScale = state._viewService.timelineScale;
-  renderSegmentedControl(root, 'Timeline Scale', [
+  const zoomSection = document.createElement('div');
+  zoomSection.setAttribute('data-tour','zoom');
+  renderSegmentedControl(zoomSection, 'Timeline Scale', [
     { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
     { label: '3 Months', active: currentScale === 'threeMonths', onClick: () => state._viewService.setTimelineScale('threeMonths') },
     { label: 'Months', active: currentScale === 'months', onClick: () => state._viewService.setTimelineScale('months') },
     { label: 'Quarters', active: currentScale === 'quarters', onClick: () => state._viewService.setTimelineScale('quarters') },
     { label: 'Years', active: currentScale === 'years', onClick: () => state._viewService.setTimelineScale('years') }
   ]);
-  
+  root.appendChild(zoomSection);
+
   // Condensed cards - use ViewService directly
   renderToggle(root, 'Condensed', 
     ()=> state._viewService.condensedCards, 
-    (val)=> state._viewService.setCondensedCards(val)
+    (val)=> state._viewService.setCondensedCards(val),
+    {"data-tour": "condensed-view"}
   );
   // Dependencies - use ViewService directly
   renderToggle(root, 'Dependencies', 
     ()=> state._viewService.showDependencies, 
-    (val)=> state._viewService.setShowDependencies(val)
+    (val)=> state._viewService.setShowDependencies(val),
+    {"data-tour": "dependency-renderer"}
   );
   // Show Unassigned Cards - use ViewService directly
   renderToggle(root, 'Show Unassigned', 
     ()=> state._viewService.showUnassignedCards, 
-    (val)=> state._viewService.setShowUnassignedCards(val)
+    (val)=> state._viewService.setShowUnassignedCards(val),
+    {"data-tour": "unassigned-view"}
   );
   // Show Unplanned Work - only when feature flag is enabled
   if (featureFlags.SHOW_UNPLANNED_WORK) {
     renderToggle(root, 'Show Unplanned', 
       ()=> state._viewService.showUnplannedWork, 
-      (val)=> state._viewService.setShowUnplannedWork(val)
+      (val)=> state._viewService.setShowUnplannedWork(val),
+      {"data-tour": "unplanned-view"}
     );
   }
-  // Capacity selector + Open Graph action (moved here)
+  // Capacity selector + Open Graph action
   const capWrapper = document.createElement('div');
-  const capTitle = document.createElement('div'); capTitle.className = 'group-label'; capTitle.textContent = 'Capacity:';
-  const capGroup = document.createElement('div'); capGroup.className = 'chip-group'; capGroup.setAttribute('role','radiogroup');
+  capWrapper.setAttribute('data-tour','capacity-view');
+  const capTitle = document.createElement('div');
+  capTitle.className = 'group-label';
+  capTitle.textContent = 'Capacity:';
+
+  const capGroup = document.createElement('div');
+  capGroup.className = 'chip-group';
+  capGroup.setAttribute('role','radiogroup');
+
   const teamChip = makeChip('Team', { 
     active: state._viewService.capacityViewMode==='team', 
     onClick: ()=> state._viewService.setCapacityViewMode('team'), 
     role:'radio', 
     ariaChecked: state._viewService.capacityViewMode==='team' 
   });
+
   const projectChip = makeChip('Project', { 
     active: state._viewService.capacityViewMode==='project', 
     onClick: ()=> state._viewService.setCapacityViewMode('project'), 
@@ -180,19 +209,27 @@ export function initViewOptions(container){
   capGroup.appendChild(teamChip); capGroup.appendChild(projectChip);
   capWrapper.appendChild(capTitle); capWrapper.appendChild(capGroup);
   root.appendChild(capWrapper);
-  // Sort mode - use ViewService directly
+
+  // Sort mode
   renderRadioGroup(root, 'Sort', [
     { label:'Rank', active: state._viewService.featureSortMode==='rank', onClick: ()=> state._viewService.setFeatureSortMode('rank') },
-    { label:'Date', active: state._viewService.featureSortMode==='date', onClick: ()=> state._viewService.setFeatureSortMode('date') },
-  ]);
-  // Task types - use ViewService directly
+    { label:'Date', active: state._viewService.featureSortMode==='date', onClick: ()=> state._viewService.setFeatureSortMode('date') }
+  ], ['data-tour', 'sort-view']);
+
+  // Task types
   renderMultiSelect(root, 'Task Types', [
     { label:'Epics', active: state._viewService.showEpics, onClick: ()=> state._viewService.setShowEpics(!state._viewService.showEpics) },
-    { label:'Features', active: state._viewService.showFeatures, onClick: ()=> state._viewService.setShowFeatures(!state._viewService.showFeatures) },
-  ]);
+    { label:'Features', active: state._viewService.showFeatures, onClick: ()=> state._viewService.setShowFeatures(!state._viewService.showFeatures) }
+  ], ['data-tour', 'tasktypes-view']);
+
   // State filter
-  renderStateFilter(root);
+  const stateFilterContainer = document.createElement('div');
+  // Mark the state filter wrapper with a tour anchor so Shepherd can attach
+  stateFilterContainer.setAttribute('data-tour','state-filters');
+  renderStateFilter(stateFilterContainer);
+  root.appendChild(stateFilterContainer);
 }
+
 function reinit(){
   const node = document.getElementById('viewOptionsContainer');
   if(!node) return;

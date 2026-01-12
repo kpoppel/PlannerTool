@@ -467,8 +467,8 @@ export class SidebarLit extends LitElement {
           <div class="sidebar-section-collapsed"><div id="viewOptionsContainer"></div></div>
         </section>
 
-        <section class="sidebar-section" id="projectsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Planning</span></div>
+        <section class="sidebar-section" id="projectsSection" data-tour="planning">
+          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Plans</span></div>
           <div>
             <div class="counts-header" aria-hidden="true">
                   <span></span>
@@ -483,7 +483,7 @@ export class SidebarLit extends LitElement {
           </div>
         </section>
 
-        <section class="sidebar-section" id="teamsSection">
+        <section class="sidebar-section" id="teamsSection" data-tour="allocations">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
           <div>
               <div class="counts-header" aria-hidden="true">
@@ -499,14 +499,14 @@ export class SidebarLit extends LitElement {
           </div>
         </section>
 
-        <section class="sidebar-section" id="scenariosSection">
+        <section class="sidebar-section" id="scenariosSection" data-tour="scenarios">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
           <div>
             <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
           </div>
         </section>
 
-        <section class="sidebar-section" id="toolsSection">
+        <section class="sidebar-section" id="toolsSection" data-tour="tools">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
           <div>
             <ul class="sidebar-list" id="toolsList">${this._renderPluginButtons()}</ul>
@@ -517,8 +517,8 @@ export class SidebarLit extends LitElement {
         <section class="sidebar-config">
           <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
           <div class="config-row" style="display:flex;gap:8px;margin-top:6px;">
-            <button id="openConfigBtn" @click=${()=>this._openConfig()}>⚙️</button>
-            <button id="openHelpBtn" @click=${()=>this._openHelp()}>❓</button>
+            <button id="openConfigBtn" data-tour="gear" @click=${()=>this._openConfig()}>⚙️</button>
+            <button id="openHelpBtn" data-tour="help" @click=${()=>this._openHelp()}>❓</button>
           </div>
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
           <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025 Kim Poulsen</div>

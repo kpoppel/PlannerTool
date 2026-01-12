@@ -52,11 +52,29 @@ export class HelpModal extends LitElement {
     if(innerModal){
       innerModal.open = true;
       // wire footer button to close via modal-lit so event composes
-      const footerBtn = this.renderRoot.querySelector('[slot="footer"]');
-      if(footerBtn){
-        footerBtn.addEventListener('click', ()=>{
+      // create a Replay Tour button in the footer and wire it
+      const footerSlot = this.renderRoot.querySelector('[slot="footer"]');
+      if(footerSlot){
+        // Clear existing footer content and add buttons
+        footerSlot.innerHTML = '';
+        const replay = document.createElement('button');
+        replay.id = 'helpReplayTour';
+        replay.className = 'btn';
+        replay.textContent = 'Replay Tour';
+        replay.addEventListener('click', async (e)=>{
+          e.preventDefault();
+          try{
+            const mh = await import('./modalHelpers.js');
+            if(mh && typeof mh.openTour === 'function') await mh.openTour();
+          }catch(err){ console.warn('Failed to start tour', err); }
           try{ innerModal.close(); }catch(e){ this._close(); }
         });
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'btn';
+        closeBtn.textContent = 'Close';
+        closeBtn.addEventListener('click', ()=>{ try{ innerModal.close(); }catch(e){ this._close(); } });
+        footerSlot.appendChild(replay);
+        footerSlot.appendChild(closeBtn);
       }
     }
   }
@@ -72,6 +90,7 @@ export class HelpModal extends LitElement {
       <modal-lit ?open=${this.open} wide>
         <div slot="header"><h3>Help</h3></div>
         <div class="help-content">${this.content}</div>
+        <div slot="footer" class="modal-footer"></div>
       </modal-lit>
     `;
   }
