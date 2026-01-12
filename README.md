@@ -163,14 +163,14 @@ systemctl start plannertool
 ```
 
 # Known issues and future features
-- Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
-  Teams and projects in Azure is a floating thing. It is all tasks with an area path associated. Only the area path
-  sets projects and teams apart. In our context we should only put "Epics" in projects, and only "Features" (and below") in teams.
-  - Require clean up in Azure to streamline this.
-  - In the backend and frontend refactor so that "projects" are those with some id prefix (like 'project-') and teams with 
-    another (like "team-"). This is only to display them in different places. All other handling is the same.
-    However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
-    A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
+- feature(scenarios): Visualise difference from a saved scenario to the current Azure state
+  To do this a scenario must save the baseline it was made from.
+  Mark card which have no overrides but differs from the current baseline when an option is selected. An unmovable shadow card under the cards perhaps.
+  Add a menu option on scenarios to sync to current baseline (copy Azure stato into scenario). Shadow cards should disappear.
+  Overrides stay as-is (no shadow card).  Reset resets override to saved scenario (potentially getting a shadow)
+- feature: Add First use journey to help the user get a PAT and configure the app. Automatic reload after PAT is entered.
+- feature (stretch): Add introduction tour for first time users (or via configuration option in the config modal).
+  Overlay with "speech bubbles explaining the various parts of the app)
 - feature: Cost estimation
   Using the capacity estimation calculate this:
   1. (/) Cost per feature/Epic
@@ -182,6 +182,9 @@ systemctl start plannertool
 Next:
 
 Later:
+- (undefined) ??Highlight places with 'points of interest'?? TBD. Ideas:
+  - Places where dependency relation has start date later than successor start date
+  - Capacity over-utilised (done)
 - Feature: Make it possible to edit description in the UI
 - Feature (convenience): Make a 'shrink-wrap' feature to pull in an Epic to fir the content (change start and end date)
 - Feature (convenience): Make it possible to drag deft side of cards too
@@ -189,8 +192,26 @@ Later:
 - Feature: Allow user side specification of teams so it is not server side
 - Feature: Allow sharing and selecting which projects to load for a user (reducing load time)
 - Feature (convenience) Export mountain view data to Excel format.
+- feature(config): Allow user to select which area paths to show, and which teams to include.
+  Store user selection with user profile and only return data relevant to the user.
+  For mullti-department use: Further group teams and departments in teh server config and allow users to
+  select whole departments or pick and choose
+  Alternative: just deploy a server per department - this might be more performant anyway.
+
 
 Solved:
+- Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
+  Teams and projects in Azure is a floating thing. It is all tasks with an area path associated. Only the area path
+  sets projects and teams apart. In our context we should only put "Epics" in projects, and only "Features" (and below") in teams.
+  - Require clean up in Azure to streamline this.
+  - In the backend and frontend refactor so that "projects" are those with some id prefix (like 'project-') and teams with 
+    another (like "team-"). This is only to display them in different places. All other handling is the same.
+    However it could also just be simplified to "Projects" with each team just also being a project, like it is now.
+    A team can still participate on multiple Epics but could also more rarely participate on another team's Features.
+  -> Decision: Section renamed to "planning" there is no difference between project and team. User must use the filters and the tool
+     remains agnostic to area paths. No new semantics introduced this way.
+- (/) change(sidebar): Rename "Teams" to "Allocations", and "Projects" to "Planning" (line 487, 471)
+- (/) bug: Export of PNG for many visible items fails and is now followed by a more informative message.
 - (/) feature: add a way to export a png of the visible section of the timeline.
 - (/) feature: Move png export to 'export' plugin to export png. Default to visible timeline. Allow selecting date range.
 - (/) feature: extend 'export' plugin with export in other formats, like CSV: id, title, capacity, cost estimate
