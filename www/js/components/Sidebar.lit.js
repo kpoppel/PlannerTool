@@ -468,7 +468,7 @@ export class SidebarLit extends LitElement {
         </section>
 
         <section class="sidebar-section" id="projectsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Projects</span></div>
+          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Planning</span></div>
           <div>
             <div class="counts-header" aria-hidden="true">
                   <span></span>
@@ -484,7 +484,7 @@ export class SidebarLit extends LitElement {
         </section>
 
         <section class="sidebar-section" id="teamsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Teams</span></div>
+          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
           <div>
               <div class="counts-header" aria-hidden="true">
               <span></span>
