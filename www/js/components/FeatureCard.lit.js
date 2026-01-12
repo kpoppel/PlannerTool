@@ -314,6 +314,8 @@ export class FeatureCardLit extends LitElement {
     this._skipRo = false; // set true while dragging to avoid layout reads
     this._abortController = new AbortController();
     this._suppressClickUntil = 0; // ignore clicks shortly after drag end
+    // Mark host as a possible tour anchor
+    try{ this.setAttribute('data-tour','feature-card'); }catch(e){}
   }
 
   updated(changed) {
