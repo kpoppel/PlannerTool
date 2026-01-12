@@ -411,7 +411,11 @@ export class PluginExportTimeline extends LitElement {
       });
     } catch (e) {
       console.error('[PluginExportTimeline] PNG export failed:', e);
-      await this._showAppMessage('Export Failed', 'Export failed. Check console for details.', { persistent: true });
+      await this._showAppMessage(
+        'Export Failed',
+        'PNG export failed. This can happen when many items are visible (browser memory limits). Try showing fewer items and export again. See console for details.',
+        { persistent: true }
+      );
     } finally {
       this.exporting = false;
     }
@@ -441,7 +445,11 @@ export class PluginExportTimeline extends LitElement {
       a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     } catch (e) {
       console.error('[PluginExportTimeline] Download SVG failed:', e);
-      await this._showAppMessage('Download SVG Failed', 'Download SVG failed. See console for details.', { persistent: true });
+      await this._showAppMessage(
+        'Download SVG Failed',
+        'Download SVG failed. If the board contains many items try narrowing the view and retry. See console for details.',
+        { persistent: true }
+      );
     } finally {
       this.exporting = false;
     }
@@ -463,7 +471,11 @@ export class PluginExportTimeline extends LitElement {
       await this._showAppMessage('Copied', 'PNG image copied to clipboard', { duration: 3000 });
     } catch (e) {
       console.error('[PluginExportTimeline] Copy PNG failed:', e);
-      await this._showAppMessage('Copy PNG Failed', 'Copy PNG failed. Your browser may not support copying images to clipboard.', { persistent: true });
+      await this._showAppMessage(
+        'Copy PNG Failed',
+        'Copy PNG failed. Your browser may not support copying images to clipboard, or the export may have been too large. Try showing fewer items and try again.',
+        { persistent: true }
+      );
     } finally {
       this.exporting = false;
     }
