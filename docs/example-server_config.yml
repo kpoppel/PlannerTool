@@ -2,8 +2,8 @@ azure_devops_organization: <Azure azure_devops_organization>
 log_level: <level: DEBUG, INFO, WARNING, ERRRR, CRITICAL>
 # Feature flags to enable/disable specific features
 feature_flags:
-  azure_cache_enabled: true
-  planner_use_brotli: false
+  enable_azure_cache: true
+  enable_brotli_middleware: false
 # Optional: Relative or absolute path to the database directory or full path and filename
 database_path: </path/to/database/directory/or/file.yaml>
 # Root area paths to consider for projects
