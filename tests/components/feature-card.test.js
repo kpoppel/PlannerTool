@@ -69,12 +69,13 @@ describe('FeatureCard Consolidated Tests', () => {
       if(!board){ board = document.createElement('feature-board'); board.id = 'featureBoard'; document.body.appendChild(board); }
       const feat = { id: 'fx1', start: '2021-01-05', end: '2021-02-10', project: 'p1', capacity: [{team:'t1', capacity:10}], type: 'feature' };
       const source = [feat];
-      // create a fake feature-card-lit element with applyVisuals spy
-      const el = document.createElement('feature-card-lit');
+      // create a fake feature-card-lit element with applyVisuals spy using fixture
+      const el = await fixture(html`<feature-card-lit></feature-card-lit>`);
       let called = false;
       el.applyVisuals = function(opts){ called = true; this._last = opts; };
       try{ el.feature = feat; }catch(e){}
-      board.appendChild(el);
+      // Ensure the element is attached to the board
+      if (!board.contains(el)) board.appendChild(el);
 
       const mod = await import('../../www/js/components/FeatureBoard.lit.js');
       const update = boardHelpers.updateCardsById || mod.updateCardsById;
