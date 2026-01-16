@@ -418,13 +418,13 @@ export class SidebarLit extends LitElement {
         await openScenarioDeleteModal({ id: s.id, name: s.name }); 
       });
       addItem('Save Scenario', '💾', () => state.saveScenario(s.id));
+      const overrideEntries = Object.entries(s.overrides || {});
       addItem('Save to Azure DevOps', '💾', async ()=>{
-        const overrideEntries = Object.entries(s.overrides || {});
         if(overrideEntries.length === 0) return;
         const { openAzureDevopsModal } = await import('./modalHelpers.js'); 
         const selected = await openAzureDevopsModal({ overrides: s.overrides, state }); 
         if(selected?.length) await dataService.publishBaseline(selected);
-      });
+      }, overrideEntries.length === 0);
     }
     
     const rect = menuBtn.getBoundingClientRect();
