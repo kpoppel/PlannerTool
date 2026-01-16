@@ -178,8 +178,8 @@ systemctl start plannertool
   3. Sum of cost this fiscal year (configurable WSA 1/10-31/9)
   4. Sum of cost all time
 - bug: Show Unplanned depends on Show Unassigned also being selected.
-- feat: Enable flagging cost smells.
 Next:
+- feature: Add version as part of te /api/health endpoint to show what version the server is running.
 
 Later:
 - (undefined) ??Highlight places with 'points of interest'?? TBD. Ideas:
@@ -200,7 +200,8 @@ Later:
 
 
 Solved:
-- Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
+- (/) feat: Enable flagging cost smells.
+- (/) Team backlogs. Can they be bundled up?  Not without consistent use of team assignments.
   Teams and projects in Azure is a floating thing. It is all tasks with an area path associated. Only the area path
   sets projects and teams apart. In our context we should only put "Epics" in projects, and only "Features" (and below") in teams.
   - Require clean up in Azure to streamline this.
