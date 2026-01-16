@@ -56,9 +56,21 @@ export class SidebarLit extends LitElement {
     this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
     this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
     this._onScenariosList = (payload) => {
-      const list = payload && payload.scenarios ? payload.scenarios : [];
-      this.scenarios = Array.isArray(list) ? [...list] : [];
+      // Use the authoritative scenario objects from `state.scenarios` so
+      // the UI has access to `overrides` and `isChanged` flags. The
+      // ScenarioEvents.LIST payload contains reduced metadata for lists,
+      // which would strip overrides and unsaved markers.
+      try {
+        const full = state.scenarios || [];
+        this.scenarios = Array.isArray(full) ? [...full] : [];
+      } catch (e) {
+        // Fallback to payload if state is not ready
+        const list = payload && payload.scenarios ? payload.scenarios : [];
+        this.scenarios = Array.isArray(list) ? [...list] : [];
+      }
+      // Prefer explicit activeScenarioId from payload if present, otherwise use state
       if (payload && payload.activeScenarioId) this.activeScenarioId = payload.activeScenarioId;
+      else this.activeScenarioId = state.activeScenarioId;
     };
     this._onScenarioActivated = (payload) => { this.activeScenarioId = payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId; };
     this._onScenariosUpdated = () => {
@@ -418,13 +430,13 @@ export class SidebarLit extends LitElement {
         await openScenarioDeleteModal({ id: s.id, name: s.name }); 
       });
       addItem('Save Scenario', '💾', () => state.saveScenario(s.id));
-      const overrideEntries = Object.entries(s.overrides || {});
       addItem('Save to Azure DevOps', '💾', async ()=>{
+        const overrideEntries = Object.entries(s.overrides || {});
         if(overrideEntries.length === 0) return;
         const { openAzureDevopsModal } = await import('./modalHelpers.js'); 
         const selected = await openAzureDevopsModal({ overrides: s.overrides, state }); 
         if(selected?.length) await dataService.publishBaseline(selected);
-      }, overrideEntries.length === 0);
+      }, (s.overrides && Object.keys(s.overrides).length === 0));
     }
     
     const rect = menuBtn.getBoundingClientRect();
