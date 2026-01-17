@@ -262,7 +262,7 @@ export class SidebarLit extends LitElement {
         const minutes = totalMinutes % 60;
         return ` - Uptime: ${hours}h ${minutes}m`;
       })();
-      this.serverStatus = `Server: ${status}${uptimeStr}`;
+      this.serverStatus = `Version: ${h.version} | Server: ${status}${uptimeStr}`;
     }catch(err){
       this.serverStatus = 'Server: error';
     }
