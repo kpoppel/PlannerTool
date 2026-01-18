@@ -6,3 +6,4 @@ fastapi
 httpx
 brotli
 brotli-asgi
+cryptography

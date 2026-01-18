@@ -7,7 +7,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-NEW_VERSION=$1
+NEW_VERSION="v$1"
 
 echo "You are about to set the version to: $NEW_VERSION"
 read -p "Is this correct? (y/n): " CONFIRM

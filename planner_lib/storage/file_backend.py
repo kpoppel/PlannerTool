@@ -41,16 +41,30 @@ class FileStorageBackend(StorageBackend):
         path = self._path_for(namespace, key)
         tmp = path.with_suffix(path.suffix + ".tmp")
         if self.mode == "text":
-            # write plaintext (assume `value` is str)
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(value)
-                f.flush()
-                os.fsync(f.fileno())
+            # write plaintext: accept str or bytes
+            data = value
+            if isinstance(data, (bytes, bytearray)):
+                with open(tmp, "wb") as f:
+                    f.write(bytes(data))
+                    f.flush()
+                    os.fsync(f.fileno())
+            else:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write(str(data))
+                    f.flush()
+                    os.fsync(f.fileno())
         else:
-            with open(tmp, "wb") as f:
-                pickle.dump(value, f)
-                f.flush()
-                os.fsync(f.fileno())
+            # binary mode: accept bytes (already serialized) or raw objects
+            if isinstance(value, (bytes, bytearray)):
+                with open(tmp, "wb") as f:
+                    f.write(bytes(value))
+                    f.flush()
+                    os.fsync(f.fileno())
+            else:
+                with open(tmp, "wb") as f:
+                    pickle.dump(value, f)
+                    f.flush()
+                    os.fsync(f.fileno())
         tmp.replace(path)
 
     def load(self, namespace: str, key: str) -> Any:
@@ -62,10 +76,18 @@ class FileStorageBackend(StorageBackend):
                 data = f.read()
                 logger.debug("Loaded text %s", path)
                 return data
+        # binary mode: try to load as pickle, but if file contains raw bytes
+        # (e.g. when ValueNavigatingStorage stored serialized bytes), return bytes.
         with open(path, "rb") as f:
-            obj = pickle.load(f)
-            logger.debug("Loaded %s: %s", path, type(obj))
-            return obj
+            try:
+                obj = pickle.load(f)
+                logger.debug("Loaded %s: %s", path, type(obj))
+                return obj
+            except Exception:
+                f.seek(0)
+                data = f.read()
+                logger.debug("Loaded raw bytes %s (%d bytes)", path, len(data))
+                return data
 
     def delete(self, namespace: str, key: str) -> None:
         path = self._path_for(namespace, key)
@@ -76,8 +98,13 @@ class FileStorageBackend(StorageBackend):
     def list_keys(self, namespace: str) -> Iterable[str]:
         ns = self._ns_dir(namespace)
         for p in ns.iterdir():
-            if p.is_file() and p.suffix == ".pkl":
-                yield p.stem
+            if not p.is_file():
+                continue
+            if self.mode == "text":
+                yield p.name
+            else:
+                if p.suffix == ".pkl":
+                    yield p.stem
 
     def exists(self, namespace: str, key: str) -> bool:
         return self._path_for(namespace, key).exists()
