@@ -5,7 +5,12 @@ from abc import ABC, abstractmethod
 # Base Azure client class
 class AzureClient(ABC):
     def __init__(self, organization_url: str, pat: str):
-        pass
+        # Store credentials; concrete classes should defer creating network
+        # connections to `connect()` so callers can control lifecycle.
+        self.organization_url = organization_url
+        self.pat = pat
+        self._connected = False
+        self.conn = None
 
     @abstractmethod
     def get_work_items(self, area_path: str) -> List[dict]:
@@ -31,3 +36,12 @@ class AzureClient(ABC):
     @abstractmethod
     def update_work_item_description(self, work_item_id: int, description: str) -> None:
         pass
+
+    # Lifecycle control to allow connect/disconnect outside __init__
+    @abstractmethod
+    def connect(self) -> None:
+        """Establish any network connections or SDK clients required."""
+
+    @abstractmethod
+    def close(self) -> None:
+        """Tear down connections and free resources."""

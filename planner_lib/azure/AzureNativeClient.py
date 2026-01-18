@@ -14,13 +14,26 @@ from planner_lib.azure.AzureClient import AzureClient
 
 class AzureNativeClient(AzureClient):
     def __init__(self, organization_url: str, pat: str):
-        logger.info("Using AzureNativeClient")
+        logger.info("Using AzureNativeClient (deferred connect)")
+        super().__init__(organization_url, pat)
+
+    def connect(self) -> None:
+        if self._connected:
+            return
         if Connection is None or BasicAuthentication is None:
             raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
-        creds = BasicAuthentication('', pat)
-        self.conn = Connection(base_url=f"https://dev.azure.com/{organization_url}", creds=creds)
+        creds = BasicAuthentication('', self.pat)
+        self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=creds)
+        self._connected = True
+
+    def close(self) -> None:
+        # The azure-devops Connection doesn't provide an explicit close; clear refs
+        self.conn = None
+        self._connected = False
 
     def get_projects(self) -> List[str]:
+        if not self._connected:
+            self.connect()
         core_client = self.conn.clients.get_core_client()
         projects = core_client.get_projects()
         # SDK may return a collection object with .value or a plain list
@@ -67,6 +80,8 @@ class AzureNativeClient(AzureClient):
 
         Returns a list of area path strings (e.g. "Project\\Area\\Sub").
         """
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         # The SDK exposes get_classification_node to fetch a node; try a depth=1/2 approach
         try:
@@ -96,6 +111,8 @@ class AzureNativeClient(AzureClient):
 
         This returns whatever the SDK returns; callers should handle objects.
         """
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         #from azure.devops.v7_1.work_item_tracking.models import Wiql
         q = Wiql(query=wiql)
@@ -133,6 +150,8 @@ class AzureNativeClient(AzureClient):
 
     def get_work_items(self, area_path) -> List[dict]:
         # Fetch all work items IDs in the area path
+        if not self._connected:
+            self.connect()
         wit_client = self.conn.clients.get_work_item_tracking_client()
         wiql_query = f"""
         SELECT [System.Id]
@@ -197,6 +216,8 @@ class AzureNativeClient(AzureClient):
         Encapsulates ID extraction shape differences and field selection.
         Returns a list of SDK work item objects (or dict-like) depending on SDK version.
         """
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         try:
             res = self.query_by_wiql(project, wiql)

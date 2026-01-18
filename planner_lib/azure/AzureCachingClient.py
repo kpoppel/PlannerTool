@@ -24,18 +24,32 @@ class AzureCachingClient(AzureClient):
     """
 
     def __init__(self, organization_url: str, pat: str, data_dir: str = "data/azure_workitems"):
-        logger.info("Using AzureCachingClient with data dir: %s", data_dir)
-        if Connection is None or BasicAuthentication is None:
-            raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
-        creds = BasicAuthentication('', pat)
-        self.conn = Connection(base_url=f"https://dev.azure.com/{organization_url}", creds=creds)
+        logger.info("Using AzureCachingClient (deferred connect) with data dir: %s", data_dir)
+        super().__init__(organization_url, pat)
         self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.index_path = self.data_dir / "_index.pkl"
         self._lock = threading.Lock()
         self._fetch_count = 0
 
+    def connect(self) -> None:
+        if self._connected:
+            return
+        if Connection is None or BasicAuthentication is None:
+            raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
+        creds = BasicAuthentication('', self.pat)
+        self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=creds)
+        # ensure data dir exists
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self._connected = True
+
+    def close(self) -> None:
+        # Drop connection reference; caches remain on disk
+        self.conn = None
+        self._connected = False
+
     def get_projects(self) -> List[str]:
+        if not self._connected:
+            self.connect()
         core_client = self.conn.clients.get_core_client()
         projects = core_client.get_projects()
         items = getattr(projects, 'value', projects)
@@ -119,6 +133,8 @@ class AzureCachingClient(AzureClient):
         return removed
 
     def get_area_paths(self, project: str, root_path: str = '/') -> List[str]:
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         try:
             path = root_path.strip('/\\') or None
@@ -136,6 +152,8 @@ class AzureCachingClient(AzureClient):
             return []
 
     def query_by_wiql(self, project: str, wiql: str):
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         q = Wiql(query=wiql)
         return wit.query_by_wiql(q)
@@ -166,6 +184,8 @@ class AzureCachingClient(AzureClient):
 
     def get_work_items(self, area_path) -> List[dict]:
         logger.debug("Fetching work items for area path: %s", area_path)
+        if not self._connected:
+            self.connect()
         wit_client = self.conn.clients.get_work_item_tracking_client()
         area_key = self._sanitize_area_path(area_path)
 
@@ -313,6 +333,8 @@ class AzureCachingClient(AzureClient):
         return list(area_cache.values())
 
     def get_work_items_by_wiql(self, project: str, wiql: str, fields: Optional[list[str]] = None):
+        if not self._connected:
+            self.connect()
         wit = self.conn.clients.get_work_item_tracking_client()
         try:
             res = self.query_by_wiql(project, wiql)
