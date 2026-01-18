@@ -32,10 +32,10 @@ export default {
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } }
   ],
-  // webServer: {
-  //   command: 'python3 -m uvicorn planner:app --reload --port 8001 || python -m uvicorn planner:app --reload --port 8001',
-  //   url: 'http://localhost:8001',
-  //   timeout: 120000,
-  //   reuseExistingServer: true
-  // }
+  webServer: {
+    command: 'python3 -m uvicorn planner:app --reload --port 8000',
+    url: 'http://localhost:8000',
+    timeout: 120000,
+    reuseExistingServer: true
+  }
 };

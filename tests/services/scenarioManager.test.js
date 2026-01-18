@@ -78,4 +78,19 @@ describe('ScenarioManager', () => {
     sm.markScenarioSaved(c.id);
     expect(sm.isScenarioDirty(c.id)).to.equal(false);
   });
+
+  it('cloned scenario is independent from source (mutations do not propagate)', () => {
+    // create an initial scenario with an override
+    const original = sm.cloneScenario('baseline', 'Original');
+    original.overrides = { 'F1': { start: '2025-01-01', end: '2025-02-01' } };
+
+    // clone the original
+    const cloned = sm.cloneScenario(original.id, 'Clone');
+
+    // mutate original
+    original.overrides['F1'].start = '2030-01-01';
+
+    // cloned should NOT see the mutation
+    expect(cloned.overrides['F1'].start).to.not.equal('2030-01-01');
+  });
 });

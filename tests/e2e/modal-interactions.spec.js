@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { clearOverlays } from './helpers.js';
 
 test.describe('Modal interactions', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    // Ensure session created by global-setup is applied
+    // Ensure session created by global-setup is applied and remove any blocking overlays
     try { await page.waitForSelector('#openConfigBtn', { timeout: 5000 }); } catch (e) {}
+    await clearOverlays(page);
   });
 
   test('Open config modal and close via close button', async ({ page }) => {
@@ -34,9 +36,13 @@ test.describe('Modal interactions', () => {
     // Wait for the help-modal element to be attached (it may be present but not yet visible)
     await page.waitForSelector('help-modal', { state: 'attached', timeout: 5000 });
     // Use nested locators to find the Close button inside the nested modal-lit and click it
-    const closeBtn = page.locator('help-modal').locator('modal-lit').locator('button', { hasText: 'Close' });
-    await closeBtn.waitFor({ state: 'visible', timeout: 7000 });
-    await closeBtn.click();
+    // Select the Close button that is visible inside the help modal (avoid duplicate buttons)
+    const helpModal = page.locator('help-modal');
+    await helpModal.waitFor({ state: 'attached', timeout: 7000 });
+    // Pick the first visible Close button inside the help modal
+    const closeButtons = helpModal.locator('button', { hasText: 'Close' });
+    await closeButtons.first().waitFor({ state: 'visible', timeout: 7000 });
+    await closeButtons.first().click();
     // Wait for the help-modal host to be detached
     await page.waitForSelector('help-modal', { state: 'detached', timeout: 5000 });
   });

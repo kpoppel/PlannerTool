@@ -35,16 +35,19 @@ export class ScenarioManager {
     
     const id = 'scen_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
     
+    // Deep-clone mutable parts to avoid shared nested references
+    const cloneDeep = (obj) => obj ? JSON.parse(JSON.stringify(obj)) : {};
+
     const scenario = {
       id,
       name: uniqueName,
-      overrides: isFromReadonly ? {} : { ...source.overrides },
+      overrides: isFromReadonly ? {} : cloneDeep(source.overrides),
       filters: isFromReadonly 
-        ? this.stateContext.captureCurrentFilters()
-        : { ...source.filters },
+        ? cloneDeep(this.stateContext.captureCurrentFilters())
+        : cloneDeep(source.filters),
       view: isFromReadonly
-        ? this.stateContext.captureCurrentView()
-        : { ...source.view },
+        ? cloneDeep(this.stateContext.captureCurrentView())
+        : cloneDeep(source.view),
       isChanged: true
     };
     

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearOverlays } from './helpers.js';
 
 // This test assumes the dev server is running on http://localhost:8000
 test.describe('Details panel (Lit)', () => {
@@ -7,6 +8,7 @@ test.describe('Details panel (Lit)', () => {
     page.on('pageerror', err => console.log('PAGE ERROR>', err.message));
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+    await clearOverlays(page);
 
     // Wait for feature board to render at least one feature-card-lit or .feature-card
     await page.waitForSelector('feature-card-lit, .feature-card', { timeout: 10000 });
