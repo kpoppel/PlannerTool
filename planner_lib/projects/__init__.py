@@ -252,8 +252,7 @@ def list_tasks(pat: str | None = None, project_id: str | None = None) -> List[di
     """
     from planner_lib.setup import get_loaded_config
     from planner_lib.azure import get_client
-    from datetime import date, timedelta
-
+    
     cfg = get_loaded_config()
     if not cfg or not getattr(cfg, "project_map", None):
         logger.error("No configured projects found in server config")

@@ -8,8 +8,8 @@
     "test": "web-test-runner",
     "test:watch": "web-test-runner --watch",
     "test:coverage": "web-test-runner --coverage",
-    "test-js": "npx c8 node scripts/run_js_tests.mjs"
-    ,"test:e2e": "npx playwright test tests/e2e --project=firefox"
+    "test-js": "npx c8 node scripts/run_js_tests.mjs",
+    "test:e2e": "npx playwright test --config=tests/playwright.config.js --project=firefox"
   },
   "author": "",
   "license": "MIT",

@@ -5,26 +5,17 @@ from pathlib import Path
 import yaml
 import os
 
-from planner_lib.plugins.middleware import BrotliCompressionMiddleware
-
 # Load server config early so we can configure the root logger at the intended
-# level before other modules are imported or initialized.
+# level before other modules are imported or initialized. Happy-path: assume
+# config file and values are present and valid.
 logging.basicConfig(level=logging.NOTSET, format='%(asctime)s INFO %(message)s')
 DEFAULT_LOG_LEVEL = logging.WARNING
-try:
-    cfg_path = Path('data/config/server_config.yml')
-    if cfg_path.exists():
-        with cfg_path.open('r', encoding='utf-8') as _f:
-            _cfg = yaml.safe_load(_f) or {}
-            _lvl = _cfg.get('log_level')
-            if isinstance(_lvl, str):
-                _numeric = getattr(logging, _lvl.upper(), None)
-                if isinstance(_numeric, int):
-                    DEFAULT_LOG_LEVEL = _numeric
-except Exception:
-    # If yaml missing or invalid, fall back to DEFAULT_LOG_LEVEL
-    logging.exception('Failed to load server configuration for logging setup')
-    pass
+cfg_path = Path('data/config/server_config.yml')
+if cfg_path.exists():
+    with cfg_path.open('r', encoding='utf-8') as _f:
+        _cfg = yaml.safe_load(_f) or {}
+        _lvl = _cfg.get('log_level')
+        DEFAULT_LOG_LEVEL = getattr(logging, _lvl.upper())
 logging.log(100, f'[planner]: Log level set to: {logging.getLevelName(DEFAULT_LOG_LEVEL)}')
 
 # configure basic logging for the backend using the early-configured level
@@ -40,34 +31,26 @@ logging.getLogger('requests').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 logger.info("Starting AZ Planner Server")
 
-# Load and validate cost configuration at startup so any inconsistencies
-# are visible in the server logs immediately.
-try:
-    from planner_lib.cost.config import load_cost_config
-    try:
-        load_cost_config()
-    except Exception as e:
-        logger.exception('Initial cost configuration validation failed: %s', e)
-        # Also write to stderr to ensure the message is visible when the
-        # server is started under external servers (uvicorn) that may
-        # capture or reconfigure Python logging.
-        try:
-            import sys
-            sys.stderr.write('Initial cost configuration validation failed: ' + str(e) + '\n')
-        except Exception:
-            pass
-except Exception:
-    # If cost config module not available, continue silently
-    pass
+# Load and validate cost configuration at startup (happy-path: module exists
+# and config is valid).
+from planner_lib.cost.config import load_cost_config
+load_cost_config()
 
 # FastAPI imports
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException, Request, Response
 from fastapi import Body
+from starlette.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+# Middleware imports
+from planner_lib.middleware import SessionMiddleware, require_session, access_denied_response
+from planner_lib.middleware.session import SESSIONS, create_session
+from planner_lib.middleware.session import session_manager, SESSION_COOKIE, get_session_id_from_request
+
 import uuid
-from datetime import datetime
-from typing import Dict, Any
 
 # Application imports
 from planner_lib.config.health import get_health
@@ -81,6 +64,7 @@ from planner_lib.storage.scenario_store import (
     delete_user_scenario,
     list_user_scenarios,
 )
+
 
 # Parse CLI args for setup-related actions
 ##########################################
@@ -110,12 +94,15 @@ else:
 ###########################################################################
 app = FastAPI(title="AZ Planner Server")
 
+# Register session middleware
+app.add_middleware(SessionMiddleware)
+
 # Add Brotli compression middleware if feature flag is enabled
 if has_feature_flag('planner_use_brotli'):
     logger.info("Brotli compression middleware is enabled")
-    from planner_lib.plugins.middleware import BrotliCompressionMiddleware
+    from planner_lib.middleware import BrotliCompression
     #Register Brotli middleware (wrap app at ASGI layer)
-    app.add_middleware(BrotliCompressionMiddleware)
+    app.add_middleware(BrotliCompression)
 
 # Separate storage backend for scenarios (binary pickled objects)
 scenarios_storage = FileStorageBackend()
@@ -125,193 +112,133 @@ scenarios_storage.configure(mode="pickle")
 # Serve static UI from www/ under /static
 app.mount("/static", StaticFiles(directory="www"), name="static")
 
-# Simple in-memory session store: sessionId -> context dict
-SESSIONS: dict[str, dict] = {}
-SESSION_COOKIE = "sessionId"
 
-def get_session_id(request: Request) -> str:
-    sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
-    if not sid:
-        raise HTTPException(status_code=401, detail="Missing session ID")
-    if sid not in SESSIONS:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-    return sid
+# Catch 401 HTTPException globally to return a suitable message
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    if exc.status_code == 401:
+        return access_denied_response(request, exc.detail)
+    raise exc
 
+# Catch 404 errors globally to return a suitable message
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Only handle 404 here; delegate others back to FastAPI default handling
+    if exc.status_code == 404:
+        error_code = {'error': 'not_found', 'message': 'The requested resource was not found.'}
+        return access_denied_response(request, error_code)
+    raise exc
+
+# TODO: If someone can guess an email address, they can create a session for it. In a friendly environment
+# this is probably acceptable, but in a hostile environment this could be a problem.
+# Consider adding login in the frontend with use/pass or Azure AD integration to validate user identity before
+# creating a session.
 @app.post('/api/session')
 async def api_session_post(payload: AccountPayload, response: Response):
-    # Create a session bound to a user config
+    # Create a session bound to an existing user config. Only allowed when
+    # the account exists; anonymous/session creation for unknown emails is
+    # disallowed.
     email = payload.email
     if not email or '@' not in email:
         raise HTTPException(status_code=400, detail='invalid email')
-    # Load (or create) user config from storage to couple into the session
+
     try:
-        cfg = config_manager.load(email)
+        sid = create_session(email)
     except KeyError:
-        # No config yet for this email; proceed with empty PAT
-        logger.debug("No existing config for %s; creating session with empty PAT", email)
-        cfg = { 'ok': True, 'email': email, 'pat': None }
+        # No account exists for this email
+        raise HTTPException(status_code=401, detail='Account not found')
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    # If a session already exists for this email, clear it
-    try:
-        for existing_sid, ctx in list(SESSIONS.items()):
-            if ctx.get('email') == email:
-                logger.debug("Removing existing session for email %s with session ID %s", email, existing_sid)
-                del SESSIONS[existing_sid]
-    except Exception:
-        pass
-
-    sid = uuid.uuid4().hex
-    SESSIONS[sid] = {
-        "namespace": STORE_NS,
-        "key": STORE_KEY,
-        "email": email,
-        "pat": cfg.get('pat'),
-    }
-    response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="lax")
-    logger.debug("Creating session for email %s with session ID %s", payload.email, sid)
+    # Inform middleware to set the session cookie centrally
+    response.headers['x-set-session-id'] = sid
+    logger.debug("Creating session for email %s with session ID %s", email, sid)
     return {"sessionId": sid}
 
+# Main app entry point
 @app.get("/", response_class=HTMLResponse)
 async def root():
     # Redirect-style: serve index quickly
     with open("www/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
+# Get general server health status and version info
 @app.get("/api/health")
 async def api_health():
     return get_health()
 
+# TODO: Anyone can create a config for any email address. Consider adding
+# email verification or login to ensure only the owner of an email can create
+# or update its config. Or add OAuth2/Azure AD integration to validate identity.
+# or add an admin backend where users are created by an operator, or self signup but
+# an operator can generate invite/challenge codes to validate email ownership.
 @app.post('/api/config')
 async def save_config(payload: AccountPayload):
     logger.debug("Saving config for email %s", payload.email)
     try:
         status = config_manager.save(payload)
         if not status:
-            raise HTTPException(status_code=400, detail='invalid email')
+            raise HTTPException(status_code=400, detail={'error': 'invalid_email', 'message': 'Invalid email'})
     except Exception as e:
+        # some generic failure happened (should never get here)
         raise HTTPException(status_code=500, detail=str(e))
     return status
 
+# Get configured teams
+@app.get('/api/teams')
+@require_session
+async def api_teams(request: Request):
+    from planner_lib.projects import list_teams
+    return list_teams()
+
+# Get configured projects
 @app.get('/api/projects')
+@require_session
 async def api_projects(request: Request):
-    # Require a valid session
-    sid = get_session_id(request)
-    logger.debug("Fetching projects for session for %s", sid)
-    try:
-        from planner_lib.projects import list_projects
-        return list_projects()
-    except Exception:
-        return []
+    from planner_lib.projects import list_projects
+    return list_projects()
 
+# Get tasks for the registered project area paths
 @app.get('/api/tasks')
+@require_session
 async def api_tasks(request: Request):
-    # Require a valid session
-    sid = get_session_id(request)
+    # Retrieve data from the session
+    sid = get_session_id_from_request(request)
     logger.debug("Fetching tasks for session for %s", sid)
-    # Ensure session has user PAT loaded; if missing, load from config
-    ctx = SESSIONS.get(sid) or {}
-    email = ctx.get('email')
-    pat = ctx.get('pat')
-    if email and not pat:
-        try:
-            loaded = config_manager.load(email)
-            pat = loaded.get('pat')
-            ctx['pat'] = pat
-            SESSIONS[sid] = ctx
-        except Exception as e:
-            logger.exception('Failed to load user config for %s: %s', email, e)
-    try:
-        from planner_lib.projects import list_tasks
-        # Optional per-project filtering via query parameter
-        project_id = request.query_params.get('project')
-        if project_id:
-            return list_tasks(pat=pat, project_id=project_id)
-        return list_tasks(pat=pat)
-    except Exception:
-        return []
 
+    from planner_lib.projects import list_tasks
+
+    # Optional per-project filtering via query parameter
+    pat = session_manager.get_val(sid, 'pat')
+    project_id = request.query_params.get('project')
+    if project_id:
+        return list_tasks(pat=pat, project_id=project_id)
+    return list_tasks(pat=pat)
+
+# TODO: If a write-back goes wrong we return the 'result'. Ensure the UI also shows these to the user.
 @app.post('/api/tasks')
+@require_session
 async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):
     # Require a valid session
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Updating tasks for session %s: %d items", sid, len(payload or []))
-    # Ensure session has user PAT
-    ctx = SESSIONS.get(sid) or {}
-    email = ctx.get('email')
-    pat = ctx.get('pat')
-    if email and not pat:
-        try:
-            loaded = config_manager.load(email)
-            pat = loaded.get('pat')
-            ctx['pat'] = pat
-            SESSIONS[sid] = ctx
-        except Exception as e:
-            logger.exception('Failed to load user config for %s: %s', email, e)
-    try:
-        from planner_lib.projects import update_tasks
-        result = update_tasks(payload or [], pat=pat)
-        if not result.get('ok', True) and result.get('errors'):
-            # Return 207 Multi-Status-like behavior via 200 but include errors
-            logger.warning("Task update completed with errors: %s", result['errors'])
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# @app.put('/api/tasks/{work_item_id}/capacity')
-# async def api_update_capacity(request: Request, work_item_id: int, capacity: list[dict] = Body(default=[])):
-#     """Update capacity allocation for a work item."""
-#     sid = get_session_id(request)
-#     logger.debug("Updating capacity for work item %d, session %s", work_item_id, sid)
-    
-#     # Ensure session has user PAT
-#     ctx = SESSIONS.get(sid) or {}
-#     email = ctx.get('email')
-#     pat = ctx.get('pat')
-#     if email and not pat:
-#         try:
-#             loaded = config_manager.load(email)
-#             pat = loaded.get('pat')
-#             ctx['pat'] = pat
-#             SESSIONS[sid] = ctx
-#         except Exception as e:
-#             logger.exception('Failed to load user config for %s: %s', email, e)
-    
-#     try:
-#         from planner_lib.projects import update_work_item_capacity
-#         result = update_work_item_capacity(work_item_id, capacity or [], pat=pat)
-#         if not result.get('ok', False):
-#             error_msg = result.get('error', 'Unknown error')
-#             logger.error("Failed to update capacity for work item %d: %s", work_item_id, error_msg)
-#             raise HTTPException(status_code=500, detail=error_msg)
-#         return result
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.exception("Error updating capacity for work item %d: %s", work_item_id, e)
-#         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get('/api/teams')
-async def api_teams(request: Request):
-    # Require a valid session
-    sid = get_session_id(request)
-    logger.debug("Fetching teams for session for %s", sid)
-    try:
-        from planner_lib.projects import list_teams
-        return list_teams()
-    except Exception:
-        return []
+    from planner_lib.projects import update_tasks
+    pat = session_manager.get_val(sid, 'pat')
+    result = update_tasks(payload or [], pat=pat)
+    if not result.get('ok', True) and result.get('errors'):
+        # Return 207 Multi-Status-like behavior via 200 but include errors
+        logger.warning("Task update completed with errors: %s", result['errors'])
+    return result
 
 @app.get('/api/scenario')
+@require_session
 async def api_scenario_get(request: Request):
     # Require a valid session
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Fetching scenario(s) for session %s", sid)
-    ctx = SESSIONS.get(sid) or {}
-    user_id = ctx.get('email')
-    if not user_id:
-        raise HTTPException(status_code=401, detail='Missing user context')
+
+    user_id = session_manager.get_val(sid, 'email') or ''
     scenario_id = request.query_params.get('id')
     try:
         if scenario_id:
@@ -325,11 +252,12 @@ async def api_scenario_get(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post('/api/scenario')
+@require_session
 async def api_scenario_post(request: Request, payload: dict = Body(default={})): 
     # Require a valid session
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Saving/deleting scenario for session %s", sid)
-    ctx = SESSIONS.get(sid) or {}
+    ctx = session_manager.get(sid) or {}
     user_id = ctx.get('email')
     if not user_id:
         raise HTTPException(status_code=401, detail='Missing user context')
@@ -376,7 +304,7 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
 @app.post('/api/cost')
 async def api_cost_post(request: Request, payload: dict = Body(default={})):
     # Require a valid session
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Calculating cost for session %s", sid)
     try:
         from planner_lib.cost import estimate_costs, build_cost_schema
@@ -384,7 +312,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         from planner_lib.storage.scenario_store import load_user_scenario
 
         # Build session context and determine features to estimate
-        ctx = SESSIONS.get(sid) or {}
+        ctx = session_manager.get(sid) or {}
         email = ctx.get('email')
         pat = ctx.get('pat')
 
@@ -487,16 +415,16 @@ async def api_cost_get(request: Request):
     # return a canned schema response from the cost module so clients can
     # discover the expected shape without authentication.
     sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
-    if not sid or sid not in SESSIONS:
+    if not sid or not session_manager.exists(sid):
         # No valid session: let the cost module return the canned schema
         from planner_lib.cost import build_cost_schema
         # Return an empty/raw schema so callers can see expected keys
         return build_cost_schema({}, mode='schema', session_features=None)
 
     # Valid session — resolve PAT and build session context
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Fetching calculated cost for session %s", sid)
-    ctx = SESSIONS.get(sid) or {}
+    ctx = session_manager.get(sid) or {}
     email = ctx.get('email')
     pat = ctx.get('pat')
     if email and not pat:
@@ -539,7 +467,7 @@ async def api_cost_get(request: Request):
 @app.post('/api/admin/reload-config')
 async def api_admin_reload_config(request: Request):
     # Require a valid session (admin-like action requires auth)
-    sid = get_session_id(request)
+    sid = get_session_id_from_request(request)
     logger.debug("Reloading server and cost configuration for session %s", sid)
     try:
         # Reload server configuration (re-run setup load into module state)
