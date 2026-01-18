@@ -289,7 +289,10 @@ export class PluginCostComponent extends LitElement {
     }
     this.style.display = 'block';
     // Reload cost data for current scenario (capacity may have changed)
-    this.loadData();
+    // Kick off load but don't block opening; show loading UI immediately
+    // so the user sees the plugin open while data fetch proceeds.
+    this._isLoading = this._isLoading || false;
+    if(!this._isLoading) this.loadData();
   }
 
   close(){
@@ -307,8 +310,7 @@ export class PluginCostComponent extends LitElement {
     // Prevent duplicate loads
     if(this._isLoading) return;
     this._isLoading = true;
-    
-    // Show spinner using the app-level spinner modal
+    // Show spinner using the app-level spinner modal early so UI opens while fetching
     const spinner = document.getElementById('appSpinner');
     if(spinner){
       spinner.message = 'Loading cost data...';
@@ -347,8 +349,15 @@ export class PluginCostComponent extends LitElement {
       spinner.open = true;
     }
     try{
-      // Baseline: GET cached cost
+      // Baseline: GET cached cost. If data already exists (e.g. preloaded), reuse it
       if(!scenarioId || scenarioId === 'baseline'){
+        if(this.data){
+          // already have baseline data - ensure UI renders
+          this.buildMonths(this.data.configuration);
+          this.buildProjects(this.data.projects || []);
+          this.requestUpdate();
+          return;
+        }
         const json = await dataService.getCost();
         if(!json) throw new Error('no cost data');
         this.data = json;
