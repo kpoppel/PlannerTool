@@ -1,283 +1,474 @@
 CHANGELOG
 Generated: 2026-01-18 UTC
 
-** v0.1.0 (ea80c7a) - tag 0.1.0
+Notes: Changelog curated per Keep a Changelog. Commit types follow Conventional Commits when present; diffs were inspected to confirm scope.
+
+## [v0.1.0] - tag v0.1.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.1.0 (checkpoint at commit 10)
+Version v0.1.0 (checkpoint at commit 10)
 2025-11-30
 
-- ec765f1 2025-11-30 kpoppel: Initial commit
-- 16a7d61 2025-11-30 kpoppel: First major commit of the PlannerTool. Features include: - graphical user interface with rich interaction options - mocked backend - confiuration dialog - scenario planning
-- aa07ac8 2025-11-30 kpoppel: Add .gitignore file to exclude unnecessary files and directories
-- 8f48ece 2025-11-30 kpoppel: Add:Clone Scenario functionality apply universally across scenarios
-- 35ae590 2025-11-30 kpoppel: Refactor: Simplify publishBaseline method by removing scenario parameter and related syncScenario functionality
-- 37540ee 2025-11-30 kpoppel: Move state to class.
-- cd29913 2025-11-30 kpoppel: Refactor: Update state management to include baseline data structures and improve scenario handling
-- bd5a312 2025-11-30 kpoppel: Refactor: Remove persistScenarioOverrides method from data providers for code simplification
-- 805b655 2025-11-30 kpoppel: Add README to get started.
-- 7f5e7e9 2025-11-30 kpoppel: Add test suite for frontend.
-\n
-** v0.2.0 (006869a) - tag 0.2.0
+### Added
+
+- First major commit of the PlannerTool. Features include: - graphical user interface with rich interaction options - mocked backend - confiuration dialog - scenario planning (16a7d61) 2025-11-30 kpoppel
+- Add test suite for frontend. (7f5e7e9) 2025-11-30 kpoppel
+
+### Changed
+
+- Initial commit (ec765f1) 2025-11-30 kpoppel
+- Add .gitignore file to exclude unnecessary files and directories (aa07ac8) 2025-11-30 kpoppel
+- Add:Clone Scenario functionality apply universally across scenarios (8f48ece) 2025-11-30 kpoppel
+- Refactor: Simplify publishBaseline method by removing scenario parameter and related syncScenario functionality (35ae590) 2025-11-30 kpoppel — files: www/js/dataService.js,www/js/providerLocalStorage.js,www/js/providerMock.js,www/js/providerREST.js,www/js/sidebar.js
+- Move state to class. (37540ee) 2025-11-30 kpoppel
+- Refactor: Update state management to include baseline data structures and improve scenario handling (cd29913) 2025-11-30 kpoppel — files: www/js/colorManager.js,www/js/featureCard.js,www/js/sidebar.js,www/js/state.js,www/js/timeline.js
+- Refactor: Remove persistScenarioOverrides method from data providers for code simplification (bd5a312) 2025-11-30 kpoppel — files: www/js/dataService.js,www/js/providerLocalStorage.js,www/js/providerMock.js,www/js/providerREST.js
+- Add README to get started. (805b655) 2025-11-30 kpoppel
+
+### Removed
+
+- Refactor: Remove persistScenarioOverrides method from data providers for code simplification (bd5a312) 2025-11-30 kpoppel — files: www/js/dataService.js,www/js/providerLocalStorage.js,www/js/providerMock.js,www/js/providerREST.js
+
+---
+
+## [v0.2.0] - tag v0.2.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.2.0 (checkpoint at commit 20)
+Version v0.2.0 (checkpoint at commit 20)
 2025-12-02
 
-- 1a51e1d 2025-12-01 kpoppel: Refactor to move localstorage of colors into dataService and the provider instead of having two places.
-- 1a8450a 2025-12-01 kpoppel: Fix: End date of epic used baseline child dates to determine legal end date. Now uses baseline+override enddate.
-- 86646e4 2025-12-01 kpoppel: Add logging for method calls in ProviderLocalStorage and ProviderMock; refactor color initialization in State
-- a72b97c 2025-12-01 kpoppel: Chaged: Calculate organisation load in frontend when  refreshing data from backend.
-- 08eb111 2025-12-02 kpoppel: Refactor: Centralize timeline configuration and enhance organization load computation in state management
-- ebc10c9 2025-12-02 kpoppel: Fix: Adjust feature board overflow and background alignment for improved layout
-- 4f53b06 2025-12-02 kpoppel: Fix: Update orgLoad computation to use instance method for baseline features
-- f4e5f00 2025-12-02 kpoppel: Add help modal and dependency display options; enhance sidebar functionality
-- f0fdcd9 2025-12-02 kpoppel: Add file for dependency rendering. Aff help file.
-- d50dfa7 2025-12-02 kpoppel: Add first REST server health endpoint and wired it through to the UI,
-\n
-** v0.3.0 (40d8695) - tag 0.3.0
+### Added
+
+- Add logging for method calls in ProviderLocalStorage and ProviderMock; refactor color initialization in State (86646e4) 2025-12-01 kpoppel — files: www/js/providerLocalStorage.js,www/js/providerMock.js,www/js/sidebar.js,www/js/state.js
+- Add help modal and dependency display options; enhance sidebar functionality (f4e5f00) 2025-12-02 kpoppel
+- Add file for dependency rendering. Aff help file. (f0fdcd9) 2025-12-02 kpoppel — files: www/help.md,www/js/dependencyRenderer.js
+- Add first REST server health endpoint and wired it through to the UI, (d50dfa7) 2025-12-02 kpoppel
+
+### Changed
+
+- Refactor to move localstorage of colors into dataService and the provider instead of having two places. (1a51e1d) 2025-12-01 kpoppel
+- Chaged: Calculate organisation load in frontend when  refreshing data from backend. (a72b97c) 2025-12-01 kpoppel — files: www/js/detailsPanel.js,www/js/featureCard.js,www/js/providerMock.js
+- Refactor: Centralize timeline configuration and enhance organization load computation in state management (08eb111) 2025-12-02 kpoppel — files: www/js/loadGraph.js,www/js/state.js,www/js/timeline.js
+
+### Fixed
+
+- Fix: End date of epic used baseline child dates to determine legal end date. Now uses baseline+override enddate. (1a8450a) 2025-12-01 kpoppel
+- Fix: Adjust feature board overflow and background alignment for improved layout (ebc10c9) 2025-12-02 kpoppel
+- Fix: Update orgLoad computation to use instance method for baseline features (4f53b06) 2025-12-02 kpoppel
+
+---
+
+## [v0.3.0] - tag v0.3.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.3.0 (checkpoint at commit 30)
+Version v0.3.0 (checkpoint at commit 30)
 2025-12-05
 
-- 2345952 2025-12-02 kpoppel: Add first REST server health endpoint and wired it through to the UI,
-- 130002b 2025-12-03 kpoppel: Added tons of new features. and REST backend.
-- 08362a6 2025-12-03 kpoppel: feat: Implement configuration management with file storage
-- 317670e 2025-12-05 kpoppel: feat: Enhance task listing with optional project filtering and update Azure organization handling
-- 39c11fd 2025-12-05 kpoppel: feat: Add project and team counts to sidebar with improved layout
-- 8483cd3 2025-12-05 kpoppel: feat: Enhance team listing with short names and add mock team loads for tasks
-- 17421e2 2025-12-05 kpoppel: feat: Optimize work item retrieval by batching requests for improved performance
-- 5089e83 2025-12-05 kpoppel: feat: Refactor feature date updates for bulk processing and improved performance
-- 7eb61f7 2025-12-05 kpoppel: feat: Add toggle buttons for selecting all projects and teams in the sidebar
-- 0e8492e 2025-12-05 kpoppel: fix: Update finishDate field to use TargetDate for work items
-\n
-** v0.4.0 (99f3f28) - tag 0.4.0
+### Added
+
+- Add first REST server health endpoint and wired it through to the UI, (2345952) 2025-12-02 kpoppel — files: planner_lib/__init__.py,planner_lib/config/__init__.py,planner_lib/config/health.py,planner_lib/storage/__init__.py
+- feat: Implement configuration management with file storage (08362a6) 2025-12-03 kpoppel
+- feat: Enhance task listing with optional project filtering and update Azure organization handling (317670e) 2025-12-05 kpoppel — files: planner.py,planner_lib/azure/__init__.py,planner_lib/projects/__init__.py,planner_lib/setup.py,scripts/load_team_tasks.py,www/js/providerREST.js
+- feat: Add project and team counts to sidebar with improved layout (39c11fd) 2025-12-05 kpoppel — files: www/css/main.css,www/js/sidebar.js
+- feat: Enhance team listing with short names and add mock team loads for tasks (8483cd3) 2025-12-05 kpoppel — files: planner_lib/projects/__init__.py,www/js/providerREST.js
+- feat: Optimize work item retrieval by batching requests for improved performance (17421e2) 2025-12-05 kpoppel
+- feat: Refactor feature date updates for bulk processing and improved performance (5089e83) 2025-12-05 kpoppel — files: www/js/dragManager.js,www/js/featureCard.js,www/js/scheduleService.js,www/js/state.js
+- feat: Add toggle buttons for selecting all projects and teams in the sidebar (7eb61f7) 2025-12-05 kpoppel — files: www/css/main.css,www/js/sidebar.js
+
+### Changed
+
+- Added tons of new features. and REST backend. (130002b) 2025-12-03 kpoppel
+
+### Fixed
+
+- fix: Update finishDate field to use TargetDate for work items (0e8492e) 2025-12-05 kpoppel
+
+---
+
+## [v0.4.0] - tag v0.4.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.4.0 (checkpoint at commit 40)
+Version v0.4.0 (checkpoint at commit 40)
 2025-12-07
 
-- 8937978 2025-12-06 kpoppel: feat: Implement loading modal with spinner and label for improved user experience
-- c9e3543 2025-12-06 kpoppel: feat: Enhance sidebar with collapsible sections and improved project/team selection UI
-- a5e2c29 2025-12-06 kpoppel: feat: Update api_url_to_ui_link to extract organization and project from API URL for improved UI link generation
-- c9e17df 2025-12-06 kpoppel: feat: Implement task update API and integrate with Azure DevOps for date management feat: save modal code refactored and is scrollable
-- 1f1a20f 2025-12-06 kpoppel: feat: Add team load parsing and mapping functions to enhance task data processing
-- 7bfb31b 2025-12-07 kpoppel: feat: Enhance AzureClient with safe type and date handling, improve work item retrieval and relations mapping
-- 578f153 2025-12-07 kpoppel: feat: Implement chip-based view options UI and state filtering for improved task management
-- 4dd0485 2025-12-07 kpoppel: feat: Add mountain view modal and capacity selector with Open Graph integration in view options
-- c52a53d 2025-12-07 kpoppel: feat: Refactor sidebar project and team rendering to use chip-based UI for improved visual consistency
-- 14ab508 2025-12-07 kpoppel: feat: Add systemd service and runner script for PlannerTool backend service
-\n
-** v0.5.0 (8f9a249) - tag 0.5.0
+### Added
+
+- feat: Implement loading modal with spinner and label for improved user experience (8937978) 2025-12-06 kpoppel — files: www/css/main.css,www/index.html,www/js/app.js
+- feat: Enhance sidebar with collapsible sections and improved project/team selection UI (c9e3543) 2025-12-06 kpoppel — files: Blue_checkbox-checked.svg,www/css/main.css,www/js/sidebar.js,www/js/timeline.js
+- feat: Update api_url_to_ui_link to extract organization and project from API URL for improved UI link generation (a5e2c29) 2025-12-06 kpoppel
+- feat: Implement task update API and integrate with Azure DevOps for date management feat: save modal code refactored and is scrollable (c9e17df) 2025-12-06 kpoppel
+- feat: Add team load parsing and mapping functions to enhance task data processing (1f1a20f) 2025-12-06 kpoppel — files: planner_lib/projects/__init__.py,www/js/providerREST.js
+- feat: Enhance AzureClient with safe type and date handling, improve work item retrieval and relations mapping (7bfb31b) 2025-12-07 kpoppel — files: planner_lib/azure/__init__.py,planner_lib/projects/__init__.py,www/css/main.css,www/js/dependencyRenderer.js,www/js/dragManager.js,www/js/providerREST.js
+- feat: Implement chip-based view options UI and state filtering for improved task management (578f153) 2025-12-07 kpoppel — files: www/css/main.css,www/js/detailsPanel.js,www/js/featureCard.js,www/js/sidebar.js,www/js/state.js,www/js/viewOptions.js
+- feat: Add mountain view modal and capacity selector with Open Graph integration in view options (4dd0485) 2025-12-07 kpoppel — files: www/css/main.css,www/index.html,www/js/mountainViewModal.js,www/js/viewOptions.js
+- feat: Refactor sidebar project and team rendering to use chip-based UI for improved visual consistency (c52a53d) 2025-12-07 kpoppel — files: www/css/main.css,www/js/sidebar.js
+- feat: Add systemd service and runner script for PlannerTool backend service (14ab508) 2025-12-07 kpoppel — files: scripts/plannertool.service,scripts/systemd_runner.sh
+
+---
+
+## [v0.5.0] - tag v0.5.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.5.0 (checkpoint at commit 50)
+Version v0.5.0 (checkpoint at commit 50)
 2025-12-18
 
-- 2d48454 2025-12-07 kpoppel: refactor: Simplify sidebar configuration section markup
-- a8a3151 2025-12-07 kpoppel: style: Update sidebar configuration styles for improved layout and readability
-- e380efc 2025-12-07 kpoppel: fix: Graphs for teams now render correctly.
-- 024034c 2025-12-07 kpoppel: fix: Update terminology in help documentation from "Team Loads" to "Team Capacity"
-- 160b425 2025-12-07 kpoppel: fix: Update terminology from "Team Loads" to "Team Capacity" in task description parsing
-- a950474 2025-12-07 kpoppel: fix: Correct typo in "Run a sessinon from CLI" section and enhance README with Proxmox LXC installation instructions
-- 34c58b0 2025-12-07 kpoppel: fix: Refactor rendering logic to respect selected teams and projects in loadGraph and mountainViewModal
-- 2b28622 2025-12-08 kpoppel: feat: Add scenario saving and loading from the backend.
-- a0b7cd1 2025-12-17 kpoppel: Refactor capacity handling in project management
-- cab06e9 2025-12-18 kpoppel: fix: Update state management and event handling for feature organization load and state filter
-\n
-** v0.6.0 (d2ecb89) - tag 0.6.0
+### Added
+
+- feat: Add scenario saving and loading from the backend. (2b28622) 2025-12-08 kpoppel
+
+### Changed
+
+- refactor: Simplify sidebar configuration section markup (2d48454) 2025-12-07 kpoppel — files: www/help.md,www/js/sidebar.js
+- style: Update sidebar configuration styles for improved layout and readability (a8a3151) 2025-12-07 kpoppel [style]
+- Refactor capacity handling in project management (a0b7cd1) 2025-12-17 kpoppel
+
+### Fixed
+
+- fix: Graphs for teams now render correctly. (e380efc) 2025-12-07 kpoppel — files: www/js/loadGraph.js,www/js/mountainViewModal.js,www/js/state.js
+- fix: Update terminology in help documentation from "Team Loads" to "Team Capacity" (024034c) 2025-12-07 kpoppel
+- fix: Update terminology from "Team Loads" to "Team Capacity" in task description parsing (160b425) 2025-12-07 kpoppel
+- fix: Correct typo in "Run a sessinon from CLI" section and enhance README with Proxmox LXC installation instructions (a950474) 2025-12-07 kpoppel
+- fix: Refactor rendering logic to respect selected teams and projects in loadGraph and mountainViewModal (34c58b0) 2025-12-07 kpoppel — files: www/js/colorSimpleManager.js,www/js/loadGraph.js,www/js/mountainViewModal.js
+- fix: Update state management and event handling for feature organization load and state filter (cab06e9) 2025-12-18 kpoppel — files: www/js/loadMath.js,www/js/state.js,www/js/viewOptions.js
+
+---
+
+## [v0.6.0] - tag v0.6.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.6.0 (checkpoint at commit 60)
+Version v0.6.0 (checkpoint at commit 60)
 2025-12-23
 
-- f1704b4 2025-12-19 kpoppel: feat: Enhance feature card styling with specific icon classes
-- a33fb3b 2025-12-19 kpoppel: feat: Add guidelines for using Azure DevOps effectively to enhance project management
-- 6731054 2025-12-19 kpoppel: refactor: Remove refreshBaseline method from various services and update state management to fetch fresh data
-- 348b04f 2025-12-22 kpoppel: refactor: Update test configurations and improve data handling in backend tests
-- ea08e10 2025-12-23 kpoppel: feat: Enhance logging configuration and add feature flag support in backend
-- b3c6522 2025-12-23 kpoppel: refactor: Update logging level for project configuration warnings and enhance cache handling in tests
-- 83ec8a8 2025-12-23 kpoppel: feat: Implement AzureCachingClient and AzureNativeClient for Azure DevOps interactions
-- 886bf11 2025-12-23 kpoppel: feat: Implement AzureCachingClient with file-based caching and enhance AzureClient interface
-- 2b4baa9 2025-12-23 kpoppel: feat: Enhance logging for cache operations in AzureCachingClient
-\n
-** v0.7.0 (be11270) - tag 0.7.0
+### Added
+
+- feat: Enhance feature card styling with specific icon classes (f1704b4) 2025-12-19 kpoppel — files: www/css/main.css,www/js/featureCard.js
+- feat: Add guidelines for using Azure DevOps effectively to enhance project management (a33fb3b) 2025-12-19 kpoppel
+- feat: Enhance logging configuration and add feature flag support in backend (ea08e10) 2025-12-23 kpoppel — files: planner.py,planner_lib/setup.py,planner_lib/storage/file_backend.py
+- feat: Implement AzureCachingClient and AzureNativeClient for Azure DevOps interactions (83ec8a8) 2025-12-23 kpoppel — files: planner_lib/azure/AzureCachingClient.py,planner_lib/azure/AzureClient.py,planner_lib/azure/AzureNativeClient.py,planner_lib/azure/__init__.py
+- feat: Implement AzureCachingClient with file-based caching and enhance AzureClient interface (886bf11) 2025-12-23 kpoppel — files: planner_lib/azure/AzureCachingClient.py,planner_lib/azure/AzureClient.py,planner_lib/azure/AzureNativeClient.py,planner_lib/azure/__init__.py,planner_lib/projects/__init__.py,tests/backend/test_azure_cache.py
+- feat: Enhance logging for cache operations in AzureCachingClient (2b4baa9) 2025-12-23 kpoppel
+
+### Changed
+
+- refactor: Remove refreshBaseline method from various services and update state management to fetch fresh data (6731054) 2025-12-19 kpoppel
+- refactor: Update test configurations and improve data handling in backend tests (348b04f) 2025-12-22 kpoppel — files: .gitignore,tests/backend/test_admin_reload_config.py,tests/backend/test_api_config.py,tests/backend/test_azure_cache.py,tests/backend/test_cost_engine.py,tests/backend/test_file_storage.py,tests/backend/test_setup.py
+- refactor: Update logging level for project configuration warnings and enhance cache handling in tests (b3c6522) 2025-12-23 kpoppel — files: planner_lib/projects/__init__.py,tests/backend/test_azure_cache.py
+
+### Removed
+
+- refactor: Remove refreshBaseline method from various services and update state management to fetch fresh data (6731054) 2025-12-19 kpoppel
+
+---
+
+## [v0.7.0] - tag v0.7.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.7.0 (checkpoint at commit 70)
+Version v0.7.0 (checkpoint at commit 70)
 2025-12-26
 
-- 9d27693 2025-12-22 kpoppel: Squashed: architecture-v2 onto origin/main
-- 5e4d99e 2025-12-23 kpoppel: refactor: Change logging level to debug for cache operations in AzureCachingClient
-- 5bb1939 2025-12-23 kpoppel: feat: Add Brotli compression middleware and enable it based on feature flag
-- 16473dc 2025-12-23 kpoppel: Merge branch 'architecture-v2'
-- d25724c 2025-12-25 kpoppel: feat: Events are now fully typed events. feat: FeatureService can return effect feature for a single ID. State updated to support this. feat: details panel subscribe to the feature card selected event.
-- 8bb0f90 2025-12-25 kpoppel: refactor: Remove unused inScenarioMode property and clean up related code
-- 39f6d21 2025-12-25 kpoppel: refactor: Clean up event listener registration in dragManager.js
-- bc386af 2025-12-26 kpoppel: refactor: Update event handling to use symbol-based events for improved type safety
-- 75c57cd 2025-12-26 kpoppel: refactor: Update tests to use new FeatureBoard component API and symbol-based events
-- 3bb61ab 2025-12-26 kpoppel: feat: Completed component migration of board and cards. side effect is that this is really fast now. bug (new): dependency arrows are not rendering.
-- 1b05fb3 2025-12-26 kpoppel: fix: SVG overlay  working again. I think with too much uneeded code.
-\n
-** v0.8.0 (23e720c) - tag 0.8.0
+### Added
+
+- feat: Add Brotli compression middleware and enable it based on feature flag (5bb1939) 2025-12-23 kpoppel — files: planner.py,planner_lib/plugins/__init__.py,planner_lib/plugins/middleware.py,requirements.txt
+- feat: Events are now fully typed events. feat: FeatureService can return effect feature for a single ID. State updated to support this. feat: details panel subscribe to the feature card selected event. (d25724c) 2025-12-25 kpoppel — files: www/js/app.js,www/js/components/DetailsPanel.lit.js,www/js/core/EventBus.js,www/js/core/EventRegistry.js,www/js/plugins/SamplePlugin.js,www/js/services/FeatureService.js,www/js/services/State.js
+- feat: Completed component migration of board and cards. side effect is that this is really fast now. bug (new): dependency arrows are not rendering. (3bb61ab) 2025-12-26 kpoppel — files: tests/core/eventbus-and-registry.test.js,tests/core/plugin-manager.test.js,www/js/app.js,www/js/components/FeatureBoard.lit.js,www/js/components/FeatureCard.lit.js,www/js/components/board-utils.js,www/js/services/QueuedFeatureService.js
+
+### Changed
+
+- Squashed: architecture-v2 onto origin/main (9d27693) 2025-12-22 kpoppel
+- refactor: Change logging level to debug for cache operations in AzureCachingClient (5e4d99e) 2025-12-23 kpoppel
+- Merge branch 'architecture-v2' (16473dc) 2025-12-23 kpoppel — files: .gitignore,planner.py
+- refactor: Remove unused inScenarioMode property and clean up related code (8bb0f90) 2025-12-25 kpoppel
+- refactor: Clean up event listener registration in dragManager.js (39f6d21) 2025-12-25 kpoppel — files: www/js/components/DetailsPanel.lit.js,www/js/components/dragManager.js
+- refactor: Update event handling to use symbol-based events for improved type safety (bc386af) 2025-12-26 kpoppel — files: tests/components/color.test.js,tests/components/colormanager.test.js,tests/core/container-and-service-registry.test.js,tests/core/eventbus-and-registry.test.js,tests/services/providers-filter-capacity.test.js,tests/services/state.test.js
+- refactor: Update tests to use new FeatureBoard component API and symbol-based events (75c57cd) 2025-12-26 kpoppel — files: tests/components/feature-card.test.js,tests/components/featureboard.incremental.test.js,tests/components/featureboard.test.js,tests/core/plugin-manager.test.js,tests/services/coverage-helpers.test.js
+
+### Fixed
+
+- fix: SVG overlay  working again. I think with too much uneeded code. (1b05fb3) 2025-12-26 kpoppel — files: tests/components/dependency-renderer.test.js,www/js/components/DependencyRenderer.lit.js
+
+### Removed
+
+- refactor: Remove unused inScenarioMode property and clean up related code (8bb0f90) 2025-12-25 kpoppel
+
+---
+
+## [v0.8.0] - tag v0.8.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.8.0 (checkpoint at commit 80)
+Version v0.8.0 (checkpoint at commit 80)
 2025-12-26
 
-- e9ea6cd 2025-12-26 kpoppel: refactor: Simplify SVG creation and improve card gathering logic in DependencyRenderer
-- 7536cba 2025-12-26 kpoppel: feat: Enhance dependency renderer management by collecting renderers from document and feature-board shadow roots
-- e8fb4d1 2025-12-26 kpoppel: refactor: Simplify DependencyRenderer class structure and improve SVG management
-- 84bd2b1 2025-12-26 kpoppel: feat: Add double-click handling to revert feature changes in FeatureCardLit
-- 3267a24 2025-12-26 kpoppel: feat: Implement live date updates during drag and resize actions in FeatureCardLit
-- 9f9c697 2025-12-26 kpoppel: feat: Enable incremental capacity recalculation in State service
-- 563b79e 2025-12-26 kpoppel: feat: Optimize card updates and event emissions in FeatureBoard and FeatureService
-- 9eac226 2025-12-26 kpoppel: feat: Implement plugin system and add Graph View plugin
-- 5e5a633 2025-12-26 kpoppel: feat: Refactor plugin system to use 'enabled' flag and remove in-repo registration
-- ea48563 2025-12-26 kpoppel: feat: Enhance test coverage for FeatureBoard and State services with mock data
-\n
-** v0.9.0 (aecadee) - tag 0.9.0
+### Added
+
+- feat: Enhance dependency renderer management by collecting renderers from document and feature-board shadow roots (7536cba) 2025-12-26 kpoppel
+- feat: Add double-click handling to revert feature changes in FeatureCardLit (84bd2b1) 2025-12-26 kpoppel
+- feat: Implement live date updates during drag and resize actions in FeatureCardLit (3267a24) 2025-12-26 kpoppel — files: www/js/components/FeatureCard.lit.js,www/js/components/dragManager.js
+- feat: Enable incremental capacity recalculation in State service (9f9c697) 2025-12-26 kpoppel — files: www/js/services/CapacityCalculator.js,www/js/services/State.js
+- feat: Optimize card updates and event emissions in FeatureBoard and FeatureService (563b79e) 2025-12-26 kpoppel — files: www/js/components/FeatureBoard.lit.js,www/js/components/dragManager.js,www/js/services/FeatureService.js
+- feat: Implement plugin system and add Graph View plugin (9eac226) 2025-12-26 kpoppel
+- feat: Refactor plugin system to use 'enabled' flag and remove in-repo registration (5e5a633) 2025-12-26 kpoppel
+- feat: Enhance test coverage for FeatureBoard and State services with mock data (ea48563) 2025-12-26 kpoppel — files: tests/components/feature-card.test.js,tests/components/featureboard.incremental.test.js,tests/components/featureboard.test.js,tests/services/feature-and-state-oracles.test.js,tests/services/queued-feature-service.test.js,www/js/modules.config.json
+
+### Changed
+
+- refactor: Simplify SVG creation and improve card gathering logic in DependencyRenderer (e9ea6cd) 2025-12-26 kpoppel
+- refactor: Simplify DependencyRenderer class structure and improve SVG management (e8fb4d1) 2025-12-26 kpoppel
+
+### Removed
+
+- feat: Implement plugin system and add Graph View plugin (9eac226) 2025-12-26 kpoppel
+- feat: Refactor plugin system to use 'enabled' flag and remove in-repo registration (5e5a633) 2025-12-26 kpoppel
+
+---
+
+## [v0.9.0] - tag v0.9.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.9.0 (checkpoint at commit 90)
+Version v0.9.0 (checkpoint at commit 90)
 2025-12-30
 
-- ebdc92f 2025-12-26 kpoppel: feat: Update plugin metadata to include title and enabled status; enhance plugin loading logic
-- 1122b0c 2025-12-26 kpoppel: feat: Add accent color support for chips and implement state color mapping
-- 2339336 2025-12-27 kpoppel: feat: Enhance feature state management and cost data integration
-- 0f50d5e 2025-12-27 kpoppel: feat: Implement getCost method for fetching and recalculating cost data
-- e265580 2025-12-27 kpoppel: feat: Enhance cost data retrieval with scenario support and debounce handling
-- 9ac0e60 2025-12-27 kpoppel: feat: Add cost teams functionality with UI integration and data retrieval
-- f588fd9 2025-12-30 kpoppel: feat: Integrate epic capacity handling and refactor cost calculation logic
-- 0d90e0c 2025-12-30 kpoppel: feat: Add styling for totals footer in PluginCostComponent
-- ec3a77a 2025-12-30 kpoppel: feat: Enhance cost distribution logic by implementing daily overlap calculations
-- d016901 2025-12-30 kpoppel: feat: Add comprehensive test suite for cost calculation engine
-\n
-** v0.10.0 (ba5f863) - tag 0.10.0
+### Added
+
+- feat: Update plugin metadata to include title and enabled status; enhance plugin loading logic (ebdc92f) 2025-12-26 kpoppel — files: www/js/components/Sidebar.lit.js,www/js/core/Plugin.js,www/js/core/PluginManager.js
+- feat: Add accent color support for chips and implement state color mapping (1122b0c) 2025-12-26 kpoppel — files: www/css/main.css,www/js/components/viewOptions.js,www/js/services/State.js
+- feat: Enhance feature state management and cost data integration (2339336) 2025-12-27 kpoppel
+- feat: Implement getCost method for fetching and recalculating cost data (0f50d5e) 2025-12-27 kpoppel
+- feat: Enhance cost data retrieval with scenario support and debounce handling (e265580) 2025-12-27 kpoppel — files: www/js/plugins/PluginCostComponent.js,www/js/services/dataService.js,www/js/services/providerREST.js
+- feat: Add cost teams functionality with UI integration and data retrieval (9ac0e60) 2025-12-27 kpoppel — files: README.md,www/js/config.js,www/js/plugins/PluginCostComponent.js,www/js/services/dataService.js,www/js/services/providerLocalStorage.js,www/js/services/providerMock.js,www/js/services/providerREST.js
+- feat: Integrate epic capacity handling and refactor cost calculation logic (f588fd9) 2025-12-30 kpoppel — files: www/js/config.js,www/js/plugins/PluginCostCalculator.js,www/js/plugins/PluginCostComponent.js,www/js/services/CapacityCalculator.js,www/js/services/State.js
+- feat: Add styling for totals footer in PluginCostComponent (0d90e0c) 2025-12-30 kpoppel
+- feat: Enhance cost distribution logic by implementing daily overlap calculations (ec3a77a) 2025-12-30 kpoppel
+- feat: Add comprehensive test suite for cost calculation engine (d016901) 2025-12-30 kpoppel
+
+---
+
+## [v0.10.0] - tag v0.10.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.10.0 (checkpoint at commit 100)
+Version v0.10.0 (checkpoint at commit 100)
 2025-12-30
 
-- cce4739 2025-12-30 kpoppel: feat: Add tests for day-overlap distribution in PluginCostCalculator
-- 96eb9e7 2025-12-30 kpoppel: feat: Refactor hour calculation logic to use monthly cost approach and improve accuracy
-- f146dfd 2025-12-30 kpoppel: feat: Refactor PluginCostCalculator to improve feature cost distribution and enhance readability
-- c3ccd7f 2025-12-30 kpoppel: feat: Refactor buildFeature and overlapDays functions for improved clarity and performance
-- 6408248 2025-12-30 kpoppel: feat: Update tests to reflect ServiceRegistry logging and remove deprecated string event subscriptions
-- a258836 2025-12-30 kpoppel: feat: Enhance documentation and structure of core modules including Container, EventBus, EventRegistry, Plugin, PluginManager, and ServiceRegistry
-- 6da40e8 2025-12-30 kpoppel: Add unit and integration tests for various components and utilities
-- bb92ed4 2025-12-30 kpoppel: feat: Add detailed documentation comments for PluginCost, PluginCostCalculator, PluginCostComponent, PluginGraph, PluginGraphComponent, and SamplePlugin
-- 299f5c5 2025-12-30 kpoppel: feat: Refactor and enhance documentation for PluginCost, PluginCostCalculator, PluginCostComponent, PluginGraph, PluginGraphComponent, and SamplePlugin
-- afd2781 2025-12-30 kpoppel: feat: Update plugin metadata names and descriptions for improved clarity
-\n
-** v0.11.0 (f23fec8) - tag 0.11.0
+### Added
+
+- feat: Add tests for day-overlap distribution in PluginCostCalculator (cce4739) 2025-12-30 kpoppel
+- feat: Refactor hour calculation logic to use monthly cost approach and improve accuracy (96eb9e7) 2025-12-30 kpoppel
+- feat: Refactor PluginCostCalculator to improve feature cost distribution and enhance readability (f146dfd) 2025-12-30 kpoppel
+- feat: Refactor buildFeature and overlapDays functions for improved clarity and performance (c3ccd7f) 2025-12-30 kpoppel
+- feat: Update tests to reflect ServiceRegistry logging and remove deprecated string event subscriptions (6408248) 2025-12-30 kpoppel — files: tests/core/container-and-service-registry.test.js,tests/core/eventbus-and-registry.test.js,tests/services/coverage-helpers.test.js
+- feat: Enhance documentation and structure of core modules including Container, EventBus, EventRegistry, Plugin, PluginManager, and ServiceRegistry (a258836) 2025-12-30 kpoppel — files: www/js/core/Container.js,www/js/core/EventBus.js,www/js/core/EventRegistry.js,www/js/core/Plugin.js,www/js/core/PluginManager.js,www/js/core/ServiceRegistry.js
+- Add unit and integration tests for various components and utilities (6da40e8) 2025-12-30 kpoppel
+- feat: Add detailed documentation comments for PluginCost, PluginCostCalculator, PluginCostComponent, PluginGraph, PluginGraphComponent, and SamplePlugin (bb92ed4) 2025-12-30 kpoppel — files: www/js/plugins/PluginCost.js,www/js/plugins/PluginCostCalculator.js,www/js/plugins/PluginCostComponent.js,www/js/plugins/PluginGraph.js,www/js/plugins/PluginGraphComponent.js,www/js/plugins/SamplePlugin.js
+- feat: Refactor and enhance documentation for PluginCost, PluginCostCalculator, PluginCostComponent, PluginGraph, PluginGraphComponent, and SamplePlugin (299f5c5) 2025-12-30 kpoppel — files: www/js/plugins/PluginCost.js,www/js/plugins/PluginCostCalculator.js,www/js/plugins/PluginCostComponent.js,www/js/plugins/PluginGraph.js,www/js/plugins/PluginGraphComponent.js,www/js/plugins/SamplePlugin.js
+- feat: Update plugin metadata names and descriptions for improved clarity (afd2781) 2025-12-30 kpoppel — files: www/js/components/Sidebar.lit.js,www/js/modules.config.json,www/js/plugins/PluginCost.js,www/js/plugins/PluginGraph.js
+
+### Deprecated
+
+- feat: Update tests to reflect ServiceRegistry logging and remove deprecated string event subscriptions (6408248) 2025-12-30 kpoppel — files: tests/core/container-and-service-registry.test.js,tests/core/eventbus-and-registry.test.js,tests/services/coverage-helpers.test.js
+
+### Removed
+
+- feat: Update tests to reflect ServiceRegistry logging and remove deprecated string event subscriptions (6408248) 2025-12-30 kpoppel — files: tests/core/container-and-service-registry.test.js,tests/core/eventbus-and-registry.test.js,tests/services/coverage-helpers.test.js
+
+---
+
+## [v0.11.0] - tag v0.11.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.11.0 (checkpoint at commit 110)
+Version v0.11.0 (checkpoint at commit 110)
 2026-01-04
 
-- 2a67232 2025-12-31 kpoppel: Refactor SpinnerModal and Timeline components for improved readability and performance
-- 1af57a4 2025-12-31 kpoppel: refactor: Simplify code by using optional chaining and spread operator in FeatureCardLit component
-- 1127a05 2025-12-31 kpoppel: feat: Add MUTE_ZERO_CELLS flag and update fmtCell method in PluginCostComponent for improved zero value handling
-- 7b79e74 2026-01-04 kpoppel: feat: Enhance task state filter to be additive and update cost estimation feature details in README
-- 6901e4e 2026-01-04 kpoppel: fix: Remove redundant newline in cost estimation feature section of README
-- afd9314 2026-01-04 kpoppel: feat: Implement server-side validation for readonly scenarios and update related functionality
-- 1cbb98b 2026-01-04 kpoppel: Refactor state management by introducing dedicated services for color, configuration, and view handling
-- af36e71 2026-01-04 kpoppel: feat: Add StateFilterService for managing feature state filtering and selection
-- 88d4b7c 2026-01-04 kpoppel: feat: Add capacity update functionality to task management
-- fcea44a 2026-01-04 kpoppel: feat: Enhance feature and scenario management services
-\n
-** v0.12.0 (56bdb99) - tag 0.12.0
+### Added
+
+- feat: Add MUTE_ZERO_CELLS flag and update fmtCell method in PluginCostComponent for improved zero value handling (1127a05) 2025-12-31 kpoppel — files: www/js/config.js,www/js/plugins/PluginCostComponent.js,www/js/services/State.js
+- feat: Enhance task state filter to be additive and update cost estimation feature details in README (7b79e74) 2026-01-04 kpoppel
+- feat: Implement server-side validation for readonly scenarios and update related functionality (afd9314) 2026-01-04 kpoppel — files: planner.py,www/js/components/FeatureBoard.lit.js,www/js/components/Sidebar.lit.js,www/js/services/ScenarioManager.js,www/js/services/State.js,www/js/services/providerREST.js
+- Refactor state management by introducing dedicated services for color, configuration, and view handling (1cbb98b) 2026-01-04 kpoppel
+- feat: Add StateFilterService for managing feature state filtering and selection (af36e71) 2026-01-04 kpoppel
+- feat: Add capacity update functionality to task management (88d4b7c) 2026-01-04 kpoppel
+- feat: Enhance feature and scenario management services (fcea44a) 2026-01-04 kpoppel
+
+### Changed
+
+- Refactor SpinnerModal and Timeline components for improved readability and performance (2a67232) 2025-12-31 kpoppel
+- refactor: Simplify code by using optional chaining and spread operator in FeatureCardLit component (1af57a4) 2025-12-31 kpoppel
+
+### Fixed
+
+- fix: Remove redundant newline in cost estimation feature section of README (6901e4e) 2026-01-04 kpoppel
+
+### Removed
+
+- fix: Remove redundant newline in cost estimation feature section of README (6901e4e) 2026-01-04 kpoppel
+
+---
+
+## [v0.12.0] - tag v0.12.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.12.0 (checkpoint at commit 120)
+Version v0.12.0 (checkpoint at commit 120)
 2026-01-08
 
-- 88c1748 2026-01-04 kpoppel: fix: Prevent overflow in feature card layout and improve text handling
-- d09f867 2026-01-04 kpoppel: feat: Implement work item cache invalidation and update handling in AzureCachingClient
-- 698a35d 2026-01-04 kpoppel: feat: Add capacity management functionality across components and services
-- c0587ea 2026-01-05 kpoppel: Refactor QueuedFeatureService for improved handling of feature updates and epic relationships
-- 6d4a55b 2026-01-06 kpoppel: feat: Add budget deviation tracking and controls in cost component
-- 521396b 2026-01-06 kpoppel: feat: Enhance capacity handling in cost calculation for tasks
-- 839c310 2026-01-07 kpoppel: feat: Add configuration files for cost and database settings, including path resolution for database YAML
-- 2dc2d77 2026-01-07 kpoppel: feat: sanitize team capacity block if team short name changes.
-- bc25541 2026-01-07 kpoppel: feat: implement timeline zoom functionality with segmented control and event handling
-- fe23d0f 2026-01-08 kpoppel: Refactor tests and services for improved functionality and coverage
-\n
-** v0.13.0 (4d15d66) - tag 0.13.0
+### Added
+
+- feat: Implement work item cache invalidation and update handling in AzureCachingClient (d09f867) 2026-01-04 kpoppel — files: planner_lib/azure/AzureCachingClient.py,planner_lib/azure/AzureClient.py,planner_lib/azure/AzureNativeClient.py,tests/backend/test_azure_cache.py,tests/components/modal.test.js,www/js/components/AzureDevopsModal.lit.js
+- feat: Add capacity management functionality across components and services (698a35d) 2026-01-04 kpoppel
+- Refactor QueuedFeatureService for improved handling of feature updates and epic relationships (c0587ea) 2026-01-05 kpoppel — files: www/js/components/DetailsPanel.lit.js,www/js/plugins/PluginCostComponent.js,www/js/services/FeatureService.js,www/js/services/QueuedFeatureService.js
+- feat: Add budget deviation tracking and controls in cost component (6d4a55b) 2026-01-06 kpoppel — files: planner_lib/cost/engine.py,www/js/plugins/PluginCostCalculator.js,www/js/plugins/PluginCostComponent.js
+- feat: Enhance capacity handling in cost calculation for tasks (521396b) 2026-01-06 kpoppel
+- feat: Add configuration files for cost and database settings, including path resolution for database YAML (839c310) 2026-01-07 kpoppel — files: README.md,docs/example-cost_config.yml,docs/example-database.yaml,docs/example-server_config.yml,planner_lib/cost/config.py
+- feat: sanitize team capacity block if team short name changes. (2dc2d77) 2026-01-07 kpoppel
+- feat: implement timeline zoom functionality with segmented control and event handling (bc25541) 2026-01-07 kpoppel
+
+### Changed
+
+- Refactor tests and services for improved functionality and coverage (fe23d0f) 2026-01-08 kpoppel
+
+### Fixed
+
+- fix: Prevent overflow in feature card layout and improve text handling (88c1748) 2026-01-04 kpoppel
+
+### Removed
+
+- Refactor tests and services for improved functionality and coverage (fe23d0f) 2026-01-08 kpoppel
+
+---
+
+## [v0.13.0] - tag v0.13.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.13.0 (checkpoint at commit 130)
+Version v0.13.0 (checkpoint at commit 130)
 2026-01-10
 
-- 6c089ee 2026-01-09 kpoppel: feat: enhance sidebar state restoration logic with event-driven updates
-- 3b78905 2026-01-09 kpoppel: feat: enhance sidebar with reactive properties and event handling for projects, teams, and scenarios
-- 741b369 2026-01-09 kpoppel: feat: implement support for 'threeMonths' timeline scale with responsive adjustments and event handling
-- d9df5a0 2026-01-09 kpoppel: feat: add debounced resize handling for timeline component and adjust segment styles
-- e9e7be0 2026-01-09 kpoppel: fix: add caching for aggregated counts in FeatureService and improve performance of count methods
-- 89eb4cb 2026-01-10 kpoppel: fix: Bug when moving card to april 1st when in not UTC timeezone.
-- d884532 2026-01-10 kpoppel: feature: Added export plugin as experimental feature. the plugin allows exporting as png and adding annotations.
-- 9400468 2026-01-10 kpoppel: feat(annotations): Implement annotation state management and storage (alpha version)
-- aadb5a4 2026-01-10 kpoppel: feat(export): Add vendor scripts for Lit and unsafeSVG, enhance Timeline export with icons
-- 6945494 2026-01-10 kpoppel: feat(details-panel): Add feature icon display in details header
-\n
-** v0.14.0 (22c95ba) - tag 0.14.0
+### Added
+
+- feat: enhance sidebar state restoration logic with event-driven updates (6c089ee) 2026-01-09 kpoppel
+- feat: enhance sidebar with reactive properties and event handling for projects, teams, and scenarios (3b78905) 2026-01-09 kpoppel — files: tests/components/sidebar.lit.test.js,www/js/components/Sidebar.lit.js,www/js/services/FeatureService.js,www/js/services/State.js
+- feat: implement support for 'threeMonths' timeline scale with responsive adjustments and event handling (741b369) 2026-01-09 kpoppel — files: www/css/main.css,www/js/components/Sidebar.lit.js,www/js/components/Timeline.lit.js,www/js/components/viewOptions.js,www/js/services/ViewService.js
+- feat: add debounced resize handling for timeline component and adjust segment styles (d9df5a0) 2026-01-09 kpoppel — files: www/css/main.css,www/js/components/Timeline.lit.js
+- feat(annotations): Implement annotation state management and storage (alpha version) (9400468) 2026-01-10 kpoppel
+- feat(export): Add vendor scripts for Lit and unsafeSVG, enhance Timeline export with icons (aadb5a4) 2026-01-10 kpoppel — files: scripts/vendor-lit.sh,www/css/main.css,www/js/plugins/export/TimelineExportRenderer.js,www/js/services/IconService.js,www/js/vendor/lit.bundle.local.js,www/js/vendor/unsafe-svg.js
+- feat(details-panel): Add feature icon display in details header (6945494) 2026-01-10 kpoppel
+
+### Changed
+
+- feature: Added export plugin as experimental feature. the plugin allows exporting as png and adding annotations. (d884532) 2026-01-10 kpoppel
+
+### Fixed
+
+- fix: add caching for aggregated counts in FeatureService and improve performance of count methods (e9e7be0) 2026-01-09 kpoppel — files: README.md,www/js/services/FeatureService.js
+- fix: Bug when moving card to april 1st when in not UTC timeezone. (89eb4cb) 2026-01-10 kpoppel — files: README.md,tests/components/utc-date-handling.test.js,www/js/components/board-utils.js
+
+### Removed
+
+- feat(annotations): Implement annotation state management and storage (alpha version) (9400468) 2026-01-10 kpoppel
+
+---
+
+## [v0.14.0] - tag v0.14.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.14.0 (checkpoint at commit 140)
+Version v0.14.0 (checkpoint at commit 140)
 2026-01-11
 
-- b8f10f8 2026-01-10 kpoppel: fix: stop details panel from opening on drag or size
-- 8a71efe 2026-01-10 kpoppel: Remove close button from plugin boxes. Use the button the sidebar provides.
-- b61bed1 2026-01-10 kpoppel: feat(timeline): Refactor timeline structure and introduce TimelineBoard component
-- ffa20c3 2026-01-10 kpoppel: refactor(FeatureBoard): clean up imports and add render logging
-- f2918a8 2026-01-10 kpoppel: feat(export): enable annotations plugin and update export functionality
-- 4ff9880 2026-01-10 kpoppel: feat(plugin-manager): enhance plugin activation logic to support exclusive configurations
-- d46797e 2026-01-10 kpoppel: feat(export): enhance export functionality and annotations handling in timeline
-- ba8d6f8 2026-01-11 kpoppel: feat(annotations): enhance annotation overlay and panning behavior for feature board
-- 80c6f0b 2026-01-11 kpoppel: feat(annotations): add icon annotation tool and contextual icon picker feat(details panel): Add shrink button to details panel
-- 8230f98 2026-01-11 kpoppel: feat(timeline): adjust month label rendering for year scale to prevent wrapping
-\n
-** v0.15.0 (3c32858) - tag 0.15.0
+### Added
+
+- feat(timeline): Refactor timeline structure and introduce TimelineBoard component (b61bed1) 2026-01-10 kpoppel — files: www/index.html,www/js/app.js,www/js/components/TimelineBoard.lit.js,www/js/config.js
+- feat(export): enable annotations plugin and update export functionality (f2918a8) 2026-01-10 kpoppel — files: www/js/modules.config.json,www/js/plugins/PluginExportTimelineComponent.js,www/js/plugins/export/TimelineExportRenderer.js,www/js/vendor/lit.bundle.local.js,www/js/vendor/unsafe-svg.js
+- feat(plugin-manager): enhance plugin activation logic to support exclusive configurations (4ff9880) 2026-01-10 kpoppel — files: www/js/core/PluginManager.js,www/js/modules.config.json
+- feat(export): enhance export functionality and annotations handling in timeline (d46797e) 2026-01-10 kpoppel
+- feat(annotations): enhance annotation overlay and panning behavior for feature board (ba8d6f8) 2026-01-11 kpoppel — files: www/js/components/FeatureCard.lit.js,www/js/components/Timeline.lit.js,www/js/modules.config.json,www/js/plugins/PluginAnnotations.js,www/js/plugins/PluginAnnotationsComponent.js,www/js/plugins/annotations/AnnotationOverlay.js
+- feat(annotations): add icon annotation tool and contextual icon picker feat(details panel): Add shrink button to details panel (80c6f0b) 2026-01-11 kpoppel — files: www/js/components/DetailsPanel.lit.js,www/js/plugins/PluginAnnotationsComponent.js,www/js/plugins/annotations/AnnotationOverlay.js,www/js/plugins/annotations/AnnotationState.js
+- feat(timeline): adjust month label rendering for year scale to prevent wrapping (8230f98) 2026-01-11 kpoppel
+
+### Changed
+
+- refactor(FeatureBoard): clean up imports and add render logging (ffa20c3) 2026-01-10 kpoppel
+
+### Fixed
+
+- fix: stop details panel from opening on drag or size (b8f10f8) 2026-01-10 kpoppel
+
+### Removed
+
+- Remove close button from plugin boxes. Use the button the sidebar provides. (8a71efe) 2026-01-10 kpoppel — files: www/js/plugins/PluginAnnotationsComponent.js,www/js/plugins/PluginExportTimelineComponent.js
+- Remove close button from plugin boxes. Use the button the sidebar provides. (8a71efe) 2026-01-10 kpoppel — files: www/js/plugins/PluginAnnotationsComponent.js,www/js/plugins/PluginExportTimelineComponent.js
+
+---
+
+## [v0.15.0] - tag v0.15.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.15.0 (checkpoint at commit 150)
+Version v0.15.0 (checkpoint at commit 150)
 2026-01-13
 
-- 8b27007 2026-01-11 kpoppel: feat(export): ensure consistent font-family for SVG text elements
-- be1f49e 2026-01-11 kpoppel: feat(export): adjust annotation rendering to align with export layout and add icon annotation support
-- 4d82fce 2026-01-11 kpoppel: feat(export): add support for saving SVG and copy PNG to clipboard. feat(export): move the toolbox and update styling.
-- af2d676 2026-01-11 kpoppel: feat(export): integrate auto-close message modal for user notifications
-- 85508dd 2026-01-12 kpoppel: fix(export): enhance error messages for PNG and SVG export failures
-- 1e8d3a2 2026-01-12 kpoppel: feat(sidebar): rename section titles for clarity in projects and teams
-- 0fba2fd 2026-01-12 kpoppel: feat(planning): rename "Teams" to "Allocations" and "Projects" to "Planning"; enhance scenario visualization and user onboarding
-- b54724c 2026-01-12 kpoppel: feat(onboarding): implement onboarding modal and show on first use if no user preferences are set
-- 7a8993f 2026-01-12 kpoppel: feat(app): Add tour of the application using Shepeard.js
-- 9d053ff 2026-01-13 kpoppel: fix(config): rename feature flags for consistency in server configuration
-\n
-** v0.16.0 (825f537) - tag 0.16.0
+### Added
+
+- feat(export): ensure consistent font-family for SVG text elements (8b27007) 2026-01-11 kpoppel
+- feat(export): adjust annotation rendering to align with export layout and add icon annotation support (be1f49e) 2026-01-11 kpoppel
+- feat(export): add support for saving SVG and copy PNG to clipboard. feat(export): move the toolbox and update styling. (4d82fce) 2026-01-11 kpoppel — files: www/js/plugins/PluginExportTimelineComponent.js,www/js/plugins/export/ExportUtils.js,www/js/plugins/export/TimelineExportRenderer.js,www/js/plugins/export/index.js
+- feat(export): integrate auto-close message modal for user notifications (af2d676) 2026-01-11 kpoppel — files: www/js/components/AutoCloseMessageModal.js,www/js/plugins/PluginExportTimelineComponent.js
+- feat(sidebar): rename section titles for clarity in projects and teams (1e8d3a2) 2026-01-12 kpoppel
+- feat(planning): rename "Teams" to "Allocations" and "Projects" to "Planning"; enhance scenario visualization and user onboarding (0fba2fd) 2026-01-12 kpoppel
+- feat(onboarding): implement onboarding modal and show on first use if no user preferences are set (b54724c) 2026-01-12 kpoppel — files: www/js/app.js,www/js/components/OnboardingModal.lit.js,www/js/components/modalHelpers.js
+- feat(app): Add tour of the application using Shepeard.js (7a8993f) 2026-01-12 kpoppel
+
+### Fixed
+
+- fix(export): enhance error messages for PNG and SVG export failures (85508dd) 2026-01-12 kpoppel — files: www/js/plugins/PluginExportTimelineComponent.js,www/js/plugins/export/ExportUtils.js
+- fix(config): rename feature flags for consistency in server configuration (9d053ff) 2026-01-13 kpoppel
+
+---
+
+## [v0.16.0] - tag v0.16.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 0.16.0 (checkpoint at commit 160)
+Version v0.16.0 (checkpoint at commit 160)
 2026-01-18
 
-- b0b227b 2026-01-16 kpoppel: change(sidebar): Grey out the Save to Azure button if no overrides.
-- c43421f 2026-01-16 kpoppel: fix(sidebar): React on scenario overrides from state to determine when to activate the save dialog.
-- 60d6db4 2026-01-16 kpoppel: fix(test): update failing test.
-- 6587edf 2026-01-16 kpoppel: change(test): Improve test coverage.
-- 2f34d6f 2026-01-16 kpoppel: feat(ui): Add application icon.
-- b7861c6 2026-01-16 kpoppel: Task list updated.
-- 836c3fb 2026-01-17 kpoppel: feat(server,sidebar): Add version to health status
-- f428780 2026-01-17 kpoppel: Add script to push new version
-- 25c9ddc 2026-01-18 kpoppel: feat(tests): Add comprehensive end-to-end tests and improve overlay handling fix(scenario): cloning a scenario does not clone existing overrides.
-- 2f1add9 2026-01-18 kpoppel: feat: Refactor Azure client implementations for deferred connection and session management
-\n
-** v1.0.0 (90811c3) - tag 1.0.0
+### Added
+
+- feat(ui): Add application icon. (2f34d6f) 2026-01-16 kpoppel — files: www/index.html,www/timeline-line.svg
+- feat(server,sidebar): Add version to health status (836c3fb) 2026-01-17 kpoppel — files: VERSION,planner_lib/config/health.py,www/js/components/Sidebar.lit.js
+- Add script to push new version (f428780) 2026-01-17 kpoppel
+- feat(tests): Add comprehensive end-to-end tests and improve overlay handling fix(scenario): cloning a scenario does not clone existing overrides. (25c9ddc) 2026-01-18 kpoppel
+- feat: Refactor Azure client implementations for deferred connection and session management (2f1add9) 2026-01-18 kpoppel
+
+### Changed
+
+- change(sidebar): Grey out the Save to Azure button if no overrides. (b0b227b) 2026-01-16 kpoppel
+- change(test): Improve test coverage. (6587edf) 2026-01-16 kpoppel — files: tests/services/iconservice.test.js,tests/services/sidebarPersistence.test.js
+- Task list updated. (b7861c6) 2026-01-16 kpoppel
+
+### Fixed
+
+- fix(sidebar): React on scenario overrides from state to determine when to activate the save dialog. (c43421f) 2026-01-16 kpoppel
+- fix(test): update failing test. (60d6db4) 2026-01-16 kpoppel
+
+### Deprecated
+
+- feat: Refactor Azure client implementations for deferred connection and session management (2f1add9) 2026-01-18 kpoppel
+
+### Removed
+
+- feat: Refactor Azure client implementations for deferred connection and session management (2f1add9) 2026-01-18 kpoppel
+
+---
+
+## [v1.0.0] - tag v1.0.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
-Version 1.0.0 (upcoming release)
+Version v1.0.0 (upcoming release)
 2026-01-18
 
-- 8c5a80a 2026-01-18 kpoppel: refactor: Simplify session management by using session_manager.get_val for user context retrieval
-\n
+### Changed
+
+- refactor: Simplify session management by using session_manager.get_val for user context retrieval (8c5a80a) 2026-01-18 kpoppel
+- Add generated CHANGELOG.txt and create version tags (local) (c524608) 2026-01-18 kpoppel
+
+### Fixed
+
+- Rename tags to v-prefixed names and update CHANGELOG headings (68b7563) 2026-01-18 kpoppel
+
+---
+
+Tags: v1.0.0 v0.16.0 v0.15.0 v0.14.0 v0.13.0 v0.12.0 v0.11.0 v0.10.0 v0.9.0 v0.8.0 v0.7.0 v0.6.0 v0.5.0 v0.4.0 v0.3.0 v0.2.0 v0.1.0 
