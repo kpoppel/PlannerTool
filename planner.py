@@ -257,10 +257,8 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
     # Require a valid session
     sid = get_session_id_from_request(request)
     logger.debug("Saving/deleting scenario for session %s", sid)
-    ctx = session_manager.get(sid) or {}
-    user_id = ctx.get('email')
-    if not user_id:
-        raise HTTPException(status_code=401, detail='Missing user context')
+
+    user_id = session_manager.get_val(sid, 'email') or ''
     op = (payload or {}).get('op')
     data = (payload or {}).get('data')
     if not op:
@@ -312,9 +310,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         from planner_lib.storage.scenario_store import load_user_scenario
 
         # Build session context and determine features to estimate
-        ctx = session_manager.get(sid) or {}
-        email = ctx.get('email')
-        pat = ctx.get('pat')
+        user_id = session_manager.get_val(sid, 'email') or ''
 
         # If client provided explicit features in payload, prefer them
         features = (payload or {}).get('features')
@@ -322,15 +318,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
 
         # If features not provided, fetch baseline tasks for the user (requires PAT)
         if features is None:
-            try:
-                # ensure PAT is loaded into ctx if missing
-                if email and not pat:
-                    loaded = config_manager.load(email)
-                    pat = loaded.get('pat')
-                    ctx['pat'] = pat
-                    SESSIONS[sid] = ctx
-            except Exception:
-                pass
+            pat = session_manager.get_val(sid, 'pat')
             tasks = list_tasks(pat=pat)
             # normalize baseline tasks to expected cost input
             features = []
@@ -356,9 +344,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         applied_overrides = None
         if scenario_id:
             try:
-                if not email:
-                    raise HTTPException(status_code=401, detail='Missing user context for scenario')
-                scen = load_user_scenario(scenarios_storage, email, scenario_id)
+                scen = load_user_scenario(scenarios_storage, user_id, scenario_id)
                 # scen is expected to be a dict with 'overrides' mapping featureId->{start,end}
                 overrides = scen.get('overrides') if isinstance(scen, dict) else None
                 if overrides:
