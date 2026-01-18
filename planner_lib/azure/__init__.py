@@ -30,7 +30,7 @@ def _make_client(org: str, token: str) -> object:
 
     This performs the lazy import of the concrete client classes.
     """
-    if setup.has_feature_flag("azure_cache_enabled"):
+    if setup.has_feature_flag("enable_azure_cache"):
         from planner_lib.azure.AzureCachingClient import AzureCachingClient
 
         return AzureCachingClient(org, token)
