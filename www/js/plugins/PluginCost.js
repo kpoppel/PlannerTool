@@ -57,10 +57,8 @@ class PluginCostPlugin {
       this._el = document.createElement('plugin-cost');
       this._host.appendChild(this._el);
     }
-    // Load cost data from the datasource (no internal fallback here)
-    this._costData = await dataService.getCost();
-    console.info(`[${this.id}] Loaded cost data from dataService`);
-    if(this._el){ this._el._data = this._costData; this._el.requestUpdate(); }
+    // Open the plugin UI immediately; the component handles its own data
+    // loading to avoid blocking the UI and to prevent duplicate fetches.
     if(this._el && typeof this._el.open === 'function') this._el.open(this.config.mode);
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
