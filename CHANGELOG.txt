@@ -1,7 +1,7 @@
 CHANGELOG
 Generated: 2026-01-18 UTC
 
-** 0.1.0 (ea80c7a) - tag 0.1.0
+** v0.1.0 (ea80c7a) - tag 0.1.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.1.0 (checkpoint at commit 10)
@@ -18,7 +18,7 @@ Version 0.1.0 (checkpoint at commit 10)
 - 805b655 2025-11-30 kpoppel: Add README to get started.
 - 7f5e7e9 2025-11-30 kpoppel: Add test suite for frontend.
 \n
-** 0.2.0 (006869a) - tag 0.2.0
+** v0.2.0 (006869a) - tag 0.2.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.2.0 (checkpoint at commit 20)
@@ -35,7 +35,7 @@ Version 0.2.0 (checkpoint at commit 20)
 - f0fdcd9 2025-12-02 kpoppel: Add file for dependency rendering. Aff help file.
 - d50dfa7 2025-12-02 kpoppel: Add first REST server health endpoint and wired it through to the UI,
 \n
-** 0.3.0 (40d8695) - tag 0.3.0
+** v0.3.0 (40d8695) - tag 0.3.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.3.0 (checkpoint at commit 30)
@@ -52,7 +52,7 @@ Version 0.3.0 (checkpoint at commit 30)
 - 7eb61f7 2025-12-05 kpoppel: feat: Add toggle buttons for selecting all projects and teams in the sidebar
 - 0e8492e 2025-12-05 kpoppel: fix: Update finishDate field to use TargetDate for work items
 \n
-** 0.4.0 (99f3f28) - tag 0.4.0
+** v0.4.0 (99f3f28) - tag 0.4.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.4.0 (checkpoint at commit 40)
@@ -69,7 +69,7 @@ Version 0.4.0 (checkpoint at commit 40)
 - c52a53d 2025-12-07 kpoppel: feat: Refactor sidebar project and team rendering to use chip-based UI for improved visual consistency
 - 14ab508 2025-12-07 kpoppel: feat: Add systemd service and runner script for PlannerTool backend service
 \n
-** 0.5.0 (8f9a249) - tag 0.5.0
+** v0.5.0 (8f9a249) - tag 0.5.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.5.0 (checkpoint at commit 50)
@@ -86,7 +86,7 @@ Version 0.5.0 (checkpoint at commit 50)
 - a0b7cd1 2025-12-17 kpoppel: Refactor capacity handling in project management
 - cab06e9 2025-12-18 kpoppel: fix: Update state management and event handling for feature organization load and state filter
 \n
-** 0.6.0 (d2ecb89) - tag 0.6.0
+** v0.6.0 (d2ecb89) - tag 0.6.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.6.0 (checkpoint at commit 60)
@@ -102,7 +102,7 @@ Version 0.6.0 (checkpoint at commit 60)
 - 886bf11 2025-12-23 kpoppel: feat: Implement AzureCachingClient with file-based caching and enhance AzureClient interface
 - 2b4baa9 2025-12-23 kpoppel: feat: Enhance logging for cache operations in AzureCachingClient
 \n
-** 0.7.0 (be11270) - tag 0.7.0
+** v0.7.0 (be11270) - tag 0.7.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.7.0 (checkpoint at commit 70)
@@ -120,7 +120,7 @@ Version 0.7.0 (checkpoint at commit 70)
 - 3bb61ab 2025-12-26 kpoppel: feat: Completed component migration of board and cards. side effect is that this is really fast now. bug (new): dependency arrows are not rendering.
 - 1b05fb3 2025-12-26 kpoppel: fix: SVG overlay  working again. I think with too much uneeded code.
 \n
-** 0.8.0 (23e720c) - tag 0.8.0
+** v0.8.0 (23e720c) - tag 0.8.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.8.0 (checkpoint at commit 80)
@@ -137,7 +137,7 @@ Version 0.8.0 (checkpoint at commit 80)
 - 5e5a633 2025-12-26 kpoppel: feat: Refactor plugin system to use 'enabled' flag and remove in-repo registration
 - ea48563 2025-12-26 kpoppel: feat: Enhance test coverage for FeatureBoard and State services with mock data
 \n
-** 0.9.0 (aecadee) - tag 0.9.0
+** v0.9.0 (aecadee) - tag 0.9.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.9.0 (checkpoint at commit 90)
@@ -154,7 +154,7 @@ Version 0.9.0 (checkpoint at commit 90)
 - ec3a77a 2025-12-30 kpoppel: feat: Enhance cost distribution logic by implementing daily overlap calculations
 - d016901 2025-12-30 kpoppel: feat: Add comprehensive test suite for cost calculation engine
 \n
-** 0.10.0 (ba5f863) - tag 0.10.0
+** v0.10.0 (ba5f863) - tag 0.10.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.10.0 (checkpoint at commit 100)
@@ -171,7 +171,7 @@ Version 0.10.0 (checkpoint at commit 100)
 - 299f5c5 2025-12-30 kpoppel: feat: Refactor and enhance documentation for PluginCost, PluginCostCalculator, PluginCostComponent, PluginGraph, PluginGraphComponent, and SamplePlugin
 - afd2781 2025-12-30 kpoppel: feat: Update plugin metadata names and descriptions for improved clarity
 \n
-** 0.11.0 (f23fec8) - tag 0.11.0
+** v0.11.0 (f23fec8) - tag 0.11.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.11.0 (checkpoint at commit 110)
@@ -188,7 +188,7 @@ Version 0.11.0 (checkpoint at commit 110)
 - 88d4b7c 2026-01-04 kpoppel: feat: Add capacity update functionality to task management
 - fcea44a 2026-01-04 kpoppel: feat: Enhance feature and scenario management services
 \n
-** 0.12.0 (56bdb99) - tag 0.12.0
+** v0.12.0 (56bdb99) - tag 0.12.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.12.0 (checkpoint at commit 120)
@@ -205,7 +205,7 @@ Version 0.12.0 (checkpoint at commit 120)
 - bc25541 2026-01-07 kpoppel: feat: implement timeline zoom functionality with segmented control and event handling
 - fe23d0f 2026-01-08 kpoppel: Refactor tests and services for improved functionality and coverage
 \n
-** 0.13.0 (4d15d66) - tag 0.13.0
+** v0.13.0 (4d15d66) - tag 0.13.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.13.0 (checkpoint at commit 130)
@@ -222,7 +222,7 @@ Version 0.13.0 (checkpoint at commit 130)
 - aadb5a4 2026-01-10 kpoppel: feat(export): Add vendor scripts for Lit and unsafeSVG, enhance Timeline export with icons
 - 6945494 2026-01-10 kpoppel: feat(details-panel): Add feature icon display in details header
 \n
-** 0.14.0 (22c95ba) - tag 0.14.0
+** v0.14.0 (22c95ba) - tag 0.14.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.14.0 (checkpoint at commit 140)
@@ -239,7 +239,7 @@ Version 0.14.0 (checkpoint at commit 140)
 - 80c6f0b 2026-01-11 kpoppel: feat(annotations): add icon annotation tool and contextual icon picker feat(details panel): Add shrink button to details panel
 - 8230f98 2026-01-11 kpoppel: feat(timeline): adjust month label rendering for year scale to prevent wrapping
 \n
-** 0.15.0 (3c32858) - tag 0.15.0
+** v0.15.0 (3c32858) - tag 0.15.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.15.0 (checkpoint at commit 150)
@@ -256,7 +256,7 @@ Version 0.15.0 (checkpoint at commit 150)
 - 7a8993f 2026-01-12 kpoppel: feat(app): Add tour of the application using Shepeard.js
 - 9d053ff 2026-01-13 kpoppel: fix(config): rename feature flags for consistency in server configuration
 \n
-** 0.16.0 (825f537) - tag 0.16.0
+** v0.16.0 (825f537) - tag 0.16.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 0.16.0 (checkpoint at commit 160)
@@ -273,7 +273,7 @@ Version 0.16.0 (checkpoint at commit 160)
 - 25c9ddc 2026-01-18 kpoppel: feat(tests): Add comprehensive end-to-end tests and improve overlay handling fix(scenario): cloning a scenario does not clone existing overrides.
 - 2f1add9 2026-01-18 kpoppel: feat: Refactor Azure client implementations for deferred connection and session management
 \n
-** 1.0.0 (90811c3) - tag 1.0.0
+** v1.0.0 (90811c3) - tag 1.0.0
 Tagger: kpoppel <4174578+kpoppel@users.noreply.github.com>
 
 Version 1.0.0 (upcoming release)
