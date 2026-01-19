@@ -1,7 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-import { bus } from '../core/EventBus.js';
-import { AppEvents } from '../core/EventRegistry.js';
 
 export class SearchTool extends LitElement {
   static properties = {
@@ -29,7 +27,7 @@ export class SearchTool extends LitElement {
     .result[aria-selected="true"]{ background: #eef6ff; }
     .result .title { font-weight:600; font-size:0.95rem; }
     .result .meta { font-size:0.85rem; color:#666; margin-left:auto; }
-    .search-highlight { outline: 3px solid rgba(66,133,244,0.35); transition: outline 0.25s ease; }
+    
   `;
 
   render(){
@@ -50,36 +48,27 @@ export class SearchTool extends LitElement {
 
   connectedCallback(){
     super.connectedCallback();
-    this._onAppReady = ()=>{};
-    bus.on(AppEvents.READY, this._onAppReady);
+    // handle Escape to close when visible
     document.addEventListener('keydown', this._globalKeyDown = (e)=>{
-      if(this.visible && e.key === 'Escape') { e.stopPropagation(); this.close(); }
+      if(this.visible && e.key === 'Escape') this.close();
     });
   }
 
   disconnectedCallback(){
     super.disconnectedCallback();
-    bus.off(AppEvents.READY, this._onAppReady);
     document.removeEventListener('keydown', this._globalKeyDown);
   }
 
   open(){
     if(!this.parentNode) document.body.appendChild(this);
-    // Restore last query from localStorage if available
-    try{
-      const stored = localStorage.getItem('az_planner:search:lastQuery');
-      if(stored && typeof stored === 'string') this.query = stored;
-    }catch(e){ /* ignore localStorage errors */ }
-
+    // Restore last query and show
+    const stored = (function(){ try{ return localStorage.getItem('az_planner:search:lastQuery') }catch(e){return null;} })();
+    if(stored) this.query = stored;
     this.visible = true;
     this.style.display = 'block';
     this.setAttribute('visible','');
-    // Render then focus+select so user can replace immediately
-    requestAnimationFrame(()=> {
-      this.focusInput();
-      // If there's already text, run search immediately
-      try{ if(this.query && this.query.trim()) this._performSearch(); }catch(e){}
-    });
+    this.focusInput();
+    if(this.query && this.query.trim()) this._performSearch();
   }
 
   close(){
@@ -159,9 +148,6 @@ export class SearchTool extends LitElement {
         }
       }
     }catch(e){ console.warn('SearchTool: center failed', e); }
-
-    const node = document.querySelector(`feature-card-lit[data-feature-id="${item.id}"]`);
-    if(node){ node.classList.add('search-highlight'); setTimeout(()=> node.classList.remove('search-highlight'), 900); }
 
     this.close();
   }
