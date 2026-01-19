@@ -5,13 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project should strive to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [] - unreleased
+
 ## [v1.1.1] - 2025-01-19
 
 ### Fixed
  
-- The Azure Client code now reacts nicely when configured area paths cannot be found due to deletion or rename in Azure Devops.
+- Crash. The Azure Client code now reacts nicely when configured area paths cannot be found due to deletion or rename in Azure Devops.
 
 ## [v1.1.0] - 2026-01-18
+
+### Changed
+
+- Faster loading by not loading data from serer twice from UI on firs open Cost plugin.
+- Improve caching about 10x speedup 2026-01-19
+
+### Fixed
+
+- Scenario endpoint had context gone missing after refactoring
 
 ## [v1.0.0] - 2026-01-18
 
@@ -19,7 +30,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - Simplify session management by using `session_manager.get_val` for user context retrieval (8c5a80a) 2026-01-18 kpoppel
 - Add generated changelog and update tags/HEAD (c524608) 2026-01-18 kpoppel
-- Improve caching about 10x speedup 2026-01-19
 
 
 ### Fixed
