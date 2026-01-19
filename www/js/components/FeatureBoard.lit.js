@@ -402,7 +402,7 @@ class FeatureBoard extends LitElement {
       // Add temporary highlight class to the host so its internal styles animate
       try{
         card.classList.add('search-highlight');
-        setTimeout(()=>{ try{ card.classList.remove('search-highlight'); }catch(e){} }, 900);
+        setTimeout(()=>{ try{ card.classList.remove('search-highlight'); }catch(e){} }, 950);
       }catch(e){ /* ignore */ }
     }catch(e){ console.warn('centerFeatureById failed', e); }
   }

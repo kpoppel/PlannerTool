@@ -61,23 +61,24 @@ export class FeatureCardLit extends LitElement {
     }
 
     /* Minimal highlight: small inset overlay that fades out */
-    :host(.search-highlight) .feature-card::after {
-      content: '';
-      position: absolute;
-      inset: 0px;
-      border-radius: 6px;
-      pointer-events: none;
-      background: rgba(4, 63, 158, 0.9);
-      opacity: 0.9;
-      z-index: 10;
-      animation: search-bg-fade 900ms ease-out;
-    }
+      :host(.search-highlight) .feature-card::after {
+        content: '';
+        position: absolute;
+        inset: 0px;
+        border-radius: 6px;
+        pointer-events: none;
+        background: rgba(4, 63, 158, 0.9);
+        opacity: 0; /* start invisible */
+        z-index: 10;
+        animation: search-bg-fade 900ms ease-out forwards;
+      }
 
-    @keyframes search-bg-fade {
-      0% { opacity: 0.9; }
-      50% { opacity: 0.5; }
-      100% { opacity: 0; }
-    }
+      @keyframes search-bg-fade {
+        0% { opacity: 0; }
+        20% { opacity: 0.85; }
+        60% { opacity: 0.45; }
+        100% { opacity: 0; }
+      }
 
     .feature-card.dirty {
       /* Highlight entire card background for modified features (matches legacy look) */
