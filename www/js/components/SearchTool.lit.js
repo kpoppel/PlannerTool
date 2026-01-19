@@ -65,10 +65,21 @@ export class SearchTool extends LitElement {
 
   open(){
     if(!this.parentNode) document.body.appendChild(this);
+    // Restore last query from localStorage if available
+    try{
+      const stored = localStorage.getItem('az_planner:search:lastQuery');
+      if(stored && typeof stored === 'string') this.query = stored;
+    }catch(e){ /* ignore localStorage errors */ }
+
     this.visible = true;
     this.style.display = 'block';
     this.setAttribute('visible','');
-    requestAnimationFrame(()=> this.focusInput());
+    // Render then focus+select so user can replace immediately
+    requestAnimationFrame(()=> {
+      this.focusInput();
+      // If there's already text, run search immediately
+      try{ if(this.query && this.query.trim()) this._performSearch(); }catch(e){}
+    });
   }
 
   close(){
@@ -85,6 +96,8 @@ export class SearchTool extends LitElement {
 
   _onInput(e){
     this.query = e.target.value || '';
+    // Persist immediately so subsequent opens restore the value
+    try{ localStorage.setItem('az_planner:search:lastQuery', this.query); }catch(e){}
     if(this._debounce) clearTimeout(this._debounce);
     this._debounce = setTimeout(()=> this._performSearch(), 180);
   }

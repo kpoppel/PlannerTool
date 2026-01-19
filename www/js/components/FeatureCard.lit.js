@@ -60,17 +60,30 @@ export class FeatureCardLit extends LitElement {
       box-shadow: 0 4px 16px rgba(0,0,0,0.18);
     }
 
-    /* Highlight applied when search locates the card */
+    /* Highlight applied when search locates the card — animate background (no resize) */
     :host(.search-highlight) .feature-card {
-      animation: search-pulse 0.9s ease-out;
-      outline: 3px solid rgba(66,133,244,0.18);
-      outline-offset: 2px;
+      position: relative;
+      overflow: visible;
+      /* Fallback inset glow to ensure visibility even if pseudo is blocked */
+      box-shadow: inset 0 0 24px rgba(66,133,244,0.12) !important;
     }
 
-    @keyframes search-pulse {
-      0% { box-shadow: 0 0 0 0 rgba(66,133,244,0.45); }
-      50% { box-shadow: 0 0 0 10px rgba(66,133,244,0.08); }
-      100% { box-shadow: 0 0 0 0 rgba(66,133,244,0); }
+    :host(.search-highlight) .feature-card::after {
+      content: '';
+      position: absolute;
+      inset: 0px;
+      border-radius: 6px;
+      pointer-events: none;
+      background: rgba(4, 63, 158, 0.9);
+      opacity: 0.95;
+        z-index: 50; /* ensure overlay is above card content */
+      animation: search-bg-fade 1s ease-out;
+    }
+
+    @keyframes search-bg-fade {
+      0% { opacity: 0.95; transform: scale(1); }
+      40% { opacity: 0.6; }
+      100% { opacity: 0; }
     }
 
     .feature-card.dirty {
