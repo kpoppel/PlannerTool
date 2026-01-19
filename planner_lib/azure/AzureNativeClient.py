@@ -153,16 +153,25 @@ class AzureNativeClient(AzureClient):
         if not self._connected:
             self.connect()
         wit_client = self.conn.clients.get_work_item_tracking_client()
+        # Sanitize and escape the area path for inclusion in WIQL string literal.
+        wiql_area = self._sanitize_area_path(area_path)
+        wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
+
         wiql_query = f"""
         SELECT [System.Id]
         FROM WorkItems
         WHERE [System.WorkItemType] IN ('Epic','Feature')
-        AND [System.AreaPath] = '{area_path}' 
+        AND [System.AreaPath] = '{wiql_area_escaped}' 
         AND [System.State] NOT IN ('Closed', 'Removed')
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
         wiql_obj = Wiql(query=wiql_query)
-        result = wit_client.query_by_wiql(wiql=wiql_obj)
+        try:
+            result = wit_client.query_by_wiql(wiql=wiql_obj)
+        except Exception as e:
+            # Azure may raise AzureDevOpsServiceError for non-existent area paths
+            logger.warning("WIQL query for area '%s' failed: %s", area_path, e)
+            return []
         task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
         task_ids = [int(t) for t in task_ids if t is not None]
         logger.debug(f"Task IDs in 'eSW/Architects': {task_ids}")

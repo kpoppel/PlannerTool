@@ -324,18 +324,29 @@ class AzureCachingClient(AzureClient):
         else:
             logger.debug("Cache miss for area '%s' - running WIQL (force_refresh=%s, invalidated_in_area=%s)", area_key, force_full_refresh, bool(invalidated_in_area))
 
+        # Use the sanitized area key for WIQL and escape characters that would
+        # break the WIQL string literal. Azure WIQL expects backslashes in
+        # area paths; represent them as double-backslashes in the query and
+        # escape any single quotes by doubling them.
+        wiql_area = area_key
+        wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
+
         wiql_query = f"""
         SELECT [System.Id]
         FROM WorkItems
         WHERE [System.WorkItemType] IN ('Epic','Feature')
-        AND [System.AreaPath] = '{area_path}'
+        AND [System.AreaPath] = '{wiql_area_escaped}'
         {modified_where}
         AND [System.State] NOT IN ('Closed', 'Removed')
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
 
         wiql_obj = Wiql(query=wiql_query)
-        result = wit_client.query_by_wiql(wiql=wiql_obj)
+        try:
+            result = wit_client.query_by_wiql(wiql=wiql_obj)
+        except Exception as e:
+            logger.warning("WIQL query for area '%s' failed: %s", area_path, e)
+            return []
         candidate_ws = getattr(result, 'work_items', []) or []
         task_ids = [getattr(wi, 'id', None) for wi in candidate_ws]
         task_ids = [int(t) for t in task_ids if t is not None]
