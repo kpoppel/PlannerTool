@@ -39,8 +39,8 @@ def test_post_config_and_persistence():
     assert resp.status_code == 200
     body = resp.json()
     assert body.get('ok') is True
-    # verify file stored under <tmp_data>/config/tester@example.com.pkl
-    p = Path(TMP_DATA_DIR) / 'config' / 'tester@example.com.pkl'
+    # verify file stored under <tmp_data>/accounts/tester@example.com.pkl
+    p = Path(TMP_DATA_DIR) / 'accounts' / 'tester@example.com.pkl'
     assert p.exists()
     with p.open('rb') as f:
         stored = pickle.load(f)
