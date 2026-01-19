@@ -22,6 +22,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Add migration script in scripts/migrate. When schemas for file formats are changed make upgrades safely
 - Add schema version field in saved files.
 - Add server_name in config. This value shows up in the sidebar footer. Value published through /api/health
+- Add new search feature. Activate using ctrl+shift+f
 
 ### Changed
 
