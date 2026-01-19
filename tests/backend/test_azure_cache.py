@@ -244,7 +244,10 @@ def test_cache_invalidation_after_update(patch_config, data_dir):
     # Verify that item 2 is in the invalidated set
     with open(client.index_path, 'rb') as f:
         index = pickle.load(f)
-    assert 2 in index.get('_invalidated', [])
+    inv = index.get('_invalidated', {})
+    # Expect per-area mapping: area -> [ids]
+    assert isinstance(inv, dict)
+    assert any(2 in (lst or []) for lst in inv.values())
     
     # Verify cache file still contains all items (we don't remove them anymore)
     with open(area_file, 'rb') as f:

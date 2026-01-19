@@ -441,10 +441,10 @@ class AzureCachingClient(AzureClient):
                 # per-area mapping: remove those ids from this area's list
                 area_list = set(raw_invalid.get(area_key, []))
                 area_list -= invalidated_in_area
-                if area_list:
-                    raw_invalid[area_key] = list(area_list)
-                else:
-                    raw_invalid.pop(area_key, None)
+                # Always keep the per-area key present; store empty list when
+                # there are no invalidated ids for the area. This keeps the
+                # index consistently a dict of area -> list shapes.
+                raw_invalid[area_key] = list(area_list)
                 index['_invalidated'] = raw_invalid
             else:
                 # legacy global list
@@ -569,13 +569,18 @@ class AzureCachingClient(AzureClient):
             except Exception:
                 unmapped.update(work_item_ids)
 
+            # Only support per-area mapping. If we couldn't map some ids to an
+            # area, store them under a reserved '_unmapped' key inside the
+            # per-area mapping so the index remains a dict shape.
             if unmapped:
-                # fallback to global list
-                global_list = set(index.get('_invalidated', [])) if isinstance(index.get('_invalidated', []), list) else set()
-                global_list.update(unmapped)
-                index['_invalidated'] = list(global_list)
-            else:
-                index['_invalidated'] = per_area
+                if per_area is None:
+                    per_area = {}
+                per_area.setdefault('_unmapped', [])
+                # ensure uniqueness
+                existing = set(per_area.get('_unmapped', []))
+                existing.update(unmapped)
+                per_area['_unmapped'] = list(existing)
+            index['_invalidated'] = per_area
 
             try:
                 self._write_index(index)
