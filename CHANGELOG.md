@@ -30,6 +30,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Fixed
 
+- Azure caching tests updated to accept new per-area cache invalidation.
+
 ## [v1.1.1] - 2025-01-19
 
 ### Fixed
