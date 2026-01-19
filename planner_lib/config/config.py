@@ -20,7 +20,7 @@ class ConfigManager:
     def save(self, config: AccountPayload) -> dict:
         # load from file storage to not change the PAT if empty
         try:
-            existing = _storage.load('config', config.email)
+            existing = _storage.load('accounts', config.email)
         except KeyError:
             existing = None
 
@@ -30,13 +30,13 @@ class ConfigManager:
         config.pat = existing.get('pat') if existing and config.pat == '' else config.pat
         # store full config dict (including email) for easier inspection
         payload = { 'email': config.email, 'pat': config.pat }
-        _storage.save('config', config.email, payload)
+        _storage.save('accounts', config.email, payload)
         logger.info('Saved config for %s', config.email)
         return { 'ok': True, 'email': config.email }
 
     def load(self, key: str) -> dict:
         # Load configuration from the storage backend
-        res = _storage.load('config', key)
+        res = _storage.load('accounts', key)
         if isinstance(res, dict):
             pat = res.get('pat')
         else:
