@@ -256,12 +256,18 @@ class YamlConfigStore:
 
     def load(self, key: str) -> BackendConfig:
         raw = self.backend.load(self.namespace, key)
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        try:
-            data: Any = yaml.safe_load(raw)
-        except Exception as e:
-            raise ValueError("invalid config format: parse error") from e
+        # The storage layer may return already-deserialized Python objects
+        # (when wrapped with a YAML serializer) or raw bytes/text. Handle
+        # both cases robustly.
+        if isinstance(raw, dict):
+            data: Any = raw
+        else:
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            try:
+                data: Any = yaml.safe_load(raw)
+            except Exception as e:
+                raise ValueError("invalid config format: parse error") from e
         if not isinstance(data, dict):
             raise ValueError("invalid config format: expected mapping")
 

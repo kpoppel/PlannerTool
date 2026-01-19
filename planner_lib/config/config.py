@@ -1,12 +1,16 @@
 from pydantic import BaseModel
 from typing import Optional
-from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.storage import create_storage
 import logging
+import pickle
 
 logger = logging.getLogger(__name__)
 
 # simple file storage for server-side persistence
-_storage = FileStorageBackend(data_dir='./data')
+# Use Pickle serializer so account config objects are stored as Python
+# objects (backwards-compatible with previous pickled account files).
+# Keep fallback logic in `load` for legacy filenames.
+_storage = create_storage(backend='file', serializer='pickle', accessor=None, data_dir='./data')
 
 
 class AccountPayload(BaseModel):
@@ -37,10 +41,10 @@ class ConfigManager:
     def load(self, key: str) -> dict:
         # Load configuration from the storage backend
         res = _storage.load('accounts', key)
+        pat = None
         if isinstance(res, dict):
             pat = res.get('pat')
-        else:
-            pat = None
+
         logger.debug('Loaded config for %s: present=%s', key, res is not None)
         return { 'ok': True, 'email': key, 'pat': pat }
     

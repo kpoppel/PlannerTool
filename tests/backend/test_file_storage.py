@@ -1,6 +1,6 @@
 import os
 import shutil
-from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.storage import create_storage
 
 
 def test_save_load_delete_and_list_keys(tmp_path):
@@ -8,7 +8,7 @@ def test_save_load_delete_and_list_keys(tmp_path):
     # ensure a clean directory
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    b = FileStorageBackend(data_dir=data_dir)
+    b = create_storage(backend='file', serializer='pickle', accessor='dict', data_dir=data_dir)
     ns = "unittest"
     key = "item1"
     value = {"x": 1}

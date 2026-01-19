@@ -2,7 +2,7 @@ import os
 import shutil
 from types import SimpleNamespace
 import pytest
-from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.storage import create_storage
 from planner_lib.azure import get_client
 from pathlib import Path
 import pickle
@@ -150,7 +150,7 @@ def test_cache_stale_in_azure_fetch_updates(patch_config, data_dir):
     # Prepopulate cache with old changed_date; Azure has newer changed_date -> should be updated
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    fb = FileStorageBackend(data_dir=data_dir)
+    fb = create_storage(backend='file', serializer='pickle', accessor='dict', data_dir=data_dir)
     fb.save(NS, "azure_cache.pkl", {"1": {"id": "1", "title": "Old"}})
     fb.save(NS, "_index", {"1": {"changed_date": "2020-01-01T00:00:00Z", "project": "P", "areaPath": "A"}})
 
@@ -181,7 +181,7 @@ def test_cache_prune_removed_state(patch_config, data_dir):
     # Prepopulate cache with id 2, but WIQL returns only id 1 -> id 2 should be removed from cache
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    fb = FileStorageBackend(data_dir=data_dir)
+    fb = create_storage(backend='file', serializer='pickle', accessor='dict', data_dir=data_dir)
     fb.save(NS, "azure_cache.pkl", {"2": {"id": "2", "title": "ToBeRemoved"}})
     fb.save(NS, "_index", {"2": {"changed_date": "2025-12-22T12:00:00Z", "project": "P", "areaPath": "A"}})
 

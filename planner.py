@@ -47,8 +47,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from planner_lib.middleware import SessionMiddleware, access_denied_response
 
 # Application imports
-from planner_lib.config.config import config_manager
 from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.storage import create_storage
 from planner_lib.setup import YamlConfigStore
 from planner_lib.setup import setup
 
@@ -65,8 +65,8 @@ if _setup_args.help:
 # create a human-editable YAML template and exit so the operator can fill it in.
 STORE_NS = "config"
 STORE_KEY = "server_config.yml"
-storage = FileStorageBackend()
-storage.configure(mode="text")
+# Use the storage factory so serializers handle formats (YAML/text).
+storage = create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data")
 store = YamlConfigStore(storage, namespace=STORE_NS)
 # Allow tests and CI to skip interactive setup by setting PLANNERTOOL_SKIP_SETUP=1
 if os.environ.get('PLANNERTOOL_SKIP_SETUP'):
@@ -91,9 +91,9 @@ if has_feature_flag('planner_use_brotli'):
     app.add_middleware(BrotliCompression)
 
 # Separate storage backend for scenarios (binary pickled objects)
-scenarios_storage = FileStorageBackend()
-# Use pickle mode for binary objects
-scenarios_storage.configure(mode="pickle")
+# Use the storage factory; choose 'pickle' serializer and 'dict' accessor
+# so scenarios are stored as binary pickles but accessible via value helpers.
+scenarios_storage = create_storage(backend="file", serializer="pickle", accessor="dict", data_dir="data")
 
 # Serve main SPA entry at root
 @app.get("/", response_class=HTMLResponse)

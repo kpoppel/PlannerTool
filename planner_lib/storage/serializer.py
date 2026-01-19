@@ -27,6 +27,8 @@ class PickleSerializer:
 
     def load(self, data: bytes) -> Any:
         return pickle.loads(data)
+    # file extension used when storing on-disk
+    file_extension = ".pkl"
 
 
 class JSONSerializer:
@@ -37,6 +39,7 @@ class JSONSerializer:
 
     def load(self, data: bytes) -> Any:
         return json.loads(data.decode("utf-8"))
+    file_extension = ".json"
 
 class YAMLSerializer:
     """Serializer using YAML (text). Caller must ensure values are YAML-serializable."""
@@ -46,6 +49,7 @@ class YAMLSerializer:
     
     def load(self, data: bytes) -> Any:
         return yaml.safe_load(data.decode("utf-8"))
+    file_extension = ".yml"
     
 class EncryptedSerializer:
         """Serializer that encrypts payloads using Fernet (symmetric, authenticated).

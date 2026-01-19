@@ -104,6 +104,14 @@ def create_storage(
 	else:
 		raise ValueError(f"unsupported serializer: {serializer}")
 
+	# If backend supports an extension attribute, inform it of the
+	# serializer's on-disk file extension. This keeps filename handling
+	# centralized in the backend while callers continue to use logical keys.
+	try:
+		be.file_extension = getattr(ser, "file_extension")
+	except Exception:
+		# ignore if backend doesn't support extensions
+		pass
 	if accessor is None:
 		# if serializer transforms values, wrap the backend with SerializerBackend
 		return SerializerBackend(be, ser)
