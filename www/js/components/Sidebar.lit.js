@@ -18,6 +18,7 @@ export class SidebarLit extends LitElement {
     scenarios: { type: Array },
     activeScenarioId: { type: String },
     serverStatus: { type: String },
+    serverName: { type: String },
   };
 
   static styles = css`
@@ -37,6 +38,7 @@ export class SidebarLit extends LitElement {
     super();
     this.open = true;
     this.serverStatus = 'loading';
+    this.serverName = null;
     this._persistenceService = new SidebarPersistenceService(dataService);
     this._didRestoreSidebarState = false;
 
@@ -255,6 +257,7 @@ export class SidebarLit extends LitElement {
     try{
       const h = await dataService.checkHealth();
       const status = h.status || (h.ok ? 'ok' : 'error');
+      this.serverName = h.server_name || null;
       const ups = Number(h.uptime_seconds);
       const uptimeStr = Number.isNaN(ups) ? '' : (() => {
         const totalMinutes = Math.floor(ups / 60);
@@ -533,7 +536,7 @@ export class SidebarLit extends LitElement {
             <button id="openHelpBtn" data-tour="help" @click=${()=>this._openHelp()}>❓</button>
           </div>
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
-          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025 Kim Poulsen</div>
+          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
         </section>
       </aside>
     `;

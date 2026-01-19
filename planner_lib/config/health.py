@@ -28,9 +28,30 @@ def get_health() -> dict:
         with open(version_file, "r") as f:
             version = f.read().strip()
 
+    # Attempt to read server_name via the storage backend (text mode)
+    server_name = None
+    try:
+        from planner_lib.storage.file_backend import FileStorageBackend
+        import yaml
+
+        backend = FileStorageBackend()
+        backend.configure(mode='text')
+        try:
+            raw = backend.load('config', 'server_config.yml')
+            if isinstance(raw, bytes):
+                raw = raw.decode('utf8')
+            cfg = yaml.safe_load(raw) or {}
+            if isinstance(cfg, dict):
+                server_name = cfg.get('server_name')
+        except KeyError:
+            server_name = None
+    except Exception:
+        server_name = None
+
     return {
         "status": "ok",
         "start_time": start_dt.isoformat(),
         "uptime_seconds": uptime,
         "version": version,
+        "server_name": server_name,
     }
