@@ -1,6 +1,5 @@
 import os
 import uuid
-import pickle
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
@@ -84,4 +83,5 @@ def delete_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id:
 
 def list_user_scenarios(storage: FileStorageBackend, user_id: str) -> List[Dict[str, Any]]:
     reg = load_scenario_register(storage)
-    return [meta for k, meta in reg.items() if meta.get("user") == user_id]
+    prefix = f"{user_id}_"
+    return [meta for key, meta in reg.items() if key.startswith(prefix)]
