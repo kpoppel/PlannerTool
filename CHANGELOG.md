@@ -88,7 +88,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Simplify session management by using `session_manager.get_val` for user context retrieval (8c5a80a) 2026-01-18 kpoppel
 - Add generated changelog and update tags/HEAD (c524608) 2026-01-18 kpoppel
 
-
 ### Fixed
 
 - Rename tags to v-prefixed names and update changelog headings (68b7563) 2026-01-18 kpoppel
