@@ -60,6 +60,19 @@ export class FeatureCardLit extends LitElement {
       box-shadow: 0 4px 16px rgba(0,0,0,0.18);
     }
 
+    /* Highlight applied when search locates the card */
+    :host(.search-highlight) .feature-card {
+      animation: search-pulse 0.9s ease-out;
+      outline: 3px solid rgba(66,133,244,0.18);
+      outline-offset: 2px;
+    }
+
+    @keyframes search-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(66,133,244,0.45); }
+      50% { box-shadow: 0 0 0 10px rgba(66,133,244,0.08); }
+      100% { box-shadow: 0 0 0 0 rgba(66,133,244,0); }
+    }
+
     .feature-card.dirty {
       /* Highlight entire card background for modified features (matches legacy look) */
       background: var(--color-dirty-bg, #ffe5c2);

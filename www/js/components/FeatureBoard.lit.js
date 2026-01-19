@@ -382,6 +382,26 @@ class FeatureBoard extends LitElement {
     }));
   }
 
+  // Public API: center a feature card by id in the viewport
+  centerFeatureById(featureId){
+    try{
+      const card = this._cardMap.get(String(featureId)) || (this.shadowRoot && this.shadowRoot.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`)) || this.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
+      const timeline = document.getElementById('timelineSection');
+      const featureBoard = this;
+      if(!card || !timeline || !featureBoard) return;
+
+      // Compute centers
+      const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
+      const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
+      const targetX = Math.max(0, Math.round(cardCenterX - (timeline.clientWidth / 2)));
+      const targetY = Math.max(0, Math.round(cardCenterY - (featureBoard.clientHeight / 2)));
+
+      // Smooth scroll timeline (horizontal) and featureBoard (vertical)
+      timeline.scrollTo({ left: targetX, behavior: 'smooth' });
+      featureBoard.scrollTo({ top: targetY, behavior: 'smooth' });
+    }catch(e){ console.warn('centerFeatureById failed', e); }
+  }
+
   // Convenience: append a DOM node or feature data
   addFeature(nodeOrFeature) {
     if (!nodeOrFeature) return;

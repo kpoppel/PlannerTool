@@ -129,6 +129,30 @@ async function init(){
       }
     }catch(e){}
     bus.emit(AppEvents.READY);
+    // Register global shortcut for in-app search: Ctrl+Shift+F
+    try{
+      document.addEventListener('keydown', (e) => {
+        const isCtrlShiftF = (e.key === 'F' || e.key === 'f') && e.ctrlKey && e.shiftKey;
+        if (!isCtrlShiftF) return;
+        // Only handle when document/app has focus
+        if (!document.hasFocus()) return;
+        // Prevent triggering browser find only when our app is focused
+        e.preventDefault();
+        try {
+          let st = document.querySelector('search-tool');
+          if (!st) {
+            import('./components/SearchTool.lit.js').then(() => {
+              st = document.createElement('search-tool');
+              document.body.appendChild(st);
+              st.open();
+            }).catch(console.warn);
+          } else {
+            st.open();
+            st.focusInput();
+          }
+        } catch (err) { console.warn('Failed to open SearchTool', err); }
+      });
+    }catch(e){ /* noop */ }
   } catch(e) {
     hideModal();
     throw e;
