@@ -87,7 +87,7 @@ class FakeWitClient:
 @pytest.fixture
 def patch_config(monkeypatch, data_dir):
     # Provide a config object with feature_flags mapping and data_dir pointing to test dir
-    cfg = SimpleNamespace(feature_flags={"azure_cache_enabled": True}, data_dir=data_dir)
+    cfg = SimpleNamespace(feature_flags={"enable_azure_cache": True}, data_dir=data_dir)
     monkeypatch.setattr("planner_lib.setup.get_loaded_config", lambda: cfg)
     return cfg
 
