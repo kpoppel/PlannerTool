@@ -18,7 +18,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 ### Changed
+
 ### Fixed
+
+- Search field needed to have focus and text selected on open.
 
 ## [1.2.0] - 2025-01-19
 

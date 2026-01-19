@@ -80,7 +80,9 @@ export class SearchTool extends LitElement {
 
   focusInput(){
     const inp = this.shadowRoot.querySelector('.search-input');
-    if(inp){ inp.focus(); inp.select(); }
+    // Defer select() to next macrotask so key events that opened the tool don't clear selection
+    inp.focus();
+    setTimeout(()=>{ inp.select(); }, 0);
   }
 
   _onInput(e){
