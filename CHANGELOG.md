@@ -14,8 +14,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-
 ## [] - unreleased
+
+### Added
+### Changed
+### Fixed
+
+## [1.2.0] - 2025-01-19
 
 ### Added
 
