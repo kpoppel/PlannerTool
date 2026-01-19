@@ -232,6 +232,19 @@ export class SidebarLit extends LitElement {
     })}`;
   }
 
+  // _openSearchTool(){
+  //   try{
+  //     let st = document.querySelector('search-tool');
+  //     if(!st){
+  //       import('./SearchTool.lit.js').then(()=>{
+  //         st = document.createElement('search-tool');
+  //         document.body.appendChild(st);
+  //         st.open();
+  //       }).catch(console.warn);
+  //     } else { st.open(); st.focusInput(); }
+  //   }catch(e){ console.warn('openSearchTool failed', e); }
+  // }
+
   _onPluginClicked(pluginId){
     const isActive = pluginManager.isActive(pluginId);
     const method = isActive ? 'deactivate' : 'activate';
@@ -524,7 +537,16 @@ export class SidebarLit extends LitElement {
         <section class="sidebar-section" id="toolsSection" data-tour="tools">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
           <div>
-            <ul class="sidebar-list" id="toolsList">${this._renderPluginButtons()}</ul>
+            <ul class="sidebar-list" id="toolsList">
+            <!--
+              <li class="sidebar-list-item">
+                <div class="chip sidebar-chip" style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" @click=${()=>this._openSearchTool()} role="button" tabindex="0" @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._openSearchTool(); }}}>
+                  <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;">Search</div>
+                </div>
+              </li>
+            -->
+              ${this._renderPluginButtons()}
+            </ul>
           </div>
         </section>
 
