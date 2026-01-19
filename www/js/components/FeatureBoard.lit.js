@@ -399,6 +399,11 @@ class FeatureBoard extends LitElement {
       // Smooth scroll timeline (horizontal) and featureBoard (vertical)
       timeline.scrollTo({ left: targetX, behavior: 'smooth' });
       featureBoard.scrollTo({ top: targetY, behavior: 'smooth' });
+      // Add temporary highlight class to the host so its internal styles animate
+      try{
+        card.classList.add('search-highlight');
+        setTimeout(()=>{ try{ card.classList.remove('search-highlight'); }catch(e){} }, 900);
+      }catch(e){ /* ignore */ }
     }catch(e){ console.warn('centerFeatureById failed', e); }
   }
 
