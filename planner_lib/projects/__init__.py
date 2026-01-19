@@ -5,16 +5,12 @@ configuration when available, falling back to stored projects in the
 file-backed storage under the `projects` namespace.
 """
 from __future__ import annotations
-from typing import Any, List, Optional
+from typing import List, Optional
 import re
-from planner_lib.storage.file_backend import FileStorageBackend
 from planner_lib.util import slugify
 import logging
 
 logger = logging.getLogger(__name__)
-
-# File-backed storage used for persisted projects
-#_storage = FileStorageBackend(data_dir="./data")
 
 def list_projects() -> List[str]:
     """Return a list of project names. """

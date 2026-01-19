@@ -3,7 +3,7 @@ import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
-from planner_lib.storage.file_backend import FileStorageBackend
+from planner_lib.storage.base import StorageBackend
 
 SCENARIO_NS = "scenarios"
 REGISTER_KEY = "scenario_register"
@@ -14,19 +14,23 @@ def _scenario_key(user_id: str, scenario_id: str) -> str:
     return f"{user_id}_{scenario_id}"
 
 
-def load_scenario_register(storage: FileStorageBackend) -> Dict[str, Dict[str, Any]]:
+def load_scenario_register(storage: StorageBackend) -> Dict[str, Dict[str, Any]]:
+    # Load the canonical register key; backend is responsible for on-disk
+    # filename extensions and storage format.
     try:
         return storage.load(SCENARIO_NS, REGISTER_KEY) or {}
     except KeyError:
         return {}
 
 
-def save_scenario_register(storage: FileStorageBackend, register: Dict[str, Dict[str, Any]]) -> None:
+def save_scenario_register(storage: StorageBackend, register: Dict[str, Dict[str, Any]]) -> None:
+    # Save to the canonical register key. Existing legacy files named
+    # '<register>.pkl' will still be read by the fallback above.
     storage.save(SCENARIO_NS, REGISTER_KEY, register)
 
 
 @contextmanager
-def with_register_lock(storage: FileStorageBackend):
+def with_register_lock(storage: StorageBackend):
     # Create lock file path under data/scenarios (consistent with FileStorageBackend layout)
     # Avoid touching storage internals; compute path explicitly.
     base_dir = os.path.join("data", SCENARIO_NS)
@@ -50,7 +54,7 @@ def with_register_lock(storage: FileStorageBackend):
         f.close()
 
 
-def save_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id: str | None, data: Any) -> Dict[str, Any]:
+def save_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str | None, data: Any) -> Dict[str, Any]:
     sid = scenario_id or uuid.uuid4().hex
     key = _scenario_key(user_id, sid)
     storage.save(SCENARIO_NS, key, data)
@@ -62,14 +66,16 @@ def save_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id: s
     return meta
 
 
-def load_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id: str) -> Any:
+def load_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str) -> Any:
     key = _scenario_key(user_id, scenario_id)
+    # Load the scenario by logical key. File naming is handled by backend.
     return storage.load(SCENARIO_NS, key)
 
 
-def delete_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id: str) -> bool:
+def delete_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str) -> bool:
     key = _scenario_key(user_id, scenario_id)
     with with_register_lock(storage):
+        # Delete the logical key; backend determines the on-disk filename.
         try:
             storage.delete(SCENARIO_NS, key)
         except KeyError:
@@ -81,7 +87,7 @@ def delete_user_scenario(storage: FileStorageBackend, user_id: str, scenario_id:
     return True
 
 
-def list_user_scenarios(storage: FileStorageBackend, user_id: str) -> List[Dict[str, Any]]:
+def list_user_scenarios(storage: StorageBackend, user_id: str) -> List[Dict[str, Any]]:
     reg = load_scenario_register(storage)
     prefix = f"{user_id}_"
     return [meta for key, meta in reg.items() if key.startswith(prefix)]

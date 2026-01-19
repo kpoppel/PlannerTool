@@ -1,20 +1,32 @@
-import yaml
 import logging
-from pathlib import Path
+from typing import Any
+
+from planner_lib.storage import create_storage
+from planner_lib.storage.serializer import YAMLSerializer
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = Path("data/config")
+# Use the storage abstraction for reading YAML config files under the
+# `config` namespace. We prefer a YAML serializer so the storage `load`
+# returns parsed Python objects.
+_storage = create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data")
+_CONFIG_NS = "config"
 
-
-def load_yaml_file(path: Path) -> dict:
-    if not path.exists():
+def load_yaml_file_from_storage(key: str) -> dict:
+    try:
+        data = _storage.load(_CONFIG_NS, key)
+        # Serializer returns Python objects already (YAMLSerializer.load)
+        if isinstance(data, dict):
+            return data
+        return data or {}
+    except KeyError:
         return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    except Exception:
+        logger.exception("Failed to load config %s from storage", key)
+        return {}
 
 
-def _resolve_database_path() -> Path:
+def _resolve_database_path() -> str:
     """Determine the path to the database YAML file.
 
     Priority:
@@ -24,35 +36,36 @@ def _resolve_database_path() -> Path:
     - Otherwise, attempt to read `server_config.yml` for the same keys.
     - Finally, fall back to `CONFIG_PATH / 'database.yaml'`.
     """
-    default = CONFIG_PATH / "database.yaml"
-    # Prefer the loaded server config via planner_lib.setup; otherwise use default
+    # Under the storage model we expect the database YAML to be stored as
+    # the key `database.yaml` in the `config` namespace. If `planner_lib.setup`
+    # provides an override via `database_path` we interpret it as a storage
+    # key (either filename or directory). We return the storage key string
+    # rather than a filesystem Path because callers will read via storage.
     try:
         from planner_lib.setup import get_property
-        db_path_val = get_property('database_path')
+        db_path_val = get_property("database_path")
         if db_path_val:
-            p = Path(str(db_path_val))
-            if not p.is_absolute():
-                p = (CONFIG_PATH / p).resolve()
-            # If the provided path looks like a directory or doesn't have a YAML
-            # extension, append the expected filename so we load the YAML file.
-            if p.is_dir() or p.suffix.lower() not in ('.yml', '.yaml'):
-                p = p / 'database.yaml'
-            return p
+            # If the configured value looks like a filename without YAML
+            # extension, append the expected filename.
+            db_key = str(db_path_val)
+            if db_key.endswith("/") or not (db_key.lower().endswith('.yml') or db_key.lower().endswith('.yaml')):
+                # treat as directory-like -> append filename
+                db_key = db_key.rstrip('/') + '/database.yaml'
+            return db_key
     except Exception:
-        # If planner_lib.setup is not available or has no loaded config,
-        # fall back to the default location.
         pass
 
-    return default
+    return "database.yaml"
 
 
 def load_cost_config() -> dict:
     """Load cost configuration from `data/config/cost_config.yml` and `database.yaml`.
     Returns a combined dict with keys 'cost' and 'database'.
     """
-    cost_cfg = load_yaml_file(CONFIG_PATH / "cost_config.yml")
-    db_path = _resolve_database_path()
-    db_cfg = load_yaml_file(db_path)
+    cost_cfg = load_yaml_file_from_storage("cost_config.yml")
+    db_key = _resolve_database_path()
+    # `_resolve_database_path` returns a storage key (string); ensure it's str
+    db_cfg = load_yaml_file_from_storage(str(db_key))
     # Validate consistency between server/team config and database people
     try:
         _validate_team_consistency(cost_cfg, db_cfg)
@@ -66,7 +79,7 @@ def load_cost_config() -> dict:
     if isinstance(db_cfg, dict) and isinstance(db_cfg.get('database'), dict):
         database = db_cfg.get('database')
     else:
-        logger.debug('Database YAML at %s did not contain expected "database" key', db_path)
+        logger.debug('Database YAML at %s did not contain expected "database" key', db_key)
     return {"cost": cost_cfg, "database": database}
 
 
@@ -93,7 +106,7 @@ def _validate_team_consistency(cost_cfg: dict, db_cfg: dict) -> None:
     # located in the same directory as database.yaml
     if not configured:
         try:
-            server_cfg = load_yaml_file(CONFIG_PATH / 'server_config.yml')
+            server_cfg = load_yaml_file_from_storage('server_config.yml')
             for t in server_cfg.get('team_map', []):
                 if isinstance(t, dict) and t.get('name'):
                     configured.append(str(t.get('name')))
