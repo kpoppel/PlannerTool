@@ -310,7 +310,19 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         from planner_lib.storage.scenario_store import load_user_scenario
 
         # Build session context and determine features to estimate
-        user_id = session_manager.get_val(sid, 'email') or ''
+        ctx = session_manager.get(sid) or {}
+        email = ctx.get('email')
+        pat = ctx.get('pat')
+        if email and not pat:
+            try:
+                loaded = config_manager.load(email)
+                pat = loaded.get('pat')
+                ctx['pat'] = pat
+                SESSIONS[sid] = ctx
+            except Exception as e:
+                logger.exception('Failed to load user config for %s: %s', email, e)
+
+        user_id = email or ''
 
         # If client provided explicit features in payload, prefer them
         features = (payload or {}).get('features')
@@ -318,7 +330,6 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
 
         # If features not provided, fetch baseline tasks for the user (requires PAT)
         if features is None:
-            pat = session_manager.get_val(sid, 'pat')
             tasks = list_tasks(pat=pat)
             # normalize baseline tasks to expected cost input
             features = []
