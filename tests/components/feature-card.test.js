@@ -163,5 +163,24 @@ describe('FeatureCard Consolidated Tests', () => {
       const feat = await fixture(html`<feature-card-lit .feature=${{ id: 'F7', type: 'feature', title: 'Feat' }} .bus=${mockBus}></feature-card-lit>`);
       expect(feat.shadowRoot.querySelector('.feature-card-icon.feature').querySelector('svg')).to.exist;
     });
+
+    it('dims capacity and shows info when feature has children', async () => {
+      // Prepare a feature and mark it as having children in state
+      const parentFeature = { id: 'PARENT1', title: 'Parent', type: 'epic', start: '2025-01-01', end: '2025-01-15', project: 'P1', capacity: [], orgLoad: '0%' };
+      // ensure dataInitService exposes a children map the way the component expects
+      if (!state._dataInitService) state._dataInitService = {};
+      if (!state._dataInitService.childrenByEpic) state._dataInitService.childrenByEpic = new Map();
+      state._dataInitService.childrenByEpic.set(parentFeature.id, [{ id: 'CHILD1' }]);
+
+      const el = await fixture(html`<feature-card-lit .feature=${parentFeature} .bus=${mockBus} .teams=${[]}></feature-card-lit>`);
+      await el.updateComplete;
+      const teamRow = el.shadowRoot.querySelector('.team-load-row');
+      expect(teamRow).to.exist;
+      expect(teamRow.classList.contains('dimmed')).to.be.true;
+      const info = el.shadowRoot.querySelector('.dim-info');
+      expect(info).to.exist;
+      // cleanup
+      state._dataInitService.childrenByEpic.delete(parentFeature.id);
+    });
   });
 });

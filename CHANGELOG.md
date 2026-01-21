@@ -14,14 +14,23 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [] - unreleased
+## [1.3.0] - unreleased
 
 ### Added
+
+- Add a small divider line between project and team type plans and sorted the two groups.
+
 ### Changed
+
+- Featurecards now dim capacity fields and add an information icon explaining the capacity on cards with children is ignored when there are children.
+  Is was always like this, so this is just to make the paradigm clear: If a card has children we assume estimates are one step more accurate.
+- server_config updated to include type of the area path: project|team
 
 ### Fixed
 
 - Search field needed to have focus and text selected on open.
+- Project capacity allocation computes in areas paths designated as type 'project'. Before project capacity was calculated on any area path,
+  and as such also on area paths which are team backlogs.
 
 ## [1.2.0] - 2025-01-19
 

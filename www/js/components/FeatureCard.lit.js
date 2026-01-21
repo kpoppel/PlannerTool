@@ -171,6 +171,26 @@ export class FeatureCardLit extends LitElement {
       overflow: hidden;
     }
 
+    /* Dim capacity badges when the feature has children (parent contributions ignored) */
+    .team-load-row.dimmed .team-load-box,
+    .team-load-row.dimmed .team-load-box {
+      opacity: 0.45;
+      filter: grayscale(60%);
+      transition: opacity 160ms ease, filter 160ms ease;
+    }
+
+    .dim-info {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 6px;
+      font-size: 0.85em;
+      color: rgba(0,0,0,0.6);
+      cursor: default;
+      user-select: none;
+    }
+    .dim-info:hover { color: rgba(0,0,0,0.85); }
+
     .team-load-box {
       padding: 2px 4px;
       border-radius: 2px;
@@ -419,6 +439,9 @@ export class FeatureCardLit extends LitElement {
     // Pause RO measurement during drag moves to avoid layout thrash; resume and process after drag end
     try {
       this._unsubDragMove = bus.on(DragEvents.MOVE, () => { this._skipRo = true; });
+      // Refresh visuals when features or capacity data update (childrenByEpic may change)
+      this._onFeaturesUpdated = () => { try { this.requestUpdate(); } catch(e){} };
+      this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
       this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
         this._skipRo = false;
         this._processRoNow();
@@ -485,6 +508,7 @@ export class FeatureCardLit extends LitElement {
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
     try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
     try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
+    try { if (typeof this._unsubFeaturesUpdated === 'function') this._unsubFeaturesUpdated(); } catch (e) { }
     try { if (this._onHostMouseDown) this.removeEventListener('mousedown', this._onHostMouseDown); } catch (e) {}
       try { if (this._boundOnPreUp) { window.removeEventListener('mouseup', this._boundOnPreUp); window.removeEventListener('pointerup', this._boundOnPreUp); this._boundOnPreUp = null; } } catch (e) {}
     super.disconnectedCallback();
@@ -578,9 +602,17 @@ export class FeatureCardLit extends LitElement {
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
+    // If this feature has children (epic with children), dim the capacity badges
+    const hasChildren = (() => {
+      try {
+        const map = state._dataInitService && state._dataInitService.getChildrenByEpicMap ? state._dataInitService.getChildrenByEpicMap() : state.childrenByEpic;
+        const arr = map && map.get ? map.get(this.feature.id) : (state.childrenByEpic && state.childrenByEpic.get ? state.childrenByEpic.get(this.feature.id) : null);
+        return Array.isArray(arr) && arr.length > 0;
+      } catch (e) { return false; }
+    })();
 
     const orgBox = html`
-      <span class="team-load-box" style="background: #23344d;">
+      <span class="team-load-box" style="background: #23344d;" title="Organization load">
         ${this.feature.orgLoad || '0%'}
       </span>
     `;
@@ -589,14 +621,15 @@ export class FeatureCardLit extends LitElement {
       const team = this.teams?.find(t => t.id === tl.team && t.selected);
       if (!team) return null;
       return html`
-        <span class="team-load-box" style="background: ${team.color};">
+        <span class="team-load-box" style="background: ${team.color};" title="${team.name}: ${tl.capacity}">
           ${tl.capacity}
         </span>
       `;
     }).filter(Boolean) || [];
 
     return html`
-      <div class="team-load-row">
+      <div class="team-load-row ${hasChildren ? 'dimmed' : ''}" title=${hasChildren ? 'This feature has child items; parent capacity is ignored in calculations' : ''}>
+        ${hasChildren ? html`<span class="dim-info" role="img" style="font-size: 16px">ℹ️</span>` : ''}
         ${orgBox}
         ${teamBoxes}
       </div>
