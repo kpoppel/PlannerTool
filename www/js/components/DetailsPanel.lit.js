@@ -870,12 +870,12 @@ export class DetailsPanelLit extends LitElement {
     }
 
     return html`
-      <div class="panel">
+      <div class="panel" data-tour="details-panel">
         <div class="details-header">
           <button class="details-close" @click=${()=>this.hide()} aria-label="Close details">✕</button>
           <div class="details-label">
-            <span class="title-icon">${feature.type === 'epic' ? epicTemplate : featureTemplate}</span>
-            ${feature.title}
+            <span class="title-icon" >${feature.type === 'epic' ? epicTemplate : featureTemplate}</span>
+            <span>${feature.title}</span>
           </div>
           <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
           <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span> ${stateColor ? html`<span class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}">${feature.state}</span>` : ''}</div>

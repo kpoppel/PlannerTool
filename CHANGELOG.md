@@ -14,7 +14,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [1.3.0] - unreleased
+
+## [1.4.0] - unreleased
+
+### Added
+
+- Improved onboarding flow now opens the config modal as part of the flow.
+
+### Changed
+
+- Tour includes details panel. Some information updates for new users.
+- Internally all onboarding is delegated to the TourStarter.
+
+### Fixed
+
+## [1.3.0] - 2025-01-20
 
 ### Added
 

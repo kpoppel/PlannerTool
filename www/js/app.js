@@ -107,27 +107,11 @@ async function init(){
 
     // Initialize complete
     hideModal();
-    // Show onboarding on first use if no stored user prefs present
-    try{
-      if(typeof window !== 'undefined' && window.localStorage){
-        const seen = localStorage.getItem('az_planner:onboarding_seen');
-        if(!seen){
-          try{
-            const mh = await import('./components/modalHelpers.js');
-            const promise = mh.openOnboardingModal();
-            // When onboarding modal closes, optionally start the guided tour
-            promise?.then(async ()=>{
-              try{
-                const tourSeen = localStorage.getItem('az_planner:tour_seen');
-                if(!tourSeen){ const mh2 = await import('./components/modalHelpers.js'); mh2.openTour(); }
-              }catch(e){ /* ignore */ }
-            }).catch(()=>{
-              // ignore
-            });
-          }catch(e){ /* ignore */ }
-        }
-      }
-    }catch(e){}
+      // Delegate onboarding/config/tour flow to the TourStarter module
+      try{
+        const ts = await import('./tour/TourStarter.js');
+        if(ts && ts.initTourFlow) await ts.initTourFlow();
+      }catch(e){ console.warn('Failed to initialize tour flow', e); }
     bus.emit(AppEvents.READY);
     // Register global shortcut for in-app search: Ctrl+Shift+F
     try{
