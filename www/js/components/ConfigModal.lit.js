@@ -131,6 +131,22 @@ class ConfigModal extends LitElement {
       const innerModal = this.querySelector('modal-lit');
       if(innerModal){ try{ innerModal.open = true; }catch(e){} }
     });
+    // Ensure the email input is focused when the inner modal is opened
+    const tryFocusEmail = () => {
+      try{
+        const emailInput = this.querySelector('#configEmail');
+        if(emailInput && typeof emailInput.focus === 'function'){
+          // small timeout to allow any modal open animation to complete
+          setTimeout(()=> emailInput.focus(), 60);
+        }
+      }catch(e){}
+    };
+    // If modal-lit exists now, focus after it's opened
+    const existingInner = this.querySelector('modal-lit');
+    if(existingInner){
+      // If modal-lit exposes open property, watch for it or attempt immediate focus
+      try{ if(existingInner.open) tryFocusEmail(); else { existingInner.addEventListener('modal-open', tryFocusEmail, { once: true }); } }catch(e){ tryFocusEmail(); }
+    }
   }
 
   _overlayClick(e){
