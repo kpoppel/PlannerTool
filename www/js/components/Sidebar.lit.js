@@ -32,6 +32,9 @@ export class SidebarLit extends LitElement {
     .counts-header { display:grid; grid-template-columns: 24px 28px 1fr 32px 32px; align-items:center; gap:8px; margin-bottom:4px; color:#ddd; min-height:32px; }
     .type-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; box-sizing:border-box; }
     .type-icon svg { width: 100%; height: 100%; display: block; }
+    .group-title { font-weight:700; font-size:12px; margin:6px 0 10px; color:#3b3b3b; }
+    .plans-group .sidebar-list { margin-top:10px; margin-bottom:12px; }
+    .divider { border-top:1px dashed rgba(255,255,255,1); margin:10px 0; border-radius:2px; height:0; }
   `;
 
   constructor(){
@@ -378,6 +381,23 @@ export class SidebarLit extends LitElement {
     return this._renderEntityList('project', this.projects || [], (id) => this.toggleProject(id));
   }
 
+  renderPlansGrouped(){
+    const all = this.projects || [];
+    const delivery = all.filter(p => (p.type || 'project') === 'project');
+    const teamBacklogs = all.filter(p => (p.type || 'project') !== 'project');
+    return html`
+      <div class="plans-group">
+        ${delivery.length ? html`<!-- <div class="group-title">Delivery Plans</div> -->
+          <ul class="sidebar-list" id="projectList">${this._renderEntityList('project', delivery, (id) => this.toggleProject(id))}</ul>` : ''}
+
+        ${delivery.length && teamBacklogs.length ? html`<div style="border-top:1px dashed rgba(255,255,255,0.32); margin:4px 0; border-radius:2px; height:0;" class="divider" role="separator" aria-hidden="true"></div>` : ''}
+
+        ${teamBacklogs.length ? html`<!-- <div class="group-title">Team Backlogs</div> -->
+          <ul class="sidebar-list" id="projectListTeam">${this._renderEntityList('project', teamBacklogs, (id) => this.toggleProject(id))}</ul> ` : ''}
+      </div>
+    `;
+  }
+
   renderTeams(){
     return this._renderEntityList('team', this.teams || [], (id) => this.toggleTeam(id));
   }
@@ -507,7 +527,7 @@ export class SidebarLit extends LitElement {
                   <span class="type-icon epic" title="Epics">${epicTemplate}</span>
                   <span class="type-icon feature" title="Features">${featureTemplate}</span>
             </div>
-            <ul class="sidebar-list" id="projectList">${this.renderProjects()}</ul>
+            ${this.renderPlansGrouped()}
           </div>
         </section>
 

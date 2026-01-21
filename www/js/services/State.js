@@ -594,6 +594,9 @@ class State {
   recomputeCapacityMetrics(changedFeatureIds = null){
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
+    // For project-load calculations only consider project_map entries marked as 'project'.
+    // Preserve `projects` (baselineProjects) for listing and other purposes.
+    const projectsForCapacity = (projects || []).filter(p => ((p && p.type) ? String(p.type) : 'project') === 'project');
     const selectedProjects = (this.projects || []).filter(p => p.selected).map(p => p.id);
     const selectedTeams = (this.teams || []).filter(t => t.selected).map(t => t.id);
     const selectedStateIds = this.selectedFeatureStateFilter instanceof Set 
@@ -630,7 +633,7 @@ class State {
     const features = this.getEffectiveFeatures();
     
     // Calculate using service (pass changed ids for incremental update when available)
-    const result = this._capacityCalculator.calculate(features, filters, teams, projects, changedFeatureIds);
+    const result = this._capacityCalculator.calculate(features, filters, teams, projectsForCapacity, changedFeatureIds);
     
     // Assign results to state properties
     this.capacityDates = result.dates;

@@ -138,7 +138,7 @@ def interactive_setup(store, namespace, key) -> tuple[bool, str]:
             sel_path = paths[ci-1]
 
             name = input(f"Name for the project/team backlog [{sel_path.split('\\')[-1]}]: ") or sel_path.split('\\')[-1]
-            entry = {"name": name, "area_path": sel_path}
+            entry = {"name": name, "area_path": sel_path, "type": "project"}
 
             # Save project mapping into config as well
             proj_map.append(entry)

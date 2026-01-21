@@ -24,10 +24,13 @@ def list_projects() -> List[str]:
     if cfg and getattr(cfg, "project_map", None):
         names = []
         for p in cfg.project_map:
-            if isinstance(p, dict):
-                n = p.get("name")
-                if isinstance(n, str):
-                    names.append({"id": slugify(n, prefix="project-"), "name": n})
+            if not isinstance(p, dict):
+                continue
+            # Expose type for frontend consumers; default to 'project' for backward-compat
+            ptype = p.get('type') if isinstance(p.get('type'), str) else 'project'
+            n = p.get("name")
+            if isinstance(n, str):
+                names.append({"id": slugify(n, prefix="project-"), "name": n, "type": ptype})
         logger.debug("Returning %d configured projects", len(names))
         return names
     else:
