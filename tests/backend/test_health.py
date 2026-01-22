@@ -1,5 +1,5 @@
 import time
-from planner_lib.config.health import get_health
+from planner_lib.server.health import get_health
 
 
 def test_get_health_contains_fields():
