@@ -15,7 +15,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
     try:
         from planner_lib.cost import estimate_costs, build_cost_schema
         from planner_lib.projects import list_tasks
-        from planner_lib.storage.scenario_store import load_user_scenario
+        from planner_lib.scenarios.scenario_store import load_user_scenario
 
         ctx = session_manager.get(sid) or {}
         email = ctx.get('email')
