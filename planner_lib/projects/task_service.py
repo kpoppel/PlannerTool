@@ -12,12 +12,15 @@ import logging
 from planner_lib.util import slugify
 from planner_lib.storage import StorageBackend
 from planner_lib.azure import get_client
+from planner_lib.projects.project_service import ProjectService
+from planner_lib.projects.team_service import TeamService
+from planner_lib.projects.capacity_service import CapacityService
 
 logger = logging.getLogger(__name__)
 
 
 class TaskService:
-    def __init__(self, *, storage_config: StorageBackend, project_service, team_service, capacity_service):
+    def __init__(self, *, storage_config: StorageBackend, project_service: ProjectService, team_service: TeamService, capacity_service: CapacityService):
         self._storage_config = storage_config
         self._project_service = project_service
         self._team_service = team_service
@@ -97,19 +100,3 @@ class TaskService:
             if item_updated:
                 updated += 1
         return {'ok': len(errors) == 0, 'updated': updated, 'errors': errors}
-
-    def update_work_item_capacity(self, work_item_id: int, capacity_list: List[dict], pat: Optional[str] = None) -> dict:
-        cfg = self._storage_config.load('config', 'server_config')
-        if not cfg:
-            return {'ok': False, 'work_item_id': work_item_id, 'error': 'No server config loaded'}
-
-        client = get_client(cfg["azure_devops_organization"], pat)
-        try:
-            wit = client.conn.clients.get_work_item_tracking_client()  # type: ignore
-            work_item = wit.get_work_item(work_item_id)
-            current_description = work_item.fields.get('System.Description', '')
-            updated_description = self._capacity_service.update_description(current_description, capacity_list, cfg)
-            client.update_work_item_description(work_item_id, updated_description)  # type: ignore
-            return {'ok': True, 'work_item_id': work_item_id}
-        except Exception as e:
-            return {'ok': False, 'work_item_id': work_item_id, 'error': str(e)}
