@@ -66,7 +66,7 @@ Create a session
   export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' http://localhost:8000/api/session | jq -r .sessionId)
 
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/health
-curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/config
+curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/account
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/projects
 curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
 curl -X POST -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/tasks
