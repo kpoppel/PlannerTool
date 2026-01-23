@@ -3,7 +3,6 @@ import logging
 import sys
 from pathlib import Path
 import yaml
-import os
 
 # Load server config early so we can configure the root logger at the intended
 # level before other modules are imported or initialized. Happy-path: assume
@@ -47,41 +46,66 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from planner_lib.middleware import SessionMiddleware, access_denied_response
 
 # Application imports
-from planner_lib.storage.file_backend import FileStorageBackend
-from planner_lib.storage import create_storage
-from planner_lib.setup import YamlConfigStore
-from planner_lib.setup import setup
+from planner_lib.storage import create_storage, StorageBackend
+#from planner_lib.setup import setup
 
 # Parse CLI args for setup-related actions
 ##########################################
-from planner_lib.setup import parse_args, get_parser, setup, has_feature_flag
+#from planner_lib.setup import parse_args, get_parser, has_feature_flag
+from planner_lib.setup import has_feature_flag
 
-_setup_args = parse_args(sys.argv[1:])
-if _setup_args.help:
-    get_parser().print_help()
-    sys.exit(0)
+# _setup_args = parse_args(sys.argv[1:])
+# if _setup_args.help:
+#     get_parser().print_help()
+#     sys.exit(0)
 
+# Create storages needed by the application and packages
+from typing import cast
+storage_yaml = cast(StorageBackend, create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data"))
+storage_pickle = cast(StorageBackend, create_storage(backend="file", serializer="pickle", accessor=None, data_dir="data"))
+
+# Instance packages
+from planner_lib.accounts.config import AccountManager
+account_manager = AccountManager(account_storage=storage_pickle)
+
+from planner_lib.middleware.session import SessionManager
+session_manager = SessionManager(session_storage=None, account_manager=account_manager)
+
+from planner_lib.projects import ProjectService, TeamService, CapacityService
+project_service = ProjectService(storage_config=storage_yaml)
+team_service = TeamService(storage_config=storage_yaml)
+capacity_service = CapacityService(team_service=team_service)
+from planner_lib.projects.task_service import TaskService
+task_service = TaskService(storage_config=storage_yaml, project_service=project_service, team_service=team_service, capacity_service=capacity_service)
+
+#
 # At startup: ensure there's a server configuration file. If it doesn't exist,
 # create a human-editable YAML template and exit so the operator can fill it in.
-STORE_NS = "config"
-STORE_KEY = "server_config.yml"
+#STORE_NS = "config"
+#STORE_KEY = "server_config.yml"
 # Use the storage factory so serializers handle formats (YAML/text).
-storage = create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data")
-store = YamlConfigStore(storage, namespace=STORE_NS)
+#storage = create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data")
+#store = YamlConfigStore(storage, namespace=STORE_NS)
 # Allow tests and CI to skip interactive setup by setting PLANNERTOOL_SKIP_SETUP=1
-if os.environ.get('PLANNERTOOL_SKIP_SETUP'):
-    rc = 0
-else:
-    rc = setup(sys.argv[1:], storage, STORE_NS, STORE_KEY)
-    if rc != 0:
-        sys.exit(rc)
+# if os.environ.get('PLANNERTOOL_SKIP_SETUP'):
+#     rc = 0
+# else:
+#     rc = setup(sys.argv[1:], storage, STORE_NS, STORE_KEY)
+#     if rc != 0:
+#         sys.exit(rc)
 
 ## Setup is complete, setup middlewares, routing, and start the FastAPI app
 ###########################################################################
 app = FastAPI(title="AZ Planner Server")
 
+# expose projects service on app.state for request-time access
+app.state.project_service = project_service
+app.state.team_service = team_service
+app.state.capacity_service = capacity_service
+app.state.task_service = task_service
+
 # Register session middleware
-app.add_middleware(SessionMiddleware)
+app.add_middleware(SessionMiddleware, session_manager=session_manager)
 
 # Add Brotli compression middleware if feature flag is enabled
 if has_feature_flag('planner_use_brotli'):
@@ -89,11 +113,6 @@ if has_feature_flag('planner_use_brotli'):
     from planner_lib.middleware import BrotliCompression
     #Register Brotli middleware (wrap app at ASGI layer)
     app.add_middleware(BrotliCompression)
-
-# Separate storage backend for scenarios (binary pickled objects)
-# Use the storage factory; choose 'pickle' serializer and 'dict' accessor
-# so scenarios are stored as binary pickles but accessible via value helpers.
-scenarios_storage = create_storage(backend="file", serializer="pickle", accessor="dict", data_dir="data")
 
 # Serve main SPA entry at root
 @app.get("/", response_class=HTMLResponse)
@@ -123,7 +142,7 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
 
 # Router registration: move inline route handlers into package routers and include them here.
 from planner_lib.session.api import router as session_router
-from planner_lib.config.api import router as config_router
+from planner_lib.accounts.api import router as config_router
 from planner_lib.projects.api import router as projects_router
 from planner_lib.scenarios.api import router as scenario_router
 from planner_lib.cost.api import router as cost_router
@@ -131,8 +150,10 @@ from planner_lib.server.api import router as server_router
 from planner_lib.admin.admin import router as admin_router
 
 # Expose shared objects to routers via app.state
-app.state.scenarios_storage = scenarios_storage
-app.state.config_manager = config_manager
+app.state.scenarios_storage = storage_pickle
+app.state.account_manager = account_manager
+app.state.server_config_storage = storage_yaml
+app.state.session_manager = session_manager
 
 app.include_router(session_router, prefix='/api')
 app.include_router(config_router, prefix='/api')
