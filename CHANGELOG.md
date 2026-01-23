@@ -25,6 +25,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - Tour includes details panel. Some information updates for new users.
 - Internally all onboarding is delegated to the TourStarter.
+- Internal refactoring to a more composable architecture. Main program now much easier to follow what happens.
+- Storage abstracted so different backends can be pushed in without affecting the application
+- /api/config -> /api/account
 
 ### Fixed
 
