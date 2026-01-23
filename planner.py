@@ -78,14 +78,6 @@ capacity_service = CapacityService(team_service=team_service)
 from planner_lib.projects.task_service import TaskService
 task_service = TaskService(storage_config=storage_yaml, project_service=project_service, team_service=team_service, capacity_service=capacity_service)
 
-#
-# At startup: ensure there's a server configuration file. If it doesn't exist,
-# create a human-editable YAML template and exit so the operator can fill it in.
-#STORE_NS = "config"
-#STORE_KEY = "server_config.yml"
-# Use the storage factory so serializers handle formats (YAML/text).
-#storage = create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data")
-#store = YamlConfigStore(storage, namespace=STORE_NS)
 # Allow tests and CI to skip interactive setup by setting PLANNERTOOL_SKIP_SETUP=1
 # if os.environ.get('PLANNERTOOL_SKIP_SETUP'):
 #     rc = 0
