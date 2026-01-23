@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Response
-from planner_lib.config.config import AccountPayload
+from fastapi import APIRouter, HTTPException, Response, Request
+from planner_lib.accounts.config import AccountPayload
 from planner_lib.middleware.session import create_session
 import logging
 
@@ -8,13 +8,14 @@ router = APIRouter()
 
 
 @router.post('/session')
-async def api_session_post(payload: AccountPayload, response: Response):
+async def api_session_post(payload: AccountPayload, response: Response, request: Request):
     email = payload.email
     if not email or '@' not in email:
         raise HTTPException(status_code=400, detail='invalid email')
 
     try:
-        sid = create_session(email)
+        # pass the request so the session helper can look up the manager
+        sid = create_session(email, request=request)
     except KeyError:
         # No account exists for this email
         raise HTTPException(status_code=401, detail='Account not found')

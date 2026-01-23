@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request, session_manager
+from planner_lib.middleware.session import get_session_id_from_request
 from .scenario_store import (
     save_user_scenario,
     load_user_scenario,
@@ -19,7 +19,7 @@ async def api_scenario_get(request: Request):
     sid = get_session_id_from_request(request)
     logger.debug("Fetching scenario(s) for session %s", sid)
 
-    user_id = session_manager.get_val(sid, 'email') or ''
+    user_id = request.app.state.session_manager.get_val(sid, 'email') or ''
     scenario_id = request.query_params.get('id')
     try:
         if scenario_id:
@@ -39,7 +39,7 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
     sid = get_session_id_from_request(request)
     logger.debug("Saving/deleting scenario for session %s", sid)
 
-    user_id = session_manager.get_val(sid, 'email') or ''
+    user_id = request.app.state.session_manager.get_val(sid, 'email') or ''
     op = (payload or {}).get('op')
     data = (payload or {}).get('data')
     if not op:

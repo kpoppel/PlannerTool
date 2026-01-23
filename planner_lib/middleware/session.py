@@ -10,7 +10,6 @@ import logging
 import threading
 from pathlib import Path
 import json
-import sys
 
 #from planner_lib.config.config import account_manager
 from planner_lib.storage import StorageBackend
@@ -123,33 +122,7 @@ def get_session_id_from_request(request: Request) -> str:
     if mgr is None:
         raise HTTPException(status_code=500, detail={'error': 'server_misconfigured', 'message': 'No SessionManager available on the app.'})
     if not mgr.exists(sid):
-        # During pytest runs many tests pass a synthetic session id (e.g. 'test-session')
-        # without creating it first. To make tests simpler, if we detect pytest
-        # is running, create a lightweight ephemeral session entry so tests can
-        # proceed without needing to call the session creation endpoint.
-        if 'pytest' in sys.modules:
-            try:
-                # best-effort: inject a minimal session context
-                try:
-                    lock = getattr(mgr, '_lock', None)
-                    store = getattr(mgr, '_store', None)
-                    if lock is not None and store is not None:
-                        with lock:
-                            store[sid] = {'email': 'test@example.com', 'pat': None}
-                    elif store is not None:
-                        store[sid] = {'email': 'test@example.com', 'pat': None}
-                    else:
-                        # fallback: use public API if available
-                        mgr.create('test@example.com')
-                except Exception:
-                    # If any of the above fails, fall through to raising an error
-                    pass
-            except Exception:
-                pass
-            if not mgr.exists(sid):
-                raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
-        else:
-            raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
+        raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
     return sid
 
 

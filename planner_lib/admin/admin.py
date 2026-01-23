@@ -12,20 +12,20 @@ async def api_admin_reload_config(request: Request):
     sid = request.cookies.get('session') or ''
     logger.debug("Reloading server and cost configuration for session %s", sid)
     try:
-        from planner_lib.setup import YamlConfigStore, setup as _setup
-        from planner_lib.config.config import config_manager
+        #from planner_lib.setup import YamlConfigStore, setup as _setup
+        #from planner_lib.config.config import account_manager
         from planner_lib.cost import config as cost_config
         from planner_lib.cost import engine as cost_engine
-        from planner_lib.storage.file_backend import FileStorageBackend
+        #from planner_lib.storage.file_backend import FileStorageBackend
 
-        STORE_NS = "config"
-        STORE_KEY = "server_config.yml"
-        storage = FileStorageBackend()
-        storage.configure(mode="text")
+        #STORE_NS = "config"
+        #STORE_KEY = "server_config.yml"
+        #storage = FileStorageBackend()
+        #storage.configure(mode="text")
 
-        store = YamlConfigStore(storage, namespace=STORE_NS)
+        #store = YamlConfigStore(storage, namespace=STORE_NS)
         try:
-            cfg = store.load(STORE_KEY)
+            cfg = request.app.state.server_config_storage.load("server_config")
             from planner_lib import setup as setup_module
             if hasattr(setup_module, '_loaded_config'):
                 setup_module._loaded_config.clear()
@@ -40,7 +40,7 @@ async def api_admin_reload_config(request: Request):
             logger.debug('Cost engine cache invalidation not available')
 
         try:
-            config_manager.load(request.cookies.get('session') or '')
+            account_manager.load(request.cookies.get('session') or '')
         except Exception:
             pass
 

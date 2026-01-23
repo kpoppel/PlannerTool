@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
-from planner_lib.middleware.session import get_session_id_from_request, session_manager, SESSION_COOKIE
+from planner_lib.middleware.session import get_session_id_from_request, SESSION_COOKIE
 import logging
 
 router = APIRouter()
@@ -14,28 +14,33 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
     logger.debug("Calculating cost for session %s", sid)
     try:
         from planner_lib.cost import estimate_costs, build_cost_schema
-        from planner_lib.projects import list_tasks
         from planner_lib.scenarios.scenario_store import load_user_scenario
 
-        ctx = session_manager.get(sid) or {}
+        ctx = request.app.state.session_manager.get(sid) or {}
         email = ctx.get('email')
         pat = ctx.get('pat')
         if email and not pat:
             try:
-                loaded = request.app.state.config_manager.load(email) if hasattr(request.app.state, 'config_manager') else None
+                loaded = request.app.state.account_manager.load(email)
                 if loaded:
                     pat = loaded.get('pat')
                     ctx['pat'] = pat
-                    session_manager.set(sid, ctx)
+                    request.app.state.session_manager.set(sid, ctx)
             except Exception as e:
                 logger.exception('Failed to load user config for %s: %s', email, e)
 
         user_id = email or ''
+        # TODO: what's going on here? The data shae is well known!
         features = (payload or {}).get('features')
         scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
 
         if features is None:
-            tasks = list_tasks(pat=pat)
+            task_svc = getattr(request.app.state, 'task_service', None)
+            if task_svc is None:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=500, detail='TaskService not configured')
+
+            tasks = task_svc.list_tasks(pat=pat)
             features = []
             for t in (tasks or []):
                 capacity = t.get('capacity')
@@ -106,30 +111,33 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
 @require_session
 async def api_cost_get(request: Request):
     sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
-    if not sid or not session_manager.exists(sid):
+    if not sid or not request.app.state.session_manager.exists(sid):
         from planner_lib.cost import build_cost_schema
         return build_cost_schema({}, mode='schema', session_features=None)
 
     sid = get_session_id_from_request(request)
     logger.debug("Fetching calculated cost for session %s", sid)
-    ctx = session_manager.get(sid) or {}
+    ctx = request.app.state.session_manager.get(sid) or {}
     email = ctx.get('email')
     pat = ctx.get('pat')
     if email and not pat:
         try:
-            loaded = request.app.state.config_manager.load(email) if hasattr(request.app.state, 'config_manager') else None
+            loaded = request.app.state.account_manager.load(email) if hasattr(request.app.state, 'account_manager') else None
             if loaded:
                 pat = loaded.get('pat')
                 ctx['pat'] = pat
-                session_manager.set(sid, ctx)
+                request.app.state.session_manager.set(sid, ctx)
         except Exception as e:
             logger.exception('Failed to load user config for %s: %s', email, e)
 
     try:
-        from planner_lib.projects import list_tasks
         from planner_lib.cost import build_cost_schema, estimate_costs
 
-        tasks = list_tasks(pat=pat)
+        task_svc = getattr(request.app.state, 'task_service', None)
+        if task_svc is None:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail='TaskService not configured')
+        tasks = task_svc.list_tasks(pat=pat)
         features = []
         for t in tasks or []:
             features.append({
