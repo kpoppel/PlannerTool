@@ -1,23 +1,13 @@
-from fastapi import FastAPI
-import sys
-
-# Factor logging configuration out to a composeable module. Call the
-# configuration early so the rest of the application starts with the
-# intended logging level and handlers.
+# Setup logging
 from planner_lib.logging_config import configure_logging
 logger = configure_logging()
 
-# Load and validate cost configuration at startup (happy-path: module exists
-# and config is valid).
-from planner_lib.cost.config import load_cost_config
-load_cost_config()
-
 # FastAPI imports
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import HTTPException, Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
 
 # Middleware imports
 from planner_lib.middleware import SessionMiddleware, access_denied_response
@@ -25,6 +15,9 @@ from planner_lib.middleware import SessionMiddleware, access_denied_response
 # Application imports
 from planner_lib.storage import create_storage, StorageBackend
 #from planner_lib.setup import setup
+# Load and validate cost configuration at startup
+from planner_lib.cost.config import load_cost_config
+load_cost_config()
 
 # Parse CLI args for setup-related actions
 ##########################################
@@ -41,7 +34,7 @@ from typing import cast
 storage_yaml = cast(StorageBackend, create_storage(backend="file", serializer="yaml", accessor=None, data_dir="data"))
 storage_pickle = cast(StorageBackend, create_storage(backend="file", serializer="pickle", accessor=None, data_dir="data"))
 
-# Instance packages
+# Compose services needed by the application and packages
 from planner_lib.accounts.config import AccountManager
 account_manager = AccountManager(account_storage=storage_pickle)
 
