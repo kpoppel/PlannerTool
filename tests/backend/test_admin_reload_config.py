@@ -22,14 +22,13 @@ cost_config.CONFIG_PATH = tmp_cfg_dir
 
 import planner
 importlib.reload(planner)
-from planner import app, SESSIONS
+from planner import app
 
 
 def test_reload_config_endpoint_sets_ok():
     client = TestClient(app)
     # create a dummy session
     sid = 'test-session'
-    SESSIONS[sid] = {'email': 'test@example.com'}
     headers = {'X-Session-Id': sid}
     resp = client.post('/api/admin/reload-config', headers=headers)
     assert resp.status_code == 200

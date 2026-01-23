@@ -1,51 +1,44 @@
 from pydantic import BaseModel
 from typing import Optional
-from planner_lib.storage import create_storage
 import logging
-import pickle
+from planner_lib.storage import StorageBackend
 
 logger = logging.getLogger(__name__)
-
-# simple file storage for server-side persistence
-# Use Pickle serializer so account config objects are stored as Python
-# objects (backwards-compatible with previous pickled account files).
-# Keep fallback logic in `load` for legacy filenames.
-_storage = create_storage(backend='file', serializer='pickle', accessor=None, data_dir='./data')
-
 
 class AccountPayload(BaseModel):
     email: str
     pat: Optional[str] = None
 
-class ConfigManager:
-    def __init__(self):
-        pass
+class AccountManager:
+    DEFAULT_NS = 'accounts'
+    def __init__(self, account_storage: StorageBackend):
+        self._storage = account_storage
 
     def save(self, config: AccountPayload) -> dict:
         # load from file storage to not change the PAT if empty
         try:
-            existing = _storage.load('accounts', config.email)
+            existing = self._storage.load(self.DEFAULT_NS, config.email)
         except KeyError:
             existing = None
 
-        # Save configuration using the storage backend
+        # Simple email verification
         if '@' not in config.email:
             return { 'ok': False, 'email': config.email }
+
+        # Save configuration using the storage backend
         config.pat = existing.get('pat') if existing and config.pat == '' else config.pat
-        # store full config dict (including email) for easier inspection
         payload = { 'email': config.email, 'pat': config.pat }
-        _storage.save('accounts', config.email, payload)
+        self._storage.save(self.DEFAULT_NS, config.email, payload)
+
         logger.info('Saved config for %s', config.email)
         return { 'ok': True, 'email': config.email }
 
     def load(self, key: str) -> dict:
         # Load configuration from the storage backend
-        res = _storage.load('accounts', key)
+        res = self._storage.load(self.DEFAULT_NS, key)
         pat = None
         if isinstance(res, dict):
             pat = res.get('pat')
 
-        logger.debug('Loaded config for %s: present=%s', key, res is not None)
+        logger.debug('Loaded config for %s: pat_set=%s', key, pat is not None)
         return { 'ok': True, 'email': key, 'pat': pat }
-    
-config_manager = ConfigManager()
