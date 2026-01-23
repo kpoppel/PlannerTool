@@ -5,9 +5,12 @@
   "type": "module",
   "main": "planner.py",
   "scripts": {
-    "test": "web-test-runner",
-    "test:watch": "web-test-runner --watch",
-    "test:coverage": "web-test-runner --coverage",
+    "test": "npm run test:unit",
+    "test:watch": "web-test-runner --config web-test-runner.config.mjs --watch",
+    "test:coverage": "web-test-runner --config web-test-runner.config.mjs --coverage",
+    "test:unit": "web-test-runner \"tests/services/**/*.test.js\" \"tests/core/**/*.test.js\" \"tests/helpers/**/*.test.js\" --node --quiet",
+    "test:browser": "web-test-runner --config web-test-runner.config.mjs --browsers playwright:chromium",
+    "test:node": "web-test-runner --config web-test-runner.config.mjs --node --quiet",
     "test-js": "npx c8 node scripts/run_js_tests.mjs",
     "test:e2e": "npx playwright test --config=tests/playwright.config.js --project=firefox"
   },
