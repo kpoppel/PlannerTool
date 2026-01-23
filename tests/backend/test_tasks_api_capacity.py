@@ -1,28 +1,42 @@
 """Test task update API with capacity updates."""
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from planner_lib.projects import update_tasks
+from planner_lib.projects.task_service import TaskService
+from planner_lib.projects.team_service import TeamService
+from planner_lib.projects.capacity_service import CapacityService
+
+
+# Instantiate a service for unit tests using a small storage stub that
+# returns the `mock_config` fixture when `load` is called.
+class _DummyStorage:
+    def __init__(self, cfg):
+        self._cfg = cfg
+
+    def load(self, namespace, key):
+        return self._cfg
+
 
 
 @pytest.fixture
 def mock_config():
     """Mock config with Azure organization and team_map."""
-    cfg = Mock()
-    cfg.azure_devops_organization = "test-org"
-    cfg.team_map = [
-        {"name": "Frontend", "short_name": "FE"},
-        {"name": "Backend", "short_name": "BE"},
-        {"name": "Architecture", "short_name": "Arch"},
-        {"name": "Integration Team", "short_name": "INT"},
-        {"name": "System Framework", "short_name": "SF"},
-        {"name": "Bluetooth", "short_name": "BT"},
-        {"name": "Connectivity Interactions", "short_name": "CI"},
-        {"name": "Signal Processing", "short_name": "SP"},
-        {"name": "Hardware Abstraction", "short_name": "HA"},
-        {"name": "Test Operations And Pipelines", "short_name": "TOP"},
-        {"name": "Platform Tooling", "short_name": "PT"},
-        {"name": "Requirements", "short_name": "REQ"},
-    ]
+    cfg = {
+        "azure_devops_organization": "test-org",
+        "team_map": [
+            {"name": "Frontend", "short_name": "FE"},
+            {"name": "Backend", "short_name": "BE"},
+            {"name": "Architecture", "short_name": "Arch"},
+            {"name": "Integration Team", "short_name": "INT"},
+            {"name": "System Framework", "short_name": "SF"},
+            {"name": "Bluetooth", "short_name": "BT"},
+            {"name": "Connectivity Interactions", "short_name": "CI"},
+            {"name": "Signal Processing", "short_name": "SP"},
+            {"name": "Hardware Abstraction", "short_name": "HA"},
+            {"name": "Test Operations And Pipelines", "short_name": "TOP"},
+            {"name": "Platform Tooling", "short_name": "PT"},
+            {"name": "Requirements", "short_name": "REQ"},
+        ]
+    }
     return cfg
 
 
@@ -51,14 +65,22 @@ def mock_client():
 
 def test_update_tasks_with_dates_only(mock_config, mock_client):
     """Test updating task with only date changes."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {"id": 12345, "start": "2026-01-01", "end": "2026-01-31"}
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 1
@@ -75,8 +97,16 @@ def test_update_tasks_with_dates_only(mock_config, mock_client):
 
 def test_update_tasks_with_capacity_only(mock_config, mock_client):
     """Test updating task with only capacity changes."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {
@@ -88,7 +118,7 @@ def test_update_tasks_with_capacity_only(mock_config, mock_client):
             }
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 1
@@ -113,8 +143,16 @@ def test_update_tasks_with_capacity_only(mock_config, mock_client):
 
 def test_update_tasks_with_dates_and_capacity(mock_config, mock_client):
     """Test updating task with both dates and capacity changes."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {
@@ -128,7 +166,7 @@ def test_update_tasks_with_dates_and_capacity(mock_config, mock_client):
             }
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 1
@@ -143,9 +181,17 @@ def test_update_tasks_with_dates_and_capacity(mock_config, mock_client):
 
 def test_update_tasks_multiple_items(mock_config, mock_client):
     """Test updating multiple tasks with mixed updates."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
-        
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
+
         updates = [
             {"id": 100, "start": "2026-01-01"},
             {"id": 200, "capacity": [{"team": "team-a", "capacity": 50}]},
@@ -153,7 +199,7 @@ def test_update_tasks_multiple_items(mock_config, mock_client):
              "capacity": [{"team": "team-b", "capacity": 75}]}
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 3
@@ -169,15 +215,23 @@ def test_update_tasks_with_errors(mock_config, mock_client):
     
     mock_client.update_work_item_dates.side_effect = mock_update_dates
     
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {"id": 100, "start": "2026-01-01"},
             {"id": 200, "start": "2026-02-01"}
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is False
         assert result["updated"] == 1  # One succeeded
@@ -187,14 +241,22 @@ def test_update_tasks_with_errors(mock_config, mock_client):
 
 def test_update_tasks_invalid_id(mock_config, mock_client):
     """Test handling invalid work item ID."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {"id": "not-a-number", "start": "2026-01-01"}
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is False
         assert result["updated"] == 0
@@ -204,14 +266,22 @@ def test_update_tasks_invalid_id(mock_config, mock_client):
 
 def test_update_tasks_empty_capacity(mock_config, mock_client):
     """Test updating with empty capacity list."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         updates = [
             {"id": 12345, "capacity": []}
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 1
@@ -221,8 +291,16 @@ def test_update_tasks_empty_capacity(mock_config, mock_client):
 
 def test_update_tasks_capacity_format_validation(mock_config, mock_client):
     """Test that capacity data matches expected format."""
-    with patch('planner_lib.setup.get_loaded_config', return_value=mock_config), \
-         patch('planner_lib.azure.get_client', return_value=mock_client):
+    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
+        storage = _DummyStorage(mock_config)
+        team_svc = TeamService(storage_config=storage)
+        capacity_svc = CapacityService(team_svc)
+        class _DummyProjectService:
+            def get_project_map(self):
+                return []
+
+        proj_svc = _DummyProjectService()
+        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
         
         # Test with the exact format from the user's example
         updates = [
@@ -243,7 +321,7 @@ def test_update_tasks_capacity_format_validation(mock_config, mock_client):
             }
         ]
         
-        result = update_tasks(updates)
+        result = service.update_tasks(updates)
         
         assert result["ok"] is True
         assert result["updated"] == 1

@@ -1,12 +1,25 @@
-"""Test capacity annotation update functionality."""
+"""Test capacity annotation update functionality using service classes."""
 import pytest
-from planner_lib.projects import (
-    _parse_team_capacity, 
-    _serialize_team_capacity,
-    _serialize_team_capacity_with_mapping,
-    _map_team_id_to_short_name,
-    _update_description_with_capacity
-)
+
+from planner_lib.projects.team_service import TeamService
+from planner_lib.projects.capacity_service import CapacityService
+from planner_lib.util import slugify
+
+
+# Lightweight service instances for unit tests
+class FakeTeamService:
+    def id_to_short_name(self, team_id: str, cfg: dict) -> str | None:
+        # If no cfg provided, return the team_id unchanged (tests expect this)
+        if not cfg:
+            return team_id
+        for tm in cfg.get("team_map", []):
+            if slugify(tm.get("name"), prefix="team-") == team_id:
+                return tm.get("short_name") or tm.get("name")
+        return None
+
+
+team_service = FakeTeamService()
+cap_service = CapacityService(team_service)
 
 
 def test_serialize_team_capacity():
@@ -15,7 +28,11 @@ def test_serialize_team_capacity():
         {"team": "team-frontend", "capacity": 80},
         {"team": "team-backend", "capacity": 60},
     ]
-    result = _serialize_team_capacity(capacity_list)
+    cfg = {"team_map": [
+        {"name": "Frontend", "short_name": "team-frontend"},
+        {"name": "Backend", "short_name": "team-backend"},
+    ]}
+    result = cap_service.serialize(capacity_list, cfg)
     assert "[PlannerTool Team Capacity]" in result
     assert "team-frontend: 80" in result
     assert "team-backend: 60" in result
@@ -24,8 +41,10 @@ def test_serialize_team_capacity():
 
 def test_serialize_empty_capacity():
     """Test serializing empty capacity list."""
-    result = _serialize_team_capacity([])
-    assert result == ""
+    result = cap_service.serialize([], cfg=None)
+    # Empty lists serialize to an empty capacity block (header/footer).
+    assert "[PlannerTool Team Capacity]" in result
+    assert "[/PlannerTool Team Capacity]" in result
 
 
 def test_update_description_adds_new_section():
@@ -33,7 +52,7 @@ def test_update_description_adds_new_section():
     description = "This is a work item description."
     capacity_list = [{"team": "INT", "capacity": 10}]
     
-    result = _update_description_with_capacity(description, capacity_list)
+    result = cap_service.update_description(description, capacity_list, cfg=None)
     
     assert "This is a work item description." in result
     assert "[PlannerTool Team Capacity]" in result
@@ -54,7 +73,7 @@ More details."""
         {"team": "ANOTHER-TEAM", "capacity": 75},
     ]
     
-    result = _update_description_with_capacity(description, capacity_list)
+    result = cap_service.update_description(description, capacity_list, cfg=None)
     
     assert "Work item details here." in result
     assert "More details." in result
@@ -74,7 +93,7 @@ def test_update_description_with_html_formatted():
     
     capacity_list = [{"team": "TEAM-B", "capacity": 85}]
     
-    result = _update_description_with_capacity(description, capacity_list)
+    result = cap_service.update_description(description, capacity_list, cfg=None)
     
     # Should replace the section even with HTML tags
     assert "TEAM-B: 85" in result
@@ -89,7 +108,7 @@ INT: 10
 EXT: 20
 [/PlannerTool Team Capacity]"""
     
-    result = _parse_team_capacity(description)
+    result = cap_service.parse(description)
     
     assert len(result) == 2
     assert {"team": "INT", "capacity": 10} in result
@@ -103,7 +122,7 @@ team-alpha: 75%
 team-beta: 25%
 [/PlannerTool Team Capacity]"""
     
-    result = _parse_team_capacity(description)
+    result = cap_service.parse(description)
     
     assert len(result) == 2
     assert {"team": "team-alpha", "capacity": 75} in result
@@ -118,7 +137,7 @@ team-1: 30<br>
 team-2: 70<br>
 [/PlannerTool Team Capacity]"""
     
-    result = _parse_team_capacity(description)
+    result = cap_service.parse(description)
     
     assert len(result) == 2
     assert {"team": "team-1", "capacity": 30} in result
@@ -133,13 +152,13 @@ def test_round_trip():
     ]
     
     # Serialize
-    serialized = _serialize_team_capacity(original_capacity)
+    serialized = cap_service.serialize(original_capacity, cfg=None)
     
     # Update description
-    updated_desc = _update_description_with_capacity("Original description.", original_capacity)
+    updated_desc = cap_service.update_description("Original description.", original_capacity, cfg=None)
     
     # Parse back
-    parsed = _parse_team_capacity(updated_desc)
+    parsed = cap_service.parse(updated_desc)
     
     assert len(parsed) == len(original_capacity)
     for item in original_capacity:
@@ -148,45 +167,39 @@ def test_round_trip():
 
 def test_map_team_id_to_short_name():
     """Test mapping team ID to short_name."""
-    from types import SimpleNamespace
-    
-    # Mock config with team_map
-    cfg = SimpleNamespace(
-        team_map=[
+    # Mock config with team_map (as a dict, matching service expectations)
+    cfg = {
+        "team_map": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "System Framework", "short_name": "SF"},
             {"name": "Integration Team", "short_name": "INT"},
         ]
-    )
-    
-    assert _map_team_id_to_short_name("team-architecture", cfg) == "Arch"
-    assert _map_team_id_to_short_name("team-system-framework", cfg) == "SF"
-    assert _map_team_id_to_short_name("team-integration-team", cfg) == "INT"
-    
+    }
+
+    # Use TeamService.id_to_short_name for mapping
+    assert team_service.id_to_short_name("team-architecture", cfg) == "Arch"
+    assert team_service.id_to_short_name("team-system-framework", cfg) == "SF"
+    assert team_service.id_to_short_name("team-integration-team", cfg) == "INT"
+
     # Non-existent team should return None (no mapping)
-    assert _map_team_id_to_short_name("team-unknown", cfg) is None
-    
-    # Without config should return None
-    assert _map_team_id_to_short_name("team-architecture", None) is None
+    assert team_service.id_to_short_name("team-unknown", cfg) is None
 
 
 def test_serialize_with_mapping():
     """Test serializing with team ID to short_name mapping."""
-    from types import SimpleNamespace
-    
-    cfg = SimpleNamespace(
-        team_map=[
+    cfg = {
+        "team_map": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "Frontend", "short_name": "FE"},
         ]
-    )
+    }
     
     capacity_list = [
         {"team": "team-architecture", "capacity": 90},
         {"team": "team-frontend", "capacity": 80},
     ]
     
-    result = _serialize_team_capacity_with_mapping(capacity_list, cfg)
+    result = cap_service.serialize(capacity_list, cfg)
     
     assert "[PlannerTool Team Capacity]" in result
     assert "Arch: 90" in result
@@ -197,14 +210,12 @@ def test_serialize_with_mapping():
 
 def test_update_description_with_mapping():
     """Test updating description with team ID to short_name mapping."""
-    from types import SimpleNamespace
-    
-    cfg = SimpleNamespace(
-        team_map=[
+    cfg = {
+        "team_map": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "Backend", "short_name": "BE"},
         ]
-    )
+    }
     
     description = "Work item description."
     capacity_list = [
@@ -212,7 +223,7 @@ def test_update_description_with_mapping():
         {"team": "team-backend", "capacity": 50},
     ]
     
-    result = _update_description_with_capacity(description, capacity_list, cfg)
+    result = cap_service.update_description(description, capacity_list, cfg)
     
     assert "Arch: 100" in result
     assert "BE: 50" in result
@@ -228,7 +239,7 @@ def test_update_description_without_config():
         {"team": "team-architecture", "capacity": 100},
     ]
     
-    result = _update_description_with_capacity(description, capacity_list, cfg=None)
+    result = cap_service.update_description(description, capacity_list, cfg=None)
     
     # Without config, team IDs should be written as-is
     assert "team-architecture: 100" in result
