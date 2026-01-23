@@ -1,34 +1,11 @@
 from fastapi import FastAPI
-import logging
 import sys
-from pathlib import Path
-import yaml
 
-# Load server config early so we can configure the root logger at the intended
-# level before other modules are imported or initialized. Happy-path: assume
-# config file and values are present and valid.
-logging.basicConfig(level=logging.NOTSET, format='%(asctime)s INFO %(message)s')
-DEFAULT_LOG_LEVEL = logging.WARNING
-cfg_path = Path('data/config/server_config.yml')
-if cfg_path.exists():
-    with cfg_path.open('r', encoding='utf-8') as _f:
-        _cfg = yaml.safe_load(_f) or {}
-        _lvl = _cfg.get('log_level')
-        DEFAULT_LOG_LEVEL = getattr(logging, _lvl.upper()) # pyright: ignore[reportOptionalMemberAccess]
-logging.log(100, f'[planner]: Log level set to: {logging.getLevelName(DEFAULT_LOG_LEVEL)}')
-
-# configure basic logging for the backend using the early-configured level
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
-logging.basicConfig(level=DEFAULT_LOG_LEVEL, format='%(asctime)s %(levelname)s [%(name)s]: %(message)s')
-logger = logging.getLogger(__name__)
-# Keep known noisy libraries quiet by default
-logging.getLogger('azure.devops.client').setLevel(logging.WARNING)
-logging.getLogger('azure').setLevel(logging.WARNING)
-logging.getLogger('msrest').setLevel(logging.WARNING)
-logging.getLogger('requests').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logger.info("Starting AZ Planner Server")
+# Factor logging configuration out to a composeable module. Call the
+# configuration early so the rest of the application starts with the
+# intended logging level and handlers.
+from planner_lib.logging_config import configure_logging
+logger = configure_logging()
 
 # Load and validate cost configuration at startup (happy-path: module exists
 # and config is valid).
