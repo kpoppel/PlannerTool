@@ -182,7 +182,6 @@ def setup(argv: Optional[Iterable[str]], storage: StorageBackend, namespace: str
     - Returns non-zero on error.
     """
     #args, _ = get_parser().parse_known_args(list(argv) if argv else [])
-    #store = YamlConfigStore(storage, namespace=namespace)
     store = storage
 
     # If the config already exists, load it into module state and return.
@@ -237,46 +236,3 @@ class BackendConfig:
     team_map: List[Dict[str, str]]
     feature_flags: Dict[str, Any]
     data_dir: str
-
-
-# class YamlConfigStore:
-#     """Serialize/deserialize BackendConfig to YAML using a StorageBackend.
-
-#     The store writes YAML text to the backend using the provided
-#     namespace/key. The backend is expected to accept a string (or bytes)
-#     on `save` and return the same on `load`.
-#     """
-
-#     def __init__(self, backend: StorageBackend, namespace: str = "config"):
-#         self.backend = backend
-#         self.namespace = namespace
-
-#     def save(self, key: str, cfg: BackendConfig) -> None:
-#         payload = yaml.safe_dump(asdict(cfg), sort_keys=False)
-#         self.backend.save(self.namespace, key, payload)
-
-#     def load(self, key: str) -> BackendConfig:
-#         raw = self.backend.load(self.namespace, key)
-#         # The storage layer may return already-deserialized Python objects
-#         # (when wrapped with a YAML serializer) or raw bytes/text. Handle
-#         # both cases robustly.
-#         if isinstance(raw, dict):
-#             data: Any = raw
-#         else:
-#             if isinstance(raw, bytes):
-#                 raw = raw.decode("utf-8")
-#             try:
-#                 data: Any = yaml.safe_load(raw)
-#             except Exception as e:
-#                 raise ValueError("invalid config format: parse error") from e
-#         if not isinstance(data, dict):
-#             raise ValueError("invalid config format: expected mapping")
-
-#         return BackendConfig(
-#             azure_devops_organization=data["azure_devops_organization"],
-#             feature_flags=data.get("feature_flags", {}),
-#             area_paths=list(data.get("area_paths", [])),
-#             project_map=list(data.get("project_map", [])),
-#             team_map=list(data.get("team_map", [])),
-#             data_dir=data.get("data_dir", "data"),
-#         )
