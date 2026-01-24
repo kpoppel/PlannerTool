@@ -10,21 +10,31 @@ from typing import List, Optional
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.storage import StorageBackend
+from planner_lib.services.interfaces import StorageProtocol
 from planner_lib.azure import get_client
-from planner_lib.projects.project_service import ProjectService
-from planner_lib.projects.team_service import TeamService
-from planner_lib.projects.capacity_service import CapacityService
+from planner_lib.projects.interfaces import (
+    ProjectServiceProtocol,
+    TeamServiceProtocol,
+    CapacityServiceProtocol,
+    TaskServiceProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class TaskService:
-    def __init__(self, *, storage_config: StorageBackend, project_service: ProjectService, team_service: TeamService, capacity_service: CapacityService):
+class TaskService(TaskServiceProtocol):
+    def __init__(
+        self,
+        *,
+        storage_config: StorageProtocol,
+        project_service: ProjectServiceProtocol,
+        team_service: TeamServiceProtocol,
+        capacity_service: CapacityServiceProtocol,
+    ):
         self._storage_config = storage_config
-        self._project_service = project_service
-        self._team_service = team_service
-        self._capacity_service = capacity_service
+        self._project_service: ProjectServiceProtocol = project_service
+        self._team_service: TeamServiceProtocol = team_service
+        self._capacity_service: CapacityServiceProtocol = capacity_service
 
     def list_tasks(self, pat: Optional[str] = None, project_id: Optional[str] = None) -> List[dict]:
         cfg = self._storage_config.load('config', 'server_config')

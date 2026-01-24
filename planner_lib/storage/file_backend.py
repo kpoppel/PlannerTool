@@ -1,6 +1,6 @@
-"""Simple file-backed storage backend using pickle.
+"""Simple file-backed storage backend
 
-This backend stores pickled Python objects under `./data/<namespace>/<key>.pkl`.
+This backend stores Python objects under `./<datadir>/<namespace>/<key>.<extension>`.
 It provides atomic writes by writing to a temporary file then renaming.
 """
 from __future__ import annotations

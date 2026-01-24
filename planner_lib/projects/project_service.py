@@ -5,19 +5,20 @@ from typing import List
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.storage import StorageBackend
+from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.projects.interfaces import ProjectServiceProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectService:
+class ProjectService(ProjectServiceProtocol):
     """Service responsible for project listing logic.
 
     The service reads server configuration from the provided storage
     backend and exposes `list_projects` returning frontend-ready entries.
     """
 
-    def __init__(self, storage_config: StorageBackend):
+    def __init__(self, storage_config: StorageProtocol):
         self._storage_config = storage_config
 
     def list_projects(self) -> List[dict]:

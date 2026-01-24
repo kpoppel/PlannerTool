@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request, SESSION_COOKIE
+from planner_lib.services.resolver import resolve_service, resolve_optional_service
 import logging
 
 router = APIRouter()
@@ -16,16 +17,18 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         from planner_lib.cost import estimate_costs, build_cost_schema
         from planner_lib.scenarios.scenario_store import load_user_scenario
 
-        ctx = request.app.state.session_manager.get(sid) or {}
+        session_manager = resolve_service(request, 'session_manager')
+        ctx = session_manager.get(sid) or {}
         email = ctx.get('email')
         pat = ctx.get('pat')
         if email and not pat:
             try:
-                loaded = request.app.state.account_manager.load(email)
+                account_manager = resolve_service(request, 'account_manager')
+                loaded = account_manager.load(email)
                 if loaded:
                     pat = loaded.get('pat')
                     ctx['pat'] = pat
-                    request.app.state.session_manager.set(sid, ctx)
+                    session_manager.set(sid, ctx)
             except Exception as e:
                 logger.exception('Failed to load user config for %s: %s', email, e)
 
@@ -35,11 +38,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
 
         if features is None:
-            task_svc = getattr(request.app.state, 'task_service', None)
-            if task_svc is None:
-                from fastapi import HTTPException
-                raise HTTPException(status_code=500, detail='TaskService not configured')
-
+            task_svc = resolve_service(request, 'task_service')
             tasks = task_svc.list_tasks(pat=pat)
             features = []
             for t in (tasks or []):
@@ -60,7 +59,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         applied_overrides = None
         if scenario_id:
             try:
-                scen = load_user_scenario(request.app.state.scenarios_storage if hasattr(request.app.state, 'scenarios_storage') else None, user_id, scenario_id)
+                scen = load_user_scenario(resolve_optional_service(request, 'scenarios_storage'), user_id, scenario_id)
                 overrides = scen.get('overrides') if isinstance(scen, dict) else None
                 if overrides:
                     applied_overrides = {}
@@ -111,32 +110,31 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
 @require_session
 async def api_cost_get(request: Request):
     sid = request.headers.get("X-Session-Id") or request.cookies.get(SESSION_COOKIE)
-    if not sid or not request.app.state.session_manager.exists(sid):
+    session_manager = resolve_service(request, 'session_manager')
+    if not sid or not session_manager.exists(sid):
         from planner_lib.cost import build_cost_schema
         return build_cost_schema({}, mode='schema', session_features=None)
 
     sid = get_session_id_from_request(request)
     logger.debug("Fetching calculated cost for session %s", sid)
-    ctx = request.app.state.session_manager.get(sid) or {}
+    ctx = session_manager.get(sid) or {}
     email = ctx.get('email')
     pat = ctx.get('pat')
     if email and not pat:
         try:
-            loaded = request.app.state.account_manager.load(email) if hasattr(request.app.state, 'account_manager') else None
+            account_manager = resolve_service(request, 'account_manager')
+            loaded = account_manager.load(email)
             if loaded:
                 pat = loaded.get('pat')
                 ctx['pat'] = pat
-                request.app.state.session_manager.set(sid, ctx)
+                session_manager.set(sid, ctx)
         except Exception as e:
             logger.exception('Failed to load user config for %s: %s', email, e)
 
     try:
         from planner_lib.cost import build_cost_schema, estimate_costs
 
-        task_svc = getattr(request.app.state, 'task_service', None)
-        if task_svc is None:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail='TaskService not configured')
+        task_svc = resolve_service(request, 'task_service')
         tasks = task_svc.list_tasks(pat=pat)
         features = []
         for t in tasks or []:

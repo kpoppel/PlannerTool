@@ -5,7 +5,12 @@ from typing import List, Tuple
 import pytest
 import httpx
 
-from planner import app as fastapi_app
+from planner_lib.main import create_app, Config
+
+# Build a local app instance for route inspection. Tests that require a
+# running server still use `base_url` and may be skipped if the server
+# is not reachable.
+fastapi_app = create_app(Config(storage_backend='memory'))
 
 
 BASE_URL_ENV = "API_BASE_URL"

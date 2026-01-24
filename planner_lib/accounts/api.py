@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from planner_lib.accounts import config as config_mod
 from planner_lib.accounts.config import AccountPayload, AccountManager
+from planner_lib.services.resolver import resolve_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,9 @@ async def save_config(payload: AccountPayload, request: Request):
             mgr = AccountManager(account_storage=test_store)
             status = mgr.save(payload)
         else:
-            status = request.app.state.account_manager.save(payload)
+            # Resolve account manager using centralized resolver
+            mgr = resolve_service(request, 'account_manager')
+            status = mgr.save(payload)
         if not status:
             raise HTTPException(status_code=400, detail={'error': 'invalid_email', 'message': 'Invalid email'})
     except Exception as e:

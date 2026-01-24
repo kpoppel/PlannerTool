@@ -13,8 +13,9 @@ import json
 
 #from planner_lib.config.config import account_manager
 from planner_lib.storage import StorageBackend
-from planner_lib.accounts.config import AccountManager
+from planner_lib.accounts.interfaces import AccountManagerProtocol
 from planner_lib.accounts import config as accounts_config_mod
+from planner_lib.services.resolver import resolve_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class SessionManager:
     can use `manager.get(sid) or {}` without try/except.
     """
 
-    def __init__(self, session_storage: StorageBackend, account_manager: AccountManager) -> None:
+    def __init__(self, session_storage: StorageBackend, account_manager: AccountManagerProtocol) -> None:
         # TODO: Make session_storage as injected storage backend. Make an in-memory backend?
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -104,9 +105,10 @@ def create_session(email: str, request: Request) -> str:
 
     The SessionManager is looked up from `request.app.state.session_manager`.
     """
-    mgr = getattr(request.app.state, "session_manager", None)
-    if mgr is None:
-        raise RuntimeError("No SessionManager available on app.state.session_manager")
+    # Use the centralized resolver which prefers an explicit
+    # `app.state.session_manager` override (tests may set this),
+    # otherwise falls back to the application container.
+    mgr = resolve_service(request, 'session_manager')
     return mgr.create(email)
 
 
@@ -118,9 +120,8 @@ def get_session_id_from_request(request: Request) -> str:
     sid = request.headers.get('X-Session-Id') or request.cookies.get(SESSION_COOKIE)
     if not sid:
         raise HTTPException(status_code=401, detail={'error': 'missing_session_id', 'message': 'Somehow you got here without a session.'})
-    mgr = getattr(request.app.state, "session_manager", None)
-    if mgr is None:
-        raise HTTPException(status_code=500, detail={'error': 'server_misconfigured', 'message': 'No SessionManager available on the app.'})
+    # Resolve session manager via centralized resolver.
+    mgr = resolve_service(request, 'session_manager')
     if not mgr.exists(sid):
         raise HTTPException(status_code=401, detail={'error': 'invalid_session', 'message': 'Your session is invalid or expired.'})
     return sid
