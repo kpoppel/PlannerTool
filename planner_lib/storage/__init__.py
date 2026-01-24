@@ -89,6 +89,9 @@ def create_storage(
 	# Backend selection
 	if backend == "file":
 		be = FileStorageBackend(data_dir=data_dir)
+	elif backend == "memory":
+		from .memory_backend import MemoryStorage
+		be = MemoryStorage()
 	else:
 		raise ValueError(f"unsupported backend: {backend}")
 

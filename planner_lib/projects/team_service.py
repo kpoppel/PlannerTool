@@ -5,18 +5,19 @@ from typing import List, Optional
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.storage import StorageBackend
+from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.projects.interfaces import TeamServiceProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class TeamService:
+class TeamService(TeamServiceProtocol):
     """Service for team-related operations and mappings.
 
     This service reads `team_map` from the server config when needed.
     """
 
-    def __init__(self, storage_config: StorageBackend):
+    def __init__(self, storage_config: StorageProtocol):
         self._storage_config = storage_config
 
     def list_teams(self) -> List[dict]:

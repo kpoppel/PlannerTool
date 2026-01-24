@@ -15,8 +15,10 @@ async def api_admin_reload_config(request: Request):
         from planner_lib.cost import config as cost_config
         from planner_lib.cost import engine as cost_engine
 
+        from planner_lib.services.resolver import resolve_service as _resolve
+
         try:
-            cfg = request.app.state.server_config_storage.load("server_config")
+            cfg = _resolve(request, 'server_config_storage').load("server_config")
             from planner_lib import setup as setup_module
             if hasattr(setup_module, '_loaded_config'):
                 setup_module._loaded_config.clear()
@@ -31,11 +33,11 @@ async def api_admin_reload_config(request: Request):
             logger.debug('Cost engine cache invalidation not available')
 
         try:
-            request.app.state.account_manager.load(request.cookies.get('session') or '')
+            _resolve(request, 'account_manager').load(request.cookies.get('session') or '')
         except Exception:
             pass
 
-        return { 'ok': True }
+        return {'ok': True}
     except Exception as e:
         logger.exception('Failed to reload configuration: %s', e)
         raise HTTPException(status_code=500, detail=str(e))

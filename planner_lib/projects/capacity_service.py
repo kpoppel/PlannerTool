@@ -4,20 +4,20 @@ from __future__ import annotations
 from typing import List, Optional
 import re
 import logging
-from planner_lib.projects.team_service import TeamService
+from planner_lib.projects.interfaces import TeamServiceProtocol, CapacityServiceProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class CapacityService:
+class CapacityService(CapacityServiceProtocol):
     """Handles parsing and serializing the `[PlannerTool Team Capacity]` block.
 
     This class is stateless and depends on an optional `cfg` for
     mapping team ids to short names when serializing.
     """
 
-    def __init__(self, team_service: TeamService):
-        self._team_service = team_service
+    def __init__(self, team_service: TeamServiceProtocol):
+        self._team_service: TeamServiceProtocol = team_service
 
     def parse(self, description: str) -> List[dict]:
         try:
