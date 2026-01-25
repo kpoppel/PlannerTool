@@ -85,6 +85,16 @@ def create_app(config: Config) -> FastAPI:
         project_service=project_service,
     )
 
+    # Admin service depends on account storage (pickle) and config storage (yaml)
+    from planner_lib.admin.service import AdminService
+    admin_service = AdminService(
+        account_storage=storage_pickle,
+        config_storage=storage_yaml,
+        team_service=team_service,
+        project_service=project_service,
+        account_manager=account_manager,
+    )
+
     # Create a minimal service container and register composed services.
     # We expose the container on `app.state.container` so new code can resolve
     # dependencies via the container while existing code can continue to read
@@ -92,15 +102,17 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.services import ServiceContainer
 
     container = ServiceContainer()
+    container.register_singleton("server_config_storage", storage_yaml)
+    container.register_singleton("account_storage", storage_pickle)
+    container.register_singleton("scenarios_storage", storage_pickle)
     container.register_singleton("project_service", project_service)
     container.register_singleton("team_service", team_service)
     container.register_singleton("capacity_service", capacity_service)
     container.register_singleton("task_service", task_service)
     container.register_singleton("cost_service", cost_service)
-    container.register_singleton("scenarios_storage", storage_pickle)
     container.register_singleton("account_manager", account_manager)
-    container.register_singleton("server_config_storage", storage_yaml)
     container.register_singleton("session_manager", session_manager)
+    container.register_singleton("admin_service", admin_service)
 
     # Build FastAPI app and expose services on app.state for request-time access
     app = FastAPI(title="AZ Planner Server")
@@ -150,7 +162,7 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.scenarios.api import router as scenario_router
     from planner_lib.cost.api import router as cost_router
     from planner_lib.server.api import router as server_router
-    from planner_lib.admin.admin import router as admin_router
+    from planner_lib.admin.api import router as admin_router
 
     # Services are available via the container; do not expose them as
     # legacy `app.state` attributes to enforce container-based DI.
