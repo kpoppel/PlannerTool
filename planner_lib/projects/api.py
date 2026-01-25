@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Request, Body, HTTPException
+from fastapi import APIRouter, Request, Body
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
-from typing import Any
 import logging
 
 router = APIRouter()

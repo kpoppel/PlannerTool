@@ -14,4 +14,14 @@ coverage report dropped on `coverage/lcov-report`
 
 ## JavaScript UI tests
 
-    npx test
+Start the server:
+
+    uvicorn planner:make_app --factory --reload 2>&1 |tee logfile.log
+
+Run tests:
+    npx playwright test --config=tests/playwright.local.config.js tests/e2e/admin-first-register.spec.mjs --project=firefox
+
+    npx playwright test --config=tests/playwright.config.js
+
+    To run with open browwser and pause execution:
+    PWDEBUG=1 npx playwright test tests/e2e/featureboard-hierarchy.spec.mjs --headed

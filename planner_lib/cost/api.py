@@ -14,7 +14,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
     sid = get_session_id_from_request(request)
     logger.debug("Calculating cost for session %s", sid)
     try:
-        from planner_lib.cost import estimate_costs, build_cost_schema
+        from planner_lib.cost import build_cost_schema
         from planner_lib.scenarios.scenario_store import load_user_scenario
 
         session_manager = resolve_service(request, 'session_manager')
@@ -33,7 +33,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
                 logger.exception('Failed to load user config for %s: %s', email, e)
 
         user_id = email or ''
-        # TODO: what's going on here? The data shae is well known!
+        # TODO: what's going on here? The data shape is well known!
         features = (payload or {}).get('features')
         scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
 
@@ -91,7 +91,8 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         ctx = dict(ctx)
         ctx['features'] = features
 
-        raw = estimate_costs(ctx) or {}
+        cost_svc = resolve_service(request, 'cost_service')
+        raw = cost_svc.estimate_costs(ctx) or {}
         if scenario_id:
             raw = dict(raw)
             raw_meta = raw.get('meta') if isinstance(raw.get('meta'), dict) else {}
@@ -132,7 +133,7 @@ async def api_cost_get(request: Request):
             logger.exception('Failed to load user config for %s: %s', email, e)
 
     try:
-        from planner_lib.cost import build_cost_schema, estimate_costs
+        from planner_lib.cost import build_cost_schema
 
         task_svc = resolve_service(request, 'task_service')
         tasks = task_svc.list_tasks(pat=pat)
@@ -151,7 +152,8 @@ async def api_cost_get(request: Request):
 
         ctx = dict(ctx)
         ctx['features'] = features
-        raw = estimate_costs(ctx)
+        cost_svc = resolve_service(request, 'cost_service')
+        raw = cost_svc.estimate_costs(ctx)
         return build_cost_schema(raw, mode='full', session_features=features)
 
     except Exception as e:
@@ -163,13 +165,23 @@ async def api_cost_get(request: Request):
 @require_session
 async def api_cost_teams(request: Request):
     try:
-        from planner_lib.cost.config import load_cost_config
         from planner_lib.util import slugify
+        from planner_lib.services.resolver import resolve_service
 
-        cfg = load_cost_config() or {}
-        cost_cfg = cfg.get('cost', {}) or {}
-        db_cfg = cfg.get('database', {}) or {}
-        people = db_cfg.get('people', []) or []
+        storage = resolve_service(request, 'server_config_storage')
+        cost_cfg = {}
+        db_cfg_raw = {}
+        try:
+            cost_cfg = storage.load('config', 'cost_config') or {}
+        except Exception:
+            cost_cfg = {}
+        try:
+            db_cfg_raw = storage.load('config', 'database') or {}
+        except Exception:
+            db_cfg_raw = {}
+        # Normalize database dict
+        db_cfg = db_cfg_raw.get('database', db_cfg_raw) if isinstance(db_cfg_raw, dict) else {}
+        people = (db_cfg or {}).get('people', []) or []
 
         site_hours_map = cost_cfg.get('working_hours', {}) or {}
         external_cfg = cost_cfg.get('external_cost', {}) or {}

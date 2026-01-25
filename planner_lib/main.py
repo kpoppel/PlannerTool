@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from planner_lib.logging_config import configure_logging
 from planner_lib.storage import create_storage, StorageBackend
-from planner_lib.cost.config import load_cost_config
+
 from planner_lib.setup import has_feature_flag
 
 
@@ -44,8 +44,6 @@ def create_app(config: Config) -> FastAPI:
     """
     logger = configure_logging()
 
-    # Load cost configuration (was previously executed at import-time)
-    load_cost_config()
 
     # Compose storages
     storage_yaml = cast(StorageBackend, create_storage(
@@ -81,6 +79,12 @@ def create_app(config: Config) -> FastAPI:
         capacity_service=capacity_service,
     )
 
+    from planner_lib.cost.service import CostService
+    cost_service = CostService(
+        storage=storage_yaml,
+        project_service=project_service,
+    )
+
     # Create a minimal service container and register composed services.
     # We expose the container on `app.state.container` so new code can resolve
     # dependencies via the container while existing code can continue to read
@@ -92,8 +96,7 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("team_service", team_service)
     container.register_singleton("capacity_service", capacity_service)
     container.register_singleton("task_service", task_service)
-    # Register storages and cross-cutting services too so tests and handlers
-    # resolving via the container will find these items.
+    container.register_singleton("cost_service", cost_service)
     container.register_singleton("scenarios_storage", storage_pickle)
     container.register_singleton("account_manager", account_manager)
     container.register_singleton("server_config_storage", storage_yaml)

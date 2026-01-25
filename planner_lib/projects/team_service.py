@@ -21,8 +21,9 @@ class TeamService(TeamServiceProtocol):
         self._storage_config = storage_config
 
     def list_teams(self) -> List[dict]:
-        cfg = self._storage_config.load("config", "server_config")
-        team_map = cfg.get("team_map", {})
+        cfg = self._storage_config.load("config", "teams")
+        team_map = cfg["team_map"]
+
         if team_map:
             names: List[dict] = [
                 {
@@ -42,7 +43,8 @@ class TeamService(TeamServiceProtocol):
         """Map token (name or short_name) to canonical frontend team id.
         """
         tkn = name.strip().lower()
-        for tm in cfg["team_map"]:
+        teams_cfg = self._storage_config.load("config", "teams")
+        for tm in teams_cfg["team_map"]:
             if tkn == tm["name"].lower() or tkn == tm["short_name"].lower():
                 return slugify(tm["name"], prefix="team-")
         return None
@@ -53,8 +55,10 @@ class TeamService(TeamServiceProtocol):
         Returns the short_name if present, otherwise the full name.
         """
         tid = team_id.strip()
-        for tm in cfg["team_map"]:
+        # Use dedicated teams file rather than server_config
+        teams_cfg = self._storage_config.load("config", "teams")
+        for tm in teams_cfg["team_map"]:
             slugified = slugify(tm["name"], prefix="team-")
             if tid == slugified:
-                return tm["short_name"] if tm["short_name"] else tm["name"]
+                return tm["short_name"] if "short_name" in tm else tm["name"]
         return None

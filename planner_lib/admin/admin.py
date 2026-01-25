@@ -26,16 +26,20 @@ async def api_admin_reload_config(request: Request):
         except Exception:
             logger.debug('No server config present to reload')
 
-        _ = cost_config.load_cost_config()
+        # Reload cost configuration by reloading the underlying storage keys.
+        storage = _resolve(request, 'server_config_storage')
         try:
-            cost_engine.invalidate_team_rates_cache()
+            # Touch/load the cost config and database keys so any in-memory
+            # caches can be refreshed by the caller (e.g. CostService).
+            _ = storage.load('config', 'cost_config') or {}
         except Exception:
-            logger.debug('Cost engine cache invalidation not available')
-
+            logger.debug('No cost_config present to reload')
         try:
-            _resolve(request, 'account_manager').load(request.cookies.get('session') or '')
+            _ = storage.load('config', 'database') or {}
         except Exception:
-            pass
+            logger.debug('No database config present to reload')
+        cost_engine.invalidate_team_rates_cache()
+        _resolve(request, 'account_manager').load(request.cookies.get('session') or '')
 
         return {'ok': True}
     except Exception as e:

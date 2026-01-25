@@ -1,5 +1,5 @@
 import pytest
-from planner_lib.cost import service as cost_service
+from planner_lib.cost import service as cost_service_module
 from planner_lib.cost import engine as cost_engine
 
 
@@ -11,9 +11,22 @@ def test_estimate_costs_empty():
     }
     # monkeypatch load_cost_config and clear cached team rates
     cost_engine.invalidate_team_rates_cache()
-    import types
-    cost_service.load_cost_config = lambda: cfg
-    res = cost_service.estimate_costs(session={})
+    # Provide a dummy storage object that returns the expected keys
+    class _DummyStorage:
+        def load(self, namespace, key):
+            if namespace == 'config' and key == 'cost_config':
+                return cfg.get('cost', {})
+            if namespace == 'config' and key == 'database':
+                return {'database': cfg.get('database', {})}
+            return {}
+
+    # Instantiate CostService with minimal dependencies for the test
+    class _DummyProjectService:
+        def list_projects(self):
+            return []
+
+    svc = cost_service_module.CostService(storage=_DummyStorage(), project_service=_DummyProjectService())
+    res = svc.estimate_costs(session={})
     # Expect an empty dict when no features provided
     assert isinstance(res, dict)
     assert res == {}
@@ -50,14 +63,24 @@ def test_estimate_costs_simple_feature(monkeypatch):
         }
     }
 
-    # Monkeypatch service.load_cost_config so estimate_costs uses our config
-    monkeypatch.setattr(cost_service, 'load_cost_config', lambda: cfg)
+    # Provide a dummy storage object that returns the expected keys
+    class _DummyStorage:
+        def load(self, namespace, key):
+            if namespace == 'config' and key == 'cost_config':
+                return cfg.get('cost', {})
+            if namespace == 'config' and key == 'database':
+                return {'database': cfg.get('database', {})}
+            return {}
     cost_engine.invalidate_team_rates_cache()
     # Ensure no loaded server config interferes with project filtering
     import planner_lib.setup as setup_module
     monkeypatch.setattr(setup_module, 'get_loaded_config', lambda: None)
+    class _DummyProjectService:
+        def list_projects(self):
+            return []
 
-    res = cost_service.estimate_costs(session)
+    svc = cost_service_module.CostService(storage=_DummyStorage(), project_service=_DummyProjectService())
+    res = svc.estimate_costs(session)
     assert isinstance(res, dict)
     assert 'p1' in res
     assert 'f1' in res['p1']

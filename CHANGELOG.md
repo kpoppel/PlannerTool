@@ -20,6 +20,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Added
 
 - Improved onboarding flow now opens the config modal as part of the flow.
+- Add development server app using memory-based storages.
 
 ### Changed
 
@@ -28,6 +29,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Internal refactoring to a more composable architecture. Main program now much easier to follow what happens.
 - Storage abstracted so different backends can be pushed in without affecting the application
 - /api/config -> /api/account
+- Internal refactoring to bring cost package to CostService like the other services
+- Made CostService use storage package instead of loading files directly
+- Several migrations to split configuration files by concern (teams, projects, system), and database file ending->yml
+- Upgrade projects schema to 2 to add fields for future expansion for task types and states to import.
 
 ### Fixed
 
