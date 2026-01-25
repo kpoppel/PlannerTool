@@ -22,8 +22,8 @@ class ProjectService(ProjectServiceProtocol):
         self._storage_config = storage_config
 
     def list_projects(self) -> List[dict]:
-        cfg = self._storage_config.load("config", "server_config")
-        project_map = cfg.get("project_map", [])
+        cfg = self._storage_config.load("config", "projects")
+        project_map = cfg["project_map"]
         if project_map:
             names = [
                 {"id": slugify(p.get("name"), prefix="project-"),
@@ -43,6 +43,7 @@ class ProjectService(ProjectServiceProtocol):
         This preserves fields such as `area_path` that callers (e.g. TaskService)
         may rely on.
         """
-        cfg = self._storage_config.load("config", "server_config")
+        cfg = self._storage_config.load("config", "projects")
         project_map = cfg.get("project_map", [])
+
         return [dict(p, id=slugify(p.get("name"), prefix="project-")) for p in project_map]

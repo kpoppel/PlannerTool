@@ -1,67 +1,149 @@
 from typing import List, Dict, Any, Optional
-from .config import load_cost_config
 from .engine import calculate
 import logging
 from datetime import datetime
+from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.projects.project_service import ProjectServiceProtocol
+
 logger = logging.getLogger(__name__)
 
 
-# def build_cost_schema(raw: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-#     """Build the standard response schema around raw estimator output.
+class CostService:
+    """Service responsible for cost estimation and schema formatting.
 
-#     Accepts optional `session_features` (list of feature dicts from the session)
-#     which are used to enrich feature entries with `name`, `start`, and `end` and
-#     to compute the dataset `configuration.dataset_start` / `dataset_end`.
-#     """
-#     return format_cost_response(raw or {}, mode=mode, session_features=session_features)
-
-def estimate_costs(session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """Traverse features/tasks from a session-like dict and compute costs using `calculate`.
-
-    Returns nested mapping { project_id: { task_id: cost_dict } }
+    The service is composed with a YAML `storage` instance so it can read
+    `projects.yml`, `teams.yml` and `cost_config.yml` via the storage layer.
     """
-    cfg = load_cost_config()
-    features = session.get("features", []) if session else []
 
-    # Respect server configuration: only include features belonging to
-    # configured projects. Use the loaded BackendConfig from planner_lib.setup
-    # to determine allowed project ids (slugified with prefix 'project-').
-    try:
-        from planner_lib.setup import get_loaded_config
+    def __init__(self, storage: StorageProtocol, project_service: ProjectServiceProtocol):
+        self._storage = storage
+        self._project_service = project_service
+        # Load cost configuration once at service construction by reading the
+        # underlying storage directly. This removes the need for a separate
+        # helper to be called from the application.
+        ## TODO: From here:
+        try:
+            cost_cfg = {}
+            db_cfg = {}
+            if self._storage is not None:
+                try:
+                    cost_cfg = self._storage.load("config", "cost_config") or {}
+                except Exception:
+                    cost_cfg = {}
+                try:
+                    raw_db = self._storage.load("config", "database") or {}
+                except Exception:
+                    raw_db = {}
+            else:
+                # No storage provided: default to empty configs so the service
+                # remains usable in tests or non-app contexts.
+                cost_cfg = {}
+                raw_db = {}
+
+            # Normalize `database` section shape: some storages wrap it under
+            # a top-level 'database' key.
+            database = {}
+            if isinstance(raw_db, dict) and isinstance(raw_db.get('database'), dict):
+                database = raw_db.get('database')
+            else:
+                database = raw_db if isinstance(raw_db, dict) else {}
+
+            # Validate team consistency against configured teams where possible.
+            try:
+                self._validate_team_consistency(cost_cfg, raw_db)
+            except Exception:
+                # Do not raise on validation failure at startup; log and continue.
+                logger.debug('Team consistency validation failed during CostService init')
+
+            self._cfg = {"cost": cost_cfg or {}, "database": database or {}}
+        except Exception:
+            self._cfg = {"cost": {}, "database": {}}
+
+    def _validate_team_consistency(self, cost_cfg: dict, raw_db: dict) -> None:
+        """Ensure teams declared in server config `teams` are used by people in `database`.
+
+        Ensure teams declared in server config `team_map` are used by people in `database`.
+
+        Raises ValueError if inconsistencies are found. The check builds the canonical
+        set of team ids from `team_map` (slugified as `team-<slug>`) and the set of
+        team ids present in people entries (slugified similarly). If some configured
+        teams are not referenced by any person, this function raises a ValueError
+        listing the missing team names.
+        """
         from planner_lib.util import slugify
-        loaded_cfg = get_loaded_config()
+
+        # Extract configured team names from teams configuration (dedicated teams.yml)
+        configured = []
+        try:
+            teams_cfg = self._storage.load("config", "teams") if self._storage is not None else {}
+        except Exception:
+            teams_cfg = {}
+        for t in teams_cfg.get('teams', []) if isinstance(teams_cfg, dict) else []:
+            if isinstance(t, dict) and t.get('name'):
+                configured.append(str(t.get('name')))
+
+        configured_ids = set(slugify(name, prefix='team-') for name in configured)
+
+        # Extract team names referenced by people
+        people = (raw_db or {}).get('database', {}).get('people', []) if isinstance(raw_db, dict) else []
+        people_team_ids = set()
+        for p in people or []:
+            raw = p.get('team_name') or p.get('team') or ''
+            raw = str(raw).strip()
+            if not raw:
+                continue
+            people_team_ids.add(slugify(raw, prefix='team-'))
+
+        # Find configured but unused teams, and teams present in database but not configured
+        missing_configured = sorted(list(configured_ids - people_team_ids))
+        missing_in_db = sorted(list(people_team_ids - configured_ids))
+        if missing_configured or missing_in_db:
+            parts = []
+            if missing_configured:
+                human_missing = ', '.join(sorted([m.replace('team-', '') for m in missing_configured]))
+                parts.append(f"configured-but-unused: {human_missing}")
+            if missing_in_db:
+                human_extra = ', '.join(sorted([m.replace('team-', '') for m in missing_in_db]))
+                parts.append(f"in-database-but-not-configured: {human_extra}")
+            raise ValueError("Team configuration mismatch: " + '; '.join(parts))
+        ## TODO: simplify the above logic a lot. It just loads two keys from storage!!!
+
+    def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Traverse features/tasks from a session-like dict and compute costs.
+
+        Returns nested mapping { project_id: { task_id: cost_dict } }
+        """
+        cfg = self._cfg
+        features = session.get("features", []) if session else []
+        # Determine allowed project ids via the composed ProjectService.
         allowed_projects = None
-        if loaded_cfg and getattr(loaded_cfg, "project_map", None):
-            _tmp = set()
-            for p in loaded_cfg.project_map:
-                if isinstance(p, dict) and isinstance(p.get("name"), str):
-                    _tmp.add(slugify(p.get("name"), prefix="project-"))
-            if _tmp:
-                allowed_projects = _tmp
-    except Exception:
-        allowed_projects = None
+        try:
+            if self._project_service:
+                proj_list = self._project_service.list_projects()
+                allowed_projects = {p.get('id') for p in proj_list if isinstance(p, dict) and p.get('id')}
+        except Exception:
+            allowed_projects = None
 
-    projects: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        projects: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-    for f in features:
-        logger.debug("Estimating cost for feature/task: %s", f)
-        fid = f.get("id")
-        project_id = f.get("project")
-        # If server config defines a project map, ignore features not in that map
-        if isinstance(allowed_projects, set) and allowed_projects and project_id not in allowed_projects:
-            logger.debug("Skipping feature %s: project %s not in configured projects", fid, project_id)
-            continue
-        start = f.get("start")
-        end = f.get("end")
-        capacity = f.get("capacity")
+        for f in features:
+            logger.debug("Estimating cost for feature/task: %s", f)
+            fid = f.get("id")
+            project_id = f.get("project")
+            if isinstance(allowed_projects, set) and allowed_projects and project_id not in allowed_projects:
+                logger.debug("Skipping feature %s: project %s not in configured projects", fid, project_id)
+                continue
+            start = f.get("start")
+            end = f.get("end")
+            capacity = f.get("capacity")
 
-        cost = calculate(cfg, start=start, end=end, capacity=capacity)
+            cost = calculate(cfg, start=start, end=end, capacity=capacity)
 
-        if project_id not in projects:
-            projects[project_id] = {}
-        projects[project_id][fid] = cost
+            if project_id not in projects:
+                projects[project_id] = {}
+            projects[project_id][fid] = cost
 
-    return projects
+        return projects
 
 
 def _parse_totals(totals: dict) -> dict:
@@ -207,3 +289,4 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
     if isinstance(src.get("meta"), dict):
         out["meta"].update({k: v for k, v in src["meta"].items() if k in ("scenario_id", "applied_overrides", "deltas")})
     return out
+

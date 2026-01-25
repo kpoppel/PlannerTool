@@ -125,7 +125,7 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
     """Calculate costs for a single task given a company config and task profile.
 
     Args:
-      config: dict with keys 'cost' and 'database' (as returned by load_cost_config()).
+      config: dict with keys 'cost' and 'database').
       start/end: ISO date strings.
       capacity: list of team allocations [{"team": "team-name", "capacity": 80}, ...]
       team: team name to lookup internal members in config['database']['teams'].
