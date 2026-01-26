@@ -5,6 +5,9 @@ from starlette.requests import Request
 
 from planner_lib.services.resolver import resolve_service
 from .session import get_session_id_from_request
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def require_admin_session(func: Callable) -> Callable:
@@ -28,6 +31,7 @@ def require_admin_session(func: Callable) -> Callable:
         if not request:
             request = kwargs.get('request')
         if not request:
+            logger.warning('Admin access denied: missing request')
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Missing request.'})
 
         # Validate session (raises 401 on missing/invalid session).
@@ -39,6 +43,12 @@ def require_admin_session(func: Callable) -> Callable:
         except HTTPException as e:
             # Only translate 401 session errors; re-raise others unchanged.
             if getattr(e, 'status_code', None) == 401:
+                try:
+                    path = getattr(request, 'url', '')
+                    sid = request.headers.get('X-Session-Id') or request.cookies.get('sessionId')
+                    logger.warning('Admin access denied (invalid session) path=%s sid=%s detail=%s', path, sid, e.detail)
+                except Exception:
+                    logger.warning('Admin access denied (invalid session)')
                 raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '100 - Admin access required.'})
             raise
 
@@ -47,16 +57,27 @@ def require_admin_session(func: Callable) -> Callable:
         ctx = session_mgr.get(sid) or {}
         email = ctx.get('email')
         if not email:
+            try:
+                path = getattr(request, 'url', '')
+                logger.warning('Admin access denied (no email in session) path=%s sid=%s', path, sid)
+            except Exception:
+                logger.warning('Admin access denied (no email in session)')
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '200 - Admin access required.'})
 
-        # Check admin storage presence under data/accounts_admin/<email>
-        storage = resolve_service(request, 'account_storage')
+        # Delegate admin membership check to the AdminService which was
+        # constructed with the pickle-backed account storage.
         try:
-            is_admin = storage.exists('accounts_admin', email)
+            admin_svc = resolve_service(request, 'admin_service')
+            is_admin = admin_svc.is_admin(email)
         except Exception:
             is_admin = False
 
         if not is_admin:
+            try:
+                path = getattr(request, 'url', '')
+                logger.warning('Admin access denied (not admin) path=%s email=%s', path, email)
+            except Exception:
+                logger.warning('Admin access denied (not admin)')
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '300 - Admin access required.'})
 
         return await func(*args, **kwargs)
