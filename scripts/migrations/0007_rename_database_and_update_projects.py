@@ -92,11 +92,8 @@ def upgrade(dry_run=False, backup=False):
         if 'task_types' not in entry:
             entry['task_types'] = ['feature', 'epic']
             changed = True
-        if 'exclude_states' not in entry:
-            entry['exclude_states'] = ['closed', 'removed']
-            changed = True
         if 'include_states' not in entry:
-            entry['include_states'] = []
+            entry['include_states'] = ['new', 'active', 'defined', 'resolved']
             changed = True
 
     if not changed:
