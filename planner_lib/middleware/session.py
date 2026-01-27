@@ -35,7 +35,7 @@ class SessionManager:
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._account_manager = account_manager
-    def create(self, email: str) -> str:
+    def create(self, email: str, request: Optional[Request] = None) -> str:
         # Ensure the account exists before creating a session. We consider
         # missing account a client error — do not create sessions for unknown
         # emails. Let account_manager.load raise KeyError if not present.
@@ -49,6 +49,31 @@ class SessionManager:
             else:
                 cfg = self._account_manager.load(email)
         except KeyError:
+            # If the account is not present in the primary accounts namespace
+            # but an admin marker exists under `accounts_admin`, allow session
+            # creation for admin users (no PAT will be set). This keeps admin
+            # bootstrap working where admin markers live separately.
+            if request is not None:
+                try:
+                    admin_svc = resolve_service(request, 'admin_service')
+                    if admin_svc and getattr(admin_svc, 'is_admin', lambda e: False)(email):
+                        # Create a session context without a PAT.
+                        with self._lock:
+                            for sid, ctx in list(self._store.items()):
+                                if ctx.get('email') == email:
+                                    logger.debug("Pruning existing session %s for %s", sid, email)
+                                    del self._store[sid]
+
+                            sid = uuid.uuid4().hex
+                            ctx: dict[str, Any] = {
+                                'email': email,
+                                'pat': None,
+                            }
+
+                            self._store[sid] = ctx
+                            return sid
+                except Exception:
+                    logger.debug('Admin fallback lookup failed')
             # Caller should translate this into an HTTP 401/400; raise to
             # indicate creation is not allowed for unknown accounts.
             raise
@@ -64,8 +89,6 @@ class SessionManager:
             ctx: dict[str, Any] = {
                 'email': email,
                 'pat': cfg.get('pat'),
-                #'namespace': 'config',
-                #'key': 'server_config.yml',
             }
 
             self._store[sid] = ctx
@@ -109,7 +132,10 @@ def create_session(email: str, request: Request) -> str:
     # `app.state.session_manager` override (tests may set this),
     # otherwise falls back to the application container.
     mgr = resolve_service(request, 'session_manager')
-    return mgr.create(email)
+    # Pass the request through so session manager can consult other
+    # services (e.g., `admin_service`) when deciding whether to allow
+    # session creation for emails not present in the primary accounts.
+    return mgr.create(email, request=request)
 
 
 def get_session_id_from_request(request: Request) -> str:
