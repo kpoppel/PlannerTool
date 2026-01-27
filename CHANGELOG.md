@@ -14,11 +14,17 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v]  - unreleased
+## [1.5.0]  - unreleased
 
 ### Added
 ### Changed
 ### Fixed
+
+## [1.4.1]  - 2026-01-27
+
+### Fixed
+
+- Fixed systemd runner script to use uvicorn factory runner
 
 
 ## [1.4.0] - 2026-01-27
