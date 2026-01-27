@@ -18,6 +18,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 ### Changed
+
+- Remove plugins map from server_config.yml it was not used.
+
 ### Fixed
 
 ## [1.4.1]  - 2026-01-27
