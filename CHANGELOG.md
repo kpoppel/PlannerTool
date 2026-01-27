@@ -21,6 +21,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - Improved onboarding flow now opens the config modal as part of the flow.
 - Add development server app using memory-based storages.
+- Added fields to proejct configuration: states to include, task types to include
+- Added simple admin interface. Now possible to edit teams, projects,
+  server configurations and manage users. Very rudimentary.
 
 ### Changed
 
