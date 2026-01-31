@@ -1,80 +1,45 @@
 """Public azure module.
 
-This package exposes a small public surface: a `get_client` factory and
-the module-level `_client_instance` used to hold a singleton. The heavy
-lifting implementation lives in `client.py` and `caching.py` to avoid
-importing the `azure-devops` SDK at top-level unnecessarily.
+This package exposes the `AzureService` stateless service which should be
+registered at application composition time. Use `with service.connect(pat)`
+to obtain a short-lived concrete client for the duration of a request.
 """
-from __future__ import annotations
-from typing import Optional
-import os
 import logging
-import hashlib
-import threading
 
 logger = logging.getLogger(__name__)
 
 from planner_lib import setup
+from planner_lib.storage.interfaces import StorageProtocol
+from .interfaces import AzureServiceProtocol
+class AzureService(AzureServiceProtocol):
+    """Stateless Azure service configured at app composition time.
 
-# Module-level server singleton (used when no per-user PAT is supplied)
-_client_instance: Optional[object] = None
-
-# Cache of per-(org,pat) client instances keyed by sha256(org + ':' + pat)
-_client_cache: dict[str, object] = {}
-_client_cache_lock = threading.Lock()
-_client_meta: dict[str, dict] = {}
-
-
-def _make_client(org: str, token: str) -> object:
-    """Instantiate the appropriate Azure client implementation for org/token.
-
-    This performs the lazy import of the concrete client classes.
+    Use `with service.connect(pat) as client:` to obtain a short-lived
+    per-PAT concrete client instance (caching or native) which is connected
+    for the duration of the context. The service does not hold the PAT or
+    an active SDK connection itself.
     """
-    if setup.has_feature_flag("enable_azure_cache"):
-        from planner_lib.azure.AzureCachingClient import AzureCachingClient
+    def __init__(self, organization_url: str, storage: StorageProtocol):
+        self.organization_url = organization_url
+        self.storage = storage
 
-        return AzureCachingClient(org, token)
-    else:
-        from planner_lib.azure.AzureNativeClient import AzureNativeClient
+    def connect(self, pat: str):
+        """Return the concrete client's context-manager bound to `pat`.
 
-        return AzureNativeClient(org, token)
+        This delegates the SDK lifecycle to the concrete client. Callers
+        should use `with service.connect(pat) as client:`.
+        """
+        if setup.has_feature_flag("enable_azure_cache"):
+            from planner_lib.azure.AzureCachingClient import AzureCachingClient
+
+            client = AzureCachingClient(self.organization_url, storage=self.storage)
+        else:
+            from planner_lib.azure.AzureNativeClient import AzureNativeClient
+
+            client = AzureNativeClient(self.organization_url, storage=self.storage)
+
+        # Return the concrete client's context-manager directly.
+        return client.connect(pat)
 
 
-def get_client(organization_url: Optional[str] = None, pat: Optional[str] = None):
-    """Return an Azure client.
-
-    - If `pat` is provided, return a client specific to (org,pat). Clients are
-      cached by a SHA256 hash of org+pat so repeated requests reuse the same
-      instance and avoid repeated expensive setup.
-    - If `pat` is not provided, return a global singleton client created from
-      the environment `AZURE_DEVOPS_PAT` (existing behavior).
-    """
-    global _client_instance
-
-    org = organization_url or os.environ.get("AZURE_DEVOPS_ORG")
-    token = pat or os.environ.get("AZURE_DEVOPS_PAT", "")
-    if not org:
-        raise RuntimeError(
-            "Azure organization URL not provided. Set AZURE_DEVOPS_URL or pass organization_url."
-        )
-
-    # Per-user PAT: return or create a client cached by token hash
-    if pat:
-        # Per-user PAT: always create a fresh client instance to avoid caching
-        # per-user tokens in memory. This avoids unbounded growth.
-        inst = _make_client(org, token)
-        inst.connect()
-        return inst
-
-    # No per-user PAT: fall back to singleton behavior
-    if _client_instance is not None:
-        return _client_instance
-
-    _client_instance = _make_client(org, token)
-    try:
-        _client_instance.connect()
-    except Exception:
-        # If connect fails, leave instance as-is; caller will see errors on use
-        pass
-    return _client_instance
-
+# `get_client()` removed: use `AzureService.connect(pat)` instead.

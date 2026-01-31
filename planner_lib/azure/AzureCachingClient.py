@@ -45,18 +45,14 @@ Changelog / Cache semantics (short summary):
 from __future__ import annotations
 from typing import List, Optional
 import logging
-import pickle
 import threading
-from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from azure.devops.connection import Connection
-from msrest.authentication import BasicAuthentication
-from azure.devops.v7_1.work_item_tracking.models import Wiql
+from planner_lib.storage.interfaces import StorageProtocol
 
 logger = logging.getLogger(__name__)
 
 from planner_lib.azure.AzureClient import AzureClient
-
+NAMESPACE = 'azure_workitems'
 
 class AzureCachingClient(AzureClient):
     """Azure client with simple file-based caching per-area.
@@ -66,93 +62,61 @@ class AzureCachingClient(AzureClient):
     - <sanitized_area>.pkl : list of work item dicts for that area
     """
 
-    def __init__(self, organization_url: str, pat: str, data_dir: str = "data/azure_workitems"):
-        logger.info("Using AzureCachingClient (deferred connect) with data dir: %s", data_dir)
-        super().__init__(organization_url, pat)
-        self.data_dir = Path(data_dir)
-        self.index_path = self.data_dir / "_index.pkl"
+    def __init__(self, organization_url: str, storage: StorageProtocol):
+        """Initialize caching client with an explicit `StorageProtocol`.
+
+        The client is instantiated without a PAT; callers should use the
+        `connection(pat)` context-manager or otherwise ensure a PAT is set
+        before invoking SDK-backed methods.
+        """
+        logger.info("Using AzureCachingClient (deferred connect) with storage backend")
+        super().__init__(organization_url, storage=storage)
+        self._storage: StorageProtocol = storage
         self._lock = threading.Lock()
         self._fetch_count = 0
 
-    def connect(self) -> None:
-        if self._connected:
-            return
-        if Connection is None or BasicAuthentication is None:
-            raise RuntimeError("azure-devops package not installed. Install 'azure-devops' to use Azure features")
-        creds = BasicAuthentication('', self.pat)
-        self.conn = Connection(base_url=f"https://dev.azure.com/{self.organization_url}", creds=creds)
-        # ensure data dir exists
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self._connected = True
-
-    def close(self) -> None:
-        # Drop connection reference; caches remain on disk
-        self.conn = None
-        self._connected = False
 
     def get_projects(self) -> List[str]:
-        if not self._connected:
-            self.connect()
-        core_client = self.conn.clients.get_core_client()
-        projects = core_client.get_projects()
-        items = getattr(projects, 'value', projects)
-        names: List[str] = []
-        for p in items or []:
-            try:
-                names.append(p.name)
-            except Exception:
-                names.append(str(p))
-        return names
+        # inherited from AzureClient
+        return super().get_projects()
 
-    def _flatten_area_nodes(self, node) -> List[str]:
-        paths = []
-        if getattr(node, 'path', None):
-            paths.append(node.path)
-        elif getattr(node, 'name', None):
-            paths.append(node.name)
-        children = getattr(node, 'children', None)
-        if children:
-            for c in children:
-                paths.extend(self._flatten_area_nodes(c))
-        return paths
-
-    def _sanitize_area_path(self, path: str) -> str:
-        if not isinstance(path, str):
-            return path
-        return path.lstrip('/\\').replace('/', '\\').replace('Area\\', '')
-
-    def _file_for_area(self, area_path: str) -> Path:
+    def _key_for_area(self, area_path: str) -> str:
+        # keep compatibility with legacy on-disk naming: return sanitized name
         safe = area_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
         safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
-        return self.data_dir / f"{safe}.pkl"
+        return safe
+
+    # Backwards-compat filesystem helpers removed: storage-backed access only.
 
     def _read_index(self) -> dict:
         try:
-            with self.index_path.open('rb') as f:
-                return pickle.load(f) or {}
+            return self._storage.load(NAMESPACE, '_index') or {}
+        except KeyError:
+            return {}
         except Exception:
             return {}
 
     def _write_index(self, idx: dict):
-        tmp = self.index_path.with_suffix('.pkl.tmp')
-        with tmp.open('wb') as f:
-            pickle.dump(idx, f)
-        tmp.replace(self.index_path)
+        try:
+            self._storage.save(NAMESPACE, '_index', idx)
+        except Exception:
+            logger.exception("Failed to write index via storage backend")
 
     def _read_area_cache(self, area_path: str) -> list:
-        p = self._file_for_area(area_path)
+        key = self._key_for_area(area_path)
         try:
-            with p.open('rb') as f:
-                return pickle.load(f) or []
+            return self._storage.load(NAMESPACE, key) or []
+        except KeyError:
+            return []
         except Exception:
             return []
 
     def _write_area_cache(self, area_path: str, items: list):
-        p = self._file_for_area(area_path)
-        tmp = p.with_suffix('.pkl.tmp')
-        with tmp.open('wb') as f:
-            pickle.dump(items, f)
-        tmp.replace(p)
+        key = self._key_for_area(area_path)
+        try:
+            self._storage.save(NAMESPACE, key, items)
+        except Exception:
+            logger.exception("Failed to write area cache via storage backend")
 
     def _prune_if_needed(self, index: dict):
         self._fetch_count += 1
@@ -166,69 +130,20 @@ class AzureCachingClient(AzureClient):
         for k in list(index.keys()):
             if k not in keep:
                 try:
-                    p = self._file_for_area(k)
-                    if p.exists():
-                        p.unlink()
+                    key = self._key_for_area(k)
+                    if self._storage.exists(NAMESPACE, key):
+                        self._storage.delete(NAMESPACE, key)
                 except Exception:
                     pass
                 removed.append(k)
                 index.pop(k, None)
         return removed
 
-    def get_area_paths(self, project: str, root_path: str = '/') -> List[str]:
-        if not self._connected:
-            self.connect()
-        wit = self.conn.clients.get_work_item_tracking_client()
-        try:
-            path = root_path.strip('/\\') or None
-            depth = 10
-            if path is None:
-                logger.debug("Fetching area nodes from root for project %s", project)
-                node = wit.get_classification_node(project=project, structure_group='areas', depth=depth)
-            else:
-                logger.debug("Fetching area nodes from root for project %s with path %s", project, path)
-                node = wit.get_classification_node(project=project, structure_group='areas', path=path, depth=depth)
-            paths = self._flatten_area_nodes(node)
-            normed = [self._sanitize_area_path(p) for p in paths]
-            return normed
-        except Exception:
-            return []
-
-    def query_by_wiql(self, project: str, wiql: str):
-        if not self._connected:
-            self.connect()
-        wit = self.conn.clients.get_work_item_tracking_client()
-        q = Wiql(query=wiql)
-        return wit.query_by_wiql(q)
-
-    def api_url_to_ui_link(self, api_url: str) -> str:
-        import re
-        m = re.match(r"https://dev\.azure\.com/([^/]+)/([^/]+)/_apis/wit/workItems/(\d+)", api_url)
-        if not m:
-            raise ValueError("Invalid API URL format")
-        org, project, work_item_id = m.groups()
-        return f"https://dev.azure.com/{org}/{project}/_workitems/edit/{work_item_id}"
-
-    def _safe_type(self, type: str) -> str:
-        lt = type.lower()
-        if "epic" in lt:
-            return "epic"
-        if "feature" in lt:
-            return "feature"
-        if "task" in lt or "user story" in lt or "story" in lt:
-            return "feature"
-        return "feature"
-
-    def _safe_date(self, d):
-        if not d:
-            return None
-        else:
-            return str(d)[:10]
-
     def get_work_items(self, area_path) -> List[dict]:
         logger.debug("Fetching work items for area path: %s", area_path)
         if not self._connected:
-            self.connect()
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
         wit_client = self.conn.clients.get_work_item_tracking_client()
         area_key = self._sanitize_area_path(area_path)
 
@@ -341,6 +256,7 @@ class AzureCachingClient(AzureClient):
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
 
+        from azure.devops.v7_1.work_item_tracking.models import Wiql
         wiql_obj = Wiql(query=wiql_query)
         try:
             result = wit_client.query_by_wiql(wiql=wiql_obj)
@@ -498,31 +414,7 @@ class AzureCachingClient(AzureClient):
         except Exception:
             logger.exception("Failed to inline-update area cache for %s", area_key)
 
-    def get_work_items_by_wiql(self, project: str, wiql: str, fields: Optional[list[str]] = None):
-        if not self._connected:
-            self.connect()
-        wit = self.conn.clients.get_work_item_tracking_client()
-        try:
-            res = self.query_by_wiql(project, wiql)
-        except Exception as e:
-            raise RuntimeError(f"WIQL query failed for project {project}: {e}")
 
-        ids: list[int] = []
-        candidates = getattr(res, "work_items", None) or getattr(res, "workItems", None) or []
-        for it in candidates:
-            iid = getattr(it, "id", None)
-            if iid is None and isinstance(it, dict):
-                iid = it.get("id")
-            if isinstance(iid, int):
-                ids.append(iid)
-
-        if not ids:
-            return []
-
-        try:
-            return wit.get_work_items(ids, fields=fields) if fields else wit.get_work_items(ids)
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch work items for project {project}: {e}")
 
     def invalidate_work_items(self, work_item_ids: List[int]):
         """Invalidate cache for specific work items by ID.
@@ -550,11 +442,10 @@ class AzureCachingClient(AzureClient):
                         if akey == '_invalidated':
                             continue
                         try:
-                            p = self._file_for_area(akey)
-                            if not p.exists():
+                            key = self._key_for_area(akey)
+                            if not self._storage.exists(NAMESPACE, key):
                                 continue
-                            # cheap check: read index area if present to avoid file reads
-                            # fallback: read area cache and check ids
+                            # cheap check: read area cache via storage
                             area_list = self._read_area_cache(akey)
                             if any(str(wid) == it.get('id') for it in (area_list or [])):
                                 per_area.setdefault(akey, [])
@@ -590,21 +481,12 @@ class AzureCachingClient(AzureClient):
 
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
         logger.debug("Updating work item %d: start=%s, end=%s", work_item_id, start, end)
-        wit = self.conn.clients.get_work_item_tracking_client()
-        ops = []
-        if start is not None:
-            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
-        if end is not None:
-            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
-        if not ops:
-            return None
+        result = super().update_work_item_dates(work_item_id, start=start, end=end)
         try:
-            result = wit.update_work_item(document=ops, id=work_item_id)
-            # Invalidate cache for this work item
             self.invalidate_work_items([work_item_id])
-            return result
-        except Exception as e:
-            raise RuntimeError(f"Failed to update work item {work_item_id}: {e}")
+        except Exception:
+            logger.exception("Failed to mark work item %s invalidated after update", work_item_id)
+        return result
 
     def update_work_item_description(self, work_item_id: int, description: str):
         """Update the Description field on a work item by ID.
@@ -612,12 +494,9 @@ class AzureCachingClient(AzureClient):
         Description should be HTML-formatted string. Returns SDK response object.
         """
         logger.debug("Updating work item %d description", work_item_id)
-        wit = self.conn.clients.get_work_item_tracking_client()
-        ops = [{"op": "add", "path": "/fields/System.Description", "value": description}]
+        result = super().update_work_item_description(work_item_id, description)
         try:
-            result = wit.update_work_item(document=ops, id=work_item_id)
-            # Invalidate cache for this work item
             self.invalidate_work_items([work_item_id])
-            return result
-        except Exception as e:
-            raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
+        except Exception:
+            logger.exception("Failed to mark work item %s invalidated after description update", work_item_id)
+        return result

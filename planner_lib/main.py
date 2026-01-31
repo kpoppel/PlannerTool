@@ -71,12 +71,18 @@ def create_app(config: Config) -> FastAPI:
     team_service = TeamService(storage_config=storage_yaml)
     capacity_service = CapacityService(team_service=team_service)
 
+    from planner_lib.azure import AzureService
+    server_cfg = storage_yaml.load('config', 'server_config')
+    org = server_cfg.get('azure_devops_organization')
+    azure_client = AzureService(org, storage_pickle)
+
     from planner_lib.projects.task_service import TaskService
     task_service = TaskService(
         storage_config=storage_yaml,
         project_service=project_service,
         team_service=team_service,
         capacity_service=capacity_service,
+        azure_client=azure_client,
     )
 
     from planner_lib.cost.service import CostService
@@ -103,6 +109,7 @@ def create_app(config: Config) -> FastAPI:
 
     container = ServiceContainer()
     container.register_singleton("server_config_storage", storage_yaml)
+    container.register_singleton("azure_client", azure_client)
     container.register_singleton("account_storage", storage_pickle)
     container.register_singleton("scenarios_storage", storage_pickle)
     container.register_singleton("project_service", project_service)
