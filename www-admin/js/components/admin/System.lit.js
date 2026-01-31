@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { adminProvider } from '../../services/providerREST.js';
 
 export class AdminSystem extends LitElement{
   static styles = css`
@@ -33,10 +34,7 @@ export class AdminSystem extends LitElement{
   async loadSystem(){
     this.loading = true;
     try{
-      const res = await fetch('/admin/v1/system', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok){ this.statusMsg = 'Failed to load system'; return; }
-      const j = await res.json();
-      const payload = j.content;
+      const payload = await adminProvider.getSystem();
       if (typeof payload === 'string') {
         this.content = payload;
       } else if (payload === null || payload === undefined) {
@@ -56,10 +54,9 @@ export class AdminSystem extends LitElement{
   async saveSystem(){
     this.statusMsg = 'Saving...';
     try{
-      const res = await fetch('/admin/v1/system', { method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ content: this.content }) });
-      if(!res.ok){ this.statusMsg = 'Save failed'; return; }
-      const j = await res.json();
-      this.statusMsg = j && j.ok ? 'Saved' : 'Save returned unexpected response';
+      const res = await adminProvider.saveSystem(this.content);
+      if(!res || !res.ok){ this.statusMsg = 'Save failed'; return; }
+      this.statusMsg = 'Saved';
     }catch(e){ this.statusMsg = 'Error saving system'; }
   }
 

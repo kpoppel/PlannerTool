@@ -53,6 +53,9 @@ logger = logging.getLogger(__name__)
 
 from planner_lib.azure.AzureClient import AzureClient
 NAMESPACE = 'azure_workitems'
+# Cache TTL for markers and area->plan mappings. Keep in sync with area cache policy.
+# Tweak this constant to change staleness window for markers mapping cache.
+CACHE_TTL = timedelta(minutes=30)
 
 class AzureCachingClient(AzureClient):
     """Azure client with simple file-based caching per-area.
@@ -85,6 +88,23 @@ class AzureCachingClient(AzureClient):
         safe = area_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
         safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
         return safe
+
+    def _key_for_teams(self, project: str) -> str:
+        safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
+        return f"teams_{safe}"
+
+    def _key_for_plans(self, project: str) -> str:
+        safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
+        return f"plans_{safe}"
+
+    def _key_for_area_plan(self, area_path: str) -> str:
+        safe = self._key_for_area(area_path)
+        return f"area_plan_{safe}"
+
+    def _key_for_plan_markers(self, project: str, plan_id: str) -> str:
+        safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
+        safe_plan = str(plan_id).replace(' ', '_')
+        return f"plan_markers_{safe_proj}_{safe_plan}"
 
     # Backwards-compat filesystem helpers removed: storage-backed access only.
 
@@ -388,6 +408,227 @@ class AzureCachingClient(AzureClient):
 
         return list(area_cache.values())
 
+    def get_all_teams(self, project: str) -> List[dict]:
+        """Return teams from storage cache or from Azure and persist to storage."""
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        key = self._key_for_teams(project)
+        try:
+            cached = self._storage.load(NAMESPACE, key) or []
+        except Exception:
+            cached = []
+        if cached:
+            return cached
+
+        core_client = self.conn.clients.get_core_client()
+        try:
+            teams = core_client.get_teams(project_id=project)
+            items = getattr(teams, 'value', teams) or []
+            out = []
+            for t in items:
+                try:
+                    out.append({'id': str(t.id), 'name': t.name})
+                except Exception:
+                    continue
+            try:
+                self._storage.save(NAMESPACE, key, out)
+            except Exception:
+                logger.exception("Failed to persist teams cache for project %s", project)
+            return out
+        except Exception:
+            return []
+
+    def get_all_plans(self, project: str) -> List[dict]:
+        """Return plans from storage cache or fetch from Azure and persist."""
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        key = self._key_for_plans(project)
+        try:
+            cached = self._storage.load(NAMESPACE, key) or []
+        except Exception:
+            cached = []
+        if cached:
+            return cached
+
+        work_client = self.conn.clients.get_work_client()
+        try:
+            plans = work_client.get_plans(project=project)
+            items = getattr(plans, 'value', plans) or []
+            out = []
+            for p in items:
+                try:
+                    out.append({'id': str(p.id), 'name': p.name})
+                except Exception:
+                    continue
+            try:
+                self._storage.save(NAMESPACE, key, out)
+            except Exception:
+                logger.exception("Failed to persist plans cache for project %s", project)
+            return out
+        except Exception:
+            return []
+
+    def get_team_from_area_path(self, project: str, area_path: str) -> List[str]:
+        """Determine team ids owning the supplied area path.
+
+        Uses the cached team list (or fetches it) and then queries
+        `get_team_field_values` for each team to determine ownership.
+        """
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        work_client = self.conn.clients.get_work_client()
+        teams = self.get_all_teams(project)
+        if not teams:
+            return []
+
+        try:
+            from azure.devops.v7_1.work.models import TeamContext
+        except Exception:
+            TeamContext = None
+
+        team_ids: list = []
+        for t in teams:
+            tid = t.get('id')
+            tname = t.get('name')
+            try:
+                if TeamContext is not None:
+                    tc = TeamContext(project=project, team=tname)
+                    fv = work_client.get_team_field_values(team_context=tc)
+                else:
+                    fv = work_client.get_team_field_values(project=project, team=tname)
+            except Exception:
+                continue
+            values = getattr(fv, 'values', None) or []
+            for entry in values:
+                try:
+                    val = getattr(entry, 'value', None) if not isinstance(entry, dict) else entry.get('value')
+                    include_children = getattr(entry, 'includeChildren', None) if not isinstance(entry, dict) else entry.get('include_children')
+                    if include_children is None:
+                        include_children = getattr(entry, 'include_children', None) if not isinstance(entry, dict) else entry.get('includeChildren')
+                    if not val:
+                        continue
+                    targ = area_path.rstrip('\\/')
+                    candidate = str(val).rstrip('\\/')
+                    is_match = candidate == targ
+                    is_parent = bool(include_children) and targ.startswith(candidate + '\\')
+                    if is_match or is_parent:
+                        team_ids.append(str(tid))
+                        break
+                except Exception:
+                    continue
+        return team_ids
+
+    def get_markers_for_plan(self, project: str, plan_id: str) -> List[dict]:
+        """Return markers for a single plan using storage-backed cache.
+
+        Cached entries are stored under a plan-specific key and include a
+        `last_update` timestamp. If the cached value is stale or missing,
+        fetch from Azure and persist.
+        """
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        key = self._key_for_plan_markers(project, plan_id)
+        try:
+            cached = self._storage.load(NAMESPACE, key)
+        except Exception:
+            cached = None
+        if cached and isinstance(cached, dict) and 'markers' in cached and 'last_update' in cached:
+            try:
+                lu = datetime.fromisoformat(cached['last_update'])
+                if lu.tzinfo is None:
+                    lu = lu.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - lu <= CACHE_TTL:
+                    return cached.get('markers') or []
+            except Exception:
+                pass
+
+        # Not cached or stale: fetch from Azure
+        markers = super().get_markers_for_plan(project, plan_id) if hasattr(super(), 'get_markers_for_plan') else []
+        # persist
+        try:
+            payload = {'markers': markers, 'last_update': datetime.now(timezone.utc).isoformat()}
+            self._storage.save(NAMESPACE, key, payload)
+        except Exception:
+            logger.exception("Failed to persist markers for plan %s/%s", project, plan_id)
+        return markers
+
+    def get_markers(self, area_path: str) -> List[dict]:
+        """Return markers for the configured `area_path`, using storage cache for
+        area->plan mappings and per-plan markers. Falls back to computing the
+        mapping via the base implementation when no fresh mapping exists.
+        """
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+
+        if not isinstance(area_path, str) or not area_path:
+            return []
+        project = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
+
+        # Try to load area->plan mapping from storage
+        map_key = self._key_for_area_plan(area_path)
+        try:
+            mapping = self._storage.load(NAMESPACE, map_key)
+        except Exception:
+            mapping = None
+
+        now = datetime.now(timezone.utc)
+        fresh = False
+        plan_ids = []
+        if mapping and isinstance(mapping, dict):
+            lu = mapping.get('last_update')
+            try:
+                lu_dt = datetime.fromisoformat(lu) if lu else None
+                if lu_dt and lu_dt.tzinfo is None:
+                    lu_dt = lu_dt.replace(tzinfo=timezone.utc)
+                if lu_dt and (now - lu_dt) <= CACHE_TTL:
+                    plan_ids = mapping.get('plans') or []
+                    fresh = True
+            except Exception:
+                fresh = False
+
+        markers_out = []
+        if fresh and plan_ids:
+            # return cached markers for each plan (may cause per-plan fetch if plan markers stale)
+            for pid in plan_ids:
+                try:
+                    pm = self.get_markers_for_plan(project, pid)
+                    for m in pm:
+                        markers_out.append({'plan_id': pid, 'plan_name': None, 'team_id': None, 'team_name': None, 'marker': m})
+                except Exception:
+                    continue
+            return markers_out
+
+        # No fresh mapping: compute via base implementation (this will call SDK)
+        computed = super().get_markers(area_path)
+        # computed is list of dicts with plan_id and marker entries already
+        plan_set = set()
+        for entry in computed:
+            pid = entry.get('plan_id')
+            if pid:
+                plan_set.add(pid)
+        plan_list = list(plan_set)
+
+        # persist mapping for future fast lookup
+        try:
+            payload = {'plans': plan_list, 'last_update': now.isoformat()}
+            self._storage.save(NAMESPACE, map_key, payload)
+        except Exception:
+            logger.exception("Failed to persist area->plan mapping for %s", area_path)
+
+        # Also persist per-plan markers for quicker subsequent lookups
+        for pid in plan_list:
+            try:
+                self.get_markers_for_plan(project, pid)
+            except Exception:
+                continue
+
+        return computed
+
     def _update_area_cache_item(self, area_key: str, item: dict):
         """Update a single work item in the area cache file (if present).
 
@@ -478,6 +719,99 @@ class AzureCachingClient(AzureClient):
                 logger.debug("Marked %d work items as invalidated in cache index (per-area=%s unmapped=%d)", len(work_item_ids), bool(unmapped), len(unmapped))
             except Exception as e:
                 logger.warning("Failed to update index with invalidated items: %s", e)
+
+    def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None):
+        """Force invalidation of cached plans and per-plan markers for a project.
+
+        If ``plan_ids`` is None the stored plans list for the project and any
+        cached per-plan markers will be removed. When a list of plan ids is
+        supplied, only the per-plan marker caches for those ids are removed.
+
+        The method also scans stored area->plan mappings and removes or trims
+        mappings that reference invalidated plans so subsequent `get_markers`
+        calls will recompute the mapping.
+        """
+        with self._lock:
+            try:
+                # Delete cached plans list when requested
+                plans_key = self._key_for_plans(project)
+                if plan_ids is None:
+                    try:
+                        if self._storage.exists(NAMESPACE, plans_key):
+                            self._storage.delete(NAMESPACE, plans_key)
+                    except Exception:
+                        pass
+
+                    # attempt to delete any per-plan markers for known cached plans
+                    try:
+                        cached = self._storage.load(NAMESPACE, plans_key) or []
+                    except Exception:
+                        cached = []
+                    for p in (cached or []):
+                        pid = p.get('id') if isinstance(p, dict) else p
+                        if not pid:
+                            continue
+                        try:
+                            key = self._key_for_plan_markers(project, str(pid))
+                            if self._storage.exists(NAMESPACE, key):
+                                self._storage.delete(NAMESPACE, key)
+                        except Exception:
+                            continue
+                else:
+                    for pid in plan_ids:
+                        try:
+                            key = self._key_for_plan_markers(project, str(pid))
+                            if self._storage.exists(NAMESPACE, key):
+                                self._storage.delete(NAMESPACE, key)
+                        except Exception:
+                            continue
+            except Exception:
+                logger.exception("Failed to invalidate plan cache entries for project %s", project)
+
+            # Clean up area->plan mappings that reference invalidated plans
+            try:
+                index = self._read_index()
+                changed = False
+                for akey in list(index.keys()):
+                    if akey == '_invalidated':
+                        continue
+                    map_key = self._key_for_area_plan(akey)
+                    try:
+                        mapping = self._storage.load(NAMESPACE, map_key)
+                        if not mapping or not isinstance(mapping, dict):
+                            continue
+                        plans = mapping.get('plans') or []
+                        if not plans:
+                            continue
+                        if plan_ids is None:
+                            # remove the entire mapping for this area
+                            try:
+                                if self._storage.exists(NAMESPACE, map_key):
+                                    self._storage.delete(NAMESPACE, map_key)
+                                index.pop(akey, None)
+                                changed = True
+                            except Exception:
+                                continue
+                        else:
+                            new_plans = [p for p in plans if p not in plan_ids]
+                            if len(new_plans) != len(plans):
+                                mapping['plans'] = new_plans
+                                mapping['last_update'] = datetime.now(timezone.utc).isoformat()
+                                try:
+                                    self._storage.save(NAMESPACE, map_key, mapping)
+                                    changed = True
+                                except Exception:
+                                    continue
+                    except Exception:
+                        continue
+
+                if changed:
+                    try:
+                        self._write_index(index)
+                    except Exception:
+                        logger.exception("Failed to write index after plan invalidation")
+            except Exception:
+                logger.exception("Failed to cleanup area->plan mappings during plan invalidation")
 
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
         logger.debug("Updating work item %d: start=%s, end=%s", work_item_id, start, end)

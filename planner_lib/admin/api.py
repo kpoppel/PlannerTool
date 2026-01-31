@@ -10,6 +10,7 @@ from planner_lib.middleware.session import get_session_id_from_request as _get_s
 import logging
 import json
 from typing import List
+from planner_lib.util import slugify
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -186,6 +187,356 @@ async def admin_save_projects(request: Request):
     except Exception as e:
         logger.exception('Failed to save projects: %s', e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.get('/admin/v1/area-mappings')
+@require_admin_session
+async def admin_get_area_mappings(request: Request):
+    """Return the stored area->plan mapping from config storage."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        try:
+            data = storage.load('config', 'area_plan_map')
+            if isinstance(data, (bytes, bytearray)):
+                return {'content': data.decode('utf-8')}
+            return {'content': data}
+        except KeyError:
+            return {'content': {}}
+    except Exception as e:
+        logger.exception('Failed to load area mappings: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/area-mappings')
+@require_admin_session
+async def admin_save_area_mappings(request: Request):
+    """Save edited area->plan mappings; create a timestamped backup before overwrite."""
+    try:
+        payload = await request.json()
+        content = payload.get('content', '')
+        if not content:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
+
+        try:
+            parsed = json.loads(content)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
+
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+
+        _backup_existing(storage, 'area_plan_map', 'area_plan_map')
+        storage.save('config', 'area_plan_map', parsed)
+        return { 'ok': True }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to save area mappings: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/area-mapping/refresh')
+@require_admin_session
+async def admin_refresh_area_mapping(request: Request):
+    """Resolve area->plan mapping for a single `area_path` using Azure and persist it.
+
+    Payload: { "area_path": "Project\\Some\\Path", "pat": "optional-pat" }
+    If `pat` omitted, the server will try to use the current session's PAT.
+    """
+    try:
+        payload = await request.json()
+        area_path = payload.get('area_path')
+        if not area_path or not isinstance(area_path, str):
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
+
+        pat = payload.get('pat')
+        # Resolve session PAT if not supplied
+        if not pat:
+            try:
+                sid = _get_session_id_or_raise(request)
+                session_mgr = resolve_service(request, 'session_manager')
+                pat = session_mgr.get_val(sid, 'pat')
+            except Exception:
+                pat = None
+
+        if not pat:
+            raise HTTPException(status_code=400, detail={'error': 'missing_pat', 'message': 'A PAT is required to query Azure for mappings'})
+
+        # Use the composed AzureService to connect and resolve markers/plans
+        azure_svc = resolve_service(request, 'azure_client')
+        try:
+            with azure_svc.connect(pat) as client:
+                computed = client.get_markers(area_path)  # type: ignore
+        except Exception as e:
+            logger.exception('Azure mapping resolution failed for %s: %s', area_path, e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        # Extract unique plan ids
+        plan_set = set()
+        for entry in computed or []:
+            pid = entry.get('plan_id')
+            if pid:
+                plan_set.add(str(pid))
+        plan_list = list(plan_set)
+
+        # Determine project id for this area_path using configured projects
+        admin_svc = resolve_service(request, 'admin_service')
+        try:
+            project_map = admin_svc._project_service.get_project_map() or []
+        except Exception:
+            project_map = []
+
+        project_id = None
+        # Prefer exact configured match or prefix match
+        for p in project_map:
+            try:
+                cfg_area = p.get('area_path')
+                if not cfg_area:
+                    continue
+                if area_path == cfg_area or area_path.startswith(cfg_area + '\\') or cfg_area.startswith(area_path + '\\'):
+                    project_id = p.get('id')
+                    break
+            except Exception:
+                continue
+
+        # Fallback: derive project name from the area_path root and map to project id
+        if project_id is None:
+            root = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
+            for p in project_map:
+                try:
+                    if slugify(p.get('name', ''), prefix='project-') == slugify(root, prefix='project-'):
+                        project_id = p.get('id')
+                        break
+                except Exception:
+                    continue
+
+        if not project_id:
+            raise HTTPException(status_code=400, detail={'error': 'unknown_project', 'message': 'Could not determine project for area_path'})
+
+        # Persist mapping under project id
+        storage = admin_svc._config_storage
+        try:
+            existing = storage.load('config', 'area_plan_map') or {}
+        except Exception:
+            existing = {}
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        proj_obj = existing.get(project_id) or {'areas': {}}
+        proj_obj.setdefault('areas', {})
+        proj_obj['areas'][area_path] = {'plans': plan_list, 'last_update': now}
+        proj_obj['last_update'] = now
+        existing[project_id] = proj_obj
+        try:
+            storage.save('config', 'area_plan_map', existing)
+        except Exception as e:
+            logger.exception('Failed to persist area->plan mapping for %s (project %s): %s', area_path, project_id, e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return {'ok': True, 'project_id': project_id, 'area_path': area_path, 'plans': plan_list, 'last_update': now}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to refresh area mapping: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/area-mapping/refresh-all')
+@require_admin_session
+async def admin_refresh_all_area_mappings(request: Request):
+    """Refresh mappings for all configured projects/area_paths from server config.
+
+    Payload optional: { "pat": "<PAT>" }
+    If `pat` omitted, server will attempt to use current session PAT.
+    """
+    try:
+        payload = {}
+        try:
+            payload = await request.json() or {}
+        except Exception:
+            payload = {}
+
+        pat = payload.get('pat')
+        if not pat:
+            try:
+                sid = _get_session_id_or_raise(request)
+                session_mgr = resolve_service(request, 'session_manager')
+                pat = session_mgr.get_val(sid, 'pat')
+            except Exception:
+                pat = None
+
+        if not pat:
+            raise HTTPException(status_code=400, detail={'error': 'missing_pat', 'message': 'A PAT is required to query Azure for mappings'})
+
+        admin_svc = resolve_service(request, 'admin_service')
+        project_svc = getattr(admin_svc, '_project_service', None)
+        if project_svc is None:
+            raise HTTPException(status_code=500, detail='Project service not available')
+
+        project_map = project_svc.get_project_map() or []
+
+        azure_svc = resolve_service(request, 'azure_client')
+        try:
+            with azure_svc.connect(pat) as client:
+                results = {}
+                per_project = {}
+                for p in project_map:
+                    area = p.get('area_path')
+                    proj_id = p.get('id')
+                    if not area or not proj_id:
+                        continue
+                    try:
+                        computed = client.get_markers(area)  # type: ignore
+                    except Exception as e:
+                        logger.exception('Failed to compute markers for %s: %s', area, e)
+                        results[area] = {'ok': False, 'error': str(e)}
+                        continue
+                    plan_set = set()
+                    for entry in computed or []:
+                        pid = entry.get('plan_id')
+                        if pid:
+                            plan_set.add(str(pid))
+                    plan_list = list(plan_set)
+                    results[area] = {'ok': True, 'plans': plan_list, 'project_id': proj_id}
+                    per_project.setdefault(proj_id, {'areas': {}})
+                    per_project[proj_id]['areas'][area] = {'plans': plan_list}
+
+        except Exception as e:
+            logger.exception('Azure refresh-all failed: %s', e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        # Persist all mappings into config storage keyed by project id
+        storage = admin_svc._config_storage
+        try:
+            existing = storage.load('config', 'area_plan_map') or {}
+        except Exception:
+            existing = {}
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        for proj_id, info in per_project.items():
+            proj_obj = existing.get(proj_id) or {'areas': {}}
+            proj_obj.setdefault('areas', {})
+            for a, ai in (info.get('areas') or {}).items():
+                proj_obj['areas'][a] = {'plans': ai.get('plans') or [], 'last_update': now}
+            proj_obj['last_update'] = now
+            existing[proj_id] = proj_obj
+
+        try:
+            storage.save('config', 'area_plan_map', existing)
+        except Exception as e:
+            logger.exception('Failed to persist area_plan_map after refresh-all: %s', e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return {'ok': True, 'results': results}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to refresh all area mappings: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/area-mapping')
+@require_admin_session
+async def admin_resolve_area_mapping(request: Request):
+    """Resolve area_path -> plan mapping using Azure and persist to config storage.
+
+    Expected JSON payload: { "area_path": "Project\\Some\\Path", "pat": "optional-pat" }
+    If `pat` is omitted, the PAT from the current session will be used if present.
+    The mapping is saved under logical key `area_plan_map` in the config storage.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+
+    area_path = payload.get('area_path')
+    if not area_path or not isinstance(area_path, str):
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
+
+    pat = payload.get('pat')
+    # If no PAT provided, attempt to get it from session
+    if not pat:
+        try:
+            sid = _get_session_id_or_raise(request)
+            session_mgr = resolve_service(request, 'session_manager')
+            pat = session_mgr.get_val(sid, 'pat')
+        except Exception:
+            pat = None
+
+    if not pat:
+        raise HTTPException(status_code=400, detail={'error': 'missing_pat', 'message': 'A PAT is required to query Azure'})
+
+    try:
+        azure_svc = resolve_service(request, 'azure_client')
+        with azure_svc.connect(pat) as client:
+            computed = client.get_markers(area_path)  # type: ignore
+    except Exception as e:
+        logger.exception('Failed to compute mapping for %s: %s', area_path, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    plan_set = set()
+    for entry in computed or []:
+        pid = entry.get('plan_id')
+        if pid:
+            plan_set.add(pid)
+    plan_list = list(plan_set)
+
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        try:
+            existing = storage.load('config', 'area_plan_map') or {}
+        except Exception:
+            existing = {}
+
+        # Determine project id for this area_path using configured projects
+        try:
+            project_map = admin_svc._project_service.get_project_map() or []
+        except Exception:
+            project_map = []
+
+        project_id = None
+        for p in project_map:
+            try:
+                cfg_area = p.get('area_path')
+                if not cfg_area:
+                    continue
+                if area_path == cfg_area or area_path.startswith(cfg_area + '\\') or cfg_area.startswith(area_path + '\\'):
+                    project_id = p.get('id')
+                    break
+            except Exception:
+                continue
+
+        if project_id is None:
+            root = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
+            for p in project_map:
+                try:
+                    if slugify(p.get('name', ''), prefix='project-') == slugify(root, prefix='project-'):
+                        project_id = p.get('id')
+                        break
+                except Exception:
+                    continue
+
+        if not project_id:
+            # Project could not be determined for the supplied area_path.
+            # Require an explicit mapping; do not persist under legacy top-level area key.
+            raise HTTPException(status_code=400, detail={'error': 'unknown_project', 'message': 'Could not determine project for area_path'})
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        proj_obj = existing.get(project_id) or {'areas': {}}
+        proj_obj.setdefault('areas', {})
+        proj_obj['areas'][area_path] = {'plans': plan_list, 'last_update': now}
+        proj_obj['last_update'] = now
+        existing[project_id] = proj_obj
+
+        storage.save('config', 'area_plan_map', existing)
+    except Exception as e:
+        logger.exception('Failed to persist area->plan mapping: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {'ok': True, 'area_path': area_path, 'plans': plan_list}
 
 
     

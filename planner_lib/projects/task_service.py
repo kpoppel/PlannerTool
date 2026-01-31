@@ -114,3 +114,77 @@ class TaskService(TaskServiceProtocol):
                 if item_updated:
                     updated += 1
             return {'ok': len(errors) == 0, 'updated': updated, 'errors': errors}
+
+    def list_markers(self, pat: str, project_id: Optional[str] = None) -> List[dict]:
+        """Return markers for configured projects.
+
+        If `project_id` is provided, only markers for that configured project
+        (derived from the project map) are returned. Markers are resolved via
+        the composed `azure_client` and returned as a flat list suitable for
+        frontend consumption.
+        """
+        cfg = self._storage_config.load('config', 'server_config')
+        project_map = self._project_service.get_project_map()
+
+        # Prefer admin-persisted mapping (if available) to avoid
+        # re-resolving area paths to plans on every request. The mapping is
+        # stored in config under the logical key 'area_plan_map' and is
+        # expected to be keyed by project id with structure:
+        # { <project_id>: { 'areas': { <area_path>: { 'plans': [...], 'last_update': iso } }, 'last_update': iso } }
+        # For backward compatibility we also accept the older area_path -> {plans, last_update}
+        try:
+            area_plan_map = self._storage_config.load('config', 'area_plan_map') or {}
+        except Exception:
+            area_plan_map = {}
+
+        with self._azure_client.connect(pat) as client:
+            out: List[dict] = []
+            for p in project_map:
+                pid = p.get('id')
+                name = p.get('name')
+                area = p.get('area_path')
+
+                if project_id and pid != project_id:
+                    continue
+
+                # If admin-provided mapping exists for this project/area, fetch per-plan
+                # markers directly using plan ids to minimize SDK calls.
+                mapping = None
+                try:
+                    if isinstance(area_plan_map, dict):
+                        # project-keyed shape only
+                        proj_obj = area_plan_map.get(pid)
+                        mapping = None
+                        if proj_obj and isinstance(proj_obj, dict):
+                            areas = proj_obj.get('areas') or {}
+                            mapping = areas.get(area)
+                    else:
+                        mapping = None
+                except Exception:
+                    mapping = None
+
+                markers: List[dict] = []
+                if mapping and isinstance(mapping, dict) and mapping.get('plans'):
+                    plans = mapping.get('plans') or []
+                    # Azure API expects the project identifier (root of area path),
+                    # not the configured project 'name'. Derive project from area_path.
+                    project_for_api = area.split('\\')[0] if '\\' in area else (area.split('/')[0] if area else name)
+                    for plan_id in plans:
+                        try:
+                            pm = client.get_markers_for_plan(project_for_api, str(plan_id))  # type: ignore
+                        except Exception:
+                            pm = []
+                        for m in pm:
+                            markers.append({'plan_id': plan_id, 'plan_name': None, 'team_id': None, 'team_name': None, 'marker': m})
+                else:
+                    # Fallback: let the Azure client compute mapping and markers
+                    try:
+                        markers = client.get_markers(area)  # type: ignore
+                    except Exception:
+                        markers = []
+
+                for m in markers or []:
+                    entry = dict(m)
+                    entry['project'] = slugify(name, prefix='project-')
+                    out.append(entry)
+        return out

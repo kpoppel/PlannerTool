@@ -31,12 +31,17 @@ class AzureService(AzureServiceProtocol):
         """
         if setup.has_feature_flag("enable_azure_cache"):
             from planner_lib.azure.AzureCachingClient import AzureCachingClient
-
             client = AzureCachingClient(self.organization_url, storage=self.storage)
         else:
             from planner_lib.azure.AzureNativeClient import AzureNativeClient
-
-            client = AzureNativeClient(self.organization_url, storage=self.storage)
+            # Determine whether in-memory plans/teams caching should be enabled.
+            # Default to True when the feature flag is not present.
+            cfg = setup.get_loaded_config()
+            if cfg and getattr(cfg, 'feature_flags', None) is not None:
+                cache_plans = bool(cfg.feature_flags.get('cache_azure_plans', True))
+            else:
+                cache_plans = True
+            client = AzureNativeClient(self.organization_url, storage=self.storage, cache_plans=cache_plans)
 
         # Return the concrete client's context-manager directly.
         return client.connect(pat)

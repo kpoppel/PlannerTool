@@ -37,6 +37,20 @@ async def api_tasks(request: Request):
     return task_svc.list_tasks(pat=pat)
 
 
+@router.get('/markers')
+@require_session
+async def api_markers(request: Request):
+    sid = get_session_id_from_request(request)
+    logger.debug("Fetching markers for session %s", sid)
+    task_svc = resolve_service(request, 'task_service')
+    session_mgr = resolve_service(request, 'session_manager')
+    pat = session_mgr.get_val(sid, 'pat')
+    project_id = request.query_params.get('project')
+    if project_id:
+        return task_svc.list_markers(pat=pat, project_id=project_id)
+    return task_svc.list_markers(pat=pat)
+
+
 @router.post('/tasks')
 @require_session
 async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):

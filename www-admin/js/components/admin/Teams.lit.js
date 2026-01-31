@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { adminProvider } from '../../services/providerREST.js';
 
 export class AdminTeams extends LitElement{
   static styles = css`
@@ -33,10 +34,7 @@ export class AdminTeams extends LitElement{
   async loadTeams(){
     this.loading = true;
     try{
-      const res = await fetch('/admin/v1/teams', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok){ this.statusMsg = 'Failed to load teams'; return; }
-      const j = await res.json();
-      const payload = j.content;
+      const payload = await adminProvider.getTeams();
       if (typeof payload === 'string') {
         this.content = payload;
       } else if (payload === null || payload === undefined) {
@@ -56,10 +54,9 @@ export class AdminTeams extends LitElement{
   async saveTeams(){
     this.statusMsg = 'Saving...';
     try{
-      const res = await fetch('/admin/v1/teams', { method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ content: this.content }) });
-      if(!res.ok){ this.statusMsg = 'Save failed'; return; }
-      const j = await res.json();
-      this.statusMsg = j && j.ok ? 'Saved' : 'Save returned unexpected response';
+      const res = await adminProvider.saveTeams(this.content);
+      if(!res || !res.ok){ this.statusMsg = 'Save failed'; return; }
+      this.statusMsg = 'Saved';
     }catch(e){ this.statusMsg = 'Error saving teams'; }
   }
 

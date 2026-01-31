@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { adminProvider } from '../../services/providerREST.js';
 
 export class AdminUsers extends LitElement{
   static styles = css`
@@ -42,11 +43,10 @@ export class AdminUsers extends LitElement{
     this.loading = true;
     this.error = '';
     try{
-      const resp = await fetch('/admin/v1/users', { credentials: 'same-origin' });
-      if(!resp.ok){
-        throw new Error(`Failed to load: ${resp.status}`);
+      const data = await adminProvider.getUsers();
+      if(!data){
+        throw new Error('Failed to load users');
       }
-      const data = await resp.json();
       this.users = Array.isArray(data.users) ? data.users.slice().sort() : [];
       this.admins = Array.isArray(data.admins) ? data.admins.slice().sort() : [];
       this.current = data.current || null;
@@ -63,10 +63,9 @@ export class AdminUsers extends LitElement{
     this.error = '';
     try{
       const body = { users: this.users, admins: this.admins };
-      const resp = await fetch('/admin/v1/users', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if(!resp.ok){
-        const txt = await resp.text();
-        throw new Error(`Save failed ${resp.status}: ${txt}`);
+      const resp = await adminProvider.saveUsers(body);
+      if(!resp || !resp.ok){
+        throw new Error('Save failed');
       }
       await this.load();
     }catch(e){

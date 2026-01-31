@@ -17,9 +17,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [1.5.0]  - unreleased
 
 ### Added
+
+- More tests on the server side to improve coverage
+- Add feature to retrieve delivery plan markers in backend
+- Add admin UI for project to plan ID mappings.
+
 ### Changed
 
 - Remove plugins map from server_config.yml it was not used.
+- Refactor of the Azure Client to improve testability and shared code.
+  Structurally eliminate PAT bleeding between user sessions.
 
 ### Fixed
 

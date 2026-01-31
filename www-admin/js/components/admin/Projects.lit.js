@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { adminProvider } from '../../services/providerREST.js';
 
 export class AdminProjects extends LitElement{
   static styles = css`
@@ -36,13 +37,7 @@ export class AdminProjects extends LitElement{
   async loadProjects(){
     this.loading = true;
     try{
-      const res = await fetch('/admin/v1/projects', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok){
-        this.statusMsg = 'Failed to load projects';
-        return;
-      }
-      const j = await res.json();
-      const payload = j.content;
+      const payload = await adminProvider.getProjects();
       let raw = '';
       // Server now returns structured JSON when possible. If `content` is
       // an object/array, pretty-print it here. If it's a string (e.g. YAML
@@ -70,17 +65,12 @@ export class AdminProjects extends LitElement{
   async saveProjects(){
     this.statusMsg = 'Saving...';
     try{
-      const res = await fetch('/admin/v1/projects', { method: 'POST', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ content: this.content }) });
-      if(!res.ok){
+      const res = await adminProvider.saveProjects(this.content);
+      if(!res || !res.ok){
         this.statusMsg = 'Save failed';
         return;
       }
-      const j = await res.json();
-      if(j && j.ok){
-        this.statusMsg = 'Saved';
-      }else{
-        this.statusMsg = 'Save returned unexpected response';
-      }
+      this.statusMsg = 'Saved';
     }catch(e){
       this.statusMsg = 'Error saving projects';
     }
