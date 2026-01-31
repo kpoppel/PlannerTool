@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from .engine import calculate
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from planner_lib.storage.interfaces import StorageProtocol
 from planner_lib.projects.project_service import ProjectServiceProtocol
 
@@ -167,7 +167,8 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
     """
     meta = {
         "schema_version": "2.0",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        # Use timezone-aware UTC timestamp and render with 'Z'
+        "generated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "response_mode": mode,
         "scenario_id": None,
     }

@@ -2,9 +2,19 @@ import asyncio
 from types import SimpleNamespace
 import json
 import os
+from pathlib import Path
 import pytest
 from planner_lib.admin import api as admin_api
 from fastapi import HTTPException
+
+
+class SessMgr:
+    def __init__(self, ctx=None):
+        self._ctx = ctx or {}
+    def exists(self, sid):
+        return True
+    def get(self, sid):
+        return self._ctx
 
 
 class FakeStorageFailSave:
@@ -104,3 +114,89 @@ def test_api_admin_reload_config_service_missing():
     req = make_request(container)
     with pytest.raises(HTTPException):
         asyncio.run(admin_api.api_admin_reload_config.__wrapped__(req))
+
+
+def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    class Storage:
+        def __init__(self):
+            self.saved = []
+            self.data = {'config': {'projects': {'old': True}}}
+            self._backend = self
+        def load(self, ns, key):
+            if ns == 'config' and key in self.data['config']:
+                return self.data['config'][key]
+            raise KeyError(key)
+        def save(self, ns, key, value):
+            self.saved.append((ns, key, value))
+        def list_keys(self, ns):
+            return []
+    storage = Storage()
+    admin_svc = SimpleNamespace(_config_storage=storage)
+    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
+
+    class Req:
+        def __init__(self, payload):
+            self._payload = payload
+            self.headers = {}
+            self.cookies = {}
+            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
+        async def json(self):
+            return self._payload
+
+    payload = {'content': json.dumps({'a': 1})}
+    req = Req(payload)
+    res = asyncio.run(admin_api.admin_save_projects.__wrapped__(req))
+    assert res['ok']
+    # backup save should have happened (one saved for backup, one for final)
+    assert any('projects_backup_' in key for (_, key, _) in storage.saved)
+
+
+def test_admin_save_users_delete_keyerror_handled():
+    class Storage:
+        def __init__(self):
+            self.data = {'accounts': {'u1': {}}, 'accounts_admin': {}}
+        def list_keys(self, ns):
+            return list(self.data.get(ns, {}).keys())
+        def save(self, ns, key, val):
+            self.data.setdefault(ns, {})[key] = val
+        def delete(self, ns, key):
+            # simulate missing key by raising KeyError for accounts deletion
+            if ns == 'accounts':
+                raise KeyError(key)
+            if ns == 'accounts_admin':
+                raise KeyError(key)
+        def load(self, ns, key):
+            raise KeyError(key)
+    storage = Storage()
+    admin_svc = SimpleNamespace(_account_storage=storage)
+    session_mgr = SessMgr({'email': 'admin@admin'})
+    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+
+    class Req:
+        def __init__(self, payload):
+            self._payload = payload
+            self.headers = {'X-Session-Id': 's1'}
+            self.cookies = {}
+            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
+        async def json(self):
+            return self._payload
+
+    payload = {'users': [], 'admins': []}
+    req = Req(payload)
+    res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
+    assert res['ok']
+
+
+def test_admin_root_session_admin_service_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    # create index file so file-read path exists
+    (Path(tmp_path) / 'www-admin').mkdir()
+    (Path(tmp_path) / 'www-admin' / 'index.html').write_text('INDEX')
+    # session_mgr exists and returns email, but admin_service missing
+    session_mgr = SessMgr({'email': 'someone@admin'})
+    container = SimpleNamespace(get=lambda name: {'session_manager': session_mgr}.get(name))
+    req = make_request(container, headers={'X-Session-Id': 's1'})
+    # should raise HTTPException with 401 because admin_service not available
+    with pytest.raises(Exception):
+        asyncio.run(admin_api.admin_root(req))

@@ -202,8 +202,8 @@ def _backup_existing(storage, key, backup_prefix=None):
         existing = storage.load('config', key)
     except KeyError:
         return
-    from datetime import datetime
-    ts = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     backup_key = f"{(backup_prefix or key)}_backup_{ts}"
     # Prefer the storage layer to persist the existing value. If that
     # fails (e.g. serializer cannot handle raw bytes), fall back to the
