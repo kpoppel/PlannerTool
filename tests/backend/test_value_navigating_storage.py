@@ -5,7 +5,7 @@ import pytest
 
 def test_value_navigating_set_get_delete(tmp_path):
     data_dir = str(tmp_path / "data_vns")
-    vns = create_storage(serializer='pickle', accessor='dict', data_dir=data_dir)
+    vns = create_storage(backend='memory', serializer='pickle', accessor='dict')
 
     ns = "vnstest"
     key = "doc1"

@@ -4,6 +4,7 @@ from unittest.mock import Mock, MagicMock, patch
 from planner_lib.projects.task_service import TaskService
 from planner_lib.projects.team_service import TeamService
 from planner_lib.projects.capacity_service import CapacityService
+from contextlib import contextmanager
 
 
 # Instantiate a service for unit tests using a small storage stub that
@@ -63,147 +64,156 @@ def mock_client():
     return client
 
 
+class _DummyAzureManager:
+    def __init__(self, client):
+        self._client = client
+
+    @contextmanager
+    def connect(self, pat: str):
+        yield self._client
+
+
 def test_update_tasks_with_dates_only(mock_config, mock_client):
     """Test updating task with only date changes."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {"id": 12345, "start": "2026-01-01", "end": "2026-01-31"}
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 1
-        assert len(result["errors"]) == 0
-        
-        # Verify dates were updated
-        mock_client.update_work_item_dates.assert_called_once_with(
-            12345, start="2026-01-01", end="2026-01-31"
-        )
-        
-        # Verify description was NOT updated
-        mock_client.update_work_item_description.assert_not_called()
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+    
+    updates = [
+        {"id": 12345, "start": "2026-01-01", "end": "2026-01-31"}
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 1
+    assert len(result["errors"]) == 0
+
+    # Verify dates were updated
+    mock_client.update_work_item_dates.assert_called_once_with(
+        12345, start="2026-01-01", end="2026-01-31"
+    )
+
+    # Verify description was NOT updated
+    mock_client.update_work_item_description.assert_not_called()
 
 
 def test_update_tasks_with_capacity_only(mock_config, mock_client):
     """Test updating task with only capacity changes."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {
-                "id": 12345,
-                "capacity": [
-                    {"team": "team-frontend", "capacity": 80},
-                    {"team": "team-backend", "capacity": 60}
-                ]
-            }
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 1
-        assert len(result["errors"]) == 0
-        
-        # Verify dates were NOT updated
-        mock_client.update_work_item_dates.assert_not_called()
-        
-        # Verify description was updated
-        mock_client.update_work_item_description.assert_called_once()
-        call_args = mock_client.update_work_item_description.call_args
-        assert call_args[0][0] == 12345
-        updated_desc = call_args[0][1]
-        assert "[PlannerTool Team Capacity]" in updated_desc
-        # Team IDs should be converted to short names
-        assert "FE: 80" in updated_desc
-        assert "BE: 60" in updated_desc
-        # Original team IDs should NOT appear
-        assert "team-frontend" not in updated_desc
-        assert "team-backend" not in updated_desc
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+    
+    updates = [
+        {
+            "id": 12345,
+            "capacity": [
+                {"team": "team-frontend", "capacity": 80},
+                {"team": "team-backend", "capacity": 60}
+            ]
+        }
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 1
+    assert len(result["errors"]) == 0
+
+    # Verify dates were NOT updated
+    mock_client.update_work_item_dates.assert_not_called()
+
+    # Verify description was updated
+    mock_client.update_work_item_description.assert_called_once()
+    call_args = mock_client.update_work_item_description.call_args
+    assert call_args[0][0] == 12345
+    updated_desc = call_args[0][1]
+    assert "[PlannerTool Team Capacity]" in updated_desc
+    # Team IDs should be converted to short names
+    assert "FE: 80" in updated_desc
+    assert "BE: 60" in updated_desc
+    # Original team IDs should NOT appear
+    assert "team-frontend" not in updated_desc
+    assert "team-backend" not in updated_desc
 
 
 def test_update_tasks_with_dates_and_capacity(mock_config, mock_client):
     """Test updating task with both dates and capacity changes."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {
-                "id": 12345,
-                "start": "2026-01-01",
-                "end": "2026-01-31",
-                "capacity": [
-                    {"team": "INT", "capacity": 10},
-                    {"team": "EXT", "capacity": 20}
-                ]
-            }
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 1
-        assert len(result["errors"]) == 0
-        
-        # Verify both dates and description were updated
-        mock_client.update_work_item_dates.assert_called_once_with(
-            12345, start="2026-01-01", end="2026-01-31"
-        )
-        mock_client.update_work_item_description.assert_called_once()
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+
+    updates = [
+        {
+            "id": 12345,
+            "start": "2026-01-01",
+            "end": "2026-01-31",
+            "capacity": [
+                {"team": "INT", "capacity": 10},
+                {"team": "EXT", "capacity": 20}
+            ]
+        }
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 1
+    assert len(result["errors"]) == 0
+
+    # Verify both dates and description were updated
+    mock_client.update_work_item_dates.assert_called_once_with(
+        12345, start="2026-01-01", end="2026-01-31"
+    )
+    mock_client.update_work_item_description.assert_called_once()
 
 
 def test_update_tasks_multiple_items(mock_config, mock_client):
     """Test updating multiple tasks with mixed updates."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
 
-        updates = [
-            {"id": 100, "start": "2026-01-01"},
-            {"id": 200, "capacity": [{"team": "team-a", "capacity": 50}]},
-            {"id": 300, "start": "2026-02-01", "end": "2026-02-28", 
-             "capacity": [{"team": "team-b", "capacity": 75}]}
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 3
-        assert len(result["errors"]) == 0
+    updates = [
+        {"id": 100, "start": "2026-01-01"},
+        {"id": 200, "capacity": [{"team": "team-a", "capacity": 50}]},
+        {"id": 300, "start": "2026-02-01", "end": "2026-02-28", 
+         "capacity": [{"team": "team-b", "capacity": 75}]}
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 3
+    assert len(result["errors"]) == 0
 
 
 def test_update_tasks_with_errors(mock_config, mock_client):
@@ -215,128 +225,128 @@ def test_update_tasks_with_errors(mock_config, mock_client):
     
     mock_client.update_work_item_dates.side_effect = mock_update_dates
     
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {"id": 100, "start": "2026-01-01"},
-            {"id": 200, "start": "2026-02-01"}
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is False
-        assert result["updated"] == 1  # One succeeded
-        assert len(result["errors"]) == 1
-        assert "100" in result["errors"][0]
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+
+    updates = [
+        {"id": 100, "start": "2026-01-01"},
+        {"id": 200, "start": "2026-02-01"}
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is False
+    assert result["updated"] == 1  # One succeeded
+    assert len(result["errors"]) == 1
+    assert "100" in result["errors"][0]
 
 
 def test_update_tasks_invalid_id(mock_config, mock_client):
     """Test handling invalid work item ID."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {"id": "not-a-number", "start": "2026-01-01"}
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is False
-        assert result["updated"] == 0
-        assert len(result["errors"]) == 1
-        assert "Invalid work item id" in result["errors"][0]
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+
+    updates = [
+        {"id": "not-a-number", "start": "2026-01-01"}
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is False
+    assert result["updated"] == 0
+    assert len(result["errors"]) == 1
+    assert "Invalid work item id" in result["errors"][0]
 
 
 def test_update_tasks_empty_capacity(mock_config, mock_client):
     """Test updating with empty capacity list."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        updates = [
-            {"id": 12345, "capacity": []}
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 1
-        # Empty capacity list should still trigger update (clears capacity section)
-        mock_client.update_work_item_description.assert_called_once()
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+
+    updates = [
+        {"id": 12345, "capacity": []}
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 1
+    # Empty capacity list should still trigger update (clears capacity section)
+    mock_client.update_work_item_description.assert_called_once()
 
 
 def test_update_tasks_capacity_format_validation(mock_config, mock_client):
     """Test that capacity data matches expected format."""
-    with patch('planner_lib.projects.task_service.get_client', return_value=mock_client):
-        storage = _DummyStorage(mock_config)
-        team_svc = TeamService(storage_config=storage)
-        capacity_svc = CapacityService(team_svc)
-        class _DummyProjectService:
-            def get_project_map(self):
-                return []
+    storage = _DummyStorage(mock_config)
+    team_svc = TeamService(storage_config=storage)
+    capacity_svc = CapacityService(team_svc)
+    class _DummyProjectService:
+        def get_project_map(self):
+            return []
 
-        proj_svc = _DummyProjectService()
-        service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc)
-        
-        # Test with the exact format from the user's example
-        updates = [
-            {
-                "id": 12345,
-                "capacity": [
-                    {"team": "team-integration-team", "capacity": 10},
-                    {"team": "team-system-framework", "capacity": 20},
-                    {"team": "team-bluetooth", "capacity": 30},
-                    {"team": "team-connectivity-interactions", "capacity": 40},
-                    {"team": "team-signal-processing", "capacity": 50},
-                    {"team": "team-hardware-abstraction", "capacity": 60},
-                    {"team": "team-test-operations-and-pipelines", "capacity": 70},
-                    {"team": "team-platform-tooling", "capacity": 80},
-                    {"team": "team-architecture", "capacity": 90},
-                    {"team": "team-requirements", "capacity": 100}
-                ]
-            }
-        ]
-        
-        result = service.update_tasks(updates)
-        
-        assert result["ok"] is True
-        assert result["updated"] == 1
-        
-        # Verify the description contains all teams (as short names)
-        mock_client.update_work_item_description.assert_called_once()
-        call_args = mock_client.update_work_item_description.call_args
-        updated_desc = call_args[0][1]
-        
-        # Team IDs should be converted to short names
-        assert "INT: 10" in updated_desc
-        assert "SF: 20" in updated_desc
-        assert "Arch: 90" in updated_desc
-        assert "REQ: 100" in updated_desc
-        
-        # Original team IDs should NOT appear
-        assert "team-integration-team" not in updated_desc
-        assert "team-architecture" not in updated_desc
+    proj_svc = _DummyProjectService()
+    azure_mgr = _DummyAzureManager(mock_client)
+    service = TaskService(storage_config=storage, project_service=proj_svc, team_service=team_svc, capacity_service=capacity_svc, azure_client=azure_mgr)
+
+    # Test with the exact format from the user's example
+    updates = [
+        {
+            "id": 12345,
+            "capacity": [
+                {"team": "team-integration-team", "capacity": 10},
+                {"team": "team-system-framework", "capacity": 20},
+                {"team": "team-bluetooth", "capacity": 30},
+                {"team": "team-connectivity-interactions", "capacity": 40},
+                {"team": "team-signal-processing", "capacity": 50},
+                {"team": "team-hardware-abstraction", "capacity": 60},
+                {"team": "team-test-operations-and-pipelines", "capacity": 70},
+                {"team": "team-platform-tooling", "capacity": 80},
+                {"team": "team-architecture", "capacity": 90},
+                {"team": "team-requirements", "capacity": 100}
+            ]
+        }
+    ]
+
+    result = service.update_tasks(updates, pat='dummy-pat')
+
+    assert result["ok"] is True
+    assert result["updated"] == 1
+
+    # Verify the description contains all teams (as short names)
+    mock_client.update_work_item_description.assert_called_once()
+    call_args = mock_client.update_work_item_description.call_args
+    updated_desc = call_args[0][1]
+
+    # Team IDs should be converted to short names
+    assert "INT: 10" in updated_desc
+    assert "SF: 20" in updated_desc
+    assert "Arch: 90" in updated_desc
+    assert "REQ: 100" in updated_desc
+
+    # Original team IDs should NOT appear
+    assert "team-integration-team" not in updated_desc
+    assert "team-architecture" not in updated_desc

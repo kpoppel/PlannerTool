@@ -124,14 +124,97 @@ def pytest_configure(config):
     sys.path.insert(0, str(repo_root))
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def app():
     """Create a fresh FastAPI app instance using the in-memory storage backend."""
     from planner_lib.main import create_app, Config
-
     # Disable brotli by default in test apps to avoid environment-dependent
     # middleware differences during unit tests.
-    return create_app(Config(storage_backend='memory', enable_brotli=False))
+    # Ensure the in-memory storage used by create_app contains a server_config
+    # so composition of services that read 'config/server_config' succeeds.
+    # Patch MemoryStorage so all in-process memory backends share one instance.
+    from planner_lib import storage as storage_mod
+    try:
+        from planner_lib.storage import memory_backend as mem_mod
+        OrigMemory = mem_mod.MemoryStorage
+        shared = OrigMemory()
+        # Ensure server_config exists (empty dict) so create_app can read it
+        try:
+            shared.save('config', 'server_config', {})
+        except Exception:
+            pass
+
+        # Replace the class so subsequent MemoryStorage() returns the same instance
+        mem_mod.MemoryStorage = lambda: shared
+    except Exception:
+        OrigMemory = None
+
+    try:
+        app = create_app(Config(storage_backend='memory', enable_brotli=False))
+        # Snapshot initial container singletons to allow per-test restoration
+        try:
+            container = getattr(app.state, 'container', None)
+            if container is not None:
+                app.state._initial_container_singletons = dict(getattr(container, '_singletons', {}))
+            else:
+                app.state._initial_container_singletons = {}
+        except Exception:
+            app.state._initial_container_singletons = {}
+        return app
+    finally:
+        # Restore original MemoryStorage class if we replaced it
+        try:
+            if OrigMemory is not None:
+                mem_mod.MemoryStorage = OrigMemory
+        except Exception:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def isolate_storage(app):
+    """Autouse fixture to reset in-memory storages between tests when the
+    app is session-scoped. This preserves test isolation while keeping the
+    app instance shared across the session.
+    """
+    # If app wasn't created or doesn't expose a container, nothing to do
+    container = getattr(app.state, 'container', None)
+    if container is None:
+        yield
+        return
+
+    # Known storage names registered in create_app
+    storage_names = ['server_config_storage', 'account_storage', 'scenarios_storage']
+    for name in storage_names:
+        try:
+            s = container.get(name)
+        except Exception:
+            continue
+        try:
+            be = getattr(s, '_backend', s)
+            # If underlying backend is the in-memory implementation, clear its store
+            if hasattr(be, '_store') and isinstance(getattr(be, '_store'), dict):
+                be._store.clear()
+        except Exception:
+            # Fallback: attempt to remove known namespaces if supported
+            try:
+                for k in list(s.list_keys('') or []):
+                    try:
+                        s.delete('', k)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+    yield
+    # After each test, restore container singletons to initial snapshot to avoid
+    # cross-test pollution when the app is session-scoped.
+    try:
+        container = getattr(app.state, 'container', None)
+        init = getattr(app.state, '_initial_container_singletons', None)
+        if container is not None and init is not None:
+            container._singletons = dict(init)
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="function")
