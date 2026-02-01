@@ -18,9 +18,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 
+- Delivery plan plugin. The plugin will de-duplicate markers attached to several team/area_paths.
+  It will also filter on the same project selection as the rest onf the UI. Additionaly there is a toolbox
+  allowing to display markers based on their color setting.
 - More tests on the server side to improve coverage
 - Add feature to retrieve delivery plan markers in backend
 - Add admin UI for project to plan ID mappings.
+- Modernised the admin backend to use a schema-driven interface generation.
 
 ### Changed
 

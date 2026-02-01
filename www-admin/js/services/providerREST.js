@@ -82,6 +82,24 @@ export class AdminProviderREST {
     }catch(err){ console.error('AdminProviderREST:saveTeams', err); return { ok:false, error: String(err) }; }
   }
 
+  async getCost(){
+    try{
+      const res = await fetch('/admin/v1/cost', { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    }catch(err){ console.error('AdminProviderREST:getCost', err); return null; }
+  }
+
+  async saveCost(content){
+    try{
+      const body = JSON.stringify({ content: content });
+      const res = await fetch('/admin/v1/cost', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:saveCost', err); return { ok:false, error: String(err) }; }
+  }
+
   async getUsers(){
     try{
       const res = await fetch('/admin/v1/users', { method: 'GET', credentials: 'same-origin' });
@@ -113,6 +131,23 @@ export class AdminProviderREST {
       if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
       return await res.json();
     }catch(err){ console.error('AdminProviderREST:refreshAllAreaMappings', err); return { ok:false, error: String(err) }; }
+  }
+
+  async togglePlanEnabled(projectId, areaPath, planId, enabled){
+    try{
+      const body = JSON.stringify({ project_id: projectId, area_path: areaPath, plan_id: planId, enabled: enabled });
+      const res = await fetch('/admin/v1/area-mapping/toggle-plan', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:togglePlanEnabled', err); return { ok:false, error: String(err) }; }
+  }
+
+  async getSchema(configType){
+    try{
+      const res = await fetch(`/admin/v1/schema/${configType}`, { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:getSchema', err); return null; }
   }
 }
 

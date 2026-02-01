@@ -65,6 +65,19 @@
       "exclusive": true,
       "mountPoint": "feature-board",
       "dependencies": []
+    },
+    {
+      "id": "plugin-markers",
+      "name": "Plan Markers",
+      "version": "1.0.0",
+      "description": "Display delivery plan markers on timeline",
+      "path": "../plugins/PluginMarkers.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
     }
   ]
 }

@@ -52,8 +52,9 @@ def test_cache_hit_returns_cached_items():
     area_key = client._sanitize_area_path(area_path)
 
     # prepopulate cache and index with a fresh timestamp
-    client._write_area_cache(area_key, [{'id': '1', 'title': 'T1'}])
-    client._write_index({area_key: {'last_update': datetime.now(timezone.utc).isoformat()}, '_invalidated': {}})
+    cache_key = client._key_for_area(area_key)
+    client._cache.write(cache_key, [{'id': '1', 'title': 'T1'}])
+    client._cache.update_timestamp(cache_key)
 
     client._connected = True
     client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWitNoCall()))
@@ -69,9 +70,14 @@ def test_force_refresh_fetches_and_updates_cache():
     area_key = client._sanitize_area_path(area_path)
 
     # prepopulate cache with an old timestamp to force full refresh
-    client._write_area_cache(area_key, [{'id': '1', 'title': 'OLD'}])
+    cache_key = client._key_for_area(area_key)
+    client._cache.write(cache_key, [{'id': '1', 'title': 'OLD'}])
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
-    client._write_index({area_key: {'last_update': old_ts}, '_invalidated': {}})
+    # Set stale timestamp
+    index = client._cache._read_index()
+    index[cache_key] = {'last_update': old_ts}
+    index['_invalidated'] = {}
+    client._cache._write_index(index)
 
     client._connected = True
     client.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWitFetch()))
@@ -81,7 +87,7 @@ def test_force_refresh_fetches_and_updates_cache():
     assert any(r.get('id') == '2' for r in res)
 
     # ensure area cache in storage was updated
-    stored = client._read_area_cache(area_key)
+    stored = client._cache.read(cache_key) or []
     assert any(it.get('id') == '2' for it in stored)
 
 
@@ -90,14 +96,15 @@ def test_invalidate_work_items_maps_per_area():
     area_path = 'Area/Sub'
     area_key = client._sanitize_area_path(area_path)
 
-    client._write_area_cache(area_key, [{'id': '5', 'title': 'T5'}])
-    client._write_index({area_key: {'last_update': datetime.now(timezone.utc).isoformat()}})
+    cache_key = client._key_for_area(area_key)
+    client._cache.write(cache_key, [{'id': '5', 'title': 'T5'}])
+    client._cache.update_timestamp(cache_key)
 
     client.invalidate_work_items([5])
-    idx = client._read_index()
+    idx = client._cache._read_index()
     assert '_invalidated' in idx
-    assert area_key in idx['_invalidated']
-    assert 5 in idx['_invalidated'][area_key]
+    assert cache_key in idx['_invalidated']
+    assert 5 in idx['_invalidated'][cache_key]
 
 
 def test_update_area_cache_item_inlines():
@@ -105,9 +112,17 @@ def test_update_area_cache_item_inlines():
     area_path = 'Area/Sub'
     area_key = client._sanitize_area_path(area_path)
 
-    client._write_area_cache(area_key, [{'id': '1', 'title': 'old'}])
-    client._update_area_cache_item(area_key, {'id': '1', 'title': 'new'})
-    stored = client._read_area_cache(area_key)
+    # Test that we can update items in cache directly
+    cache_key = client._key_for_area(area_key)
+    client._cache.write(cache_key, [{'id': '1', 'title': 'old'}])
+    # Update by writing new data
+    area_list = client._cache.read(cache_key) or []
+    area_map = {it.get('id'): it for it in area_list}
+    area_map['1'] = {'id': '1', 'title': 'new'}
+    client._cache.write(cache_key, list(area_map.values()))
+    client._cache.update_timestamp(cache_key)
+    
+    stored = client._cache.read(cache_key) or []
     assert any(it.get('title') == 'new' for it in stored)
 
 
@@ -117,8 +132,9 @@ def test_query_by_wiql_failure_returns_empty():
     area_key = client._sanitize_area_path(area_path)
 
     # empty index ensures WIQL path will be used
-    client._write_index({})
-    client._write_area_cache(area_key, [])
+    cache_key = client._key_for_area(area_key)
+    client._cache._write_index({})
+    client._cache.write(cache_key, [])
 
     class BadWit:
         def query_by_wiql(self, *a, **k):
@@ -182,13 +198,15 @@ def test_prune_if_needed_removes_old_entries():
     for i in range(60):
         key = f'area{i}'
         idx[key] = {'last_update': datetime.now(timezone.utc).isoformat()}
-        client._write_area_cache(key, [{'id': str(i)}])
-
+        cache_key = client._key_for_area(key)
+        client._cache.write(cache_key, [{'id': str(i)}])
+    
+    client._cache._write_index(idx)
     client._fetch_count = 99
-    removed = client._prune_if_needed(idx)
+    removed = client._cache.prune_old_entries(keep_count=50)
     # should have pruned some entries (kept 50)
     assert isinstance(removed, list)
-    assert len(idx) <= 60
+    assert len(removed) > 0
 
 
 def test_chunked_fetch_processing():

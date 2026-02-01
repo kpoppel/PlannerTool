@@ -74,7 +74,10 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.azure import AzureService
     server_cfg = storage_yaml.load('config', 'server_config')
     org = server_cfg.get('azure_devops_organization')
-    azure_client = AzureService(org, storage_pickle)
+    
+    # Pass feature flags to AzureService
+    feature_flags = server_cfg.get('feature_flags', {})
+    azure_client = AzureService(org, storage_pickle, feature_flags=feature_flags)
 
     from planner_lib.projects.task_service import TaskService
     task_service = TaskService(

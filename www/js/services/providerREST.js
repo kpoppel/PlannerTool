@@ -300,5 +300,15 @@ export class ProviderREST {
             return data;
         }catch(err){ console.error('providerREST:getCostTeams error', err); return []; }
     }
+
+    async getMarkers(){
+        try{
+            const res = await fetch('/api/markers', { headers: this._headers() });
+            if(!res.ok) return [];
+            const data = await res.json();
+            console.log('providerREST:getMarkers - Fetched markers', data);
+            return data;
+        }catch(err){ console.error('providerREST:getMarkers error', err); return []; }
+    }
   // ...other methods will be added in later steps
 }
