@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+import { test, expect } from '@playwright/test';
 
 // Assumes app is served at http://localhost:8000 or the configured test baseUrl
 // Update baseURL in Playwright config if different.
