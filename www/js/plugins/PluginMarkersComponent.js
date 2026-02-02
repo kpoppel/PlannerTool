@@ -559,7 +559,7 @@ export class PluginMarkersComponent extends LitElement {
     const tooltipParts = [
       label,
       markerEntry.plan_name ? `Plan: ${markerEntry.plan_name}` : '',
-      markerEntry.marker.date ? `Date: ${markerEntry.marker.date}` : ''
+      markerEntry.marker.date ? `Date: ${markerEntry.marker.date.slice(0, 10)}` : ''
     ].filter(Boolean);
     title.textContent = tooltipParts.join('\n');
     tagGroup.appendChild(title);
