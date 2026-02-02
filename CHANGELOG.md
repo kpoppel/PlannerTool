@@ -14,11 +14,32 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v]  - unreleased
+## [1.5.0]  - 2026-02-02
 
 ### Added
+
+- Delivery plan markers plugin. The plugin will de-duplicate markers attached to several team/area_paths.
+  It will also filter on the same project selection as the rest onf the UI. Additionaly there is a toolbox
+  allowing to display markers based on their color setting.
+- More tests on the server side to improve coverage
+- Add feature to retrieve delivery plan markers in backend
+- Add admin UI for project to plan ID mappings.
+- Improved admin backend to use a schema-driven interface generation.
+- Added cost schema to backend
+
 ### Changed
+
+- Remove plugins map from server_config.yml it was not used.
+- Refactor of the Azure Client to improve testability and shared code.
+  Structurally eliminate PAT bleeding between user sessions.
+
 ### Fixed
+
+## [1.4.1]  - 2026-01-27
+
+### Fixed
+
+- Fixed systemd runner script to use uvicorn factory runner
 
 
 ## [1.4.0] - 2026-01-27

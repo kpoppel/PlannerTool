@@ -62,6 +62,7 @@ class DataService {
     async getCostTeams() { return this.providers['rest'].getCostTeams ? this.providers['rest'].getCostTeams() : []; }
     async getFeatures() { return this.providers['rest'].getFeatures(); }
     async getCost(overrides){ return this.providers['rest'].getCost(overrides); }
+    async getMarkers() { return this.providers['rest'].getMarkers(); }
     async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }
     async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
     async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }

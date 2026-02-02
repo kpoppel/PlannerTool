@@ -14,7 +14,7 @@ from cryptography.fernet import Fernet
 ])
 def test_serializer_accessor_basic(tmp_path, serializer, accessor):
     data_dir = str(tmp_path / f"data_{serializer}_{accessor}")
-    s = create_storage(serializer=serializer, accessor=accessor, data_dir=data_dir)
+    s = create_storage(backend='memory', serializer=serializer, accessor=accessor)
 
     # When accessor is None, we operate at object level
     if accessor is None:
@@ -36,13 +36,13 @@ def test_serializer_accessor_basic(tmp_path, serializer, accessor):
 
 def test_encrypted_password_and_key_modes(tmp_path):
     data_dir_pw = str(tmp_path / "data_enc_pw")
-    s_pw = create_storage(serializer="encrypted", password="pwtest", accessor="dict", data_dir=data_dir_pw)
+    s_pw = create_storage(backend='memory', serializer="encrypted", password="pwtest", accessor="dict")
     s_pw.set_in("ns", "secret", ["x"], {"foo": "bar"})
     assert s_pw.get_in("ns", "secret", ["x"]) == {"foo": "bar"}
 
     # key mode
     key = Fernet.generate_key()
     data_dir_key = str(tmp_path / "data_enc_key")
-    s_key = create_storage(serializer="encrypted", key=key, accessor="dict", data_dir=data_dir_key)
+    s_key = create_storage(backend='memory', serializer="encrypted", key=key, accessor="dict")
     s_key.set_in("ns", "secret", ["x"], {"n": 1})
     assert s_key.get_in("ns", "secret", ["x"]) == {"n": 1}

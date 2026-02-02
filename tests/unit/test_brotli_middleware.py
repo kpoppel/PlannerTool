@@ -6,7 +6,7 @@ import brotli
 import gzip
 
 
-class TestResponse(StarletteResponse):
+class ResponseShim(StarletteResponse):
     def __init__(self, content: bytes, headers: dict | None = None, media_type: str | None = None):
         super().__init__(content=content, media_type=media_type)
         # Ensure a concrete `body` attribute is present for the middleware
@@ -24,7 +24,7 @@ def _make_app(response_body: bytes, content_type: str = 'application/json', extr
         headers = {'content-type': content_type}
         if extra_headers:
             headers.update(extra_headers)
-        return TestResponse(content=response_body, headers=headers, media_type=content_type)
+        return ResponseShim(content=response_body, headers=headers, media_type=content_type)
 
     app.add_middleware(BrotliCompression, minimum_size=10, quality=1)
     return app

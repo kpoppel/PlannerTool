@@ -31,7 +31,9 @@ class MemoryStorage:
     def load(self, namespace: str, key: str) -> Optional[Any]:
         with self._lock:
             ns = self._store.get(namespace, {})
-            return ns.get(key) if isinstance(ns, dict) else None
+            if not isinstance(ns, dict) or key not in ns:
+                raise KeyError(key)
+            return ns.get(key)
 
     def list_keys(self, namespace: str) -> Iterable[str]:
         with self._lock:

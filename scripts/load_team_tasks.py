@@ -129,13 +129,18 @@ def main():
         sys.exit(2)
 
     try:
-        from planner_lib.azure import get_client
-        client = get_client(azure_devops_organization, pat)
+        from planner_lib.azure import AzureService
+        from planner_lib.storage import create_storage
+        # Create a small file-backed storage for caching (optional)
+        storage = create_storage(backend='file', serializer='pickle', accessor=None, data_dir='data')
+        client_mgr = AzureService(azure_devops_organization, storage)
     except Exception as e:
-        print("Failed to initialize AzureClient:", e)
+        print("Failed to initialize AzureClient manager:", e)
         sys.exit(3)
 
-    wit_client = client.conn.clients.get_work_item_tracking_client()
+    # Use context-managed connection to bind the PAT for the duration of operations
+    with client_mgr.connect(pat) as client:
+        wit_client = client.conn.clients.get_work_item_tracking_client()
 
     team_map = cfg.get("team_map", [])
     if not team_map:

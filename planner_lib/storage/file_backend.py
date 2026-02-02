@@ -35,7 +35,8 @@ class FileStorageBackend(StorageBackend):
         return ns
 
     def _path_for(self, namespace: str, key: str) -> Path:
-        safe_key = key.replace("/", "_")
+        # Sanitize key to be filesystem-safe: replace path separators and other problematic chars
+        safe_key = key.replace("/", "_").replace("\\", "_")
         ns = self._ns_dir(namespace)
         # Append serializer-defined extension if present and not already
         # included in the provided key. This centralizes filename handling

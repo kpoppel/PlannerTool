@@ -8,6 +8,21 @@ import pytest
 
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
 
+NAMESPACE = 'azure_workitems'
+
+# In-memory storage instances are per-`tmp_dir` in these tests. File-backed
+# tests used the filesystem to share data across helper functions; for the
+# memory backend we maintain a small registry so helpers and the client use
+# the same `ValueNavigatingStorage` instance when given the same `tmp_dir`.
+_MEM_STORES = {}
+
+
+def _get_store_for(tmp_dir: str):
+    from planner_lib.storage import create_storage
+    if tmp_dir not in _MEM_STORES:
+        _MEM_STORES[tmp_dir] = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    return _MEM_STORES[tmp_dir]
+
 
 class DummyWitClient:
     def __init__(self, wiql_result_ids=None, work_items=None):
@@ -97,47 +112,56 @@ class DummyConn:
 def tmp_data_dir(tmp_path, monkeypatch):
     d = tmp_path / "azure_workitems"
     d.mkdir()
-    monkeypatch.setattr('planner_lib.azure.AzureCachingClient.Connection', object)
-    monkeypatch.setattr('planner_lib.azure.AzureCachingClient.BasicAuthentication', object)
     return str(d)
 
 
 def write_index(data_dir, index):
-    p = os.path.join(data_dir, '_index.pkl')
-    with open(p, 'wb') as f:
-        pickle.dump(index, f)
+    fb = _get_store_for(data_dir)
+    fb.save(NAMESPACE, '_index', index)
 
 
 def read_index(data_dir):
-    p = os.path.join(data_dir, '_index.pkl')
-    if not os.path.exists(p):
+    fb = _get_store_for(data_dir)
+    try:
+        return fb.load(NAMESPACE, '_index')
+    except KeyError:
         return {}
-    with open(p, 'rb') as f:
-        return pickle.load(f)
 
 
 def read_area(data_dir, area_key):
     safe = area_key.replace('\\', '__').replace('/', '__').replace(' ', '_')
     safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
-    p = os.path.join(data_dir, f"{safe}.pkl")
-    if not os.path.exists(p):
+    fb = _get_store_for(data_dir)
+    try:
+        return fb.load(NAMESPACE, safe)
+    except KeyError:
         return []
-    with open(p, 'rb') as f:
-        return pickle.load(f)
 
 
 def write_area(data_dir, area_key, items):
     safe = area_key.replace('\\', '__').replace('/', '__').replace(' ', '_')
     safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
-    p = os.path.join(data_dir, f"{safe}.pkl")
-    with open(p, 'wb') as f:
-        pickle.dump(items, f)
+    fb = _get_store_for(data_dir)
+    fb.save(NAMESPACE, safe, items)
 
 
 def make_client(tmp_dir, wit_client):
-    client = AzureCachingClient('org', 'pat', data_dir=tmp_dir)
-    client.connect = lambda: setattr(client, 'conn', DummyConn(wit_client)) or setattr(client, '_connected', True)
-    client._connected = False
+    fb = _get_store_for(tmp_dir)
+    client = AzureCachingClient('org', storage=fb)
+    # Provide a direct connected client for tests: set conn and mark connected.
+    client.conn = DummyConn(wit_client)
+    client._connected = True
+    # Also provide a no-op context-manager `connect(pat)` for compatibility
+    from contextlib import contextmanager
+
+    def _connect_cm(pat=None):
+        @contextmanager
+        def _inner():
+            yield client
+
+        return _inner()
+
+    client.connect = _connect_cm
     return client
 
 

@@ -19,6 +19,6 @@ fi
 echo $NEW_VERSION > VERSION
 git add VERSION
 git commit -m "Bump version to $NEW_VERSION"
-git tag -a v$NEW_VERSION -m "Release version $NEW_VERSION"
+git tag -a $NEW_VERSION -m "Release version $NEW_VERSION"
 git push origin main --tags
-echo "Tag v$NEW_VERSION pushed to origin."
+echo "Tag $NEW_VERSION pushed to origin."

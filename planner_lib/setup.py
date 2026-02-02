@@ -81,8 +81,10 @@ def get_property(prop: str) -> Any:
 #         pat = getpass("Azure DevOps Personal Access Token (input hidden): ")
 #         organization = input(f"Azure DevOps Organization [{DEFAULT_AZURE_ORG}]: ") or DEFAULT_AZURE_ORG
 #         try:
-#             from planner_lib.azure import get_client
-#             client = get_client(organization, pat)
+#             from planner_lib.azure import AzureService
+#             azure_service = AzureService(organization, storage=store)
+#             with azure_service.connect(pat) as client:
+#                 pass
 #         except Exception as e:
 #             return False, f"Azure client init failed: {e}"
 
