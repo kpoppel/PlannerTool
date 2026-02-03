@@ -59,7 +59,8 @@ class TeamPlanOperations:
             project: Project name or ID
             
         Returns:
-            List of plan dictionaries with 'id' and 'name' keys
+            List of plan dictionaries with 'id', 'name', and 'teams' keys.
+            The 'teams' field contains a list of team dicts with 'id' and optionally 'name'.
         """
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
@@ -72,13 +73,56 @@ class TeamPlanOperations:
         
         out: List[dict] = []
         for p in items:
+            plan_id = str(p.id)
+            plan_name = p.name
+            teams = []
+            
+            # Extract teams from delivery timeline API
             try:
-                out.append({'id': str(p.id), 'name': p.name})
-            except Exception:
-                try:
-                    out.append({'id': str(getattr(p, 'id', '')), 'name': str(p)})
-                except Exception:
-                    continue
+                if hasattr(work_client, 'get_delivery_timeline_data'):
+                    timeline = work_client.get_delivery_timeline_data(project, plan_id)
+                    
+                    # Extract team information from timeline
+                    seen_ids = set()
+                    candidate_teams = []
+                    
+                    if timeline and hasattr(timeline, 'teams'):
+                        candidate_teams = getattr(timeline, 'teams') or []
+                    elif timeline and isinstance(timeline, dict) and 'teams' in timeline:
+                        candidate_teams = timeline.get('teams', []) or []
+                    elif timeline:
+                        # Fallback to rows
+                        rows = getattr(timeline, 'rows', None) or (timeline.get('rows') if isinstance(timeline, dict) else []) or []
+                        candidate_teams = rows
+                    
+                    for r in candidate_teams or []:
+                        team_id = None
+                        team_name = None
+                        
+                        if isinstance(r, dict):
+                            team_id = r.get('teamId') or r.get('id') or (r.get('team') or {}).get('id')
+                            team_name = r.get('teamName') or r.get('name') or (r.get('team') or {}).get('name')
+                        else:
+                            team_id = getattr(r, 'teamId', None) or getattr(r, 'id', None) or (
+                                getattr(getattr(r, 'team', None), 'id', None) if getattr(r, 'team', None) is not None else None
+                            )
+                            team_name = getattr(r, 'teamName', None) or getattr(r, 'name', None) or (
+                                getattr(getattr(r, 'team', None), 'name', None) if getattr(r, 'team', None) is not None else None
+                            )
+                        
+                        if team_id is None and not team_name:
+                            continue
+                        
+                        tid = str(team_id) if team_id is not None else str(team_name)
+                        if tid in seen_ids:
+                            continue
+                        
+                        seen_ids.add(tid)
+                        teams.append({'id': tid, 'name': team_name or ''})
+            except Exception as e:
+                logger.debug(f'Plan {plan_name}: could not fetch timeline data: {e}')
+            
+            out.append({'id': plan_id, 'name': plan_name, 'teams': teams})
         
         return out
     

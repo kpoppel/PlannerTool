@@ -242,8 +242,8 @@ async def admin_save_area_mappings(request: Request):
 async def admin_refresh_area_mapping(request: Request):
     """Resolve area->plan mapping for a single `area_path` using Azure and persist it.
 
-    Payload: { "area_path": "Project\\Some\\Path", "pat": "optional-pat" }
-    If `pat` omitted, the server will try to use the current session's PAT.
+    Payload: { "area_path": "Project\\Some\\Path" }
+    PAT is retrieved from the current session.
     """
     try:
         payload = await request.json()
@@ -251,18 +251,10 @@ async def admin_refresh_area_mapping(request: Request):
         if not area_path or not isinstance(area_path, str):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing or invalid area_path'})
 
-        pat = payload.get('pat')
-        # Resolve session PAT if not supplied
-        if not pat:
-            try:
-                sid = _get_session_id_or_raise(request)
-                session_mgr = resolve_service(request, 'session_manager')
-                pat = session_mgr.get_val(sid, 'pat')
-            except Exception:
-                pat = None
-
-        if not pat:
-            raise HTTPException(status_code=400, detail={'error': 'missing_pat', 'message': 'A PAT is required to query Azure for mappings'})
+        # Get PAT from session
+        sid = _get_session_id_or_raise(request)
+        session_mgr = resolve_service(request, 'session_manager')
+        pat = session_mgr.get_val(sid, 'pat')
 
         # Use the composed AzureService to connect and resolve area->team->plan mapping
         azure_svc = resolve_service(request, 'azure_client')
@@ -308,10 +300,7 @@ async def admin_refresh_area_mapping(request: Request):
 
         # Determine project id for this area_path using configured projects
         admin_svc = resolve_service(request, 'admin_service')
-        try:
-            project_map = admin_svc._project_service.get_project_map() or []
-        except Exception:
-            project_map = []
+        project_map = admin_svc._project_service.get_project_map()
 
         project_id = None
         # Prefer exact configured match or prefix match
@@ -342,9 +331,9 @@ async def admin_refresh_area_mapping(request: Request):
 
         # Persist mapping under project id
         storage = admin_svc._config_storage
-        try:
+        if storage.exists('config', 'area_plan_map'):
             existing = storage.load('config', 'area_plan_map') or {}
-        except Exception:
+        else:
             existing = {}
 
         from datetime import datetime, timezone
@@ -396,155 +385,96 @@ async def admin_refresh_area_mapping(request: Request):
 async def admin_refresh_all_area_mappings(request: Request):
     """Refresh mappings for all configured projects/area_paths from server config.
 
-    Payload optional: { "pat": "<PAT>" }
-    If `pat` omitted, server will attempt to use current session PAT.
+    PAT is retrieved from the current session.
     """
     try:
-        payload = {}
-        try:
-            payload = await request.json() or {}
-        except Exception:
-            payload = {}
-
-        pat = payload.get('pat')
-        if not pat:
-            try:
-                sid = _get_session_id_or_raise(request)
-                session_mgr = resolve_service(request, 'session_manager')
-                pat = session_mgr.get_val(sid, 'pat')
-            except Exception:
-                pat = None
-
+        # Get PAT from session
+        sid = _get_session_id_or_raise(request)
+        session_mgr = resolve_service(request, 'session_manager')
+        pat = session_mgr.get_val(sid, 'pat')
+        
         if not pat:
             raise HTTPException(status_code=400, detail={'error': 'missing_pat', 'message': 'A PAT is required to query Azure for mappings'})
 
         admin_svc = resolve_service(request, 'admin_service')
-        project_svc = getattr(admin_svc, '_project_service', None)
-        if project_svc is None:
-            raise HTTPException(status_code=500, detail='Project service not available')
-
-        project_map = project_svc.get_project_map() or []
+        project_map = admin_svc._project_service.get_project_map() or []
+        storage = admin_svc._config_storage
+        if storage.exists('config', 'area_plan_map'):
+            existing = storage.load('config', 'area_plan_map') or {}
+        else:
+            existing = {}
 
         azure_svc = resolve_service(request, 'azure_client')
-        try:
-            with azure_svc.connect(pat) as client:
-                results = {}
-                per_project = {}
-                
-                # First pass: get all unique projects
-                project_names = {}
-                for p in project_map:
-                    area = p.get('area_path')
-                    proj_id = p.get('id')
-                    if not area or not proj_id:
-                        continue
-                    proj_name = area.split('\\')[0] if '\\' in area else area.split('/')[0]
-                    project_names[proj_name] = proj_id
-                
-                # Fetch plan lookups for all projects (includes team membership)
-                plan_cache = {}
-                for proj_name in project_names.keys():
+        with azure_svc.connect(pat) as client:
+            # Build project -> plans cache
+            project_plans = {}
+            for entry in project_map:
+                area = entry.get('area_path')
+                if not area:
+                    continue
+                proj_name = area.split('\\')[0] if '\\' in area else area.split('/')[0]
+                if proj_name not in project_plans:
                     try:
-                        all_plans = client.get_all_plans(proj_name)  # type: ignore
-                        plan_cache[proj_name] = all_plans
-                        logger.info(f'Fetched {len(all_plans)} plans for project {proj_name}')
+                        plans = client.get_all_plans(proj_name)  # type: ignore
+                        project_plans[proj_name] = plans
+                        logger.info(f'Fetched {len(plans)} plans for {proj_name}, first plan has teams: {plans[0].get("teams") if plans else "N/A"}')
                     except Exception as e:
-                        logger.warning('Failed to fetch plans for %s: %s', proj_name, e)
-                        plan_cache[proj_name] = []
+                        logger.warning(f'Failed to fetch plans for {proj_name}: {e}')
+                        project_plans[proj_name] = []
+            
+            # Match areas to plans via team ownership
+            results = {}
+            for entry in project_map:
+                area = entry.get('area_path')
+                proj_id = entry.get('id')
+                if not area or not proj_id:
+                    continue
                 
-                # Load existing mappings to preserve enabled states
-                storage = admin_svc._config_storage
+                proj_name = area.split('\\')[0] if '\\' in area else area.split('/')[0]
+                all_plans = project_plans.get(proj_name, [])
+                
                 try:
-                    existing = storage.load('config', 'area_plan_map') or {}
-                except Exception:
-                    existing = {}
+                    owner_team_ids = client.get_team_from_area_path(proj_name, area)  # type: ignore
+                except Exception as e:
+                    results[area] = {'ok': False, 'error': str(e)}
+                    continue
                 
-                # Second pass: map each area to plans via team ownership
-                for p in project_map:
-                    area = p.get('area_path')
-                    proj_id = p.get('id')
-                    if not area or not proj_id:
-                        continue
-                    
-                    proj_name = area.split('\\')[0] if '\\' in area else area.split('/')[0]
-                    all_plans = plan_cache.get(proj_name, [])
-                    
-                    try:
-                        # Find teams that own this area
-                        owner_team_ids = client.get_team_from_area_path(proj_name, area)  # type: ignore
-                        logger.info(f'Area {area}: found {len(owner_team_ids)} owning teams')
-                    except Exception as e:
-                        logger.exception('Failed to get teams for area %s: %s', area, e)
-                        results[area] = {'ok': False, 'error': str(e)}
-                        continue
-                    
-                    # Find plans that contain any of these teams
-                    plan_dict = {}
-                    for plan in all_plans:
-                        plan_id = plan.get('id')
-                        plan_name = plan.get('name')
-                        plan_teams = plan.get('teams', [])
-                        
-                        if not plan_id:
-                            continue
-                        
-                        # Check if any team in this plan matches our owner teams
-                        for team in plan_teams:
-                            team_id = team.get('id') if isinstance(team, dict) else str(team)
-                            if team_id in owner_team_ids:
-                                plan_dict[str(plan_id)] = plan_name or str(plan_id)
-                                break
-                    
-                    logger.info(f'Area {area}: matched {len(plan_dict)} plans')
-                    
-                    # Preserve existing enabled states or default to True
-                    old_plans = existing.get(proj_id, {}).get('areas', {}).get(area, {}).get('plans', {})
-                    new_plans = {}
-                    for pid, pname in plan_dict.items():
-                        if isinstance(old_plans, dict) and pid in old_plans:
-                            new_plans[pid] = {
-                                'name': pname,
-                                'enabled': old_plans[pid].get('enabled', True)
-                            }
-                        else:
-                            new_plans[pid] = {
-                                'name': pname,
-                                'enabled': True
-                            }
-                    
-                    results[area] = {'ok': True, 'plans': new_plans, 'project_id': proj_id}
-                    per_project.setdefault(proj_id, {'areas': {}})
-                    per_project[proj_id]['areas'][area] = {'plans': new_plans}
+                # Match plans by team membership
+                matched = {}
+                for plan in all_plans:
+                    if any(t.get('id') in owner_team_ids for t in plan.get('teams', [])):
+                        matched[str(plan['id'])] = plan['name']
+                
+                logger.info(f'Area {area}: found {len(owner_team_ids)} teams, matched {len(matched)} plans')
+                
+                # Preserve enabled states
+                old_plans = existing.get(proj_id, {}).get('areas', {}).get(area, {}).get('plans', {})
+                new_plans = {
+                    pid: {
+                        'name': pname,
+                        'enabled': old_plans.get(pid, {}).get('enabled', True) if isinstance(old_plans, dict) else True
+                    }
+                    for pid, pname in matched.items()
+                }
+                
+                results[area] = {'ok': True, 'plans': new_plans, 'project_id': proj_id}
+                if proj_id not in existing:
+                    existing[proj_id] = {'areas': {}}
+                if 'areas' not in existing[proj_id]:
+                    existing[proj_id]['areas'] = {}
+                existing[proj_id]['areas'][area] = {'plans': new_plans}
 
-        except Exception as e:
-            logger.exception('Azure refresh-all failed: %s', e)
-            raise HTTPException(status_code=500, detail=str(e))
-
-        # Persist all mappings into config storage keyed by project id
+        # Save mappings with timestamp
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat()
-        
-        for proj_id, info in per_project.items():
-            proj_obj = existing.get(proj_id) or {'areas': {}}
-            proj_obj.setdefault('areas', {})
-            for a, ai in (info.get('areas') or {}).items():
-                proj_obj['areas'][a] = ai
-            existing[proj_id] = proj_obj
-        
-        # Store global last_update at root level
-        existing['last_update'] = now
-
-        try:
-            storage.save('config', 'area_plan_map', existing)
-        except Exception as e:
-            logger.exception('Failed to persist area_plan_map after refresh-all: %s', e)
-            raise HTTPException(status_code=500, detail=str(e))
+        existing['last_update'] = datetime.now(timezone.utc).isoformat()
+        storage.save('config', 'area_plan_map', existing)
 
         return {'ok': True, 'results': results}
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception('Failed to refresh all area mappings: %s', e)
+        logger.exception(f'Failed to refresh all area mappings: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -573,9 +503,9 @@ async def admin_toggle_plan_enabled(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
         
-        try:
+        if storage.exists('config', 'area_plan_map'):
             existing = storage.load('config', 'area_plan_map') or {}
-        except Exception:
+        else:
             existing = {}
         
         # Navigate to the specific plan

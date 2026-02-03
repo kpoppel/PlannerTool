@@ -122,7 +122,13 @@ class TaskService(TaskServiceProtocol):
         Each project's area path is mapped to plan IDs with enabled flags.
         """
         project_map = self._project_service.get_project_map()
-        area_plan_map = self._storage_config.load('config', 'area_plan_map') or {}
+        # Avoid KeyError from backends that raise when a key is missing.
+        # Callers should check `exists()` before `load()` so missing keys
+        # don't raise — fall back to empty mapping when absent.
+        if self._storage_config.exists('config', 'area_plan_map'):
+            area_plan_map = self._storage_config.load('config', 'area_plan_map') or {}
+        else:
+            area_plan_map = {}
 
         with self._azure_client.connect(pat) as client:
             out: List[dict] = []

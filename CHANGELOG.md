@@ -14,6 +14,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.5.1] - 2026-02-03
+
+### Fixed
+
+- Fix area to plan mapping did not work with caching client.
+
 ## [1.5.0]  - 2026-02-02
 
 ### Added
