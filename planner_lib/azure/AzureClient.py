@@ -286,6 +286,21 @@ class AzureClient(ABC):
         """
         # no-op in base client; subclasses may override
         return None
+    
+    def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
+        """Fetch iterations for a project, optionally filtered by root path.
+        
+        Delegates to TeamPlanOperations.
+        
+        Args:
+            project: Project name or ID
+            root_path: Optional root iteration path to filter by
+            depth: Depth to fetch classification nodes (default 10)
+            
+        Returns:
+            List of iteration dicts sorted by startDate
+        """
+        return self._team_plan_ops.get_iterations(project, root_path=root_path, depth=depth)
 
     # Abstract methods: subclass must implement these
     @abstractmethod

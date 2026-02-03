@@ -190,6 +190,93 @@ async def admin_save_projects(request: Request):
 
 
 
+@router.get('/admin/v1/iterations')
+@require_admin_session
+async def admin_get_iterations(request: Request):
+    """Return the contents of `data/config/iterations.yml` as JSON."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        try:
+            data = storage.load('config', 'iterations')
+            if isinstance(data, (bytes, bytearray)):
+                return {'content': data.decode('utf-8')}
+            return {'content': data}
+        except KeyError:
+            return {'content': {'default_roots': [], 'project_overrides': {}}}
+    except Exception as e:
+        logger.exception('Failed to load iterations config: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/iterations')
+@require_admin_session
+async def admin_save_iterations(request: Request):
+    """Save edited iterations config; create a timestamped backup before overwrite."""
+    try:
+        payload = await request.json()
+        content = payload.get('content', '')
+        if not content:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
+
+        try:
+            parsed = json.loads(content)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
+
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+
+        _backup_existing(storage, 'iterations', 'iterations')
+        storage.save('config', 'iterations', parsed)
+        return { 'ok': True }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to save iterations config: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/iterations/browse')
+@require_admin_session
+async def admin_browse_iterations(request: Request):
+    """Browse iterations for a given project and optional root path.
+    
+    Payload: { "project": "ProjectName", "root_path": "optional path", "depth": 10 }
+    PAT is retrieved from the current session.
+    
+    Returns: { "iterations": [ { "path": ..., "name": ..., "startDate": ..., "finishDate": ... } ] }
+    """
+    try:
+        payload = await request.json()
+        project = payload.get('project')
+        if not project:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing project'})
+        
+        root_path = payload.get('root_path')
+        depth = payload.get('depth', 10)
+        
+        # Get PAT from session
+        sid = _get_session_id_or_raise(request)
+        session_mgr = resolve_service(request, 'session_manager')
+        pat = session_mgr.get_val(sid, 'pat')
+        if not pat:
+            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+        
+        # Connect to Azure and fetch iterations
+        azure_svc = resolve_service(request, 'azure_client')
+        with azure_svc.connect(pat) as client:
+            iterations = client.get_iterations(project, root_path=root_path, depth=depth)
+        
+        return {'iterations': iterations}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to browse iterations: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get('/admin/v1/area-mappings')
 @require_admin_session
 async def admin_get_area_mappings(request: Request):

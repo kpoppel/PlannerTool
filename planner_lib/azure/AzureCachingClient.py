@@ -72,6 +72,15 @@ class AzureCachingClient(AzureClient):
         safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
         safe_plan = str(plan_id).replace(' ', '_')
         return f"plan_markers_{safe_proj}_{safe_plan}"
+    
+    def _key_for_iterations(self, project: str, root_path: Optional[str] = None) -> str:
+        """Generate cache key for iterations."""
+        safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
+        if root_path:
+            safe_root = root_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
+            safe_root = ''.join(c for c in safe_root if c.isalnum() or c in ('_', '-'))
+            return f"iterations_{safe_proj}_{safe_root}"
+        return f"iterations_{safe_proj}_all"
 
     def get_projects(self) -> List[str]:
         """Fetch projects (not cached)."""
@@ -482,3 +491,36 @@ class AzureCachingClient(AzureClient):
             logger.exception(f"Failed to invalidate work item {work_item_id} after description update")
         
         return result
+    
+    def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
+        """Fetch iterations with per-root-path caching.
+        
+        Args:
+            project: Project name or ID
+            root_path: Optional root iteration path to filter by
+            depth: Depth to fetch classification nodes (default 10)
+            
+        Returns:
+            List of cached or freshly-fetched iteration dicts sorted by startDate
+        """
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected.")
+        
+        key = self._key_for_iterations(project, root_path)
+        cached = self._cache.read(key)
+        
+        if cached and isinstance(cached, list) and not self._cache.is_stale(key, ttl=CACHE_TTL):
+            logger.debug(f"Using cached iterations for project={project}, root={root_path}")
+            return cached
+        
+        # Fetch from Azure
+        logger.info(f"Fetching iterations from Azure for project={project}, root={root_path}")
+        iterations = super().get_iterations(project, root_path=root_path, depth=depth)
+        
+        # Cache the result
+        self._cache.write(key, iterations)
+        self._cache.update_timestamp(key)
+        logger.debug(f"Cached {len(iterations)} iterations with key: {key}")
+        
+        return iterations
+

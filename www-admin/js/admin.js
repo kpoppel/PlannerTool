@@ -6,6 +6,7 @@ import './components/admin/Projects.lit.js';
 import './components/admin/Teams.lit.js';
 import './components/admin/Cost.lit.js';
 import './components/admin/AreaMappingsNew.lit.js';
+import './components/admin/Iterations.lit.js';
 import { dataService } from '/static/js/services/dataService.js';
 
 async function mountAdminApp(){

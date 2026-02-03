@@ -149,7 +149,35 @@ export class AdminProviderREST {
       return await res.json();
     }catch(err){ console.error('AdminProviderREST:getSchema', err); return null; }
   }
+
+  async getIterations(){
+    try{
+      const res = await fetch('/admin/v1/iterations', { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    }catch(err){ console.error('AdminProviderREST:getIterations', err); return null; }
+  }
+
+  async saveIterations(content){
+    try{
+      const body = JSON.stringify({ content: JSON.stringify(content, null, 2) });
+      const res = await fetch('/admin/v1/iterations', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:saveIterations', err); return { ok:false, error: String(err) }; }
+  }
+
+  async browseIterations(payload){
+    try{
+      const body = JSON.stringify(payload);
+      const res = await fetch('/admin/v1/iterations/browse', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
+      if(!res.ok) return { iterations: [] };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:browseIterations', err); return { iterations: [] }; }
+  }
 }
 
 // Export a default instance for simple imports
 export const adminProvider = new AdminProviderREST();
+

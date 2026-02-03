@@ -1,0 +1,21 @@
+# Iterations configuration
+# 
+# This file defines the iteration root paths from which to fetch iterations.
+# 
+# Structure:
+#   default_roots: List of default root iteration paths used when no project override exists
+#   project_overrides: Map of project name -> list of root iteration paths
+# 
+# Example:
+#   default_roots:
+#     - "my_azure_project\\my_team"
+#     - "my_azure_project\\my_other_team"
+#   
+#   project_overrides:
+#     MySpecialProject:
+#       - "MySpecialProject\\Team1"
+
+default_roots:
+  - "my_azure_project\\my_team"
+
+project_overrides: {}

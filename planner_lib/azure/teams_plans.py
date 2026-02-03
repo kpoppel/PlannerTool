@@ -264,3 +264,139 @@ class TeamPlanOperations:
             List of area paths or None if not cached
         """
         return self._team_field_cache.get((project, team_name))
+    
+    def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
+        """Fetch iterations for a project, optionally filtered by root path.
+        
+        Returns a flat list of iteration dictionaries with path, name, startDate, and finishDate.
+        If root_path is specified, only returns iterations under that path (including children).
+        
+        Args:
+            project: Project name or ID
+            root_path: Optional root iteration path to filter by (e.g., "Project\\Iteration\\eSW")
+            depth: Depth to fetch classification nodes (default 10)
+            
+        Returns:
+            List of iteration dicts with keys: path, name, startDate, finishDate
+            Sorted by startDate (nulls last)
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        assert self.client.conn is not None
+        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        
+        # Fetch iteration classification nodes
+        try:
+            if root_path:
+                # Strip project prefix and "Iteration\" if present in root_path
+                # E.g., "Platform_Development\Iteration\eSW" -> "eSW"
+                path_parts = root_path.replace('/', '\\').split('\\')
+                if path_parts[0] == project:
+                    path_parts = path_parts[1:]
+                # Remove "Iteration" part if it's the first element
+                if path_parts and path_parts[0].lower() == 'iteration':
+                    path_parts = path_parts[1:]
+                clean_root = '\\'.join(path_parts) if path_parts else None
+                
+                if clean_root:
+                    node = wit_client.get_classification_node(
+                        project=project,
+                        structure_group='iterations',
+                        path=clean_root,
+                        depth=depth
+                    )
+                else:
+                    node = wit_client.get_classification_node(
+                        project=project,
+                        structure_group='iterations',
+                        depth=depth
+                    )
+            else:
+                node = wit_client.get_classification_node(
+                    project=project,
+                    structure_group='iterations',
+                    depth=depth
+                )
+        except Exception as e:
+            logger.warning(f'Failed to fetch iterations for project {project}, root={root_path}: {e}')
+            return []
+        
+        # Recursively extract iteration nodes with dates
+        def _extract_iterations(n, parent_path=''):
+            out = []
+            
+            def _walk(node, prefix):
+                # Extract path and name
+                node_path = getattr(node, 'path', None)
+                node_name = getattr(node, 'name', None)
+                
+                # Prefer path over name for full path
+                full_path = node_path if node_path else (f"{prefix}\\{node_name}" if prefix and node_name else node_name)
+                
+                # Extract attributes (startDate, finishDate)
+                attrs = getattr(node, 'attributes', None)
+                start = None
+                finish = None
+                
+                if attrs:
+                    try:
+                        if isinstance(attrs, dict):
+                            start = attrs.get('startDate') or attrs.get('StartDate')
+                            finish = attrs.get('finishDate') or attrs.get('FinishDate')
+                        else:
+                            # SDK model object
+                            try:
+                                start = attrs.get('startDate') if hasattr(attrs, 'get') else getattr(attrs, 'startDate', None) or getattr(attrs, 'StartDate', None)
+                            except Exception:
+                                start = getattr(attrs, 'startDate', None) or getattr(attrs, 'StartDate', None)
+                            try:
+                                finish = attrs.get('finishDate') if hasattr(attrs, 'get') else getattr(attrs, 'finishDate', None) or getattr(attrs, 'FinishDate', None)
+                            except Exception:
+                                finish = getattr(attrs, 'finishDate', None) or getattr(attrs, 'FinishDate', None)
+                    except Exception:
+                        pass
+                
+                # Normalize dates to ISO strings
+                try:
+                    from datetime import datetime
+                    if isinstance(start, datetime):
+                        start = start.date().isoformat()
+                    elif start:
+                        start = str(start).split('T')[0] if 'T' in str(start) else str(start)
+                    
+                    if isinstance(finish, datetime):
+                        finish = finish.date().isoformat()
+                    elif finish:
+                        finish = str(finish).split('T')[0] if 'T' in str(finish) else str(finish)
+                except Exception:
+                    pass
+                
+                if full_path:
+                    out.append({
+                        'path': full_path,
+                        'name': node_name or full_path.split('\\')[-1],
+                        'startDate': start,
+                        'finishDate': finish
+                    })
+                
+                # Recurse into children
+                children = getattr(node, 'children', None) or []
+                for child in children:
+                    _walk(child, full_path or prefix)
+            
+            _walk(n, parent_path)
+            return out
+        
+        iterations = _extract_iterations(node, parent_path=project)
+        
+        # Sort by startDate (nulls last), then by path
+        def sort_key(item):
+            start = item.get('startDate')
+            if start:
+                return (0, start, item.get('path', ''))
+            return (1, '', item.get('path', ''))
+        
+        iterations.sort(key=sort_key)
+        
+        return iterations
