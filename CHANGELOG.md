@@ -14,6 +14,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.6.0] - unreleased
+
+### Added
+
+- Added initial support for iterations. Iteration are timeboxes as an extra layer from delivery plans, whereas
+  start and end date according to Azure lore is more specific than an iteration, i.e. when within an iteration something
+  begins and ends. This iteration usese the dates from an iteration to set start end end dates and does not annotate
+  a used iteration selection back to Azure.
+
+### Changed
+
+- Documentation updates: example configuration files, architecture descriptions, readme file.
+
+### Fixed
+
 ## [v1.5.1] - 2026-02-03
 
 ### Fixed

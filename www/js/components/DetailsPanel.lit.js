@@ -2,12 +2,14 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { dataService } from '../services/dataService.js';
 import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
     open: { type: Boolean },
+    iterations: { type: Array },
     editingCapacityTeam: { type: String },
     showAddTeamPopover: { type: Boolean }
   };
@@ -199,6 +201,15 @@ export class DetailsPanelLit extends LitElement {
       border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 11px;
+    }
+    .iteration-select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+      margin-top:6px;
     }
     .details-changed { background: #fadd92ff; }
     .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
@@ -681,6 +692,53 @@ export class DetailsPanelLit extends LitElement {
     this.requestUpdate();
   }
 
+  updated(changedProps){
+    if(changedProps.has && changedProps.has('feature')){
+      // load iterations when feature changes / panel opens
+      this._loadIterationsForFeature();
+    }
+  }
+
+  async _loadIterationsForFeature(){
+    try{
+      this.iterations = [];
+      const f = this.feature;
+      if(!f) return;
+      // attempt to derive project name from feature.project (project id -> name)
+      let projectName = null;
+      try{
+        if(f.project){
+          const proj = (state.projects || []).find(p=>p.id === f.project);
+          if(proj) projectName = proj.name;
+        }
+      }catch(e){}
+      const iters = await dataService.getIterations(projectName);
+      this.iterations = Array.isArray(iters) ? iters : [];
+      this.requestUpdate();
+    }catch(e){ console.warn('Failed to load iterations', e); }
+  }
+
+  _stripIterationPrefix(path){
+    if(!path || typeof path !== 'string') return path;
+    const m = path.match(/^(.+?)\\Iteration\\(.+)$/);
+    if(m) return m[2];
+    return path;
+  }
+
+  async _onIterationChange(e){
+    const sel = e.target && e.target.value ? e.target.value : null;
+    if(!sel) return;
+    const it = (this.iterations || []).find(i => (i.path === sel) || (i.path && i.path.endsWith(sel)) );
+    if(!it) return;
+    const start = it.startDate ? it.startDate.slice(0,10) : null;
+    const end = it.finishDate ? it.finishDate.slice(0,10) : null;
+    if(start && end && this.feature){
+      try{
+        state.updateFeatureDates([{ id: this.feature.id, start, end }]);
+      }catch(err){ console.warn('Failed to update feature dates', err); }
+    }
+  }
+
   _renderField(label, field, value){
     const original = this.feature && this.feature.original ? this.feature.original[field] : undefined;
     const changed = original !== undefined && value !== original;
@@ -903,6 +961,15 @@ export class DetailsPanelLit extends LitElement {
                     ${endChanged ? html`<div class="original-date">(was ${endOrig})</div>` : ''}
                   </div>
                 </div>
+              <div style="margin-top:8px;">
+                <div class="details-label">Iteration</div>
+                <div class="details-value">
+                  <select class="iteration-select" @change=${(e)=>this._onIterationChange(e)}>
+                    <option value="">—</option>
+                    ${this.iterations && this.iterations.length ? this.iterations.map(it => html`<option value="${it.path}" ?selected=${(feature && ((feature.iterationPath||'') === it.path))}>${it.name || this._stripIterationPrefix(it.path)}</option>`) : html`<option disabled>Loading...</option>`}
+                  </select>
+                </div>
+              </div>
               ${feature && feature.type && String(feature.type).toLowerCase() === 'epic' ? html`<div style="margin-top:8px;"><button data-test="shrinkwrap-chip" class="chip" @click=${(e)=>this._shrinkwrapEpic(e)} title="Shrinkwrap epic to children" aria-label="Shrinkwrap epic to children" style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"><svg width="20" height="16" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" style="flex:0 0 auto;">
                         <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor" />
                         <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor" />

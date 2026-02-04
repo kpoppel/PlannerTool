@@ -257,6 +257,16 @@ export class ProviderREST {
         }catch(err){ return {}; }
     }
     
+    async getIterations(project) {
+        try{
+            const url = project ? `/api/iterations?project=${encodeURIComponent(project)}` : '/api/iterations';
+            const res = await fetch(url, { headers: this._headers() });
+            if(!res.ok) return [];
+            const data = await res.json();
+            return data.iterations || [];
+        }catch(err){ console.error('providerREST:getIterations', err); return []; }
+    }
+    
     // Fetch cost data (GET) or request a recalculation with payload (POST)
     async getCost(payload){
         try{

@@ -58,6 +58,7 @@ class DataService {
     async updateTeamColor(id, color) { return this.providers['local'].saveTeamColor(id, color); }
     // --- Feature Data Management ---
     async getProjects() { return this.providers['rest'].getProjects(); }
+    async getIterations(project) { return this.providers['rest'].getIterations(project); }
     async getTeams() { return this.providers['rest'].getTeams(); }
     async getCostTeams() { return this.providers['rest'].getCostTeams ? this.providers['rest'].getCostTeams() : []; }
     async getFeatures() { return this.providers['rest'].getFeatures(); }
