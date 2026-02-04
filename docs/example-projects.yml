@@ -1,0 +1,20 @@
+# Mandatory schema versino
+schema_version: 2
+# Mapping project names to area paths and task types
+# For schema version 2 include states and task types are not used
+# but are there for future use
+project_map:
+- name: My project UI name
+  type: project | team
+  area_path: my_azure_project\my_path\my_team
+  # set the type of tasks for this project mapping
+  # Depending of the type, data roll-up and UI presentation may differ
+  include_states:
+  - open
+  - in progress
+  - resolved
+  - stuck
+  task_types:
+  - feature
+  - epic
+- ...

@@ -1,0 +1,12 @@
+# This file is machine generated. you would generaly not need to edit it.
+# It contains an example of how the area path to project and plan mapping looks like.
+last_update: '<timestamp>'
+project-myproject:
+  areas:
+    my_azure_project\my_path\my_team:
+      plans:
+        <UUID for plan>:
+          enabled: true
+          name: <plan name>
+        <...>
+    ...

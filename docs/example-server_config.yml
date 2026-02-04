@@ -1,18 +1,13 @@
-azure_devops_organization: <Azure azure_devops_organization>
+# Mandatory: Schema version of the configuration file
+schema_version: 2
+# Azure Organisation name
+azure_devops_organization: <Azure azure_devops_organisation>
 log_level: <level: DEBUG, INFO, WARNING, ERRRR, CRITICAL>
 # Feature flags to enable/disable specific features
 feature_flags:
+  # Optional: Enable Azure Cache (default: false)
   enable_azure_cache: true
-  enable_brotli_middleware: false
+  # Optional: Enable Brotli middleware for compression (default: false)
+  enable_brotli_middleware: true
 # Optional: Relative or absolute path to the database directory or full path and filename
 database_path: </path/to/database/directory/or/file.yaml>
-# Root area paths to consider for projects
-area_paths:
-- <some/azure/path>
-project_map:
-- name: <project name>
-  area_path: <relative path after the root area path>
-# Team mappings - copy the list of teams from the database YAML which should be recognized
-team_map:
-- name: Team 1
-  short_name: TNT

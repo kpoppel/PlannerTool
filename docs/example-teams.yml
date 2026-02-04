@@ -1,0 +1,9 @@
+# Mandatory schema version
+schema_version: 1
+# Team mappings are used for capacity assignments and filtering
+team_map:
+- name: My Team 1
+  # The short name is used as keys when storing capacity data
+  # If you change the short name, existing capacity data will no longer be found
+  short_name: MT1
+- ...
