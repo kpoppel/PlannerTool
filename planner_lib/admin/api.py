@@ -168,19 +168,11 @@ async def admin_save_projects(request: Request):
         if not content:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
 
-        # Require valid JSON from the frontend; parse it and save the parsed
-        # Python object using the configured storage serializer (YAML).
-        try:
-            parsed = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
-
+        # backup and save
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
-
-        # backup and save
         _backup_existing(storage, 'projects', 'projects')
-        storage.save('config', 'projects', parsed)
+        storage.save('config', 'projects', content)
         return { 'ok': True }
     except HTTPException:
         raise
@@ -216,19 +208,14 @@ async def admin_save_iterations(request: Request):
     try:
         payload = await request.json()
         content = payload.get('content', '')
-        if not content:
+        if content is None or content == '':
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
 
-        try:
-            parsed = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
-
+        # backup and save
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
-
         _backup_existing(storage, 'iterations', 'iterations')
-        storage.save('config', 'iterations', parsed)
+        storage.save('config', 'iterations', content)
         return { 'ok': True }
     except HTTPException:
         raise
@@ -306,16 +293,11 @@ async def admin_save_area_mappings(request: Request):
         if not content:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
 
-        try:
-            parsed = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
-
+        # backup and save
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
-
         _backup_existing(storage, 'area_plan_map', 'area_plan_map')
-        storage.save('config', 'area_plan_map', parsed)
+        storage.save('config', 'area_plan_map', content)
         return { 'ok': True }
     except HTTPException:
         raise
@@ -690,16 +672,11 @@ async def admin_save_teams(request: Request):
         if not content:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
 
-        try:
-            parsed = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
-
+        # backup and save
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
-
         _backup_existing(storage, 'teams', 'teams')
-        storage.save('config', 'teams', parsed)
+        storage.save('config', 'teams', content)
         return {'ok': True}
     except HTTPException:
         raise
@@ -1225,24 +1202,31 @@ async def admin_save_system(request: Request):
     """Save edited system content; create a timestamped backup before overwrite."""
     try:
         payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+
+    try:
         content = payload.get('content', '')
         if not content:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
-
-        try:
-            parsed = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content must be valid JSON', 'detail': str(e)})
-
-        admin_svc = resolve_service(request, 'admin_service')
-        storage = admin_svc._config_storage
-
-        _backup_existing(storage, 'server_config', 'server_config')
-        # Save parsed object under logical key 'server_config'
-        storage.save('config', 'server_config', parsed)
-        return {'ok': True}
     except HTTPException:
         raise
+
+    try:
+        # Backup and save the system configuration
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        _backup_existing(storage, 'server_config', 'server_config')
+        storage.save('config', 'server_config', content)
+
+        # Reload server configuration so runtime services pick up the change
+        try:
+            # reload_config is best-effort; if it fails we still return success
+            admin_svc.reload_config(request)
+        except Exception as e:
+            logger.exception('Failed to reload configuration after saving system: %s', e)
+
+        return {'ok': True}
     except Exception as e:
         logger.exception('Failed to save system: %s', e)
         raise HTTPException(status_code=500, detail=str(e))

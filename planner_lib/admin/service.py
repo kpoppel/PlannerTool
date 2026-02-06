@@ -26,12 +26,14 @@ class AdminService:
         team_service: Any,
         project_service: Any,
         account_manager: Any,
+        azure_client: Any,
     ) -> None:
         self._account_storage = account_storage
         self._config_storage = config_storage
         self._team_service = team_service
         self._project_service = project_service
         self._account_manager = account_manager
+        self._azure_client = azure_client
 
     def is_admin(self, email: str) -> bool:
         """Return True when `data/accounts_admin/<email>` exists."""
@@ -43,7 +45,7 @@ class AdminService:
     def reload_config(self, request=None) -> dict:
         """Reload configuration artifacts touched by the admin UI.
 
-        This method replicates prior admin endpoint behaviour: it attempts
+        This method attempts
         to touch server config and cost/database config keys so in-memory
         caches can be refreshed by callers.
         """
@@ -89,6 +91,12 @@ class AdminService:
             except Exception:
                 logger.debug('Failed to refresh account for session')
 
+            # Update composed azure_client runtime settings from the new
+            # server configuration so future Azure connections use the
+            # updated organization and feature flags.
+            cfg = self._config_storage.load('config', 'server_config') or {}
+            self._azure_client.organization_url = cfg.get('azure_devops_organization')
+            self._azure_client.feature_flags = cfg.get('feature_flags')
             return {'ok': True}
         except Exception as e:
             logger.exception('Failed to reload configuration: %s', e)

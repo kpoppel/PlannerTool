@@ -14,13 +14,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.6.0] - unreleased
+## [v1.6.0] - 2026-02-06
 
 ### Added
 
 - Added initial support for iterations. Iteration are timeboxes as an extra layer from delivery plans, whereas
   start and end date according to Azure lore is more specific than an iteration, i.e. when within an iteration something
-  begins and ends. This iteration usese the dates from an iteration to set start end end dates and does not annotate
+  begins and ends. This version use the dates from an iteration to set start end end dates and does not annotate
   a used iteration selection back to Azure.
 
 ### Changed
@@ -28,6 +28,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Documentation updates: example configuration files, architecture descriptions, readme file.
 
 ### Fixed
+
+- Server bootstrapping from "cold start" without any configuration did not work
+- Iterations endpoint sent non-valid JSON object to server
+- When updating system config, server did not update Azure endpoint
 
 ## [v1.5.1] - 2026-02-03
 

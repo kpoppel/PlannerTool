@@ -59,6 +59,10 @@ def create_app(config: Config) -> FastAPI:
         data_dir=config.data_dir,
     ))
 
+    # Bootstrap server
+    from planner_lib.bootstrap import bootstrap_server
+    server_cfg = bootstrap_server(storage_yaml, logger)
+
     # Compose services
     from planner_lib.accounts.config import AccountManager
     account_manager = AccountManager(account_storage=storage_pickle)
@@ -72,10 +76,7 @@ def create_app(config: Config) -> FastAPI:
     capacity_service = CapacityService(team_service=team_service)
 
     from planner_lib.azure import AzureService
-    server_cfg = storage_yaml.load('config', 'server_config')
     org = server_cfg.get('azure_devops_organization')
-    
-    # Pass feature flags to AzureService
     feature_flags = server_cfg.get('feature_flags', {})
     azure_client = AzureService(org, storage_pickle, feature_flags=feature_flags)
 
@@ -102,6 +103,7 @@ def create_app(config: Config) -> FastAPI:
         team_service=team_service,
         project_service=project_service,
         account_manager=account_manager,
+        azure_client=azure_client,
     )
 
     # Create a minimal service container and register composed services.

@@ -29,13 +29,13 @@ The tool has several useful features:
 - Ability to interpret load estimations from loaded tasks from Azure
 
 The graph area can display load on individul projects and teams, or combined views. Load calculations
-are based off a calculation per day of all tasks scheduled on that day per team. Project load is the
-sum of all team's load.  A team's organisation load is dependent on the number of teams, each team
-count 1/N of the organisation load for N teams.
+are based off a calculation per day of all tasks scheduled on that day per team. Project capcacity is the
+sum of all team's capacity allocations.  A team's organisation capacity is dependent on the number of
+teams, each team count 1/N of the organisational capacity allocation for N teams.
  The rationale is that it does not matter if a team has 3 or 20 members if it is 100% loaded. In either
-case it cannot absorb more work.  To fix a permanently overloaded team, move work out of the team or
-make it larger so the estimated team loads can be adjusted down.  The best solution however is to use
-the tool to schedule work better so the load is distributed better in time.
+case it cannot absorb more work.  To fix a permanently overbooked teams, move work out of the team or
+make it larger so the estimated team capacity for a task can be adjusted down.  The best solution
+however is to use the tool to schedule work better so the capacity is distributed better in time.
 
 # Recommendation for using Azure DevOps consistently for best results.
 
@@ -46,7 +46,7 @@ multiple teams are involved.
 ## Use of states - semantics matter
 
 Using any tool for planning requires discipline and compliance to some rules. The principle of
-"garbage in - garbare out" applies in particular to task/issue tracking sytems like Jira and Azure DevOps.
+"garbage in - garbage out" applies in particular to task/issue tracking sytems like Jira and Azure DevOps.
 In a workflow described by:
 
   New -> Defined -> Active -> Resolved -> Closed
@@ -86,7 +86,7 @@ specific purposes.  Here the recommendation is to do as follows:
    zero or more Features which defines the contribution(s) the team has.  Each Feature is broken down into as much detail
    as the team needs to ensure proper design and quality.
 
-Do not mix these two by adding an Epic in one path as child of another Epic in another path.
+Do not mix these two by adding an Epic in one path as child of another Epic in another path even though this may be possible.
 
 ## Use of Azure DevOps 'area paths'
 
@@ -106,19 +106,26 @@ This panel is the main control center. Select viewoptions and which teams and pr
 The options include:
 
 - Display options:
+    - Timeline scale
+      Select the scale on which to view tasks. The naming reflects a conceptual scale, not 1 week, 1 month etc.
     - Condense cards
       Hide information on the cards to make them smaller. This is a great way to overview more
       items at once.
     - Show dependencies
       Add dependency display to the cards to see if a task depends on another.
       This feature requires the task to have a "Relates" or "Predecessor" of "Successor" link. (not implemented yet)
+    - Show unassigned
+      Filter tasks which have no capacity assigned. Some tasks may not have an estimation of capacity needed.
+    - Show unplanned
+      Filter tasks which have no dates assigned.  Some tasks may not be placed on the timeline.
 - Graphing options:
   The graph area can show two types of data: how much load the projects contribute to the total organisation load.
-    - Team Load
-      Display the team load situation. (under development)
-    - Project Load
-      Display the project load on the organisation. If several projects are selected they stack up and it can
-      be evaluated if projects are being served according to plan, or if one takes too much proirity from other devliveries.
+    - Team
+      Display the team capacity allocation situation. If several teams are selected they stack up and it can be
+      evaluated if teams are being under/over-utilised.
+    - Project
+      Display the project allocations on the organisation. If several projects are selected they stack up and it can
+      be evaluated if projects are being served according to plan, or if one takes too much proirity from other deliveries.
 - Sorting options:
   When dragging cards the tool can display earliest jobs first always, or leave the cards sorted according to the
   rank in Azure DevOps.
@@ -126,17 +133,31 @@ The options include:
       Display cards sorted by earliest start date
     - Rank
       Display in teh sequence coming from the task database
-- Filtering options:
-  For better high-level oveview it is possible to show level 1 and level 2 tasks alone or together. It is a great way
-  to reduce what is being looked at while drilling down into balancing scenarios.
+- Task Types:
+    For better high-level oveview it is possible to show level 1 and level 2 tasks alone or together. It is a great way
+    to reduce what is being looked at while drilling down into balancing scenarios.
     - Features
     - Epics
+- Task States
+  Filter the tasks based on their state.
 
-### Projects
+### Plans
+The Plans section display all configured plans. The section is divided into both delivery plans and team plans
+All plans are in terms of Azure DevOps just area paths, so distinguising between project and team is a configuration in the PlannerTool
+You can select and deselect any set of tasks here which are then filtered in the main task board.
 
-### Teams
+The little number pills display the sum of Epic and Fatures on each of these.
+
+### Allocations
+The Allocations section lists all teams on which work can be allocated.  This section also allows selecting and deselecting individual teams
+to filter which tasks with these teams are shown.  The number pills display the number of Epics and tasks any single team is participating on.
 
 ### Scenarios
+The Scenarios section lists all scenarios you have created.  Using the menu on the baseline scenario, which is the 'live' view from Azure DevOps,
+you can make a copy and then make changes to try out different scenarios. You can make as many scenarios as you like.
+If autosave is not setin the configuration modal, remember to save the scenario before closing the browser.
+You can also save changes back to Azure DevOps. In this situation a modal comes up with all scenarip changes which lets you decide which items to
+update.
 
 ## Graph Area
 

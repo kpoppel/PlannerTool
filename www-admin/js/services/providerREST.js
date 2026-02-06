@@ -20,7 +20,7 @@ export class AdminProviderREST {
 
   async saveAreaMappings(mappings){
     try{
-      const body = JSON.stringify({ content: JSON.stringify(mappings, null, 2) });
+      const body = JSON.stringify({ content: mappings });
       const res = await fetch('/admin/v1/area-mappings', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
       if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
       return await res.json();
@@ -161,7 +161,7 @@ export class AdminProviderREST {
 
   async saveIterations(content){
     try{
-      const body = JSON.stringify({ content: JSON.stringify(content, null, 2) });
+      const body = JSON.stringify({ content: content });
       const res = await fetch('/admin/v1/iterations', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
       if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
       return await res.json();
