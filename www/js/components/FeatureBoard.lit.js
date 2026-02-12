@@ -137,6 +137,13 @@ class FeatureBoard extends LitElement {
     }
     ordered.push(...standalone);
     
+    // Ensure we don't accidentally drop any source features (e.g. when a
+    // child references a parent epic that isn't present as type 'epic' in
+    // the source set). Append any missing features deterministically.
+    const included = new Set(ordered.map(f => f.id));
+    const remaining = sortFn(sourceFeatures.filter(f => !included.has(f.id)));
+    if (remaining.length) ordered.push(...remaining);
+
     return ordered;
   }
 
