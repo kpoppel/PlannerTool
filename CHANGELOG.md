@@ -14,6 +14,18 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.7.0] - 2026-02-17
+
+### Added
+### Changed
+
+- Admin UI project setup page made better and more compact
+
+### Fixed
+
+- Features without included parent Epic were silently dropped
+
+
 ## [v1.6.0] - 2026-02-06
 
 ### Added
