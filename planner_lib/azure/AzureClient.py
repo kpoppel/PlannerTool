@@ -275,6 +275,19 @@ class AzureClient(ABC):
         Delegates to WorkItemOperations.
         """
         return self._work_item_ops.update_work_item_description(work_item_id, description)
+    
+    def get_work_item_metadata(self, project: str) -> dict:
+        """Retrieve work item types and states for a project.
+        
+        Delegates to WorkItemOperations.
+        
+        Args:
+            project: Azure DevOps project name
+            
+        Returns:
+            Dictionary with 'types' and 'states' lists
+        """
+        return self._work_item_ops.get_work_item_metadata(project)
 
     def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None) -> None:
         """Invalidate cached plan-related artifacts for a project.

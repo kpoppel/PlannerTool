@@ -20,10 +20,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - Added use of project configuration for task type and states when retrieving tasks. Admins must invalidate the cache
   or wait for aging out to see the changes.
+- Admin project configuration schema now dynamically retrieves work item types and states from Azure DevOps instead of
+  using hardcoded values. The available options in the UI are now based on the actual work item types and states
+  configured in your Azure DevOps project.
 
 ### Changed
 ### Fixed
-
 
 ## [v1.8.0] - 2026-02-18
 

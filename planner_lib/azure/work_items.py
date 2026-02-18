@@ -258,3 +258,54 @@ class WorkItemOperations:
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
+    
+    def get_work_item_metadata(self, project: str) -> dict:
+        """Retrieve work item types and states for a project.
+        
+        Args:
+            project: Azure DevOps project name
+            
+        Returns:
+            Dictionary with 'types' (list of work item type names) and
+            'states' (dictionary mapping type names to lists of state names)
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        assert self.client.conn is not None
+        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        
+        try:
+            # Retrieve all work item types for the project
+            wi_types = wit_client.get_work_item_types(project)
+            
+            types = []
+            states_by_type = {}
+            
+            for wi_type in wi_types:
+                type_name = wi_type.name.lower()
+                types.append(type_name)
+                
+                # Retrieve states for this specific type
+                if hasattr(wi_type, 'states') and wi_type.states:
+                    states = [state.name.lower() for state in wi_type.states]
+                    states_by_type[type_name] = states
+            
+            # Collect all unique states across all types
+            all_states = set()
+            for states in states_by_type.values():
+                all_states.update(states)
+            
+            return {
+                'types': sorted(types),
+                'states': sorted(all_states),
+                'states_by_type': states_by_type
+            }
+        except Exception as e:
+            logger.warning(f"Failed to retrieve work item metadata for project '{project}': {e}")
+            # Return defaults if metadata retrieval fails
+            return {
+                'types': ['feature', 'epic', 'user story', 'task', 'bug'],
+                'states': ['new', 'active', 'defined', 'resolved', 'closed', 'removed'],
+                'states_by_type': {}
+            }

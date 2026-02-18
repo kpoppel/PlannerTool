@@ -964,6 +964,61 @@ async def admin_get_schema(request: Request, config_type: str):
     if not schema:
         raise HTTPException(status_code=404, detail={'error': 'unknown_schema', 'message': f'No schema defined for {config_type}'})
     
+    # For projects schema, try to fetch work item types and states from Azure
+    if config_type == 'projects':
+        try:
+            # Get PAT from session
+            sid = _get_session_id_or_raise(request)
+            session_mgr = resolve_service(request, 'session_manager')
+            pat = session_mgr.get_val(sid, 'pat')
+            
+            if pat:
+                admin_svc = resolve_service(request, 'admin_service')
+                storage = admin_svc._config_storage
+                
+                # Try to get Azure project name from existing projects configuration
+                azure_project = None
+                try:
+                    projects_cfg = storage.load('config', 'projects')
+                    project_map = projects_cfg.get('project_map', [])
+                    if project_map and len(project_map) > 0:
+                        # Extract project name from first area_path (format: Project\Area\SubArea...)
+                        area_path = project_map[0].get('area_path', '')
+                        if area_path and '\\' in area_path:
+                            azure_project = area_path.split('\\')[0]
+                            logger.debug(f"Extracted Azure project name '{azure_project}' from area path")
+                except Exception as e:
+                    logger.debug(f"Could not extract project from projects config: {e}")
+                
+                if azure_project:
+                    try:
+                        # Connect to Azure and fetch metadata
+                        azure_svc = resolve_service(request, 'azure_client')
+                        with azure_svc.connect(pat) as client:
+                            logger.info(f"Fetching work item metadata from Azure project '{azure_project}'")
+                            metadata = client.get_work_item_metadata(azure_project)
+                            
+                            # Update schema with retrieved data
+                            project_items = schema['properties']['project_map']['items']['properties']
+                            
+                            # Update task_types enum
+                            if metadata.get('types'):
+                                project_items['task_types']['items']['enum'] = metadata['types']
+                                logger.info(f"Retrieved {len(metadata['types'])} work item types from Azure: {metadata['types']}")
+                            
+                            # Update include_states default (use all states as options)
+                            if metadata.get('states'):
+                                project_items['include_states']['default'] = metadata['states']
+                                logger.info(f"Retrieved {len(metadata['states'])} states from Azure: {metadata['states']}")
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch Azure metadata for schema: {e}")
+                        # Continue with default schema if metadata fetch fails
+                else:
+                    logger.debug("No Azure project name available, using default schema")
+        except Exception as e:
+            logger.warning(f"Failed to enhance projects schema with Azure metadata: {e}")
+            # Continue with default schema
+    
     return schema
 
 
