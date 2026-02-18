@@ -1230,3 +1230,48 @@ async def admin_save_system(request: Request):
     except Exception as e:
         logger.exception('Failed to save system: %s', e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/cache/invalidate')
+@require_admin_session
+async def admin_cache_invalidate(request: Request):
+    """Invalidate all Azure caches to force a fresh data fetch.
+    
+    This clears all cached work items, teams, plans, markers, and iterations.
+    The next data fetch will retrieve fresh data from Azure DevOps.
+    Also cleans up orphaned index entries.
+    
+    Returns:
+        JSON with status and count of cleared cache entries
+    """
+    logger.info("Cache invalidation requested")
+    try:
+        azure_svc = resolve_service(request, 'azure_client')
+        result = azure_svc.invalidate_all_caches()
+        logger.info(f"Cache invalidation completed: {result}")
+        return result
+    except Exception as e:
+        logger.exception('Failed to invalidate caches: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/cache/cleanup')
+@require_admin_session
+async def admin_cache_cleanup(request: Request):
+    """Clean up orphaned cache index entries.
+    
+    This removes index entries for cache files that no longer exist,
+    useful for cleaning up after area path changes. Does not clear actual cache data.
+    
+    Returns:
+        JSON with status and count of orphaned keys removed
+    """
+    logger.info("Cache cleanup requested")
+    try:
+        azure_svc = resolve_service(request, 'azure_client')
+        result = azure_svc.cleanup_orphaned_cache_keys()
+        logger.info(f"Cache cleanup completed: {result}")
+        return result
+    except Exception as e:
+        logger.exception('Failed to cleanup cache: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))

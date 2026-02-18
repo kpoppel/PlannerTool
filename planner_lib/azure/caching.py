@@ -121,6 +121,7 @@ class CacheManager:
             entry = index.get(key)
             
             if not entry or 'last_update' not in entry:
+                logger.debug(f"is_stale({key}): No entry or no last_update - returning True")
                 return True
             
             try:
@@ -130,8 +131,13 @@ class CacheManager:
                     last_update = last_update.replace(tzinfo=timezone.utc)
                 
                 now = datetime.now(timezone.utc)
-                return (now - last_update) > ttl
-            except Exception:
+                age = now - last_update
+                is_stale_result = age > ttl
+                
+                logger.debug(f"is_stale({key}): last_update={last_update}, now={now}, age={age}, ttl={ttl}, stale={is_stale_result}")
+                return is_stale_result
+            except Exception as e:
+                logger.debug(f"is_stale({key}): Exception {e} - returning True")
                 return True
     
     def update_timestamp(self, key: str) -> None:
@@ -189,6 +195,12 @@ class CacheManager:
             
             if changed:
                 self._write_index(index)
+        
+        # After invalidating, clean up any orphaned keys
+        # (Do this outside the lock to avoid nested lock issues)
+        orphaned_count = self.cleanup_orphaned_keys()
+        if orphaned_count > 0:
+            logger.debug(f"Cleaned up {orphaned_count} orphaned keys after invalidate")
     
     def mark_invalidated(self, area_key: str, work_item_ids: list[int]) -> None:
         """Mark work items as invalidated for a specific area.
@@ -294,6 +306,7 @@ class CacheManager:
         """Prune old cache entries, keeping only the most recent ones.
         
         This is called periodically to prevent unbounded cache growth.
+        Also cleans up orphaned index entries.
         
         Args:
             keep_count: Number of most recent entries to keep
@@ -304,6 +317,11 @@ class CacheManager:
         self._fetch_count += 1
         if self._fetch_count % 100 != 0:
             return []
+        
+        # First, clean up orphaned keys
+        orphaned_count = self.cleanup_orphaned_keys()
+        if orphaned_count > 0:
+            logger.debug(f"Cleaned up {orphaned_count} orphaned keys during prune")
         
         with self._lock:
             index = self._read_index()
@@ -355,3 +373,33 @@ class CacheManager:
             
             logger.info(f"Cleared all caches: {len(keys_to_clear)} entries removed")
             return len(keys_to_clear)
+    
+    def cleanup_orphaned_keys(self) -> int:
+        """Remove index entries for cache files that no longer exist.
+        
+        This scans the index and removes keys that reference non-existent
+        cache files. Useful for cleaning up after area path changes or
+        manual cache deletions.
+        
+        Returns:
+            Number of orphaned keys removed
+        """
+        with self._lock:
+            index = self._read_index()
+            orphaned = []
+            
+            for key in list(index.keys()):
+                if key == '_invalidated':
+                    continue
+                
+                # Check if the cache file exists
+                if not self.exists(key):
+                    orphaned.append(key)
+                    index.pop(key, None)
+            
+            if orphaned:
+                self._write_index(index)
+                logger.info(f"Cleaned up {len(orphaned)} orphaned index entries: {orphaned}")
+            
+            return len(orphaned)
+

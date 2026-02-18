@@ -59,6 +59,24 @@ class AzureService(AzureServiceProtocol):
         from planner_lib.azure.AzureCachingClient import AzureCachingClient
         client = AzureCachingClient(self.organization_url, storage=self.storage)
         return client.invalidate_all_caches()
+    
+    def cleanup_orphaned_cache_keys(self) -> dict:
+        """Clean up orphaned cache index entries.
+        
+        This removes index entries for cache files that no longer exist,
+        useful for cleaning up after area path changes or manual deletions.
+        Only works when enable_azure_cache feature flag is enabled.
+        
+        Returns:
+            Dictionary with status and count of orphaned keys removed
+        """
+        if not self.feature_flags.get("enable_azure_cache", False):
+            logger.warning("Cache cleanup requested but enable_azure_cache is not enabled")
+            return {'ok': False, 'error': 'Caching not enabled', 'orphaned_cleaned': 0}
+        
+        from planner_lib.azure.AzureCachingClient import AzureCachingClient
+        client = AzureCachingClient(self.organization_url, storage=self.storage)
+        return client.cleanup_orphaned_cache_keys()
 
 
 

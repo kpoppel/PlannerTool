@@ -176,6 +176,22 @@ export class AdminProviderREST {
       return await res.json();
     }catch(err){ console.error('AdminProviderREST:browseIterations', err); return { iterations: [] }; }
   }
+
+  async cleanupCache(){
+    try{
+      const res = await fetch('/admin/v1/cache/cleanup', { method: 'POST', credentials: 'same-origin' });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:cleanupCache', err); return { ok:false, error: String(err) }; }
+  }
+
+  async invalidateCache(){
+    try{
+      const res = await fetch('/admin/v1/cache/invalidate', { method: 'POST', credentials: 'same-origin' });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:invalidateCache', err); return { ok:false, error: String(err) }; }
+  }
 }
 
 // Export a default instance for simple imports

@@ -17,11 +17,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v1.8.0] - unreleased
 
 ### Added
+
+- Added admin module for utilities: Clearing and invalidating the task cache
+
 ### Changed
 
 - When pressing the "Refresh Baseline" button in the sidebar the server invalidates the task cache before refreshing so changes are immediately visible in the task list
 
 ### Fixed
+
+- Cache TTL was not respected. Migration script added to remove cache and start over.
 
 ## [v1.7.0] - 2026-02-17
 

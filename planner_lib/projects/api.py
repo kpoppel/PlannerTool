@@ -176,6 +176,7 @@ async def api_cache_invalidate(request: Request):
     
     This clears all cached work items, teams, plans, markers, and iterations.
     The next data fetch will retrieve fresh data from Azure DevOps.
+    Also cleans up orphaned index entries.
     
     Returns:
         JSON with status and count of cleared cache entries

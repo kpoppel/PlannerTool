@@ -94,6 +94,10 @@ class AzureCachingClient(AzureClient):
         - Per-area invalidation tracking
         - Incremental updates using ModifiedDate filter
         - Cache hit optimization when no changes detected
+        
+        Note: Uses _key_for_area() for cache keys to ensure consistent key format
+        across all cache operations (converts backslashes to double underscores).
+        Uses _sanitize_area_path() for WIQL queries (preserves backslashes).
         """
         logger.debug(f"Fetching work items for area path: {area_path}")
         
@@ -102,7 +106,11 @@ class AzureCachingClient(AzureClient):
         
         assert self.conn is not None
         wit_client = self.conn.clients.get_work_item_tracking_client()
-        area_key = self._sanitize_area_path(area_path)
+        
+        # Use _key_for_area for cache key (consistent with other cache keys)
+        area_key = self._key_for_area(area_path)
+        # Use _sanitize_area_path for WIQL query (needs backslashes)
+        wiql_area = self._sanitize_area_path(area_path)
 
         # Load cache
         area_cache_list = self._cache.read(area_key) or []
@@ -137,7 +145,6 @@ class AzureCachingClient(AzureClient):
         # Build WIQL query with optional ModifiedDate filter
         modified_where = f"AND [System.ChangedDate] > '{last_update}'" if last_update and not force_full_refresh else ''
         
-        wiql_area = area_key
         wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
 
         wiql_query = f"""
@@ -529,12 +536,33 @@ class AzureCachingClient(AzureClient):
         
         This clears all work items, teams, plans, markers, and iterations
         from the cache, forcing a complete refresh on the next fetch.
+        Also cleans up any orphaned index entries.
         
         Returns:
             Dictionary with count of cleared entries
         """
         logger.info("Invalidating all caches")
+        
+        # First clean up orphaned keys
+        orphaned = self._cache.cleanup_orphaned_keys()
+        if orphaned > 0:
+            logger.info(f"Cleaned up {orphaned} orphaned keys before cache clear")
+        
+        # Then clear all caches
         count = self._cache.clear_all_caches()
-        return {'ok': True, 'cleared': count}
+        return {'ok': True, 'cleared': count, 'orphaned_cleaned': orphaned}
+    
+    def cleanup_orphaned_cache_keys(self) -> dict:
+        """Clean up orphaned index entries without clearing cache data.
+        
+        This removes index entries for cache files that no longer exist,
+        useful for cleaning up after area path changes.
+        
+        Returns:
+            Dictionary with count of orphaned keys removed
+        """
+        logger.info("Cleaning up orphaned cache keys")
+        count = self._cache.cleanup_orphaned_keys()
+        return {'ok': True, 'orphaned_cleaned': count}
 
 
