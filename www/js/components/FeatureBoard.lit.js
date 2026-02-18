@@ -152,10 +152,78 @@ class FeatureBoard extends LitElement {
     return !feature.start || !feature.end;
   }
 
+  /**
+   * Helper: check if feature is hierarchically linked to an Epic from selected projects
+   * - Show Epics that belong to selected projects
+   * - Show Features that are children (direct or indirect) of those Epics
+   * @param {Object} feature - Feature to check
+   * @param {Array} allFeatures - All features for parent lookup
+   * @param {Set} selectedProjectEpicIds - Set of Epic IDs from selected projects
+   * @param {Set} visited - Set to track visited feature IDs (prevent circular references)
+   * @returns {boolean} True if feature is an Epic from selected project or linked to one
+   */
+  _isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, selectedProjectEpicIds, visited = new Set()) {
+    if (!feature) return false;
+    
+    // Prevent circular references
+    if (visited.has(feature.id)) return false;
+    visited.add(feature.id);
+    
+    // If this feature is itself an Epic from a selected project, show it
+    if (selectedProjectEpicIds.has(feature.id)) {
+      return true;
+    }
+    
+    // Check if feature has a parent relationship via parentEpic
+    if (feature.parentEpic) {
+      const parentFeature = allFeatures.find(f => f.id === feature.parentEpic);
+      if (parentFeature) {
+        // Recursively check if parent is linked to a project Epic
+        return this._isHierarchicallyLinkedToSelectedProjectEpics(parentFeature, allFeatures, selectedProjectEpicIds, visited);
+      }
+    }
+    
+    // Check relations array for Parent type
+    if (Array.isArray(feature.relations)) {
+      const parentRelation = feature.relations.find(r => r.type === 'Parent');
+      if (parentRelation && parentRelation.id) {
+        const parentFeature = allFeatures.find(f => f.id === parentRelation.id);
+        if (parentFeature) {
+          return this._isHierarchicallyLinkedToSelectedProjectEpics(parentFeature, allFeatures, selectedProjectEpicIds, visited);
+        }
+      }
+    }
+    
+    return false;
+  }
+
   // Helper: check if feature passes filters
-  _featurePassesFilters(feature, childrenMap) {
+  _featurePassesFilters(feature, childrenMap, allFeatures = []) {
     const project = state.projects.find(p => p.id === feature.project && p.selected);
     if (!project) return false;
+
+    // Check hierarchical filtering if enabled
+    if (state._viewService.showOnlyProjectHierarchy) {
+      // Get only "project" type plans (not "team" type plans)
+      const projectTypePlans = state.projects.filter(p => {
+        const planType = p.type ? String(p.type) : 'project';
+        return p.selected && planType === 'project';
+      });
+      
+      const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
+      
+      // Build set of Epic IDs from project-type plans only
+      const projectTypeEpicIds = new Set(
+        allFeatures
+          .filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project))
+          .map(f => f.id)
+      );
+      
+      const isLinked = this._isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, projectTypeEpicIds);
+      if (!isLinked) {
+        return false;
+      }
+    }
 
     const stateFilter = state.selectedFeatureStateFilter instanceof Set 
       ? state.selectedFeatureStateFilter 
@@ -238,7 +306,7 @@ class FeatureBoard extends LitElement {
     let laneIndex = 0;
 
     for (const feature of ordered) {
-      if (!this._featurePassesFilters(feature, childrenMap)) continue;
+      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
 
       const pos = computePosition(feature, months) || {};
       feature._left = pos.left;

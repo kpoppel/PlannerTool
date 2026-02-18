@@ -757,7 +757,7 @@ export class SidebarLit extends LitElement {
             <button id="openHelpBtn" data-tour="help" @click=${()=>this._openHelp()}>❓</button>
           </div>
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
-          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
+          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
         </section>
       </aside>
     `;

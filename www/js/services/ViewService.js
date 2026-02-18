@@ -63,6 +63,7 @@ export class ViewService {
     this._showDependencies = false;
     this._showUnassignedCards = true; // Show features without capacity by default
     this._showUnplannedWork = true; // Show features without dates by default (when feature flag is ON)
+    this._showOnlyProjectHierarchy = false; // Show only features hierarchically linked to selected projects
     
     // Display modes
     this._condensedCards = false;
@@ -206,6 +207,26 @@ export class ViewService {
     this.bus.emit(FeatureEvents.UPDATED);
   }
   
+  /**
+   * Get whether to show only features hierarchically linked to selected projects
+   * @returns {boolean}
+   */
+  get showOnlyProjectHierarchy() {
+    return this._showOnlyProjectHierarchy;
+  }
+
+  /**
+   * Set whether to show only features hierarchically linked to selected projects
+   * @param {boolean} val - Whether to filter by project hierarchy
+   */
+  setShowOnlyProjectHierarchy(val) {
+    this._showOnlyProjectHierarchy = !!val;
+    this.bus.emit(FilterEvents.CHANGED, { 
+      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy 
+    });
+    this.bus.emit(FeatureEvents.UPDATED);
+  }
+
   // ========== Display Modes ==========
   
   /**
@@ -281,7 +302,8 @@ export class ViewService {
       showUnplannedWork: this._showUnplannedWork,
       timelineScale: this._timelineScale,
       showEpics: this._showEpics,
-      showFeatures: this._showFeatures
+      showFeatures: this._showFeatures,
+      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
     };
   }
   
@@ -315,6 +337,9 @@ export class ViewService {
     }
     if (typeof viewState.showFeatures !== 'undefined') {
       this.setShowFeatures(viewState.showFeatures);
+    }
+    if (typeof viewState.showOnlyProjectHierarchy !== 'undefined') {
+      this.setShowOnlyProjectHierarchy(viewState.showOnlyProjectHierarchy);
     }
   }
 }

@@ -182,6 +182,12 @@ export function initViewOptions(container){
       {"data-tour": "unplanned-view"}
     );
   }
+  // Show Only Project Hierarchy - filter to only show features linked to selected projects
+  renderToggle(root, 'Show Only Project Hierarchy', 
+    ()=> state._viewService.showOnlyProjectHierarchy, 
+    (val)=> state._viewService.setShowOnlyProjectHierarchy(val),
+    {"data-tour": "hierarchy-view"}
+  );
   // Capacity selector + Open Graph action
   const capWrapper = document.createElement('div');
   capWrapper.setAttribute('data-tour','capacity-view');
