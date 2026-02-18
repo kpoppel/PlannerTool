@@ -64,6 +64,11 @@ const _simpleModal = async (modulePath, tagName, { id, name, parent = document.b
 export const openScenarioCloneModal = (opts={}) => _simpleModal('./ScenarioCloneModal.lit.js', 'scenario-clone-modal', opts);
 export const openScenarioRenameModal = (opts={}) => _simpleModal('./ScenarioRenameModal.lit.js', 'scenario-rename-modal', opts);
 export const openScenarioDeleteModal = (opts={}) => _simpleModal('./ScenarioDeleteModal.lit.js', 'scenario-delete-modal', opts);
+
+export const openViewSaveModal = (opts={}) => _simpleModal('./ViewSaveModal.lit.js', 'view-save-modal', opts);
+export const openViewRenameModal = (opts={}) => _simpleModal('./ViewRenameModal.lit.js', 'view-rename-modal', opts);
+export const openViewDeleteModal = (opts={}) => _simpleModal('./ViewDeleteModal.lit.js', 'view-delete-modal', opts);
+
 export const openTour = async (opts={ parent: document.body }) => {
   try{
     const mod = await import('../tour/TourStarter.js');

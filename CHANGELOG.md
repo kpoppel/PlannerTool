@@ -23,6 +23,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Admin project configuration schema now dynamically retrieves work item types and states from Azure DevOps instead of
   using hardcoded values. The available options in the UI are now based on the actual work item types and states
   configured in your Azure DevOps project.
+- Added views feature: Users can now save and restore UI configurations (views) including selected projects, teams, 
+  and view options. Views are persisted to the backend similar to scenarios. 
+  - Backend infrastructure: new `planner_lib/views/` module with view storage and REST API endpoints
+  - Frontend: new "Views" section in sidebar with save/load/delete functionality
+  - Views capture: selected projects, selected teams, timeline scale, capacity mode, filters, and display options
+  - View actions: save new view, load existing view, update view, rename view, delete view
+  - Views are user-scoped and stored with metadata (id, user, name)
 
 ### Changed
 ### Fixed

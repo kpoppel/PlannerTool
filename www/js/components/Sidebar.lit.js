@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, ViewManagementEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { initViewOptions } from './viewOptions.js';
 import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
@@ -17,6 +17,9 @@ export class SidebarLit extends LitElement {
     teams: { type: Array },
     scenarios: { type: Array },
     activeScenarioId: { type: String },
+    views: { type: Array },
+    activeViewId: { type: String },
+    activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
   };
@@ -50,6 +53,9 @@ export class SidebarLit extends LitElement {
     this.teams = [];
     this.scenarios = [];
     this.activeScenarioId = null;
+    this.views = [];
+    this.activeViewId = null;
+    this.activeViewData = null;
   }
 
   // Render into light DOM so legacy selectors (IDs) can still be used if needed.
@@ -83,6 +89,19 @@ export class SidebarLit extends LitElement {
       this.scenarios = [...sc];
       this.activeScenarioId = state.activeScenarioId;
     };
+    this._onViewsList = (payload) => {
+      console.log('[Sidebar] Received views list event:', payload);
+      this.views = payload && payload.views ? [...payload.views] : [];
+      this.activeViewId = payload && payload.activeViewId ? payload.activeViewId : null;
+      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
+      this.requestUpdate();
+    };
+    this._onViewActivated = (payload) => {
+      console.log('[Sidebar] Received view activated event:', payload);
+      this.activeViewId = payload && payload.viewId ? payload.viewId : null;
+      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
+      this.requestUpdate();
+    };
 
     bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
     bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
@@ -90,6 +109,8 @@ export class SidebarLit extends LitElement {
     bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
+    bus.on(ViewManagementEvents.LIST, this._onViewsList);
+    bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
     // Listen for view option changes to trigger sidebar state save
     const onViewOptionChange = () => this._saveSidebarState();
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
@@ -108,8 +129,11 @@ export class SidebarLit extends LitElement {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
       this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
+      console.log('[Sidebar] Initializing views from state:', state.savedViews);
+      this._onViewsList({ views: state.savedViews, activeViewId: state.activeViewId });
     } catch (e) {
       // Defensive: ignore if state is not yet ready
+      console.warn('[Sidebar] Error initializing from state:', e);
     }
     this.refreshServerStatus();
     this.requestUpdate();
@@ -376,13 +400,45 @@ export class SidebarLit extends LitElement {
         </li>`;
     })}`;
   }
+  /**
+   * Get filtered projects based on active view
+   * If a non-default view is active, only show projects that were selected in that view
+   */
+  _getFilteredProjects() {
+    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
+      // Default view or no view active - show all
+      return this.projects;
+    }
+    
+    // Filter projects based on active view data
+    // Only show projects where selectedProjects[id] === true
+    return (this.projects || []).filter(project => 
+      this.activeViewData.selectedProjects?.[project.id] === true
+    );
+  }
 
+  /**
+   * Get filtered teams based on active view
+   * If a non-default view is active, only show teams that were selected in that view
+   */
+  _getFilteredTeams() {
+    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
+      // Default view or no view active - show all
+      return this.teams;
+    }
+    
+    // Filter teams based on active view data
+    // Only show teams where selectedTeams[id] === true
+    return (this.teams || []).filter(team => 
+      this.activeViewData.selectedTeams?.[team.id] === true
+    );
+  }
   renderProjects(){
-    return this._renderEntityList('project', this.projects || [], (id) => this.toggleProject(id));
+    return this._renderEntityList('project', this._getFilteredProjects() || [], (id) => this.toggleProject(id));
   }
 
   renderPlansGrouped(){
-    const all = this.projects || [];
+    const all = this._getFilteredProjects() || [];
     const delivery = all.filter(p => (p.type || 'project') === 'project');
     const teamBacklogs = all.filter(p => (p.type || 'project') !== 'project');
     return html`
@@ -399,7 +455,7 @@ export class SidebarLit extends LitElement {
   }
 
   renderTeams(){
-    return this._renderEntityList('team', this.teams || [], (id) => this.toggleTeam(id));
+    return this._renderEntityList('team', this._getFilteredTeams() || [], (id) => this.toggleTeam(id));
   }
 
   renderScenarios(){
@@ -415,6 +471,24 @@ export class SidebarLit extends LitElement {
         ${state.isScenarioUnsaved(s) ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>` : ''}
         <span class="scenario-controls">
           <button type="button" class="scenario-btn" title="Scenario actions" @click=${(e)=>this._onScenarioMenuClick(e, s)}>${'⋯'}</button>
+        </span>
+      </li>
+    `)}`;
+  }
+
+  renderViews(){
+    console.log('[Sidebar] renderViews called, views:', this.views);
+    const sorted = [...(this.views || [])].sort((a,b)=>{
+      // Sort readonly views (like default) first
+      if(a.readonly && !b.readonly) return -1;
+      if(b.readonly && !a.readonly) return 1;
+      return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
+    });
+    return html`${sorted.map(v=> html`
+      <li class="sidebar-list-item view-item sidebar-chip ${v.id===this.activeViewId? 'active':''}" @click=${(e)=>this._onViewClick(e, v)}>
+        <span class="view-name" title="${v.name}">${v.name}</span>
+        <span class="view-controls">
+          <button type="button" class="view-btn" title="View actions" @click=${(e)=>this._onViewMenuClick(e, v)}>${'⋯'}</button>
         </span>
       </li>
     `)}`;
@@ -473,6 +547,104 @@ export class SidebarLit extends LitElement {
         const selected = await openAzureDevopsModal({ overrides: s.overrides, state }); 
         if(selected?.length) await dataService.publishBaseline(selected);
       }, (s.overrides && Object.keys(s.overrides).length === 0));
+    }
+    
+    const rect = menuBtn.getBoundingClientRect();
+    Object.assign(pop.style, {
+      position: 'absolute',
+      top: `${rect.top + window.scrollY + rect.height + 4}px`,
+      left: `${rect.left + window.scrollX - 20}px`
+    });
+    document.body.appendChild(pop);
+    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
+  }
+
+  async _onViewClick(e, v){
+    e.stopPropagation();
+    // Load and apply the view
+    try {
+      await state.viewManagementService.loadAndApplyView(v.id);
+    } catch (err) {
+      console.error('Failed to load view:', err);
+      // Show error in a simple way without alert
+      const status = document.createElement('div');
+      status.textContent = `Failed to load view: ${err.message || err}`;
+      status.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--error-bg,#fee);padding:1rem;border-radius:4px;z-index:10000;';
+      document.body.appendChild(status);
+      setTimeout(() => status.remove(), 3000);
+    }
+  }
+
+  async _saveNewView(){
+    const { openViewSaveModal } = await import('./modalHelpers.js');
+    const defaultName = (() => {
+      const now = new Date();
+      const mm = String(now.getMonth()+1).padStart(2,'0');
+      const dd = String(now.getDate()).padStart(2,'0');
+      const maxN = Math.max(0, ...(this.views || [])
+        .filter(v => !v.readonly)
+        .map(v => /^\d{2}-\d{2} View (\d+)$/i.exec(v.name)?.[1])
+        .filter(Boolean)
+        .map(n => parseInt(n, 10)));
+      return `${mm}-${dd} View ${maxN+1}`;
+    })();
+    await openViewSaveModal({ name: defaultName });
+  }
+
+  _onViewMenuClick(e, v){
+    e.stopPropagation();
+    document.querySelectorAll('.view-menu-popover').forEach(p=>p.remove());
+    
+    const menuBtn = e.currentTarget;
+    const pop = document.createElement('div'); 
+    pop.className='view-menu-popover scenario-menu-popover'; // Reuse scenario menu styles
+    
+    const addItem = (label, emoji, onClick, disabled=false) => {
+      const item = document.createElement('div'); 
+      item.className = 'scenario-menu-item';
+      if(disabled) item.classList.add('disabled');
+      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
+      if(!disabled) item.addEventListener('click', ev=>{ ev.stopPropagation(); onClick(); pop.remove(); });
+      pop.appendChild(item);
+    };
+    
+    if (v.readonly && v.id === 'default') {
+      // Default view menu - only show clone option
+      addItem('Clone & Save as New View', '⎘', async ()=>{ 
+        const { openViewSaveModal } = await import('./modalHelpers.js');
+        const defaultName = (() => {
+          const now = new Date();
+          const mm = String(now.getMonth()+1).padStart(2,'0');
+          const dd = String(now.getDate()).padStart(2,'0');
+          const maxN = Math.max(0, ...(this.views || [])
+            .filter(vw => !vw.readonly)
+            .map(vw => /^\d{2}-\d{2} View (\d+)$/i.exec(vw.name)?.[1])
+            .filter(Boolean)
+            .map(n => parseInt(n, 10)));
+          return `${mm}-${dd} View ${maxN+1}`;
+        })();
+        await openViewSaveModal({ name: defaultName });
+      });
+    } else {
+      // Custom view menu - show update/rename/delete options
+      addItem('Update View', '💾', async ()=>{ 
+        // Save current state over existing view
+        try {
+          await state.viewManagementService.saveCurrentView(v.name, v.id);
+        } catch (err) {
+          console.error('Failed to update view:', err);
+        }
+      });
+      
+      addItem('Rename View', '✏️', async ()=>{ 
+        const { openViewRenameModal } = await import('./modalHelpers.js');
+        await openViewRenameModal({ id: v.id, name: v.name });
+      });
+      
+      addItem('Delete View', '🗑️', async ()=>{ 
+        const { openViewDeleteModal } = await import('./modalHelpers.js');
+        await openViewDeleteModal({ id: v.id, name: v.name });
+      });
     }
     
     const rect = menuBtn.getBoundingClientRect();
@@ -551,6 +723,13 @@ export class SidebarLit extends LitElement {
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
           <div>
             <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
+          </div>
+        </section>
+
+        <section class="sidebar-section" id="viewsSection" data-tour="views">
+          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Views</span></div>
+          <div>
+            <ul class="sidebar-list" id="viewList">${this.renderViews()}</ul>
           </div>
         </section>
 

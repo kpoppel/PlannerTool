@@ -336,5 +336,62 @@ export class ProviderREST {
             return { ok: false, error: String(err) }; 
         }
     }
+
+    // ========== View Management ==========
+    
+    async listViews() {
+        try{
+            const res = await fetch('/api/view', { method: 'GET', headers: this._headers() });
+            if(!res.ok){ return []; }
+            return await res.json();
+        }catch(err){ return []; }
+    }
+
+    async getView(id) {
+        try{
+            const res = await fetch(`/api/view?id=${id}`, { method: 'GET', headers: this._headers() });
+            if(!res.ok){ return null; }
+            return await res.json();
+        }catch(err){ return null; }
+    }
+
+    async saveView(view) {
+        try{
+            const body = JSON.stringify({ op: 'save', data: view });
+            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            const meta = await res.json();
+            console.log("providerREST:saveView - Saved view:", meta);
+            return meta;
+        }catch(err){ return { ok:false, error:String(err) }; }
+    }
+
+    async renameView(id, name) {
+        try{
+            // Load existing view, update name, save back
+            const view = await this.getView(id);
+            if (!view) return { ok:false, error:'View not found' };
+            view.name = name;
+            const body = JSON.stringify({ op: 'save', data: view });
+            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
+            const meta = await res.json();
+            console.log("providerREST:renameView - Renamed view:", meta);
+            return meta;
+        }catch(err){ return { ok:false, error:String(err) }; }
+    }
+
+    async deleteView(id) {
+        try{
+            const body = JSON.stringify({ op: 'delete', data: { id } });
+            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(!res.ok){ return false; }
+            const data = await res.json();
+            const ok = !!data?.ok;
+            console.log("providerREST:deleteView - Deleted view:", data);
+            return ok;
+        }catch(err){ return false; }
+    }
+
   // ...other methods will be added in later steps
 }

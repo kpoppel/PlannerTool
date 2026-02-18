@@ -30,6 +30,11 @@ export class SidebarPersistenceService {
       sectionStates: {}
     };
 
+    // Capture selected feature states (state filter)
+    if (state._stateFilterService) {
+      sidebarState.viewOptions.selectedFeatureStates = state._stateFilterService.getSelectedStates();
+    }
+
     // Capture project selections
     if (state.projects) {
       state.projects.forEach(project => {
@@ -109,6 +114,20 @@ export class SidebarPersistenceService {
       // Restore view options
       if (savedState.viewOptions) {
         viewService.restoreView(savedState.viewOptions);
+        
+        // Restore state filters if present
+        if (savedState.viewOptions.selectedFeatureStates && Array.isArray(savedState.viewOptions.selectedFeatureStates)) {
+          const availableStates = state.availableFeatureStates || [];
+          const savedStates = savedState.viewOptions.selectedFeatureStates;
+          
+          // Filter to only include states that are currently available
+          const validStates = savedStates.filter(stateName => availableStates.includes(stateName));
+          
+          // Set the selected states (this will emit events)
+          if (state._stateFilterService) {
+            state._stateFilterService.setSelectedStates(validStates);
+          }
+        }
       }
 
       // Restore section collapse states

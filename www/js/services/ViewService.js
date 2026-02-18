@@ -279,7 +279,9 @@ export class ViewService {
       featureSortMode: this._featureSortMode,
       showUnassignedCards: this._showUnassignedCards,
       showUnplannedWork: this._showUnplannedWork,
-      timelineScale: this._timelineScale
+      timelineScale: this._timelineScale,
+      showEpics: this._showEpics,
+      showFeatures: this._showFeatures
     };
   }
   
@@ -307,6 +309,12 @@ export class ViewService {
     }
     if (viewState.timelineScale) {
       this.setTimelineScale(viewState.timelineScale);
+    }
+    if (typeof viewState.showEpics !== 'undefined') {
+      this.setShowEpics(viewState.showEpics);
+    }
+    if (typeof viewState.showFeatures !== 'undefined') {
+      this.setShowFeatures(viewState.showFeatures);
     }
   }
 }

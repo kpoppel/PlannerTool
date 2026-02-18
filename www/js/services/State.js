@@ -13,6 +13,8 @@ import { StateFilterService } from './StateFilterService.js';
 import { ProjectTeamService } from './ProjectTeamService.js';
 import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
+import { ViewManagementService } from './ViewManagementService.js';
+import { SidebarPersistenceService } from './SidebarPersistenceService.js';
 // Re-export color constants for backward compatibility
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
@@ -79,6 +81,15 @@ class State {
       this._viewService
     );
     
+    // View management service
+    this._sidebarPersistenceService = new SidebarPersistenceService(dataService);
+    this._viewManagementService = new ViewManagementService(
+      bus,
+      this,
+      this._viewService,
+      this._sidebarPersistenceService
+    );
+    
     // Capacity metrics
     this.capacityDates = [];
     this.teamDailyCapacity = [];
@@ -129,6 +140,11 @@ class State {
   get scenarios() { return this._scenarioEventService.getScenarios(); }
   get activeScenarioId() { return this._scenarioEventService.getActiveScenarioId(); }
   set activeScenarioId(id) { this._scenarioEventService.setActiveScenarioId(id); }
+  
+  // ViewManagementService properties
+  get viewManagementService() { return this._viewManagementService; }
+  get savedViews() { return this._viewManagementService.getViews(); }
+  get activeViewId() { return this._viewManagementService.getActiveViewId(); }
   
   // DataInitService properties
   get baselineFeatureById() { return this._dataInitService.baselineFeatureById; }
@@ -201,6 +217,9 @@ class State {
     
     this._scenarioEventService.emitScenarioList();
     this._scenarioEventService.emitScenarioActivated();
+    
+    // Load saved views
+    await this._viewManagementService.loadViews();
     
     // Compute capacity metrics for charts/analytics
     this.recomputeCapacityMetrics();

@@ -117,6 +117,7 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("azure_client", azure_client)
     container.register_singleton("account_storage", storage_pickle)
     container.register_singleton("scenarios_storage", storage_pickle)
+    container.register_singleton("views_storage", storage_pickle)
     container.register_singleton("project_service", project_service)
     container.register_singleton("team_service", team_service)
     container.register_singleton("capacity_service", capacity_service)
@@ -172,6 +173,7 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.accounts.api import router as config_router
     from planner_lib.projects.api import router as projects_router
     from planner_lib.scenarios.api import router as scenario_router
+    from planner_lib.views.api import router as views_router
     from planner_lib.cost.api import router as cost_router
     from planner_lib.server.api import router as server_router
     from planner_lib.admin.api import router as admin_router
@@ -183,6 +185,7 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(config_router, prefix='/api')
     app.include_router(projects_router, prefix='/api')
     app.include_router(scenario_router, prefix='/api')
+    app.include_router(views_router, prefix='/api')
     app.include_router(cost_router, prefix='/api')
     app.include_router(server_router, prefix='/api')
     app.include_router(admin_router, prefix='')

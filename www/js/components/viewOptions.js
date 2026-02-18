@@ -1,6 +1,6 @@
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { StateFilterEvents, TimelineEvents } from '../core/EventRegistry.js';
+import { StateFilterEvents, TimelineEvents, FilterEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
 
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
@@ -252,3 +252,10 @@ bus.on(TimelineEvents.SCALE_CHANGED, ()=>{
   initViewOptions(node);
 });
 
+// Re-init view options when task type filters change (showEpics/showFeatures)
+// This ensures the UI chips reflect the current state when views are loaded.
+bus.on(FilterEvents.CHANGED, ()=>{
+  const node = document.getElementById('viewOptionsContainer');
+  if(!node) return;
+  initViewOptions(node);
+});

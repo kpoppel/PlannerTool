@@ -104,6 +104,12 @@ class DataService {
     async deleteScenario(id) { return this.providers['rest'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['rest'].renameScenario(id, name); }
     async saveScenario(scenario) { return this.providers['rest'].saveScenario(scenario); }
+    // --- View Management ---
+    async listViews() { return this.providers['rest'].listViews(); }
+    async getView(id) { return this.providers['rest'].getView(id); }
+    async saveView(view) { return this.providers['rest'].saveView(view); }
+    async renameView(id, name) { return this.providers['rest'].renameView(id, name); }
+    async deleteView(id) { return this.providers['rest'].deleteView(id); }
 }
 
 const providerMock = new ProviderMock();

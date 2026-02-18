@@ -183,6 +183,15 @@
 .scenario-annotate-table th, .scenario-annotate-table td { border:1px solid var(--color-border); padding:6px 8px; font-size:0.85rem; }
 .scenario-annotate-table th { background:#f7f7f7; text-align:left; }
 
+/* View list styling - matching scenario styling */
+.view-item { padding:4px 6px; border-radius:6px; width:100%; display:flex; align-items:center; gap:8px; box-sizing:border-box; position:relative; }
+.view-item.active { background:rgba(255,255,255,0.18); }
+.view-name { cursor:pointer; flex:1 1 auto; font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:56px; }
+.view-controls { display:inline-flex; gap:4px; align-items:center; position:absolute; right:6px; top:50%; transform:translateY(-50%); }
+.view-btn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.75rem; line-height:1; }
+.view-btn:hover { background:#ececec; }
+
+
 /* Wider modal variant for content-heavy dialogs */
 .modal.wide-modal { width:760px; max-width:96vw; }
 .mountain-modal {
@@ -328,3 +337,13 @@
 /* Ensure the scenario name takes remaining space and is not the only clickable area */
 .scenario-item .scenario-name { cursor: pointer; padding-left:12px; }
 .scenario-item .scenario-controls { right:8px; }
+
+/* Make view rows look like chips - matching scenario styling */
+.view-item.sidebar-chip { padding-left:0; padding-right:8px; border-radius:8px; display:flex; align-items:center; min-height:36px; }
+.view-item.sidebar-chip:hover { background: rgba(255,255,255,0.12); }
+.view-item.sidebar-chip:active { background: rgba(255,255,255,0.14); }
+.view-item.sidebar-chip:focus-within { outline: 2px solid rgba(92,200,255,0.12); }
+
+/* Ensure the view name takes remaining space and is not the only clickable area */
+.view-item .view-name { cursor: pointer; padding-left:12px; }
+.view-item .view-controls { right:8px; }

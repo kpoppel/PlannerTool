@@ -87,6 +87,14 @@ export const ViewEvents = {
   SORT_MODE: Symbol('view:sortMode')
 };
 
+// Saved view management events
+export const ViewManagementEvents = {
+  LIST: Symbol('views:list'),
+  ACTIVATED: Symbol('views:activated'),
+  SAVED: Symbol('views:saved'),
+  DELETED: Symbol('views:deleted')
+};
+
 // App lifecycle events
 export const AppEvents = {
   READY: Symbol('app:ready'),
