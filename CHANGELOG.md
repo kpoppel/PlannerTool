@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.9.0] - unreleased
+## [v1.9.0] - 2026-02-19
 
 ### Added
 
@@ -30,6 +30,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   - Views capture: selected projects, selected teams, timeline scale, capacity mode, filters, and display options
   - View actions: save new view, load existing view, update view, rename view, delete view
   - Views are user-scoped and stored with metadata (id, user, name)
+- Added new filter type for project type plans: Show only Project hierachy allows filtering out on teams so that only team
+  tasks which are linked to the selected project(s) are displayed. This hides any tasks from teams which are not related to
+  a displayed project.
 
 ### Changed
 ### Fixed
