@@ -174,9 +174,13 @@ These options are available in both normal and condensed card view modes.
 
 ## Right Side Panel
 
-# Specifying team load in a task
-To utilise the team load function you need to prepare the task for this. In each Epic and Feature ass a block like this in the
-description field:
+# Specifying team allocation for a task
+
+Generally you will not need to adjust capacity assignment in in Azure. Use the tool UI in the details panel for a task to set
+allocated capacity:  Click the task and add a team, set the percentage - yo can use the mouse wheel to scroll in 10% increments.
+
+This is what happens behind the scenes:
+In each Epic and Feature a block like this is added in the description field:
 
   [PlannerTool Team Capacity]
   <name>: <percent_capacity_consumed>
@@ -184,39 +188,8 @@ description field:
   [/PlannerTool Team Capacity]
 
 Team names are defined in the server backend currently and you can use either the full name as seen in the user interface, or a short
-form.  It is only necessary to include the teams actually participating, so usually there is mostly just a few lines here.
-
-The long form template:
-
-  [PlannerTool Team Capacity]
-  Integration Team: 0
-  System & Framework: 0
-  Bluetooth: 0
-  Hardware Abstraction: 0
-  Connectivity & Interactions: 0
-  Signal Processing: 0
-  D chipset: 0
-  TestOps & Pipelines: 0
-  Tooling: 0
-  Architecture: 0
-  Requirements: 0
-  [/PlannerTool Team Capacity]
-
-or this format using the short form names:
-
-  [PlannerTool Team Capacity]
-  INT: 0
-  SYS: 0
-  BT : 0
-  C&I: 0
-  SIP: 0
-  HAL: 0
-  DCS: 0
-  TOP: 0
-  TOL: 0
-  ARC: 0
-  REQ: 0
-  [/PlannerTool Team Capacity]
+form.  The tool will always use the short form when set from the UI.  It is only necessary to include the teams actually participating,
+so usually there is mostly just a few lines here.
 
 # FAQ
 
@@ -230,3 +203,6 @@ When you are logged into Azure devops do as follows:
    minimum scope selection is at this point, so just select them all.
 5. Set the expiry date to as far in the future it is allowed.
 6. Save the token and copy the string to a safe place.
+
+## I cannot refresh delivery plan markers
+You need to have the right permission in Azure DevOps: "Manage Delivery Plans"
