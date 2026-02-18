@@ -14,6 +14,17 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.9.0] - unreleased
+
+### Added
+
+- Added use of project configuration for task type and states when retrieving tasks. Admins must invalidate the cache
+  or wait for aging out to see the changes.
+
+### Changed
+### Fixed
+
+
 ## [v1.8.0] - 2026-02-18
 
 ### Added
@@ -22,7 +33,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Changed
 
-- When pressing the "Refresh Baseline" button in the sidebar the server invalidates the task cache before refreshing so changes are immediately visible in the task list
+- When pressing the "Refresh Baseline" button in the sidebar the server invalidates the task cache before refreshing so
+  changes are immediately visible in the task list
 
 ### Fixed
 

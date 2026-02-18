@@ -82,14 +82,23 @@ class WorkItemOperations:
         org, project, work_item_id = m.groups()
         return f"https://dev.azure.com/{org}/{project}/_workitems/edit/{work_item_id}"
     
-    def get_work_items(self, area_path: str) -> List[dict]:
+    def get_work_items(
+        self, 
+        area_path: str, 
+        task_types: Optional[List[str]] = None,
+        include_states: Optional[List[str]] = None
+    ) -> List[dict]:
         """Fetch work items for a given area path.
         
-        This implementation fetches all Epic and Feature work items in the specified
-        area that are not in Closed or Removed state.
+        This implementation fetches work items based on the configured task types
+        and states, or uses defaults if not specified.
         
         Args:
             area_path: Azure DevOps area path
+            task_types: List of work item types to include (e.g., ['epic', 'feature']).
+                       Defaults to ['epic', 'feature'] if not provided.
+            include_states: List of states to include (e.g., ['new', 'active']).
+                           If not provided, excludes 'Closed' and 'Removed' states.
             
         Returns:
             List of work item dictionaries
@@ -100,16 +109,37 @@ class WorkItemOperations:
         assert self.client.conn is not None
         wit_client = self.client.conn.clients.get_work_item_tracking_client()
         
+        # Use defaults if not provided
+        if task_types is None:
+            task_types = ['epic', 'feature']
+        if include_states is None:
+            include_states = []
+        
         # Sanitize and escape area path for WIQL
         wiql_area = self._sanitize_area_path(area_path)
         wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
         
+        # Build work item types clause
+        # Capitalize first letter for Azure DevOps (Epic, Feature, etc.)
+        types_list = [f"'{t.capitalize()}'" for t in task_types]
+        types_clause = ','.join(types_list)
+        
+        # Build state filter clause
+        if include_states:
+            # Use positive filter: include only specified states
+            # Capitalize first letter for Azure DevOps states
+            states_list = [f"'{s.capitalize()}'" for s in include_states]
+            states_clause = f"AND [System.State] IN ({','.join(states_list)})"
+        else:
+            # Use negative filter: exclude closed/removed by default
+            states_clause = "AND [System.State] NOT IN ('Closed', 'Removed')"
+        
         wiql_query = f"""
         SELECT [System.Id]
         FROM WorkItems
-        WHERE [System.WorkItemType] IN ('Epic','Feature')
+        WHERE [System.WorkItemType] IN ({types_clause})
         AND [System.AreaPath] = '{wiql_area_escaped}' 
-        AND [System.State] NOT IN ('Closed', 'Removed')
+        {states_clause}
         ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
         """
         

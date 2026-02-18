@@ -57,7 +57,12 @@ class TaskService(TaskServiceProtocol):
                 if project_id and id != project_id:
                     continue
 
-                wis = client.get_work_items(path)  # type: ignore
+                # Extract task_types and include_states from project configuration
+                task_types = p.get('task_types')
+                include_states = p.get('include_states')
+                
+                # Pass configuration to get_work_items
+                wis = client.get_work_items(path, task_types=task_types, include_states=include_states)  # type: ignore
                 logger.debug("Fetched %d work items for project '%s'", len(wis or []), name)
                 for wi in wis or []:
                     parsed_capacity = self._capacity_service.parse(wi.get('description'))

@@ -49,10 +49,10 @@ def make_client():
 def test_cache_hit_returns_cached_items():
     client = make_client()
     area_path = 'Area/Sub'
-    area_key = client._sanitize_area_path(area_path)
 
     # prepopulate cache and index with a fresh timestamp
-    cache_key = client._key_for_area(area_key)
+    # Use _key_for_area directly to match actual implementation
+    cache_key = client._key_for_area(area_path)
     client._cache.write(cache_key, [{'id': '1', 'title': 'T1'}])
     client._cache.update_timestamp(cache_key)
 
@@ -67,10 +67,10 @@ def test_cache_hit_returns_cached_items():
 def test_force_refresh_fetches_and_updates_cache():
     client = make_client()
     area_path = 'Area/Sub'
-    area_key = client._sanitize_area_path(area_path)
 
     # prepopulate cache with an old timestamp to force full refresh
-    cache_key = client._key_for_area(area_key)
+    # Use _key_for_area directly to match actual implementation
+    cache_key = client._key_for_area(area_path)
     client._cache.write(cache_key, [{'id': '1', 'title': 'OLD'}])
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
     # Set stale timestamp
