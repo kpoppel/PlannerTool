@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.8.0] - unreleased
+## [v1.8.0] - 2026-02-18
 
 ### Added
 
