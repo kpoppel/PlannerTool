@@ -523,4 +523,18 @@ class AzureCachingClient(AzureClient):
         logger.debug(f"Cached {len(iterations)} iterations with key: {key}")
         
         return iterations
+    
+    def invalidate_all_caches(self) -> dict:
+        """Invalidate all cached data.
+        
+        This clears all work items, teams, plans, markers, and iterations
+        from the cache, forcing a complete refresh on the next fetch.
+        
+        Returns:
+            Dictionary with count of cleared entries
+        """
+        logger.info("Invalidating all caches")
+        count = self._cache.clear_all_caches()
+        return {'ok': True, 'cleared': count}
+
 

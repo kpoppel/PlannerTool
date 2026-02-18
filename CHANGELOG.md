@@ -14,6 +14,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.8.0] - unreleased
+
+### Added
+### Changed
+
+- When pressing the "Refresh Baseline" button in the sidebar the server invalidates the task cache before refreshing so changes are immediately visible in the task list
+
+### Fixed
+
 ## [v1.7.0] - 2026-02-17
 
 ### Added

@@ -98,6 +98,15 @@ export class DataInitService {
    * @returns {Object} - Object containing refreshed baseline data
    */
   async refreshBaseline() {
+    // Invalidate server cache to force fresh data fetch
+    console.log('Invalidating server cache before refresh...');
+    try {
+      await this._dataService.invalidateCache();
+      console.log('Server cache invalidated successfully');
+    } catch (e) {
+      console.warn('Failed to invalidate server cache, proceeding with refresh:', e);
+    }
+    
     // Fetch fresh data from backend
     const projects = await this._dataService.getProjects();
     const teams = await this._dataService.getTeams();

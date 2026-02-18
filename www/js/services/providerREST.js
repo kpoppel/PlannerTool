@@ -320,5 +320,21 @@ export class ProviderREST {
             return data;
         }catch(err){ console.error('providerREST:getMarkers error', err); return []; }
     }
+    
+    async invalidateCache(){
+        try{
+            const res = await fetch('/api/cache/invalidate', { 
+                method: 'POST', 
+                headers: this._headers({ 'Content-Type':'application/json' }) 
+            });
+            if(!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            console.log('providerREST:invalidateCache - Cache invalidated', data);
+            return data;
+        }catch(err){ 
+            console.error('providerREST:invalidateCache error', err); 
+            return { ok: false, error: String(err) }; 
+        }
+    }
   // ...other methods will be added in later steps
 }

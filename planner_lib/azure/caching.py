@@ -330,3 +330,28 @@ class CacheManager:
                 logger.debug(f"Pruned {len(removed)} old cache entries")
             
             return removed
+    
+    def clear_all_caches(self) -> int:
+        """Clear all cache entries and reset the index.
+        
+        This removes all cached data and resets the cache manager to a 
+        clean state. Useful for forcing a complete refresh of all data.
+        
+        Returns:
+            Number of cache entries cleared
+        """
+        with self._lock:
+            index = self._read_index()
+            
+            # Collect all cache keys (excluding _invalidated)
+            keys_to_clear = [k for k in index.keys() if k != '_invalidated']
+            
+            # Delete all cache entries
+            for key in keys_to_clear:
+                self.delete(key)
+            
+            # Reset index
+            self._write_index({})
+            
+            logger.info(f"Cleared all caches: {len(keys_to_clear)} entries removed")
+            return len(keys_to_clear)

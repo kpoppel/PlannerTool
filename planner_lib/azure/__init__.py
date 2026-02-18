@@ -42,6 +42,24 @@ class AzureService(AzureServiceProtocol):
 
         # Return the concrete client's context-manager directly.
         return client.connect(pat)
+    
+    def invalidate_all_caches(self) -> dict:
+        """Invalidate all cached Azure data.
+        
+        This clears all cached work items, teams, plans, markers, and iterations.
+        Only works when enable_azure_cache feature flag is enabled.
+        
+        Returns:
+            Dictionary with status and count of cleared entries
+        """
+        if not self.feature_flags.get("enable_azure_cache", False):
+            logger.warning("Cache invalidation requested but enable_azure_cache is not enabled")
+            return {'ok': False, 'error': 'Caching not enabled', 'cleared': 0}
+        
+        from planner_lib.azure.AzureCachingClient import AzureCachingClient
+        client = AzureCachingClient(self.organization_url, storage=self.storage)
+        return client.invalidate_all_caches()
+
 
 
 # `get_client()` removed: use `AzureService.connect(pat)` instead.

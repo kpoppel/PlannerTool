@@ -168,3 +168,26 @@ async def api_config_iterations(request: Request):
         logger.exception('Failed to fetch iterations: %s', e)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post('/cache/invalidate')
+@require_session
+async def api_cache_invalidate(request: Request):
+    """Invalidate all Azure caches to force a fresh data fetch.
+    
+    This clears all cached work items, teams, plans, markers, and iterations.
+    The next data fetch will retrieve fresh data from Azure DevOps.
+    
+    Returns:
+        JSON with status and count of cleared cache entries
+    """
+    logger.info("Cache invalidation requested")
+    try:
+        azure_svc = resolve_service(request, 'azure_client')
+        result = azure_svc.invalidate_all_caches()
+        logger.info(f"Cache invalidation completed: {result}")
+        return result
+    except Exception as e:
+        logger.exception('Failed to invalidate caches: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+

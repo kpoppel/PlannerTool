@@ -59,6 +59,10 @@ class AzureServiceProtocol(Protocol):
 
     def update_work_item_description(self, work_item_id: int, description: str) -> Any:  # pragma: no cover - typing shim
         ...
+    
+    def invalidate_all_caches(self) -> dict:  # pragma: no cover - typing shim
+        """Invalidate all cached data and force a complete refresh on next fetch."""
+        ...
 
     def connect(self, pat: str) -> ContextManager["AzureServiceProtocol"]:
         """Return a context manager that yields a connected per-PAT client.
