@@ -14,6 +14,19 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.10.0] - unreleased
+
+### Added
+
+- For cards with a long title the tool will not display a "ghost title" next to the card
+- Export plugin renders the ghost titles too (needs some refinement as this is a separate SVG rendering
+  of the user interface)
+
+### Changed
+### Fixed
+
+- Help text typos.
+
 ## [v1.9.0] - 2026-02-19
 
 ### Added
