@@ -25,7 +25,8 @@ export class FeatureCardLit extends LitElement {
     teams: { type: Array },
     condensed: { type: Boolean },
     selected: { type: Boolean },
-    project: { type: Object }
+    project: { type: Object },
+    titleOverflows: { type: Boolean, state: true }
   };
 
   static styles = css`
@@ -337,6 +338,41 @@ export class FeatureCardLit extends LitElement {
     .feature-card:hover .drag-handle {
       opacity: 1;
     }
+
+    /* Ghost title styling - shown left of card when title overflows */
+    .ghost-title {
+      position: absolute;
+      background: transparent;
+      border: 1px dashed rgba(0,0,0,0.25);
+      padding: 2px 6px;
+      border-radius: 4px;
+      /* font-weight: 700;*/
+      font-size: 0.9em;
+      color: rgba(0,0,0,0.75);
+      z-index: 120;
+      pointer-events: none;
+      display: none;
+      line-height: 1.1;
+      text-align: left;
+      white-space: no-wrap;
+    }
+
+    .ghost-title.visible {
+      display: block;
+    }
+
+    .ghost-title::after {
+      content: '';
+      position: absolute;
+      right: -6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-left: 6px solid rgba(0,0,0,0.08);
+    }
   `;
 
   constructor() {
@@ -347,6 +383,7 @@ export class FeatureCardLit extends LitElement {
     this.condensed = false;
     this.selected = false;
     this.project = null;
+    this.titleOverflows = false;
     // ResizeObserver batching state
     this._ro = null;
     this._roQueue = [];
@@ -365,6 +402,11 @@ export class FeatureCardLit extends LitElement {
     // reflect dirty on host as well for external styles/tests
     this.classList.toggle('dirty', this.feature?.dirty);
     this.setAttribute('data-feature-id', String(this.feature.id));
+    
+    // Update ghost title position when component updates
+    if (this.titleOverflows) {
+      requestAnimationFrame(() => this._updateGhostTitlePosition());
+    }
   }
 
   /**
@@ -453,6 +495,33 @@ export class FeatureCardLit extends LitElement {
         } catch (e) { }
       });
     } catch (e) { }
+    
+    // Add scroll listener to update ghost title position on scroll
+    this._onScroll = () => {
+      if (this.titleOverflows) {
+        requestAnimationFrame(() => this._updateGhostTitlePosition());
+      }
+    };
+    
+    // Find the scrollable parent container and attach listener
+    requestAnimationFrame(() => {
+      try {
+        let scrollParent = this.parentElement;
+        while (scrollParent) {
+          const overflow = window.getComputedStyle(scrollParent).overflow;
+          if (overflow === 'auto' || overflow === 'scroll') {
+            scrollParent.addEventListener('scroll', this._onScroll);
+            this._scrollParent = scrollParent;
+            break;
+          }
+          scrollParent = scrollParent.parentElement;
+        }
+      } catch (e) { }
+    });
+    
+    // Also listen to window scroll as fallback
+    window.addEventListener('scroll', this._onScroll, true);
+    
     // attach mousedown handlers for dragging and resizing directly on the host
     try {
       this.addEventListener('mousedown', this._onHostMouseDown = (e) => {
@@ -510,7 +579,18 @@ export class FeatureCardLit extends LitElement {
     try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
     try { if (typeof this._unsubFeaturesUpdated === 'function') this._unsubFeaturesUpdated(); } catch (e) { }
     try { if (this._onHostMouseDown) this.removeEventListener('mousedown', this._onHostMouseDown); } catch (e) {}
-      try { if (this._boundOnPreUp) { window.removeEventListener('mouseup', this._boundOnPreUp); window.removeEventListener('pointerup', this._boundOnPreUp); this._boundOnPreUp = null; } } catch (e) {}
+    try { if (this._boundOnPreUp) { window.removeEventListener('mouseup', this._boundOnPreUp); window.removeEventListener('pointerup', this._boundOnPreUp); this._boundOnPreUp = null; } } catch (e) {}
+    
+    // Clean up scroll listeners
+    try {
+      if (this._scrollParent && this._onScroll) {
+        this._scrollParent.removeEventListener('scroll', this._onScroll);
+      }
+      if (this._onScroll) {
+        window.removeEventListener('scroll', this._onScroll, true);
+      }
+    } catch (e) { }
+    
     super.disconnectedCallback();
   }
 
@@ -534,6 +614,11 @@ export class FeatureCardLit extends LitElement {
       if (w < 40) {
         rootCard.classList.add('small-feature');
         this.classList.add('small-feature');
+        this.titleOverflows = true; // Always show ghost title for small features since title is hidden
+        // Update ghost title position - use rAF to ensure element is laid out
+        if (this.titleOverflows) {
+          requestAnimationFrame(() => this._updateGhostTitlePosition());
+        }
         return; // Skip other layout checks for small features
       } else {
         rootCard.classList.remove('small-feature');
@@ -544,6 +629,9 @@ export class FeatureCardLit extends LitElement {
       const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
       const contentFits = teamFits && titleFits;
 
+      // Update titleOverflows property to match exactly when card title shows ellipsis
+      this.titleOverflows = !titleFits;
+
       if (contentFits) {
         rootCard.classList.remove('narrow');
         this.classList.remove('narrow');
@@ -552,8 +640,45 @@ export class FeatureCardLit extends LitElement {
         this.classList.add('narrow');
       }
 
-      if (w < 70) { rootCard.classList.add('culled'); this.classList.add('culled'); }
-      else { rootCard.classList.remove('culled'); this.classList.remove('culled'); }
+      const isCulled = w < 70;
+      if (isCulled) { 
+        rootCard.classList.add('culled'); 
+        this.classList.add('culled'); 
+      } else { 
+        rootCard.classList.remove('culled'); 
+        this.classList.remove('culled'); 
+      }
+      
+      // Update ghost title position if visible - use rAF to ensure element is laid out
+      if (this.titleOverflows) {
+        requestAnimationFrame(() => this._updateGhostTitlePosition());
+      }
+    } catch (e) { }
+  }
+
+  _updateGhostTitlePosition() {
+    try {
+      const ghostTitle = this.shadowRoot?.querySelector?.('.ghost-title');
+      const featureCard = this.shadowRoot?.querySelector?.('.feature-card');
+      if (!ghostTitle || !featureCard) return;
+
+      // Wait for element to be laid out before measuring
+      const ghostWidth = ghostTitle.offsetWidth;
+      const ghostHeight = ghostTitle.offsetHeight;
+      if (ghostWidth === 0 || ghostHeight === 0) {
+        // Element not yet laid out, try again next frame
+        requestAnimationFrame(() => this._updateGhostTitlePosition());
+        return;
+      }
+
+      // Ghost is positioned absolutely relative to .feature-card (position: relative)
+      // Position it to the left of the card with negative offset
+      // This gets automatically clipped by FeatureBoard's overflow: auto
+      const cardHeight = featureCard.offsetHeight;
+      const gap = 12;
+      
+      ghostTitle.style.left = `${-ghostWidth - gap}px`;
+      ghostTitle.style.top = `${(cardHeight / 2) - (ghostHeight / 2)}px`;
     } catch (e) { }
   }
 
@@ -643,6 +768,22 @@ export class FeatureCardLit extends LitElement {
     return html`<span class="feature-card-icon feature">${featureTemplate}</span>`;
   }
 
+  _splitTitleAtMiddle(title) {
+    if (!title) return '';
+    const words = title.trim().split(/\s+/);
+    
+    // Only split into two lines if there are 4+ words
+    // Shorter titles can stay on one line or wrap naturally
+    if (words.length < 4) return title;
+    
+    // Find middle point for longer titles
+    const middleIndex = Math.floor(words.length / 2);
+    const firstLine = words.slice(0, middleIndex).join(' ');
+    const secondLine = words.slice(middleIndex).join(' ');
+    
+    return html`${firstLine}<br/>${secondLine}`;
+  }
+
   render() {
     const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     
@@ -684,6 +825,9 @@ export class FeatureCardLit extends LitElement {
           </div>
         ` : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
+      </div>
+      <div class="ghost-title ${this.titleOverflows ? 'visible' : ''}" part="ghost-title">
+        ${this._splitTitleAtMiddle(this.feature.title)}
       </div>
     `;
   }
