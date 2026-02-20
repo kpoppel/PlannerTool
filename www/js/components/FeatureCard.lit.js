@@ -8,6 +8,8 @@ import { state } from '../services/State.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { epicTemplate, featureTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';
+import './GhostTitle.lit.js';
+import './GhostTitle.lit.js';
 
 /**
  * FeatureCardLit - Lit-based feature card component
@@ -338,41 +340,6 @@ export class FeatureCardLit extends LitElement {
     .feature-card:hover .drag-handle {
       opacity: 1;
     }
-
-    /* Ghost title styling - shown left of card when title overflows */
-    .ghost-title {
-      position: absolute;
-      background: transparent;
-      border: 1px dashed rgba(0,0,0,0.25);
-      padding: 2px 6px;
-      border-radius: 4px;
-      /* font-weight: 700;*/
-      font-size: 0.9em;
-      color: rgba(0,0,0,0.75);
-      z-index: 120;
-      pointer-events: none;
-      display: none;
-      line-height: 1.1;
-      text-align: left;
-      white-space: no-wrap;
-    }
-
-    .ghost-title.visible {
-      display: block;
-    }
-
-    .ghost-title::after {
-      content: '';
-      position: absolute;
-      right: -6px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 0;
-      height: 0;
-      border-top: 6px solid transparent;
-      border-bottom: 6px solid transparent;
-      border-left: 6px solid rgba(0,0,0,0.08);
-    }
   `;
 
   constructor() {
@@ -391,6 +358,8 @@ export class FeatureCardLit extends LitElement {
     this._skipRo = false; // set true while dragging to avoid layout reads
     this._abortController = new AbortController();
     this._suppressClickUntil = 0; // ignore clicks shortly after drag end
+    // Create ghost title element (lives outside shadow DOM)
+    this._ghostTitle = null;
     // Mark host as a possible tour anchor
     try{ this.setAttribute('data-tour','feature-card'); }catch(e){}
   }
@@ -403,10 +372,8 @@ export class FeatureCardLit extends LitElement {
     this.classList.toggle('dirty', this.feature?.dirty);
     this.setAttribute('data-feature-id', String(this.feature.id));
     
-    // Update ghost title position when component updates
-    if (this.titleOverflows) {
-      requestAnimationFrame(() => this._updateGhostTitlePosition());
-    }
+    // Update ghost title (creates/destroys as needed based on titleOverflows)
+    requestAnimationFrame(() => this._updateGhostTitlePosition());
   }
 
   /**
@@ -419,6 +386,9 @@ export class FeatureCardLit extends LitElement {
       console.log('[FeatureCard] applyVisuals', this.feature.id, { left, width, selected, dirty, project });
     }
     console.log('[FeatureCard] applyVisuals', this.feature?.id, 'dirty:', dirty, 'current feature.dirty:', this.feature?.dirty);
+    
+    const widthChanged = width !== undefined;
+    
     try {
       const px = typeof left === 'number' ? `${left}px` : left;
       this.style.left = px;
@@ -435,6 +405,20 @@ export class FeatureCardLit extends LitElement {
       this.project = project;
       // Force an update cycle if necessary
       this.requestUpdate();
+      
+      // If width changed, check if title overflow state needs updating
+      if (widthChanged) {
+        requestAnimationFrame(() => {
+          // Manually trigger overflow check after width change
+          const entry = {
+            contentRect: {
+              width: this.offsetWidth || 0
+            }
+          };
+          this._roQueue.push(entry);
+          this._processRoNow();
+        });
+      }
     } catch (e) { /* swallow to allow caller fallback */ }
   }
 
@@ -463,6 +447,10 @@ export class FeatureCardLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    
+    // Ghost title will be created on-demand when titleOverflows becomes true
+    this._ghostTitle = null;
+    
     // Debounced ResizeObserver: batch entries and process in rAF
     this._ro = new ResizeObserver(entries => {
       if (this._skipRo) return;
@@ -591,6 +579,14 @@ export class FeatureCardLit extends LitElement {
       }
     } catch (e) { }
     
+    // Remove ghost title element
+    try {
+      if (this._ghostTitle && this._ghostTitle.parentNode) {
+        this._ghostTitle.parentNode.removeChild(this._ghostTitle);
+      }
+      this._ghostTitle = null;
+    } catch (e) { }
+    
     super.disconnectedCallback();
   }
 
@@ -657,29 +653,68 @@ export class FeatureCardLit extends LitElement {
   }
 
   _updateGhostTitlePosition() {
-    try {
-      const ghostTitle = this.shadowRoot?.querySelector?.('.ghost-title');
-      const featureCard = this.shadowRoot?.querySelector?.('.feature-card');
-      if (!ghostTitle || !featureCard) return;
-
-      // Wait for element to be laid out before measuring
-      const ghostWidth = ghostTitle.offsetWidth;
-      const ghostHeight = ghostTitle.offsetHeight;
-      if (ghostWidth === 0 || ghostHeight === 0) {
-        // Element not yet laid out, try again next frame
-        requestAnimationFrame(() => this._updateGhostTitlePosition());
-        return;
+    // Create or destroy ghost title based on overflow state
+    if (this.titleOverflows && !this._ghostTitle) {
+      // Create ghost title when needed
+      this._ghostTitle = document.createElement('ghost-title-lit');
+      const featureBoard = document.querySelector('feature-board');
+      if (featureBoard && featureBoard.shadowRoot) {
+        featureBoard.shadowRoot.appendChild(this._ghostTitle);
       }
+    } else if (!this.titleOverflows && this._ghostTitle) {
+      // Destroy ghost title when not needed
+      try {
+        if (this._ghostTitle.parentNode) {
+          this._ghostTitle.parentNode.removeChild(this._ghostTitle);
+        }
+        this._ghostTitle = null;
+      } catch (e) { }
+      return;
+    }
+    
+    if (!this._ghostTitle) return;
+    
+    try {
+      const featureCard = this.shadowRoot?.querySelector?.('.feature-card');
+      if (!featureCard) return;
 
-      // Ghost is positioned absolutely relative to .feature-card (position: relative)
-      // Position it to the left of the card with negative offset
-      // This gets automatically clipped by FeatureBoard's overflow: auto
-      const cardHeight = featureCard.offsetHeight;
-      const gap = 12;
-      
-      ghostTitle.style.left = `${-ghostWidth - gap}px`;
-      ghostTitle.style.top = `${(cardHeight / 2) - (ghostHeight / 2)}px`;
-    } catch (e) { }
+      // Get the feature card's border-left-color
+      const computedStyle = window.getComputedStyle(featureCard);
+      const borderColor = computedStyle.getPropertyValue('border-left-color');
+
+      // Get FeatureBoard for boundaries
+      const featureBoard = document.querySelector('feature-board');
+      if (!featureBoard) return;
+
+      const cardRect = this.getBoundingClientRect();
+      const boardRect = featureBoard.getBoundingClientRect();
+
+      // Get card's actual position within the board using offsetTop/offsetLeft
+      // This gives us the position in the coordinate space we need for absolute positioning
+      const cardLeft = this.offsetLeft || 0;
+      const cardTop = this.offsetTop || 0;
+      const cardWidth = cardRect.width;
+      const cardHeight = cardRect.height;
+
+      // Update ghost title component properties
+      this._ghostTitle.title = this.feature.title || '';
+      this._ghostTitle.visible = true;
+      this._ghostTitle.borderColor = borderColor;
+      this._ghostTitle.cardRect = {
+        left: cardLeft,
+        top: cardTop,
+        width: cardWidth,
+        height: cardHeight
+      };
+      this._ghostTitle.boardRect = {
+        left: 0,
+        top: 0,
+        width: boardRect.width,
+        height: boardRect.height
+      };
+    } catch (e) { 
+      console.error('[Ghost] Error:', e);
+    }
   }
 
   _handleClick(e) {
@@ -768,22 +803,6 @@ export class FeatureCardLit extends LitElement {
     return html`<span class="feature-card-icon feature">${featureTemplate}</span>`;
   }
 
-  _splitTitleAtMiddle(title) {
-    if (!title) return '';
-    const words = title.trim().split(/\s+/);
-    
-    // Only split into two lines if there are 4+ words
-    // Shorter titles can stay on one line or wrap naturally
-    if (words.length < 4) return title;
-    
-    // Find middle point for longer titles
-    const middleIndex = Math.floor(words.length / 2);
-    const firstLine = words.slice(0, middleIndex).join(' ');
-    const secondLine = words.slice(middleIndex).join(' ');
-    
-    return html`${firstLine}<br/>${secondLine}`;
-  }
-
   render() {
     const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     
@@ -825,9 +844,6 @@ export class FeatureCardLit extends LitElement {
           </div>
         ` : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
-      </div>
-      <div class="ghost-title ${this.titleOverflows ? 'visible' : ''}" part="ghost-title">
-        ${this._splitTitleAtMiddle(this.feature.title)}
       </div>
     `;
   }

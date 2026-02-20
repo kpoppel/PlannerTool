@@ -128,6 +128,9 @@ export class TimelineExportRenderer {
     // Layer 4: Feature cards
     this._renderFeatureCards(boardY, viewport);
     
+    // Layer 4.5: Ghost titles (for overflowing titles)
+    this._renderGhostTitles(boardY, viewport);
+    
     // Layer 5: Dependency lines
     this._renderDependencies(boardY, viewport, includeDependencies);
     
@@ -299,6 +302,9 @@ export class TimelineExportRenderer {
     // Get visible features from the board's current render state
     const features = featureBoard.features || [];
     
+    // Track card data for ghost title rendering
+    this._cardData = [];
+    
     for (const featureObj of features) {
       const { feature, left, width, top, project } = featureObj;
       
@@ -362,8 +368,10 @@ export class TimelineExportRenderer {
       
       // Title text - show if card is wide enough
       // For left-clipped cards, show title starting at left edge (may overflow right)
+      const title = feature.title || feature.name || `#${feature.id}`;
+      let titleOverflows = false;
+      
       if (visibleWidth > 40) {
-        const title = feature.title || feature.name || `#${feature.id}`;
         const baseTextX = isLeftClipped 
           ? visibleX + CARD_PADDING  // Start from visible left edge
           : visibleX + CARD_BORDER_LEFT_WIDTH + CARD_PADDING;  // After project color border
@@ -374,9 +382,12 @@ export class TimelineExportRenderer {
         const textX = baseTextX + iconReserve;
 
         // For left-clipped cards, allow text to overflow; otherwise truncate to fit
+        const availableWidth = visibleWidth - CARD_PADDING * 2 - CARD_BORDER_LEFT_WIDTH - iconReserve;
         const truncatedTitle = isLeftClipped 
           ? title  // Allow overflow
-          : this._truncateText(title, visibleWidth - CARD_PADDING * 2 - CARD_BORDER_LEFT_WIDTH - iconReserve);
+          : this._truncateText(title, availableWidth);
+        
+        titleOverflows = !isLeftClipped && truncatedTitle.endsWith('…');
 
         const titleText = createSvgText(
           truncatedTitle,
@@ -404,9 +415,200 @@ export class TimelineExportRenderer {
           }
         }
       }
+      
+      // Store card data for ghost title rendering
+      // Small cards (<40px) or overflowing titles should show ghosts
+      const isSmallCard = visibleWidth <= 40;
+      if (isSmallCard || titleOverflows) {
+        this._cardData.push({
+          feature,
+          project,
+          title,
+          left,
+          cardX,
+          cardY,
+          width,
+          height: cardHeight,
+          scrollLeft,
+          visibleX,
+          visibleWidth,
+          isLeftClipped,
+          isRightClipped
+        });
+      }
 
       // Append the assembled card group to the root svg so it sits above board background
       this._svg.appendChild(cardGroup);
+    }
+  }
+
+  /**
+   * Render ghost titles for overflowing feature card titles
+   * Matches styling from GhostTitle.lit.js
+   */
+  _renderGhostTitles(yOffset, viewport) {
+    if (!this._cardData || this._cardData.length === 0) return;
+    
+    // Match GhostTitle.lit.js styling
+    const GHOST_PADDING_VERTICAL = 2;
+    const GHOST_PADDING_HORIZONTAL = 6;
+    const GHOST_GAP = 12; // Match the gap in GhostTitle.lit.js
+    const GHOST_FONT_SIZE = CARD_TITLE_FONT_SIZE * 0.9; // 0.9em
+    const GHOST_LINE_HEIGHT = GHOST_FONT_SIZE * 1.1; // line-height: 1.1
+    const ARROW_SIZE = 10;
+    const BORDER_LEFT_WIDTH_STUCK = 6;
+    for (const cardData of this._cardData) {
+      const { feature, project, title, left, cardX, cardY, width, height, scrollLeft } = cardData;
+      
+      // Split title like GhostTitle.lit.js does
+      const words = title.split(/\s+/);
+      let lines = [];
+      
+      if (words.length < 4) {
+        // Short title - use as single line
+        lines = [title];
+      } else {
+        // Split at middle
+        const mid = Math.floor(words.length / 2);
+        lines = [
+          words.slice(0, mid).join(' '),
+          words.slice(mid).join(' ')
+        ];
+      }
+      
+      // Calculate ghost width based on longest line
+      // Using 0.7 * fontSize as character width (conservative estimate)
+      const charWidth = GHOST_FONT_SIZE * 0.7;
+      let maxLineLength = 0;
+      for (const line of lines) {
+        if (line.length > maxLineLength) {
+          maxLineLength = line.length;
+        }
+      }
+      
+      // Ghost width = text width + padding + extra buffer for safety
+      const ghostWidth = maxLineLength * charWidth + GHOST_PADDING_HORIZONTAL * 2 + 30;
+      const ghostHeight = GHOST_PADDING_VERTICAL * 2 + lines.length * GHOST_LINE_HEIGHT;
+      
+      // Calculate ghost position using the same logic as GhostTitle.lit.js
+      // cardLeft is the absolute position on the board
+      const cardLeft = left;
+      const cardInViewportX = cardLeft - scrollLeft;
+      const cardRightInViewportX = cardInViewportX + width;
+      
+      // Check if card is visible in viewport
+      const cardLeftVisible = cardInViewportX >= 0 && cardInViewportX <= this._width;
+      const cardRightVisible = cardRightInViewportX >= 0 && cardRightInViewportX <= this._width;
+      const isCardOnScreen = cardLeftVisible || cardRightVisible;
+      
+      let ghostLeft;
+      let stuckToEdge = false;
+      
+      if (isCardOnScreen) {
+        // Card is on-screen: position ghost to the left of the card
+        // Account for ghost width + gap + arrow
+        ghostLeft = cardLeft - ghostWidth - GHOST_GAP - ARROW_SIZE;
+        
+        // Clamp ghostLeft to not go off the left edge of visible area
+        if (ghostLeft < scrollLeft) {
+          ghostLeft = scrollLeft + GHOST_GAP;
+          stuckToEdge = true;
+        }
+      } else {
+        // Card is off-screen: stick ghost to the visible edge
+        stuckToEdge = true;
+        if (cardRightInViewportX < 0) {
+          // Card is off-screen to the left: stick ghost to left edge with gap
+          ghostLeft = scrollLeft + GHOST_GAP;
+        } else if (cardInViewportX > this._width) {
+          // Card is off-screen to the right: stick ghost to right edge (but we probably won't have these)
+          ghostLeft = scrollLeft + this._width - ghostWidth - GHOST_GAP - ARROW_SIZE;
+        } else {
+          // Fallback to normal positioning
+          ghostLeft = cardLeft - ghostWidth - GHOST_GAP - ARROW_SIZE;
+          if (ghostLeft < scrollLeft) {
+            ghostLeft = scrollLeft + GHOST_GAP;
+          }
+        }
+      }
+      
+      // Convert to viewport coordinates for rendering
+      const ghostX = ghostLeft - scrollLeft;
+      const ghostY = cardY + (height - ghostHeight) / 2;
+      
+      // Create ghost group
+      const ghostGroup = createSvgElement('g', { class: 'ghost-title' });
+      
+      // Background rect - transparent fill with dashed border
+      const bgRect = createSvgElement('rect', {
+        x: ghostX,
+        y: ghostY,
+        width: ghostWidth,
+        height: ghostHeight,
+        rx: 4,
+        ry: 4,
+        fill: 'none',
+        stroke: 'rgba(0,0,0,0.25)',
+        'stroke-width': 1,
+        'stroke-dasharray': '3,3'
+      });
+      ghostGroup.appendChild(bgRect);
+      
+      // Solid border when stuck to edge
+      if (stuckToEdge) {
+        const projectColor = project?.color || '#666666';
+        const solidBorder = createSvgElement('rect', {
+          x: ghostX,
+          y: ghostY,
+          width: BORDER_LEFT_WIDTH_STUCK,
+          height: ghostHeight,
+          rx: 4,
+          ry: 4,
+          fill: projectColor
+        });
+        ghostGroup.appendChild(solidBorder);
+        
+        // Clip right side to square it off
+        const borderClip = createSvgElement('rect', {
+          x: ghostX + 4,
+          y: ghostY,
+          width: BORDER_LEFT_WIDTH_STUCK - 4,
+          height: ghostHeight,
+          fill: projectColor
+        });
+        ghostGroup.appendChild(borderClip);
+      }
+      
+      // Render text lines
+      const textX = ghostX + GHOST_PADDING_HORIZONTAL;
+      const firstLineY = ghostY + GHOST_PADDING_VERTICAL + GHOST_FONT_SIZE;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const lineY = firstLineY + i * GHOST_LINE_HEIGHT;
+        const lineText = createSvgText(
+          lines[i],
+          textX,
+          lineY,
+          {
+            fontSize: GHOST_FONT_SIZE,
+            fill: 'rgba(0,0,0,0.75)',
+            anchor: 'start'
+          }
+        );
+        ghostGroup.appendChild(lineText);
+      }
+      
+      // Arrow pointing to card (right-pointing triangle on right edge)
+      const arrowX = ghostX + ghostWidth;
+      const arrowY = ghostY + ghostHeight / 2;
+      const arrow = createSvgElement('polygon', {
+        points: `${arrowX},${arrowY - ARROW_SIZE} ${arrowX + ARROW_SIZE},${arrowY} ${arrowX},${arrowY + ARROW_SIZE}`,
+        fill: 'rgba(0,0,0,0.1)'
+      });
+      ghostGroup.appendChild(arrow);
+      
+      // Append ghost to SVG
+      this._svg.appendChild(ghostGroup);
     }
   }
 
