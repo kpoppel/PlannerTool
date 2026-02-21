@@ -21,11 +21,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - For cards with a long title the tool will not display a "ghost title" next to the card
 - Export plugin renders the ghost titles too (needs some refinement as this is a separate SVG rendering
   of the user interface)
+- Admin backend has teams vs people database validation information added now to see if mappings are correct
+- Added file storage backend for single file storage
 
 ### Changed
+
 ### Fixed
 
 - Help text typos.
+- Cost service now actually uses the database_path. Note: the path MUST include the filename now.
 
 ## [v1.9.0] - 2026-02-19
 
