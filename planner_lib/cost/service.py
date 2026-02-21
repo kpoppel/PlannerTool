@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from planner_lib.storage.interfaces import StorageProtocol
 from planner_lib.projects.project_service import ProjectServiceProtocol
+from planner_lib.projects.interfaces import TeamServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +16,21 @@ class CostService:
     `projects.yml`, `teams.yml` and `cost_config.yml` via the storage layer.
     """
 
-    def __init__(self, storage: StorageProtocol, project_service: ProjectServiceProtocol):
+    def __init__(
+        self,
+        storage: StorageProtocol,
+        project_service: ProjectServiceProtocol,
+        team_service: TeamServiceProtocol,
+        people_storage: StorageProtocol,
+    ):
+        # `storage` is the config/cost storage (yaml). `people_storage` may
+        # be provided separately (specific file backend). The `team_service`
+        # must be provided and will be used exclusively for configured
+        # teams lookup; there is no fallback to loading teams from storage.
         self._storage = storage
+        self._people_storage = people_storage
         self._project_service = project_service
+        self._team_service = team_service
         # Load cost configuration once at service construction by reading the
         # underlying storage directly. This removes the need for a separate
         # helper to be called from the application.
@@ -25,33 +38,24 @@ class CostService:
         try:
             cost_cfg = {}
             db_cfg = {}
-            if self._storage is not None:
-                try:
-                    cost_cfg = self._storage.load("config", "cost_config") or {}
-                except Exception:
-                    cost_cfg = {}
-                try:
-                    raw_db = self._storage.load("config", "database") or {}
-                except Exception:
-                    raw_db = {}
-            else:
-                # No storage provided: default to empty configs so the service
-                # remains usable in tests or non-app contexts.
+            cost_cfg = {}
+            raw_db = {}
+            try:
+                cost_cfg = self._storage.load("config", "cost_config") or {}
+            except Exception:
                 cost_cfg = {}
+
+            try:
+                raw_db = self._people_storage.load("config", "database") or {}
+            except Exception:
                 raw_db = {}
 
-            # Normalize `database` section shape: some storages wrap it under
-            # a top-level 'database' key.
-            database = {}
-            if isinstance(raw_db, dict) and isinstance(raw_db.get('database'), dict):
-                database = raw_db.get('database')
-            else:
-                database = raw_db if isinstance(raw_db, dict) else {}
+            database = raw_db.get('database', {})
 
             # Validate team consistency against configured teams where possible.
             try:
-                self._validate_team_consistency(cost_cfg, raw_db)
-            except Exception:
+                self._validate_team_consistency(database)
+            except ValueError:
                 # Do not raise on validation failure at startup; log and continue.
                 logger.debug('Team consistency validation failed during CostService init')
 
@@ -59,7 +63,7 @@ class CostService:
         except Exception:
             self._cfg = {"cost": {}, "database": {}}
 
-    def _validate_team_consistency(self, cost_cfg: dict, raw_db: dict) -> None:
+    def _validate_team_consistency(self, db: dict) -> None:
         """Ensure teams declared in server config `teams` are used by people in `database`.
 
         Ensure teams declared in server config `team_map` are used by people in `database`.
@@ -72,20 +76,14 @@ class CostService:
         """
         from planner_lib.util import slugify
 
-        # Extract configured team names from teams configuration (dedicated teams.yml)
-        configured = []
-        try:
-            teams_cfg = self._storage.load("config", "teams") if self._storage is not None else {}
-        except Exception:
-            teams_cfg = {}
-        for t in teams_cfg.get('teams', []) if isinstance(teams_cfg, dict) else []:
-            if isinstance(t, dict) and t.get('name'):
-                configured.append(str(t.get('name')))
+        # Extract configured team names from teams configuration (teams_service)
+        teams_list = self._team_service.list_teams() or []
+        configured_ids = set(elem.get("id", "") for elem in teams_list)
 
-        configured_ids = set(slugify(name, prefix='team-') for name in configured)
+        #logger.debug("Configured team ids: %s", configured_ids)
 
         # Extract team names referenced by people
-        people = (raw_db or {}).get('database', {}).get('people', []) if isinstance(raw_db, dict) else []
+        people = db.get('people', [])
         people_team_ids = set()
         for p in people or []:
             raw = p.get('team_name') or p.get('team') or ''
@@ -94,9 +92,15 @@ class CostService:
                 continue
             people_team_ids.add(slugify(raw, prefix='team-'))
 
+        #logger.debug("Team ids referenced by people in database: %s", people_team_ids)
+
         # Find configured but unused teams, and teams present in database but not configured
         missing_configured = sorted(list(configured_ids - people_team_ids))
         missing_in_db = sorted(list(people_team_ids - configured_ids))
+
+        logger.debug("Missing configured teams (not referenced by any person): %s", missing_configured)
+        logger.debug("Teams present in database but not configured: %s", missing_in_db)
+
         if missing_configured or missing_in_db:
             parts = []
             if missing_configured:

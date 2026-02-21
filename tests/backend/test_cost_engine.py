@@ -25,7 +25,13 @@ def test_estimate_costs_empty():
         def list_projects(self):
             return []
 
-    svc = cost_service_module.CostService(storage=_DummyStorage(), project_service=_DummyProjectService())
+    class _DummyTeamService:
+        def list_teams(self):
+            return []
+
+    svc = cost_service_module.CostService(
+        storage=_DummyStorage(), project_service=_DummyProjectService(), team_service=_DummyTeamService()
+    )
     res = svc.estimate_costs(session={})
     # Expect an empty dict when no features provided
     assert isinstance(res, dict)
@@ -79,7 +85,18 @@ def test_estimate_costs_simple_feature(monkeypatch):
         def list_projects(self):
             return []
 
-    svc = cost_service_module.CostService(storage=_DummyStorage(), project_service=_DummyProjectService())
+    class _DummyTeamService:
+        def list_teams(self):
+            # provide configured team list that matches the people entry
+            return [{
+                'id': 'team-team-a',
+                'name': 'Team A',
+                'short_name': 'Team A'
+            }]
+
+    svc = cost_service_module.CostService(
+        storage=_DummyStorage(), project_service=_DummyProjectService(), team_service=_DummyTeamService()
+    )
     res = svc.estimate_costs(session)
     assert isinstance(res, dict)
     assert 'p1' in res

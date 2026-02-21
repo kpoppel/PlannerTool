@@ -169,6 +169,7 @@ async def api_cost_teams(request: Request):
         from planner_lib.services.resolver import resolve_service
 
         storage = resolve_service(request, 'server_config_storage')
+        people_storage = resolve_service(request, 'people_storage')
         cost_cfg = {}
         db_cfg_raw = {}
         try:
@@ -176,7 +177,7 @@ async def api_cost_teams(request: Request):
         except Exception:
             cost_cfg = {}
         try:
-            db_cfg_raw = storage.load('config', 'database') or {}
+            db_cfg_raw = people_storage.load('config', 'database') or {}
         except Exception:
             db_cfg_raw = {}
         # Normalize database dict

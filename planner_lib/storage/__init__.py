@@ -55,6 +55,7 @@ from typing import Optional
 
 from .base import StorageBackend, ValueNavigatingStorage
 from .file_backend import FileStorageBackend
+from .single_file_backend import SingleFileStorage
 from .serializer import PickleSerializer, JSONSerializer, EncryptedSerializer, YAMLSerializer
 from .base import SerializerBackend
 from .accessor import DictAccessor, ListAccessor
@@ -64,6 +65,7 @@ __all__ = [
 	"create_storage",
 	"StorageBackend",
 	"FileStorageBackend",
+	"SingleFileStorage",
 ]
 
 def create_storage(
@@ -73,7 +75,8 @@ def create_storage(
 	accessor: Optional[str] = "dict",
 	password: Optional[str] = None,
 	key: Optional[bytes] = None,
-	data_dir: str = "./data"
+	data_dir: str = "./data",
+	file_path: Optional[str] = None,
 ) -> StorageBackend | ValueNavigatingStorage:
 	"""Create and return a storage backend instance.
 
@@ -92,6 +95,10 @@ def create_storage(
 	elif backend == "memory":
 		from .memory_backend import MemoryStorage
 		be = MemoryStorage()
+	elif backend == "single_file":
+		# file_path takes precedence, fall back to data_dir for backward compat
+		fp = file_path or data_dir
+		be = SingleFileStorage(fp)
 	else:
 		raise ValueError(f"unsupported backend: {backend}")
 

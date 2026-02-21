@@ -30,6 +30,7 @@ from planner_lib.setup import has_feature_flag
 class Config:
     data_dir: str = "data"
     storage_backend: str = "file"
+    people_storage_backend: str = "single_file"
     yaml_serializer: str = "yaml"
     pickle_serializer: str = "pickle"
     # If None, check feature-flag at runtime via has_feature_flag
@@ -58,10 +59,16 @@ def create_app(config: Config) -> FastAPI:
         accessor=None,
         data_dir=config.data_dir,
     ))
-
     # Bootstrap server
     from planner_lib.bootstrap import bootstrap_server
     server_cfg = bootstrap_server(storage_yaml, logger)
+
+    people_storage_yaml = cast(StorageBackend, create_storage(
+        backend=config.people_storage_backend,
+        serializer=config.yaml_serializer,
+        accessor=None,
+        file_path=server_cfg.get('database_path', config.data_dir),
+    ))
 
     # Compose services
     from planner_lib.accounts.config import AccountManager
@@ -92,7 +99,9 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.cost.service import CostService
     cost_service = CostService(
         storage=storage_yaml,
+        people_storage=people_storage_yaml,
         project_service=project_service,
+        team_service=team_service,
     )
 
     # Admin service depends on account storage (pickle) and config storage (yaml)
@@ -114,6 +123,7 @@ def create_app(config: Config) -> FastAPI:
 
     container = ServiceContainer()
     container.register_singleton("server_config_storage", storage_yaml)
+    container.register_singleton("people_storage", people_storage_yaml)
     container.register_singleton("azure_client", azure_client)
     container.register_singleton("account_storage", storage_pickle)
     container.register_singleton("scenarios_storage", storage_pickle)

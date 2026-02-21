@@ -1043,6 +1043,192 @@ async def admin_get_cost(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get('/admin/v1/cost/inspect')
+@require_admin_session
+async def admin_inspect_cost(request: Request):
+    """
+    Inspect team loading, matching, and cost calculation for debugging.
+    
+    Returns detailed information about:
+    - Teams defined in database file (from people entries)
+    - Teams configured via team_service  
+    - Matching status between the two
+    - Cost and hours calculation for each team
+    - Sample allocation testing
+    """
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        people_storage = resolve_service(request, 'people_storage')
+        team_service = resolve_service(request, 'team_service')
+        
+        # Load server config to get database path
+        database_path = 'data/config/database.yaml'  # default fallback
+        try:
+            server_cfg = storage.load('config', 'server_config') or {}
+            database_path = server_cfg.get('database_path', database_path)
+        except Exception as e:
+            logger.warning(f"Failed to load server_config: {e}")
+        
+        # Load configuration files
+        try:
+            cost_cfg = storage.load('config', 'cost_config') or {}
+        except Exception as e:
+            logger.warning(f"Failed to load cost_config: {e}")
+            cost_cfg = {}
+            
+        try:
+            db_cfg_raw = people_storage.load('config', 'database') or {}
+        except Exception as e:
+            logger.warning(f"Failed to load database from {database_path}: {e}")
+            db_cfg_raw = {}
+        
+        # Normalize database structure
+        db_cfg = db_cfg_raw.get('database', db_cfg_raw) if isinstance(db_cfg_raw, dict) else {}
+        people = db_cfg.get('people', []) or []
+        
+        # Extract configured teams using the team_service
+        configured_teams = []
+        try:
+            teams_list = team_service.list_teams() or []
+            for t in teams_list:
+                if isinstance(t, dict):
+                    configured_teams.append({
+                        'id': t.get('id', ''),
+                        'name': t.get('name', ''),
+                        'short_name': t.get('short_name', ''),
+                        'source': 'teams.yml (via team_service)'
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to get teams from team_service: {e}")
+        
+        configured_team_ids = {t['id'] for t in configured_teams}
+        
+        # Extract teams from database people entries
+        site_hours_map = cost_cfg.get('working_hours', {}) or {}
+        external_cfg = cost_cfg.get('external_cost', {}) or {}
+        ext_rates = external_cfg.get('external', {}) or {}
+        default_ext_rate = float(external_cfg.get('default_hourly_rate', 0) or 0)
+        internal_default_rate = float(cost_cfg.get('internal_cost', {}).get('default_hourly_rate', 0) or 0)
+        
+        database_teams = {}
+        unmatched_people = []
+        
+        for p in people:
+            raw_team = p.get('team_name') or p.get('team') or ''
+            if not raw_team:
+                unmatched_people.append({
+                    'name': p.get('name', 'Unknown'),
+                    'reason': 'No team_name specified'
+                })
+                continue
+                
+            # Create team ID using same logic as cost engine
+            base = slugify(raw_team)
+            team_id = base if base.startswith("team-") else f"team-{base}"
+            
+            if team_id not in database_teams:
+                database_teams[team_id] = {
+                    'id': team_id,
+                    'name': raw_team,
+                    'source': database_path,
+                    'matched': team_id in configured_team_ids,
+                    'members': [],
+                    'internal_count': 0,
+                    'external_count': 0,
+                    'internal_hours_total': 0.0,
+                    'external_hours_total': 0.0,
+                    'internal_cost_total': 0.0,
+                    'external_cost_total': 0.0,
+                }
+            
+            team = database_teams[team_id]
+            name = p.get('name', 'Unknown')
+            site = p.get('site', '')
+            is_external = bool(p.get('external'))
+            
+            if is_external:
+                hourly_rate = float(ext_rates.get(name, default_ext_rate) or 0)
+                hours = int(site_hours_map.get(site, {}).get('external', 0) or 0)
+                team['external_count'] += 1
+                team['external_hours_total'] += hours
+                monthly_cost = hourly_rate * hours
+                team['external_cost_total'] += monthly_cost
+                
+                team['members'].append({
+                    'name': name,
+                    'external': True,
+                    'site': site,
+                    'hourly_rate': hourly_rate,
+                    'hours_per_month': hours,
+                    'monthly_cost': monthly_cost
+                })
+            else:
+                hourly_rate = internal_default_rate
+                hours = int(site_hours_map.get(site, {}).get('internal', 0) or 0)
+                team['internal_count'] += 1
+                team['internal_hours_total'] += hours
+                monthly_cost = hourly_rate * hours
+                team['internal_cost_total'] += monthly_cost
+                
+                team['members'].append({
+                    'name': name,
+                    'external': False,
+                    'site': site,
+                    'hourly_rate': hourly_rate,
+                    'hours_per_month': hours,
+                    'monthly_cost': monthly_cost
+                })
+        
+        # Identify mismatches
+        database_team_ids = set(database_teams.keys())
+        
+        # Teams in config but not in database
+        config_only = [t for t in configured_teams if t['id'] not in database_team_ids]
+        
+        # Teams in database but not in config
+        database_only = [t for tid, t in database_teams.items() if tid not in configured_team_ids]
+        
+        # Teams that match
+        matched_teams = [t for tid, t in database_teams.items() if tid in configured_team_ids]
+        
+        # Calculate totals
+        total_internal_cost = sum(t['internal_cost_total'] for t in database_teams.values())
+        total_external_cost = sum(t['external_cost_total'] for t in database_teams.values())
+        total_internal_hours = sum(t['internal_hours_total'] for t in database_teams.values())
+        total_external_hours = sum(t['external_hours_total'] for t in database_teams.values())
+        
+        return {
+            'configured_teams': configured_teams,
+            'database_teams': list(database_teams.values()),
+            'matched_teams': matched_teams,
+            'config_only_teams': config_only,
+            'database_only_teams': database_only,
+            'unmatched_people': unmatched_people,
+            'summary': {
+                'database_path': database_path,
+                'configured_count': len(configured_teams),
+                'database_count': len(database_teams),
+                'matched_count': len(matched_teams),
+                'config_only_count': len(config_only),
+                'database_only_count': len(database_only),
+                'unmatched_people_count': len(unmatched_people),
+                'total_internal_cost_monthly': round(total_internal_cost, 2),
+                'total_external_cost_monthly': round(total_external_cost, 2),
+                'total_internal_hours_monthly': round(total_internal_hours, 2),
+                'total_external_hours_monthly': round(total_external_hours, 2),
+            },
+            'cost_config': {
+                'internal_hourly_rate': internal_default_rate,
+                'external_hourly_rate_default': default_ext_rate,
+                'site_hours': site_hours_map,
+            }
+        }
+    except Exception as e:
+        logger.exception('Failed to inspect cost configuration: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get('/admin/v1/system')
 @require_admin_session
 async def admin_get_system(request: Request):
