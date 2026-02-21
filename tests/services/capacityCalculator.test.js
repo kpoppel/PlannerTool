@@ -124,7 +124,7 @@ describe('CapacityCalculator (unit)', () => {
     expect(result.dates[0]).to.equal('2025-03-01');
     expect(result.dates[4]).to.equal('2025-03-05');
     
-    // Get project indices
+    // Get project indices - note: unfunded project is added so indices shift
     const projectAIdx = projects.findIndex(p => p.id === 'projectA');
     const teamBIdx = projects.findIndex(p => p.id === 'teamB');
     
@@ -148,5 +148,71 @@ describe('CapacityCalculator (unit)', () => {
     // Verify map-based results too
     expect(result.projectDailyCapacityMap[0]['projectA']).to.equal(2);
     expect(result.projectDailyCapacityMap[0]['teamB']).to.be.undefined; // Or 0
+  });
+
+  it('unfunded allocations: tasks without type=project parent go to unfunded', () => {
+    const calc = new CapacityCalculator(bus);
+    
+    // Setup: Team B (type=team) with orphaned Epic (no parent to type=project)
+    //        Epic has children with allocations
+    // Expected: Children allocations should appear in __unfunded__ project
+    
+    const orphanEpic = {
+      id: 'e2',
+      type: 'epic',
+      project: 'teamB', // Epic in team project, no parent
+      start: '2025-04-01',
+      end: '2025-04-03',
+      status: 'active',
+      capacity: []
+    };
+    
+    const orphanChild = {
+      id: 'f3',
+      type: 'feature',
+      parentEpic: 'e2',
+      project: 'teamB',
+      start: '2025-04-01',
+      end: '2025-04-02',
+      status: 'active',
+      capacity: [{ team: 't1', capacity: 5 }]
+    };
+    
+    const orphanFeature = {
+      id: 'f4',
+      type: 'feature',
+      project: 'teamB', // No parent, in team project
+      start: '2025-04-02',
+      end: '2025-04-03',
+      status: 'active',
+      capacity: [{ team: 't1', capacity: 3 }]
+    };
+    
+    const features = [orphanEpic, orphanChild, orphanFeature];
+    const teams = [{ id: 't1' }];
+    const projects = [{ id: 'teamB', type: 'team' }];
+    
+    const childrenByEpic = new Map();
+    childrenByEpic.set('e2', ['f3']);
+    calc.setChildrenByEpic(childrenByEpic);
+    
+    const filters = {
+      selectedProjects: ['teamB'],
+      selectedTeams: ['t1'],
+      selectedStates: ['active']
+    };
+    
+    const result = calc.calculate(features, filters, teams, projects);
+    
+    // Verify dates
+    expect(result.dates).to.have.lengthOf(3);
+    
+    // Check that unfunded project has the allocations
+    expect(result.projectDailyCapacityMap[0]['__unfunded__']).to.equal(5, 'Day 0: orphan child should go to unfunded');
+    expect(result.projectDailyCapacityMap[1]['__unfunded__']).to.equal(8, 'Day 1: both orphans should go to unfunded (5+3)');
+    expect(result.projectDailyCapacityMap[2]['__unfunded__']).to.equal(3, 'Day 2: orphan feature should go to unfunded');
+    
+    // Verify teamB has no capacity (all went to unfunded)
+    expect(result.projectDailyCapacityMap[0]['teamB']).to.be.undefined;
   });
 });

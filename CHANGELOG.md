@@ -19,6 +19,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Added
 
 - Admin interface has button to reload the full config in Utilities.
+- Added project capacity graphing of unfunded activities. This is a brown graph showing all capacity allocated which is not
+  linked to a project (areapath designated as type=project in the configuration).
 
 ### Changed
 

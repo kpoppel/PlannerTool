@@ -41,7 +41,8 @@ describe('State core behaviors', () => {
     expect(state.projectDailyCapacityRaw.length).to.equal(3);
     // Each day team load should be [2]
     expect(state.teamDailyCapacity[0]).to.deep.equal([2]);
-    expect(state.projectDailyCapacityRaw[0]).to.deep.equal([2]);
+    // Project capacity includes the original project plus unfunded (which should be 0 for properly linked features)
+    expect(state.projectDailyCapacityRaw[0]).to.deep.equal([2, 0]);
   });
 
   it('setStateFilter toggles selection and emits updates', async () => {

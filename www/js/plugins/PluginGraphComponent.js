@@ -255,6 +255,14 @@ export class PluginGraph extends LitElement {
             sumProj += v; 
           } 
         }
+        // Always include unfunded synthetic project if capacity calculator provided it (last index in tuple)
+        if(pTuple.length > allProjects.length) {
+          const unfundedVal = Number(pTuple[allProjects.length] || 0);
+          if(unfundedVal > 0) {
+            totals[i].perProject['__unfunded__'] = unfundedVal;
+            sumProj += unfundedVal;
+          }
+        }
         totals[i].total = (mode === 'team') ? maxTeamVal : sumProj;
       }
       return { days, totals };
@@ -352,14 +360,22 @@ export class PluginGraph extends LitElement {
     };
     for(let i=0;i<days;i++){
       const x = xForDay(i); const nextX = xForDay(i+1); const w = Math.max(1, nextX - x);
-      const perProj = totals[i].perProject || {}; const entries = Object.entries(perProj);
+      const perProj = totals[i].perProject || {}; 
+      // Sort entries to put unfunded first so it renders at the bottom of the stack
+      const entries = Object.entries(perProj).sort(([aId], [bId]) => {
+        if(aId === '__unfunded__') return -1;
+        if(bId === '__unfunded__') return 1;
+        return 0;
+      });
       let yCursor = height;
       entries.forEach(([pid, val])=>{
         const hSeg = (val / maxY) * height;
         const y = yCursor - hSeg;
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x', String(x)); rect.setAttribute('y', String(y)); rect.setAttribute('width', String(w)); rect.setAttribute('height', String(hSeg));
         const proj = (state.projects || []).find(p=>p.id===pid);
-        rect.setAttribute('fill', proj ? proj.color : '#5481e6');
+        // Use a subtle pastel brown for unfunded, otherwise use project color
+        const color = (pid === '__unfunded__') ? '#C49E78' : (proj ? proj.color : '#5481e6');
+        rect.setAttribute('fill', color);
         rect.addEventListener('pointerenter', ()=> this._showTooltip(i, totals[i]));
         rect.addEventListener('pointermove', (e)=> this._moveTooltip(e));
         rect.addEventListener('pointerleave', ()=> this._hideTooltip());
@@ -400,7 +416,13 @@ export class PluginGraph extends LitElement {
       html += `<div style="color:#ddd; margin-bottom:6px;">Total: <strong style=\"color:#fff\">${Math.round(totalsForDay.total)}%</strong></div>`;
       if(this.mode === 'project'){
         const per = totalsForDay.perProject || {}; const entries = Object.entries(per).map(([id,v])=>({ id, v })); entries.sort((a,b)=>b.v - a.v);
-        if(entries.length){ html += '<div style="display:flex; flex-direction:column; gap:4px;">'; entries.slice(0,10).forEach(e=>{ const p = (state.projects||[]).find(x=>x.id===e.id); const color = p ? p.color : '#888'; const name = p ? p.name : e.id; html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style=\"width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;\"></span><span style=\"flex:1; color:#ddd;\">${name}</span><span style=\"margin-left:8px; color:#fff; font-weight:700;\">${Math.round(e.v)}%</span></div>`; }); html += '</div>'; }
+        if(entries.length){ html += '<div style="display:flex; flex-direction:column; gap:4px;">'; entries.slice(0,10).forEach(e=>{ 
+          const p = (state.projects||[]).find(x=>x.id===e.id); 
+          const isUnfunded = (e.id === '__unfunded__');
+          const color = isUnfunded ? '#C49E78' : (p ? p.color : '#888'); 
+          const name = isUnfunded ? 'Unfunded' : (p ? p.name : e.id); 
+          html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style=\"width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;\"></span><span style=\"flex:1; color:#ddd;\">${name}</span><span style=\"margin-left:8px; color:#fff; font-weight:700;\">${Math.round(e.v)}%</span></div>`; 
+        }); html += '</div>'; }
       } else {
         const per = totalsForDay.perTeam || {}; const entries = Object.entries(per).map(([id,v])=>({ id, v })); entries.sort((a,b)=>b.v - a.v);
         if(entries.length){ html += '<div style="display:flex; flex-direction:column; gap:4px;">'; entries.slice(0,10).forEach(e=>{ const t = (state.teams||[]).find(x=>x.id===e.id); const color = t ? t.color : '#888'; const name = t ? t.name : e.id; html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style=\"width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;\"></span><span style=\"flex:1; color:#ddd;\">${name}</span><span style=\"margin-left:8px; color:#fff; font-weight:700;\">${Math.round(e.v)}%</span></div>`; }); html += '</div>'; }

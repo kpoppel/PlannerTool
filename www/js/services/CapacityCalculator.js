@@ -7,6 +7,9 @@
 import { CapacityEvents } from '../core/EventRegistry.js';
 import { isEnabled } from '../config.js';
 
+// Special project ID for unfunded/orphaned allocations
+const UNFUNDED_PROJECT_ID = '__unfunded__';
+
 export class CapacityCalculator {
   constructor(eventBus, childrenByEpicMap = null) {
     this.bus = eventBus;
@@ -15,6 +18,41 @@ export class CapacityCalculator {
     this._lastResultCache = null;          // { dates, teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily }
     this._lastFeaturesById = new Map();    // featureId -> feature (last seen)
     this._dateIndexMap = null;             // dateIso -> index
+  }
+  
+  /**
+   * Find the ultimate type='project' project by following parent chain
+   * @param {Object} feature - The feature to trace
+   * @param {Map} effectiveById - Map of feature ID to feature
+   * @returns {string|null} Project ID if found, null if orphaned
+   */
+  _findUltimateProjectParent(feature, effectiveById) {
+    const visited = new Set();
+    let current = feature;
+    
+    while (current) {
+      // Prevent infinite loops
+      if (visited.has(current.id)) return null;
+      visited.add(current.id);
+      
+      // Check if current item's project is type='project'
+      const projectId = current.project;
+      if (projectId) {
+        // Look up the project - need to check if it's type='project'
+        // We'll return the project ID and let the caller check the type
+        // since we don't have direct access to projects array here
+        return { projectId, taskId: current.id };
+      }
+      
+      // Follow parent chain
+      if (current.parentEpic) {
+        current = effectiveById.get(current.parentEpic);
+      } else {
+        break;
+      }
+    }
+    
+    return null;
   }
   
   /**
@@ -32,6 +70,10 @@ export class CapacityCalculator {
    * @param {Array} teams - Array of team objects with id
    * @param {Array} projects - Array of project objects with id
    * @returns {Object} Capacity metrics in legacy tuple format
+   * 
+   * Note: This method adds a synthetic '__unfunded__' project to track allocations
+   * that don't roll up to any type='project' project. Consumers should check for
+   * '__unfunded__' in projectDailyCapacityMap or at the last index in projectDailyCapacity tuples.
    */
   // Optional 5th param: changedFeatureIds (Array) for incremental updates
   calculate(features, filters, teams, projects, changedFeatureIds = null) {
@@ -53,12 +95,19 @@ export class CapacityCalculator {
       return this._emptyResult();
     }
     
+    // Add synthetic unfunded project and include in calculations
+    const unfundedProject = { id: UNFUNDED_PROJECT_ID, type: 'project', name: 'Unfunded', color: '#000000' };
+    const allProjects = [...projects, unfundedProject];
+    
     // Build team and project index maps
     const teamIndexById = new Map();
     teams.forEach((t, idx) => teamIndexById.set(t.id, idx));
     
     const projectIndexById = new Map();
-    projects.forEach((p, idx) => projectIndexById.set(p.id, idx));
+    allProjects.forEach((p, idx) => projectIndexById.set(p.id, idx));
+    
+    // Build project lookup for type checking
+    const projectById = new Map(allProjects.map(p => [p.id, p]));
     
     // Build feature lookup for epic-child checks
     const effectiveById = new Map(features.map(f => [f.id, f]));
@@ -79,9 +128,10 @@ export class CapacityCalculator {
         selectedTeams,
         selectedStates,
         teams,
-        projects,
+        projects: allProjects,
         teamIndexById,
         projectIndexById,
+        projectById,
         dates
       });
 
@@ -122,6 +172,7 @@ export class CapacityCalculator {
       teams,
       teamIndexById,
       projectIndexById,
+      projectById,
       effectiveById
     );
     
@@ -171,6 +222,7 @@ export class CapacityCalculator {
     teams,
     teamIndexById,
     projectIndexById,
+    projectById,
     effectiveById
   ) {
     const dlen = dates.length;
@@ -238,6 +290,13 @@ export class CapacityCalculator {
             }
           }
           
+          // Check if target project is type='project', otherwise use unfunded
+          const targetProject = projectById.get(targetProjectId);
+          const isProjectType = targetProject && ((targetProject.type || 'project') === 'project');
+          if (!isProjectType) {
+            targetProjectId = UNFUNDED_PROJECT_ID;
+          }
+          
           const pi = projectIndexById.get(targetProjectId);
           if (pi !== undefined) {
             projectDaily[di][pi] += load;
@@ -268,6 +327,7 @@ export class CapacityCalculator {
       projects,
       teamIndexById,
       projectIndexById,
+      projectById,
       dates
     } = ctx;
 
@@ -336,6 +396,13 @@ export class CapacityCalculator {
               if (parentEpic && parentEpic.project) {
                 targetProjectId = parentEpic.project;
               }
+            }
+            
+            // Check if target project is type='project', otherwise use unfunded
+            const targetProject = projectById.get(targetProjectId);
+            const isProjectType = targetProject && ((targetProject.type || 'project') === 'project');
+            if (!isProjectType) {
+              targetProjectId = UNFUNDED_PROJECT_ID;
             }
             
             const pi = projectIndexById.get(targetProjectId);

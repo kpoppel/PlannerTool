@@ -393,6 +393,10 @@ export class MainGraphLit extends LitElement {
             projectBucket[project.id] = v / Math.max(1, nTeams);
           }
         }
+        // Always include unfunded synthetic project if capacity calculator provided it
+        if(dayProjectMap['__unfunded__']) {
+          projectBucket['__unfunded__'] = dayProjectMap['__unfunded__'] / Math.max(1, nTeams);
+        }
       } else {
         const pTuple = projectDailyCapacity[idx] || [];
         for(let i=0;i<projects.length;i++){
@@ -402,6 +406,13 @@ export class MainGraphLit extends LitElement {
           // Only display type='project' projects, but we've read all data
           if(isProjectType && selectedProjectIds.has(project.id)) {
             projectBucket[project.id] = v;
+          }
+        }
+        // Always include unfunded synthetic project if capacity calculator provided it (last index in tuple)
+        if(pTuple.length > projects.length) {
+          const unfundedVal = pTuple[projects.length] || 0;
+          if(unfundedVal > 0) {
+            projectBucket['__unfunded__'] = unfundedVal;
           }
         }
       }
@@ -416,6 +427,10 @@ export class MainGraphLit extends LitElement {
           if(!isProjectType) continue;
           totalPerTeam += (dayProjectMap[proj.id] || 0) / Math.max(1, nTeams);
         }
+        // Include unfunded in total if calculator provided it
+        if(dayProjectMap['__unfunded__']) {
+          totalPerTeam += dayProjectMap['__unfunded__'] / Math.max(1, nTeams);
+        }
       } else {
         for(let i=0;i<projects.length;i++){
           const proj = projects[i];
@@ -423,6 +438,11 @@ export class MainGraphLit extends LitElement {
           const isProjectType = ((proj && proj.type) ? String(proj.type) : 'project') === 'project';
           if(!isProjectType) continue;
           totalPerTeam += (projectDailyCapacity[idx] && projectDailyCapacity[idx][i]) ? projectDailyCapacity[idx][i] / Math.max(1, nTeams) : 0;
+        }
+        // Include unfunded in total if calculator provided it (last index)
+        const pTuple = projectDailyCapacity[idx] || [];
+        if(pTuple.length > projects.length) {
+          totalPerTeam += (pTuple[projects.length] || 0) / Math.max(1, nTeams);
         }
       }
       orgTotalsProject.set(d, totalPerTeam);
@@ -496,8 +516,20 @@ export class MainGraphLit extends LitElement {
         const x = Math.floor(dayX[localIdx]);
         const nextX = Math.floor(dayX[localIdx + 1]);
         const dayWidth = Math.max(1, nextX - x);
-        // Only render projects with type='project' using their project color
+        
+        // Render unfunded synthetic project first (bottom) using a subtle pastel brown,
+        // so it doesn't dominate the visual hierarchy.
+        const unfundedVal = bucket['__unfunded__'] || 0;
+        if(unfundedVal > 0) {
+          const h = clamp(Math.round(unfundedVal * percentToPx), 0, this._canvasRef.height);
+          ctx.fillStyle = '#C49E78'; // pastel brown (less dominant)
+          ctx.fillRect(x, y - h, dayWidth, h);
+          y -= h;
+        }
+
+        // Render regular projects with type='project' using their project color
         for(const project of projects){ 
+          if(project.id === '__unfunded__') continue; // already handled
           const isProjectType = ((project && project.type) ? String(project.type) : 'project') === 'project';
           if(!isProjectType) continue;
           const val = bucket[project.id] || 0; 
