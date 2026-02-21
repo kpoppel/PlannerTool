@@ -29,6 +29,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Changed
 
+- Cost module uses the new people service.
+- Updated of schems for teams to change key to match database file and add in "exclude" key to get a clean setup when
+  more teams or teams with name differences are in the database file. Info: The database file can be managed by an external
+  tool (successfactors-chrome-addon)
+
 ### Fixed
 
 - Help text typos.
