@@ -131,35 +131,90 @@ class CostService:
         """
         cfg = self._cfg
         features = session.get("features", []) if session else []
-        # Determine allowed project ids via the composed ProjectService.
+        # Determine allowed project ids and build type mapping via the composed ProjectService.
         allowed_projects = None
+        project_types: Dict[str, str] = {}
         try:
             if self._project_service:
                 proj_list = self._project_service.list_projects()
                 allowed_projects = {p.get('id') for p in proj_list if isinstance(p, dict) and p.get('id')}
+                # Build a mapping of project_id -> type for later use
+                for p in proj_list:
+                    if isinstance(p, dict) and p.get('id'):
+                        project_types[p.get('id')] = p.get('type', 'project')
         except Exception:
             allowed_projects = None
 
+        # First pass: build a mapping from work item ID to project ID
+        # This helps us identify which work items are projects
+        workitem_to_project: Dict[str, str] = {}
+        for f in features:
+            fid = str(f.get("id", ""))
+            project_id = f.get("project")
+            if fid and project_id:
+                workitem_to_project[fid] = project_id
+
         projects: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
+        # Second pass: calculate costs and assign to appropriate projects and teams
         for f in features:
-            logger.debug("Estimating cost for feature/task: %s", f)
             fid = f.get("id")
             project_id = f.get("project")
-            if isinstance(allowed_projects, set) and allowed_projects and project_id not in allowed_projects:
-                logger.debug("Skipping feature %s: project %s not in configured projects", fid, project_id)
+            title = f.get("title", "") or f.get("name", "")
+            
+            # Check if this feature has a parent that is a project via relations
+            parent_project_ids = []
+            has_project_parent = False
+            relations = f.get("relations", [])
+            if isinstance(relations, list):
+                for rel in relations:
+                    if isinstance(rel, dict) and rel.get("type") == "Parent":
+                        parent_id = str(rel.get("id", ""))
+                        # Look up the parent's project in our mapping
+                        parent_proj = workitem_to_project.get(parent_id)
+                        if parent_proj:
+                            parent_project_ids.append(parent_proj)
+                            # Check if the parent is actually a project type (not a team)
+                            # Only set has_project_parent if we know the type, don't assume
+                            if parent_proj in project_types:
+                                parent_type = project_types[parent_proj]
+                                if parent_type == 'project':
+                                    has_project_parent = True
+            
+            # Determine which projects should include this feature
+            target_projects = []
+            
+            # Add the feature's own project if valid
+            if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
+                target_projects.append(project_id)
+            
+            # Add parent projects (if different from own project)
+            for parent_proj in parent_project_ids:
+                if parent_proj != project_id and (not isinstance(allowed_projects, set) or not allowed_projects or parent_proj in allowed_projects):
+                    target_projects.append(parent_proj)
+            
+            # Skip if no valid project to assign to
+            if not target_projects:
+                if project_id:
+                    logger.debug("Skipping feature %s: project %s not in configured projects", fid, project_id)
                 continue
+            
             start = f.get("start")
             end = f.get("end")
-            capacity = f.get("capacity")
+            capacity = f.get("capacity", [])
 
+            # Calculate cost for projects
             cost = calculate(cfg, start=start, end=end, capacity=capacity, cache_storage=self._cache_storage)
+            # Add has_project_parent metadata for filtering
+            cost_with_meta = dict(cost)
+            cost_with_meta['has_project_parent'] = has_project_parent
+            for target_project_id in target_projects:
+                if target_project_id not in projects:
+                    projects[target_project_id] = {}
+                projects[target_project_id][fid] = cost_with_meta
 
-            if project_id not in projects:
-                projects[project_id] = {}
-            projects[project_id][fid] = cost
-
-        return projects
+        # Return both the projects dict and the type mapping
+        return {'projects': projects, 'project_types': project_types}
 
 
 def _parse_totals(totals: dict) -> dict:
@@ -176,10 +231,16 @@ def _parse_totals(totals: dict) -> dict:
     return out
 
 
-def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features: Optional[List[Dict[str, Any]]] = None, project_types: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Convert the raw cost mapping returned by `estimate_costs` into the
     normalized strongly-structured schema used by the UI. Optionally enrich
     features with metadata from `session_features` and compute dataset bounds.
+    
+    Args:
+        src: Raw cost mapping from estimate_costs
+        mode: 'full' or 'schema'
+        session_features: Optional list of feature metadata
+        project_types: Optional mapping of project_id -> type (e.g., 'project', 'team')
     """
     meta = {
         "schema_version": "2.0",
@@ -239,7 +300,13 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         if not isinstance(val, dict):
             continue
         proj_id = key
-        name = proj_id.replace("project-", "", 1).capitalize() if proj_id.startswith("project-") else proj_id
+        # Format name based on whether it's a project or team
+        if proj_id.startswith("project-"):
+            name = proj_id.replace("project-", "", 1).capitalize()
+        elif proj_id.startswith("team-"):
+            name = proj_id.replace("team-", "", 1).capitalize()
+        else:
+            name = proj_id
         totals = _parse_totals(val.get("totals", {}) if isinstance(val.get("totals", {}), dict) else {})
         features = []
         for fid, fval in val.items():
@@ -283,6 +350,9 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 "end": feature_end,
                 "metrics": metrics,
             }
+            # Include has_project_parent flag if present in cost data
+            if 'has_project_parent' in fval:
+                feature_obj['has_project_parent'] = fval.get('has_project_parent')
             if overrides is not None:
                 feature_obj['overrides_applied'] = overrides
             if delta is not None:
@@ -292,12 +362,27 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 feature_obj['status'] = 'unchanged'
 
             features.append(feature_obj)
+        # Get type from project_types mapping, default to 'project'
+        proj_type = (project_types or {}).get(proj_id, 'project')
         projects.append({
             "id": proj_id,
             "name": name,
+            "type": proj_type,
             "totals": totals,
             "features": features
         })
+    
+    # Sort projects: actual projects (type='project') first, then teams (type='team')
+    # Within each group, sort alphabetically by id for consistent ordering
+    def sort_key(p):
+        proj_type = str(p.get('type', 'project'))
+        proj_id = str(p.get('id', ''))
+        # Return tuple: (0 for projects, 1 for teams, 2 for others, id for alphabetical sort)
+        type_order = 0 if proj_type == 'project' else (1 if proj_type == 'team' else 2)
+        return (type_order, proj_id)
+    
+    projects.sort(key=sort_key)
+    
     out = {
         "meta": meta,
         "configuration": configuration,

@@ -22,11 +22,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Added project capacity graphing of unfunded activities. This is a brown graph showing all capacity allocated which is not
   linked to a project (areapath designated as type=project in the configuration).
 - Added Plan health tool plugin. This tool makes some checks on common planning issues and displays them in a modal.
+- Cost tables are split int projects and teams. Teams can display cost with tasks funded by a project and unfunded (team only) tasks.
 
 ### Changed
 
 - Cost module uses a proper storage backend instead of a local file storage
 - Ghost titles are more visually appealing when dragging a card: The title is hidden and displayed again when the card is dropped.
+- Cost tables can be delimited by a date range.
 
 ### Fixed
 

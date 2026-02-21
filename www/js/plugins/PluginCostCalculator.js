@@ -44,23 +44,33 @@ import { isEnabled } from '../config.js';
 /**
  * Parse an ISO date-only string into a Date in UTC at midnight.
  * @param {string|Date} d
- * @returns {Date}
+ * @returns {Date|null}
  */
-const toDate = d => new Date(`${d}T00:00:00Z`);
+const toDate = d => {
+  if (!d) return null;
+  if (d instanceof Date) return d;
+  return new Date(`${d}T00:00:00Z`);
+};
 
 /**
  * Return the first instant (UTC) of the month for the given date.
  * @param {Date} dt
  * @returns {Date}
  */
-const firstOfMonth = dt => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
+const firstOfMonth = dt => {
+  if (!dt) return null;
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
+};
 
 /**
  * Return the last instant (UTC) of the month for the given date.
  * @param {Date} dt
  * @returns {Date}
  */
-const lastOfMonth = dt => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+const lastOfMonth = dt => {
+  if (!dt) return null;
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+};
 
 /**
  * Add N months to a UTC-based date and return a new Date at the first of
@@ -95,6 +105,7 @@ const monthLabel = dt => dt.toLocaleString(undefined, { month: 'short', year: 'n
 const buildMonths = ({ dataset_start, dataset_end }) => {
   const start = firstOfMonth(toDate(dataset_start));
   const end = firstOfMonth(toDate(dataset_end));
+  if (!start || !end) return [];
   const out = [];
   for (let cur = start; cur <= end; cur = addMonths(cur, 1)) out.push(new Date(cur));
   return out;
@@ -123,7 +134,9 @@ const sum = arr => arr.reduce((a, b) => a + b, 0);
  * @returns {number} inclusive number of days overlapping the month
  */
 const overlapDays = (start, end, mStart) => {
+  if (!start || !end || !mStart) return 0;
   const mEnd = lastOfMonth(mStart);
+  if (!mEnd) return 0;
   const s = start > mStart ? start : mStart;
   const e = end < mEnd ? end : mEnd;
   if (e < s) return 0;
@@ -151,6 +164,44 @@ const buildFeature = (raw, monthKeys, months) => {
   const externalTotal = raw.metrics.external.cost;
   const internalHoursTotal = raw.metrics.internal.hours;
   const externalHoursTotal = raw.metrics.external.hours;
+
+  // Handle features without dates - distribute evenly across all months
+  if (!start || !end) {
+    const valuesInternal = zerosFor(monthKeys);
+    const valuesExternal = zerosFor(monthKeys);
+    const hoursInternal = zerosFor(monthKeys);
+    const hoursExternal = zerosFor(monthKeys);
+    
+    const numMonths = monthKeys.length || 1;
+    const perMonInt = internalTotal / numMonths;
+    const perMonExt = externalTotal / numMonths;
+    const perMonIntH = internalHoursTotal / numMonths;
+    const perMonExtH = externalHoursTotal / numMonths;
+    
+    for (const mk of monthKeys) {
+      valuesInternal[mk] = perMonInt;
+      valuesExternal[mk] = perMonExt;
+      hoursInternal[mk] = perMonIntH;
+      hoursExternal[mk] = perMonExtH;
+    }
+    
+    return {
+      id: String(raw.id),
+      title: raw.title,
+      start: raw.start_date,
+      end: raw.end_date,
+      monthsCovered: monthKeys,
+      valuesInternal,
+      valuesExternal,
+      hoursInternal,
+      hoursExternal,
+      internalTotal,
+      externalTotal,
+      internalHoursTotal,
+      externalHoursTotal,
+      has_project_parent: raw.has_project_parent
+    };
+  }
 
   const sMonth = firstOfMonth(start);
   const eMonth = firstOfMonth(end);
@@ -208,7 +259,8 @@ const buildFeature = (raw, monthKeys, months) => {
     internalTotal,
     externalTotal,
     internalHoursTotal,
-    externalHoursTotal
+    externalHoursTotal,
+    has_project_parent: raw.has_project_parent
   };
 };
 
@@ -350,20 +402,59 @@ const buildProjects = (projects, months, state) => {
         monthsCovered: f.monthsCovered,
         // Preserve original Epic totals for deviation comparison
         originalTotal: f.originalTotal,
-        originalTotalHours: f.originalTotalHours
+        originalTotalHours: f.originalTotalHours,
+        // Preserve has_project_parent flag for filtering
+        has_project_parent: f.has_project_parent
       };
     });
 
     const allChildIds = new Set([].concat(...Array.from(childrenMap.values()).map(a => a.map(String))));
     const totals = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) } };
     let projectTotal = 0, projectTotalHours = 0;
+    
+    // For teams, also calculate totals excluding tasks with project parents
+    const totalsNoProject = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) } };
+    let noProjectTotal = 0, noProjectTotalHours = 0;
+    
     for (const f of normalizedFeatures) {
       if (allChildIds.has(String(f.id))) continue;
-      for (const k of monthKeys) { totals.internal[k] += f.values.internal[k] || 0; totals.external[k] += f.values.external[k] || 0; totals.hours.internal[k] += f.hours.internal[k] || 0; totals.hours.external[k] += f.hours.external[k] || 0; }
-      projectTotal += f.total; projectTotalHours += f.totalHours;
+      
+      // Add to main totals (all tasks)
+      for (const k of monthKeys) { 
+        totals.internal[k] += f.values.internal[k] || 0; 
+        totals.external[k] += f.values.external[k] || 0; 
+        totals.hours.internal[k] += f.hours.internal[k] || 0; 
+        totals.hours.external[k] += f.hours.external[k] || 0; 
+      }
+      projectTotal += f.total; 
+      projectTotalHours += f.totalHours;
+      
+      // Add to no-project totals only if no project parent
+      if (!f.has_project_parent) {
+        for (const k of monthKeys) { 
+          totalsNoProject.internal[k] += f.values.internal[k] || 0; 
+          totalsNoProject.external[k] += f.values.external[k] || 0; 
+          totalsNoProject.hours.internal[k] += f.hours.internal[k] || 0; 
+          totalsNoProject.hours.external[k] += f.hours.external[k] || 0; 
+        }
+        noProjectTotal += f.total; 
+        noProjectTotalHours += f.totalHours;
+      }
     }
 
-    return { id: p.id, name: p.name, features: normalizedFeatures, totals, total: +projectTotal.toFixed(2), totalHours: +projectTotalHours.toFixed(2) };
+    return { 
+      id: p.id, 
+      name: p.name, 
+      type: p.type || 'project', 
+      features: normalizedFeatures, 
+      totals, 
+      total: +projectTotal.toFixed(2), 
+      totalHours: +projectTotalHours.toFixed(2),
+      // Include no-project totals for teams
+      totalsNoProject,
+      noProjectTotal: +noProjectTotal.toFixed(2),
+      noProjectTotalHours: +noProjectTotalHours.toFixed(2)
+    };
   });
 
   const footerHours = { internal: zerosFor(months.map(monthKey)), external: zerosFor(months.map(monthKey)) };
@@ -373,6 +464,26 @@ const buildProjects = (projects, months, state) => {
     for (const k of Object.keys(p.totals.hours.external)) footerHours.external[k] += p.totals.hours.external[k] || 0;
     footerTotalHours += +p.totalHours;
   }
+
+  // Sort projects: actual projects (type='project') first, then teams (type='team')
+  // Within each group, sort alphabetically by id for consistent ordering
+  projectsOut.sort((a, b) => {
+    const aId = String(a.id || '');
+    const bId = String(b.id || '');
+    const aType = String(a.type || 'project');
+    const bType = String(b.type || 'project');
+    
+    // Map types to sort order: projects=0, teams=1, others=2
+    const typeOrder = (t) => t === 'project' ? 0 : (t === 'team' ? 1 : 2);
+    const aOrder = typeOrder(aType);
+    const bOrder = typeOrder(bType);
+    
+    // If different types, sort by type order
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    
+    // Same type, sort alphabetically by id
+    return aId.localeCompare(bId);
+  });
 
   return { projects: projectsOut, footerHours, footerTotalHours };
 };

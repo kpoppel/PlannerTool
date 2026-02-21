@@ -69,7 +69,11 @@ export class PluginCostComponent extends LitElement {
     expandedProjects: { state: true },
     expandedEpics: { state: true },
     showBudgetDeviations: { state: true },
-    deviationThreshold: { state: true }
+    deviationThreshold: { state: true },
+    teamCostMode: { state: true },
+    planTypeTab: { state: true },
+    startDate: { state: true },
+    endDate: { state: true }
   };
 
   constructor(){
@@ -85,6 +89,15 @@ export class PluginCostComponent extends LitElement {
     this._subscribed = false;
     this.showBudgetDeviations = false;
     this.deviationThreshold = 10; // Default 10%
+    this.teamCostMode = 'all'; // 'all' or 'noproject' - controls team task visibility
+    this.planTypeTab = 'projects'; // 'projects' or 'teams'
+    
+    // Default to start of last year through end of this year
+    const now = new Date();
+    const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
+    const thisYearEnd = new Date(now.getFullYear(), 11, 31);
+    this.startDate = lastYearStart.toISOString().split('T')[0];
+    this.endDate = thisYearEnd.toISOString().split('T')[0];
   }
 
   static styles = css`
@@ -402,7 +415,8 @@ export class PluginCostComponent extends LitElement {
           capacity: capacity,
           title: f.title || f.name || '',
           type: f.type || f.feature_type || '',
-          state: f.state || f.status || ''
+          state: f.state || f.status || '',
+          relations: f.relations || []
         };
       });
 
@@ -434,7 +448,11 @@ export class PluginCostComponent extends LitElement {
    * @returns {void}
    */
   buildMonths(cfg){
-    this.months = buildMonths(cfg);
+    // Use selected date range instead of config dates
+    this.months = buildMonths({ 
+      dataset_start: this.startDate, 
+      dataset_end: this.endDate 
+    });
   }
 
   /**
@@ -507,38 +525,36 @@ export class PluginCostComponent extends LitElement {
     if(!this.data) return html`<div></div>`;
     const months = this.months || [];
     const monthKeys = months.map(m=>monthKey(m));
+    
     // Use ColorService directly
     const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
-    // compute footer totals
+    
+    // Filter projects based on selected plan type tab
+    const filteredProjects = this.projects.filter(p => {
+      if (this.planTypeTab === 'projects') {
+        return p.type === 'project';
+      } else {
+        return p.type === 'team';
+      }
+    });
+    
+    // compute footer totals using filtered projects
     const footerInternal = Object.fromEntries(monthKeys.map(k=>[k,0]));
     const footerExternal = Object.fromEntries(monthKeys.map(k=>[k,0]));
     let combinedTotal = 0;
-    for(const p of this.projects || []){
-      for(const k of monthKeys){ footerInternal[k] += +(p.totals.internal[k] || 0); footerExternal[k] += +(p.totals.external[k] || 0); }
-      combinedTotal += +(p.total || 0);
+    for(const p of filteredProjects){
+      // Use no-project totals for teams in 'noproject' mode
+      const useTotals = (p.type === 'team' && this.teamCostMode === 'noproject') ? p.totalsNoProject : p.totals;
+      const useTotal = (p.type === 'team' && this.teamCostMode === 'noproject') ? p.noProjectTotal : p.total;
+      for(const k of monthKeys){ footerInternal[k] += +(useTotals.internal[k] || 0); footerExternal[k] += +(useTotals.external[k] || 0); }
+      combinedTotal += +(useTotal || 0);
     }
     // ensure footer hours exist
     if(!this._footerHours){ this._footerHours = { internal: Object.fromEntries(monthKeys.map(k=>[k,0])), external: Object.fromEntries(monthKeys.map(k=>[k,0])) }; this._footerTotalHours = 0; }
     
-    // Filter out months where all rows have zero values
-    const nonZeroMonthIndices = [];
-    const nonZeroMonths = [];
-    const nonZeroMonthKeys = [];
-    for(let i = 0; i < monthKeys.length; i++){
-      const k = monthKeys[i];
-      const hasValue = (this.viewMode === 'cost') 
-        ? (footerInternal[k] + footerExternal[k]) > 0
-        : (this._footerHours.internal[k] + this._footerHours.external[k]) > 0;
-      if(hasValue){
-        nonZeroMonthIndices.push(i);
-        nonZeroMonths.push(months[i]);
-        nonZeroMonthKeys.push(k);
-      }
-    }
-    
-    // Use filtered months for rendering
-    const displayMonths = nonZeroMonths.length > 0 ? nonZeroMonths : months;
-    const displayMonthKeys = nonZeroMonthKeys.length > 0 ? nonZeroMonthKeys : monthKeys;
+    // Always display all months for calendar readability
+    const displayMonths = months;
+    const displayMonthKeys = monthKeys;
     
     // Update host attribute to control Total column positioning
     if(!this.showBudgetDeviations){
@@ -550,12 +566,37 @@ export class PluginCostComponent extends LitElement {
     return html`
       <div>
         <div class="controls">
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <div class="toggle" role="tablist" aria-label="View mode">
               <button class=${this.viewMode==='cost' ? 'active':''} @click=${()=>{ this.viewMode='cost'; this.requestUpdate(); }}>Cost</button>
               <button class=${this.viewMode==='hours' ? 'active':''} @click=${()=>{ this.viewMode='hours'; this.requestUpdate(); }}>Hours</button>
             </div>
+            <div class="toggle" role="tablist" aria-label="Plan type">
+              <button class=${this.planTypeTab==='projects' ? 'active':''} @click=${()=>{ this.planTypeTab='projects'; this.requestUpdate(); }}>Projects</button>
+              <button class=${this.planTypeTab==='teams' ? 'active':''} @click=${()=>{ this.planTypeTab='teams'; this.requestUpdate(); }}>Teams</button>
+            </div>
             ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ? html`<div class="tab-toggle"><button class=${this.activeTab==='cost' ? 'active':''} @click=${()=>{ this.activeTab='cost'; this.requestUpdate(); }}>Cost Table</button><button class=${this.activeTab==='teams' ? 'active':''} @click=${async ()=>{ this.activeTab='teams'; if(!this.teamsData){ this.teamsData = await dataService.getCostTeams().catch(e=>{ console.error('Failed to load cost teams', e); return []; }); } this.requestUpdate(); }}>Teams</button></div>` : ''}
+            ${this.planTypeTab === 'teams' ? html`<div class="team-cost-toggle">
+              <label for="team-cost-mode" style="font-size:13px; margin-right:4px;">Team costs:</label>
+              <select id="team-cost-mode" 
+                      @change=${(e)=>{ this.teamCostMode = e.target.value; }}
+                      style="font-size:13px; padding:2px 4px;">
+                <option value="all" ?selected=${this.teamCostMode === 'all'}>All tasks</option>
+                <option value="noproject" ?selected=${this.teamCostMode === 'noproject'}>No project</option>
+              </select>
+            </div>` : ''}
+            <div style="display:flex; gap:8px; align-items:center; margin-left:auto;">
+              <label for="start-date" style="font-size:13px;">From:</label>
+              <input type="date" id="start-date" 
+                     .value=${this.startDate}
+                     @change=${(e)=>{ this.startDate = e.target.value; this.buildMonths(this.data?.configuration || {}); this.buildProjects(this.data?.projects || []); this.requestUpdate(); }}
+                     style="font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:4px;"/>
+              <label for="end-date" style="font-size:13px;">To:</label>
+              <input type="date" id="end-date" 
+                     .value=${this.endDate}
+                     @change=${(e)=>{ this.endDate = e.target.value; this.buildMonths(this.data?.configuration || {}); this.buildProjects(this.data?.projects || []); this.requestUpdate(); }}
+                     style="font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:4px;"/>
+            </div>
             <div class="deviation-controls">
               <div class="deviation-toggle">
                 <input type="checkbox" id="deviation-check" 
@@ -603,25 +644,39 @@ export class PluginCostComponent extends LitElement {
               </tr>
             </thead>
             <tbody>
-              ${this.projects.map(p=>{
+              ${filteredProjects.map(p=>{
                 const projectDeviation = this.projectHasDeviations(p);
                 const projectDeviationIndicator = projectDeviation ? html`<span class="deviation-warning" title="This project contains Epics with budget deviations">⚠</span>` : '';
+                // Use no-project totals for teams in 'noproject' mode
+                const displayTotals = (p.type === 'team' && this.teamCostMode === 'noproject') ? p.totalsNoProject : p.totals;
+                const displayTotal = (p.type === 'team' && this.teamCostMode === 'noproject') ? p.noProjectTotal : p.total;
+                const displayTotalHours = (p.type === 'team' && this.teamCostMode === 'noproject') ? p.noProjectTotalHours : p.totalHours;
                 return html`
                 <tr class="project-row" @click=${()=>this.toggleProject(p.id)}>
                         <td class="left" style=${this.projectLeftStyle(p.id)}>${p.name}</td>
-                  ${displayMonthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.internal[k]||0) : (p.totals.hours.internal[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (p.totals.external[k]||0) : (p.totals.hours.external[k]||0))}</td>`) }
-                  <td class="total-cell right-total">${this.fmtCell(this.viewMode==='cost' ? p.total : (p.totalHours||0))}</td>
+                  ${displayMonthKeys.map(k=>html`<td>${this.fmtCell(this.viewMode==='cost' ? (displayTotals.internal[k]||0) : (displayTotals.hours.internal[k]||0))}</td><td>${this.fmtCell(this.viewMode==='cost' ? (displayTotals.external[k]||0) : (displayTotals.hours.external[k]||0))}</td>`) }
+                  <td class="total-cell right-total">${this.fmtCell(this.viewMode==='cost' ? displayTotal : (displayTotalHours||0))}</td>
                   ${this.showBudgetDeviations ? html`<td class="right-extra">${projectDeviationIndicator}</td>` : ''}
                 </tr>
                 ${this.expandedProjects.has(p.id) ? (() => {
-                    // Group features under epics if present. We'll build a map of epicId -> [features]
+                    // Filter features based on team cost mode (for teams only)
+                    let visibleFeatures = p.features || [];
+                    
+                    if (p.type === 'team' && this.teamCostMode === 'noproject') {
+                      // Only show features that don't have a project parent
+                      visibleFeatures = visibleFeatures.filter(f => !f.has_project_parent);
+                    }
+                    
+                    // Build a set of visible feature IDs for quick lookup
+                    const visibleIds = new Set(visibleFeatures.map(f => String(f.id)));
+                    
                     const epicMap = new Map();
                     const standalone = [];
-                    for(const f of p.features || []){
-                      // Try to resolve effective feature to inspect relations (parentEpic may not be present)
+                    for(const f of visibleFeatures){
                       const eff = state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
                       const parent = eff && (eff.parentEpic || eff.parentEpic === 0) ? eff.parentEpic : (f.parentEpic || null);
-                      if(parent){
+                      // Only group under parent if the parent is in our visible features
+                      if(parent && visibleIds.has(String(parent))){
                         if(!epicMap.has(parent)) epicMap.set(parent, []);
                         epicMap.get(parent).push({ base: f, eff });
                       } else {
@@ -635,10 +690,10 @@ export class PluginCostComponent extends LitElement {
                         standalone.push({ base: f, eff });
                       }
                     }
-                    // Render epics first (preserve insertion order from p.features)
+                    // Render epics first (preserve insertion order from visibleFeatures)
                     const rendered = [];
                     const seenEpics = new Set();
-                    for(const f of p.features || []){
+                    for(const f of visibleFeatures){
                       // render epic rows
                       if(epicMap.has(f.id) && !seenEpics.has(f.id)){
                         seenEpics.add(f.id);
@@ -692,6 +747,18 @@ export class PluginCostComponent extends LitElement {
             </tfoot>
             </table>
           </div>
+          
+          ${this.projects && this.projects.length > 0 ? html`
+            <div class="cost-table-docs" style="margin-top: 20px; padding: 15px; background: #f5f9fc; border: 1px solid #d0e4f5; border-radius: 4px; font-size: 13px; color: #444;">
+              <h4 style="margin-top: 0; font-size: 14px; font-weight: 600; color: #0b61c9;">Cost Table Guide</h4>
+              <ul style="margin: 8px 0; padding-left: 20px;">
+                <li><strong>Table Structure:</strong> Projects are listed in one table, team costs in another table. Click on any row to expand and view the detailed tasks underneath.</li>
+                <li><strong>Team Cost Toggle:</strong> For the team table, this control switches between showing "All tasks" (including those that have a project parent, which appear in both team and project rows) and "No project" (showing only tasks without a project parent, unique to the team).</li>
+                <li><strong>Budget Deviations Toggle:</strong> When enabled, highlights epics where the total capacity allocation differs from the sum of their child work items. A warning indicator (⚠) appears next to projects that contain such deviations.</li>
+                <li><strong>View Mode:</strong> Switch between "Cost" (in currency units) and "Hours" to view the data in different units.</li>
+              </ul>
+            </div>
+          ` : ''}
         `}
       </div>
     `;

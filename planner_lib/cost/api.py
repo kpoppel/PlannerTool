@@ -54,6 +54,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
                     'title': t.get('title'),
                     'type': t.get('type'),
                     'state': t.get('state'),
+                    'relations': t.get('relations', []),
                 })
 
         applied_overrides = None
@@ -92,14 +93,16 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         ctx['features'] = features
 
         cost_svc = resolve_service(request, 'cost_service')
-        raw = cost_svc.estimate_costs(ctx) or {}
+        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        raw = result.get('projects', {})
+        project_types = result.get('project_types', {})
         if scenario_id:
             raw = dict(raw)
             raw_meta = raw.get('meta') if isinstance(raw.get('meta'), dict) else {}
             raw_meta.update({'scenario_id': scenario_id, 'applied_overrides': applied_overrides})
             raw['meta'] = raw_meta
 
-        return build_cost_schema(raw, mode='full', session_features=ctx.get('features'))
+        return build_cost_schema(raw, mode='full', session_features=ctx.get('features'), project_types=project_types)
     except HTTPException:
         raise
     except Exception as e:
@@ -148,13 +151,16 @@ async def api_cost_get(request: Request):
                 'title': t.get('title'),
                 'type': t.get('type'),
                 'state': t.get('state'),
+                'relations': t.get('relations', []),
             })
 
         ctx = dict(ctx)
         ctx['features'] = features
         cost_svc = resolve_service(request, 'cost_service')
-        raw = cost_svc.estimate_costs(ctx)
-        return build_cost_schema(raw, mode='full', session_features=features)
+        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        raw = result.get('projects', {})
+        project_types = result.get('project_types', {})
+        return build_cost_schema(raw, mode='full', session_features=features, project_types=project_types)
 
     except Exception as e:
         logger.exception('Failed to fetch cost data: %s', e)
