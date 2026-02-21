@@ -25,12 +25,14 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Changed
 
 - Cost module uses a proper storage backend instead of a local file storage
+- Ghost titles are more visually appealing when dragging a card: The title is hidden and displayed again when the card is dropped.
 
 ### Fixed
 
 - Cost module cache needed to be invalidated when data it relies on is changed.
 - Fix project allocation roll-up is not calculated correctly. Epics with children are ignored.
 - Fix Individual teams showed up as project graph.
+- Reword Epic tooltip on how allocations are used when ithas children nodes.
 
 ## [v1.10.0] - 2026-02-21
 

@@ -72,7 +72,7 @@ test.describe('Feature Card dim-info e2e', () => {
       parent.className = 'feature-card';
       parent.setAttribute('data-feature-id', 'epic-with-child');
       parent.innerHTML = `
-        <div class="team-load-row dimmed" title="This feature has child items; parent capacity is ignored in calculations">
+        <div class="team-load-row dimmed" title="This feature has child items; using allocations from children in calculations">
           <span class="dim-info" role="img">ℹ️</span>
           <span class="team-load-box">0%</span>
         </div>

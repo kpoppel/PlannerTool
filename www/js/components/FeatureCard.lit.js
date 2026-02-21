@@ -360,6 +360,8 @@ export class FeatureCardLit extends LitElement {
     this._suppressClickUntil = 0; // ignore clicks shortly after drag end
     // Create ghost title element (lives outside shadow DOM)
     this._ghostTitle = null;
+    // Track whether a ghost title was visible before a drag so we can restore it
+    this._ghostTitleWasVisibleBeforeDrag = false;
     // Mark host as a possible tour anchor
     try{ this.setAttribute('data-tour','feature-card'); }catch(e){}
   }
@@ -468,7 +470,24 @@ export class FeatureCardLit extends LitElement {
 
     // Pause RO measurement during drag moves to avoid layout thrash; resume and process after drag end
     try {
-      this._unsubDragMove = bus.on(DragEvents.MOVE, () => { this._skipRo = true; });
+      // Only pause RO / hide ghost for the feature currently being dragged
+      this._unsubDragMove = bus.on(DragEvents.MOVE, (p) => {
+        try {
+          if (p && String(p.featureId) === String(this.feature?.id)) {
+            this._skipRo = true;
+            // Remove/hide the ghost title for this card while dragging to avoid visual duplication
+            try {
+              if (this._ghostTitle) {
+                this._ghostTitleWasVisibleBeforeDrag = true;
+                if (this._ghostTitle.parentNode) this._ghostTitle.parentNode.removeChild(this._ghostTitle);
+                this._ghostTitle = null;
+              } else {
+                this._ghostTitleWasVisibleBeforeDrag = false;
+              }
+            } catch (e) { }
+          }
+        } catch (e) { }
+      });
       // Refresh visuals when features or capacity data update (childrenByEpic may change)
       this._onFeaturesUpdated = () => { try { this.requestUpdate(); } catch(e){} };
       this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
@@ -479,6 +498,12 @@ export class FeatureCardLit extends LitElement {
           if (p && String(p.featureId) === String(this.feature?.id)) {
             // Suppress clicks fired immediately after a drop
             this._suppressClickUntil = Date.now() + 250;
+          }
+        } catch (e) { }
+        // After drag ends, restore the ghost title if it was visible before dragging
+        try {
+          if (this._ghostTitleWasVisibleBeforeDrag) {
+            requestAnimationFrame(() => this._updateGhostTitlePosition());
           }
         } catch (e) { }
       });
@@ -788,7 +813,7 @@ export class FeatureCardLit extends LitElement {
     }).filter(Boolean) || [];
 
     return html`
-      <div class="team-load-row ${hasChildren ? 'dimmed' : ''}" title=${hasChildren ? 'This feature has child items; parent capacity is ignored in calculations' : ''}>
+      <div class="team-load-row ${hasChildren ? 'dimmed' : ''}" title=${hasChildren ? 'This feature has child items; using allocations from children in calculations' : ''}>
         ${hasChildren ? html`<span class="dim-info" role="img" style="font-size: 16px">ℹ️</span>` : ''}
         ${orgBox}
         ${teamBoxes}
