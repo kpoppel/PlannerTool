@@ -21,6 +21,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Admin interface has button to reload the full config in Utilities.
 - Added project capacity graphing of unfunded activities. This is a brown graph showing all capacity allocated which is not
   linked to a project (areapath designated as type=project in the configuration).
+- Added Plan health tool plugin. This tool makes some checks on common planning issues and displays them in a modal.
 
 ### Changed
 

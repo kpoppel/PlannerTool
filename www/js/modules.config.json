@@ -78,6 +78,19 @@
       "exclusive": true,
       "mountPoint": "timeline-board",
       "dependencies": []
+    },
+    {
+      "id": "plugin-plan-health",
+      "name": "Plan Health",
+      "version": "1.0.0",
+      "description": "Detect and highlight planning issues and anomalies",
+      "path": "../plugins/PluginPlanHealth.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
     }
   ]
 }
