@@ -23,6 +23,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   of the user interface)
 - Admin backend has teams vs people database validation information added now to see if mappings are correct
 - Added file storage backend for single file storage
+- Backend service refactoring People handling into its own module. The cost module has option to configure people without
+  using the database file.
+- Admin now has interface for inspecting and overriding at people/team level and get reports of mismatches.
 
 ### Changed
 
