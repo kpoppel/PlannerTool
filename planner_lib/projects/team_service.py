@@ -14,24 +14,43 @@ logger = logging.getLogger(__name__)
 class TeamService(TeamServiceProtocol):
     """Service for team-related operations and mappings.
 
-    This service reads `team_map` from the server config when needed.
+    This service reads teams configuration (schema v2).
+    Teams marked with "exclude": true are filtered out from operations.
     """
 
     def __init__(self, storage_config: StorageProtocol):
         self._storage_config = storage_config
 
+    def _get_teams_list(self, cfg: dict, include_excluded: bool = False) -> List[dict]:
+        """Extract teams list from config.
+        
+        Args:
+            cfg: The teams configuration dictionary
+            include_excluded: If True, include teams marked with exclude=True
+            
+        Returns:
+            List of team dictionaries
+        """
+        teams_list = cfg.get("teams") or []
+        
+        if not include_excluded:
+            # Filter out teams marked as excluded
+            teams_list = [t for t in teams_list if not t.get("exclude", False)]
+        
+        return teams_list
+
     def list_teams(self) -> List[dict]:
         cfg = self._storage_config.load("config", "teams")
-        team_map = cfg["team_map"]
+        teams_list = self._get_teams_list(cfg, include_excluded=False)
 
-        if team_map:
+        if teams_list:
             names: List[dict] = [
                 {
                     "id": slugify(p.get("name"), prefix="team-"),
                     "name": p.get("name"),
                     "short_name": p.get("short_name"),
                 }
-                for p in team_map
+                for p in teams_list
             ]
             logger.debug("Returning %d configured teams", len(names))
             return names
@@ -44,7 +63,8 @@ class TeamService(TeamServiceProtocol):
         """
         tkn = name.strip().lower()
         teams_cfg = self._storage_config.load("config", "teams")
-        for tm in teams_cfg["team_map"]:
+        teams_list = self._get_teams_list(teams_cfg, include_excluded=False)
+        for tm in teams_list:
             if tkn == tm["name"].lower() or tkn == tm["short_name"].lower():
                 return slugify(tm["name"], prefix="team-")
         return None
@@ -57,7 +77,8 @@ class TeamService(TeamServiceProtocol):
         tid = team_id.strip()
         # Use dedicated teams file rather than server_config
         teams_cfg = self._storage_config.load("config", "teams")
-        for tm in teams_cfg["team_map"]:
+        teams_list = self._get_teams_list(teams_cfg, include_excluded=False)
+        for tm in teams_list:
             slugified = slugify(tm["name"], prefix="team-")
             if tid == slugified:
                 return tm["short_name"] if "short_name" in tm else tm["name"]

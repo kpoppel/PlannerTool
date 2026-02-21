@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from planner_lib.storage.interfaces import StorageProtocol
 from planner_lib.projects.project_service import ProjectServiceProtocol
 from planner_lib.projects.interfaces import TeamServiceProtocol
+from planner_lib.people.interfaces import PeopleServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class CostService:
 
     The service is composed with a YAML `storage` instance so it can read
     `projects.yml`, `teams.yml` and `cost_config.yml` via the storage layer.
+    It uses PeopleService to access people data.
     """
 
     def __init__(
@@ -21,36 +23,36 @@ class CostService:
         storage: StorageProtocol,
         project_service: ProjectServiceProtocol,
         team_service: TeamServiceProtocol,
-        people_storage: StorageProtocol,
+        people_service: PeopleServiceProtocol,
     ):
-        # `storage` is the config/cost storage (yaml). `people_storage` may
-        # be provided separately (specific file backend). The `team_service`
+        # `storage` is the config/cost storage (yaml). `people_service` provides
+        # access to the people database with overrides. The `team_service`
         # must be provided and will be used exclusively for configured
         # teams lookup; there is no fallback to loading teams from storage.
         self._storage = storage
-        self._people_storage = people_storage
+        self._people_service = people_service
         self._project_service = project_service
         self._team_service = team_service
         # Load cost configuration once at service construction by reading the
         # underlying storage directly. This removes the need for a separate
         # helper to be called from the application.
-        ## TODO: From here:
         try:
             cost_cfg = {}
             db_cfg = {}
             cost_cfg = {}
-            raw_db = {}
             try:
                 cost_cfg = self._storage.load("config", "cost_config") or {}
             except Exception:
                 cost_cfg = {}
 
+            # Get people from PeopleService
+            people = []
             try:
-                raw_db = self._people_storage.load("config", "database") or {}
+                people = self._people_service.get_people()
             except Exception:
-                raw_db = {}
-
-            database = raw_db.get('database', {})
+                people = []
+            
+            database = {"people": people}
 
             # Validate team consistency against configured teams where possible.
             try:
@@ -64,15 +66,13 @@ class CostService:
             self._cfg = {"cost": {}, "database": {}}
 
     def _validate_team_consistency(self, db: dict) -> None:
-        """Ensure teams declared in server config `teams` are used by people in `database`.
-
-        Ensure teams declared in server config `team_map` are used by people in `database`.
+        """Ensure teams declared in server config are used by people in `database`.
 
         Raises ValueError if inconsistencies are found. The check builds the canonical
-        set of team ids from `team_map` (slugified as `team-<slug>`) and the set of
-        team ids present in people entries (slugified similarly). If some configured
-        teams are not referenced by any person, this function raises a ValueError
-        listing the missing team names.
+        set of team ids (slugified as `team-<slug>`) and the set of team ids present
+        in people entries (slugified similarly). If some configured teams are not
+        referenced by any person, this function raises a ValueError listing the
+        missing team names.
         """
         from planner_lib.util import slugify
 

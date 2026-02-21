@@ -2,7 +2,7 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
-export class AdminCost extends LitElement {
+export class AdminPeople extends LitElement {
   static properties = {
     activeTab: { type: String },
     content: { type: Object },
@@ -11,7 +11,8 @@ export class AdminCost extends LitElement {
     statusMsg: { type: String },
     statusType: { type: String },
     inspectData: { type: Object },
-    inspectLoading: { type: Boolean }
+    inspectLoading: { type: Boolean },
+    expandedTeams: { type: Object }
   };
 
   static styles = css`
@@ -104,7 +105,7 @@ export class AdminCost extends LitElement {
     /* Inspection view styles */
     .summary-cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
@@ -136,6 +137,21 @@ export class AdminCost extends LitElement {
       margin-top: 4px;
     }
     
+    .info-row {
+      padding: 8px 12px;
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+      color: #1e40af;
+    }
+    
+    .info-label {
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    
     .section {
       margin-bottom: 24px;
     }
@@ -164,7 +180,8 @@ export class AdminCost extends LitElement {
     
     .team-card.matched { border-left: 4px solid #10b981; }
     .team-card.unmatched { border-left: 4px solid #ef4444; }
-    .team-card.config-only { border-left: 4px solid #f59e0b; }
+    .team-card.no-people { border-left: 4px solid #f59e0b; }
+    .team-card.excluded { border-left: 4px solid #6b7280; }
     
     .team-header {
       display: flex;
@@ -195,11 +212,12 @@ export class AdminCost extends LitElement {
     
     .team-badge.matched { background: #d1fae5; color: #065f46; }
     .team-badge.unmatched { background: #fee2e2; color: #991b1b; }
-    .team-badge.config-only { background: #fef3c7; color: #92400e; }
+    .team-badge.no-people { background: #fef3c7; color: #92400e; }
+    .team-badge.excluded { background: #f3f4f6; color: #4b5563; }
     
     .team-stats {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 12px;
       margin-top: 12px;
       padding: 12px;
@@ -238,6 +256,21 @@ export class AdminCost extends LitElement {
       display: flex;
       align-items: center;
       gap: 6px;
+      user-select: none;
+    }
+    
+    .expandable-icon {
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #6b7280;
+      transform: rotate(-90deg);
+      transition: transform 0.2s;
+    }
+    
+    .expandable-icon.expanded {
+      transform: rotate(0deg);
     }
     
     .members-content {
@@ -246,7 +279,7 @@ export class AdminCost extends LitElement {
       padding: 8px;
       background: #f9fafb;
       border-radius: 4px;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
     }
     
@@ -258,7 +291,7 @@ export class AdminCost extends LitElement {
       padding: 6px 0;
       border-bottom: 1px solid #e5e7eb;
       display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+      grid-template-columns: 2fr 1fr 1fr;
       gap: 8px;
       font-size: 0.85rem;
     }
@@ -284,70 +317,21 @@ export class AdminCost extends LitElement {
     
     .alert.warning {
       background: #fef3c7;
+      border-left: 4px solid #f59e0b;
       color: #92400e;
-      border: 1px solid #fde68a;
     }
     
     .alert.info {
       background: #dbeafe;
+      border-left: 4px solid #3b82f6;
       color: #1e40af;
-      border: 1px solid #bfdbfe;
-    }
-    
-    .expandable-icon {
-      display: inline-block;
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 6px solid #6b7280;
-      transition: transform 0.2s;
-    }
-    
-    .expandable-icon.expanded {
-      transform: rotate(180deg);
-    }
-    
-    .config-info {
-      background: #f9fafb;
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      margin-bottom: 16px;
-    }
-    
-    .config-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
-    }
-    
-    .config-label {
-      color: #6b7280;
-      font-weight: 500;
-    }
-    
-    .config-value {
-      font-family: monospace;
-      color: #1f2937;
     }
   `;
-
-  get configType() { return 'cost'; }
-  get title() { return 'Cost Configuration'; }
-  get defaultContent() { 
-    return {
-      schema_version: 1,
-      working_hours: {},
-      internal_cost: { default_hourly_rate: 78 },
-      external_cost: { default_hourly_rate: 120, external: {} }
-    };
-  }
 
   constructor() {
     super();
     this.activeTab = 'config';
-    this.content = this.defaultContent;
+    this.content = null;
     this.schema = null;
     this.loading = false;
     this.statusMsg = '';
@@ -355,6 +339,18 @@ export class AdminCost extends LitElement {
     this.inspectData = null;
     this.inspectLoading = false;
     this.expandedTeams = new Set();
+  }
+
+  get configType() { return 'people'; }
+  get title() { return 'People Configuration'; }
+  get defaultContent() { 
+    return { 
+      schema_version: 1, 
+      database_file: 'config/database.yaml',
+      database: { 
+        people: [] 
+      } 
+    }; 
   }
 
   connectedCallback() {
@@ -365,45 +361,32 @@ export class AdminCost extends LitElement {
   async loadConfig() {
     this.loading = true;
     try {
-      const [schemaData, contentData] = await Promise.all([
-        adminProvider.getSchema(this.configType),
-        adminProvider.getCost()
-      ]);
-      
-      this.schema = schemaData;
-      this.content = this.parseContent(contentData);
-      this.statusMsg = '';
-    } catch (e) { 
-      this.statusMsg = `Error loading cost configuration`; 
-      this.statusType = 'error';
-    } finally { 
-      this.loading = false; 
-    }
-  }
-
-  parseContent(data) {
-    if (typeof data === 'string') {
-      try {
-        return JSON.parse(data);
-      } catch (e) {
-        return this.defaultContent;
+      // Load schema
+      const schemaRes = await fetch(`/admin/v1/schema/${this.configType}`);
+      if (schemaRes.ok) {
+        this.schema = await schemaRes.json();
       }
+
+      // Load content
+      const methodName = `get${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
+      const content = await adminProvider[methodName]();
+      this.content = content || this.defaultContent;
+    } catch (e) {
+      this.statusMsg = `Error loading config: ${e.message}`;
+      this.statusType = 'error';
+    } finally {
+      this.loading = false;
     }
-    return data?.content || this.defaultContent;
   }
 
   async loadInspectData() {
     this.inspectLoading = true;
+    this.statusMsg = '';
     try {
-      const response = await fetch('/admin/v1/cost/inspect', {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load inspection data: ${response.statusText}`);
+      this.inspectData = await adminProvider.getPeopleInspect();
+      if (!this.inspectData) {
+        throw new Error('No data returned from server');
       }
-      
-      this.inspectData = await response.json();
       this.statusMsg = 'Inspection data loaded successfully';
       this.statusType = 'success';
     } catch (e) {
@@ -428,9 +411,13 @@ export class AdminCost extends LitElement {
     this.statusMsg = '';
     try {
       const formData = this.shadowRoot.querySelector('schema-form')?.getData();
-      await adminProvider.saveCost(formData || this.content);
+      await adminProvider.savePeople(formData || this.content);
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
+      // Reload inspect data if on that tab
+      if (this.activeTab === 'inspect' && this.inspectData) {
+        setTimeout(() => this.loadInspectData(), 500);
+      }
     } catch (e) {
       this.statusMsg = `Error: ${e.message}`;
       this.statusType = 'error';
@@ -481,80 +468,71 @@ export class AdminCost extends LitElement {
       `;
     }
 
-    const { summary, configured_teams, database_teams, matched_teams, 
-            config_only_teams, database_only_teams, excluded_teams, unmatched_people, cost_config } = this.inspectData;
+    const { summary, matched_teams, unmatched_teams, teams_without_people, 
+            excluded_teams, unassigned_people } = this.inspectData;
 
     return html`
       <div class="panel">
-        <h2>Team Matching & Cost Inspection</h2>
+        <h2>People & Team Inspection</h2>
         
-        ${database_only_teams.length > 0 ? html`
+        <div class="info-row">
+          <span class="info-label">Database Source:</span>
+          <span>${summary.database_path}</span>
+        </div>
+        
+        ${unmatched_teams.length > 0 ? html`
           <div class="alert warning">
-            <strong>⚠️ Warning:</strong> ${database_only_teams.length} team(s) in database.yml 
-            are not configured in teams.yml. Cost calculations for work assigned to these teams will fail.
+            <strong>⚠️ Warning:</strong> ${unmatched_teams.length} team(s) have people assigned 
+            but are not configured in teams.yml. Add these teams to teams.yml.
           </div>
         ` : ''}
         
-        ${config_only_teams.length > 0 ? html`
+        ${teams_without_people.length > 0 ? html`
           <div class="alert info">
-            <strong>ℹ️ Info:</strong> ${config_only_teams.length} team(s) in teams.yml 
-            have no members in database.yml.
+            <strong>ℹ️ Info:</strong> ${teams_without_people.length} configured team(s) 
+            have no people assigned in the database.
           </div>
         ` : ''}
         
-        ${excluded_teams && excluded_teams.length > 0 ? html`
-          <div class="alert info">
-            <strong>ℹ️ Info:</strong> ${excluded_teams.length} team(s) are marked as excluded 
-            in teams.yml and will not be used in operations.
+        ${unassigned_people.length > 0 ? html`
+          <div class="alert warning">
+            <strong>⚠️ Warning:</strong> ${unassigned_people.length} people have no team assignment.
           </div>
         ` : ''}
 
         <div class="summary-cards">
           <div class="card">
-            <div class="card-title">Configured Teams</div>
-            <div class="card-value">${summary.configured_count}</div>
-            <div class="card-subtitle">From teams.yml (active)</div>
+            <div class="card-title">Total People</div>
+            <div class="card-value">${summary.total_people}</div>
+            <div class="card-subtitle">From database</div>
           </div>
-          ${summary.excluded_count > 0 ? html`
-            <div class="card">
-              <div class="card-title">Excluded Teams</div>
-              <div class="card-value">${summary.excluded_count}</div>
-              <div class="card-subtitle">In teams.yml but excluded</div>
-            </div>
-          ` : ''}
           <div class="card">
-            <div class="card-title">Database Teams</div>
-            <div class="card-value">${summary.database_count}</div>
-            <div class="card-subtitle">From database.yml</div>
+            <div class="card-title">Internal</div>
+            <div class="card-value">${summary.total_internal}</div>
+            <div class="card-subtitle">Staff members</div>
+          </div>
+          <div class="card">
+            <div class="card-title">External</div>
+            <div class="card-value">${summary.total_external}</div>
+            <div class="card-subtitle">Contractors</div>
           </div>
           <div class="card">
             <div class="card-title">Matched Teams</div>
-            <div class="card-value">${summary.matched_count}</div>
-            <div class="card-subtitle">Ready for cost calc</div>
+            <div class="card-value">${summary.matched_teams}</div>
+            <div class="card-subtitle">In config & database</div>
           </div>
           <div class="card">
-            <div class="card-title">Total Monthly Cost</div>
-            <div class="card-value">€${(summary.total_internal_cost_monthly + summary.total_external_cost_monthly).toLocaleString()}</div>
-            <div class="card-subtitle">Int: €${summary.total_internal_cost_monthly.toLocaleString()} | Ext: €${summary.total_external_cost_monthly.toLocaleString()}</div>
+            <div class="card-title">Unmatched Teams</div>
+            <div class="card-value">${summary.unmatched_teams}</div>
+            <div class="card-subtitle">Not in config</div>
           </div>
         </div>
 
-        <div class="config-info">
-          <div class="config-row">
-            <span class="config-label">Internal Hourly Rate:</span>
-            <span class="config-value">€${cost_config.internal_hourly_rate}</span>
-          </div>
-          <div class="config-row">
-            <span class="config-label">External Default Rate:</span>
-            <span class="config-value">€${cost_config.external_hourly_rate_default}</span>
-          </div>
-        </div>
-
-        ${database_only_teams.length > 0 ? html`
+        ${unmatched_teams.length > 0 ? html`
           <div class="section">
-            <div class="section-title">⚠️ Teams in Database but NOT in Config (${database_only_teams.length})</div>
+            <div class="section-title">⚠️ Teams with People but NOT in Config (${unmatched_teams.length})</div>
             <div class="team-list">
-              ${database_only_teams.map(team => this.renderTeamCard(team, 'unmatched'))}
+              ${unmatched_teams.map(team => this.renderTeamCard(team, 'unmatched'))}
             </div>
           </div>
         ` : ''}
@@ -568,11 +546,11 @@ export class AdminCost extends LitElement {
           </div>
         ` : ''}
 
-        ${config_only_teams.length > 0 ? html`
+        ${teams_without_people.length > 0 ? html`
           <div class="section">
-            <div class="section-title">ℹ️ Teams in Config but NOT in Database (${config_only_teams.length})</div>
+            <div class="section-title">ℹ️ Configured Teams with No People (${teams_without_people.length})</div>
             <div class="team-list">
-              ${config_only_teams.map(team => this.renderTeamCard(team, 'config-only'))}
+              ${teams_without_people.map(team => this.renderTeamCard(team, 'no-people'))}
             </div>
           </div>
         ` : ''}
@@ -582,6 +560,15 @@ export class AdminCost extends LitElement {
             <div class="section-title">🚫 Excluded Teams (${excluded_teams.length})</div>
             <div class="team-list">
               ${excluded_teams.map(team => this.renderTeamCard(team, 'excluded'))}
+            </div>
+          </div>
+        ` : ''}
+
+        ${unassigned_people.length > 0 ? html`
+          <div class="section">
+            <div class="section-title">⚠️ Unassigned People (${unassigned_people.length})</div>
+            <div class="team-list">
+              ${unassigned_people.map(person => this.renderUnassignedPerson(person))}
             </div>
           </div>
         ` : ''}
@@ -608,27 +595,24 @@ export class AdminCost extends LitElement {
           <div class="team-badge ${type}">
             ${type === 'matched' ? '✓ Matched' : 
               type === 'unmatched' ? '⚠️ Not in Config' : 
-              'ℹ️ No Members'}
+              type === 'excluded' ? '🚫 Excluded' :
+              'ℹ️ No People'}
           </div>
         </div>
 
         ${hasMembers ? html`
           <div class="team-stats">
             <div class="stat">
+              <span class="stat-label">Total Members</span>
+              <span class="stat-value">${team.members.length}</span>
+            </div>
+            <div class="stat">
               <span class="stat-label">Internal</span>
-              <span class="stat-value">${team.internal_count || 0} members</span>
+              <span class="stat-value">${team.internal_count || 0}</span>
             </div>
             <div class="stat">
               <span class="stat-label">External</span>
-              <span class="stat-value">${team.external_count || 0} members</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Monthly Hours</span>
-              <span class="stat-value">${((team.internal_hours_total || 0) + (team.external_hours_total || 0)).toFixed(0)}h</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Monthly Cost</span>
-              <span class="stat-value">€${((team.internal_cost_total || 0) + (team.external_cost_total || 0)).toLocaleString()}</span>
+              <span class="stat-value">${team.external_count || 0}</span>
             </div>
           </div>
 
@@ -642,8 +626,6 @@ export class AdminCost extends LitElement {
                 <span>Name</span>
                 <span>Type</span>
                 <span>Site</span>
-                <span>Rate/h</span>
-                <span>Hours/mo</span>
               </div>
               ${team.members.map(member => html`
                 <div class="member">
@@ -652,13 +634,35 @@ export class AdminCost extends LitElement {
                     ${member.external ? 'External' : 'Internal'}
                   </span>
                   <span>${member.site || '-'}</span>
-                  <span>€${member.hourly_rate}</span>
-                  <span>${member.hours_per_month}h</span>
                 </div>
               `)}
             </div>
           </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  renderUnassignedPerson(person) {
+    return html`
+      <div class="team-card unmatched">
+        <div class="team-header">
+          <div>
+            <div class="team-name">${person.name}</div>
+            <div class="team-id">${person.reason}</div>
+          </div>
+          <div class="team-badge unmatched">⚠️ No Team</div>
+        </div>
+        <div class="team-stats">
+          <div class="stat">
+            <span class="stat-label">Type</span>
+            <span class="stat-value">${person.external ? 'External' : 'Internal'}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Site</span>
+            <span class="stat-value">${person.site || '-'}</span>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -687,4 +691,4 @@ export class AdminCost extends LitElement {
   }
 }
 
-customElements.define('admin-cost', AdminCost);
+customElements.define('admin-people', AdminPeople);

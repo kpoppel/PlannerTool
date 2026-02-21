@@ -63,13 +63,6 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.bootstrap import bootstrap_server
     server_cfg = bootstrap_server(storage_yaml, logger)
 
-    people_storage_yaml = cast(StorageBackend, create_storage(
-        backend=config.people_storage_backend,
-        serializer=config.yaml_serializer,
-        accessor=None,
-        file_path=server_cfg.get('database_path', config.data_dir),
-    ))
-
     # Compose services
     from planner_lib.accounts.config import AccountManager
     account_manager = AccountManager(account_storage=storage_pickle)
@@ -81,6 +74,10 @@ def create_app(config: Config) -> FastAPI:
     project_service = ProjectService(storage_config=storage_yaml)
     team_service = TeamService(storage_config=storage_yaml)
     capacity_service = CapacityService(team_service=team_service)
+
+    # Create PeopleService for managing people database
+    from planner_lib.people import PeopleService
+    people_service = PeopleService(storage=storage_yaml, data_dir=config.data_dir)
 
     from planner_lib.azure import AzureService
     org = server_cfg.get('azure_devops_organization')
@@ -99,7 +96,7 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.cost.service import CostService
     cost_service = CostService(
         storage=storage_yaml,
-        people_storage=people_storage_yaml,
+        people_service=people_service,
         project_service=project_service,
         team_service=team_service,
     )
@@ -123,7 +120,7 @@ def create_app(config: Config) -> FastAPI:
 
     container = ServiceContainer()
     container.register_singleton("server_config_storage", storage_yaml)
-    container.register_singleton("people_storage", people_storage_yaml)
+    container.register_singleton("people_service", people_service)
     container.register_singleton("azure_client", azure_client)
     container.register_singleton("account_storage", storage_pickle)
     container.register_singleton("scenarios_storage", storage_pickle)

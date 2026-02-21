@@ -82,6 +82,32 @@ export class AdminProviderREST {
     }catch(err){ console.error('AdminProviderREST:saveTeams', err); return { ok:false, error: String(err) }; }
   }
 
+  async getPeople(){
+    try{
+      const res = await fetch('/admin/v1/people', { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    }catch(err){ console.error('AdminProviderREST:getPeople', err); return null; }
+  }
+
+  async savePeople(content){
+    try{
+      const body = JSON.stringify({ content: content });
+      const res = await fetch('/admin/v1/people', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:savePeople', err); return { ok:false, error: String(err) }; }
+  }
+
+  async getPeopleInspect(){
+    try{
+      const res = await fetch('/admin/v1/people/inspect', { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:getPeopleInspect', err); return null; }
+  }
+
   async getCost(){
     try{
       const res = await fetch('/admin/v1/cost', { method: 'GET', credentials: 'same-origin' });

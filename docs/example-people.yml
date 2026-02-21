@@ -1,0 +1,47 @@
+# People Configuration Schema
+# Schema version 1
+#
+# This file configures the people database for the PlannerTool.
+# The people database contains information about team members including
+# their team assignments, sites, and employment type.
+
+# Mandatory: Schema version
+schema_version: 1
+
+# Optional: Path to the main database YAML file
+# Can be absolute or relative to the data directory
+# If not specified, only inline entries will be used
+database_file: config/database.yaml
+
+# Optional: Inline database entries
+# These entries override or extend the entries from database_file
+# Entries are matched by name - if a name exists in both places,
+# the inline entry takes precedence
+database:
+  people:
+  # Minimal required fields for each person:
+  - name: "Bob Cons (ext)"
+    team_name: "My Team"      # Must match a team from teams.yml
+    site: "CA"                # Site code (e.g., CA, MNT)
+    external: true            # true for contractors, false for employees
+  
+  # Additional fields from the database file are preserved:
+  # - birthday: date string
+  # - carry_over_holidays: integer
+  # - functional_manager: string
+  # - legal_manager: string
+  # - title: string
+  # - virtual_team: list of team names
+
+# Example with more complete structure:
+#  - name: "John Doe"
+#    team_name: "Architecture"
+#    site: "MNT"
+#    external: false
+#    title: "Senior Engineer, Division 1"
+#    birthday: "1990-01-15"
+#    carry_over_holidays: 5
+#    functional_manager: "Jane Smith"
+#    legal_manager: "Jane Smith"
+#    virtual_team:
+#    - "SW CoP"

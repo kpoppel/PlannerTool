@@ -94,7 +94,10 @@ class AdminService:
             # Update composed azure_client runtime settings from the new
             # server configuration so future Azure connections use the
             # updated organization and feature flags.
-            cfg = self._config_storage.load('config', 'server_config') or {}
+            try:
+                cfg = self._config_storage.load('config', 'server_config') or {}
+            except KeyError:
+                cfg = {}
             self._azure_client.organization_url = cfg.get('azure_devops_organization')
             self._azure_client.feature_flags = cfg.get('feature_flags')
             return {'ok': True}

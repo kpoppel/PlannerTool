@@ -169,20 +169,18 @@ async def api_cost_teams(request: Request):
         from planner_lib.services.resolver import resolve_service
 
         storage = resolve_service(request, 'server_config_storage')
-        people_storage = resolve_service(request, 'people_storage')
+        people_service = resolve_service(request, 'people_service')
         cost_cfg = {}
-        db_cfg_raw = {}
         try:
             cost_cfg = storage.load('config', 'cost_config') or {}
         except Exception:
             cost_cfg = {}
+        
+        # Get people from PeopleService
         try:
-            db_cfg_raw = people_storage.load('config', 'database') or {}
+            people = people_service.get_people()
         except Exception:
-            db_cfg_raw = {}
-        # Normalize database dict
-        db_cfg = db_cfg_raw.get('database', db_cfg_raw) if isinstance(db_cfg_raw, dict) else {}
-        people = (db_cfg or {}).get('people', []) or []
+            people = []
 
         site_hours_map = cost_cfg.get('working_hours', {}) or {}
         external_cfg = cost_cfg.get('external_cost', {}) or {}

@@ -685,6 +685,227 @@ async def admin_save_teams(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get('/admin/v1/people')
+@require_admin_session
+async def admin_get_people(request: Request):
+    """Return the raw contents of `data/config/people.yml` as text, pretty-printed when possible."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        try:
+            data = storage.load('config', 'people')
+            if isinstance(data, (bytes, bytearray)):
+                return {'content': data.decode('utf-8')}
+            return {'content': data}
+        except KeyError:
+            # If people config doesn't exist, return a default template
+            default_content = {
+                'schema_version': 1,
+                'database_file': 'config/database.yaml',
+                'database': {
+                    'people': []
+                }
+            }
+            import yaml
+            return {'content': yaml.safe_dump(default_content, sort_keys=False)}
+    except Exception as e:
+        logger.exception('Failed to load people config: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/people')
+@require_admin_session
+async def admin_save_people(request: Request):
+    """Save edited people configuration; create a timestamped backup before overwrite."""
+    try:
+        payload = await request.json()
+        content = payload.get('content', '')
+        if not content:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
+
+        # backup and save
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        _backup_existing(storage, 'people', 'people')
+        storage.save('config', 'people', content)
+        
+        # Reload PeopleService after saving
+        try:
+            people_service = resolve_service(request, 'people_service')
+            people_service.reload()
+        except Exception as e:
+            logger.warning('Failed to reload people service after save: %s', e)
+        
+        return {'ok': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to save people config: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get('/admin/v1/people/inspect')
+@require_admin_session
+async def admin_inspect_people(request: Request):
+    """
+    Inspect people data loaded by PeopleService (file + overrides).
+    
+    Returns detailed information about:
+    - People grouped by teams
+    - Database file source path
+    - People with and without team assignments
+    - Override vs file-based people indication
+    """
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        people_service = resolve_service(request, 'people_service')
+        team_service = resolve_service(request, 'team_service')
+        
+        # Get database_file from people config
+        database_path = 'config/database.yaml'  # default fallback
+        try:
+            people_cfg = storage.load('config', 'people')
+            database_path = people_cfg.get('database_file', database_path)
+        except Exception as e:
+            logger.warning(f"Failed to load people config: {e}")
+        
+        # Get all people from PeopleService (already merged file + overrides)
+        try:
+            people = people_service.get_people()
+        except Exception as e:
+            logger.warning(f"Failed to load people from service: {e}")
+            people = []
+        
+        # Get configured teams
+        configured_teams = []
+        excluded_teams = []
+        try:
+            teams_cfg = storage.load('config', 'teams')
+            teams_list_all = teams_cfg.get("teams") or []
+            active_teams = team_service.list_teams() or []
+            active_team_ids = {t.get('id') for t in active_teams}
+            
+            from planner_lib.util import slugify
+            for t in teams_list_all:
+                if not isinstance(t, dict):
+                    continue
+                    
+                team_id = slugify(t.get("name"), prefix="team-")
+                team_obj = {
+                    'id': team_id,
+                    'name': t.get('name', ''),
+                    'short_name': t.get('short_name', ''),
+                    'excluded': t.get('exclude', False)
+                }
+                
+                if t.get('exclude', False):
+                    excluded_teams.append(team_obj)
+                else:
+                    configured_teams.append(team_obj)
+                    
+        except Exception as e:
+            logger.warning(f"Failed to get teams: {e}")
+        
+        # Build sets for checking team configuration status
+        configured_team_ids = {t['id'] for t in configured_teams}
+        excluded_team_ids = {t['id'] for t in excluded_teams}
+        all_configured_team_ids = configured_team_ids | excluded_team_ids  # Union of both sets
+        
+        # Group people by team
+        teams_with_people = {}
+        unassigned_people = []
+        
+        for p in people:
+            raw_team = p.get('team_name') or p.get('team') or ''
+            if not raw_team:
+                unassigned_people.append({
+                    'name': p.get('name', 'Unknown'),
+                    'site': p.get('site', ''),
+                    'external': bool(p.get('external')),
+                    'reason': 'No team_name specified'
+                })
+                continue
+            
+            # Create team ID
+            from planner_lib.util import slugify
+            base = slugify(raw_team)
+            team_id = base if base.startswith("team-") else f"team-{base}"
+            
+            if team_id not in teams_with_people:
+                teams_with_people[team_id] = {
+                    'id': team_id,
+                    'name': raw_team,
+                    'matched': team_id in all_configured_team_ids,  # Check against ALL configured teams
+                    'excluded': team_id in excluded_team_ids,       # Track if this is an excluded team
+                    'members': [],
+                    'internal_count': 0,
+                    'external_count': 0,
+                }
+            
+            team = teams_with_people[team_id]
+            is_external = bool(p.get('external'))
+            
+            if is_external:
+                team['external_count'] += 1
+            else:
+                team['internal_count'] += 1
+            
+            team['members'].append({
+                'name': p.get('name', 'Unknown'),
+                'external': is_external,
+                'site': p.get('site', ''),
+            })
+        
+        # Identify team categories
+        database_team_ids = set(teams_with_people.keys())
+        
+        # Matched teams: in config, NOT excluded, and have people
+        matched_teams = [t for tid, t in teams_with_people.items() 
+                        if tid in configured_team_ids]
+        
+        # Excluded teams with people: in config, excluded, and have people
+        excluded_teams_with_people = [t for tid, t in teams_with_people.items() 
+                                      if tid in excluded_team_ids]
+        
+        # Unmatched teams: NOT in config at all (neither active nor excluded)
+        unmatched_teams = [t for tid, t in teams_with_people.items() 
+                          if tid not in all_configured_team_ids]
+        
+        # Teams without people: in config but no people assigned (includes both active and excluded)
+        teams_without_people = [t for t in configured_teams if t['id'] not in database_team_ids]
+        excluded_teams_without_people = [t for t in excluded_teams if t['id'] not in database_team_ids]
+        
+        # Calculate totals
+        total_people = len(people)
+        total_internal = sum(1 for p in people if not p.get('external'))
+        total_external = sum(1 for p in people if p.get('external'))
+        
+        return {
+            'configured_teams': configured_teams,
+            'excluded_teams': excluded_teams_with_people,  # Return excluded teams that have people
+            'matched_teams': matched_teams,
+            'unmatched_teams': unmatched_teams,
+            'teams_without_people': teams_without_people,
+            'unassigned_people': unassigned_people,
+            'summary': {
+                'database_path': database_path,
+                'total_people': total_people,
+                'total_internal': total_internal,
+                'total_external': total_external,
+                'configured_teams': len(configured_teams),
+                'excluded_teams': len(excluded_teams_with_people),  # Count only those with people
+                'matched_teams': len(matched_teams),
+                'unmatched_teams': len(unmatched_teams),
+                'teams_without_people': len(teams_without_people),
+                'unassigned_people': len(unassigned_people),
+            }
+        }
+    except Exception as e:
+        logger.exception('Failed to inspect people data: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get('/admin/v1/schema/{config_type}')
 @require_admin_session
 async def admin_get_schema(request: Request, config_type: str):
@@ -709,12 +930,6 @@ async def admin_get_schema(request: Request, config_type: str):
                     'type': 'string',
                     'title': 'Azure DevOps Organization',
                     'description': 'Organization name in Azure DevOps',
-                    'minLength': 1
-                },
-                'database_path': {
-                    'type': 'string',
-                    'title': 'Database Path',
-                    'description': 'Filesystem path to database storage',
                     'minLength': 1
                 },
                 'log_level': {
@@ -812,11 +1027,18 @@ async def admin_get_schema(request: Request, config_type: str):
         'teams': {
             'type': 'object',
             'title': 'Team Configuration',
-            'description': 'Team definitions with names and short identifiers',
+            'description': 'Team definitions with names and short identifiers (schema v2)',
             'properties': {
-                'team_map': {
+                'schema_version': {
+                    'type': 'integer',
+                    'title': 'Schema Version',
+                    'description': 'Configuration schema version',
+                    'default': 2,
+                    'minimum': 1
+                },
+                'teams': {
                     'type': 'array',
-                    'title': 'Team Mappings',
+                    'title': 'Teams',
                     'description': 'List of teams with their identifiers',
                     'items': {
                         'type': 'object',
@@ -832,13 +1054,82 @@ async def admin_get_schema(request: Request, config_type: str):
                                 'title': 'Short Name',
                                 'description': 'Abbreviated team identifier (2-4 characters)',
                                 'minLength': 2
+                            },
+                            'exclude': {
+                                'type': 'boolean',
+                                'title': 'Exclude',
+                                'description': 'If true, team is excluded from operations but tracked for consistency',
+                                'default': False
                             }
                         },
                         'required': ['name', 'short_name']
                     }
                 }
             },
-            'required': ['team_map']
+            'required': ['teams']
+        },
+        'people': {
+            'type': 'object',
+            'title': 'People Configuration',
+            'description': 'People database configuration with file path and inline overrides (schema v1)',
+            'properties': {
+                'schema_version': {
+                    'type': 'integer',
+                    'title': 'Schema Version',
+                    'description': 'Configuration schema version',
+                    'default': 1,
+                    'minimum': 1
+                },
+                'database_file': {
+                    'type': 'string',
+                    'title': 'Database File Path',
+                    'description': 'Path to the main people database YAML file (relative to data directory or absolute)',
+                    'minLength': 1
+                },
+                'database': {
+                    'type': 'object',
+                    'title': 'Database Overrides',
+                    'description': 'Inline database entries that override entries from the database_file',
+                    'properties': {
+                        'people': {
+                            'type': 'array',
+                            'title': 'People Entries',
+                            'description': 'List of people with their team assignments',
+                            'items': {
+                                'type': 'object',
+                                'properties': {
+                                    'name': {
+                                        'type': 'string',
+                                        'title': 'Name',
+                                        'description': 'Full name of the person',
+                                        'minLength': 1
+                                    },
+                                    'team_name': {
+                                        'type': 'string',
+                                        'title': 'Team Name',
+                                        'description': 'Team assignment (must match a team from teams.yml)',
+                                        'minLength': 1
+                                    },
+                                    'site': {
+                                        'type': 'string',
+                                        'title': 'Site Code',
+                                        'description': 'Location code (e.g., LY, ERL)',
+                                        'minLength': 1
+                                    },
+                                    'external': {
+                                        'type': 'boolean',
+                                        'title': 'External',
+                                        'description': 'True for contractors, false for employees',
+                                        'default': False
+                                    }
+                                },
+                                'required': ['name', 'team_name', 'site', 'external']
+                            }
+                        }
+                    }
+                }
+            },
+            'required': ['schema_version']
         },
         'area_mappings': {
             'type': 'object',
@@ -1059,16 +1350,16 @@ async def admin_inspect_cost(request: Request):
     try:
         admin_svc = resolve_service(request, 'admin_service')
         storage = admin_svc._config_storage
-        people_storage = resolve_service(request, 'people_storage')
+        people_service = resolve_service(request, 'people_service')
         team_service = resolve_service(request, 'team_service')
         
-        # Load server config to get database path
-        database_path = 'data/config/database.yaml'  # default fallback
+        # Get database_file from people config (for display purposes)
+        database_path = 'config/database.yaml'  # default fallback
         try:
-            server_cfg = storage.load('config', 'server_config') or {}
-            database_path = server_cfg.get('database_path', database_path)
+            people_cfg = people_service.get_config()
+            database_path = people_cfg.get('database_file', database_path)
         except Exception as e:
-            logger.warning(f"Failed to load server_config: {e}")
+            logger.warning(f"Failed to load people config: {e}")
         
         # Load configuration files
         try:
@@ -1077,32 +1368,51 @@ async def admin_inspect_cost(request: Request):
             logger.warning(f"Failed to load cost_config: {e}")
             cost_cfg = {}
             
+        # Get people from PeopleService
         try:
-            db_cfg_raw = people_storage.load('config', 'database') or {}
+            people = people_service.get_people()
         except Exception as e:
-            logger.warning(f"Failed to load database from {database_path}: {e}")
-            db_cfg_raw = {}
-        
-        # Normalize database structure
-        db_cfg = db_cfg_raw.get('database', db_cfg_raw) if isinstance(db_cfg_raw, dict) else {}
-        people = db_cfg.get('people', []) or []
+            logger.warning(f"Failed to load people from service: {e}")
+            people = []
         
         # Extract configured teams using the team_service
         configured_teams = []
+        excluded_teams = []
         try:
-            teams_list = team_service.list_teams() or []
-            for t in teams_list:
-                if isinstance(t, dict):
-                    configured_teams.append({
-                        'id': t.get('id', ''),
-                        'name': t.get('name', ''),
-                        'short_name': t.get('short_name', ''),
-                        'source': 'teams.yml (via team_service)'
-                    })
+            # Get all teams including excluded ones
+            teams_cfg = storage.load('config', 'teams')
+            teams_list_all = teams_cfg.get("teams") or []
+            
+            # Get non-excluded teams from team_service
+            active_teams = team_service.list_teams() or []
+            active_team_ids = {t.get('id') for t in active_teams}
+            
+            for t in teams_list_all:
+                if not isinstance(t, dict):
+                    continue
+                    
+                from planner_lib.util import slugify
+                team_id = slugify(t.get("name"), prefix="team-")
+                team_obj = {
+                    'id': team_id,
+                    'name': t.get('name', ''),
+                    'short_name': t.get('short_name', ''),
+                    'excluded': t.get('exclude', False),
+                    'source': 'teams.yml (via team_service)'
+                }
+                
+                if t.get('exclude', False):
+                    excluded_teams.append(team_obj)
+                else:
+                    configured_teams.append(team_obj)
+                    
         except Exception as e:
             logger.warning(f"Failed to get teams from team_service: {e}")
         
+        # Build sets for checking team configuration status
         configured_team_ids = {t['id'] for t in configured_teams}
+        excluded_team_ids = {t['id'] for t in excluded_teams}
+        all_configured_team_ids = configured_team_ids | excluded_team_ids  # Union of both sets
         
         # Extract teams from database people entries
         site_hours_map = cost_cfg.get('working_hours', {}) or {}
@@ -1132,7 +1442,8 @@ async def admin_inspect_cost(request: Request):
                     'id': team_id,
                     'name': raw_team,
                     'source': database_path,
-                    'matched': team_id in configured_team_ids,
+                    'matched': team_id in all_configured_team_ids,  # Check against ALL configured teams
+                    'excluded': team_id in excluded_team_ids,       # Track if this is an excluded team
                     'members': [],
                     'internal_count': 0,
                     'external_count': 0,
@@ -1183,23 +1494,34 @@ async def admin_inspect_cost(request: Request):
         # Identify mismatches
         database_team_ids = set(database_teams.keys())
         
-        # Teams in config but not in database
+        # Teams in config but not in database (only active teams)
         config_only = [t for t in configured_teams if t['id'] not in database_team_ids]
         
-        # Teams in database but not in config
-        database_only = [t for tid, t in database_teams.items() if tid not in configured_team_ids]
+        # Matched teams: in config, NOT excluded, and have people with cost data
+        matched_teams = [t for tid, t in database_teams.items() 
+                        if tid in configured_team_ids]
         
-        # Teams that match
-        matched_teams = [t for tid, t in database_teams.items() if tid in configured_team_ids]
+        # Excluded teams with people: in config, excluded, and have people with cost data
+        excluded_teams_with_people = [t for tid, t in database_teams.items() 
+                                      if tid in excluded_team_ids]
         
-        # Calculate totals
-        total_internal_cost = sum(t['internal_cost_total'] for t in database_teams.values())
-        total_external_cost = sum(t['external_cost_total'] for t in database_teams.values())
-        total_internal_hours = sum(t['internal_hours_total'] for t in database_teams.values())
-        total_external_hours = sum(t['external_hours_total'] for t in database_teams.values())
+        # Teams in database but NOT in config at all (neither active nor excluded)
+        database_only = [t for tid, t in database_teams.items() 
+                        if tid not in all_configured_team_ids]
+        
+        # Calculate totals (exclude excluded teams from totals as they're not used in operations)
+        total_internal_cost = sum(t['internal_cost_total'] for tid, t in database_teams.items() 
+                                 if tid not in excluded_team_ids)
+        total_external_cost = sum(t['external_cost_total'] for tid, t in database_teams.items() 
+                                 if tid not in excluded_team_ids)
+        total_internal_hours = sum(t['internal_hours_total'] for tid, t in database_teams.items() 
+                                  if tid not in excluded_team_ids)
+        total_external_hours = sum(t['external_hours_total'] for tid, t in database_teams.items() 
+                                  if tid not in excluded_team_ids)
         
         return {
             'configured_teams': configured_teams,
+            'excluded_teams': excluded_teams_with_people,  # Return excluded teams that have people WITH cost data
             'database_teams': list(database_teams.values()),
             'matched_teams': matched_teams,
             'config_only_teams': config_only,
@@ -1208,6 +1530,7 @@ async def admin_inspect_cost(request: Request):
             'summary': {
                 'database_path': database_path,
                 'configured_count': len(configured_teams),
+                'excluded_count': len(excluded_teams_with_people),  # Count only those with people and cost data
                 'database_count': len(database_teams),
                 'matched_count': len(matched_teams),
                 'config_only_count': len(config_only),

@@ -12,7 +12,8 @@ class FakeTeamService:
         # If no cfg provided, return the team_id unchanged (tests expect this)
         if not cfg:
             return team_id
-        for tm in cfg.get("team_map", []):
+        teams_list = cfg.get("teams", [])
+        for tm in teams_list:
             if slugify(tm.get("name"), prefix="team-") == team_id:
                 return tm.get("short_name") or tm.get("name")
         return None
@@ -28,7 +29,7 @@ def test_serialize_team_capacity():
         {"team": "team-frontend", "capacity": 80},
         {"team": "team-backend", "capacity": 60},
     ]
-    cfg = {"team_map": [
+    cfg = {"teams": [
         {"name": "Frontend", "short_name": "team-frontend"},
         {"name": "Backend", "short_name": "team-backend"},
     ]}
@@ -167,9 +168,9 @@ def test_round_trip():
 
 def test_map_team_id_to_short_name():
     """Test mapping team ID to short_name."""
-    # Mock config with team_map (as a dict, matching service expectations)
+    # Mock config with teams (schema v2)
     cfg = {
-        "team_map": [
+        "teams": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "System Framework", "short_name": "SF"},
             {"name": "Integration Team", "short_name": "INT"},
@@ -188,7 +189,7 @@ def test_map_team_id_to_short_name():
 def test_serialize_with_mapping():
     """Test serializing with team ID to short_name mapping."""
     cfg = {
-        "team_map": [
+        "teams": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "Frontend", "short_name": "FE"},
         ]
@@ -211,7 +212,7 @@ def test_serialize_with_mapping():
 def test_update_description_with_mapping():
     """Test updating description with team ID to short_name mapping."""
     cfg = {
-        "team_map": [
+        "teams": [
             {"name": "Architecture", "short_name": "Arch"},
             {"name": "Backend", "short_name": "BE"},
         ]

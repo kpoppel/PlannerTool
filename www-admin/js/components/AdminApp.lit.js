@@ -24,7 +24,7 @@ export class AdminApp extends LitElement {
   constructor(){
     super();
     this.activeSection = 'System';
-    this.sections = ['System','Users','Projects','Teams','Cost','Area Mappings','Iterations','Utilities'];
+    this.sections = ['System','Users','Projects','Teams','People','Cost','Area Mappings','Iterations','Utilities'];
   }
 
   _onSelect(section){
@@ -47,6 +47,7 @@ export class AdminApp extends LitElement {
       case 'Users': return html`<admin-users></admin-users>`;
       case 'Projects': return html`<admin-projects></admin-projects>`;
       case 'Teams': return html`<admin-teams></admin-teams>`;
+      case 'People': return html`<admin-people></admin-people>`;
       case 'Cost': return html`<admin-cost></admin-cost>`;
       case 'Area Mappings': return html`<area-mappings-new></area-mappings-new>`;
       case 'Iterations': return html`<admin-iterations></admin-iterations>`;

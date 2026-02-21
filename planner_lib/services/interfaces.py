@@ -13,6 +13,7 @@ from planner_lib.projects.interfaces import (
     TaskServiceProtocol,
     CapacityServiceProtocol,
 )
+from planner_lib.people.interfaces import PeopleServiceProtocol
 
 __all__ = [
     "StorageProtocol",
@@ -22,4 +23,5 @@ __all__ = [
     "TeamServiceProtocol",
     "TaskServiceProtocol",
     "CapacityServiceProtocol",
+    "PeopleServiceProtocol",
 ]

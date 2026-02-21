@@ -20,10 +20,10 @@ class _DummyStorage:
 
 @pytest.fixture
 def mock_config():
-    """Mock config with Azure organization and team_map."""
+    """Mock config with Azure organization and teams (schema v2)."""
     cfg = {
         "azure_devops_organization": "test-org",
-        "team_map": [
+        "teams": [
             {"name": "Frontend", "short_name": "FE"},
             {"name": "Backend", "short_name": "BE"},
             {"name": "Architecture", "short_name": "Arch"},

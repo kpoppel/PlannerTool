@@ -143,6 +143,15 @@ def app():
             shared.save('config', 'server_config', {})
         except Exception:
             pass
+        # Ensure people config exists for PeopleService
+        try:
+            shared.save('config', 'people', {
+                'schema_version': 1,
+                'database_file': '',
+                'database': {'people': []}
+            })
+        except Exception:
+            pass
 
         # Replace the class so subsequent MemoryStorage() returns the same instance
         mem_mod.MemoryStorage = lambda: shared
@@ -194,6 +203,17 @@ def isolate_storage(app):
             # If underlying backend is the in-memory implementation, clear its store
             if hasattr(be, '_store') and isinstance(getattr(be, '_store'), dict):
                 be._store.clear()
+                # Re-add essential configs after clearing
+                if name == 'server_config_storage':
+                    try:
+                        be.save('config', 'server_config', {})
+                        be.save('config', 'people', {
+                            'schema_version': 1,
+                            'database_file': '',
+                            'database': {'people': []}
+                        })
+                    except Exception:
+                        pass
         except Exception:
             # Fallback: attempt to remove known namespaces if supported
             try:

@@ -235,6 +235,6 @@ class BackendConfig:
     azure_devops_organization: str
     area_paths: List[str]
     project_map: List[Dict[str, str]]
-    team_map: List[Dict[str, str]]
+    teams: List[Dict[str, str]]
     feature_flags: Dict[str, Any]
     data_dir: str

@@ -29,8 +29,15 @@ def test_estimate_costs_empty():
         def list_teams(self):
             return []
 
+    class _DummyPeopleService:
+        def get_people(self):
+            return cfg.get('database', {}).get('people', [])
+
     svc = cost_service_module.CostService(
-        storage=_DummyStorage(), project_service=_DummyProjectService(), team_service=_DummyTeamService()
+        storage=_DummyStorage(), 
+        project_service=_DummyProjectService(), 
+        team_service=_DummyTeamService(),
+        people_service=_DummyPeopleService()
     )
     res = svc.estimate_costs(session={})
     # Expect an empty dict when no features provided
@@ -94,8 +101,15 @@ def test_estimate_costs_simple_feature(monkeypatch):
                 'short_name': 'Team A'
             }]
 
+    class _DummyPeopleService:
+        def get_people(self):
+            return cfg.get('database', {}).get('people', [])
+
     svc = cost_service_module.CostService(
-        storage=_DummyStorage(), project_service=_DummyProjectService(), team_service=_DummyTeamService()
+        storage=_DummyStorage(), 
+        project_service=_DummyProjectService(), 
+        team_service=_DummyTeamService(),
+        people_service=_DummyPeopleService()
     )
     res = svc.estimate_costs(session)
     assert isinstance(res, dict)

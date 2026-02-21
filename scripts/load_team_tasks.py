@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Load top 10 tasks for each entry in `team_map` from the YAML config
+Load top 10 tasks for each team entry from the teams config (schema v2)
 using planner_lib.azure.AzureClient.
 
 Usage:
@@ -142,12 +142,12 @@ def main():
     with client_mgr.connect(pat) as client:
         wit_client = client.conn.clients.get_work_item_tracking_client()
 
-    team_map = cfg.get("team_map", [])
-    if not team_map:
-        print("No `team_map` entries found in config.")
+    teams = cfg.get("teams", [])
+    if not teams:
+        print("No teams entries found in config.")
         sys.exit(0)
 
-    for entry in team_map:
+    for entry in teams:
         name = entry.get("name") or "<unnamed>"
         wiql = entry.get("wiql")
         area_path = entry.get("area_path")

@@ -53,7 +53,7 @@ def test_save_and_load_roundtrip():
             {"name": "ProjectA", "area_path": "\\Area\\A"},
             {"name": "ProjectB", "area_path": "\\Area\\B"},
         ],
-        team_map=[],
+        teams=[],  # Schema v2: teams instead of team_map
         feature_flags={},
         data_dir=None,
     )
