@@ -27,6 +27,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 - Cost module cache needed to be invalidated when data it relies on is changed.
+- Fix project allocation roll-up is not calculated correctly. Epics with children are ignored.
+- Fix Individual teams showed up as project graph.
 
 ## [v1.10.0] - 2026-02-21
 

@@ -166,7 +166,8 @@ export class MainGraphLit extends LitElement {
     // Extract commonly used data fields (fall back to empty arrays/maps)
     const months = data.months || [];
     const teams = data.teams || [];
-    const projects = data.projects || [];
+    const allProjects = data.projects || [];
+    // For project view rendering, we'll filter to only show type='project', but we calculate for all
     const capacityDates = data.capacityDates || [];
     const teamDailyCapacity = data.teamDailyCapacity || [];
     const teamDailyCapacityMap = data.teamDailyCapacityMap || null;
@@ -175,7 +176,7 @@ export class MainGraphLit extends LitElement {
     const totalOrgDailyPerTeamAvg = data.totalOrgDailyPerTeamAvg || [];
     const capacityViewMode = data.capacityViewMode || 'team';
     const selectedTeamIds = new Set(data.selectedTeamIds || (teams.filter(t=>t.selected).map(t=>t.id)));
-    const selectedProjectIds = new Set(data.selectedProjectIds || (projects.filter(p=>p.selected).map(p=>p.id)));
+    const selectedProjectIds = new Set(data.selectedProjectIds || (allProjects.filter(p=>p.selected).map(p=>p.id)));
     const selectedFeatureStateFilter = data.selectedFeatureStateFilter || null;
 
     // Get canvas context
@@ -203,7 +204,7 @@ export class MainGraphLit extends LitElement {
     ctx.clearRect(0, 0, this._canvasRef.width, this._canvasRef.height);
 
     // Delegate to full renderer
-    this._fullRender(ctx, { months, teams, projects, capacityDates, teamDailyCapacity, teamDailyCapacityMap, projectDailyCapacity, projectDailyCapacityMap, totalOrgDailyPerTeamAvg, capacityViewMode, selectedTeamIds, selectedProjectIds, selectedFeatureStateFilter });
+    this._fullRender(ctx, { months, teams, projects: allProjects, capacityDates, teamDailyCapacity, teamDailyCapacityMap, projectDailyCapacity, projectDailyCapacityMap, totalOrgDailyPerTeamAvg, capacityViewMode, selectedTeamIds, selectedProjectIds, selectedFeatureStateFilter });
   }
 
   /**
@@ -380,19 +381,28 @@ export class MainGraphLit extends LitElement {
       }
       teamDayMap.set(d, teamBucket);
 
-      // Project bucket
+      // Project bucket - read from ALL projects but only add type='project' to display bucket
       const projectBucket = {};
       const dayProjectMap = (projectDailyCapacityMap && projectDailyCapacityMap[idx]) || null;
       if(dayProjectMap){
         for(const project of projects){
           const v = dayProjectMap[project.id] || 0;
-          projectBucket[project.id] = selectedProjectIds.has(project.id) ? (v / Math.max(1, nTeams)) : 0;
+          const isProjectType = ((project && project.type) ? String(project.type) : 'project') === 'project';
+          // Only display type='project' projects, but we've read all data
+          if(isProjectType && selectedProjectIds.has(project.id)) {
+            projectBucket[project.id] = v / Math.max(1, nTeams);
+          }
         }
       } else {
         const pTuple = projectDailyCapacity[idx] || [];
         for(let i=0;i<projects.length;i++){
           const project = projects[i];
-          projectBucket[project.id] = selectedProjectIds.has(project.id) ? (pTuple[i] || 0) : 0;
+          const v = pTuple[i] || 0;
+          const isProjectType = ((project && project.type) ? String(project.type) : 'project') === 'project';
+          // Only display type='project' projects, but we've read all data
+          if(isProjectType && selectedProjectIds.has(project.id)) {
+            projectBucket[project.id] = v;
+          }
         }
       }
       projectDayMap.set(d, projectBucket);
@@ -400,14 +410,18 @@ export class MainGraphLit extends LitElement {
       orgTotalsTeam.set(d, maxTeamVal);
       let totalPerTeam = 0;
       if(dayProjectMap){
-        for(const pid of Object.keys(dayProjectMap)){
-          if(!selectedProjectIds.has(pid)) continue;
-          totalPerTeam += (dayProjectMap[pid] || 0) / Math.max(1, nTeams);
+        for(const proj of projects){
+          if(!selectedProjectIds.has(proj.id)) continue;
+          const isProjectType = ((proj && proj.type) ? String(proj.type) : 'project') === 'project';
+          if(!isProjectType) continue;
+          totalPerTeam += (dayProjectMap[proj.id] || 0) / Math.max(1, nTeams);
         }
       } else {
         for(let i=0;i<projects.length;i++){
           const proj = projects[i];
           if(!selectedProjectIds.has(proj.id)) continue;
+          const isProjectType = ((proj && proj.type) ? String(proj.type) : 'project') === 'project';
+          if(!isProjectType) continue;
           totalPerTeam += (projectDailyCapacity[idx] && projectDailyCapacity[idx][i]) ? projectDailyCapacity[idx][i] / Math.max(1, nTeams) : 0;
         }
       }
@@ -482,7 +496,17 @@ export class MainGraphLit extends LitElement {
         const x = Math.floor(dayX[localIdx]);
         const nextX = Math.floor(dayX[localIdx + 1]);
         const dayWidth = Math.max(1, nextX - x);
-        for(const project of projects){ const val = bucket[project.id] || 0; if(val <= 0) continue; const h = clamp(Math.round(val * percentToPx), 0, this._canvasRef.height); ctx.fillStyle = project.color || '#888'; ctx.fillRect(x, y - h, dayWidth, h); y -= h; }
+        // Only render projects with type='project' using their project color
+        for(const project of projects){ 
+          const isProjectType = ((project && project.type) ? String(project.type) : 'project') === 'project';
+          if(!isProjectType) continue;
+          const val = bucket[project.id] || 0; 
+          if(val <= 0) continue; 
+          const h = clamp(Math.round(val * percentToPx), 0, this._canvasRef.height); 
+          ctx.fillStyle = project.color || '#888'; 
+          ctx.fillRect(x, y - h, dayWidth, h); 
+          y -= h; 
+        }
       }
     }
 

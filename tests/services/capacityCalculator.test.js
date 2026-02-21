@@ -59,4 +59,94 @@ describe('CapacityCalculator (unit)', () => {
     const updated = calc.calculate(newFeatures, filters, teams, projects, ['f1']);
     expect(updated.totalOrgDaily.every(v => v === 3)).to.be.true;
   });
+
+  it('epic children rollup: children allocations roll up to epic parent project', () => {
+    const calc = new CapacityCalculator(bus);
+    
+    // Setup: Project A (type=project) with Epic E1
+    //        Team B (type=team) with Feature F1 and F2 (children of E1)
+    // Expected: F1 and F2 capacity should appear in Project A, not Team B
+    
+    const epic = { 
+      id: 'e1', 
+      type: 'epic', 
+      project: 'projectA', 
+      start: '2025-03-01', 
+      end: '2025-03-05', 
+      status: 'active',
+      capacity: [] // Epic itself has no direct capacity
+    };
+    
+    const child1 = {
+      id: 'f1',
+      type: 'feature',
+      parentEpic: 'e1',
+      project: 'teamB', // Feature belongs to team, not project
+      start: '2025-03-01',
+      end: '2025-03-03',
+      status: 'active',
+      capacity: [{ team: 't1', capacity: 2 }]
+    };
+    
+    const child2 = {
+      id: 'f2',
+      type: 'feature',
+      parentEpic: 'e1',
+      project: 'teamB', // Feature belongs to team, not project
+      start: '2025-03-03',
+      end: '2025-03-05',
+      status: 'active',
+      capacity: [{ team: 't1', capacity: 3 }]
+    };
+    
+    const features = [epic, child1, child2];
+    const teams = [{ id: 't1' }];
+    const projects = [
+      { id: 'projectA', type: 'project' }, 
+      { id: 'teamB', type: 'team' }
+    ];
+    
+    // Set up children map
+    const childrenByEpic = new Map();
+    childrenByEpic.set('e1', ['f1', 'f2']);
+    calc.setChildrenByEpic(childrenByEpic);
+    
+    const filters = { 
+      selectedProjects: ['projectA', 'teamB'], 
+      selectedTeams: ['t1'], 
+      selectedStates: ['active'] 
+    };
+    
+    const result = calc.calculate(features, filters, teams, projects);
+    
+    // Verify dates
+    expect(result.dates).to.have.lengthOf(5);
+    expect(result.dates[0]).to.equal('2025-03-01');
+    expect(result.dates[4]).to.equal('2025-03-05');
+    
+    // Get project indices
+    const projectAIdx = projects.findIndex(p => p.id === 'projectA');
+    const teamBIdx = projects.findIndex(p => p.id === 'teamB');
+    
+    // CRITICAL TEST: Children capacity should roll up to Project A (epic's project)
+    // Day 0 (2025-03-01): child1 = 2
+    expect(result.projectDailyCapacity[0][projectAIdx]).to.equal(2, 'Day 0: child1 capacity should roll up to projectA');
+    expect(result.projectDailyCapacity[0][teamBIdx]).to.equal(0, 'Day 0: teamB should have 0 (capacity rolled up to parent)');
+    
+    // Day 1 (2025-03-02): child1 = 2
+    expect(result.projectDailyCapacity[1][projectAIdx]).to.equal(2, 'Day 1: child1 capacity should roll up to projectA');
+    
+    // Day 2 (2025-03-03): child1 = 2, child2 = 3
+    expect(result.projectDailyCapacity[2][projectAIdx]).to.equal(5, 'Day 2: both children should roll up to projectA');
+    
+    // Day 3 (2025-03-04): child2 = 3
+    expect(result.projectDailyCapacity[3][projectAIdx]).to.equal(3, 'Day 3: child2 capacity should roll up to projectA');
+    
+    // Day 4 (2025-03-05): child2 = 3
+    expect(result.projectDailyCapacity[4][projectAIdx]).to.equal(3, 'Day 4: child2 capacity should roll up to projectA');
+    
+    // Verify map-based results too
+    expect(result.projectDailyCapacityMap[0]['projectA']).to.equal(2);
+    expect(result.projectDailyCapacityMap[0]['teamB']).to.be.undefined; // Or 0
+  });
 });

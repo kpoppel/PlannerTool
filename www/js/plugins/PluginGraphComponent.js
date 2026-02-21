@@ -214,11 +214,11 @@ export class PluginGraph extends LitElement {
   _computeDailyTotals(mode, sDate, eDate){
     const effective = state.getEffectiveFeatures();
     const teams = state.teams || [];
-    const projects = state.projects || [];
+    const allProjects = state.projects || [];
     const showEpics = !!state._viewService.showEpics;
     const showFeatures = !!state._viewService.showFeatures;
     const selectedTeams = teams.filter(t=>t.selected).map(t=>t.id);
-    const selectedProjects = projects.filter(p=>p.selected).map(p=>p.id);
+    const selectedProjects = allProjects.filter(p=>p.selected).map(p=>p.id);
     const selectedStates = (state.selectedFeatureStateFilter instanceof Set) ? Array.from(state.selectedFeatureStateFilter) : (state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
     const projectSetSelected = new Set(selectedProjects);
     const teamSetSelected = new Set(selectedTeams);
@@ -243,7 +243,18 @@ export class PluginGraph extends LitElement {
         let maxTeamVal = 0;
         for(let ti=0; ti<teams.length; ti++){ const tid = teams[ti].id; if(!teamSetSelected.has(tid)) continue; const v = Number(tTuple[ti] || 0); totals[i].perTeam[tid] = v; if(v > maxTeamVal) maxTeamVal = v; }
         let sumProj = 0;
-        for(let pi=0; pi<projects.length; pi++){ const pid = projects[pi].id; if(!projectSetSelected.has(pid)) continue; const v = Number(pTuple[pi] || 0); totals[i].perProject[pid] = v; sumProj += v; }
+        // Use allProjects to match indices with capacity calculator, but only display type='project'
+        for(let pi=0; pi<allProjects.length; pi++){ 
+          const proj = allProjects[pi]; 
+          const pid = proj.id; 
+          if(!projectSetSelected.has(pid)) continue; 
+          const v = Number(pTuple[pi] || 0); 
+          const isProjectType = ((proj && proj.type) ? String(proj.type) : 'project') === 'project'; 
+          if(isProjectType){ 
+            totals[i].perProject[pid] = v; 
+            sumProj += v; 
+          } 
+        }
         totals[i].total = (mode === 'team') ? maxTeamVal : sumProj;
       }
       return { days, totals };
@@ -268,19 +279,18 @@ export class PluginGraph extends LitElement {
       const itemStart = new Date(item.start).setHours(0,0,0,0);
       const itemEnd = new Date(item.end).setHours(0,0,0,0);
       if(isEpic){
-        if(!showEpics) continue;
         const children = featuresByEpic.get(item.id) || [];
-        const childRanges = (showFeatures && children.length) ? children.map(ch => ({ s: new Date(ch.start).setHours(0,0,0,0), e: new Date(ch.end).setHours(0,0,0,0) })) : [];
+        const childRanges = children.length ? children.map(ch => ({ s: new Date(ch.start).setHours(0,0,0,0), e: new Date(ch.end).setHours(0,0,0,0) })) : [];
         const startIdx = Math.max(0, Math.floor((Math.max(itemStart, startMs) - startMs)/msPerDay));
         const endIdx = Math.min(days-1, Math.floor((Math.min(itemEnd, new Date(eDate).setHours(0,0,0,0)) - startMs)/msPerDay));
         for(let d = startIdx; d <= endIdx; d++){
           const currentDayMs = startMs + d * msPerDay;
-          const coveredByChild = showFeatures && childRanges.some(r => currentDayMs >= r.s && currentDayMs <= r.e);
+          const coveredByChild = childRanges.some(r => currentDayMs >= r.s && currentDayMs <= r.e);
           if(coveredByChild) continue;
           for(const tl of item.capacity || []){ if(!teamSetSelected.has(tl.team)) continue; addRawTeam(d, tl.team, tl.capacity); addNormalizedProject(d, item.project, tl.capacity); }
         }
       } else {
-        if(!showFeatures) continue;
+        // Always include features in capacity calculations regardless of view visibility
         const startIdx = Math.max(0, Math.floor((Math.max(itemStart, startMs) - startMs)/msPerDay));
         const endIdx = Math.min(days-1, Math.floor((Math.min(itemEnd, new Date(eDate).setHours(0,0,0,0)) - startMs)/msPerDay));
         for(let d = startIdx; d <= endIdx; d++){

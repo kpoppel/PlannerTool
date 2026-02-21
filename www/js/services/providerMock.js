@@ -7,9 +7,9 @@ function delay(ms){ return new Promise(res => setTimeout(res, ms)); }
 export class ProviderMock {
     constructor() {
         this.projects = [
-            { id:'alpha', name:'Project Alpha', selected:true },
-            { id:'beta', name:'Project Beta', selected:true },
-            { id:'ceta', name:'Project Ceta', selected:true }
+            { id:'alpha', name:'Project Alpha', type:'project', selected:true },
+            { id:'beta', name:'Project Beta', type:'project', selected:true },
+            { id:'ceta', name:'Project Ceta', type:'team', selected:true }
         ];
         this.teams = [
             { id:'frontend', name:'Frontend Team', selected:true },

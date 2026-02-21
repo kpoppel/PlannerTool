@@ -228,10 +228,20 @@ export class CapacityCalculator {
             teamDaily[di][ti] += load;
             teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + load;
           }
-          const pi = projectIndexById.get(f.project);
+          
+          // Determine target project: if feature is a child of an Epic, roll up to Epic's project
+          let targetProjectId = f.project;
+          if (f.parentEpic) {
+            const parentEpic = effectiveById.get(f.parentEpic);
+            if (parentEpic && parentEpic.project) {
+              targetProjectId = parentEpic.project;
+            }
+          }
+          
+          const pi = projectIndexById.get(targetProjectId);
           if (pi !== undefined) {
             projectDaily[di][pi] += load;
-            projectDailyMap[di][f.project] = (projectDailyMap[di][f.project] || 0) + load;
+            projectDailyMap[di][targetProjectId] = (projectDailyMap[di][targetProjectId] || 0) + load;
             projectLoadForDay += load;
           }
         }
@@ -318,10 +328,20 @@ export class CapacityCalculator {
               teamDaily[di][ti] += sign * load;
               teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + (sign * load);
             }
-            const pi = projectIndexById.get(f.project);
+            
+            // Determine target project: if feature is a child of an Epic, roll up to Epic's project
+            let targetProjectId = f.project;
+            if (f.parentEpic) {
+              const parentEpic = effectiveById.get(f.parentEpic);
+              if (parentEpic && parentEpic.project) {
+                targetProjectId = parentEpic.project;
+              }
+            }
+            
+            const pi = projectIndexById.get(targetProjectId);
             if (pi !== undefined) {
               projectDaily[di][pi] += sign * load;
-              projectDailyMap[di][f.project] = (projectDailyMap[di][f.project] || 0) + (sign * load);
+              projectDailyMap[di][targetProjectId] = (projectDailyMap[di][targetProjectId] || 0) + (sign * load);
               projectLoadForDay += load;
             }
           }

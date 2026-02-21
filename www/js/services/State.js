@@ -613,9 +613,9 @@ class State {
   recomputeCapacityMetrics(changedFeatureIds = null){
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
-    // For project-load calculations only consider project_map entries marked as 'project'.
-    // Preserve `projects` (baselineProjects) for listing and other purposes.
-    const projectsForCapacity = (projects || []).filter(p => ((p && p.type) ? String(p.type) : 'project') === 'project');
+    // Always use all projects for capacity calculations to ensure features from all projects are counted.
+    // Project type filtering should only affect display/grouping, not calculation.
+    const projectsForCapacity = projects || [];
     const selectedProjects = (this.projects || []).filter(p => p.selected).map(p => p.id);
     const selectedTeams = (this.teams || []).filter(t => t.selected).map(t => t.id);
     const selectedStateIds = this.selectedFeatureStateFilter instanceof Set 
