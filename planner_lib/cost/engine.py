@@ -1,21 +1,30 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from planner_lib.util import slugify
+from planner_lib.storage.interfaces import StorageProtocol
 import logging
 
 logger = logging.getLogger(__name__)
-team_rates_cache: Dict[str, Dict[str, Any]] | None = None
 
 
-def invalidate_team_rates_cache() -> None:
-    """Clear the in-memory team aggregates cache.
+def invalidate_team_rates_cache(cache_storage: StorageProtocol) -> None:
+    """Clear the team aggregates cache.
 
     Call this after changing configuration files or during tests to force
     recomputation of team aggregates on next calculation.
+    
+    Args:
+        cache_storage: Storage backend for the cache. Clears the 'team_rates'
+                      entry in the 'cost_cache' namespace.
     """
-    global team_rates_cache
-    team_rates_cache = None
-    logger.debug("Team rates cache invalidated")
+    try:
+        if cache_storage.exists('cost_cache', 'team_rates'):
+            cache_storage.delete('cost_cache', 'team_rates')
+            logger.debug("Team rates cache invalidated via storage")
+        else:
+            logger.debug("Team rates cache already empty")
+    except Exception as e:
+        logger.warning("Failed to invalidate team rates cache: %s", e)
 
 def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_month: int) -> float:
     """ Calculate working hours between two ISO date strings.
@@ -46,7 +55,7 @@ def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_m
     except Exception:
         return float(default_hours_per_month)
 
-def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dict[str, Dict[str, Any]]:
     """Return aggregated team information.
 
     Returns a mapping: {
@@ -58,10 +67,17 @@ def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
          'external_hourly_rate_total': float,  # sum of external hourly rates
          'external_hours_total': float,         # sum of external permanent hours
       }, ... }
+    
+    Args:
+        config: Configuration dict containing database and cost settings
+        cache_storage: Storage backend for caching results
     """
-    global team_rates_cache
-    if team_rates_cache is not None:
-        return team_rates_cache
+    # Try to load from cache
+    if cache_storage.exists('cost_cache', 'team_rates'):
+        return cache_storage.load('cost_cache', 'team_rates')
+    else:
+        logger.debug("Team rates cache miss, will compute")
+    
     res: Dict[str, Dict[str, Any]] = {}
     db_cfg = (config or {}).get("database", {})
     people = db_cfg.get("people", []) or []
@@ -116,26 +132,31 @@ def _team_members(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             entry["internal_hours_total"] += hrs
             entry.setdefault("internal_monthly_cost_total", 0.0)
             entry["internal_monthly_cost_total"] += rate_val * hrs
-    # logger.debug("Computed team aggregates for %d teams", len(res))
-    # logger.debug(res)
-    team_rates_cache = res
+    
+    # Cache the result
+    try:
+        cache_storage.save('cost_cache', 'team_rates', res)
+        logger.debug("Cached team rates for %d teams", len(res))
+    except Exception as e:
+        logger.warning("Failed to cache team rates: %s", e)
+    
     return res
 
-def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]]) -> Dict[str, Any]:
+def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageProtocol) -> Dict[str, Any]:
     """Calculate costs for a single task given a company config and task profile.
 
     Args:
       config: dict with keys 'cost' and 'database').
       start/end: ISO date strings.
       capacity: list of team allocations [{"team": "team-name", "capacity": 80}, ...]
-      team: team name to lookup internal members in config['database']['teams'].
+      cache_storage: Storage backend for caching team aggregates.
 
     Returns a dict: { 'internal_cost', 'external_cost', 'internal_hours', 'external_hours' }
     """
     #logger.debug(config)
 
     # Get team aggregates, this contains the available hours and cost per month for a team.
-    team_aggregates = _team_members(config)
+    team_aggregates = _team_members(config, cache_storage=cache_storage)
     logger.debug("Team aggregates: %s", team_aggregates)
 
     # The capacity is a [{"team": p, "capacity": c}, ...]

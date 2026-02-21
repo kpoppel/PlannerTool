@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from .engine import calculate
+from .engine import calculate, invalidate_team_rates_cache
 import logging
 from datetime import datetime, timezone
 from planner_lib.storage.interfaces import StorageProtocol
@@ -24,15 +24,18 @@ class CostService:
         project_service: ProjectServiceProtocol,
         team_service: TeamServiceProtocol,
         people_service: PeopleServiceProtocol,
+        cache_storage: StorageProtocol,
     ):
         # `storage` is the config/cost storage (yaml). `people_service` provides
         # access to the people database with overrides. The `team_service`
         # must be provided and will be used exclusively for configured
         # teams lookup; there is no fallback to loading teams from storage.
+        # `cache_storage` is used for caching team rates computations.
         self._storage = storage
         self._people_service = people_service
         self._project_service = project_service
         self._team_service = team_service
+        self._cache_storage = cache_storage
         # Load cost configuration once at service construction by reading the
         # underlying storage directly. This removes the need for a separate
         # helper to be called from the application.
@@ -112,6 +115,15 @@ class CostService:
             raise ValueError("Team configuration mismatch: " + '; '.join(parts))
         ## TODO: simplify the above logic a lot. It just loads two keys from storage!!!
 
+    def invalidate_cache(self) -> None:
+        """Invalidate the team rates cache.
+        
+        Call this after updating teams, people, or cost configuration to force
+        recomputation of team aggregates on the next cost calculation.
+        """
+        invalidate_team_rates_cache(self._cache_storage)
+        logger.debug("CostService: team rates cache invalidated")
+
     def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """Traverse features/tasks from a session-like dict and compute costs.
 
@@ -141,7 +153,7 @@ class CostService:
             end = f.get("end")
             capacity = f.get("capacity")
 
-            cost = calculate(cfg, start=start, end=end, capacity=capacity)
+            cost = calculate(cfg, start=start, end=end, capacity=capacity, cache_storage=self._cache_storage)
 
             if project_id not in projects:
                 projects[project_id] = {}

@@ -112,6 +112,9 @@ export class AdminUtilities extends LitElement {
     invalidateStatus: { type: String },
     invalidateType: { type: String },
     invalidateLoading: { type: Boolean }
+    , reloadStatus: { type: String }
+    , reloadType: { type: String }
+    , reloadLoading: { type: Boolean }
   };
 
   constructor() {
@@ -122,6 +125,31 @@ export class AdminUtilities extends LitElement {
     this.invalidateStatus = '';
     this.invalidateType = '';
     this.invalidateLoading = false;
+    this.reloadStatus = '';
+    this.reloadType = '';
+    this.reloadLoading = false;
+  }
+
+  async handleReloadConfig() {
+    if (!confirm('This will reload server and config state and invalidate runtime caches. Continue?')) return;
+    this.reloadLoading = true;
+    this.reloadStatus = '';
+    this.reloadType = '';
+    try {
+      const result = await adminProvider.reloadConfig();
+      if (result && result.ok) {
+        this.reloadStatus = 'Configuration reloaded successfully';
+        this.reloadType = 'success';
+      } else {
+        this.reloadStatus = result && result.error ? result.error : 'Reload failed';
+        this.reloadType = 'error';
+      }
+    } catch (e) {
+      this.reloadStatus = `Error: ${e.message}`;
+      this.reloadType = 'error';
+    } finally {
+      this.reloadLoading = false;
+    }
   }
 
   async handleCacheCleanup() {
@@ -198,6 +226,27 @@ export class AdminUtilities extends LitElement {
         </div>
         ${this.cleanupStatus ? html`
           <div class="status ${this.cleanupType}">${this.cleanupStatus}</div>
+        ` : ''}
+      </div>
+
+      <div class="panel">
+        <h3>Reload Configuration</h3>
+        <p>
+          Force the server to reload configuration artifacts and invalidate runtime caches.
+          Use this after editing configuration files to ensure all services pick up the changes.
+        </p>
+        <div class="actions">
+          <button 
+            class="primary"
+            @click=${this.handleReloadConfig}
+            ?disabled=${this.reloadLoading}
+          >
+            ${this.reloadLoading ? html`<span class="spinner"></span>` : ''}
+            Reload Configuration
+          </button>
+        </div>
+        ${this.reloadStatus ? html`
+          <div class="status ${this.reloadType}">${this.reloadStatus}</div>
         ` : ''}
       </div>
 

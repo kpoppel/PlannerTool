@@ -8,6 +8,7 @@ from typing import Any
 import logging
 
 from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.services.resolver import resolve_service
 
 logger = logging.getLogger(__name__)
 
@@ -74,15 +75,6 @@ class AdminService:
             except Exception:
                 logger.debug('No database config present to reload')
 
-            # If the cost engine exposes an invalidation hook, call it.
-            try:
-                from planner_lib.cost import engine as cost_engine
-
-                if hasattr(cost_engine, 'invalidate_team_rates_cache'):
-                    cost_engine.invalidate_team_rates_cache()
-            except Exception:
-                logger.debug('No cost engine available to invalidate cache')
-
             # Reload account for the current session if present
             try:
                 if request is not None:
@@ -100,6 +92,35 @@ class AdminService:
                 cfg = {}
             self._azure_client.organization_url = cfg.get('azure_devops_organization')
             self._azure_client.feature_flags = cfg.get('feature_flags')
+            # Best-effort: call reload/invalidate hooks on other services
+            try:
+                if request is not None:
+                    # People service has a reload() method
+                    try:
+                        people = resolve_service(request, 'people_service')
+                        if hasattr(people, 'reload'):
+                            people.reload()
+                    except Exception:
+                        logger.debug('No people_service reload available')
+
+                    # Cost service has invalidate_cache() method
+                    try:
+                        cost = resolve_service(request, 'cost_service')
+                        cost.invalidate_cache()
+                        logger.debug('Cost service cache invalidated')
+                    except Exception as e:
+                        logger.debug('No cost_service available to invalidate: %s', e)
+
+                    # Team/project/capacity services may implement reload
+                    for svc_name in ('team_service', 'project_service', 'capacity_service'):
+                        try:
+                            svc = resolve_service(request, svc_name)
+                            if hasattr(svc, 'reload'):
+                                svc.reload()
+                        except Exception:
+                            logger.debug('No %s.reload available', svc_name)
+            except Exception:
+                logger.debug('Error while invoking service reload hooks')
             return {'ok': True}
         except Exception as e:
             logger.exception('Failed to reload configuration: %s', e)

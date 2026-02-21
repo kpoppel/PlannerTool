@@ -677,6 +677,14 @@ async def admin_save_teams(request: Request):
         storage = admin_svc._config_storage
         _backup_existing(storage, 'teams', 'teams')
         storage.save('config', 'teams', content)
+        
+        # Invalidate cost cache after teams update
+        try:
+            cost_service = resolve_service(request, 'cost_service')
+            cost_service.invalidate_cache()
+        except Exception as e:
+            logger.warning('Failed to invalidate cost cache after teams save: %s', e)
+        
         return {'ok': True}
     except HTTPException:
         raise
@@ -735,6 +743,13 @@ async def admin_save_people(request: Request):
             people_service.reload()
         except Exception as e:
             logger.warning('Failed to reload people service after save: %s', e)
+        
+        # Invalidate cost cache after people update
+        try:
+            cost_service = resolve_service(request, 'cost_service')
+            cost_service.invalidate_cache()
+        except Exception as e:
+            logger.warning('Failed to invalidate cost cache after people save: %s', e)
         
         return {'ok': True}
     except HTTPException:

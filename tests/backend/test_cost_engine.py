@@ -9,8 +9,24 @@ def test_estimate_costs_empty():
         'cost': {'working_hours': {}, 'internal_cost': {'default_hourly_rate': 0}, 'external_cost': {}},
         'database': {'people': []}
     }
+    
+    # Dummy cache storage for tests
+    class _DummyCacheStorage:
+        def __init__(self):
+            self.data = {}
+        def load(self, namespace, key):
+            return self.data.get((namespace, key))
+        def save(self, namespace, key, value):
+            self.data[(namespace, key)] = value
+        def delete(self, namespace, key):
+            self.data.pop((namespace, key), None)
+        def exists(self, namespace, key):
+            return (namespace, key) in self.data
+    
+    cache_storage = _DummyCacheStorage()
+    
     # monkeypatch load_cost_config and clear cached team rates
-    cost_engine.invalidate_team_rates_cache()
+    cost_engine.invalidate_team_rates_cache(cache_storage)
     # Provide a dummy storage object that returns the expected keys
     class _DummyStorage:
         def load(self, namespace, key):
@@ -37,7 +53,8 @@ def test_estimate_costs_empty():
         storage=_DummyStorage(), 
         project_service=_DummyProjectService(), 
         team_service=_DummyTeamService(),
-        people_service=_DummyPeopleService()
+        people_service=_DummyPeopleService(),
+        cache_storage=cache_storage
     )
     res = svc.estimate_costs(session={})
     # Expect an empty dict when no features provided
@@ -76,6 +93,21 @@ def test_estimate_costs_simple_feature(monkeypatch):
         }
     }
 
+    # Dummy cache storage for tests
+    class _DummyCacheStorage:
+        def __init__(self):
+            self.data = {}
+        def load(self, namespace, key):
+            return self.data.get((namespace, key))
+        def save(self, namespace, key, value):
+            self.data[(namespace, key)] = value
+        def delete(self, namespace, key):
+            self.data.pop((namespace, key), None)
+        def exists(self, namespace, key):
+            return (namespace, key) in self.data
+    
+    cache_storage = _DummyCacheStorage()
+
     # Provide a dummy storage object that returns the expected keys
     class _DummyStorage:
         def load(self, namespace, key):
@@ -84,7 +116,7 @@ def test_estimate_costs_simple_feature(monkeypatch):
             if namespace == 'config' and key == 'database':
                 return {'database': cfg.get('database', {})}
             return {}
-    cost_engine.invalidate_team_rates_cache()
+    cost_engine.invalidate_team_rates_cache(cache_storage)
     # Ensure no loaded server config interferes with project filtering
     import planner_lib.setup as setup_module
     monkeypatch.setattr(setup_module, 'get_loaded_config', lambda: None)
@@ -109,7 +141,8 @@ def test_estimate_costs_simple_feature(monkeypatch):
         storage=_DummyStorage(), 
         project_service=_DummyProjectService(), 
         team_service=_DummyTeamService(),
-        people_service=_DummyPeopleService()
+        people_service=_DummyPeopleService(),
+        cache_storage=cache_storage
     )
     res = svc.estimate_costs(session)
     assert isinstance(res, dict)
@@ -138,10 +171,26 @@ def test_engine_calculate_direct():
             ]
         }
     }
+    
+    # Dummy cache storage for tests
+    class _DummyCacheStorage:
+        def __init__(self):
+            self.data = {}
+        def load(self, namespace, key):
+            return self.data.get((namespace, key))
+        def save(self, namespace, key, value):
+            self.data[(namespace, key)] = value
+        def delete(self, namespace, key):
+            self.data.pop((namespace, key), None)
+        def exists(self, namespace, key):
+            return (namespace, key) in self.data
+    
+    cache_storage = _DummyCacheStorage()
+    
     # capacity 50% from team-b
     capacity = [{'team': 'team-b', 'capacity': 50}]
-    cost_engine.invalidate_team_rates_cache()
-    out = cost_engine.calculate(cfg, start='2025-01-01', end='2025-01-02', capacity=capacity)
+    cost_engine.invalidate_team_rates_cache(cache_storage)
+    out = cost_engine.calculate(cfg, start='2025-01-01', end='2025-01-02', capacity=capacity, cache_storage=cache_storage)
     assert 'internal_cost' in out and 'internal_hours' in out
     # With hourly 60 and 16 hours * 0.5 = 8 hours -> cost = 480
     # Updated expected based on current engine outputs

@@ -3,6 +3,23 @@ import datetime
 from planner_lib.cost import engine
 
 
+# Module-level cache storage for all tests
+class _TestCacheStorage:
+    def __init__(self):
+        self.data = {}
+    def load(self, namespace, key):
+        return self.data.get((namespace, key))
+    def save(self, namespace, key, value):
+        self.data[(namespace, key)] = value
+    def delete(self, namespace, key):
+        self.data.pop((namespace, key), None)
+    def exists(self, namespace, key):
+        return (namespace, key) in self.data
+
+
+cache_storage = _TestCacheStorage()
+
+
 def make_mock_config():
     return {
         "cost": {
@@ -29,12 +46,12 @@ def make_mock_config():
 
 
 def teardown_function(function):
-    engine.invalidate_team_rates_cache()
+    engine.invalidate_team_rates_cache(cache_storage)
 
 
 def test_team_aggregates_counts_and_rates():
     cfg = make_mock_config()
-    aggregates = engine._team_members(cfg)
+    aggregates = engine._team_members(cfg, cache_storage)
     assert "team-one" in aggregates
     assert "team-two" in aggregates
     assert "team-mix" in aggregates
@@ -80,7 +97,7 @@ def test_calculate_monotonic_increase_over_durations():
         end = start + datetime.timedelta(days=days - 1)
         start_iso = start.isoformat()
         end_iso = end.isoformat()
-        res = engine.calculate(cfg, start_iso, end_iso, capacities)
+        res = engine.calculate(cfg, start_iso, end_iso, capacities, cache_storage)
         # sanity
         assert res["internal_hours"] >= 0
         assert res["external_hours"] >= 0
@@ -111,7 +128,7 @@ def test_calculate_exact_values():
         end = start + datetime.timedelta(days=days - 1)
         start_iso = start.isoformat()
         end_iso = end.isoformat()
-        res = engine.calculate(cfg, start_iso, end_iso, capacities)
+        res = engine.calculate(cfg, start_iso, end_iso, capacities, cache_storage)
         # sanity
         assert res["internal_hours"] >= 0
         assert res["external_hours"] >= 0
@@ -144,7 +161,7 @@ def test_calculate_exact_values():
 
 def test_calculate_exact_values_permutations():
     cfg = make_mock_config()
-    engine.invalidate_team_rates_cache()
+    engine.invalidate_team_rates_cache(cache_storage)
     start = datetime.date(2025, 1, 1)
     days_list = [1, 10, 100]
     capacity_sets = {
@@ -201,7 +218,7 @@ def test_calculate_exact_values_permutations():
     for name, caps in capacity_sets.items():
         for days in days_list:
             end = start + datetime.timedelta(days=days - 1)
-            res = engine.calculate(cfg, start.isoformat(), end.isoformat(), caps)
+            res = engine.calculate(cfg, start.isoformat(), end.isoformat(), caps, cache_storage)
             exp = expected[name][days]
             assert abs(res['internal_hours'] - exp['internal_hours']) < 1e-6, f"{name} {days} internal_hours"
             assert abs(res['external_hours'] - exp['external_hours']) < 1e-6, f"{name} {days} external_hours"

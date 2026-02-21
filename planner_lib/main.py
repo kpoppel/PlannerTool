@@ -59,6 +59,15 @@ def create_app(config: Config) -> FastAPI:
         accessor=None,
         data_dir=config.data_dir,
     ))
+    
+    # Create memory storage for cost engine cache (team rates)
+    # Use pickle serializer for efficient in-memory caching
+    storage_cost_cache = cast(StorageBackend, create_storage(
+        backend="memory",
+        serializer=config.pickle_serializer,
+        accessor=None,
+        data_dir=config.data_dir,
+    ))
     # Bootstrap server
     from planner_lib.bootstrap import bootstrap_server
     server_cfg = bootstrap_server(storage_yaml, logger)
@@ -99,6 +108,7 @@ def create_app(config: Config) -> FastAPI:
         people_service=people_service,
         project_service=project_service,
         team_service=team_service,
+        cache_storage=storage_cost_cache,
     )
 
     # Admin service depends on account storage (pickle) and config storage (yaml)
@@ -125,6 +135,7 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("account_storage", storage_pickle)
     container.register_singleton("scenarios_storage", storage_pickle)
     container.register_singleton("views_storage", storage_pickle)
+    container.register_singleton("cost_cache_storage", storage_cost_cache)
     container.register_singleton("project_service", project_service)
     container.register_singleton("team_service", team_service)
     container.register_singleton("capacity_service", capacity_service)

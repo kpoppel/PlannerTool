@@ -218,6 +218,14 @@ export class AdminProviderREST {
       return await res.json();
     }catch(err){ console.error('AdminProviderREST:invalidateCache', err); return { ok:false, error: String(err) }; }
   }
+
+  async reloadConfig(){
+    try{
+      const res = await fetch('/admin/v1/reload-config', { method: 'POST', credentials: 'same-origin' });
+      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:reloadConfig', err); return { ok:false, error: String(err) }; }
+  }
 }
 
 // Export a default instance for simple imports

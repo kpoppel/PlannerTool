@@ -14,6 +14,20 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.11.0] - unreleased
+
+### Added
+
+- Admin interface has button to reload the full config in Utilities.
+
+### Changed
+
+- Cost module uses a proper storage backend instead of a local file storage
+
+### Fixed
+
+- Cost module cache needed to be invalidated when data it relies on is changed.
+
 ## [v1.10.0] - 2026-02-21
 
 ### Added
