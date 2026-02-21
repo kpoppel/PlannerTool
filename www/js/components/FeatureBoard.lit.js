@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
@@ -513,15 +513,16 @@ export async function initBoard() {
     return;
   }
 
+  let _boardReady = false;
   const renderFeatures = () => {
-    if (board && typeof board.renderFeatures === 'function') {
+    if (!board || ! _boardReady) return;
+    if (typeof board.renderFeatures === 'function') {
       board.renderFeatures();
     }
   };
 
   const updateFeatures = (payload) => {
-    if (!board || typeof board.updateCardsById !== 'function') return;
-    
+    if (!board || !_boardReady || typeof board.updateCardsById !== 'function') return;
     const ids = payload?.ids;
     if (Array.isArray(ids) && ids.length > 0) {
       board.updateCardsById(ids, state.getEffectiveFeatures());
@@ -542,7 +543,7 @@ export async function initBoard() {
     }
   };
 
-  // Register event handlers
+  // Register event handlers (they will be no-ops until app signals readiness)
   bus.on(ProjectEvents.CHANGED, renderFeatures);
   bus.on(TeamEvents.CHANGED, renderFeatures);
   bus.on(TimelineEvents.MONTHS, renderFeatures);
@@ -552,7 +553,10 @@ export async function initBoard() {
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
 
-  // Initial render
-  renderFeatures();
+  // Defer initial render until app initialization completes to avoid multiple renders
+  bus.once(AppEvents.READY, () => {
+    _boardReady = true;
+    renderFeatures();
+  });
 }
 

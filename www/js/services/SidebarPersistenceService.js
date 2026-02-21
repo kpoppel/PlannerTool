@@ -4,6 +4,9 @@
  * across browser sessions using localStorage.
  */
 
+import { bus } from '../core/EventBus.js';
+import { FilterEvents, FeatureEvents, CapacityEvents } from '../core/EventRegistry.js';
+
 export class SidebarPersistenceService {
   /**
    * @param {Object} dataService - DataService instance for localStorage access
@@ -91,41 +94,65 @@ export class SidebarPersistenceService {
 
       console.debug('[SidebarPersistenceService] Restoring sidebar state:', savedState);
 
-      // Restore project selections
+      // Restore project selections (batch apply to avoid repeated renders)
       if (savedState.projects && state.projects) {
+        const projectSelections = {};
         state.projects.forEach(project => {
           const savedSelection = savedState.projects[project.id];
           if (typeof savedSelection !== 'undefined' && project.selected !== savedSelection) {
-            state.setProjectSelected(project.id, savedSelection);
+            projectSelections[project.id] = !!savedSelection;
           }
         });
+        if (Object.keys(projectSelections).length > 0) {
+          if (typeof state.setProjectsSelectedBulk === 'function') {
+            state.setProjectsSelectedBulk(projectSelections);
+          } else {
+            // Fallback to single updates if bulk API missing
+            Object.keys(projectSelections).forEach(pid => state.setProjectSelected(pid, projectSelections[pid]));
+          }
+        }
       }
 
-      // Restore team selections
+      // Restore team selections (batch apply to avoid repeated renders)
       if (savedState.teams && state.teams) {
+        const teamSelections = {};
         state.teams.forEach(team => {
           const savedSelection = savedState.teams[team.id];
           if (typeof savedSelection !== 'undefined' && team.selected !== savedSelection) {
-            state.setTeamSelected(team.id, savedSelection);
+            teamSelections[team.id] = !!savedSelection;
           }
         });
+        if (Object.keys(teamSelections).length > 0) {
+          if (typeof state.setTeamsSelectedBulk === 'function') {
+            state.setTeamsSelectedBulk(teamSelections);
+          } else {
+            // Fallback to single updates if bulk API missing
+            Object.keys(teamSelections).forEach(tid => state.setTeamSelected(tid, teamSelections[tid]));
+          }
+        }
       }
 
-      // Restore view options
+      // Restore view options (apply silently and emit aggregated events once)
       if (savedState.viewOptions) {
-        viewService.restoreView(savedState.viewOptions);
-        
-        // Restore state filters if present
+        // Apply view options silently; this method will not emit aggregated events when emitAggregated=false
+        viewService.restoreView(savedState.viewOptions, false);
+
+        // Restore state filters if present using silent restore, then emit consolidated updates
         if (savedState.viewOptions.selectedFeatureStates && Array.isArray(savedState.viewOptions.selectedFeatureStates)) {
           const availableStates = state.availableFeatureStates || [];
           const savedStates = savedState.viewOptions.selectedFeatureStates;
-          
-          // Filter to only include states that are currently available
           const validStates = savedStates.filter(stateName => availableStates.includes(stateName));
-          
-          // Set the selected states (this will emit events)
+
           if (state._stateFilterService) {
-            state._stateFilterService.setSelectedStates(validStates);
+            // Use restoreFilterState which doesn't emit events
+            state._stateFilterService.restoreFilterState({ selectedStates: validStates });
+            // Recompute capacity metrics once and emit consolidated events
+            try {
+              if (typeof state.recomputeCapacityMetrics === 'function') state.recomputeCapacityMetrics();
+              bus.emit(CapacityEvents.UPDATED, { dates: state.capacityDates, teamDailyCapacity: state.teamDailyCapacity, projectDailyCapacityRaw: state.projectDailyCapacityRaw, projectDailyCapacity: state.projectDailyCapacity, totalOrgDailyCapacity: state.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg });
+              bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: validStates });
+              bus.emit(FeatureEvents.UPDATED);
+            } catch (e) { /* ignore */ }
           }
         }
       }
@@ -205,6 +232,19 @@ export class SidebarPersistenceService {
       console.debug('[SidebarPersistenceService] Cleared saved state');
     } catch (err) {
       console.error('[SidebarPersistenceService] Error clearing state:', err);
+    }
+  }
+
+  /**
+   * Return saved sidebar state without applying it. Useful for silent restore during init.
+   * @returns {Object|null}
+   */
+  async getSavedState() {
+    try {
+      return await this._dataService.getLocalPref(this._storageKey);
+    } catch (err) {
+      console.error('[SidebarPersistenceService] Error reading saved state:', err);
+      return null;
     }
   }
 }

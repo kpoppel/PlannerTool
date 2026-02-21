@@ -76,6 +76,46 @@ export class ProjectTeamService {
   }
 
   /**
+   * Set multiple project selections in bulk without emitting per-item events.
+   * @param {Object} selections - Mapping of projectId -> boolean
+   * @returns {number} Number of projects actually changed
+   */
+  setProjectsSelectedBulk(selections) {
+    if (!selections || typeof selections !== 'object') return 0;
+    let changed = 0;
+    for (const [id, selected] of Object.entries(selections)) {
+      const p = this.projects.find(x => x.id === id);
+      if (!p) continue;
+      if (p.selected !== !!selected) {
+        p.selected = !!selected;
+        changed++;
+      }
+    }
+    // Caller is responsible for emitting events after bulk update
+    return changed;
+  }
+
+  /**
+   * Set multiple team selections in bulk without emitting per-item events.
+   * @param {Object} selections - Mapping of teamId -> boolean
+   * @returns {number} Number of teams actually changed
+   */
+  setTeamsSelectedBulk(selections) {
+    if (!selections || typeof selections !== 'object') return 0;
+    let changed = 0;
+    for (const [id, selected] of Object.entries(selections)) {
+      const t = this.teams.find(x => x.id === id);
+      if (!t) continue;
+      if (t.selected !== !!selected) {
+        t.selected = !!selected;
+        changed++;
+      }
+    }
+    // Caller is responsible for emitting events after bulk update
+    return changed;
+  }
+
+  /**
    * Get selected project IDs
    * @returns {Array<string>} - Array of selected project IDs
    */

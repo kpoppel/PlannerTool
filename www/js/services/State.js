@@ -215,15 +215,51 @@ class State {
       () => this._projectTeamService.captureCurrentFilters()
     );
     
+    // If there is a saved sidebar state, apply its filters and view silently
+    try {
+      const savedSidebar = await this._sidebarPersistenceService.getSavedState();
+      if (savedSidebar) {
+        // Apply project selections silently
+        if (savedSidebar.projects && this.projects) {
+          try { this._projectTeamService.setProjectsSelectedBulk(savedSidebar.projects); } catch(e){}
+        }
+
+        // Apply team selections silently
+        if (savedSidebar.teams && this.teams) {
+          try { this._projectTeamService.setTeamsSelectedBulk(savedSidebar.teams); } catch(e){}
+        }
+
+        // Apply view options silently (no events emitted)
+        if (savedSidebar.viewOptions) {
+          try { this._viewService.restoreView(savedSidebar.viewOptions, false); } catch(e){}
+
+          // Restore state filters silently
+          if (savedSidebar.viewOptions.selectedFeatureStates && Array.isArray(savedSidebar.viewOptions.selectedFeatureStates)) {
+            const availableStates = this.availableFeatureStates || [];
+            const savedStates = savedSidebar.viewOptions.selectedFeatureStates;
+            const validStates = savedStates.filter(s => availableStates.includes(s));
+            try { this._stateFilterService.restoreFilterState({ selectedStates: validStates }); } catch(e){}
+          }
+        }
+
+        // Now that everything is applied silently, compute metrics and emit a single consolidated update
+        try {
+          this.recomputeCapacityMetrics();
+          bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+          // Notify consumers that features should be re-rendered once
+          bus.emit(FeatureEvents.UPDATED);
+        } catch (e) { /* ignore */ }
+      }
+    } catch (err) {
+      console.error('[State] Error applying saved sidebar state', err);
+    }
+
+    // Emit scenario events and load saved views after state has been applied
     this._scenarioEventService.emitScenarioList();
     this._scenarioEventService.emitScenarioActivated();
-    
+
     // Load saved views
     await this._viewManagementService.loadViews();
-    
-    // Compute capacity metrics for charts/analytics
-    this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
   }
 
   async refreshBaseline() {
@@ -418,6 +454,32 @@ class State {
   setTeamSelected(id, selected) {
     this._ensureFilterManager();
     if (!this._projectTeamService.setTeamSelected(id, selected)) return;
+    this.recomputeCapacityMetrics();
+    bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit(FeatureEvents.UPDATED);
+  }
+
+  /**
+   * Apply multiple project selection changes at once and emit a single update.
+   * @param {Object} selections - Mapping of projectId -> boolean
+   */
+  setProjectsSelectedBulk(selections) {
+    this._ensureFilterManager();
+    const changed = this._projectTeamService.setProjectsSelectedBulk(selections);
+    if (!changed) return;
+    this.recomputeCapacityMetrics();
+    bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
+    bus.emit(FeatureEvents.UPDATED);
+  }
+
+  /**
+   * Apply multiple team selection changes at once and emit a single update.
+   * @param {Object} selections - Mapping of teamId -> boolean
+   */
+  setTeamsSelectedBulk(selections) {
+    this._ensureFilterManager();
+    const changed = this._projectTeamService.setTeamsSelectedBulk(selections);
+    if (!changed) return;
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
     bus.emit(FeatureEvents.UPDATED);

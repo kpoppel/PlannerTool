@@ -92,12 +92,13 @@ export class ViewService {
       scale = 'months';
     }
     if (this._timelineScale === scale) return;
-    
     const oldScale = this._timelineScale;
     this._timelineScale = scale;
     const monthWidth = getMonthWidthForScale(scale);
-
-    this.bus.emit(TimelineEvents.SCALE_CHANGED, { scale, monthWidth, oldScale });
+    // emit unless suppressed
+    if (!arguments[1]) {
+      this.bus.emit(TimelineEvents.SCALE_CHANGED, { scale, monthWidth, oldScale });
+    }
   }
   
   // ========== Visibility Toggles ==========
@@ -116,12 +117,13 @@ export class ViewService {
    */
   setShowEpics(val) {
     this._showEpics = !!val;
-    this.bus.emit(FilterEvents.CHANGED, { 
-      showEpics: this._showEpics, 
-      showFeatures: this._showFeatures 
-    });
-    // Notify that features changed so dependent renderers (like dependency lines) refresh
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(FilterEvents.CHANGED, { 
+        showEpics: this._showEpics, 
+        showFeatures: this._showFeatures 
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -138,12 +140,13 @@ export class ViewService {
    */
   setShowFeatures(val) {
     this._showFeatures = !!val;
-    this.bus.emit(FilterEvents.CHANGED, { 
-      showEpics: this._showEpics, 
-      showFeatures: this._showFeatures 
-    });
-    // Notify that features changed so dependent renderers (like dependency lines) refresh
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(FilterEvents.CHANGED, { 
+        showEpics: this._showEpics, 
+        showFeatures: this._showFeatures 
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -161,8 +164,10 @@ export class ViewService {
   setShowDependencies(val) {
     this._showDependencies = !!val;
     console.debug('[ViewService] setShowDependencies ->', this._showDependencies);
-    this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -180,10 +185,12 @@ export class ViewService {
   setShowUnassignedCards(val) {
     this._showUnassignedCards = !!val;
     console.debug('[ViewService] setShowUnassignedCards ->', this._showUnassignedCards);
-    this.bus.emit(FilterEvents.CHANGED, { 
-      showUnassignedCards: this._showUnassignedCards 
-    });
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(FilterEvents.CHANGED, { 
+        showUnassignedCards: this._showUnassignedCards 
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -201,10 +208,12 @@ export class ViewService {
   setShowUnplannedWork(val) {
     this._showUnplannedWork = !!val;
     console.debug('[ViewService] setShowUnplannedWork ->', this._showUnplannedWork);
-    this.bus.emit(FilterEvents.CHANGED, { 
-      showUnplannedWork: this._showUnplannedWork 
-    });
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(FilterEvents.CHANGED, { 
+        showUnplannedWork: this._showUnplannedWork 
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -221,10 +230,12 @@ export class ViewService {
    */
   setShowOnlyProjectHierarchy(val) {
     this._showOnlyProjectHierarchy = !!val;
-    this.bus.emit(FilterEvents.CHANGED, { 
-      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy 
-    });
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(FilterEvents.CHANGED, { 
+        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy 
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
 
   // ========== Display Modes ==========
@@ -243,8 +254,10 @@ export class ViewService {
    */
   setCondensedCards(val) {
     this._condensedCards = !!val;
-    this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -263,8 +276,10 @@ export class ViewService {
     if (mode !== 'team' && mode !== 'project') return;
     if (this._capacityViewMode === mode) return;
     this._capacityViewMode = mode;
-    this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   /**
@@ -283,8 +298,10 @@ export class ViewService {
     if (mode !== 'date' && mode !== 'rank') return;
     if (this._featureSortMode === mode) return;
     this._featureSortMode = mode;
-    this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
-    this.bus.emit(FeatureEvents.UPDATED);
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
   }
   
   // ========== State Capture ==========
@@ -311,35 +328,46 @@ export class ViewService {
    * Restore view state from snapshot (e.g., when activating a scenario)
    * @param {Object} viewState - View state snapshot
    */
-  restoreView(viewState) {
+  /**
+   * Apply a view state to internal properties without emitting any events.
+   * Useful for silent restore during initial load.
+   * @param {Object} viewState
+   */
+  applyViewStateSilently(viewState) {
     if (!viewState) return;
-    
-    if (viewState.capacityViewMode) {
-      this.setCapacityViewMode(viewState.capacityViewMode);
-    }
-    if (typeof viewState.condensedCards !== 'undefined') {
-      this.setCondensedCards(viewState.condensedCards);
-    }
-    if (viewState.featureSortMode) {
-      this.setFeatureSortMode(viewState.featureSortMode);
-    }
-    if (typeof viewState.showUnassignedCards !== 'undefined') {
-      this.setShowUnassignedCards(viewState.showUnassignedCards);
-    }
-    if (typeof viewState.showUnplannedWork !== 'undefined') {
-      this.setShowUnplannedWork(viewState.showUnplannedWork);
-    }
-    if (viewState.timelineScale) {
-      this.setTimelineScale(viewState.timelineScale);
-    }
-    if (typeof viewState.showEpics !== 'undefined') {
-      this.setShowEpics(viewState.showEpics);
-    }
-    if (typeof viewState.showFeatures !== 'undefined') {
-      this.setShowFeatures(viewState.showFeatures);
-    }
-    if (typeof viewState.showOnlyProjectHierarchy !== 'undefined') {
-      this.setShowOnlyProjectHierarchy(viewState.showOnlyProjectHierarchy);
+    if (viewState.capacityViewMode) this._capacityViewMode = viewState.capacityViewMode;
+    if (typeof viewState.condensedCards !== 'undefined') this._condensedCards = !!viewState.condensedCards;
+    if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
+    if (typeof viewState.showUnassignedCards !== 'undefined') this._showUnassignedCards = !!viewState.showUnassignedCards;
+    if (typeof viewState.showUnplannedWork !== 'undefined') this._showUnplannedWork = !!viewState.showUnplannedWork;
+    if (viewState.timelineScale) this._timelineScale = viewState.timelineScale;
+    if (typeof viewState.showEpics !== 'undefined') this._showEpics = !!viewState.showEpics;
+    if (typeof viewState.showFeatures !== 'undefined') this._showFeatures = !!viewState.showFeatures;
+    if (typeof viewState.showOnlyProjectHierarchy !== 'undefined') this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
+  }
+
+  /**
+   * Restore view state from snapshot (e.g., when activating a scenario)
+   * @param {Object} viewState - View state snapshot
+   * @param {boolean} emitAggregated - When true, emit aggregated events after applying
+   */
+  restoreView(viewState, emitAggregated = true) {
+    if (!viewState) return;
+    // Apply silently to avoid per-setter emits
+    this.applyViewStateSilently(viewState);
+
+    if (emitAggregated) {
+      this.bus.emit(FilterEvents.CHANGED, {
+        showEpics: this._showEpics,
+        showFeatures: this._showFeatures,
+        showUnassignedCards: this._showUnassignedCards,
+        showUnplannedWork: this._showUnplannedWork,
+        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
+      });
+      this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
+      this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
+      this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
+      this.bus.emit(FeatureEvents.UPDATED);
     }
   }
 }
