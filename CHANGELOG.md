@@ -18,7 +18,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 
-- For cards with a long title the tool will not display a "ghost title" next to the card
+- For cards with a long title the tool will now display a "ghost title" next to the card
 - Export plugin renders the ghost titles too (needs some refinement as this is a separate SVG rendering
   of the user interface)
 - Admin backend has teams vs people database validation information added now to see if mappings are correct
