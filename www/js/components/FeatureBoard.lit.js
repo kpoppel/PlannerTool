@@ -16,6 +16,10 @@ class FeatureBoard extends LitElement {
     this.features = [];
     this._cardMap = new Map();
     this._boundHandlers = new Map();
+    // Board-level ResizeObserver and observed inner-elements map
+    this._ro = null;
+    this._observedMap = new Map(); // Map<hostCard, innerElement>
+    this._measureScheduled = false;
   }
 
   static styles = css`
@@ -57,6 +61,21 @@ class FeatureBoard extends LitElement {
     if (!this.hasAttribute('role')) {
       this.setAttribute('role', 'list');
     }
+    // Create a single ResizeObserver for all child cards' inner elements
+    try {
+      this._ro = new ResizeObserver((entries) => {
+        if (this._measureScheduled) return;
+        // schedule a single batched measurement
+        this._measureScheduled = true;
+        requestAnimationFrame(() => {
+          this._measureScheduled = false;
+          this._processMeasurements(entries);
+        });
+      });
+    } catch (e) {
+      // ResizeObserver may not be available in some test envs
+      this._ro = null;
+    }
   }
 
   render() {
@@ -81,6 +100,17 @@ class FeatureBoard extends LitElement {
       bus.off(event, handler);
     });
     this._boundHandlers.clear();
+    try {
+      if (this._ro) {
+        // unobserve all
+        for (const inner of this._observedMap.values()) {
+          try { this._ro.unobserve(inner); } catch (e) { }
+        }
+        this._observedMap.clear();
+        this._ro.disconnect && this._ro.disconnect();
+        this._ro = null;
+      }
+    } catch (e) { }
   }
 
   // Helper: sort features by rank
@@ -447,6 +477,106 @@ class FeatureBoard extends LitElement {
         this._cardMap.set(node.feature.id, node);
       }
     });
+    // Ensure our ResizeObserver is observing the current inner elements
+    this._refreshObserverTargets();
+    // Schedule an immediate measurement pass to compute layout-driven flags
+    this._scheduleMeasureNow();
+  }
+
+  _refreshObserverTargets() {
+    if (!this._ro) return;
+    const current = new Set();
+    const cards = this.shadowRoot ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) : [];
+    for (const card of cards) {
+      current.add(card);
+      if (this._observedMap.has(card)) continue;
+      try {
+        // Observe the host element directly. We'll query its shadowRoot '.feature-card' during measurement.
+        try { this._ro.observe(card); } catch (e) { }
+        this._observedMap.set(card, true);
+      } catch (e) { }
+    }
+
+    // Unobserve removed cards
+    for (const card of Array.from(this._observedMap.keys())) {
+      if (!current.has(card)) {
+        try { this._ro.unobserve(card); } catch (e) { }
+        this._observedMap.delete(card);
+      }
+    }
+  }
+
+  _scheduleMeasureNow() {
+    if (this._measureScheduled) return;
+    this._measureScheduled = true;
+    requestAnimationFrame(() => {
+      this._measureScheduled = false;
+      this._processMeasurements();
+    });
+  }
+
+  _processMeasurements(entries) {
+    try {
+      const board = this;
+      const bbox = board.getBoundingClientRect();
+      const scrollLeft = board.scrollLeft || 0;
+      const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
+      const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
+
+      const tolerance = 2;
+
+      const targets = entries && entries.length ? entries.map(e => e.target) : Array.from(this._observedMap.keys());
+
+      // Ensure we include all observed hosts
+      const hostSet = new Set(targets);
+      for (const host of this._observedMap.keys()) hostSet.add(host);
+
+      for (const host of hostSet) {
+        try {
+          if (!host) continue;
+          // Query inner .feature-card inside the host's shadowRoot for measurements of scrollable children
+          const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
+          // Use host offsets for content coordinates (these are stable and avoid viewport/scroll double-counting)
+          const cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
+          const cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
+          const cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
+          const cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
+
+          const teamRow = inner ? inner.querySelector('.team-load-row') : null;
+          const titleEl = inner ? inner.querySelector('.feature-title') : null;
+
+          const teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
+          const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
+          const contentFits = teamFits && titleFits;
+
+          const titleOverflows = !titleFits;
+          const smallFeature = cardWidth < 40;
+          const culled = cardWidth < 70;
+
+          const borderColor = inner ? window.getComputedStyle(inner).getPropertyValue('border-left-color') : '';
+
+          const layout = {
+            width: cardWidth,
+            contentFits,
+            titleOverflows,
+            smallFeature,
+            culled,
+            cardRect: { left: cardLeft, top: cardTop, width: cardWidth, height: cardHeight },
+            boardRect: { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height },
+            borderColor
+          };
+
+          try {
+            if (typeof host.applyLayout === 'function') {
+              host.applyLayout(layout);
+            } else {
+              // Fallback: set a single property to trigger minimal updates
+              host._layout = layout;
+            }
+          } catch (e) { }
+        } catch (e) { }
+      }
+    } catch (e) { }
   }
 
   _selectFeature(feature) {

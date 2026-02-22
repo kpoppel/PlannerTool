@@ -351,11 +351,8 @@ export class FeatureCardLit extends LitElement {
     this.selected = false;
     this.project = null;
     this.titleOverflows = false;
-    // ResizeObserver batching state
-    this._ro = null;
-    this._roQueue = [];
-    this._roScheduled = false;
-    this._skipRo = false; // set true while dragging to avoid layout reads
+    // Layout state supplied by FeatureBoard
+    this._lastLayout = null;
     this._abortController = new AbortController();
     this._suppressClickUntil = 0; // ignore clicks shortly after drag end
     // Create ghost title element (lives outside shadow DOM)
@@ -374,8 +371,7 @@ export class FeatureCardLit extends LitElement {
     this.classList.toggle('dirty', this.feature?.dirty);
     this.setAttribute('data-feature-id', String(this.feature.id));
     
-    // Update ghost title (creates/destroys as needed based on titleOverflows)
-    requestAnimationFrame(() => this._updateGhostTitlePosition());
+    // Ghost title is now managed by board-supplied layout updates.
   }
 
   /**
@@ -408,18 +404,13 @@ export class FeatureCardLit extends LitElement {
       // Force an update cycle if necessary
       this.requestUpdate();
       
-      // If width changed, check if title overflow state needs updating
+      // If width changed, ask parent board to re-measure layouts once.
       if (widthChanged) {
-        requestAnimationFrame(() => {
-          // Manually trigger overflow check after width change
-          const entry = {
-            contentRect: {
-              width: this.offsetWidth || 0
-            }
-          };
-          this._roQueue.push(entry);
-          this._processRoNow();
-        });
+        try {
+          const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
+          const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
+          if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow();
+        } catch (e) { }
       }
     } catch (e) { /* swallow to allow caller fallback */ }
   }
@@ -452,30 +443,15 @@ export class FeatureCardLit extends LitElement {
     
     // Ghost title will be created on-demand when titleOverflows becomes true
     this._ghostTitle = null;
-    
-    // Debounced ResizeObserver: batch entries and process in rAF
-    this._ro = new ResizeObserver(entries => {
-      if (this._skipRo) return;
-      for (const ent of entries) this._roQueue.push(ent);
-      if (this._roScheduled) return;
-      this._roScheduled = true;
-      requestAnimationFrame(() => {
-        this._roScheduled = false;
-        this._processRoNow();
-      });
-    });
+    // Refresh visuals when features or capacity data update (childrenByEpic may change)
+    this._onFeaturesUpdated = () => { try { this.requestUpdate(); } catch(e){} };
+    this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
 
-    // Delay initial observation to avoid running heavy layout reads during synchronous connectedCallback work
-    requestAnimationFrame(() => { try { this._ro && this._ro.observe(this); } catch (e) { } });
-
-    // Pause RO measurement during drag moves to avoid layout thrash; resume and process after drag end
+    // Hide/restore ghost title during drag to avoid visual duplication; request board to re-measure after drag ends
     try {
-      // Only pause RO / hide ghost for the feature currently being dragged
       this._unsubDragMove = bus.on(DragEvents.MOVE, (p) => {
         try {
           if (p && String(p.featureId) === String(this.feature?.id)) {
-            this._skipRo = true;
-            // Remove/hide the ghost title for this card while dragging to avoid visual duplication
             try {
               if (this._ghostTitle) {
                 this._ghostTitleWasVisibleBeforeDrag = true;
@@ -488,12 +464,7 @@ export class FeatureCardLit extends LitElement {
           }
         } catch (e) { }
       });
-      // Refresh visuals when features or capacity data update (childrenByEpic may change)
-      this._onFeaturesUpdated = () => { try { this.requestUpdate(); } catch(e){} };
-      this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
       this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
-        this._skipRo = false;
-        this._processRoNow();
         try {
           if (p && String(p.featureId) === String(this.feature?.id)) {
             // Suppress clicks fired immediately after a drop
@@ -503,7 +474,8 @@ export class FeatureCardLit extends LitElement {
         // After drag ends, restore the ghost title if it was visible before dragging
         try {
           if (this._ghostTitleWasVisibleBeforeDrag) {
-            requestAnimationFrame(() => this._updateGhostTitlePosition());
+            // Let the board re-measure synchronously and then update ghost positions
+            try { const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null; const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board'); if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) {}
           }
         } catch (e) { }
       });
@@ -512,7 +484,7 @@ export class FeatureCardLit extends LitElement {
     // Add scroll listener to update ghost title position on scroll
     this._onScroll = () => {
       if (this.titleOverflows) {
-        requestAnimationFrame(() => this._updateGhostTitlePosition());
+        try { const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null; const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board'); if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) {}
       }
     };
     
@@ -586,8 +558,83 @@ export class FeatureCardLit extends LitElement {
     } catch (e) {}
   }
 
+  /**
+   * Apply a lightweight layout object supplied by the FeatureBoard observer.
+   * This method applies classes and updates ghost title positioning synchronously
+   * to avoid additional requestAnimationFrame cycles per card.
+   */
+  applyLayout(layout = {}) {
+    try {
+      this._lastLayout = layout || null;
+      const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
+      if (!rootCard) return;
+
+      const tolerance = 2;
+      const w = layout.width || (rootCard.clientWidth || 0);
+
+      if (w < 40) {
+        rootCard.classList.add('small-feature');
+        this.classList.add('small-feature');
+        this.titleOverflows = true;
+      } else {
+        rootCard.classList.remove('small-feature');
+        this.classList.remove('small-feature');
+        this.titleOverflows = !!layout.titleOverflows;
+      }
+
+      if (layout.contentFits === true) {
+        rootCard.classList.remove('narrow');
+        this.classList.remove('narrow');
+      } else if (layout.contentFits === false) {
+        rootCard.classList.add('narrow');
+        this.classList.add('narrow');
+      }
+
+      if (layout.culled === true) {
+        rootCard.classList.add('culled');
+        this.classList.add('culled');
+      } else if (layout.culled === false) {
+        rootCard.classList.remove('culled');
+        this.classList.remove('culled');
+      }
+
+      // Create/destroy and update ghost title synchronously using board-provided rects
+        if (this.titleOverflows) {
+        if (!this._ghostTitle) {
+          this._ghostTitle = document.createElement('ghost-title-lit');
+          const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
+          const featureBoard = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
+          if (featureBoard && featureBoard.shadowRoot) {
+            featureBoard.shadowRoot.appendChild(this._ghostTitle);
+          }
+        }
+      } else if (this._ghostTitle) {
+        try { if (this._ghostTitle.parentNode) this._ghostTitle.parentNode.removeChild(this._ghostTitle); } catch (e) {}
+        this._ghostTitle = null;
+      }
+
+      if (!this._ghostTitle) return;
+
+      try {
+        const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
+        const featureBoard = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
+        if (!featureBoard) return;
+
+        const borderColor = layout.borderColor || window.getComputedStyle(rootCard).getPropertyValue('border-left-color');
+        const cardRect = layout.cardRect || { left: this.offsetLeft || 0, top: this.offsetTop || 0, width: w, height: rootCard.clientHeight || 0 };
+        const boardRect = layout.boardRect || { left: 0, top: 0, width: featureBoard.clientWidth || 0, height: featureBoard.clientHeight || 0 };
+
+        this._ghostTitle.title = this.feature.title || '';
+        this._ghostTitle.visible = true;
+        this._ghostTitle.borderColor = borderColor;
+        this._ghostTitle.cardRect = cardRect;
+        this._ghostTitle.boardRect = boardRect;
+      } catch (e) { }
+    } catch (e) { }
+  }
+
   disconnectedCallback() {
-    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    // No per-card ResizeObserver anymore; board-level observer handles measurements.
     try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
     try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
     try { if (typeof this._unsubFeaturesUpdated === 'function') this._unsubFeaturesUpdated(); } catch (e) { }
@@ -615,131 +662,31 @@ export class FeatureCardLit extends LitElement {
     super.disconnectedCallback();
   }
 
-  _processRoNow() {
-    if (this._skipRo) { this._roQueue = []; return; }
-    // coalesce latest entry for this host
-    const entry = this._roQueue.length ? this._roQueue[this._roQueue.length - 1] : null;
-    this._roQueue = [];
-    if (!entry) return;
-    try {
-      const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-      if (!rootCard) return;
-      const teamRow = rootCard.querySelector('.team-load-row');
-      const titleEl = rootCard.querySelector('.feature-title');
-      const tolerance = 2;
-
-      // Use entry.contentRect.width (cheap) for host width; scrollWidth reads happen here but only once per rAF
-      const w = entry.contentRect ? entry.contentRect.width : (rootCard.clientWidth || 0);
-      
-      // Check if feature is too small (<40px) - treat as small feature
-      if (w < 40) {
-        rootCard.classList.add('small-feature');
-        this.classList.add('small-feature');
-        this.titleOverflows = true; // Always show ghost title for small features since title is hidden
-        // Update ghost title position - use rAF to ensure element is laid out
-        if (this.titleOverflows) {
-          requestAnimationFrame(() => this._updateGhostTitlePosition());
-        }
-        return; // Skip other layout checks for small features
-      } else {
-        rootCard.classList.remove('small-feature');
-        this.classList.remove('small-feature');
-      }
-      
-      const teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
-      const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
-      const contentFits = teamFits && titleFits;
-
-      // Update titleOverflows property to match exactly when card title shows ellipsis
-      this.titleOverflows = !titleFits;
-
-      if (contentFits) {
-        rootCard.classList.remove('narrow');
-        this.classList.remove('narrow');
-      } else {
-        rootCard.classList.add('narrow');
-        this.classList.add('narrow');
-      }
-
-      const isCulled = w < 70;
-      if (isCulled) { 
-        rootCard.classList.add('culled'); 
-        this.classList.add('culled'); 
-      } else { 
-        rootCard.classList.remove('culled'); 
-        this.classList.remove('culled'); 
-      }
-      
-      // Update ghost title position if visible - use rAF to ensure element is laid out
-      if (this.titleOverflows) {
-        requestAnimationFrame(() => this._updateGhostTitlePosition());
-      }
-    } catch (e) { }
-  }
+  // Per-card ResizeObserver processing removed; FeatureBoard supplies layout via `applyLayout(layout)`.
 
   _updateGhostTitlePosition() {
-    // Create or destroy ghost title based on overflow state
-    if (this.titleOverflows && !this._ghostTitle) {
-      // Create ghost title when needed
-      this._ghostTitle = document.createElement('ghost-title-lit');
-      const featureBoard = document.querySelector('feature-board');
-      if (featureBoard && featureBoard.shadowRoot) {
-        featureBoard.shadowRoot.appendChild(this._ghostTitle);
-      }
-    } else if (!this.titleOverflows && this._ghostTitle) {
-      // Destroy ghost title when not needed
-      try {
-        if (this._ghostTitle.parentNode) {
-          this._ghostTitle.parentNode.removeChild(this._ghostTitle);
-        }
-        this._ghostTitle = null;
-      } catch (e) { }
-      return;
-    }
-    
-    if (!this._ghostTitle) return;
-    
+    // Update ghost title position from last layout if available.
     try {
-      const featureCard = this.shadowRoot?.querySelector?.('.feature-card');
-      if (!featureCard) return;
+      if (!this._lastLayout) return;
+      // Create or destroy ghost title based on overflow state
+      if (this.titleOverflows && !this._ghostTitle) {
+        this._ghostTitle = document.createElement('ghost-title-lit');
+        const featureBoard = this.closest && this.closest('feature-board');
+        if (featureBoard && featureBoard.shadowRoot) featureBoard.shadowRoot.appendChild(this._ghostTitle);
+      } else if (!this.titleOverflows && this._ghostTitle) {
+        try { if (this._ghostTitle.parentNode) this._ghostTitle.parentNode.removeChild(this._ghostTitle); } catch (e) {}
+        this._ghostTitle = null;
+        return;
+      }
 
-      // Get the feature card's border-left-color
-      const computedStyle = window.getComputedStyle(featureCard);
-      const borderColor = computedStyle.getPropertyValue('border-left-color');
-
-      // Get FeatureBoard for boundaries
-      const featureBoard = document.querySelector('feature-board');
-      if (!featureBoard) return;
-
-      const cardRect = this.getBoundingClientRect();
-      const boardRect = featureBoard.getBoundingClientRect();
-
-      // Get card's actual position within the board using offsetTop/offsetLeft
-      // This gives us the position in the coordinate space we need for absolute positioning
-      const cardLeft = this.offsetLeft || 0;
-      const cardTop = this.offsetTop || 0;
-      const cardWidth = cardRect.width;
-      const cardHeight = cardRect.height;
-
-      // Update ghost title component properties
+      if (!this._ghostTitle) return;
+      const layout = this._lastLayout || {};
       this._ghostTitle.title = this.feature.title || '';
       this._ghostTitle.visible = true;
-      this._ghostTitle.borderColor = borderColor;
-      this._ghostTitle.cardRect = {
-        left: cardLeft,
-        top: cardTop,
-        width: cardWidth,
-        height: cardHeight
-      };
-      this._ghostTitle.boardRect = {
-        left: 0,
-        top: 0,
-        width: boardRect.width,
-        height: boardRect.height
-      };
-    } catch (e) { 
-      console.error('[Ghost] Error:', e);
-    }
+      this._ghostTitle.borderColor = layout.borderColor || '';
+      this._ghostTitle.cardRect = layout.cardRect || { left: this.offsetLeft || 0, top: this.offsetTop || 0, width: 0, height: 0 };
+      this._ghostTitle.boardRect = layout.boardRect || { left: 0, top: 0, width: 0, height: 0 };
+    } catch (e) { }
   }
 
   _handleClick(e) {
