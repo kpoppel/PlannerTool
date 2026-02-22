@@ -37,6 +37,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Fix Individual teams showed up as project graph.
 - Reword Epic tooltip on how allocations are used when ithas children nodes.
 - Fix multiple card renders on app load taking a long time.
+- Improved load time of ghost titles. Still 750ms on card updates (hundreds of cards) on full board updates (first load and zoom change)
 
 ## [v1.10.0] - 2026-02-21
 
