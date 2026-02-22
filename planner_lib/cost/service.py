@@ -56,64 +56,9 @@ class CostService:
                 people = []
             
             database = {"people": people}
-
-            # Validate team consistency against configured teams where possible.
-            try:
-                self._validate_team_consistency(database)
-            except ValueError:
-                # Do not raise on validation failure at startup; log and continue.
-                logger.debug('Team consistency validation failed during CostService init')
-
             self._cfg = {"cost": cost_cfg or {}, "database": database or {}}
         except Exception:
             self._cfg = {"cost": {}, "database": {}}
-
-    def _validate_team_consistency(self, db: dict) -> None:
-        """Ensure teams declared in server config are used by people in `database`.
-
-        Raises ValueError if inconsistencies are found. The check builds the canonical
-        set of team ids (slugified as `team-<slug>`) and the set of team ids present
-        in people entries (slugified similarly). If some configured teams are not
-        referenced by any person, this function raises a ValueError listing the
-        missing team names.
-        """
-        from planner_lib.util import slugify
-
-        # Extract configured team names from teams configuration (teams_service)
-        teams_list = self._team_service.list_teams() or []
-        configured_ids = set(elem.get("id", "") for elem in teams_list)
-
-        #logger.debug("Configured team ids: %s", configured_ids)
-
-        # Extract team names referenced by people
-        people = db.get('people', [])
-        people_team_ids = set()
-        for p in people or []:
-            raw = p.get('team_name') or p.get('team') or ''
-            raw = str(raw).strip()
-            if not raw:
-                continue
-            people_team_ids.add(slugify(raw, prefix='team-'))
-
-        #logger.debug("Team ids referenced by people in database: %s", people_team_ids)
-
-        # Find configured but unused teams, and teams present in database but not configured
-        missing_configured = sorted(list(configured_ids - people_team_ids))
-        missing_in_db = sorted(list(people_team_ids - configured_ids))
-
-        logger.debug("Missing configured teams (not referenced by any person): %s", missing_configured)
-        logger.debug("Teams present in database but not configured: %s", missing_in_db)
-
-        if missing_configured or missing_in_db:
-            parts = []
-            if missing_configured:
-                human_missing = ', '.join(sorted([m.replace('team-', '') for m in missing_configured]))
-                parts.append(f"configured-but-unused: {human_missing}")
-            if missing_in_db:
-                human_extra = ', '.join(sorted([m.replace('team-', '') for m in missing_in_db]))
-                parts.append(f"in-database-but-not-configured: {human_extra}")
-            raise ValueError("Team configuration mismatch: " + '; '.join(parts))
-        ## TODO: simplify the above logic a lot. It just loads two keys from storage!!!
 
     def invalidate_cache(self) -> None:
         """Invalidate the team rates cache.

@@ -14,15 +14,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.11.0] - unreleased
+## [v1.11.0] - 2026-02-22
 
 ### Added
 
+- Task History Plugin: New plugin that displays task date change history as an interactive timeline overlay. Shows start/end date changes with colored lines, dots, and fish-bone connectors for paired changes. Includes tooltips and keyboard accessibility.
+- Backend API endpoint `/api/history/tasks` for fetching work item revision history from Azure DevOps.
+- Azure work items module extended with `get_task_revision_history()` method to fetch revisions filtered to start/end/iteration changes.
+- History service (`HistoryService`) with deduplication and pairing hint computation for efficient frontend rendering.
 - Admin interface has button to reload the full config in Utilities.
 - Added project capacity graphing of unfunded activities. This is a brown graph showing all capacity allocated which is not
   linked to a project (areapath designated as type=project in the configuration).
 - Added Plan health tool plugin. This tool makes some checks on common planning issues and displays them in a modal.
 - Cost tables are split int projects and teams. Teams can display cost with tasks funded by a project and unfunded (team only) tasks.
+- Added new plugin: Task History. It will show the historical date changes of a task in the form of an interactive timeline overlay.
+  Shows start/end date changes with colored lines, dots, and fish-bone connectors for paired changes. Includes tooltips.
 
 ### Changed
 

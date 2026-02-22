@@ -81,6 +81,10 @@ class AzureCachingClient(AzureClient):
             safe_root = ''.join(c for c in safe_root if c.isalnum() or c in ('_', '-'))
             return f"iterations_{safe_proj}_{safe_root}"
         return f"iterations_{safe_proj}_all"
+    
+    def _key_for_revision_history(self, work_item_id: int) -> str:
+        """Generate cache key for work item revision history."""
+        return f"history_{work_item_id}"
 
     def get_projects(self) -> List[str]:
         """Fetch projects (not cached)."""
@@ -563,6 +567,55 @@ class AzureCachingClient(AzureClient):
         logger.debug(f"Cached {len(iterations)} iterations with key: {key}")
         
         return iterations
+    
+    def get_task_revision_history(
+        self,
+        work_item_id: int,
+        start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
+        end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
+        iteration_field: str = "System.IterationPath"
+    ) -> List[dict]:
+        """Fetch revision history for a work item with caching.
+        
+        Caches revision history per work item with a 24-hour TTL. This is longer
+        than the default TTL because revision history doesn't change as frequently
+        as work item data itself.
+        
+        Args:
+            work_item_id: Work item ID
+            start_field: Field name for start date (project-specific)
+            end_field: Field name for end/target date (project-specific)
+            iteration_field: Field name for iteration path
+            
+        Returns:
+            List of normalized revision records
+        """
+        key = self._key_for_revision_history(work_item_id)
+        
+        # Try cache first
+        cached = self._cache.read(key)
+        if cached is not None:
+            # Check if stale (24 hour TTL for history)
+            history_ttl = timedelta(hours=24)
+            if not self._cache.is_stale(key, ttl=history_ttl):
+                logger.debug(f"Cache hit for revision history of work item {work_item_id}")
+                return cached
+            logger.debug(f"Cache stale for revision history of work item {work_item_id}, refetching")
+        
+        # Fetch from base implementation
+        result = self._work_item_ops.get_task_revision_history(
+            work_item_id=work_item_id,
+            start_field=start_field,
+            end_field=end_field,
+            iteration_field=iteration_field
+        )
+        
+        # Cache the result
+        self._cache.write(key, result)
+        self._cache.update_timestamp(key)
+        logger.debug(f"Cached {len(result)} revision records for work item {work_item_id}")
+        
+        return result
     
     def invalidate_all_caches(self) -> dict:
         """Invalidate all cached data.

@@ -309,3 +309,108 @@ class WorkItemOperations:
                 'states': ['new', 'active', 'defined', 'resolved', 'closed', 'removed'],
                 'states_by_type': {}
             }
+    
+    def get_task_revision_history(
+        self, 
+        work_item_id: int, 
+        start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
+        end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
+        iteration_field: str = "System.IterationPath"
+    ) -> List[dict]:
+        """Fetch revision history for a work item focusing on start, end, and iteration changes.
+        
+        Args:
+            work_item_id: Work item ID
+            start_field: Field name for start date (project-specific)
+            end_field: Field name for end/target date (project-specific)
+            iteration_field: Field name for iteration path
+            
+        Returns:
+            List of normalized revision records, each with:
+                - changed_at: ISO timestamp string
+                - changed_by: User display name
+                - changes: List of field changes with field, old_value, new_value
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        assert self.client.conn is not None
+        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        
+        try:
+            # Fetch all revisions for the work item
+            revisions = wit_client.get_revisions(id=work_item_id)
+            
+            tracked_fields = {start_field, end_field, iteration_field}
+            result = []
+            prev_values = {}
+            
+            for revision in revisions:
+                fields = getattr(revision, 'fields', {})
+                if not fields:
+                    continue
+                
+                # Extract metadata
+                changed_at = fields.get('System.ChangedDate')
+                changed_by_obj = fields.get('System.ChangedBy')
+                changed_by = ''
+                
+                if isinstance(changed_by_obj, dict):
+                    changed_by = changed_by_obj.get('displayName', '')
+                elif isinstance(changed_by_obj, str):
+                    changed_by = changed_by_obj
+                
+                # Check for changes in tracked fields
+                changes = []
+                for field_name in tracked_fields:
+                    current_value = fields.get(field_name)
+                    old_value = prev_values.get(field_name)
+                    
+                    # Detect change
+                    if current_value != old_value or (current_value is not None and field_name not in prev_values):
+                        # Determine field label
+                        if field_name == start_field:
+                            field_label = 'start'
+                        elif field_name == end_field:
+                            field_label = 'end'
+                        elif field_name == iteration_field:
+                            field_label = 'iteration'
+                        else:
+                            continue
+                        
+                        # Normalize values (dates to ISO date strings)
+                        if field_label in ('start', 'end'):
+                            new_value = self._safe_date(current_value) if current_value else None
+                            old_val = self._safe_date(old_value) if old_value else None
+                        else:
+                            new_value = current_value
+                            old_val = old_value
+                        
+                        # Only record if there's an actual change in normalized values
+                        if new_value != old_val:
+                            changes.append({
+                                'field': field_label,
+                                'old_value': old_val,
+                                'new_value': new_value
+                            })
+                    
+                    # Update tracking
+                    if current_value is not None:
+                        prev_values[field_name] = current_value
+                
+                # Add record if there were relevant changes
+                if changes:
+                    # Convert changed_at to ISO string
+                    changed_at_str = str(changed_at) if changed_at else ''
+                    result.append({
+                        'changed_at': changed_at_str,
+                        'changed_by': changed_by,
+                        'changes': changes
+                    })
+            
+            logger.debug(f"Fetched {len(result)} revision records for work item {work_item_id}")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to fetch revision history for work item {work_item_id}: {e}")
+            return []

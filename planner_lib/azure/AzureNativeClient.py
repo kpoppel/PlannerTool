@@ -134,4 +134,31 @@ class AzureNativeClient(AzureClient):
             self._plans_cache[project] = out
         
         return out
-
+    
+    def get_task_revision_history(
+        self,
+        work_item_id: int,
+        start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
+        end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
+        iteration_field: str = "System.IterationPath"
+    ) -> List[dict]:
+        """Fetch revision history for a work item without caching.
+        
+        This method provides the same interface as AzureCachingClient but
+        always fetches fresh data from Azure DevOps.
+        
+        Args:
+            work_item_id: Work item ID
+            start_field: Field name for start date (project-specific)
+            end_field: Field name for end/target date (project-specific)
+            iteration_field: Field name for iteration path
+            
+        Returns:
+            List of normalized revision records
+        """
+        return self._work_item_ops.get_task_revision_history(
+            work_item_id=work_item_id,
+            start_field=start_field,
+            end_field=end_field,
+            iteration_field=iteration_field
+        )

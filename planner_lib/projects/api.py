@@ -192,3 +192,111 @@ async def api_cache_invalidate(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get('/history/tasks')
+@require_session
+async def api_history_tasks(request: Request):
+    """Fetch task history for timeline visualization.
+    
+    Returns revision history for work items, filtered to show only changes
+    to start dates, end dates, and iteration paths. Results are paginated
+    and deduplicated for efficient frontend rendering.
+    
+    Query params:
+        project: Optional project ID filter
+        team: Optional team ID filter
+        plan: Optional plan ID filter
+        since: Optional start date filter (ISO format YYYY-MM-DD)
+        until: Optional end date filter (ISO format YYYY-MM-DD)
+        page: Page number (1-indexed, default: 1)
+        per_page: Items per page (default: 100, max: 500)
+        invalidate_cache: If 'true', clears cached history data before fetching (default: false)
+    
+    Returns:
+        JSON with pagination info and task history data:
+        {
+            "page": 1,
+            "per_page": 100,
+            "total": 123,
+            "tasks": [
+                {
+                    "task_id": 12345,
+                    "title": "Feature name",
+                    "plan_id": "plan_1",
+                    "history": [
+                        {
+                            "field": "start|end|iteration",
+                            "value": "2025-05-08",
+                            "changed_at": "2025-05-08T09:10:00Z",
+                            "changed_by": "alice"
+                        }
+                    ]
+                }
+            ]
+        }
+    """
+    try:
+        sid = get_session_id_from_request(request)
+        logger.debug("Fetching task history for session %s", sid)
+        
+        session_mgr = resolve_service(request, 'session_manager')
+        pat = session_mgr.get_val(sid, 'pat')
+        
+        if not pat:
+            raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+        
+        # Get query parameters
+        project_id = request.query_params.get('project')
+        team_id = request.query_params.get('team')
+        plan_id = request.query_params.get('plan')
+        since = request.query_params.get('since')
+        until = request.query_params.get('until')
+        invalidate_cache = request.query_params.get('invalidate_cache', '').lower() == 'true'
+        
+        # Pagination parameters
+        try:
+            page = int(request.query_params.get('page', '1'))
+        except ValueError:
+            page = 1
+        
+        try:
+            per_page = min(int(request.query_params.get('per_page', '100')), 500)
+        except ValueError:
+            per_page = 100
+        
+        # Create history service and fetch data
+        from planner_lib.projects.history_service import HistoryService
+        from planner_lib.storage import create_storage
+        
+        storage = create_storage(serializer='yaml', accessor='dict', data_dir='data')
+        history_svc = HistoryService(storage_config=storage)
+        
+        # Get task service and azure client for fetching tasks and revisions
+        task_svc = resolve_service(request, 'task_service')
+        azure_svc = resolve_service(request, 'azure_client')
+        
+        # Invalidate cache if requested
+        if invalidate_cache:
+            logger.info(f"Invalidating history cache for project={project_id}")
+            history_svc.invalidate_cache(azure_svc, project_id=project_id)
+        
+        result = history_svc.list_task_history(
+            pat=pat,
+            task_service=task_svc,
+            azure_client=azure_svc,
+            project_id=project_id,
+            team_id=team_id,
+            plan_id=plan_id,
+            since=since,
+            until=until,
+            page=page,
+            per_page=per_page
+        )
+        
+        logger.debug(f"Returning {len(result.get('tasks', []))} tasks with history")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to fetch task history: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))

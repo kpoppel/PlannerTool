@@ -91,6 +91,19 @@
       "exclusive": true,
       "mountPoint": "feature-board",
       "dependencies": []
+    },
+    {
+      "id": "plugin-history",
+      "name": "Task History",
+      "version": "1.0.0",
+      "description": "Display task date change history on timeline",
+      "path": "../plugins/PluginHistory.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
     }
   ]
 }
