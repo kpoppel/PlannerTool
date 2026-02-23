@@ -221,6 +221,7 @@ function clampEpicEndAgainstChildren(epic, features, proposedEndStr){
 function computeMoveUpdates(feature, newStartDate, newEndDate, features){
   const updates = [];
   const isUnplannedEpic = featureFlags.SHOW_UNPLANNED_WORK && feature.type === 'epic' && (!feature.start || !feature.end);
+  const preserveUnplanned = featureFlags.PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE === true;
   const origStart = feature.start ? parseDate(feature.start) : null;
   const deltaDays = origStart ? Math.round((newStartDate - origStart)/(1000*60*60*24)) : 0;
   const newStartStr = formatDate(newStartDate);
@@ -230,14 +231,21 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features){
       // Move children first so scenario/baseline callbacks can react before epic final dates if desired.
       // Epic retains original duration; no clamping during a pure move.
       updates.push({ id: feature.id, start: newStartStr, end: newEndStr });
-      
-      if(deltaDays !== 0 || isUnplannedEpic){
+
+      // Decide whether to shift or (legacy) plan children when epic is moved/planned.
+      // By default (preserveUnplanned=true) we only shift already-planned children and
+      // leave unplanned children alone. When disabled, legacy behaviour applies: if the
+      // epic is being planned (isUnplannedEpic) we may assign default dates to unplanned children.
+      if(deltaDays !== 0 || (isUnplannedEpic && !preserveUnplanned)){
         const children = features.filter(ch => ch.parentEpic === feature.id);
         for(const ch of children){
           const isUnplannedChild = featureFlags.SHOW_UNPLANNED_WORK && (!ch.start || !ch.end);
-          
-          if (isUnplannedChild) {
-            // Unplanned child gets 1-month default duration starting from epic's new start date
+          if(isUnplannedChild){
+            if(preserveUnplanned){
+              // preserve as unplanned
+              continue;
+            }
+            // Legacy: assign 1-month default duration starting from epic's new start date
             const childStart = new Date(newStartDate);
             const childEnd = new Date(childStart);
             childEnd.setMonth(childStart.getMonth() + 1);
@@ -248,7 +256,6 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features){
               fromEpicMove: true 
             });
           } else {
-            // Planned child gets shifted by delta
             const chStart = parseDate(ch.start);
             const chEnd = parseDate(ch.end);
             const shiftedStart = addDays(chStart, deltaDays);

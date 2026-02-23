@@ -34,6 +34,10 @@ export const featureFlags = {
   // true: Show unplanned features as ghosted cards at today's date, user can drag to set dates
   SHOW_UNPLANNED_WORK: true,
 
+  // When true: keep unplanned children unplanned when their parent epic is moved.
+  // When false: moving/planning an epic may assign default dates to unplanned children (legacy behaviour).
+  PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE: true,
+
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };
   ...(typeof window !== 'undefined' && window.__featureFlags ? window.__featureFlags : {})
