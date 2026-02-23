@@ -5,4 +5,3 @@
 // Prefer a local vendor shim that can be swapped for an actual bundled file.
 export * from './lit.bundle.local.js';
 
-//# sourceMappingURL=index.js.map

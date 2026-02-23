@@ -20,7 +20,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Changed
 ### Fixed
 
-- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 1600ms to 62ms on dev macine.
+- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 1600ms to 62ms on dev machine.
+  Deselecting all plans is instant.
+- Fix a console warning about Lit sourcemap
 
 
 ## [v1.11.0] - 2026-02-22
