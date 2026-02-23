@@ -17,6 +17,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v1.12.0] - unreleased
 
 ### Added
+
+- The tool will display a helping modal when no tasks are displayed to give the user a hint of the reason why.
+  Fixes [#1](https://github.com/kpoppel/PlannerTool/issues/1)
+
 ### Changed
 
 - Added behind featureflag PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE a change which causes unplanned children to stay

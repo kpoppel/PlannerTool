@@ -51,6 +51,14 @@ export const openAzureDevopsModal = async ({ overrides = {}, state = null, paren
   });
 };
 
+export const openEmptyBoardModal = async ({ parent = document.body } = {}) => {
+  const { el, cleanup } = await _createModal('./EmptyBoardModal.lit.js', 'empty-board-modal', { parent });
+  return new Promise(resolve => {
+    const onClose = (e) => { cleanup(e, [['modal-close', onClose]]); resolve(e?.detail ?? null); };
+    el.addEventListener('modal-close', onClose);
+  });
+};
+
 const _simpleModal = async (modulePath, tagName, { id, name, parent = document.body } = {}) => {
   const attrs = {};
   if (id) attrs.id = id; if (name) attrs.name = name;

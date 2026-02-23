@@ -80,6 +80,8 @@ class FeatureBoard extends LitElement {
 
   render() {
     console.log('[FeatureBoard] render - features count:', this.features?.length);
+    // When no features are to be shown we render the slot only; the
+    // dedicated modal helper will be invoked from `renderFeatures()`.
     if (!this.features?.length) {
       return html`<slot></slot>`;
     }
@@ -325,7 +327,7 @@ class FeatureBoard extends LitElement {
   }
 
   // Compute and render features from current state
-  renderFeatures() {
+  async renderFeatures() {
     const sourceFeatures = state.getEffectiveFeatures();
     // Use ViewService for sort mode
     const ordered = this._orderFeaturesHierarchically(sourceFeatures, state._viewService.featureSortMode);
@@ -361,6 +363,16 @@ class FeatureBoard extends LitElement {
 
     this.features = renderList;
     this.requestUpdate();
+    // If nothing will be rendered, open the shared empty-board modal to explain why
+    if (renderList.length === 0) {
+      try {
+        const mh = await import('./modalHelpers.js');
+        if (mh && typeof mh.openEmptyBoardModal === 'function') {
+          // fire-and-forget; modal will compute reasons itself
+          mh.openEmptyBoardModal({ parent: document.body }).catch(()=>{});
+        }
+      } catch (e) { /* ignore modal failures */ }
+    }
   }
 
   // Update a subset of cards by id
