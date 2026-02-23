@@ -755,6 +755,9 @@ export class DetailsPanelLit extends LitElement {
     // Use ColorService directly
     const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
     const stateColor = (feature && feature.state && stateColors[feature.state]) ? stateColors[feature.state] : null;
+    // Derive plan (project) name from feature.project -> state.projects
+    const planObj = (state.projects || []).find(p => p.id === feature.project);
+    const planName = planObj ? planObj.name : null;
     
     // Use orgLoad for total allocation (organizational capacity allocated to this feature)
     const orgLoad = feature.orgLoad || '0%';
@@ -937,6 +940,7 @@ export class DetailsPanelLit extends LitElement {
           </div>
           <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
           <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span> ${stateColor ? html`<span class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}">${feature.state}</span>` : ''}</div>
+          <div class="details-label">Plan: <span class="details-value">${planName || '—'}</span></div>
         </div>
         <div class="details-content">
           ${this._renderField('Assignee','assignee', feature.assignee)}

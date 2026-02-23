@@ -23,6 +23,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   unplanned when moving a parent. It is enabled by default so the new behaviour is the default. Set to false in
   config.js to use the old behaviour where moving a parent also updates dates on its unplanned children.
   Fixes [#8](https://github.com/kpoppel/PlannerTool/issues/8)
+- The details panel for a task now display which plan it belongs to.
+  Fixes [#6](https://github.com/kpoppel/PlannerTool/issues/6)
 
 ### Fixed
 
