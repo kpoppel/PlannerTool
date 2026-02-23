@@ -3,3 +3,4 @@
 // from esm.sh to provide a single local entrypoint for the app.
 export * from 'https://esm.sh/lit@3.3.1';
 export { unsafeSVG } from 'https://esm.sh/lit-html@3.3.1/directives/unsafe-svg.js';
+export { repeat } from 'https://esm.sh/lit-html@3.3.1/directives/repeat.js';
