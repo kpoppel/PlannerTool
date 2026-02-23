@@ -219,6 +219,16 @@ export class EmptyBoardModal extends LitElement {
 
   _recomputeAndMaybeClose(){
     try {
+      // If no baseline features have been loaded yet (likely missing credentials),
+      // do not show the empty-board modal — wait until data finishes loading.
+      const baselineLoaded = Array.isArray(state.baselineFeatures) && state.baselineFeatures.length > 0;
+      if (!baselineLoaded) {
+        if (this.open) {
+          this.open = false;
+          try { this.requestUpdate(); } catch(e){}
+        }
+        return;
+      }
       if (this._hasVisibleFeatures()) {
         this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
         return;
