@@ -446,6 +446,8 @@ class State {
   setProjectSelected(id, selected) {
     this._ensureFilterManager();
     if (!this._projectTeamService.setProjectSelected(id, selected)) return;
+    // Notify UI listeners of project list change (single consolidated event)
+    try { bus.emit(ProjectEvents.CHANGED, this.projects); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
     bus.emit(FeatureEvents.UPDATED);
@@ -454,6 +456,8 @@ class State {
   setTeamSelected(id, selected) {
     this._ensureFilterManager();
     if (!this._projectTeamService.setTeamSelected(id, selected)) return;
+    // Notify UI listeners of team list change (single consolidated event)
+    try { bus.emit(TeamEvents.CHANGED, this.teams); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
     bus.emit(FeatureEvents.UPDATED);
@@ -467,6 +471,8 @@ class State {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setProjectsSelectedBulk(selections);
     if (!changed) return;
+    // Notify listeners that project selection changed (single consolidated event)
+    try { bus.emit(ProjectEvents.CHANGED, this.projects); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
     bus.emit(FeatureEvents.UPDATED);
@@ -480,6 +486,8 @@ class State {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setTeamsSelectedBulk(selections);
     if (!changed) return;
+    // Notify listeners that team selection changed (single consolidated event)
+    try { bus.emit(TeamEvents.CHANGED, this.teams); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
     bus.emit(FeatureEvents.UPDATED);

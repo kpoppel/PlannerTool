@@ -329,10 +329,14 @@ export class SidebarLit extends LitElement {
 
   setAllInList(type, checked){
     if(type === 'project'){
-      (this.projects || []).forEach(p=> state.setProjectSelected(p.id, checked));
+      // Build a selections map and apply in bulk to avoid emitting per-item events
+      const selections = (this.projects || []).reduce((acc, p) => { acc[p.id] = !!checked; return acc; }, {});
+      state.setProjectsSelectedBulk(selections);
     } else if(type === 'team'){
-      (this.teams || []).forEach(t=> state.setTeamSelected(t.id, checked));
+      const selections = (this.teams || []).reduce((acc, t) => { acc[t.id] = !!checked; return acc; }, {});
+      state.setTeamsSelectedBulk(selections);
     }
+    // Persist sidebar state after bulk update
     this._saveSidebarState();
   }
 

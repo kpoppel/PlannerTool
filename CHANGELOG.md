@@ -14,6 +14,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.12.0] - unreleased
+
+### Added
+### Changed
+### Fixed
+
+- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 1600ms to 62ms on dev macine.
+
+
 ## [v1.11.0] - 2026-02-22
 
 ### Added

@@ -57,7 +57,6 @@ export class ProjectTeamService {
     const p = this.projects.find(x => x.id === id);
     if (!p) return false;
     p.selected = selected;
-    this._bus.emit(ProjectEvents.CHANGED, this.projects);
     return true;
   }
 
@@ -71,7 +70,6 @@ export class ProjectTeamService {
     const t = this.teams.find(x => x.id === id);
     if (!t) return false;
     t.selected = selected;
-    this._bus.emit(TeamEvents.CHANGED, this.teams);
     return true;
   }
 
