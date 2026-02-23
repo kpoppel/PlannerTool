@@ -116,6 +116,14 @@ class TaskService(TaskServiceProtocol):
                         item_updated = True
                     except Exception as e:
                         errors.append(f"{wid} (capacity): {e}")
+                # Apply state change if provided
+                state_val = u.get('state')
+                if state_val is not None:
+                    try:
+                        client.update_work_item_state(wid, state_val)  # type: ignore
+                        item_updated = True
+                    except Exception as e:
+                        errors.append(f"{wid} (state): {e}")
                 if item_updated:
                     updated += 1
             return {'ok': len(errors) == 0, 'updated': updated, 'errors': errors}

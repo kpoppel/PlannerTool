@@ -20,6 +20,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - The tool will display a helping modal when no tasks are displayed to give the user a hint of the reason why.
   Fixes [#1](https://github.com/kpoppel/PlannerTool/issues/1)
+- In the details panel the user can change the state of a task. Use a scenario to persist a state change in Azure.
+  Fixes [#4](https://github.com/kpoppel/PlannerTool/issues/4)
 
 ### Changed
 

@@ -258,6 +258,29 @@ class WorkItemOperations:
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} description: {e}")
+
+    def update_work_item_state(self, work_item_id: int, state_value: str) -> Any:
+        """Update the System.State field for a work item.
+
+        Args:
+            work_item_id: Work item ID
+            state_value: New state value (string)
+
+        Returns:
+            Azure SDK response object
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+
+        assert self.client.conn is not None
+        wit = self.client.conn.clients.get_work_item_tracking_client()
+
+        ops = [{"op": "add", "path": "/fields/System.State", "value": state_value}]
+
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id} state: {e}")
     
     def get_work_item_metadata(self, project: str) -> dict:
         """Retrieve work item types and states for a project.

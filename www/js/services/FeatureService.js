@@ -161,6 +161,9 @@ export class FeatureService {
       if (override.start && override.start !== featureBase.start) changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
       if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
+      // Support state/status override detection
+      const baseState = featureBase.state || featureBase.status || '';
+      if (override.state && override.state !== baseState) changedFields.push('state');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -369,6 +372,21 @@ export class FeatureService {
         capacityCallback();
       }
 
+      return true;
+    }
+
+    if (field === 'state' || field === 'status') {
+      const ov = activeScenario.overrides[id] || {};
+      ov.state = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+
+      // Emit events so UI updates
+      const idsToEmit = new Set([id]);
+      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+
+      // State change may affect derived color mappings; trigger no capacity callback
       return true;
     }
 

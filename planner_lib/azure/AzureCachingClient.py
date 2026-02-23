@@ -535,6 +535,23 @@ class AzureCachingClient(AzureClient):
             logger.exception(f"Failed to invalidate work item {work_item_id} after description update")
         
         return result
+
+    def update_work_item_state(self, work_item_id: int, state_value: str):
+        """Update work item state and invalidate cache.
+
+        Delegates to the base implementation to perform the Azure update,
+        then marks the work item as invalidated in the cache so subsequent
+        `get_work_items` calls will refetch fresh data for the affected area.
+        """
+        logger.debug(f"Updating work item {work_item_id} state -> {state_value}")
+        result = super().update_work_item_state(work_item_id, state_value)
+
+        try:
+            self.invalidate_work_items([work_item_id])
+        except Exception:
+            logger.exception(f"Failed to invalidate work item {work_item_id} after state update")
+
+        return result
     
     def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
         """Fetch iterations with per-root-path caching.

@@ -445,6 +445,13 @@ export class DetailsPanelLit extends LitElement {
     .relation-title { margin: 0; line-height: 1.1; }
     .relation-title a.details-link { display: inline; color: var(--color-accent, #3498db); text-decoration: underline; line-height: 1.1; }
     .state-chip { display:inline-block; padding:4px 8px; border-radius:12px; font-weight:600; font-size:13px; vertical-align:middle; }
+    .state-select { padding:6px 8px; border-radius:6px; border:1px solid #ccc; font-size:13px; }
+    .state-choices button.state-chip { padding:6px 8px; border-radius:12px; font-weight:600; font-size:13px; }
+    .state-edit-row { display:flex; gap:10px; align-items:flex-start; }
+    .state-current-wrapper { flex: 0 0 auto; display:flex; align-items:center; }
+    .state-choices-box { flex: 1 1 auto; border: 1px solid #e0e0e0; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .state-choices { display:flex; flex-wrap:wrap; gap:8px; }
+    .state-choices button.state-chip.selected { box-shadow: 0 0 0 3px rgba(52,152,219,0.12); }
   `;
 
   constructor(){
@@ -453,6 +460,8 @@ export class DetailsPanelLit extends LitElement {
     this.open = false;
     this.editingCapacityTeam = null; // Track which team pill is being edited
     this.showAddTeamPopover = false; // Track if add team popover is visible
+    this.editingState = false;
+    this._stateEditValue = null;
     this._onShow = this._onShow.bind(this);
   }
 
@@ -692,6 +701,53 @@ export class DetailsPanelLit extends LitElement {
     this.requestUpdate();
   }
 
+  _onStateClick(e){
+    e && e.stopPropagation();
+    if(!this.feature) return;
+    this.editingState = true;
+    this._stateEditValue = this.feature.state || '';
+    this.requestUpdate();
+    // focus select after render
+    setTimeout(()=>{
+      const sel = this.shadowRoot && this.shadowRoot.querySelector('.state-select'); if(sel){ sel.focus(); }
+    }, 10);
+  }
+
+  _onStateChange(e){
+    this._stateEditValue = e.target.value;
+  }
+
+  _onStateKeydown(e){
+    if(e.key === 'Enter') { this._saveStateEdit(); }
+    else if(e.key === 'Escape') { this.editingState = false; this.requestUpdate(); }
+  }
+
+  _onStateBlur(e){
+    // small timeout to allow click to register
+    setTimeout(()=>{ if(this.editingState) this._saveStateEdit(); }, 150);
+  }
+
+  _saveStateEdit(){
+    if(!this.feature) { this.editingState = false; this.requestUpdate(); return; }
+    const val = this._stateEditValue;
+    if(val && val !== this.feature.state){
+      state.updateFeatureField(this.feature.id, 'state', val);
+    }
+    this.editingState = false;
+    this._stateEditValue = null;
+    this.requestUpdate();
+  }
+
+  _onStateChipSelect(s){
+    if(!this.feature) return;
+    if(s && s !== this.feature.state){
+      state.updateFeatureField(this.feature.id, 'state', s);
+    }
+    this.editingState = false;
+    this._stateEditValue = null;
+    this.requestUpdate();
+  }
+
   updated(changedProps){
     if(changedProps.has && changedProps.has('feature')){
       // load iterations when feature changes / panel opens
@@ -755,6 +811,10 @@ export class DetailsPanelLit extends LitElement {
     // Use ColorService directly
     const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
     const stateColor = (feature && feature.state && stateColors[feature.state]) ? stateColors[feature.state] : null;
+    const stateOrig = feature && feature.original ? feature.original.state : undefined;
+    const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
+    const stateCls = stateChanged ? 'details-value details-changed' : 'details-value';
+    const originalStateSpan = stateChanged ? html` <span class="original-date">(was ${stateOrig})</span>` : '';
     // Derive plan (project) name from feature.project -> state.projects
     const planObj = (state.projects || []).find(p => p.id === feature.project);
     const planName = planObj ? planObj.name : null;
@@ -939,7 +999,31 @@ export class DetailsPanelLit extends LitElement {
             <span>${feature.title}</span>
           </div>
           <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
-          <div class="details-label">Status: <span class="${statusClass}">${feature.state}</span> ${stateColor ? html`<span class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}">${feature.state}</span>` : ''}</div>
+          <div class="details-label">Status:
+            ${this.editingState ? html`
+              <div class="state-edit-row">
+                <div class="state-current-wrapper ${stateCls}">
+                  ${stateColor ? html`<button class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:default;">${feature.state}</button>` : html`<button class="state-chip" style="cursor:default;">${feature.state}</button>`}
+                  ${originalStateSpan}
+                </div>
+                <div class="state-choices-box ${stateCls}" @blur=${(e)=>this._onStateBlur(e)} tabindex="-1">
+                  <div class="state-choices">
+                    ${(state.availableFeatureStates || []).map(s => {
+                      const sc = stateColors && stateColors[s] ? stateColors[s] : null;
+                      const isSelected = s === (this._stateEditValue || feature.state);
+                      const selClass = isSelected ? 'selected' : '';
+                      return html`<button class="state-chip ${selClass}" style="background:${sc?sc.background:'#efefef'}; color:${sc?sc.text:'#222'}; border:${isSelected? '2px solid rgba(0,0,0,0.14)': '1px solid rgba(0,0,0,0.08)'}; cursor:pointer;" @click=${()=>this._onStateChipSelect(s)}>${s}</button>`;
+                    })}
+                  </div>
+                </div>
+              </div>
+            ` : html`
+              <span class="${stateCls}" style="display:inline-flex;gap:8px;align-items:center;">
+                ${stateColor ? html`<button class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:pointer;" @click=${(e)=>this._onStateClick(e)}>${feature.state}</button>` : html`<button class="state-chip" @click=${(e)=>this._onStateClick(e)} style="border:none;cursor:pointer;">${feature.state}</button>`}
+                ${originalStateSpan}
+              </span>
+            `}
+          </div>
           <div class="details-label">Plan: <span class="details-value">${planName || '—'}</span></div>
         </div>
         <div class="details-content">

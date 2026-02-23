@@ -41,7 +41,9 @@ export class AzureDevopsModal extends LitElement {
   _onSave(){
     const selected = Array.from(this._selected).map(id => {
       const ov = this.overrides[id] || {};
-      return { id, start: ov.start, end: ov.end, capacity: ov.capacity };
+      const out = { id, start: ov.start, end: ov.end, capacity: ov.capacity };
+      if (ov.state) out.state = ov.state;
+      return out;
     });
     this.dispatchEvent(new CustomEvent('azure-save', { detail: selected, bubbles: true, composed: true }));
     this.remove();
@@ -52,19 +54,21 @@ export class AzureDevopsModal extends LitElement {
   render(){
     const allEntries = Object.entries(this.overrides || {});
     
-    // Filter to only show features with actual changes
+    // Filter to only show features with actual changes (include state)
     const entries = allEntries.filter(([id, ov]) => {
       const baseFeature = (this.state && this.state.baselineFeatures) ? (this.state.baselineFeatures.find(f=>f.id===id) || {}) : {};
       const origStart = baseFeature.start || '';
       const origEnd = baseFeature.end || '';
       const origCapacity = baseFeature.capacity || [];
+      const origState = baseFeature.state || baseFeature.status || '';
       
       // Check if there are actual changes
       const hasStartChange = ov.start && ov.start !== origStart;
       const hasEndChange = ov.end && ov.end !== origEnd;
       const hasCapacityChange = ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
+      const hasStateChange = ov.state && ov.state !== origState;
       
-      return hasStartChange || hasEndChange || hasCapacityChange;
+      return hasStartChange || hasEndChange || hasCapacityChange || hasStateChange;
     });
     
     return html`
@@ -78,13 +82,14 @@ export class AzureDevopsModal extends LitElement {
           </div>
           <div style="max-height:60vh;overflow-y:auto;padding-right:8px;">
             <table class="scenario-annotate-table">
-              <thead><tr><th style="width:64px">Select</th><th>Title</th><th>Start</th><th>End</th><th>Capacity</th></tr></thead>
+              <thead><tr><th style="width:64px">Select</th><th>Title</th><th>Start</th><th>End</th><th>Capacity</th><th>State</th></tr></thead>
               <tbody>
                 ${entries.map(([id, ov]) => {
                   const baseFeature = (this.state && this.state.baselineFeatures) ? (this.state.baselineFeatures.find(f=>f.id===id) || {}) : {};
                   const origStart = baseFeature.start || '';
                   const origEnd = baseFeature.end || '';
                   const origCapacity = baseFeature.capacity || [];
+                  const origState = baseFeature.state || baseFeature.status || '';
                   const checked = this._selected.has(id);
                   
                   // Format capacity changes with details
@@ -131,6 +136,7 @@ export class AzureDevopsModal extends LitElement {
                     <td>${this._formatRange(origStart, ov.start)}</td>
                     <td>${this._formatRange(origEnd, ov.end)}</td>
                     <td style="font-size:0.9em;line-height:1.4;">${capacityChange}</td>
+                    <td style="font-size:0.9em;line-height:1.4;">${ov.state && ov.state !== origState ? html`<div><strong>${origState || '—'}</strong> → <strong>${ov.state}</strong></div>` : html`${origState || '—'}`}</td>
                   </tr>`;
                 })}
               </tbody>
