@@ -22,6 +22,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Added behind featureflag PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE a change which causes unplanned children to stay
   unplanned when moving a parent. It is enabled by default so the new behaviour is the default. Set to false in
   config.js to use the old behaviour where moving a parent also updates dates on its unplanned children.
+  Fixes [#8](https://github.com/kpoppel/PlannerTool/issues/8)
 
 ### Fixed
 
