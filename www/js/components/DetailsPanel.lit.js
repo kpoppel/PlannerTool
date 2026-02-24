@@ -963,7 +963,30 @@ export class DetailsPanelLit extends LitElement {
         for(const k of groups.keys()){ if(k !== 'Parent') orderedKeys.push(k); }
 
         const groupsArr = orderedKeys.map(type => {
-          const items = (groups.get(type) || []).map(r => {
+          const groupItems = groups.get(type) || [];
+          let groupTitle = type;
+          if (type === 'Parent') {
+            try {
+              const otherPlanNames = new Set();
+              for (const r of groupItems) {
+                const otherId = r.id ? String(r.id) : null;
+                try {
+                  const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId);
+                  if (linked && linked.project && String(linked.project) !== String(feature.project)) {
+                    const proj = (state.projects || []).find(p => p.id === linked.project);
+                    if (proj && proj.name) otherPlanNames.add(proj.name);
+                  }
+                } catch (e) { }
+              }
+              if (otherPlanNames.size === 1) {
+                groupTitle = `Parent (in ${[...otherPlanNames][0]})`;
+              } else if (otherPlanNames.size > 1) {
+                groupTitle = 'Parent (in multiple plans)';
+              }
+            } catch (e) { /* ignore plan name lookup failures */ }
+          }
+
+          const items = groupItems.map(r => {
             const otherId = r.id ? String(r.id) : null;
             let url = r.url || '';
             if(!url && feature.url && otherId){ url = feature.url.replace(/(\d+)(?!.*\d)/, otherId); }
@@ -980,7 +1003,7 @@ export class DetailsPanelLit extends LitElement {
             else iconTemplate = '🔗';
             return html`<li class="azure-relation-item"><div class="relation-icon">${iconTemplate}</div><div class="relation-content"><div class="relation-title"><a class="details-link" href="${href}" target="_blank">${otherId? otherId : ''}${title? ' ' + title : ''}</a></div></div></li>`;
           });
-          return html`<div class="relations-group"><div class="group-title">${type}</div><ul class="azure-relations-list">${items}</ul></div>`;
+          return html`<div class="relations-group"><div class="group-title">${groupTitle}</div><ul class="azure-relations-list">${items}</ul></div>`;
         });
         relationsTemplate = html`${groupsArr}`;
       }

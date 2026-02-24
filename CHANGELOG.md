@@ -37,6 +37,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Fixes [#8](https://github.com/kpoppel/PlannerTool/issues/8)
 - The details panel for a task now display which plan it belongs to.
   Fixes [#6](https://github.com/kpoppel/PlannerTool/issues/6)
+- Details panel now displays the plan name for parent links if the parent is not in the same plan as the task.
+  Fixes [#15](https://github.com/kpoppel/PlannerTool/issues/15)
 
 ### Fixed
 
