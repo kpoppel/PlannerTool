@@ -124,6 +124,14 @@ class TaskService(TaskServiceProtocol):
                         item_updated = True
                     except Exception as e:
                         errors.append(f"{wid} (state): {e}")
+                # Apply relation changes if provided
+                relations = u.get('relations')
+                if relations is not None:
+                    try:
+                        client.update_work_item_relations(wid, relations)  # type: ignore
+                        item_updated = True
+                    except Exception as e:
+                        errors.append(f"{wid} (relations): {e}")
                 if item_updated:
                     updated += 1
             return {'ok': len(errors) == 0, 'updated': updated, 'errors': errors}

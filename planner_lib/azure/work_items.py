@@ -281,6 +281,91 @@ class WorkItemOperations:
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} state: {e}")
+
+    def update_work_item_relations(self, work_item_id: int, relations_ops: list) -> Any:
+        """Update work item relations.
+
+        relations_ops is a list of operations. Supported operations:
+          - { op: 'add', type: 'Parent'|'Related'|'Predecessor'|'Successor'|'Child', id: '<id>' }
+          - { op: 'remove', type: <type>, id: '<id>' }
+          - { op: 'set', type: 'Parent', id: '<id>' }  # remove existing of type then add this
+
+        Returns the Azure SDK response object or raises on failure.
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+
+        assert self.client.conn is not None
+        wit = self.client.conn.clients.get_work_item_tracking_client()
+
+        # Mapping from semantic type to Azure rel name
+        rel_map = {
+            'Parent': 'System.LinkTypes.Hierarchy-Reverse',
+            'Child': 'System.LinkTypes.Hierarchy-Forward',
+            'Predecessor': 'System.LinkTypes.Dependency-Forward',
+            'Successor': 'System.LinkTypes.Dependency-Reverse',
+            'Related': 'System.LinkTypes.Related'
+        }
+
+        # Fetch current relations to support remove operations
+        try:
+            current = wit.get_work_item(work_item_id, expand='relations')
+            current_relations = getattr(current, 'relations', []) or []
+        except Exception:
+            current_relations = []
+
+        ops = []
+
+        for r in relations_ops or []:
+            op = (r.get('op') or '').lower()
+            typ = r.get('type') or r.get('relationType') or r.get('relation') or 'Related'
+            other_id = str(r.get('id') or '')
+
+            if op == 'set':
+                # Remove any existing relations of this type, then add the supplied id
+                # Remove in reverse index order to keep indices stable
+                remove_indices = []
+                for idx, cr in enumerate(current_relations):
+                    try:
+                        name = cr.attributes.get('name')
+                    except Exception:
+                        name = None
+                    url = getattr(cr, 'url', '') or ''
+                    if name == typ and url.endswith('/' + other_id):
+                        remove_indices.append(idx)
+                for idx in sorted(remove_indices, reverse=True):
+                    ops.append({'op': 'remove', 'path': f'/relations/{idx}'})
+                # Add new relation
+                api_url = f"{self.client.conn.base_url}/_apis/wit/workItems/{other_id}"
+                relname = rel_map.get(typ, 'System.LinkTypes.Related')
+                ops.append({'op': 'add', 'path': '/relations/-', 'value': {'rel': relname, 'url': api_url, 'attributes': {'name': typ}}})
+
+            elif op == 'remove':
+                # remove matching relation(s)
+                for idx, cr in enumerate(current_relations):
+                    try:
+                        name = cr.attributes.get('name')
+                    except Exception:
+                        name = None
+                    url = getattr(cr, 'url', '') or ''
+                    if name == typ and (not other_id or url.endswith('/' + other_id)):
+                        ops.append({'op': 'remove', 'path': f'/relations/{idx}'})
+
+            elif op == 'add':
+                api_url = f"{self.client.conn.base_url}/_apis/wit/workItems/{other_id}"
+                relname = rel_map.get(typ, 'System.LinkTypes.Related')
+                ops.append({'op': 'add', 'path': '/relations/-', 'value': {'rel': relname, 'url': api_url, 'attributes': {'name': typ}}})
+            else:
+                # Unsupported op - skip
+                continue
+
+        if not ops:
+            return None
+
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id} relations: {e}")
     
     def get_work_item_metadata(self, project: str) -> dict:
         """Retrieve work item types and states for a project.

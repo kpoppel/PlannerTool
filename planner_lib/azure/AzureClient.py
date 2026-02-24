@@ -282,6 +282,10 @@ class AzureClient(ABC):
         Delegates to WorkItemOperations.
         """
         return self._work_item_ops.update_work_item_state(work_item_id, state_value)
+
+    def update_work_item_relations(self, work_item_id: int, relations_ops: list):
+        """Update work item relations (delegates to WorkItemOperations)."""
+        return self._work_item_ops.update_work_item_relations(work_item_id, relations_ops)
     
     def get_work_item_metadata(self, project: str) -> dict:
         """Retrieve work item types and states for a project.
