@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, AppEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
@@ -40,6 +40,32 @@ class FeatureBoard extends LitElement {
       background-position: 0 0; /* align stripes with card origin */
     }
 
+    /* Keep native vertical scrollbar sizing unchanged (restore previous styling) */
+    :host::-webkit-scrollbar { width: 12px; height: 12px; }
+    :host { scrollbar-width: auto; }
+
+    /* Placeholder styles for internal controls (we render fixed controls in body) */
+    .scroll-controls { display: none; }
+
+    .scroll-button {
+      width: 36px;
+      height: 36px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #333;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+
+    .scroll-button:hover { transform: translateY(-2px); }
+    .scroll-button:active { transform: translateY(0); }
+
+    .scroll-button[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
     :host(.scenario-mode) {
       background:
         repeating-linear-gradient(to right,
@@ -76,6 +102,10 @@ class FeatureBoard extends LitElement {
       // ResizeObserver may not be available in some test envs
       this._ro = null;
     }
+    // Defer creating the fixed scrollbar so document.body exists
+    try {
+      requestAnimationFrame(() => { try { this._ensureFixedScrollbar(); } catch (e) { } });
+    } catch (e) { }
   }
 
   render() {
@@ -93,7 +123,20 @@ class FeatureBoard extends LitElement {
         .project=${featureObj.project}
         style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
       ></feature-card-lit>`)}
+      
     `;
+  }
+
+  _scrollToTop() {
+    try {
+      this.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) { this.scrollTop = 0; }
+  }
+
+  _scrollToBottom() {
+    try {
+      this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
+    } catch (e) { this.scrollTop = this.scrollHeight || 0; }
   }
 
   disconnectedCallback() {
@@ -112,6 +155,264 @@ class FeatureBoard extends LitElement {
         this._ro.disconnect && this._ro.disconnect();
         this._ro = null;
       }
+    } catch (e) { }
+    // Remove fixed controls if we created them
+    try {
+      this._destroyFixedScrollbar && this._destroyFixedScrollbar();
+    } catch (e) { }
+  }
+
+  // Create a fixed scrollbar & buttons at browser edge and sync with this element
+  _ensureFixedScrollbar() {
+    if (this._fixedRail) return;
+
+    const rail = document.createElement('div');
+    rail.className = 'fb-fixed-rail';
+    rail.setAttribute('aria-hidden', 'false');
+    Object.assign(rail.style, {
+      position: 'fixed',
+      right: '4px',
+      top: '72px',
+      bottom: '20px',
+      width: '12px',
+      zIndex: 29, // 1 below the details panel
+      pointerEvents: 'auto'
+    });
+
+    const thumb = document.createElement('div');
+    thumb.className = 'fb-fixed-thumb';
+    Object.assign(thumb.style, {
+      position: 'absolute',
+      left: '0px',
+      width: '100%',
+      borderRadius: '6px',
+      background: 'rgba(0,0,0,0.12)',
+      cursor: 'pointer'
+    });
+    rail.appendChild(thumb);
+
+    const controls = document.createElement('div');
+    controls.className = 'fb-fixed-controls';
+    Object.assign(controls.style, {
+      position: 'fixed',
+      right: '16px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: 29 // 1 below the details panel
+    });
+
+    const btnTop = document.createElement('button');
+    btnTop.className = 'fb-btn-top';
+    btnTop.title = 'Scroll to top';
+    btnTop.innerText = '▲';
+    Object.assign(btnTop.style, {
+      width: '36px', height: '36px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+    });
+
+    const btnBottom = document.createElement('button');
+    btnBottom.className = 'fb-btn-bottom';
+    btnBottom.title = 'Scroll to bottom';
+    btnBottom.innerText = '▼';
+    Object.assign(btnBottom.style, {
+      width: '36px', height: '36px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+    });
+
+    controls.appendChild(btnTop);
+    controls.appendChild(btnBottom);
+
+    document.body.appendChild(rail);
+    document.body.appendChild(controls);
+
+    // Mouse hover hiding - Initial hide state — show controls only on proximity
+    rail.style.opacity = '0';
+    rail.style.transition = 'opacity 180ms ease';
+    rail.style.pointerEvents = 'none';
+    controls.style.opacity = '0';
+    controls.style.transition = 'opacity 180ms ease';
+    controls.style.pointerEvents = 'none';
+    // ^^ Controls mouse hover hiding
+
+    // Handlers
+    const onScroll = () => this._updateFixedThumb();
+    const onResize = () => { this._updateRailPosition(); this._updateFixedThumb(); };
+    const onDetailsShow = () => {
+      try {
+        if (!this._fixedRail) return;
+        // Hide the fixed rail while details panel is open to avoid collision
+        hideRail();
+        this._detailsOpen = true;
+      } catch (e) { }
+    };
+    const onDetailsHide = () => {
+      try {
+        // Restore visibility after details panel closes
+        showRail();
+        this._detailsOpen = false;
+        this._updateFixedThumb();
+      } catch (e) { }
+    };
+    const onTop = () => this._scrollToTop();
+    const onBottom = () => this._scrollToBottom();
+
+    // Mouse hover hiding
+    let hideTimer = null;
+    const proximityPx = 50; // pixels from right edge to reveal controls
+    const showRail = () => {
+      try {
+        if (this._dragging) return; // keep visible during drag
+        rail.style.opacity = '1';
+        rail.style.pointerEvents = 'auto';
+        controls.style.opacity = '1';
+        controls.style.pointerEvents = 'auto';
+      } catch (e) { }
+    };
+    const hideRail = () => {
+      try {
+        if (this._dragging) return;
+        rail.style.opacity = '0';
+        rail.style.pointerEvents = 'none';
+        controls.style.opacity = '0';
+        controls.style.pointerEvents = 'none';
+      } catch (e) { }
+    };
+
+    const onMouseMove = (ev) => {
+      try {
+        const x = ev.clientX;
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        if (vw - x <= proximityPx) {
+          showRail();
+          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        } else {
+          if (hideTimer) clearTimeout(hideTimer);
+          hideTimer = setTimeout(() => { hideRail(); hideTimer = null; }, 10);
+        }
+      } catch (e) { }
+    };
+
+    const onRailEnter = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } showRail(); };
+    const onRailLeave = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(()=>{ hideRail(); hideTimer = null; }, 10); };
+    // ^^ Mouse hover hiding
+
+    thumb.addEventListener('pointerdown', (e) => this._startThumbDrag(e));
+    btnTop.addEventListener('click', onTop);
+    btnBottom.addEventListener('click', onBottom);
+    this.addEventListener('scroll', onScroll);
+    window.addEventListener('resize', onResize);
+    // Mouse hover hiding
+    document.addEventListener('mousemove', onMouseMove);
+    rail.addEventListener('pointerenter', onRailEnter);
+    rail.addEventListener('pointerleave', onRailLeave);
+    // Listen for details panel open/close to avoid overlap
+    try { bus.on(UIEvents.DETAILS_SHOW, onDetailsShow); bus.on(UIEvents.DETAILS_HIDE, onDetailsHide); } catch (e) {}
+    // ^^ Store references for cleanup
+
+    this._fixedRail = rail;
+    this._fixedThumb = thumb;
+    this._fixedControls = controls;
+    // No mouse houver hidding: this._fixedHandlers = { onScroll, onResize };
+    this._fixedHandlers = { onScroll, onResize, onMouseMove, onRailEnter, onRailLeave, onDetailsShow, onDetailsHide };
+
+    // Initial update
+    this._updateRailPosition();
+    this._updateFixedThumb();
+  }
+
+  _updateRailPosition() {
+    try {
+      if (!this._fixedRail) return;
+      // Find the timeline header element and position the rail just below it
+      const timelineHeader = document.querySelector('timeline-lit');
+      if (timelineHeader) {
+        const rect = timelineHeader.getBoundingClientRect();
+        // Add small gap so rail doesn't touch header
+        const gap = 6;
+        const topPx = Math.max(8, rect.bottom + gap) + 'px';
+        this._fixedRail.style.top = topPx;
+      } else {
+        // fallback to a sensible default near top
+        this._fixedRail.style.top = '72px';
+      }
+    } catch (e) { }
+  }
+
+  _destroyFixedScrollbar() {
+    if (this._fixedRail) {
+      try { this._fixedRail.remove(); } catch (e) { }
+      this._fixedRail = null;
+    }
+    if (this._fixedControls) {
+      try { this._fixedControls.remove(); } catch (e) { }
+      this._fixedControls = null;
+    }
+    if (this._fixedThumb) this._fixedThumb = null;
+    if (this._fixedHandlers) {
+      try { this.removeEventListener('scroll', this._fixedHandlers.onScroll); } catch (e) { }
+      try { window.removeEventListener('resize', this._fixedHandlers.onResize); } catch (e) { }
+      // Mouse hover hiding:
+      try { document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove); } catch (e) { }
+      try { this._fixedRail && this._fixedRail.removeEventListener('pointerenter', this._fixedHandlers.onRailEnter); } catch (e) { }
+      try { this._fixedRail && this._fixedRail.removeEventListener('pointerleave', this._fixedHandlers.onRailLeave); } catch (e) { }
+      try { bus.off && this._fixedHandlers.onDetailsShow && bus.off(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow); } catch (e) { }
+      try { bus.off && this._fixedHandlers.onDetailsHide && bus.off(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide); } catch (e) { }
+      // ^^^ Mouse hover hiding cleanup
+      this._fixedHandlers = null;
+    }
+    // Mouse hover hiding cleanup
+    if (this._fixedHideTimer) { try { clearTimeout(this._fixedHideTimer); } catch (e) { } this._fixedHideTimer = null; }
+  }
+
+  _updateFixedThumb() {
+    try {
+      if (!this._fixedRail || !this._fixedThumb) return;
+      const railRect = this._fixedRail.getBoundingClientRect();
+      const clientH = this.clientHeight || 0;
+      const scrollH = this.scrollHeight || 0;
+      if (scrollH <= clientH) {
+        this._fixedThumb.style.display = 'none';
+        return;
+      }
+      this._fixedThumb.style.display = '';
+      const railHeight = Math.max(20, railRect.height);
+      const visibleRatio = clientH / scrollH;
+      const thumbH = Math.max(20, Math.round(railHeight * visibleRatio));
+      const maxThumbTop = railHeight - thumbH;
+      const scrollTop = this.scrollTop || 0;
+      const topFraction = scrollTop / (scrollH - clientH);
+      const thumbTop = Math.round(topFraction * maxThumbTop);
+      this._fixedThumb.style.height = thumbH + 'px';
+      this._fixedThumb.style.top = thumbTop + 'px';
+    } catch (e) { }
+  }
+
+  _startThumbDrag(e) {
+    try {
+      e.preventDefault();
+      this._dragging = true;
+      const onMove = (ev) => this._onThumbMove(ev);
+      const onUp = () => { this._dragging = false; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    } catch (e) { this._dragging = false; }
+  }
+
+  _onThumbMove(ev) {
+    try {
+      if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
+      const railRect = this._fixedRail.getBoundingClientRect();
+      const railTop = railRect.top;
+      const railHeight = railRect.height;
+      const thumbH = this._fixedThumb.getBoundingClientRect().height;
+      const y = ev.clientY - railTop - (thumbH / 2);
+      const maxY = Math.max(0, railHeight - thumbH);
+      const clamped = Math.max(0, Math.min(maxY, y));
+      const fraction = clamped / (railHeight - thumbH || 1);
+      const targetScroll = Math.round(fraction * (this.scrollHeight - this.clientHeight));
+      this.scrollTop = targetScroll;
+      this._updateFixedThumb();
     } catch (e) { }
   }
 
@@ -493,6 +794,8 @@ class FeatureBoard extends LitElement {
     this._refreshObserverTargets();
     // Schedule an immediate measurement pass to compute layout-driven flags
     this._scheduleMeasureNow();
+    // Ensure fixed scrollbar exists and is in sync
+    try { this._ensureFixedScrollbar(); this._updateFixedThumb(); } catch (e) { }
   }
 
   _refreshObserverTargets() {

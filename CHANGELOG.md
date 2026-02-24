@@ -26,6 +26,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   are considered hierarchically higher than "team" plans.  All team plan tasks must have a project as parent.
   Otherwise it is considered an orphan. This might not be a problem, but it could be a sign it is not funded.
   Fixes [#12](https://github.com/kpoppel/PlannerTool/issues/12)
+- Added vertical scrollbar. It appeas on scren when moving the mouse close to the edge. Two buttons control
+  scrolling to top and bottom in one click. Fixes [#14](https://github.com/kpoppel/PlannerTool/issues/14)
 
 ### Changed
 
