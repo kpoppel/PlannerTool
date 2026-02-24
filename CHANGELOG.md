@@ -22,6 +22,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Fixes [#1](https://github.com/kpoppel/PlannerTool/issues/1)
 - In the details panel the user can change the state of a task. Use a scenario to persist a state change in Azure.
   Fixes [#4](https://github.com/kpoppel/PlannerTool/issues/4)
+- Plan health check checks for orphaned tasks.  This is an opinionated check.  Tasks in a plan of type "project"
+  are considered hierarchically higher than "team" plans.  All team plan tasks must have a project as parent.
+  Otherwise it is considered an orphan. This might not be a problem, but it could be a sign it is not funded.
+  Fixes [#12](https://github.com/kpoppel/PlannerTool/issues/12)
 
 ### Changed
 

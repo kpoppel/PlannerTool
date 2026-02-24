@@ -24,6 +24,7 @@ export class PluginPlanHealthComponent extends LitElement {
       'parent-child-dates': true,
       'ghosted-children': true,
       'parent-child-teams': true,
+      'orphans': true,
       'dependency-violations': true,
       'state-consistency': true
     };
@@ -540,6 +541,76 @@ export class PluginPlanHealthComponent extends LitElement {
   }
 
   /**
+   * Check for orphaned features/epics in team plans.
+   * - Epics that belong to a team plan but have no parent epic which is in a project plan
+   * - Features (non-epics) that belong to a team plan but have no parent epic
+   */
+  _checkOrphans(features, childrenByEpic, visibleIds) {
+    const issues = [];
+
+    try {
+      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const featureMap = new Map(allFeatures.map(f => [String(f.id), f]));
+
+      const projects = state.projects || [];
+      const projectMap = new Map((projects || []).map(p => [String(p.id), p]));
+
+      // Find all plan ids that are type 'team'
+      const teamPlanIds = new Set((projects || []).filter(p => String(p.type) === 'team').map(p => String(p.id)));
+
+      for (const feature of features) {
+        const featureIdStr = String(feature.id);
+
+        // Only consider visible features
+        if (!visibleIds.has(featureIdStr)) continue;
+
+        const projectIdStr = feature.project ? String(feature.project) : null;
+        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue; // only check features in team plans
+
+        // Epics: must have a parent epic that is in a project plan
+        if (feature.type === 'epic') {
+          const parentId = feature.parentEpic || null;
+          if (!parentId) {
+            issues.push({ featureId: feature.id, type: 'Orphan', title: 'Orphaned Epic', description: 'Epic belongs to a team plan but has no parent epic in a project plan', severity: 'warning' });
+            continue;
+          }
+
+          const parent = featureMap.get(String(parentId));
+          if (!parent) {
+            issues.push({ featureId: feature.id, type: 'Orphan', title: 'Orphaned Epic', description: 'Epic has a parent id but the parent cannot be found', severity: 'warning' });
+            continue;
+          }
+
+          const parentProject = parent.project ? String(parent.project) : null;
+          const parentPlan = parentProject ? projectMap.get(parentProject) : null;
+          const parentPlanType = parentPlan && parentPlan.type ? String(parentPlan.type) : 'project';
+
+          if (parentPlanType !== 'project') {
+            issues.push({ featureId: feature.id, type: 'Orphan', title: 'Orphaned Epic', description: 'Epic parent is not a project plan (expected a project parent)', severity: 'warning' });
+          }
+
+        } else {
+          // Non-epic features: should have a parent epic
+          const parentId = feature.parentEpic || null;
+          if (!parentId) {
+            issues.push({ featureId: feature.id, type: 'Orphan', title: 'Orphaned Feature', description: 'Feature belongs to a team plan but has no parent epic', severity: 'warning' });
+            continue;
+          }
+
+          const parent = featureMap.get(String(parentId));
+          if (!parent) {
+            issues.push({ featureId: feature.id, type: 'Orphan', title: 'Orphaned Feature', description: 'Feature parent epic cannot be found', severity: 'warning' });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[PlanHealth] Error checking orphans:', e);
+    }
+
+    return issues;
+  }
+
+  /**
    * Check for dependency date violations
    * Verifies that tasks don't start before their predecessors or after their successors
    */
@@ -807,6 +878,15 @@ export class PluginPlanHealthComponent extends LitElement {
         name: 'Team Allocation Mismatches',
         description: 'Parent and child team assignments do not match',
         issues: teamIssues
+      });
+
+      // Run orphan detection for team-plan features/epics
+      const orphanIssues = this._checkOrphans(visibleFeatures, childrenByEpic, visibleIds);
+      checkResults.push({
+        id: 'orphans',
+        name: 'Orphaned Features / Epics',
+        description: 'Team-plan epics or features without a project parent or parent epic',
+        issues: orphanIssues
       });
       
       // Run dependency date violation check (only for visible features)
