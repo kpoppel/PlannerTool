@@ -316,6 +316,7 @@ export class ViewService {
       condensedCards: this._condensedCards,
       featureSortMode: this._featureSortMode,
       showUnassignedCards: this._showUnassignedCards,
+      showDependencies: this._showDependencies,
       showUnplannedWork: this._showUnplannedWork,
       timelineScale: this._timelineScale,
       showEpics: this._showEpics,
@@ -339,6 +340,7 @@ export class ViewService {
     if (typeof viewState.condensedCards !== 'undefined') this._condensedCards = !!viewState.condensedCards;
     if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
     if (typeof viewState.showUnassignedCards !== 'undefined') this._showUnassignedCards = !!viewState.showUnassignedCards;
+    if (typeof viewState.showDependencies !== 'undefined') this._showDependencies = !!viewState.showDependencies;
     if (typeof viewState.showUnplannedWork !== 'undefined') this._showUnplannedWork = !!viewState.showUnplannedWork;
     if (viewState.timelineScale) this._timelineScale = viewState.timelineScale;
     if (typeof viewState.showEpics !== 'undefined') this._showEpics = !!viewState.showEpics;
@@ -364,6 +366,7 @@ export class ViewService {
         showUnplannedWork: this._showUnplannedWork,
         showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
       });
+      this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
       this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);

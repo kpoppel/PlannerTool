@@ -41,6 +41,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 1600ms to 62ms on dev machine.
   Deselecting all plans is instant.
 - Fix a console warning about Lit sourcemap
+- Fix dependency vire setting not saved in a View. Fixes [#13](https://github.com/kpoppel/PlannerTool/issues/13)
 
 
 ## [v1.11.0] - 2026-02-22
