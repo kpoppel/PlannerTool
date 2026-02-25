@@ -810,10 +810,22 @@ export class AnnotationOverlay extends LitElement {
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
     // x is contentX (pixels from content origin). Convert to viewport X by removing scrollLeft
     const viewportX = x - scrollLeft;
-    return {
-      x: viewportX,
-      y: y - scrollTop
-    };
+
+    // If this overlay element is a child of the feature board (or its
+    // host root), the overlay will move with the board's internal scrolling
+    // so we should NOT subtract `scrollTop` here (doing so would double
+    // apply the scroll offset and make annotations move too far). Only
+    // subtract `scrollTop` when the overlay is mounted elsewhere (absolute
+    // in the viewport).
+    try {
+      const featureBoard = document.querySelector('feature-board');
+      const parent = this.parentElement || (this.getRootNode && this.getRootNode().host) || null;
+      const overlayMountedInBoard = parent && featureBoard && (parent === featureBoard || featureBoard.contains(parent));
+      const viewportY = overlayMountedInBoard ? y : (y - scrollTop);
+      return { x: viewportX, y: viewportY };
+    } catch (e) {
+      return { x: viewportX, y: y - scrollTop };
+    }
   }
 
   _onMouseDown(e) {

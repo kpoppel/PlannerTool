@@ -92,19 +92,19 @@ class PluginAnnotations {
           // layout when needed.
           const resizeFn = () => {
             try {
-              // toggle a CSS property to force repaint if necessary
+              // toggle a CSS property to force repaint on window resize
               this._el.style.transform = 'translateZ(0)';
-              // then clear it to avoid buildup
               setTimeout(() => { try { this._el.style.transform = ''; } catch (e) { /* ignore */ } }, 0);
             } catch (e) { /* ignore */ }
           };
 
-          const onScroll = () => { resizeFn(); };
-
-          this._annotationBoardHandlers = { resizeFn, onScroll, board };
+          // Only keep a window resize handler. Do NOT attach a board scroll
+          // listener — scrolling should not cause the toolbox to repaint
+          // (which results in the hide/unhide flash). The overlay inside the
+          // feature board handles its own scroll repositioning.
+          this._annotationBoardHandlers = { resizeFn, board };
 
           window.addEventListener('resize', resizeFn);
-          try { board.addEventListener('scroll', onScroll); } catch (e) { /* ignore */ }
         }
       } catch (e) {
         // ignore
@@ -130,12 +130,13 @@ class PluginAnnotations {
       this._el.parentNode.removeChild(this._el);
     }
     this._el = null;
-    // Remove any attached handlers for board resizing/scroll
+    // Remove any attached handlers for board resizing/scroll (only resize)
     try {
       if (this._annotationBoardHandlers) {
-        const { resizeFn, onScroll, board } = this._annotationBoardHandlers;
+        const { resizeFn, board } = this._annotationBoardHandlers;
         try { window.removeEventListener('resize', resizeFn); } catch (e) { /* ignore */ }
-        try { if (board && board.removeEventListener) board.removeEventListener('scroll', onScroll); } catch (e) { /* ignore */ }
+        // We intentionally do NOT remove a board scroll listener because
+        // we no longer attach one — scrolling should not trigger toolbox repaint.
       }
     } catch (e) { /* ignore */ }
     this._annotationBoardHandlers = null;
