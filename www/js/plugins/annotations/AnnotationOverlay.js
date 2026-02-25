@@ -165,6 +165,7 @@ export class AnnotationOverlay extends LitElement {
         this._scrollScheduled = false;
         // Reposition overlay to stay aligned with featureBoard
         this._positionOverTimeline();
+        
         this._updateSvg();
       });
     };
@@ -261,7 +262,7 @@ export class AnnotationOverlay extends LitElement {
           const offset = this._dragState.offsetContent ?? 0;
           const newContentX = pointerContentX - offset;
           const newDate = this._contentXToDateMs(newContentX);
-          if (ann.type === 'line') {
+            if (ann.type === 'line') {
             // Use the original stored endpoints from drag start to compute a
             // stable delta. This avoids feedback where the live-state values
             // move under the pointer and shrink the line.
@@ -271,9 +272,9 @@ export class AnnotationOverlay extends LitElement {
             const delta = newContentX - origLeft;
             const newDate1 = this._contentXToDateMs(orig1 + delta);
             const newDate2 = this._contentXToDateMs(orig2 + delta);
-            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, x1: orig1 + delta, x2: orig2 + delta, y1: ann.y1 + dy, y2: ann.y2 + dy });
           } else {
-            this._state.update(this._dragState.id, { date: newDate, y: ann.y + dy });
+            this._state.update(this._dragState.id, { date: newDate, x: newContentX, y: ann.y + dy });
           }
         }
       } else if (this._dragState.mode === 'resize') {
@@ -287,11 +288,15 @@ export class AnnotationOverlay extends LitElement {
       } else if (this._dragState.mode === 'line-endpoint') {
         const ann = this._state.annotations.find(a => a.id === this._dragState.id);
         if (ann) {
-          const newDate = this._contentXToDateMs(contentX ?? x);
+          // Determine pointer content X (use contentX when available)
+          const pointerContentX = (contentX ?? x);
+          const offset = this._dragState.offsetContent ?? 0;
+          const newContentX = pointerContentX - offset;
+          const newDate = this._contentXToDateMs(newContentX);
           if (this._dragState.endpoint === 'start') {
-            this._state.update(this._dragState.id, { date1: newDate, y1: ann.y1 + dy });
+            this._state.update(this._dragState.id, { date1: newDate, x1: newContentX, y1: ann.y1 + dy });
           } else {
-            this._state.update(this._dragState.id, { date2: newDate, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, { date2: newDate, x2: newContentX, y2: ann.y2 + dy });
           }
         }
       }
@@ -368,7 +373,9 @@ export class AnnotationOverlay extends LitElement {
     // Convert note position to viewport coords for the text input
     let textareaStyle = '';
     if (this._editingNote) {
-      const contentX = this._editingNote.date ? this._dateToContentX(this._editingNote.date) : (this._editingNote.x || 0);
+      const contentX = (typeof this._editingNote.x !== 'undefined' && this._editingNote.x !== null)
+        ? this._editingNote.x
+        : (this._editingNote.date ? this._dateToContentX(this._editingNote.date) : 0);
       const { x: vx, y: vy } = this._contentToViewport(contentX, this._editingNote.y);
       const fontSize = this._editingNote.fontSize || 12;
       const bgColor = this._editingNote.fill || ANNOTATION_COLORS.defaultFill;
@@ -461,7 +468,9 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderIconToSvg(ann, isSelected) {
-    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
+      ? ann.x
+      : (ann.date ? this._dateToContentX(ann.date) : 0);
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
     const g = this._createSvgElement('g', {
       class: `annotation annotation-icon ${isSelected ? 'selected' : ''}`,
@@ -491,8 +500,11 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderNoteToSvg(ann, isSelected) {
-    // Convert logical date to content coordinates then to viewport for display
-    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    // Prefer an explicit stored content X (precise), otherwise convert
+    // the logical date to content coordinates for display.
+    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
+      ? ann.x
+      : (ann.date ? this._dateToContentX(ann.date) : 0);
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
 
     const g = this._createSvgElement('g', {
@@ -559,8 +571,11 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderRectToSvg(ann, isSelected) {
-    // Convert logical date to content coordinates then to viewport for display
-    const contentX = ann.date ? this._dateToContentX(ann.date) : (ann.x || 0);
+    // Prefer an explicit stored content X (precise), otherwise convert
+    // the logical date to content coordinates for display.
+    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
+      ? ann.x
+      : (ann.date ? this._dateToContentX(ann.date) : 0);
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
     
     const g = this._createSvgElement('g', {
@@ -608,8 +623,13 @@ export class AnnotationOverlay extends LitElement {
 
   _renderLineToSvg(ann, isSelected) {
     // Convert logical dates to content coordinates then to viewport for display
-    const contentX1 = ann.date1 ? this._dateToContentX(ann.date1) : (ann.x1 || 0);
-    const contentX2 = ann.date2 ? this._dateToContentX(ann.date2) : (ann.x2 || 0);
+    // Prefer explicit stored endpoint content X values when available.
+    const contentX1 = (typeof ann.x1 !== 'undefined' && ann.x1 !== null)
+      ? ann.x1
+      : (ann.date1 ? this._dateToContentX(ann.date1) : 0);
+    const contentX2 = (typeof ann.x2 !== 'undefined' && ann.x2 !== null)
+      ? ann.x2
+      : (ann.date2 ? this._dateToContentX(ann.date2) : 0);
     const { x: vx1, y: vy1 } = this._contentToViewport(contentX1, ann.y1);
     const { x: vx2, y: vy2 } = this._contentToViewport(contentX2, ann.y2);
     
@@ -627,6 +647,20 @@ export class AnnotationOverlay extends LitElement {
       'stroke-width': ann.strokeWidth || 2,
       'stroke-linecap': 'round'
     });
+    // Add a wider invisible hit target so lines are easier to grab.
+    const hitLine = this._createSvgElement('line', {
+      x1: vx1,
+      y1: vy1,
+      x2: vx2,
+      y2: vy2,
+      stroke: 'transparent',
+      'stroke-width': (ann.strokeWidth || 2) + 12,
+      'stroke-linecap': 'round',
+      style: 'pointer-events: stroke; cursor: move;'
+    });
+    // Make clicking the hit line select/activate the annotation
+    hitLine.addEventListener('mousedown', (e) => { e.stopPropagation(); this._onAnnotationMouseDown(e, ann); });
+    g.appendChild(hitLine);
     g.appendChild(line);
     
     // Arrow head
@@ -776,13 +810,31 @@ export class AnnotationOverlay extends LitElement {
    */
   _getScrollOffsets() {
     const { timelineSection, featureBoard } = this._getScrollContainers();
-    // Horizontal panning primarily occurs on the timelineSection (header
-    // panning). Vertical scrolling happens inside the featureBoard. Prefer
-    // timelineSection for `scrollLeft`, and featureBoard for `scrollTop`.
-    return {
-      scrollLeft: timelineSection?.scrollLeft ?? featureBoard?.scrollLeft ?? 0,
-      scrollTop: featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0
-    };
+    // Horizontal panning may occur on either timelineSection or featureBoard
+    // depending on app state; choose the container that currently has a
+    // horizontal scrollable area (scrollWidth > clientWidth) and prefer the
+    // one that is actually scrolled. Fallback to timelineSection then
+    // featureBoard then zero.
+    let scrollLeft = 0;
+    try {
+      const tlLeft = timelineSection?.scrollLeft || 0;
+      const fbLeft = featureBoard?.scrollLeft || 0;
+      // If both containers can scroll, prefer the one with the larger
+      // absolute scrollLeft — that is most likely the active panning source.
+      if (Math.abs(tlLeft) >= Math.abs(fbLeft) && timelineSection) {
+        scrollLeft = tlLeft;
+      } else if (featureBoard) {
+        scrollLeft = fbLeft;
+      } else {
+        scrollLeft = tlLeft || fbLeft || 0;
+      }
+    } catch (e) {
+      scrollLeft = timelineSection?.scrollLeft ?? featureBoard?.scrollLeft ?? 0;
+    }
+    
+
+    const scrollTop = featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0;
+    return { scrollLeft, scrollTop };
   }
 
   /**
@@ -807,7 +859,10 @@ export class AnnotationOverlay extends LitElement {
 
     const viewportX = clientX - rect.left;
     const viewportY = clientY - rect.top;
-    const contentX = viewportX + scrollLeft; // content coordinate inside feature board
+    // Derive content X from the event: clientX - boardRect.left yields the
+    // absolute content coordinate (boardRect.left already moves with scroll),
+    // so do NOT add scrollLeft here (that double-counts horizontal pan).
+    const contentX = viewportX; // content coordinate inside feature board
 
     return {
       x: viewportX,
@@ -830,13 +885,26 @@ export class AnnotationOverlay extends LitElement {
    */
   _contentToViewport(x, y) {
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
-    // The overlay is fixed to the visible board area (viewport-sized) and
-    // does not move with the board's internal scrolling. Therefore we
-    // always subtract the scroll offsets to convert content coordinates
-    // into viewport coordinates inside the overlay.
-    const viewportX = x - scrollLeft;
-    const viewportY = y - scrollTop;
-    return { x: viewportX, y: viewportY };
+    // Compute client coordinates for the content point. The content X is
+    // relative to the board content origin; convert it to a page clientX by
+    // adding the featureBoard's bounding rect.left. The boardRect.left already
+    // accounts for horizontal scrolling, so do NOT subtract scrollLeft here.
+    try {
+      const featureBoard = document.querySelector('feature-board');
+      const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+      const overlayRect = this.getBoundingClientRect();
+      const clientX = boardRect.left + x;
+      const clientY = boardRect.top + (y - scrollTop);
+
+      const localX = clientX - overlayRect.left;
+      const localY = clientY - overlayRect.top;
+      return { x: Math.round(localX), y: Math.round(localY) };
+    } catch (e) {
+      // Fallback: simple subtraction
+      const viewportX = x - scrollLeft;
+      const viewportY = y - scrollTop;
+      return { x: Math.round(viewportX), y: Math.round(viewportY) };
+    }
   }
 
   _onMouseDown(e) {
@@ -949,11 +1017,13 @@ export class AnnotationOverlay extends LitElement {
       btn.style.cursor = 'pointer';
       btn.style.padding = '0';
       btn.dataset.icon = ic;
-      btn.addEventListener('click', (ev) => {
+        btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         this._hideIconPicker();
         const dateMs = this._contentXToDateMs(fallbackContentX);
         const iconAnn = createIconAnnotation(dateMs, contentY, ic, { size: 18 });
+        // Preserve precise content coordinate
+        iconAnn.x = fallbackContentX;
         this._state.add(iconAnn);
         this._state.select(iconAnn.id);
         this._updateSvg();
@@ -1059,9 +1129,9 @@ export class AnnotationOverlay extends LitElement {
             const delta = newContentX - origLeft;
             const newDate1 = this._contentXToDateMs(orig1 + delta);
             const newDate2 = this._contentXToDateMs(orig2 + delta);
-            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, y1: ann.y1 + dy, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, x1: orig1 + delta, x2: orig2 + delta, y1: ann.y1 + dy, y2: ann.y2 + dy });
           } else {
-            this._state.update(this._dragState.id, { date: newDate, y: ann.y + dy });
+            this._state.update(this._dragState.id, { date: newDate, x: newContentX, y: ann.y + dy });
           }
         }
       } else if (this._dragState.mode === 'resize') {
@@ -1126,6 +1196,10 @@ export class AnnotationOverlay extends LitElement {
         fill: color.fill,
         stroke: color.stroke
       });
+      // Persist the precise content X so rendering stays at the exact
+      // drawn position rather than relying solely on the date->content
+      // conversion which can lose precision at timeline edges.
+      note.x = contentLeft;
       this._state.add(note);
       this._state.select(note.id);
     } else if (tool === TOOLS.RECT && width > minSize && height > minSize) {
@@ -1134,6 +1208,7 @@ export class AnnotationOverlay extends LitElement {
       const rect = createRectAnnotation(dateMs, y, width, height, {
         stroke: color.stroke
       });
+      rect.x = contentLeft;
       this._state.add(rect);
       this._state.select(rect.id);
     } else if (tool === TOOLS.LINE) {
@@ -1144,6 +1219,9 @@ export class AnnotationOverlay extends LitElement {
         const date1 = this._contentXToDateMs(contentStart);
         const date2 = this._contentXToDateMs(contentEnd);
         const line = createLineAnnotation(date1, startY, date2, currentY);
+        // Store explicit endpoints so lines render exactly where drawn.
+        line.x1 = contentStart;
+        line.x2 = contentEnd;
         this._state.add(line);
         this._state.select(line.id);
       }
@@ -1153,6 +1231,7 @@ export class AnnotationOverlay extends LitElement {
       const dateMs = this._contentXToDateMs(contentPos);
       const iconChar = this._state.currentIcon || this._currentIcon || '⭐';
       const iconAnn = createIconAnnotation(dateMs, startY, iconChar, { size: 18 });
+      iconAnn.x = contentPos;
       this._state.add(iconAnn);
       this._state.select(iconAnn.id);
     }
@@ -1284,7 +1363,12 @@ export class AnnotationOverlay extends LitElement {
       endpoint,
       lastX: x,
       lastY: y,
-      lastContentX: contentX
+      lastContentX: contentX,
+      // Store pointer offset relative to the endpoint's content X so the
+      // endpoint stays under the pointer during dragging.
+      offsetContent: (contentX ?? x) - ((typeof (endpoint === 'start' ? ann.x1 : ann.x2) !== 'undefined' && (endpoint === 'start' ? ann.x1 : ann.x2) !== null)
+        ? (endpoint === 'start' ? ann.x1 : ann.x2)
+        : (endpoint === 'start' ? this._dateToContentX(ann.date1 || ann.x1 || 0) : this._dateToContentX(ann.date2 || ann.x2 || 0)))
     };
     this._attachGlobalPointerHandlers();
   }
@@ -1434,6 +1518,8 @@ export class AnnotationOverlay extends LitElement {
       this._positionOverTimeline();
     }
   }
+
+  
   
   /**
    * Position the overlay to cover the feature board only (not the timeline header)
@@ -1446,8 +1532,8 @@ export class AnnotationOverlay extends LitElement {
     // Compute the intersection between the feature board rect and the
     // viewport so the overlay only covers the on-screen visible area.
     try {
-      const left = Math.max(0, Math.round(rect.left));
-      const top = Math.max(0, Math.round(rect.top));
+      const left = Math.round(rect.left);
+      const top = Math.round(rect.top);
       const right = Math.min(window.innerWidth, Math.round(rect.right));
       const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
       const width = Math.max(0, right - left);

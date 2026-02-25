@@ -46,6 +46,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Deselecting all plans is instant.
 - Fix a console warning about Lit sourcemap
 - Fix dependency vire setting not saved in a View. Fixes [#13](https://github.com/kpoppel/PlannerTool/issues/13)
+- Fix for AnnotationPlugin where the toolbox started flashing when scrolling, and annotations scrolling at
+  double speed.
 
 
 ## [v1.11.0] - 2026-02-22

@@ -279,8 +279,8 @@ export class PluginAnnotationsComponent extends LitElement {
         // visible portion of the feature board. Keep the host element
         // non-interactive so scrolling still works; the inner
         // `.overlay-container` will enable pointer-events when needed.
-        const left = Math.max(0, Math.round(rect.left));
-        const top = Math.max(0, Math.round(rect.top));
+        const left = Math.round(rect.left);
+        const top = Math.round(rect.top);
         const right = Math.min(window.innerWidth, Math.round(rect.right));
         const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
         const width = Math.max(0, right - left);
