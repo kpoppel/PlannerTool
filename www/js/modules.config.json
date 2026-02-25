@@ -112,7 +112,7 @@
       "description": "Edit dependency links (Predecessor, Successor, Related, Parent)",
       "path": "../plugins/PluginLinkEditor.js",
       "export": "default",
-      "enabled": true,
+      "enabled": false,
       "activated": false,
       "exclusive": true,
       "mountPoint": "feature-board",
