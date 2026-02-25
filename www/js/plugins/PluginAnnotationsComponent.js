@@ -2,6 +2,8 @@
  * PluginAnnotationsComponent.js
  * UI component for the Annotations plugin
  * Provides a floating toolbar for annotation tools
+ * 
+ * TODO: If performance becomes an issue, implement viewport-culling in AnnotationOverlay._updateSvg() and reuse nodes
  */
 
 import { LitElement, html, css } from '../vendor/lit.js';
@@ -251,27 +253,45 @@ export class PluginAnnotationsComponent extends LitElement {
       if (!board) return;
       const hostRoot = board.shadowRoot || board;
 
-      // Reuse existing overlay if present in the board host, otherwise create it
-      let overlay = (hostRoot.querySelector && hostRoot.querySelector('annotation-overlay')) || document.querySelector('annotation-overlay');
+      // Reuse existing overlay if present in the document, otherwise create it
+      let overlay = document.querySelector('annotation-overlay');
       if (!overlay) {
         overlay = document.createElement('annotation-overlay');
+        // Prefer app host so overlay is in same stacking context; fall back
+        // to document.body when not available. App-hosted overlay is outside
+        // the feature-board so it can be sized to the visible viewport and
+        // use transforms to place annotations correctly.
+        const appHost = document.querySelector('.app-container');
         try {
-          // Append into the board hostRoot so it's scoped to the board
-          hostRoot.appendChild(overlay);
+          if (appHost) appHost.appendChild(overlay);
+          else document.body.appendChild(overlay);
         } catch (e) {
-          // Fallback to appending to document if hostRoot append fails
           try { document.body.appendChild(overlay); } catch (err) { /* ignore */ }
         }
       }
 
-      // Ensure overlay fills the board and is positioned/clipped by it
+      // Size the overlay to the visible board rectangle (viewport-sized)
+      // so it stays fixed while scrolling; annotations will be positioned
+      // using transforms relative to content scroll offsets.
       try {
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.right = '0';
-        overlay.style.bottom = '0';
-        overlay.style.pointerEvents = 'auto';
+        const rect = board.getBoundingClientRect();
+        // Make the overlay fixed to the viewport and only cover the
+        // visible portion of the feature board. Keep the host element
+        // non-interactive so scrolling still works; the inner
+        // `.overlay-container` will enable pointer-events when needed.
+        const left = Math.max(0, Math.round(rect.left));
+        const top = Math.max(0, Math.round(rect.top));
+        const right = Math.min(window.innerWidth, Math.round(rect.right));
+        const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
+        const width = Math.max(0, right - left);
+        const height = Math.max(0, bottom - top);
+
+        overlay.style.position = 'fixed';
+        overlay.style.top = `${top}px`;
+        overlay.style.left = `${left}px`;
+        overlay.style.width = `${width}px`;
+        overlay.style.height = `${height}px`;
+        overlay.style.pointerEvents = 'none';
         overlay.style.zIndex = '10';
       } catch (e) { /* ignore */ }
 
