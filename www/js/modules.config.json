@@ -104,6 +104,19 @@
       "exclusive": true,
       "mountPoint": "feature-board",
       "dependencies": []
+    },
+    {
+      "id": "plugin-link-editor",
+      "name": "Link Editor",
+      "version": "1.0.0",
+      "description": "Edit dependency links (Predecessor, Successor, Related, Parent)",
+      "path": "../plugins/PluginLinkEditor.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
     }
   ]
 }
