@@ -818,7 +818,14 @@ export class AnnotationOverlay extends LitElement {
     let scrollLeft = 0;
     try {
       const tlLeft = timelineSection?.scrollLeft || 0;
-      const fbLeft = featureBoard?.scrollLeft || 0;
+      let fbLeft = featureBoard?.scrollLeft || 0;
+      // If a LayoutManager is present, prefer its board rect for scrollLeft
+      try {
+        if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
+          const br = featureBoard._layout.getBoardRect();
+          if (br && typeof br.left === 'number') fbLeft = br.left;
+        }
+      } catch (e) { /* ignore layout errors */ }
       // If both containers can scroll, prefer the one with the larger
       // absolute scrollLeft — that is most likely the active panning source.
       if (Math.abs(tlLeft) >= Math.abs(fbLeft) && timelineSection) {
@@ -833,7 +840,13 @@ export class AnnotationOverlay extends LitElement {
     }
     
 
-    const scrollTop = featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0;
+    let scrollTop = featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0;
+    try {
+      if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
+        const br = featureBoard._layout.getBoardRect();
+        if (br && typeof br.top === 'number') scrollTop = br.top;
+      }
+    } catch (e) { /* ignore */ }
     return { scrollLeft, scrollTop };
   }
 
@@ -847,11 +860,20 @@ export class AnnotationOverlay extends LitElement {
    * stable content coordinates.
    */
   _getEventCoords(e) {
-    // Prefer the feature-board bounding rect so we ignore events outside
-    // the board (e.g., over the sidebar) even if the overlay is mis-positioned.
+    // Prefer the feature-board client rect from LayoutManager so we avoid
+    // per-event DOM reads which are expensive during pointer moves.
     const featureBoard = document.querySelector('feature-board');
-    const rect = featureBoard ? featureBoard.getBoundingClientRect() : this.getBoundingClientRect();
+    let rect = null;
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
+    try {
+      if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+        const brClient = featureBoard._layout.getBoardClientRect();
+        if (brClient) rect = { left: brClient.left || 0, top: brClient.top || 0, right: (brClient.left || 0) + (brClient.width || 0), bottom: (brClient.top || 0) + (brClient.height || 0) };
+      }
+    } catch (e) { /* ignore */ }
+    if (!rect) {
+      try { rect = featureBoard ? featureBoard.getBoundingClientRect() : this.getBoundingClientRect(); } catch (e) { rect = this.getBoundingClientRect(); }
+    }
 
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -891,10 +913,17 @@ export class AnnotationOverlay extends LitElement {
     // accounts for horizontal scrolling, so do NOT subtract scrollLeft here.
     try {
       const featureBoard = document.querySelector('feature-board');
-      const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+      let boardClient = null;
+      try {
+        if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+          boardClient = featureBoard._layout.getBoardClientRect();
+        }
+      } catch (e) { boardClient = null; }
+      const boardLeft = boardClient ? (boardClient.left || 0) : (featureBoard ? featureBoard.getBoundingClientRect().left : 0);
+      const boardTop = boardClient ? (boardClient.top || 0) : (featureBoard ? featureBoard.getBoundingClientRect().top : 0);
       const overlayRect = this.getBoundingClientRect();
-      const clientX = boardRect.left + x;
-      const clientY = boardRect.top + (y - scrollTop);
+      const clientX = boardLeft + x;
+      const clientY = boardTop + (y - scrollTop);
 
       const localX = clientX - overlayRect.left;
       const localY = clientY - overlayRect.top;
@@ -953,9 +982,12 @@ export class AnnotationOverlay extends LitElement {
       // Add a transient visual marker so we can see the click position
       try {
         const featureBoard = document.querySelector('feature-board');
-        const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
-        const pageX = (boardRect.left || 0) + vx;
-        const pageY = (boardRect.top || 0) + vy;
+        let boardClient = null;
+        try { if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') boardClient = featureBoard._layout.getBoardClientRect(); } catch (e) { boardClient = null; }
+        const boardLeft = boardClient ? (boardClient.left || 0) : (featureBoard ? featureBoard.getBoundingClientRect().left : 0);
+        const boardTop = boardClient ? (boardClient.top || 0) : (featureBoard ? featureBoard.getBoundingClientRect().top : 0);
+        const pageX = (boardLeft || 0) + vx;
+        const pageY = (boardTop || 0) + vy;
         const marker = document.createElement('div');
         marker.style.position = 'fixed';
         marker.style.left = `${Math.round(pageX)}px`;
@@ -1527,10 +1559,27 @@ export class AnnotationOverlay extends LitElement {
   _positionOverTimeline() {
     const featureBoard = document.querySelector('feature-board');
     if (!featureBoard) return;
-    
-    const rect = featureBoard.getBoundingClientRect();
-    // Compute the intersection between the feature board rect and the
-    // viewport so the overlay only covers the on-screen visible area.
+    // Prefer a cached client rect from LayoutManager to avoid expensive
+    // per-call DOM measurements. Fall back to getBoundingClientRect once.
+    let rect = null;
+    try {
+      if (featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+        const br = featureBoard._layout.getBoardClientRect();
+        if (br && (br.left || br.left === 0)) {
+          rect = { left: br.left, top: br.top, right: (br.left + (br.width || 0)), bottom: (br.top + (br.height || 0)), width: br.width || 0, height: br.height || 0 };
+        }
+      }
+    } catch (e) { rect = null; }
+
+    if (!rect) {
+      try {
+        rect = featureBoard.getBoundingClientRect();
+      } catch (e) {
+        return;
+      }
+    }
+
+    // Compute visible intersection with viewport so overlay only covers on-screen area
     try {
       const left = Math.round(rect.left);
       const top = Math.round(rect.top);
@@ -1545,6 +1594,7 @@ export class AnnotationOverlay extends LitElement {
       this.style.width = `${width}px`;
       this.style.height = `${height}px`;
     } catch (e) {
+      // Fallback to raw rect values
       this.style.top = `${rect.top}px`;
       this.style.left = `${rect.left}px`;
       this.style.width = `${rect.width}px`;

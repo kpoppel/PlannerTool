@@ -422,7 +422,19 @@ export class PluginMarkersComponent extends LitElement {
     const board = document.querySelector('feature-board');
     if (!board) return;
 
-    const boardRect = board.getBoundingClientRect();
+    // Prefer LayoutManager-provided board rect when available (avoids DOM reads)
+    let boardRect = { left: 0, top: 0, width: board.clientWidth || 0, height: board.clientHeight || 0 };
+    try {
+      if (board && board._layout && typeof board._layout.getBoardRect === 'function') {
+        const br = board._layout.getBoardRect();
+        if (br) boardRect = { left: br.left || 0, top: br.top || 0, width: br.width || board.clientWidth || 0, height: br.height || board.clientHeight || 0 };
+      } else {
+        const brClient = board.getBoundingClientRect();
+        boardRect = { left: brClient.left, top: brClient.top, width: brClient.width, height: brClient.height };
+      }
+    } catch (e) {
+      try { const brClient = board.getBoundingClientRect(); boardRect = { left: brClient.left, top: brClient.top, width: brClient.width, height: brClient.height }; } catch (e) {}
+    }
     const boardOffset = getBoardOffset() || 0;
     const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
     const months = getTimelineMonths();

@@ -97,13 +97,39 @@ class DependencyRenderer extends LitElement {
     }
 
     const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
-    const bbox = this.getBoundingClientRect();
-    const scrollLeft = board.scrollLeft || 0;
-    const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
-    const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
+    // Prefer LayoutManager-provided values to avoid expensive DOM reads
+    let bbox = null;
+    let scrollLeft = 0;
+    let verticalScrollTop = 0;
+    try {
+      if (board && board._layout) {
+        const brClient = typeof board._layout.getBoardClientRect === 'function' ? board._layout.getBoardClientRect() : null;
+        if (brClient) bbox = { left: brClient.left || 0, top: brClient.top || 0, width: brClient.width || 0, height: brClient.height || 0 };
+        const br = typeof board._layout.getBoardRect === 'function' ? board._layout.getBoardRect() : null;
+        if (br) scrollLeft = br.left || 0;
+        verticalScrollTop = br && br.top != null ? br.top : (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section') ? board.parentElement.scrollTop : board.scrollTop || 0);
+      }
+    } catch (e) { bbox = null; }
+    if (!bbox) {
+      try { bbox = this.getBoundingClientRect(); } catch (e) { bbox = { left: 0, top: 0, width: 0, height: 0 }; }
+      scrollLeft = board.scrollLeft || 0;
+      const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
+      verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
+    }
     const laneHeight = (state && state._viewService.condensedCards) ? 40 : 100;
 
     const computeRect = (el) => {
+      try {
+        // Prefer board's LayoutManager geometry when available
+        const id = (el.getAttribute && el.getAttribute('data-feature-id')) || (el.feature && el.feature.id && String(el.feature.id));
+        if (id && board && board._layout && typeof board._layout.getGeometry === 'function') {
+          const geom = board._layout.getGeometry(id);
+          if (geom) {
+            return { left: geom.left, top: geom.top, width: geom.width, height: geom.height };
+          }
+        }
+      } catch (e) { /* ignore and fallback */ }
+
       try {
         if (el && el.shadowRoot) {
           const inner = el.shadowRoot.querySelector('.feature-card');
@@ -130,13 +156,20 @@ class DependencyRenderer extends LitElement {
         return { left: leftStyle, top: topStyle, width: w, height: h };
       }
 
-      const r = el.getBoundingClientRect();
-      return {
-        left: r.left - bbox.left + scrollLeft,
-        top: r.top - bbox.top + verticalScrollTop,
-        width: r.width,
-        height: r.height
-      };
+      try {
+        const r = el.getBoundingClientRect();
+        return {
+          left: r.left - bbox.left + scrollLeft,
+          top: r.top - bbox.top + verticalScrollTop,
+          width: r.width,
+          height: r.height
+        };
+      } catch (e) {
+        // last-resort: approximate from styles
+        const w = parseFloat(el.style.width) || el.offsetWidth || 0;
+        const h = parseFloat(el.style.height) || laneHeight || 0;
+        return { left: 0, top: 0, width: w, height: h };
+      }
     };
 
     const edgeOf = (el, side) => {

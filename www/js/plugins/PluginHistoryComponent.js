@@ -433,8 +433,18 @@ export class PluginHistoryComponent extends LitElement {
     const board = document.querySelector('feature-board');
     if (!board) return;
 
-    const boardRect = board.getBoundingClientRect();
-    const boardOffset = getBoardOffset() || 0;
+    // Prefer LayoutManager-provided client rect (page coords) to avoid DOM reads
+    let boardRect = null;
+    try {
+      if (board && board._layout && typeof board._layout.getBoardClientRect === 'function') {
+        const brClient = board._layout.getBoardClientRect();
+        if (brClient) boardRect = { left: brClient.left || 0, top: brClient.top || 0, width: brClient.width || board.clientWidth || 0, height: brClient.height || board.clientHeight || 0 };
+      }
+    } catch (e) { boardRect = null; }
+    if (!boardRect) {
+      try { const br = board.getBoundingClientRect(); boardRect = { left: br.left, top: br.top, width: br.width, height: br.height }; } catch (e) { boardRect = { left: 0, top: 0, width: board.clientWidth || 0, height: board.clientHeight || 0 }; }
+      }
+      const boardOffset = getBoardOffset() || 0;
     const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
     const months = getTimelineMonths();
 
@@ -502,14 +512,35 @@ export class PluginHistoryComponent extends LitElement {
     
     console.debug(`[PluginHistory] Rendering ${history.length} history entries for task ${taskId}`);
     
-    // Calculate card position
-    const cardRect = cardEl.getBoundingClientRect();
-    const boardRect = board.getBoundingClientRect();
-    
-    // Get scroll position from board or its scrollable child
-    const scrollTop = board.scrollTop || (board.shadowRoot?.querySelector(':host')?.scrollTop) || 0;
-    const cardY = cardRect.top - boardRect.top + scrollTop;
-    const cardHeight = cardRect.height;
+    // Calculate card position - prefer LayoutManager geometry when available
+    let cardY = 0;
+    let cardHeight = 0;
+    try {
+      if (board && board._layout && typeof board._layout.getGeometry === 'function') {
+        const geom = board._layout.getGeometry(taskId);
+        if (geom) {
+          cardY = geom.top;
+          cardHeight = geom.height || geom.h || 0;
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    if (!cardHeight) {
+      try {
+        // Prefer offsetTop/offsetHeight which are content coordinates relative to the board
+        const host = cardEl;
+        const offTop = typeof host.offsetTop === 'number' ? host.offsetTop : (host.getBoundingClientRect ? host.getBoundingClientRect().top - (boardRect.top || 0) : 0);
+        const offH = typeof host.offsetHeight === 'number' ? host.offsetHeight : (host.getBoundingClientRect ? host.getBoundingClientRect().height : 0);
+        cardY = offTop;
+        cardHeight = offH;
+        // Update LayoutManager so future renders can use cached geometry
+        try { if (board && board._layout && typeof board._layout.setGeometry === 'function') board._layout.setGeometry(taskId, { left: host.offsetLeft || 0, top: offTop, width: host.offsetWidth || 0, height: offH }); } catch (e) { }
+      } catch (e) {
+        // fallback to defaults
+        cardY = 0;
+        cardHeight = 0;
+      }
+    }
     
     // Separate history by field type
     const startHistory = history.filter(h => h.field === 'start');

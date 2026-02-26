@@ -28,6 +28,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Fixes [#12](https://github.com/kpoppel/PlannerTool/issues/12)
 - Added vertical scrollbar. It appeas on scren when moving the mouse close to the edge. Two buttons control
   scrolling to top and bottom in one click. Fixes [#14](https://github.com/kpoppel/PlannerTool/issues/14)
+- Added a LayoutManager to avoid looking up geometry in the DOM. This speeds up board operations significantly
+- Added keyboard shortcuts for selecting zoom range, and com of the button in View Options. Check the help.
 
 ### Changed
 
@@ -42,7 +44,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Fixed
 
-- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 1600ms to 62ms on dev machine.
+- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 5 secomds
+  to <1s on dev machine.
   Deselecting all plans is instant.
 - Fix a console warning about Lit sourcemap
 - Fix dependency vire setting not saved in a View. Fixes [#13](https://github.com/kpoppel/PlannerTool/issues/13)

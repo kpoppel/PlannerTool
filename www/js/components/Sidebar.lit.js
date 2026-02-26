@@ -137,6 +137,53 @@ export class SidebarLit extends LitElement {
     }
     this.refreshServerStatus();
     this.requestUpdate();
+
+    // Keyboard shortcuts: 1-5 set timeline scale (weeks, 3 months, months, quarters, years)
+    // D,C,U,A,H toggle various view options
+    this._onKeyDown = (e) => {
+      try {
+        if (e.defaultPrevented) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        const target = e.target || {};
+        const tag = (target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || target.isContentEditable) return;
+
+        const digitMap = { '1': 'weeks', '2': 'threeMonths', '3': 'months', '4': 'quarters', '5': 'years' };
+        if (digitMap[e.key]) {
+          e.preventDefault();
+          try { state.setTimelineScale(digitMap[e.key]); } catch (err) { console.warn('[Sidebar] setTimelineScale failed', err); }
+          return;
+        }
+
+        const k = (e.key || '').toLowerCase();
+        if (k === 'd') {
+          e.preventDefault();
+          try { state._viewService.setShowDependencies(!state._viewService.showDependencies); } catch (err) { console.warn('[Sidebar] toggle dependencies failed', err); }
+          return;
+        }
+        if (k === 'c') {
+          e.preventDefault();
+          try { state._viewService.setCondensedCards(!state._viewService.condensedCards); } catch (err) { console.warn('[Sidebar] toggle condensed failed', err); }
+          return;
+        }
+        if (k === 'u') {
+          e.preventDefault();
+          try { state._viewService.setShowUnplannedWork(!state._viewService.showUnplannedWork); } catch (err) { console.warn('[Sidebar] toggle showUnplanned failed', err); }
+          return;
+        }
+        if (k === 'a') {
+          e.preventDefault();
+          try { state._viewService.setShowUnassignedCards(!state._viewService.showUnassignedCards); } catch (err) { console.warn('[Sidebar] toggle showUnassigned failed', err); }
+          return;
+        }
+        if (k === 'h') {
+          e.preventDefault();
+          try { state._viewService.setShowOnlyProjectHierarchy(!state._viewService.showOnlyProjectHierarchy); } catch (err) { console.warn('[Sidebar] toggle showOnlyProjectHierarchy failed', err); }
+          return;
+        }
+      } catch (err) { /* defensive */ }
+    };
+    document.addEventListener('keydown', this._onKeyDown);
   }
 
   firstUpdated(){
@@ -225,6 +272,11 @@ export class SidebarLit extends LitElement {
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
     this._collapsibleHandlers = null;
+
+    if (this._onKeyDown) {
+      document.removeEventListener('keydown', this._onKeyDown);
+      this._onKeyDown = null;
+    }
     
     if(this._onPluginsChanged){
       [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]

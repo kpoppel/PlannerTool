@@ -2,7 +2,7 @@
  * PluginAnnotationsComponent.js
  * UI component for the Annotations plugin
  * Provides a floating toolbar for annotation tools
- * 
+ *
  * TODO: If performance becomes an issue, implement viewport-culling in AnnotationOverlay._updateSvg() and reuse nodes
  */
 
@@ -13,14 +13,14 @@ import './annotations/AnnotationOverlay.js';
 import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
 
 export class PluginAnnotationsComponent extends LitElement {
-  static properties = { 
+  static properties = {
     visible: { type: Boolean },
     currentTool: { type: String },
     annotationCount: { type: Number }
   };
-  
-  constructor() { 
-    super(); 
+
+  constructor() {
+    super();
     this.visible = false;
     this.currentTool = TOOLS.SELECT;
     this.annotationCount = 0;
@@ -30,7 +30,7 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   static styles = css`
-    :host { 
+    :host {
       display: none;
       /* When this component is appended into feature-board we want it
          to be positioned relative to the board so child overlays are
@@ -39,7 +39,7 @@ export class PluginAnnotationsComponent extends LitElement {
       z-index: 100;
       pointer-events: none;
     }
-    
+
     :host([visible]) {
       display: block;
     }
@@ -56,7 +56,7 @@ export class PluginAnnotationsComponent extends LitElement {
       pointer-events: auto;
       z-index: 200;
     }
-    
+
     .toolbar-title {
       font-size: 12px;
       font-weight: 600;
@@ -65,18 +65,18 @@ export class PluginAnnotationsComponent extends LitElement {
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    
+
     .row {
       display: flex;
       gap: 6px;
       align-items: center;
       margin-bottom: 8px;
     }
-    
+
     .row:last-child {
       margin-bottom: 0;
     }
-    
+
     button {
       padding: 8px 12px;
       border: 1px solid #ddd;
@@ -89,27 +89,27 @@ export class PluginAnnotationsComponent extends LitElement {
       gap: 6px;
       transition: all 0.15s ease;
     }
-    
+
     button:hover {
       background: #f5f5f5;
       border-color: #ccc;
     }
-    
+
     button.active {
       background: #E3F2FD;
       border-color: #2196F3;
       color: #1976D2;
     }
-    
+
     button.danger {
       color: #d32f2f;
       border-color: #ffcdd2;
     }
-    
+
     button.danger:hover {
       background: #ffebee;
     }
-    
+
     .tool-btn {
       width: 36px;
       height: 36px;
@@ -117,7 +117,7 @@ export class PluginAnnotationsComponent extends LitElement {
       justify-content: center;
       font-size: 18px;
     }
-    
+
     .color-swatch {
       width: 24px;
       height: 24px;
@@ -126,15 +126,15 @@ export class PluginAnnotationsComponent extends LitElement {
       cursor: pointer;
       transition: transform 0.1s ease;
     }
-    
+
     .color-swatch:hover {
       transform: scale(1.1);
     }
-    
+
     .color-swatch.selected {
       border-color: #333;
     }
-    
+
     .annotation-count {
       font-size: 11px;
       background: #E3F2FD;
@@ -143,7 +143,7 @@ export class PluginAnnotationsComponent extends LitElement {
       border-radius: 10px;
       margin-left: 4px;
     }
-    
+
     .close-btn {
       position: absolute;
       top: 8px;
@@ -160,7 +160,7 @@ export class PluginAnnotationsComponent extends LitElement {
       align-items: center;
       justify-content: center;
     }
-    
+
     .close-btn:hover {
       color: #333;
     }
@@ -168,46 +168,67 @@ export class PluginAnnotationsComponent extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
-    // Subscribe to annotation state changes
+
     this._unsubscribe = this._annotationState.subscribe(() => {
       this.currentTool = this._annotationState.currentTool;
       this.annotationCount = this._annotationState.count;
-      // Disable timeline panning when an annotation tool (note/rect/line)
-      // is active so drawing/dragging won't pan the board. Re-enable
-      // panning when the select tool is active.
+
       if (this.currentTool === TOOLS.SELECT) {
         setTimelinePanningAllowed(true);
       } else {
         setTimelinePanningAllowed(false);
       }
-      this.requestUpdate();
+
+      // Update overlay sizing if present
+      this._updateOverlayRect();
     });
-    
-    this.annotationCount = this._annotationState.count;
   }
-  
+
   disconnectedCallback() {
+    if (this._unsubscribe) this._unsubscribe();
     super.disconnectedCallback();
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
-    }
+  }
+
+  _updateOverlayRect() {
+    try {
+      const board = document.querySelector('feature-board');
+      if (!board || !this._overlay) return;
+
+      // Prefer LayoutManager-provided client rect to avoid expensive DOM reads
+      let rect = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
+      if (board._layout && typeof board._layout.getBoardClientRect === 'function') {
+        const br = board._layout.getBoardClientRect() || {};
+        rect = { left: br.left || 0, top: br.top || 0, right: (br.left || 0) + (br.width || 0), bottom: (br.top || 0) + (br.height || 0), width: br.width || 0, height: br.height || 0 };
+      } else {
+        try { rect = board.getBoundingClientRect(); } catch (e) { /* ignore */ }
+      }
+
+      const left = Math.round(rect.left);
+      const top = Math.round(rect.top);
+      const right = Math.min(window.innerWidth, Math.round(rect.right));
+      const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
+      const width = Math.max(0, right - left);
+      const height = Math.max(0, bottom - top);
+
+      const overlay = this._overlay;
+      overlay.style.position = 'fixed';
+      overlay.style.top = `${top}px`;
+      overlay.style.left = `${left}px`;
+      overlay.style.width = `${width}px`;
+      overlay.style.height = `${height}px`;
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '10';
+    } catch (e) { /* ignore */ }
   }
 
   render() {
-    const ICONS = ['⭐','✔️','🚀','📅','🎯','🐞','🔗','💰','⚠️','🟢','🔴','🟠','❌'];
     return html`
       <div class="floating-toolbar">
-        <!-- Close button removed; plugin visibility is controlled via the toolbar/plugin toggle -->
-        
         <div class="toolbar-title">
           Annotations
-          ${this.annotationCount > 0 ? html`
-            <span class="annotation-count">${this.annotationCount}</span>
-          ` : ''}
+          ${this.annotationCount > 0 ? html`<span class="annotation-count">${this.annotationCount}</span>` : ''}
         </div>
-        
+
         <div class="row">
           ${TOOL_DEFINITIONS.map(tool => html`
             <button 
@@ -220,8 +241,6 @@ export class PluginAnnotationsComponent extends LitElement {
           `)}
         </div>
 
-        <!-- Icon picker appears on the board when user clicks while Icon tool is active -->
-        
         <div class="row">
           ${ANNOTATION_COLORS.palette.map(color => html`
             <div
@@ -232,7 +251,7 @@ export class PluginAnnotationsComponent extends LitElement {
             ></div>
           `)}
         </div>
-        
+
         ${this.annotationCount > 0 ? html`
           <div class="row">
             <button class="danger" @click="${this._clearAnnotations}" title="Clear all annotations">
@@ -245,22 +264,14 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   firstUpdated() {
-    // Ensure a single `annotation-overlay` exists inside the feature board
-    // host root (shadowRoot or light DOM). This prevents duplicates and
-    // follows the same attachment strategy as DependencyRenderer.
     try {
       const board = document.querySelector('feature-board');
       if (!board) return;
-      const hostRoot = board.shadowRoot || board;
 
       // Reuse existing overlay if present in the document, otherwise create it
       let overlay = document.querySelector('annotation-overlay');
       if (!overlay) {
         overlay = document.createElement('annotation-overlay');
-        // Prefer app host so overlay is in same stacking context; fall back
-        // to document.body when not available. App-hosted overlay is outside
-        // the feature-board so it can be sized to the visible viewport and
-        // use transforms to place annotations correctly.
         const appHost = document.querySelector('.app-container');
         try {
           if (appHost) appHost.appendChild(overlay);
@@ -270,32 +281,8 @@ export class PluginAnnotationsComponent extends LitElement {
         }
       }
 
-      // Size the overlay to the visible board rectangle (viewport-sized)
-      // so it stays fixed while scrolling; annotations will be positioned
-      // using transforms relative to content scroll offsets.
-      try {
-        const rect = board.getBoundingClientRect();
-        // Make the overlay fixed to the viewport and only cover the
-        // visible portion of the feature board. Keep the host element
-        // non-interactive so scrolling still works; the inner
-        // `.overlay-container` will enable pointer-events when needed.
-        const left = Math.round(rect.left);
-        const top = Math.round(rect.top);
-        const right = Math.min(window.innerWidth, Math.round(rect.right));
-        const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
-        const width = Math.max(0, right - left);
-        const height = Math.max(0, bottom - top);
-
-        overlay.style.position = 'fixed';
-        overlay.style.top = `${top}px`;
-        overlay.style.left = `${left}px`;
-        overlay.style.width = `${width}px`;
-        overlay.style.height = `${height}px`;
-        overlay.style.pointerEvents = 'none';
-        overlay.style.zIndex = '10';
-      } catch (e) { /* ignore */ }
-
       this._overlay = overlay;
+      this._updateOverlayRect();
     } catch (e) { /* ignore */ }
   }
 
@@ -310,69 +297,58 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   // --- Public API ---
-  
-  open() { 
+
+  open() {
     this.visible = true;
     this.setAttribute('visible', '');
     this._annotationState.enable();
-    // Reset to select tool on open so panning is enabled by default
     try { this._annotationState.setTool(TOOLS.SELECT); setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
-    
-    // Ensure overlay is shown
+
     this.updateComplete.then(() => {
       if (this._overlay) {
         this._overlay.show();
       }
     });
   }
-  
-  close() { 
+
+  close() {
     this.visible = false;
     this.removeAttribute('visible');
     this._annotationState.disable();
-    
+
     if (this._overlay) {
       this._overlay.hide();
     }
-    // Re-enable timeline panning when the plugin is closed
     try { setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
   }
-  
+
   toggle() {
-    if (this.visible) {
-      this.close();
-    } else {
-      this.open();
-    }
+    if (this.visible) this.close(); else this.open();
   }
 
   // --- Internal handlers ---
-  
+
   _setTool(tool) {
     this.currentTool = tool;
     this._annotationState.setTool(tool);
-    if (this._overlay) {
+    if (this._overlay && typeof this._overlay.setTool === 'function') {
       this._overlay.setTool(tool);
     }
   }
-  
+
   _setColor(color) {
-    // If there's a selected annotation, update it directly depending on type
     const selected = this._annotationState.selectedAnnotation;
     if (selected) {
-      // Rectangles are transparent-filled by design; only update the stroke
       if (selected.type === 'rect') {
         const updates = {};
         if (color.stroke) updates.stroke = color.stroke;
         this._annotationState.update(selected.id, updates);
-        // Update current color's stroke so future rects use same stroke
         const cur = this._annotationState.currentColor || {};
         this._annotationState.setColor({ ...cur, stroke: color.stroke });
         this.requestUpdate();
         return;
       }
 
-      // Notes can change both fill and stroke
       if (selected.type === 'note') {
         const updates = {};
         if (color.fill) updates.fill = color.fill;
@@ -384,11 +360,10 @@ export class PluginAnnotationsComponent extends LitElement {
       }
     }
 
-    // No selected annotation - just set the current drawing color
     this._annotationState.setColor(color);
     this.requestUpdate();
   }
-  
+
   _isColorSelected(color) {
     const current = this._annotationState.currentColor;
     return current && current.fill === color.fill;
@@ -396,17 +371,16 @@ export class PluginAnnotationsComponent extends LitElement {
 
   _setIcon(icon) {
     this._annotationState.setIcon(icon);
-    // ensure overlay uses latest icon
     if (this._overlay && typeof this._overlay.setIcon === 'function') {
       this._overlay.setIcon(icon);
     }
     this.requestUpdate();
   }
-  
+
   _clearAnnotations() {
     if (confirm('Clear all annotations? This cannot be undone.')) {
       this._annotationState.clear();
-      if (this._overlay) {
+      if (this._overlay && typeof this._overlay.clearAll === 'function') {
         this._overlay.clearAll();
       }
     }

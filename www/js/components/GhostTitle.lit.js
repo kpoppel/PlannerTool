@@ -8,20 +8,24 @@ class GhostTitle extends LitElement {
   static properties = {
     title: { type: String },
     visible: { type: Boolean, reflect: true },
-    stuckToEdge: { type: Boolean, reflect: true },
+    /* stuck-to-edge behavior removed */
     borderColor: { type: String },
     cardRect: { type: Object },
-    boardRect: { type: Object }
+    boardRect: { type: Object },
+    featureId: { type: String }
   };
 
   constructor() {
     super();
     this.title = '';
     this.visible = false;
-    this.stuckToEdge = false;
     this.borderColor = '#666';
     this.cardRect = null;
     this.boardRect = null;
+    this.featureId = null;
+    this._rafId = null;
+    this._resizeObserver = null;
+    this._cachedGhostSize = null; // { width, height }
   }
 
   static styles = css`
@@ -49,9 +53,6 @@ class GhostTitle extends LitElement {
       visibility: visible;
     }
 
-    :host([stuck-to-edge]) {
-      border-left: 6px solid var(--border-color, #666);
-    }
 
     .arrow {
       position: absolute;
@@ -71,52 +72,89 @@ class GhostTitle extends LitElement {
       this.style.setProperty('--border-color', this.borderColor);
     }
 
-    if (changedProperties.has('cardRect') || 
-        changedProperties.has('boardRect') || 
-        changedProperties.has('visible')) {
-      this._updatePosition();
+    if (changedProperties.has('cardRect') ||
+        changedProperties.has('boardRect') ||
+        changedProperties.has('visible') ||
+        changedProperties.has('featureId') ||
+        changedProperties.has('title')) {
+      this._schedulePositionUpdate();
     }
   }
 
-  _updatePosition() {
-    if (!this.visible || !this.cardRect || !this.boardRect) {
-      return;
-    }
+  _schedulePositionUpdate() {
+    if (!this.visible) return;
+    if (this._rafId) cancelAnimationFrame(this._rafId);
+    this._rafId = requestAnimationFrame(() => {
+      this._rafId = null;
+      this._performPositioning();
+    });
+  }
 
-    // Use RAF to ensure we have dimensions after render
-    requestAnimationFrame(() => {
-      const ghostWidth = this.offsetWidth;
-      const ghostHeight = this.offsetHeight;
+  _performPositioning() {
+    if (!this.visible) return;
 
-      if (ghostWidth === 0 || ghostHeight === 0) {
-        // Not laid out yet, try again
-        requestAnimationFrame(() => this._updatePosition());
+    // Prefer authoritative geometry from the board's LayoutManager when available.
+      // Prefer authoritative geometry from LayoutManager; require both
+      // `cardRect` (per-feature) and `boardRect` (board content) to continue.
+      let cardRect = this.cardRect;
+      let boardRect = this.boardRect;
+      if (this.getRootNode) {
+        try {
+          const root = this.getRootNode();
+          const featureBoard = root && root.host ? root.host : null;
+          if (featureBoard && featureBoard._layout) {
+            if (this.featureId) {
+              const geom = featureBoard._layout.getGeometry(this.featureId);
+              if (geom) cardRect = { left: geom.left, top: geom.top, width: geom.width, height: geom.height };
+            }
+            if (typeof featureBoard._layout.getBoardRect === 'function') {
+              const br = featureBoard._layout.getBoardRect();
+              if (br) boardRect = br;
+            }
+          }
+        } catch (e) { /* ignore layout lookup errors */ }
+      }
+
+      if (!cardRect || !boardRect) return;
+
+      // Use cached ghost size from ResizeObserver to avoid forcing layout.
+      if (!this._cachedGhostSize) {
+        if (typeof ResizeObserver !== 'undefined') {
+          try {
+            if (!this._resizeObserver) {
+              this._resizeObserver = new ResizeObserver((entries) => {
+                for (const ent of entries) {
+                  if (ent && ent.contentRect) {
+                    this._cachedGhostSize = { width: ent.contentRect.width, height: ent.contentRect.height };
+                    // Defer positioning until next RAF to allow other updates
+                    this._schedulePositionUpdate();
+                  }
+                }
+              });
+            }
+            this._resizeObserver.observe(this);
+          } catch (e) { /* ignore observer failures */ }
+        }
         return;
       }
 
       const gap = 12;
-      const cardRect = this.cardRect;
-      const boardRect = this.boardRect;
+      const cr = cardRect;
+      const br = boardRect;
+      const cardLeft = cr.left;
+      const cardTop = cr.top;
+      const cardWidth = cr.width;
+      const cardHeight = cr.height;
 
-      // cardRect now contains offsetLeft/offsetTop (absolute position within board)
-      // boardRect.width is the visible viewport width
-      const cardLeft = cardRect.left;
-      const cardTop = cardRect.top;
-      const cardWidth = cardRect.width;
-      const cardHeight = cardRect.height;
+      const scrollLeft = (br && br.left) || 0;
+      const viewportWidth = br.width || 0;
 
-      // Get the feature-board's scroll position to determine what's visible
-      const featureBoard = document.querySelector('feature-board');
-      if (!featureBoard) return;
-      
-      const scrollLeft = featureBoard.scrollLeft || 0;
-      const viewportWidth = boardRect.width;
+      const ghostWidth = Math.round(this._cachedGhostSize.width || 0);
+      const ghostHeight = Math.round(this._cachedGhostSize.height || 0);
 
-      // Calculate card position relative to visible viewport
       const cardLeftInViewport = cardLeft - scrollLeft;
       const cardRightInViewport = cardLeftInViewport + cardWidth;
 
-      // Check if card is visible in the scrolling viewport
       const cardLeftVisible = cardLeftInViewport >= 0 && cardLeftInViewport <= viewportWidth;
       const cardRightVisible = cardRightInViewport >= 0 && cardRightInViewport <= viewportWidth;
       const isCardOnScreen = cardLeftVisible || cardRightVisible;
@@ -125,43 +163,39 @@ class GhostTitle extends LitElement {
       let isStuck = false;
 
       if (isCardOnScreen) {
-        // Card is on-screen: position ghost to the left of the card
         ghostLeft = cardLeft - ghostWidth - gap;
         ghostTop = cardTop + (cardHeight / 2) - (ghostHeight / 2);
-        
-        // Clamp ghostLeft to not go off the left edge of visible area
-        if (ghostLeft < scrollLeft) {
-          ghostLeft = scrollLeft + gap;
+        const minLeft = scrollLeft + gap;
+        if (ghostLeft < minLeft) {
+          ghostLeft = minLeft;
           isStuck = true;
         }
       } else {
-        // Card is off-screen: stick ghost to the visible edge
         isStuck = true;
         if (cardRightInViewport < 0) {
-          // Card is off-screen to the left: stick ghost to left edge
           ghostLeft = scrollLeft + gap;
         } else if (cardLeftInViewport > viewportWidth) {
-          // Card is off-screen to the right: stick ghost to right edge
           ghostLeft = scrollLeft + viewportWidth - ghostWidth - gap;
         } else {
-          // Fallback to normal positioning
           ghostLeft = cardLeft - ghostWidth - gap;
-          if (ghostLeft < scrollLeft) {
-            ghostLeft = scrollLeft + gap;
-          } else {
-            isStuck = false;
-          }
+          if (ghostLeft < scrollLeft + gap) ghostLeft = scrollLeft + gap; else isStuck = false;
         }
         ghostTop = cardTop + (cardHeight / 2) - (ghostHeight / 2);
       }
 
-      // Update stuck state
-      this.stuckToEdge = isStuck;
 
-      // Don't clamp vertical position - let browser handle clipping with overflow
-      this.style.left = `${ghostLeft}px`;
-      this.style.top = `${ghostTop}px`;
-    });
+      // Compute `right` relative to board content width (authoritative from LayoutManager)
+      const boardContentWidth = br.width || 0;
+      let ghostRight;
+      if (!isStuck) {
+        const desiredRightInBoard = cardLeft - gap; // board-content coord for ghost's right
+        ghostRight = Math.round(boardContentWidth - desiredRightInBoard);
+      } else {
+        ghostRight = Math.round(boardContentWidth - (ghostLeft + ghostWidth));
+      }
+    try { this.style.left = ''; } catch (e) { }
+    this.style.right = `${ghostRight}px`;
+    this.style.top = `${Math.round(ghostTop)}px`;
   }
 
   _splitTitleAtMiddle(title) {

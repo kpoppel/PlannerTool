@@ -205,3 +205,21 @@ When you are logged into Azure devops do as follows:
 
 ## I cannot refresh delivery plan markers
 You need to have the right permission in Azure DevOps: "Manage Delivery Plans"
+
+## Keyboard Shortcuts
+
+Quick keyboard shortcuts are available to speed up common actions in the UI. Shortcuts are global (they are ignored while typing in inputs, textareas or contenteditable areas):
+
+- **Ctrl+Shift+F**: Open the global search tool.
+- **1**: Set timeline scale to Weeks.
+- **2**: Set timeline scale to 3 Months.
+- **3**: Set timeline scale to Months.
+- **4**: Set timeline scale to Quarters.
+- **5**: Set timeline scale to Years.
+- **D**: Toggle showing Dependencies on cards.
+- **C**: Toggle Condensed card view.
+- **U**: Toggle showing Unplanned work (features without dates).
+- **A**: Toggle showing Unassigned work (features without capacity assignments).
+- **H**: Toggle showing only project hierarchy (show only features hierarchically linked to selected projects).
+
+These shortcuts are intended for quick navigation and view toggles; use them to rapidly explore different timeline scales and filter/mode settings.

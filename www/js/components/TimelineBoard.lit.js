@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
+import { state } from '../services/State.js';
 
 class TimelineBoard extends LitElement {
   static get properties() {
@@ -28,13 +29,22 @@ class TimelineBoard extends LitElement {
     requestAnimationFrame(async () => {
       const vp = this.querySelector('.timeline-board-viewport');
       if (vp) vp.addEventListener('scroll', this._onScroll, { passive: true });
-        await import('./MainGraph.lit.js');
-        const mgSection = this.querySelector('#maingraphSection');
-        const mod_t = await import('./Timeline.lit.js');
-        await mod_t.initTimeline();
-        mod_t.ensureScrollToMonth();
-        const mod_f = await import('./FeatureBoard.lit.js');
-        await mod_f.initBoard();
+
+      // Ensure application state initialization has completed before
+      // initializing timeline and feature board. This guarantees any
+      // persisted view (timeline scale) has been applied by State/ViewService
+      // so downstream components render with the correct scale.
+      try {
+        if (state && state._initCompleted) await state._initCompleted;
+      } catch (e) { /* ignore */ }
+
+      await import('./MainGraph.lit.js');
+      const mgSection = this.querySelector('#maingraphSection');
+      const mod_t = await import('./Timeline.lit.js');
+      await mod_t.initTimeline();
+      mod_t.ensureScrollToMonth();
+      const mod_f = await import('./FeatureBoard.lit.js');
+      await mod_f.initBoard();
     });
   }
 

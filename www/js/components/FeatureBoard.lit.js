@@ -4,6 +4,7 @@ import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition, _test_resetCache } from './board-utils.js';
+import LayoutManager from './LayoutManager.js';
 import { featureFlags } from '../config.js';
 
 class FeatureBoard extends LitElement {
@@ -16,10 +17,13 @@ class FeatureBoard extends LitElement {
     this.features = [];
     this._cardMap = new Map();
     this._boundHandlers = new Map();
+    // Canvas used for approximate text measurement to detect overflow without DOM reads
+    this._textMeasureCanvas = null;
     // Board-level ResizeObserver and observed inner-elements map
     this._ro = null;
     this._observedMap = new Map(); // Map<hostCard, innerElement>
     this._measureScheduled = false;
+    this._layout = new LayoutManager(this);
   }
 
   static styles = css`
@@ -106,6 +110,12 @@ class FeatureBoard extends LitElement {
     try {
       requestAnimationFrame(() => { try { this._ensureFixedScrollbar(); } catch (e) { } });
     } catch (e) { }
+    // Keep layout manager's cached board client rect up-to-date on user interactions
+    this._boundUpdateBoardClientRect = this._scheduleBoardClientRectUpdate.bind(this);
+    try {
+      this.addEventListener('scroll', this._boundUpdateBoardClientRect, { passive: true });
+      window.addEventListener('resize', this._boundUpdateBoardClientRect, { passive: true });
+    } catch (e) { }
   }
 
   render() {
@@ -160,6 +170,15 @@ class FeatureBoard extends LitElement {
     try {
       this._destroyFixedScrollbar && this._destroyFixedScrollbar();
     } catch (e) { }
+    try {
+      if (this._boundUpdateBoardClientRect) {
+        try { this.removeEventListener('scroll', this._boundUpdateBoardClientRect); } catch (e) { }
+        try { window.removeEventListener('resize', this._boundUpdateBoardClientRect); } catch (e) { }
+        this._boundUpdateBoardClientRect = null;
+      }
+      if (this._boardClientRectTimeout) { try { clearTimeout(this._boardClientRectTimeout); } catch (e) { } this._boardClientRectTimeout = null; }
+    } catch (e) { }
+    
   }
 
   // Create a fixed scrollbar & buttons at browser edge and sync with this element
@@ -662,8 +681,22 @@ class FeatureBoard extends LitElement {
       laneIndex++;
     }
 
-    this.features = renderList;
-    this.requestUpdate();
+    // Seed layout manager with computed positions (fast, no DOM reads)
+      try {
+        this._layout.recomputeAll(renderList); 
+        // Ensure newly rendered cards are re-measured so applyLayout() runs
+        // and consumers (eg. per-card GhostTitle) update their visibility.
+        if (this._layout && typeof this._layout.markDirty === 'function') {
+          for (const item of renderList) {
+            const id = item && item.feature && item.feature.id;
+            if (id) this._layout.markDirty(id);
+          }
+          // Schedule a measurement pass to consume dirty ids and call applyLayout()
+          this._scheduleMeasureNow();
+        }
+      } catch (e) { /* ignore */ }
+      this.features = renderList;
+      this.requestUpdate();
     // If nothing will be rendered, open the shared empty-board modal to explain why
     if (renderList.length === 0) {
       try {
@@ -769,6 +802,16 @@ class FeatureBoard extends LitElement {
     if (!this.shadowRoot) return;
 
     const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
+    // Update cached board client rect in layout manager once to avoid repeated
+    // getBoundingClientRect() calls inside the per-card loop which cause layout thrash.
+    try {
+      const br = this.getBoundingClientRect();
+      if (this._layout && typeof this._layout.setBoardClientRect === 'function') {
+        this._layout.setBoardClientRect(br);
+        try { if (typeof this._layout.setBoardScroll === 'function') this._layout.setBoardScroll(this.scrollLeft || 0, this.scrollTop || 0); } catch (e) { }
+      }
+    } catch (e) { }
+
     cards.forEach((node, index) => {
       const featureObj = this.features[index];
       if (!featureObj) return;
@@ -788,12 +831,35 @@ class FeatureBoard extends LitElement {
       // Update card map
       if (node.feature?.id) {
         this._cardMap.set(node.feature.id, node);
+        // Apply seeded geometry from LayoutManager where available (fast path)
+        try {
+          const geom = this._layout.getGeometry(node.feature.id);
+          if (geom) {
+            const boardRect = (this._layout && typeof this._layout.getBoardRect === 'function') ? this._layout.getBoardRect() : { left: 0, top: 0, width: this.clientWidth || 0, height: this.clientHeight || 0 };
+            const layout = {
+                width: geom.width,
+                smallFeature: geom.width < 40,
+                culled: geom.width < 70,
+                cardRect: { left: geom.left, top: geom.top, width: geom.width, height: geom.height },
+                boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
+                borderColor: ''
+              };
+            try {
+              if (typeof window !== 'undefined' && window.__GHOST_DEBUG) {
+                console.debug('[GhostDebug][FeatureBoard] using LayoutManager geom', { id: node && node.feature && node.feature.id, left: geom.left, width: geom.width });
+              }
+              if (typeof node.applyLayout === 'function') node.applyLayout(layout); else node._layout = layout;
+            } catch (e) { }
+          }
+        } catch (e) { }
       }
+      
+      // (board client rect was updated once before the loop)
     });
     // Ensure our ResizeObserver is observing the current inner elements
     this._refreshObserverTargets();
-    // Schedule an immediate measurement pass to compute layout-driven flags
-    this._scheduleMeasureNow();
+    
+    // Do not run a full scan here; ResizeObserver will call _processMeasurements
     // Ensure fixed scrollbar exists and is in sync
     try { this._ensureFixedScrollbar(); this._updateFixedThumb(); } catch (e) { }
   }
@@ -821,6 +887,25 @@ class FeatureBoard extends LitElement {
     }
   }
 
+  // Debounced update: schedule writing the board's client rect into LayoutManager
+  _scheduleBoardClientRectUpdate() {
+    try {
+      if (this._boardClientRectTimeout) {
+        clearTimeout(this._boardClientRectTimeout);
+      }
+      this._boardClientRectTimeout = setTimeout(() => {
+        try {
+          const br = this.getBoundingClientRect();
+          if (this._layout && typeof this._layout.setBoardClientRect === 'function') {
+            this._layout.setBoardClientRect(br);
+            try { if (typeof this._layout.setBoardScroll === 'function') this._layout.setBoardScroll(this.scrollLeft || 0, this.scrollTop || 0); } catch (e) { }
+          }
+        } catch (e) { }
+        this._boardClientRectTimeout = null;
+      }, 40);
+    } catch (e) { }
+  }
+
   _scheduleMeasureNow() {
     if (this._measureScheduled) return;
     this._measureScheduled = true;
@@ -840,28 +925,117 @@ class FeatureBoard extends LitElement {
 
       const tolerance = 2;
 
-      const targets = entries && entries.length ? entries.map(e => e.target) : Array.from(this._observedMap.keys());
+      // If ResizeObserver provided entries, measure those targets only.
+      // Otherwise, consume the LayoutManager dirty-set and prefer using
+      // cached geometries to avoid expensive DOM reads when possible.
+      let targets = [];
+      if (entries && entries.length) {
+        targets = entries.map(e => e.target);
+      } else if (this._layout && typeof this._layout.consumeDirtyIds === 'function') {
+        const ids = this._layout.consumeDirtyIds();
+        if (!ids || ids.length === 0) return; // nothing to measure
 
-      // Ensure we include all observed hosts
-      const hostSet = new Set(targets);
-      for (const host of this._observedMap.keys()) hostSet.add(host);
+        for (const id of ids) {
+          // Resolve host if present in DOM; we may not need it if LayoutManager has geometry
+          let host = this._cardMap.get(id);
+          if (!host) {
+            try {
+              host = (this.shadowRoot ? this.shadowRoot.querySelector(`feature-card-lit[data-feature-id="${id}"]`) : null) || this.querySelector(`feature-card-lit[data-feature-id="${id}"]`) || document.querySelector(`feature-card-lit[data-feature-id="${id}"]`);
+            } catch (e) { host = null; }
+          }
 
-      for (const host of hostSet) {
+          // If we have authoritative geometry in LayoutManager, use it directly
+          try {
+            const geom = this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(id) : null;
+            if (geom) {
+              const boardRect = (this._layout && typeof this._layout.getBoardRect === 'function') ? this._layout.getBoardRect() : { left: 0, top: 0, width: this.clientWidth || 0, height: this.clientHeight || 0 };
+              const layout = {
+                width: geom.width,
+                smallFeature: geom.width < 40,
+                culled: geom.width < 70,
+                cardRect: { left: geom.left, top: geom.top, width: geom.width, height: geom.height },
+                boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
+                borderColor: ''
+              };
+
+              if (host && typeof host.applyLayout === 'function') {
+                try { host.applyLayout(layout); } catch (e) { }
+              }
+              // No need to measure DOM for this id - continue to next
+              continue;
+            }
+          } catch (e) { /* ignore layout-manager lookup failures */ }
+
+          // If no cached geometry, schedule DOM-based measurement by adding host to targets
+          if (host) targets.push(host);
+        }
+      } else {
+        return; // no entries and no dirty ids
+      }
+
+      for (const host of targets) {
         try {
           if (!host) continue;
           // Query inner .feature-card inside the host's shadowRoot for measurements of scrollable children
           const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-          // Use host offsets for content coordinates (these are stable and avoid viewport/scroll double-counting)
-          const cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
-          const cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
-          const cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
-          const cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
+          // Use authoritative cached geometry from LayoutManager when available
+          // to avoid expensive layout reads (offsetLeft/offsetTop) during hide/show.
+          let cardLeft = 0, cardTop = 0, cardWidth = 0, cardHeight = 0;
+          try {
+            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
+            const geom = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
+            if (geom) {
+              cardLeft = geom.left || 0;
+              cardTop = geom.top || 0;
+              cardWidth = geom.width || (inner ? inner.clientWidth : 0);
+              cardHeight = geom.height || (inner ? inner.clientHeight : 0);
+            } else {
+              // Fallback to host offsets when no cached geometry is available
+              cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
+              cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
+              cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
+              cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
+            }
+          } catch (e) {
+            cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
+            cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
+            cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
+            cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
+          }
 
           const teamRow = inner ? inner.querySelector('.team-load-row') : null;
           const titleEl = inner ? inner.querySelector('.feature-title') : null;
 
-          const teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
-          const titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
+          // Prefer to infer fit state from LayoutManager geometry to avoid
+          // expensive `scrollWidth` reads which force layout. Only fall back
+          // to DOM measurements when no cached geometry exists.
+          let teamFits = true;
+          let titleFits = true;
+          try {
+            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
+            const geomForFits = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
+            if (geomForFits) {
+              // If we have the inner title element available, prefer an accurate
+              // DOM measurement here (we're already in the measurement pass).
+              // Otherwise fall back to the conservative geometry heuristic.
+              teamFits = true;
+              if (titleEl) {
+                try {
+                  titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
+                } catch (e) {
+                  titleFits = !(geomForFits.width < 100);
+                }
+              } else {
+                titleFits = !(geomForFits.width < 100);
+              }
+            } else {
+              teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
+              titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
+            }
+          } catch (e) {
+            teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
+            titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
+          }
           const contentFits = teamFits && titleFits;
 
           const titleOverflows = !titleFits;
@@ -882,11 +1056,21 @@ class FeatureBoard extends LitElement {
           };
 
           try {
+            if (typeof window !== 'undefined' && window.__GHOST_DEBUG) {
+              console.debug('[GhostDebug][FeatureBoard] dom-measured layout', { id: host && host.feature && host.feature.id, left: cardLeft, width: cardWidth, titleOverflows });
+            }
             if (typeof host.applyLayout === 'function') {
               host.applyLayout(layout);
             } else {
               // Fallback: set a single property to trigger minimal updates
               host._layout = layout;
+            }
+          } catch (e) { }
+          // Update LayoutManager geometry for this host (if available)
+          try {
+            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
+            if (featureId && this._layout) {
+              this._layout.setGeometry(featureId, { left: cardLeft, top: cardTop, width: cardWidth, height: cardHeight });
             }
           } catch (e) { }
         } catch (e) { }
@@ -945,12 +1129,6 @@ class FeatureBoard extends LitElement {
 
 customElements.define('feature-board', FeatureBoard);
 
-// --- Board-level rendering and helpers moved from FeatureCard.lit.js ---
-// helpers moved to `board-utils.js`
-
-// The board rendering is now encapsulated by the `feature-board` component.
-// Call the component's instance methods (`renderFeatures`, `updateCardsById`) directly.
-
 export async function initBoard() {
   const board = document.querySelector('feature-board');
   if (!board) {
@@ -993,6 +1171,8 @@ export async function initBoard() {
   bus.on(TeamEvents.CHANGED, renderFeatures);
   bus.on(TimelineEvents.MONTHS, renderFeatures);
   bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures); // Re-render when zoom changes
+  // Ensure LayoutManager and measurements are refreshed after timeline zoom/scale changes
+  bus.on(TimelineEvents.SCALE_CHANGED, () => { try { if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) { } });
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);

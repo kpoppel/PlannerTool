@@ -1,6 +1,6 @@
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { StateFilterEvents, TimelineEvents, FilterEvents } from '../core/EventRegistry.js';
+import { StateFilterEvents, TimelineEvents, FilterEvents, ViewEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
 
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
@@ -264,4 +264,18 @@ bus.on(FilterEvents.CHANGED, ()=>{
   const node = document.getElementById('viewOptionsContainer');
   if(!node) return;
   initViewOptions(node);
+});
+
+// Re-init when view-related flags change so the chips reflect programmatic toggles
+bus.on(ViewEvents.CONDENSED, ()=>{
+  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.DEPENDENCIES, ()=>{
+  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.CAPACITY_MODE, ()=>{
+  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.SORT_MODE, ()=>{
+  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });

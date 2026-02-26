@@ -107,6 +107,11 @@ class State {
       () => this._performAutosave(),
       true // silent = true on initial setup to avoid emitting event
     );
+
+    // Promise that resolves when initState completes. Consumers may await
+    // `state._initCompleted` to ensure persisted view state and other
+    // initialization work has finished before proceeding.
+    this._initCompleted = new Promise(resolve => { this._resolveInit = resolve; });
   }
   
   // ========== Backward Compatibility Property Accessors ==========
@@ -260,6 +265,10 @@ class State {
 
     // Load saved views
     await this._viewManagementService.loadViews();
+
+    // Signal that initState has completed so other components waiting on
+    // restored view state (eg. timeline) can proceed deterministically.
+    try { if (typeof this._resolveInit === 'function') this._resolveInit(true); } catch (e) {}
   }
 
   async refreshBaseline() {

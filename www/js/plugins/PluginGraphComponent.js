@@ -157,8 +157,19 @@ export class PluginGraph extends LitElement {
       host.appendChild(this.svgEl);
       this.svgEl.addEventListener('pointermove', (e)=>{
         if(!this.dayOffsets) return;
-        const r = host.getBoundingClientRect();
-        const x = e.clientX - r.left;
+        // Prefer using LayoutManager cached board client rect to avoid per-event DOM reads
+        let hostLeft = null;
+        try {
+          const board = document.querySelector('feature-board');
+          if (board && board._layout && typeof board._layout.getBoardClientRect === 'function') {
+            const br = board._layout.getBoardClientRect();
+            if (br && typeof br.left === 'number') hostLeft = br.left;
+          }
+        } catch (err) { /* ignore and fallback */ }
+        if (hostLeft == null) {
+          try { hostLeft = host.getBoundingClientRect().left; } catch (e) { hostLeft = 0; }
+        }
+        const x = e.clientX - hostLeft;
         const unscaledX = x / (this.xScale || 1);
         let lo = 0, hi = this.dayOffsets.length-1;
         while(lo < hi){ const mid = Math.floor((lo+hi)/2); if(this.dayOffsets[mid] <= unscaledX) lo = mid+1; else hi = mid; }

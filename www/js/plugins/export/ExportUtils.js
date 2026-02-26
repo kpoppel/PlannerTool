@@ -26,14 +26,25 @@ export function getViewportBounds(options = {}) {
         };
     }
     
-    const rect = timelineSection.getBoundingClientRect();
-    const boardRect = featureBoard.getBoundingClientRect();
-    const mainGraphRect = mainGraph ? mainGraph.getBoundingClientRect() : { height: 0 };
+        const rect = timelineSection.getBoundingClientRect();
+        // Prefer LayoutManager-provided board rect for scroll offsets and sizes
+        let boardRect;
+        try {
+            if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
+                const br = featureBoard._layout.getBoardRect();
+                boardRect = { x: 0, y: 0, left: 0, top: 0, width: br.width || featureBoard.clientWidth || 0, height: br.height || featureBoard.clientHeight || 0 };
+            } else {
+                boardRect = featureBoard.getBoundingClientRect();
+            }
+        } catch (e) {
+            try { boardRect = featureBoard.getBoundingClientRect(); } catch (e) { boardRect = { x: 0, y: 0, width: 0, height: 0 }; }
+        }
+        const mainGraphRect = mainGraph ? mainGraph.getBoundingClientRect() : { height: 0 };
     
     // IMPORTANT: Horizontal scroll is on timelineSection, vertical scroll is on featureBoard
     // This matches the panning behavior in Timeline.lit.js
-    const scrollLeft = options.scrollLeft !== undefined ? options.scrollLeft : (timelineSection.scrollLeft || 0);
-    const scrollTop = options.scrollTop !== undefined ? options.scrollTop : (featureBoard.scrollTop || 0);
+    const scrollLeft = options.scrollLeft !== undefined ? options.scrollLeft : (timelineSection.scrollLeft || (featureBoard._layout && featureBoard._layout.getBoardRect ? featureBoard._layout.getBoardRect().left : 0) || 0);
+    const scrollTop = options.scrollTop !== undefined ? options.scrollTop : (featureBoard.scrollTop || (featureBoard._layout && featureBoard._layout.getBoardRect ? featureBoard._layout.getBoardRect().top : 0) || 0);
     const totalWidth = featureBoard.scrollWidth || boardRect.width;
     const totalHeight = featureBoard.scrollHeight || boardRect.height;
     
