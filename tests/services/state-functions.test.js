@@ -14,8 +14,8 @@ describe('State small function coverage', () => {
 
   it('captureCurrentFilters and captureCurrentView return current selections', () => {
     state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }, { id: 't2' }]);
-    state._projectTeamService.setProjectSelected('p1', true);
-    state._projectTeamService.setTeamSelected('t2', true);
+    state.setProjectSelected('p1', true);
+    state.setTeamSelected('t2', true);
     const filters = state.captureCurrentFilters();
     expect(filters.projects).to.deep.equal(['p1']);
     expect(filters.teams).to.deep.equal(['t2']);
@@ -47,7 +47,7 @@ describe('State small function coverage', () => {
 
   it('computeFeatureOrgLoad computes percentage based on selected teams', () => {
     state._projectTeamService.initFromBaseline([], [{ id: 't1' }, { id: 't2' }]);
-    state._projectTeamService.setTeamSelected('t1', true);
+    state.setTeamSelected('t1', true);
     const feature = { capacity: [{ team: 't1', capacity: 50 }, { team: 't2', capacity: 50 }] };
     const pct = state.computeFeatureOrgLoad(feature);
     expect(pct).to.be.a('string');

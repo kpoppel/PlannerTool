@@ -17,8 +17,8 @@ describe('FeatureCard Consolidated Tests', () => {
   describe('helpers and computePosition', () => {
     before(() => {
       state._projectTeamService.initFromBaseline([{ id: 'p1', color: '#123' }], [{ id: 't1', color: '#abc' }]);
-      state._projectTeamService.setProjectSelected('p1', true);
-      state._projectTeamService.setTeamSelected('t1', true);
+      state.setProjectSelected('p1', true);
+      state.setTeamSelected('t1', true);
       state._scenarioEventService._scenarios = [{ id: 'baseline' }];
       state.activeScenarioId = 'baseline';
       state._viewService.setCondensedCards(false);
@@ -74,14 +74,18 @@ describe('FeatureCard Consolidated Tests', () => {
       let called = false;
       el.applyVisuals = function(opts){ called = true; this._last = opts; };
       try{ el.feature = feat; }catch(e){}
-      // Ensure the element is attached to the board
+      // Ensure the element is attached to the board and register it in the board's card map
       if (!board.contains(el)) board.appendChild(el);
+      try { if (board && board._cardMap) board._cardMap.set('fx1', el); } catch (e) {}
 
       const mod = await import('../../www/js/components/FeatureBoard.lit.js');
       const update = boardHelpers.updateCardsById || mod.updateCardsById;
       // Ensure state feature lookup returns our source
       const st = await import('../../www/js/services/State.js');
-      st.state._featureService = { getEffectiveFeatureById: (id) => source.find(f => f.id === id) };
+      st.state._featureService = { 
+        getEffectiveFeatureById: (id) => source.find(f => f.id === id),
+        getEffectiveFeatures: () => source
+      };
       await board.updateCardsById(['fx1'], source);
       await new Promise(r => setTimeout(r, 0));
       expect(called).to.equal(true);

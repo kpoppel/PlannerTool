@@ -36,7 +36,7 @@ describe('State (unit)', () => {
 
   it('computeFeatureOrgLoad calculates percent correctly', () => {
     S._projectTeamService.initFromBaseline([], [ { id:'t1' }, { id:'t2' } ]);
-    S._projectTeamService.setTeamSelected('t1', true);
+    S.setTeamSelected('t1', true);
     const f = { capacity: [ { team:'t1', capacity: 50 }, { team:'t2', capacity: 20 } ] };
     const load = S.computeFeatureOrgLoad(f);
     // Only t1 selected -> sum=50, numTeams=2 -> 25.0%
@@ -53,8 +53,8 @@ describe('State (unit)', () => {
 
   it('captureCurrentFilters and captureCurrentView return expected shapes', () => {
     S._projectTeamService.initFromBaseline([ { id:'p1' }, { id:'p2' } ], [ { id:'t1' } ]);
-    S._projectTeamService.setProjectSelected('p1', true);
-    S._projectTeamService.setTeamSelected('t1', true);
+    S.setProjectSelected('p1', true);
+    S.setTeamSelected('t1', true);
     const filters = S.captureCurrentFilters();
     expect(filters.projects).to.include('p1');
     const view = S.captureCurrentView();

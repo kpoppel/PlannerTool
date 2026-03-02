@@ -26,7 +26,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   are considered hierarchically higher than "team" plans.  All team plan tasks must have a project as parent.
   Otherwise it is considered an orphan. This might not be a problem, but it could be a sign it is not funded.
   Fixes [#12](https://github.com/kpoppel/PlannerTool/issues/12)
-- Added vertical scrollbar. It appeas on scren when moving the mouse close to the edge. Two buttons control
+- Added vertical scrollbar. It appears on screen when moving the mouse close to the edge. Two buttons control
   scrolling to top and bottom in one click. Fixes [#14](https://github.com/kpoppel/PlannerTool/issues/14)
 - Added a LayoutManager to avoid looking up geometry in the DOM. This speeds up board operations significantly
 - Added keyboard shortcuts for selecting zoom range, and com of the button in View Options. Check the help.
@@ -41,17 +41,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Fixes [#6](https://github.com/kpoppel/PlannerTool/issues/6)
 - Details panel now displays the plan name for parent links if the parent is not in the same plan as the task.
   Fixes [#15](https://github.com/kpoppel/PlannerTool/issues/15)
+- Updated test suite.
 
 ### Fixed
 
-- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 5 secomds
-  to <1s on dev machine.
-  Deselecting all plans is instant.
+- Board rendering when selecting or deselecting plans was really slow. Reduced plan selection from 5 seconds
+  to <1s on dev machine. In the process removed several 100 lines of code.
 - Fix a console warning about Lit sourcemap
 - Fix dependency vire setting not saved in a View. Fixes [#13](https://github.com/kpoppel/PlannerTool/issues/13)
 - Fix for AnnotationPlugin where the toolbox started flashing when scrolling, and annotations scrolling at
   double speed.
-
 
 ## [v1.11.0] - 2026-02-22
 

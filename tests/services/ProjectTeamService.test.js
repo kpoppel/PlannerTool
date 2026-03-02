@@ -90,8 +90,8 @@ describe('ProjectTeamService', () => {
 
       expect(result).to.be.true;
       expect(service.projects[0].selected).to.be.true;
-      expect(emitCalls).to.have.lengthOf(1);
-      expect(emitCalls[0].event.toString()).to.include('projects');
+      // Production no longer emits events from this class; verify state instead
+      expect(service.getSelectedProjectIds()).to.deep.equal(['p1']);
     });
 
     it('should return false for non-existent project', () => {
@@ -106,7 +106,8 @@ describe('ProjectTeamService', () => {
       service.setProjectSelected('p1', false);
 
       expect(service.projects[0].selected).to.be.false;
-      expect(emitCalls).to.have.lengthOf(1);
+      // Verify selection cleared
+      expect(service.getSelectedProjectIds()).to.have.lengthOf(0);
     });
   });
 
@@ -123,8 +124,8 @@ describe('ProjectTeamService', () => {
 
       expect(result).to.be.true;
       expect(service.teams[0].selected).to.be.true;
-      expect(emitCalls).to.have.lengthOf(1);
-      expect(emitCalls[0].event.toString()).to.include('teams');
+      // Production no longer emits events from this class; verify state instead
+      expect(service.getSelectedTeamIds()).to.deep.equal(['t1']);
     });
 
     it('should return false for non-existent team', () => {

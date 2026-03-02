@@ -9,7 +9,7 @@ describe('feature-board updateCardsById', () => {
     document.body.appendChild(board);
     // minimal state
     state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
-    state._projectTeamService.setProjectSelected('p1', true);
+    state.setProjectSelected('p1', true);
   });
 
   afterEach(() => {

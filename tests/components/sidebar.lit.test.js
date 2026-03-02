@@ -25,7 +25,9 @@ describe('app-sidebar', () => {
 
   it('toggleTeam calls state.setTeamSelected with flipped value', () => {
     state._projectTeamService.initFromBaseline([], [{ id: 't1' }]);
-    state._projectTeamService.setTeamSelected('t1', true);
+    state.setTeamSelected('t1', true);
+    // ensure sidebar's local teams list reflects the updated state
+    if (sidebar && typeof sidebar._onTeamsChanged === 'function') sidebar._onTeamsChanged(state.teams);
     let called = null;
     const orig = state.setTeamSelected;
     state.setTeamSelected = (tid, val) => { called = { tid, val }; };

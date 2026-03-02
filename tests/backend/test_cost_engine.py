@@ -59,7 +59,8 @@ def test_estimate_costs_empty():
     res = svc.estimate_costs(session={})
     # Expect an empty dict when no features provided
     assert isinstance(res, dict)
-    assert res == {}
+    # service now returns a mapping with 'projects' and 'project_types'
+    assert res.get('projects', {}) == {}
 
 
 def test_estimate_costs_simple_feature(monkeypatch):
@@ -146,9 +147,10 @@ def test_estimate_costs_simple_feature(monkeypatch):
     )
     res = svc.estimate_costs(session)
     assert isinstance(res, dict)
-    assert 'p1' in res
-    assert 'f1' in res['p1']
-    f = res['p1']['f1']
+    # result shape is { 'projects': { ... }, 'project_types': { ... } }
+    assert 'p1' in res.get('projects', {})
+    assert 'f1' in res['projects']['p1']
+    f = res['projects']['p1']['f1']
     # Engine returns internal/external cost and hours
     assert 'internal_cost' in f
     assert 'internal_hours' in f

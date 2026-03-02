@@ -26,7 +26,7 @@ class SimpleSessionMgr:
 
 def test_api_cost_post_with_features():
     # prepare services
-    cost_raw = {'project-1': {'1': {'internal_cost': 100}}}
+    cost_raw = {'projects': {'project-1': {'1': {'internal_cost': 100}}}, 'project_types': {}}
     cost_svc = SimpleNamespace(estimate_costs=lambda ctx: cost_raw)
     container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'cost_service': cost_svc}.get(name))
     req = make_request_with_container(container)
@@ -45,7 +45,7 @@ def test_api_cost_post_without_features_uses_task_service():
         {'id': '10', 'project': 'project-A', 'start': None, 'end': None, 'capacity': [1,2], 'title':'T','type':'Feature','state':'Active'}
     ]
     task_svc = SimpleNamespace(list_tasks=lambda pat=None: tasks)
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'project-A': {'10': {'internal_cost': 5}}})
+    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-A': {'10': {'internal_cost': 5}}}, 'project_types': {}})
     container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'task_service': task_svc, 'cost_service': cost_svc}.get(name))
     req = make_request_with_container(container)
     res = asyncio.run(api_cost_post.__wrapped__(req, payload={}))
@@ -57,7 +57,7 @@ def test_api_cost_post_scenario_overrides(monkeypatch):
     # test that scenario overrides are applied
     features = [{'id': '7', 'project': 'project-X', 'start': '2020-01-01', 'end': '2020-01-10', 'capacity': []}]
     task_svc = SimpleNamespace(list_tasks=lambda pat=None: [])
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'project-X': {'7': {'internal_cost': 1}}})
+    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-X': {'7': {'internal_cost': 1}}}, 'project_types': {}})
     container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr({'email': ''}), 'task_service': task_svc, 'cost_service': cost_svc}.get(name))
     req = make_request_with_container(container)
 
@@ -72,7 +72,7 @@ def test_api_cost_post_scenario_overrides(monkeypatch):
 
 
 def test_api_cost_post_scenario_not_found(monkeypatch):
-    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {})
+    cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {}, 'project_types': {}})
     container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr({'email': ''}), 'cost_service': cost_svc}.get(name))
     req = make_request_with_container(container)
 
@@ -110,7 +110,9 @@ def test_api_cost_teams_aggregates():
             return {'database': {'people': [{'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False}, {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True}]}}
         raise KeyError
     storage.load = load
-    container = SimpleNamespace(get=lambda name: {'server_config_storage': storage}.get(name))
+    # Provide people_service so api_cost_teams can fetch people
+    people_service = SimpleNamespace(get_people=lambda: [{'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False}, {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True}])
+    container = SimpleNamespace(get=lambda name: {'server_config_storage': storage, 'people_service': people_service}.get(name))
     req = make_request_with_container(container)
     res = asyncio.run(api_cost_teams.__wrapped__(req))
     assert 'teams' in res

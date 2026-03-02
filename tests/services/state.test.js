@@ -6,8 +6,8 @@ describe('State core behaviors', () => {
     // Setup baseline teams and selection using ProjectTeamService
     const teams = [{ id: 't1' }, { id: 't2' }];
     state._projectTeamService.initFromBaseline([], teams);
-    state._projectTeamService.setTeamSelected('t1', true);
-    state._projectTeamService.setTeamSelected('t2', false);
+    state.setTeamSelected('t1', true);
+    state.setTeamSelected('t2', false);
     
     const feature = { capacity: [ { team: 't1', capacity: 3 }, { team: 't2', capacity: 2 } ] };
     const pct = state.computeFeatureOrgLoad(feature);
@@ -24,8 +24,8 @@ describe('State core behaviors', () => {
     state.baselineFeatures = [{ id: 'f1', start: '2024-01-01', end: '2024-01-03', project: 'p1', status: 'New', capacity: [{ team: 't1', capacity: 2 }] }];
     // Working copies (no selection filtering) - use ProjectTeamService
     state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
-    state._projectTeamService.setProjectSelected('p1', true);
-    state._projectTeamService.setTeamSelected('t1', true);
+    state.setProjectSelected('p1', true);
+    state.setTeamSelected('t1', true);
     // Ensure selectedFeatureStateFilter includes the feature status so it isn't filtered out
     state._stateFilterService.setAvailableStates(['New']);
     state._stateFilterService._selectedStates = new Set(['New']);

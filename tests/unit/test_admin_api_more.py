@@ -79,10 +79,11 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
     called = {'invalidate': False, 'account_load': False}
 
     # monkeypatch cost engine invalidate
-    def _invalidate():
+    def _invalidate(cache_storage=None):
         called['invalidate'] = True
 
-    monkeypatch.setattr('planner_lib.cost.engine.invalidate_team_rates_cache', _invalidate)
+    # Patch the symbol used by CostService (imported into service module)
+    monkeypatch.setattr('planner_lib.cost.service.invalidate_team_rates_cache', _invalidate)
 
     # Create a proxy account manager that delegates `save` to the real
     # manager but intercepts `load` so we can record calls. Register it in

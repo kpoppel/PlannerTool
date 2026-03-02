@@ -3,8 +3,7 @@ import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents,
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
-import { laneHeight, computePosition, _test_resetCache } from './board-utils.js';
-import LayoutManager from './LayoutManager.js';
+import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
 
 class FeatureBoard extends LitElement {
@@ -17,13 +16,6 @@ class FeatureBoard extends LitElement {
     this.features = [];
     this._cardMap = new Map();
     this._boundHandlers = new Map();
-    // Canvas used for approximate text measurement to detect overflow without DOM reads
-    this._textMeasureCanvas = null;
-    // Board-level ResizeObserver and observed inner-elements map
-    this._ro = null;
-    this._observedMap = new Map(); // Map<hostCard, innerElement>
-    this._measureScheduled = false;
-    this._layout = new LayoutManager(this);
   }
 
   static styles = css`
@@ -82,46 +74,18 @@ class FeatureBoard extends LitElement {
     }
   `;
 
-  // Use shadow DOM so component-scoped `static styles` apply.
-  // Render a slot so any existing light-DOM children (or imperative
-  // appendChild calls) will still be projected into the component.
-
   connectedCallback() {
     super.connectedCallback();
     if (!this.hasAttribute('role')) {
       this.setAttribute('role', 'list');
     }
-    // Create a single ResizeObserver for all child cards' inner elements
-    try {
-      this._ro = new ResizeObserver((entries) => {
-        if (this._measureScheduled) return;
-        // schedule a single batched measurement
-        this._measureScheduled = true;
-        requestAnimationFrame(() => {
-          this._measureScheduled = false;
-          this._processMeasurements(entries);
-        });
-      });
-    } catch (e) {
-      // ResizeObserver may not be available in some test envs
-      this._ro = null;
-    }
     // Defer creating the fixed scrollbar so document.body exists
     try {
-      requestAnimationFrame(() => { try { this._ensureFixedScrollbar(); } catch (e) { } });
-    } catch (e) { }
-    // Keep layout manager's cached board client rect up-to-date on user interactions
-    this._boundUpdateBoardClientRect = this._scheduleBoardClientRectUpdate.bind(this);
-    try {
-      this.addEventListener('scroll', this._boundUpdateBoardClientRect, { passive: true });
-      window.addEventListener('resize', this._boundUpdateBoardClientRect, { passive: true });
-    } catch (e) { }
+      requestAnimationFrame(() => { try { this._ensureFixedScrollbar(); } catch (e) {} });
+    } catch (e) {}
   }
 
   render() {
-    console.log('[FeatureBoard] render - features count:', this.features?.length);
-    // When no features are to be shown we render the slot only; the
-    // dedicated modal helper will be invoked from `renderFeatures()`.
     if (!this.features?.length) {
       return html`<slot></slot>`;
     }
@@ -133,20 +97,17 @@ class FeatureBoard extends LitElement {
         .project=${featureObj.project}
         style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
       ></feature-card-lit>`)}
-      
     `;
   }
 
   _scrollToTop() {
-    try {
-      this.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) { this.scrollTop = 0; }
+    try { this.scrollTo({ top: 0, behavior: 'smooth' }); }
+    catch (e) { this.scrollTop = 0; }
   }
 
   _scrollToBottom() {
-    try {
-      this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
-    } catch (e) { this.scrollTop = this.scrollHeight || 0; }
+    try { this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' }); }
+    catch (e) { this.scrollTop = this.scrollHeight || 0; }
   }
 
   disconnectedCallback() {
@@ -155,33 +116,11 @@ class FeatureBoard extends LitElement {
       bus.off(event, handler);
     });
     this._boundHandlers.clear();
-    try {
-      if (this._ro) {
-        // unobserve all
-        for (const inner of this._observedMap.values()) {
-          try { this._ro.unobserve(inner); } catch (e) { }
-        }
-        this._observedMap.clear();
-        this._ro.disconnect && this._ro.disconnect();
-        this._ro = null;
-      }
-    } catch (e) { }
-    // Remove fixed controls if we created them
-    try {
-      this._destroyFixedScrollbar && this._destroyFixedScrollbar();
-    } catch (e) { }
-    try {
-      if (this._boundUpdateBoardClientRect) {
-        try { this.removeEventListener('scroll', this._boundUpdateBoardClientRect); } catch (e) { }
-        try { window.removeEventListener('resize', this._boundUpdateBoardClientRect); } catch (e) { }
-        this._boundUpdateBoardClientRect = null;
-      }
-      if (this._boardClientRectTimeout) { try { clearTimeout(this._boardClientRectTimeout); } catch (e) { } this._boardClientRectTimeout = null; }
-    } catch (e) { }
-    
+    try { this._destroyFixedScrollbar?.(); } catch (e) {}
   }
 
-  // Create a fixed scrollbar & buttons at browser edge and sync with this element
+  // ---- Fixed scrollbar ----
+
   _ensureFixedScrollbar() {
     if (this._fixedRail) return;
 
@@ -189,153 +128,106 @@ class FeatureBoard extends LitElement {
     rail.className = 'fb-fixed-rail';
     rail.setAttribute('aria-hidden', 'false');
     Object.assign(rail.style, {
-      position: 'fixed',
-      right: '4px',
-      top: '72px',
-      bottom: '20px',
-      width: '12px',
-      zIndex: 29, // 1 below the details panel
-      pointerEvents: 'auto'
+      position: 'fixed', right: '4px', top: '72px', bottom: '20px',
+      width: '12px', zIndex: 29, pointerEvents: 'auto'
     });
 
     const thumb = document.createElement('div');
     thumb.className = 'fb-fixed-thumb';
     Object.assign(thumb.style, {
-      position: 'absolute',
-      left: '0px',
-      width: '100%',
-      borderRadius: '6px',
-      background: 'rgba(0,0,0,0.12)',
-      cursor: 'pointer'
+      position: 'absolute', left: '0px', width: '100%',
+      borderRadius: '6px', background: 'rgba(0,0,0,0.12)', cursor: 'pointer'
     });
     rail.appendChild(thumb);
 
     const controls = document.createElement('div');
     controls.className = 'fb-fixed-controls';
     Object.assign(controls.style, {
-      position: 'fixed',
-      right: '16px',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      zIndex: 29 // 1 below the details panel
+      position: 'fixed', right: '16px', top: '50%', transform: 'translateY(-50%)',
+      display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 29
     });
 
     const btnTop = document.createElement('button');
     btnTop.className = 'fb-btn-top';
     btnTop.title = 'Scroll to top';
-    btnTop.innerText = '▲';
+    btnTop.innerText = '\u25B2';
     Object.assign(btnTop.style, {
-      width: '36px', height: '36px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+      width: '36px', height: '36px', borderRadius: '18px',
+      border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
     });
 
     const btnBottom = document.createElement('button');
     btnBottom.className = 'fb-btn-bottom';
     btnBottom.title = 'Scroll to bottom';
-    btnBottom.innerText = '▼';
+    btnBottom.innerText = '\u25BC';
     Object.assign(btnBottom.style, {
-      width: '36px', height: '36px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+      width: '36px', height: '36px', borderRadius: '18px',
+      border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
     });
 
     controls.appendChild(btnTop);
     controls.appendChild(btnBottom);
-
     document.body.appendChild(rail);
     document.body.appendChild(controls);
 
-    // Mouse hover hiding - Initial hide state — show controls only on proximity
+    // Initially hidden - show on proximity
     rail.style.opacity = '0';
     rail.style.transition = 'opacity 180ms ease';
     rail.style.pointerEvents = 'none';
     controls.style.opacity = '0';
     controls.style.transition = 'opacity 180ms ease';
     controls.style.pointerEvents = 'none';
-    // ^^ Controls mouse hover hiding
 
-    // Handlers
     const onScroll = () => this._updateFixedThumb();
     const onResize = () => { this._updateRailPosition(); this._updateFixedThumb(); };
-    const onDetailsShow = () => {
-      try {
-        if (!this._fixedRail) return;
-        // Hide the fixed rail while details panel is open to avoid collision
-        hideRail();
-        this._detailsOpen = true;
-      } catch (e) { }
-    };
-    const onDetailsHide = () => {
-      try {
-        // Restore visibility after details panel closes
-        showRail();
-        this._detailsOpen = false;
-        this._updateFixedThumb();
-      } catch (e) { }
-    };
-    const onTop = () => this._scrollToTop();
-    const onBottom = () => this._scrollToBottom();
+    const onDetailsShow = () => { try { hideRail(); this._detailsOpen = true; } catch (e) {} };
+    const onDetailsHide = () => { try { showRail(); this._detailsOpen = false; this._updateFixedThumb(); } catch (e) {} };
 
-    // Mouse hover hiding
     let hideTimer = null;
-    const proximityPx = 50; // pixels from right edge to reveal controls
+    const proximityPx = 50;
     const showRail = () => {
       try {
-        if (this._dragging) return; // keep visible during drag
-        rail.style.opacity = '1';
-        rail.style.pointerEvents = 'auto';
-        controls.style.opacity = '1';
-        controls.style.pointerEvents = 'auto';
-      } catch (e) { }
+        if (this._dragging) return;
+        rail.style.opacity = '1'; rail.style.pointerEvents = 'auto';
+        controls.style.opacity = '1'; controls.style.pointerEvents = 'auto';
+      } catch (e) {}
     };
     const hideRail = () => {
       try {
         if (this._dragging) return;
-        rail.style.opacity = '0';
-        rail.style.pointerEvents = 'none';
-        controls.style.opacity = '0';
-        controls.style.pointerEvents = 'none';
-      } catch (e) { }
+        rail.style.opacity = '0'; rail.style.pointerEvents = 'none';
+        controls.style.opacity = '0'; controls.style.pointerEvents = 'none';
+      } catch (e) {}
     };
-
     const onMouseMove = (ev) => {
       try {
-        const x = ev.clientX;
         const vw = window.innerWidth || document.documentElement.clientWidth;
-        if (vw - x <= proximityPx) {
+        if (vw - ev.clientX <= proximityPx) {
           showRail();
           if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
         } else {
           if (hideTimer) clearTimeout(hideTimer);
           hideTimer = setTimeout(() => { hideRail(); hideTimer = null; }, 10);
         }
-      } catch (e) { }
+      } catch (e) {}
     };
-
     const onRailEnter = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } showRail(); };
-    const onRailLeave = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(()=>{ hideRail(); hideTimer = null; }, 10); };
-    // ^^ Mouse hover hiding
+    const onRailLeave = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(() => { hideRail(); hideTimer = null; }, 10); };
 
     thumb.addEventListener('pointerdown', (e) => this._startThumbDrag(e));
-    btnTop.addEventListener('click', onTop);
-    btnBottom.addEventListener('click', onBottom);
+    btnTop.addEventListener('click', () => this._scrollToTop());
+    btnBottom.addEventListener('click', () => this._scrollToBottom());
     this.addEventListener('scroll', onScroll);
     window.addEventListener('resize', onResize);
-    // Mouse hover hiding
     document.addEventListener('mousemove', onMouseMove);
     rail.addEventListener('pointerenter', onRailEnter);
     rail.addEventListener('pointerleave', onRailLeave);
-    // Listen for details panel open/close to avoid overlap
     try { bus.on(UIEvents.DETAILS_SHOW, onDetailsShow); bus.on(UIEvents.DETAILS_HIDE, onDetailsHide); } catch (e) {}
-    // ^^ Store references for cleanup
 
     this._fixedRail = rail;
     this._fixedThumb = thumb;
     this._fixedControls = controls;
-    // No mouse houver hidding: this._fixedHandlers = { onScroll, onResize };
     this._fixedHandlers = { onScroll, onResize, onMouseMove, onRailEnter, onRailLeave, onDetailsShow, onDetailsHide };
-
-    // Initial update
     this._updateRailPosition();
     this._updateFixedThumb();
   }
@@ -343,45 +235,28 @@ class FeatureBoard extends LitElement {
   _updateRailPosition() {
     try {
       if (!this._fixedRail) return;
-      // Find the timeline header element and position the rail just below it
       const timelineHeader = document.querySelector('timeline-lit');
       if (timelineHeader) {
         const rect = timelineHeader.getBoundingClientRect();
-        // Add small gap so rail doesn't touch header
-        const gap = 6;
-        const topPx = Math.max(8, rect.bottom + gap) + 'px';
-        this._fixedRail.style.top = topPx;
+        this._fixedRail.style.top = Math.max(8, rect.bottom + 6) + 'px';
       } else {
-        // fallback to a sensible default near top
         this._fixedRail.style.top = '72px';
       }
-    } catch (e) { }
+    } catch (e) {}
   }
 
   _destroyFixedScrollbar() {
-    if (this._fixedRail) {
-      try { this._fixedRail.remove(); } catch (e) { }
-      this._fixedRail = null;
-    }
-    if (this._fixedControls) {
-      try { this._fixedControls.remove(); } catch (e) { }
-      this._fixedControls = null;
-    }
-    if (this._fixedThumb) this._fixedThumb = null;
+    try { this._fixedRail?.remove(); } catch (e) {} this._fixedRail = null;
+    try { this._fixedControls?.remove(); } catch (e) {} this._fixedControls = null;
+    this._fixedThumb = null;
     if (this._fixedHandlers) {
-      try { this.removeEventListener('scroll', this._fixedHandlers.onScroll); } catch (e) { }
-      try { window.removeEventListener('resize', this._fixedHandlers.onResize); } catch (e) { }
-      // Mouse hover hiding:
-      try { document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove); } catch (e) { }
-      try { this._fixedRail && this._fixedRail.removeEventListener('pointerenter', this._fixedHandlers.onRailEnter); } catch (e) { }
-      try { this._fixedRail && this._fixedRail.removeEventListener('pointerleave', this._fixedHandlers.onRailLeave); } catch (e) { }
-      try { bus.off && this._fixedHandlers.onDetailsShow && bus.off(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow); } catch (e) { }
-      try { bus.off && this._fixedHandlers.onDetailsHide && bus.off(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide); } catch (e) { }
-      // ^^^ Mouse hover hiding cleanup
+      try { this.removeEventListener('scroll', this._fixedHandlers.onScroll); } catch (e) {}
+      try { window.removeEventListener('resize', this._fixedHandlers.onResize); } catch (e) {}
+      try { document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove); } catch (e) {}
+      try { bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow); } catch (e) {}
+      try { bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide); } catch (e) {}
       this._fixedHandlers = null;
     }
-    // Mouse hover hiding cleanup
-    if (this._fixedHideTimer) { try { clearTimeout(this._fixedHideTimer); } catch (e) { } this._fixedHideTimer = null; }
   }
 
   _updateFixedThumb() {
@@ -390,21 +265,15 @@ class FeatureBoard extends LitElement {
       const railRect = this._fixedRail.getBoundingClientRect();
       const clientH = this.clientHeight || 0;
       const scrollH = this.scrollHeight || 0;
-      if (scrollH <= clientH) {
-        this._fixedThumb.style.display = 'none';
-        return;
-      }
+      if (scrollH <= clientH) { this._fixedThumb.style.display = 'none'; return; }
       this._fixedThumb.style.display = '';
       const railHeight = Math.max(20, railRect.height);
-      const visibleRatio = clientH / scrollH;
-      const thumbH = Math.max(20, Math.round(railHeight * visibleRatio));
-      const maxThumbTop = railHeight - thumbH;
-      const scrollTop = this.scrollTop || 0;
-      const topFraction = scrollTop / (scrollH - clientH);
-      const thumbTop = Math.round(topFraction * maxThumbTop);
+      const thumbH = Math.max(20, Math.round(railHeight * (clientH / scrollH)));
+      const maxTop = railHeight - thumbH;
+      const frac = (this.scrollTop || 0) / (scrollH - clientH);
       this._fixedThumb.style.height = thumbH + 'px';
-      this._fixedThumb.style.top = thumbTop + 'px';
-    } catch (e) { }
+      this._fixedThumb.style.top = Math.round(frac * maxTop) + 'px';
+    } catch (e) {}
   }
 
   _startThumbDrag(e) {
@@ -422,180 +291,112 @@ class FeatureBoard extends LitElement {
     try {
       if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
       const railRect = this._fixedRail.getBoundingClientRect();
-      const railTop = railRect.top;
-      const railHeight = railRect.height;
       const thumbH = this._fixedThumb.getBoundingClientRect().height;
-      const y = ev.clientY - railTop - (thumbH / 2);
-      const maxY = Math.max(0, railHeight - thumbH);
-      const clamped = Math.max(0, Math.min(maxY, y));
-      const fraction = clamped / (railHeight - thumbH || 1);
-      const targetScroll = Math.round(fraction * (this.scrollHeight - this.clientHeight));
-      this.scrollTop = targetScroll;
+      const y = ev.clientY - railRect.top - (thumbH / 2);
+      const maxY = Math.max(0, railRect.height - thumbH);
+      const frac = Math.max(0, Math.min(maxY, y)) / (railRect.height - thumbH || 1);
+      this.scrollTop = Math.round(frac * (this.scrollHeight - this.clientHeight));
       this._updateFixedThumb();
-    } catch (e) { }
+    } catch (e) {}
   }
 
-  // Helper: sort features by rank
+  // ---- Sorting / filtering helpers ----
+
   _sortByRank(features) {
-    const byRank = (a, b) => (a.originalRank || 0) - (b.originalRank || 0);
-    return features.sort(byRank);
+    return features.sort((a, b) => (a.originalRank || 0) - (b.originalRank || 0));
   }
 
-  // Helper: sort features by date
   _sortByDate(features) {
     return features.sort((a, b) => {
-      // Handle unplanned features (no start date) - sort them to the end
       if (!a.start && !b.start) return 0;
-      if (!a.start) return 1;  // a goes to end
-      if (!b.start) return -1; // b goes to end
-      
+      if (!a.start) return 1;
+      if (!b.start) return -1;
       return a.start.localeCompare(b.start);
     });
   }
 
-  // Helper: build children map
   _buildChildrenMap(features) {
     const childrenMap = new Map();
     features.forEach(f => {
       if (f.type === 'feature' && f.parentEpic) {
-        if (!childrenMap.has(f.parentEpic)) {
-          childrenMap.set(f.parentEpic, []);
-        }
+        if (!childrenMap.has(f.parentEpic)) childrenMap.set(f.parentEpic, []);
         childrenMap.get(f.parentEpic).push(f);
       }
     });
     return childrenMap;
   }
 
-  // Helper: order features hierarchically
   _orderFeaturesHierarchically(sourceFeatures, sortMode) {
     const sortFn = sortMode === 'rank' ? this._sortByRank.bind(this) : this._sortByDate.bind(this);
-    
     const epics = sortFn(sourceFeatures.filter(f => f.type === 'epic'));
     const childrenMap = this._buildChildrenMap(sourceFeatures);
-    
-    // Sort children within each epic
     childrenMap.forEach(children => sortFn(children));
-    
-    const standalone = sortFn(
-      sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic)
-    );
+    const standalone = sortFn(sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic));
 
     const ordered = [];
     for (const epic of epics) {
       ordered.push(epic);
-      const children = childrenMap.get(epic.id) || [];
-      ordered.push(...children);
+      ordered.push(...(childrenMap.get(epic.id) || []));
     }
     ordered.push(...standalone);
-    
-    // Ensure we don't accidentally drop any source features (e.g. when a
-    // child references a parent epic that isn't present as type 'epic' in
-    // the source set). Append any missing features deterministically.
+
     const included = new Set(ordered.map(f => f.id));
     const remaining = sortFn(sourceFeatures.filter(f => !included.has(f.id)));
     if (remaining.length) ordered.push(...remaining);
-
     return ordered;
   }
 
-  // Helper: check if feature is unplanned (no dates set)
   _isUnplanned(feature) {
     return !feature.start || !feature.end;
   }
 
-  /**
-   * Helper: check if feature is hierarchically linked to an Epic from selected projects
-   * - Show Epics that belong to selected projects
-   * - Show Features that are children (direct or indirect) of those Epics
-   * @param {Object} feature - Feature to check
-   * @param {Array} allFeatures - All features for parent lookup
-   * @param {Set} selectedProjectEpicIds - Set of Epic IDs from selected projects
-   * @param {Set} visited - Set to track visited feature IDs (prevent circular references)
-   * @returns {boolean} True if feature is an Epic from selected project or linked to one
-   */
   _isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, selectedProjectEpicIds, visited = new Set()) {
     if (!feature) return false;
-    
-    // Prevent circular references
     if (visited.has(feature.id)) return false;
     visited.add(feature.id);
-    
-    // If this feature is itself an Epic from a selected project, show it
-    if (selectedProjectEpicIds.has(feature.id)) {
-      return true;
-    }
-    
-    // Check if feature has a parent relationship via parentEpic
+    if (selectedProjectEpicIds.has(feature.id)) return true;
     if (feature.parentEpic) {
-      const parentFeature = allFeatures.find(f => f.id === feature.parentEpic);
-      if (parentFeature) {
-        // Recursively check if parent is linked to a project Epic
-        return this._isHierarchicallyLinkedToSelectedProjectEpics(parentFeature, allFeatures, selectedProjectEpicIds, visited);
-      }
+      const parent = allFeatures.find(f => f.id === feature.parentEpic);
+      if (parent) return this._isHierarchicallyLinkedToSelectedProjectEpics(parent, allFeatures, selectedProjectEpicIds, visited);
     }
-    
-    // Check relations array for Parent type
     if (Array.isArray(feature.relations)) {
-      const parentRelation = feature.relations.find(r => r.type === 'Parent');
-      if (parentRelation && parentRelation.id) {
-        const parentFeature = allFeatures.find(f => f.id === parentRelation.id);
-        if (parentFeature) {
-          return this._isHierarchicallyLinkedToSelectedProjectEpics(parentFeature, allFeatures, selectedProjectEpicIds, visited);
-        }
+      const parentRel = feature.relations.find(r => r.type === 'Parent');
+      if (parentRel?.id) {
+        const parent = allFeatures.find(f => f.id === parentRel.id);
+        if (parent) return this._isHierarchicallyLinkedToSelectedProjectEpics(parent, allFeatures, selectedProjectEpicIds, visited);
       }
     }
-    
     return false;
   }
 
-  // Helper: check if feature passes filters
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
     const project = state.projects.find(p => p.id === feature.project && p.selected);
     if (!project) return false;
 
-    // Check hierarchical filtering if enabled
     if (state._viewService.showOnlyProjectHierarchy) {
-      // Get only "project" type plans (not "team" type plans)
       const projectTypePlans = state.projects.filter(p => {
         const planType = p.type ? String(p.type) : 'project';
         return p.selected && planType === 'project';
       });
-      
       const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
-      
-      // Build set of Epic IDs from project-type plans only
       const projectTypeEpicIds = new Set(
-        allFeatures
-          .filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project))
-          .map(f => f.id)
+        allFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id)
       );
-      
-      const isLinked = this._isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, projectTypeEpicIds);
-      if (!isLinked) {
-        return false;
-      }
+      if (!this._isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, projectTypeEpicIds)) return false;
     }
 
-    const stateFilter = state.selectedFeatureStateFilter instanceof Set 
-      ? state.selectedFeatureStateFilter 
+    const stateFilter = state.selectedFeatureStateFilter instanceof Set
+      ? state.selectedFeatureStateFilter
       : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
-    
     if (stateFilter.size === 0) return false;
-    
     const featureState = feature.status || feature.state;
     if (!stateFilter.has(featureState)) return false;
 
-    // Use ViewService for visibility checks
     if (feature.type === 'epic' && !state._viewService.showEpics) return false;
     if (feature.type === 'feature' && !state._viewService.showFeatures) return false;
 
-    // Check unplanned work filter (only when feature flag is ON)
     if (featureFlags.SHOW_UNPLANNED_WORK) {
-      const isUnplanned = this._isUnplanned(feature);
-      if (isUnplanned && !state._viewService.showUnplannedWork) {
-        return false;
-      }
+      if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork) return false;
     }
 
     if (feature.type === 'epic') {
@@ -603,53 +404,31 @@ class FeatureBoard extends LitElement {
       const anyChildVisible = children.some(child => {
         const childProject = state.projects.find(p => p.id === child.project && p.selected);
         if (!childProject) return false;
-        
-        // Check unplanned work for children (when feature flag is ON)
-        if (featureFlags.SHOW_UNPLANNED_WORK) {
-          const isChildUnplanned = this._isUnplanned(child);
-          if (isChildUnplanned && !state._viewService.showUnplannedWork) {
-            return false;
-          }
-        }
-        
-        // Check if child has capacity
-        const hasCapacity = child.capacity && child.capacity.length > 0;
-        if (!hasCapacity) {
-          // Show/hide based on showUnassignedCards setting
-          return state._viewService.showUnassignedCards;
-        }
-        
+        if (featureFlags.SHOW_UNPLANNED_WORK && this._isUnplanned(child) && !state._viewService.showUnplannedWork) return false;
+        const hasCapacity = child.capacity?.length > 0;
+        if (!hasCapacity) return state._viewService.showUnassignedCards;
         return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
       });
-      
-      // Check if epic itself has capacity
-      const hasCapacity = feature.capacity && feature.capacity.length > 0;
-      const epicVisible = hasCapacity 
+      const hasCapacity = feature.capacity?.length > 0;
+      const epicVisible = hasCapacity
         ? feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))
         : state._viewService.showUnassignedCards;
-      
       if (!epicVisible && !anyChildVisible) return false;
     } else {
-      // For features, check if they have capacity
-      const hasCapacity = feature.capacity && feature.capacity.length > 0;
+      const hasCapacity = feature.capacity?.length > 0;
       if (!hasCapacity) {
-        // Show/hide based on showUnassignedCards setting
         if (!state._viewService.showUnassignedCards) return false;
       } else {
-        // Has capacity - check if any team matches selected teams
-        if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) {
-          return false;
-        }
+        if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) return false;
       }
     }
-
     return true;
   }
 
-  // Compute and render features from current state
+  // ---- Render features ----
+
   async renderFeatures() {
     const sourceFeatures = state.getEffectiveFeatures();
-    // Use ViewService for sort mode
     const ordered = this._orderFeaturesHierarchically(sourceFeatures, state._viewService.featureSortMode);
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
@@ -659,607 +438,98 @@ class FeatureBoard extends LitElement {
 
     for (const feature of ordered) {
       if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-
       const pos = computePosition(feature, months) || {};
       feature._left = pos.left;
       feature._width = pos.width;
 
-      const left = pos.left ?? feature._left ?? feature.left;
-      const width = pos.width ?? feature._width ?? feature.width;
-      const project = state.projects.find(p => p.id === feature.project);
-
       renderList.push({
         feature,
-        left,
-        width,
+        left: pos.left ?? feature._left ?? feature.left,
+        width: pos.width ?? feature._width ?? feature.width,
         top: laneIndex * laneHeight(),
         teams: state.teams,
-        // Use ViewService for condensed cards setting
         condensed: state._viewService.condensedCards,
-        project
+        project: state.projects.find(p => p.id === feature.project)
       });
       laneIndex++;
     }
 
-    // Seed layout manager with computed positions (fast, no DOM reads)
-      try {
-        this._layout.recomputeAll(renderList); 
-        // Only mark cards as dirty if their geometry has actually changed.
-        // This avoids expensive DOM re-measurements when only visibility changes
-        // (e.g., toggling projects in sidebar).
-        if (this._layout && typeof this._layout.markDirtyIfChanged === 'function') {
-          let anyDirty = false;
-          for (const item of renderList) {
-            const id = item && item.feature && item.feature.id;
-            if (!id) continue;
-            const changed = this._layout.markDirtyIfChanged(id, {
-              left: item.left,
-              top: item.top,
-              width: item.width,
-              height: laneHeight()
-            });
-            if (changed) anyDirty = true;
-          }
-          // Only schedule measurements if at least one card geometry changed
-          if (anyDirty) {
-            this._scheduleMeasureNow();
-          }
-        }
-      } catch (e) { /* ignore */ }
-      this.features = renderList;
-      this.requestUpdate();
-    // If nothing will be rendered, open the shared empty-board modal to explain why
+    this.features = renderList;
+    this.requestUpdate();
+
     if (renderList.length === 0) {
       try {
         const mh = await import('./modalHelpers.js');
-        if (mh && typeof mh.openEmptyBoardModal === 'function') {
-          // fire-and-forget; modal will compute reasons itself
-          mh.openEmptyBoardModal({ parent: document.body }).catch(()=>{});
+        if (typeof mh?.openEmptyBoardModal === 'function') {
+          mh.openEmptyBoardModal({ parent: document.body }).catch(() => {});
         }
-      } catch (e) { /* ignore modal failures */ }
+      } catch (e) {}
     }
   }
 
-  // Update a subset of cards by id
-  async updateCardsById(ids = [], sourceFeatures = []) {
-    const missingIds = new Set();
-    const nodeById = new Map();
-
-    // Check cache first
-    for (const id of ids) {
-      const cached = this._cardMap.get(id);
-      if (cached) {
-        nodeById.set(id, cached);
-      } else {
-        missingIds.add(id);
-      }
-    }
-
-    // Query DOM for missing cards
-    if (missingIds.size > 0) {
-      const candidatesA = this.shadowRoot 
-        ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) 
-        : [];
-      const candidatesB = Array.from(this.querySelectorAll('feature-card-lit'));
-      const candidates = [...candidatesA, ...candidatesB];
-
-      for (const card of candidates) {
-        const featureId = card.feature?.id ?? card.dataset?.id;
-        if (featureId && missingIds.has(featureId)) {
-          nodeById.set(featureId, card);
-          this._cardMap.set(featureId, card);
-          missingIds.delete(featureId);
-          
-          if (missingIds.size === 0) break;
-        }
-      }
-    }
-
-    // Update found nodes
+  async updateCardsById(ids = []) {
     const months = getTimelineMonths();
+
     for (const id of ids) {
       const feature = state.getEffectiveFeatureById(id);
       if (!feature) continue;
 
-      const existing = nodeById.get(id);
+      const existing = this._cardMap.get(id);
       if (!existing) {
-        // Fallback to full render if node isn't present
         this.renderFeatures();
-        break;
+        return;
       }
 
-      // Compute geometry
-      let geom = {};
-      if (feature._left !== undefined && feature._width !== undefined) {
-        geom.left = feature._left;
-        geom.width = feature._width;
-      } else {
-        try {
-          geom = computePosition(feature, months) || {};
-        } catch (error) {
-          console.warn('computePosition failed for feature', id, error);
-          geom.left = feature._left ?? feature.left ?? '';
-          geom.width = feature._width ?? feature.width ?? '';
-        }
-      }
-
-      const left = geom.left !== undefined && geom.left !== '' 
-        ? (typeof geom.left === 'number' ? `${geom.left}px` : geom.left) 
-        : '';
-      const width = geom.width !== undefined && geom.width !== '' 
-        ? (typeof geom.width === 'number' ? `${geom.width}px` : geom.width) 
-        : '';
-
+      const geom = computePosition(feature, months) || {};
+      const left = geom.left !== undefined ? (typeof geom.left === 'number' ? `${geom.left}px` : geom.left) : '';
+      const width = geom.width !== undefined ? (typeof geom.width === 'number' ? `${geom.width}px` : geom.width) : '';
       const project = state.projects.find(p => p.id === feature.project);
 
-      console.log('[FeatureBoard] updateCardsById - updating card', id, 'dirty:', feature.dirty, 'changedFields:', feature.changedFields);
-
-      // Update card properties - create new object reference to ensure Lit detects change
       existing.feature = { ...feature };
       existing.selected = !!feature.selected;
       existing.project = project;
-      existing.applyVisuals({ 
-        left, 
-        width, 
-        selected: !!feature.selected, 
-        dirty: !!feature.dirty, 
-        project 
-      });
+      existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project });
     }
   }
 
-  // After render, wire handlers and update card map
+  // After render, update card map and scrollbar
   updated() {
     if (!this.shadowRoot) return;
-
     const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
-    // Update cached board client rect in layout manager once to avoid repeated
-    // getBoundingClientRect() calls inside the per-card loop which cause layout thrash.
-    try {
-      const br = this.getBoundingClientRect();
-      if (this._layout && typeof this._layout.setBoardClientRect === 'function') {
-        this._layout.setBoardClientRect(br);
-        try { if (typeof this._layout.setBoardScroll === 'function') this._layout.setBoardScroll(this.scrollLeft || 0, this.scrollTop || 0); } catch (e) { }
-      }
-    } catch (e) { }
-
-    cards.forEach((node, index) => {
-      const featureObj = this.features[index];
-      if (!featureObj) return;
-
-      // Ensure styles and props are set
-      if (featureObj.left !== undefined) node.style.left = `${featureObj.left}px`;
-      if (featureObj.top !== undefined) node.style.top = `${featureObj.top}px`;
-      if (featureObj.width !== undefined) node.style.width = `${featureObj.width}px`;
-      
-      node.feature = featureObj.feature;
-      node.bus = bus;
-      node.teams = featureObj.teams || state.teams;
-      // Use ViewService for condensed fallback
-      node.condensed = featureObj.condensed ?? state._viewService.condensedCards;
-      node.project = featureObj.project || state.projects.find(p => p.id === featureObj.feature?.project);
-
-      // Update card map
-      if (node.feature?.id) {
-        this._cardMap.set(node.feature.id, node);
-        // Apply seeded geometry from LayoutManager where available (fast path)
-        try {
-          const geom = this._layout.getGeometry(node.feature.id);
-          if (geom) {
-            const boardRect = (this._layout && typeof this._layout.getBoardRect === 'function') ? this._layout.getBoardRect() : { left: 0, top: 0, width: this.clientWidth || 0, height: this.clientHeight || 0 };
-            const layout = {
-                width: geom.width,
-                smallFeature: geom.width < 40,
-                culled: geom.width < 70,
-                cardRect: { left: geom.left, top: geom.top, width: geom.width, height: geom.height },
-                boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
-                borderColor: ''
-              };
-            try {
-              if (typeof window !== 'undefined' && window.__GHOST_DEBUG) {
-                console.debug('[GhostDebug][FeatureBoard] using LayoutManager geom', { id: node && node.feature && node.feature.id, left: geom.left, width: geom.width });
-              }
-              if (typeof node.applyLayout === 'function') node.applyLayout(layout); else node._layout = layout;
-            } catch (e) { }
-          }
-        } catch (e) { }
-      }
-      
-      // (board client rect was updated once before the loop)
+    this._cardMap.clear();
+    cards.forEach(node => {
+      if (node.feature?.id) this._cardMap.set(node.feature.id, node);
     });
-    // Ensure our ResizeObserver is observing the current inner elements
-    this._refreshObserverTargets();
-    
-    // Do not run a full scan here; ResizeObserver will call _processMeasurements
-    // Ensure fixed scrollbar exists and is in sync
-    try { this._ensureFixedScrollbar(); this._updateFixedThumb(); } catch (e) { }
-  }
-
-  _refreshObserverTargets() {
-    if (!this._ro) return;
-    const current = new Set();
-    const cards = this.shadowRoot ? Array.from(this.shadowRoot.querySelectorAll('feature-card-lit')) : [];
-    for (const card of cards) {
-      current.add(card);
-      if (this._observedMap.has(card)) continue;
-      try {
-        // Observe the host element directly. We'll query its shadowRoot '.feature-card' during measurement.
-        try { this._ro.observe(card); } catch (e) { }
-        this._observedMap.set(card, true);
-      } catch (e) { }
-    }
-
-    // Unobserve removed cards
-    for (const card of Array.from(this._observedMap.keys())) {
-      if (!current.has(card)) {
-        try { this._ro.unobserve(card); } catch (e) { }
-        this._observedMap.delete(card);
-      }
-    }
-  }
-
-  // Debounced update: schedule writing the board's client rect into LayoutManager
-  _scheduleBoardClientRectUpdate() {
-    try {
-      if (this._boardClientRectTimeout) {
-        clearTimeout(this._boardClientRectTimeout);
-      }
-      this._boardClientRectTimeout = setTimeout(() => {
-        try {
-          const br = this.getBoundingClientRect();
-          if (this._layout && typeof this._layout.setBoardClientRect === 'function') {
-            this._layout.setBoardClientRect(br);
-            try { if (typeof this._layout.setBoardScroll === 'function') this._layout.setBoardScroll(this.scrollLeft || 0, this.scrollTop || 0); } catch (e) { }
-          }
-        } catch (e) { }
-        this._boardClientRectTimeout = null;
-      }, 40);
-    } catch (e) { }
-  }
-
-  _scheduleMeasureNow() {
-    if (this._measureScheduled) return;
-    this._measureScheduled = true;
-    requestAnimationFrame(() => {
-      this._measureScheduled = false;
-      this._processMeasurements();
-    });
-  }
-  
-  // Perform one-time accurate scrollWidth measurements for cards that need it
-  // This is done in a separate pass to avoid blocking during bulk operations
-  _scheduleOverflowMeasurement(cardIds = []) {
-    if (!cardIds.length) return;
-    
-    // Defer to next frame to avoid blocking the main operation
-    requestAnimationFrame(() => {
-      const tolerance = 2;
-      for (const id of cardIds) {
-        try {
-          const host = this._cardMap.get(id);
-          if (!host) continue;
-          
-          const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-          if (!inner) continue;
-          
-          const titleEl = inner.querySelector('.feature-title');
-          if (!titleEl) continue;
-          
-          // One-time accurate measurement
-          const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
-          const titleOverflows = !titleFits;
-          
-          // Store in LayoutManager for future use
-          if (this._layout) {
-            const geom = this._layout.getGeometry(id);
-            if (geom) {
-              this._layout.setGeometry(id, {
-                ...geom,
-                titleOverflows,
-                contentFits: titleFits
-              });
-              // Re-apply layout with accurate values
-              if (host && typeof host.applyLayout === 'function') {
-                const layout = {
-                  width: geom.width,
-                  smallFeature: geom.width < 40,
-                  culled: geom.width < 70,
-                  titleOverflows,
-                  contentFits: titleFits,
-                  borderColor: geom.borderColor || ''
-                };
-                host.applyLayout(layout);
-              }
-            }
-          }
-        } catch (e) { /* ignore individual failures */ }
-      }
-    });
-  }
-
-  _processMeasurements(entries) {
-    try {
-      const board = this;
-      const bbox = board.getBoundingClientRect();
-      const scrollLeft = board.scrollLeft || 0;
-      const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
-      const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
-
-      const tolerance = 2;
-      const cardsNeedingAccurateMeasurement = []; // Track cards for deferred accurate measurement
-
-      // If ResizeObserver provided entries, measure those targets only.
-      // Otherwise, consume the LayoutManager dirty-set and prefer using
-      // cached geometries to avoid expensive DOM reads when possible.
-      let targets = [];
-      if (entries && entries.length) {
-        targets = entries.map(e => e.target);
-      } else if (this._layout && typeof this._layout.consumeDirtyIds === 'function') {
-        const ids = this._layout.consumeDirtyIds();
-        if (!ids || ids.length === 0) return; // nothing to measure
-
-        for (const id of ids) {
-          // Resolve host if present in DOM; we may not need it if LayoutManager has geometry
-          let host = this._cardMap.get(id);
-          if (!host) {
-            try {
-              host = (this.shadowRoot ? this.shadowRoot.querySelector(`feature-card-lit[data-feature-id="${id}"]`) : null) || this.querySelector(`feature-card-lit[data-feature-id="${id}"]`) || document.querySelector(`feature-card-lit[data-feature-id="${id}"]`);
-            } catch (e) { host = null; }
-          }
-
-          // If we have authoritative geometry in LayoutManager, use it directly
-          try {
-            const geom = this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(id) : null;
-            if (geom) {
-              const boardRect = (this._layout && typeof this._layout.getBoardRect === 'function') ? this._layout.getBoardRect() : { left: 0, top: 0, width: this.clientWidth || 0, height: this.clientHeight || 0 };
-              
-              // Use cached computed values when available to avoid DOM queries
-              const width = geom.width;
-              const smallFeature = width < 40;
-              const culled = width < 70;
-              
-              // If we have cached overflow/fit states, use them
-              let titleOverflows, contentFits;
-              if (geom.titleOverflows !== undefined) {
-                titleOverflows = geom.titleOverflows;
-                contentFits = geom.contentFits !== undefined ? geom.contentFits : !titleOverflows;
-              } else {
-                // Cached values missing (after resize/invalidation) - measure immediately
-                // to avoid flashing wrong ghost visibility
-                try {
-                  const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-                  const titleEl = inner && inner.querySelector('.feature-title');
-                  if (titleEl && width >= 40) {
-                    const tolerance = 2;
-                    const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
-                    titleOverflows = !titleFits;
-                    contentFits = titleFits;
-                    // Cache the measured values
-                    if (this._layout) {
-                      this._layout.setGeometry(id, { ...geom, titleOverflows, contentFits });
-                    }
-                  } else {
-                    // Small feature or no title element - use heuristic
-                    titleOverflows = width < 100;
-                    contentFits = width >= 100;
-                  }
-                } catch (e) {
-                  // Fallback to heuristic on error
-                  titleOverflows = width < 100;
-                  contentFits = width >= 100;
-                }
-              }
-              
-              const borderColor = geom.borderColor || '';
-              
-              const layout = {
-                width,
-                smallFeature,
-                culled,
-                titleOverflows,
-                contentFits,
-                cardRect: { left: geom.left, top: geom.top, width: geom.width, height: geom.height },
-                boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
-                borderColor
-              };
-
-              if (host && typeof host.applyLayout === 'function') {
-                try { host.applyLayout(layout); } catch (e) { }
-              }
-              // No need to measure DOM for this id - continue to next
-              continue;
-            }
-          } catch (e) { /* ignore layout-manager lookup failures */ }
-
-          // If no cached geometry, schedule DOM-based measurement by adding host to targets
-          if (host) targets.push(host);
-        }
-      } else {
-        return; // no entries and no dirty ids
-      }
-
-      for (const host of targets) {
-        try {
-          if (!host) continue;
-          // Query inner .feature-card inside the host's shadowRoot for measurements of scrollable children
-          const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-          // Use authoritative cached geometry from LayoutManager when available
-          // to avoid expensive layout reads (offsetLeft/offsetTop) during hide/show.
-          let cardLeft = 0, cardTop = 0, cardWidth = 0, cardHeight = 0;
-          try {
-            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
-            const geom = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
-            if (geom) {
-              cardLeft = geom.left || 0;
-              cardTop = geom.top || 0;
-              cardWidth = geom.width || (inner ? inner.clientWidth : 0);
-              cardHeight = geom.height || (inner ? inner.clientHeight : 0);
-            } else {
-              // Fallback to host offsets when no cached geometry is available
-              cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
-              cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
-              cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
-              cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
-            }
-          } catch (e) {
-            cardLeft = typeof host.offsetLeft === 'number' ? host.offsetLeft : 0;
-            cardTop = typeof host.offsetTop === 'number' ? host.offsetTop : 0;
-            cardWidth = typeof host.offsetWidth === 'number' ? host.offsetWidth : (inner ? inner.clientWidth : 0);
-            cardHeight = typeof host.offsetHeight === 'number' ? host.offsetHeight : (inner ? inner.clientHeight : 0);
-          }
-
-          const teamRow = inner ? inner.querySelector('.team-load-row') : null;
-          const titleEl = inner ? inner.querySelector('.feature-title') : null;
-
-          // Use cached overflow/fit states from LayoutManager to avoid expensive
-          // scrollWidth queries which force layout recalculation (1000ms+ bottleneck).
-          let teamFits = true;
-          let titleFits = true;
-          let needsAccurateMeasurement = false;
-          
-          try {
-            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
-            const geomForFits = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
-            
-            if (geomForFits) {
-              // Use cached values if available (avoids scrollWidth queries entirely)
-              if (geomForFits.titleOverflows !== undefined) {
-                titleFits = !geomForFits.titleOverflows;
-              } else if (geomForFits.contentFits !== undefined) {
-                titleFits = geomForFits.contentFits;
-              } else {
-                // Use width-based heuristic - avoid scrollWidth query
-                // Cards under 100px wide typically overflow
-                titleFits = !(geomForFits.width < 100);
-                // Schedule accurate measurement for next frame (non-blocking)
-                needsAccurateMeasurement = true;
-              }
-              // Always assume team fits (they're compact badges)
-              teamFits = true;
-            } else {
-              // No cached geometry - use width-based heuristics instead of DOM queries
-              // This avoids the expensive scrollWidth force-layout bottleneck
-              titleFits = cardWidth >= 100;
-              teamFits = true;
-              // Schedule accurate measurement for next frame
-              needsAccurateMeasurement = true;
-            }
-          } catch (e) {
-            // Fallback to safe heuristic (avoid DOM queries in error path)
-            titleFits = cardWidth >= 100;
-            teamFits = true;
-          }
-          
-          // Track cards that need accurate measurement (deferred to avoid blocking)
-          if (needsAccurateMeasurement && host.feature && host.feature.id) {
-            cardsNeedingAccurateMeasurement.push(host.feature.id);
-          }
-          
-          const contentFits = teamFits && titleFits;
-
-          const titleOverflows = !titleFits;
-          const smallFeature = cardWidth < 40;
-          const culled = cardWidth < 70;
-
-          // Cache border color to avoid repeated getComputedStyle calls
-          let borderColor = '';
-          try {
-            // First check if we have a cached value
-            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
-            const cachedGeom = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
-            if (cachedGeom && cachedGeom.borderColor) {
-              borderColor = cachedGeom.borderColor;
-            } else if (inner) {
-              // Only query DOM if not cached
-              borderColor = window.getComputedStyle(inner).getPropertyValue('border-left-color');
-            }
-          } catch (e) { borderColor = ''; }
-
-          const layout = {
-            width: cardWidth,
-            contentFits,
-            titleOverflows,
-            smallFeature,
-            culled,
-            cardRect: { left: cardLeft, top: cardTop, width: cardWidth, height: cardHeight },
-            boardRect: { left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height },
-            borderColor
-          };
-
-          try {
-            if (typeof window !== 'undefined' && window.__GHOST_DEBUG) {
-              console.debug('[GhostDebug][FeatureBoard] dom-measured layout', { id: host && host.feature && host.feature.id, left: cardLeft, width: cardWidth, titleOverflows });
-            }
-            if (typeof host.applyLayout === 'function') {
-              host.applyLayout(layout);
-            } else {
-              // Fallback: set a single property to trigger minimal updates
-              host._layout = layout;
-            }
-          } catch (e) { }
-          // Update LayoutManager geometry for this host (if available) including
-          // cached computed values to avoid repeated DOM queries
-          try {
-            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
-            if (featureId && this._layout) {
-              this._layout.setGeometry(featureId, { 
-                left: cardLeft, 
-                top: cardTop, 
-                width: cardWidth, 
-                height: cardHeight,
-                borderColor,
-                titleOverflows,
-                contentFits
-              });
-            }
-          } catch (e) { }
-        } catch (e) { }
-      }
-      
-      // Schedule accurate overflow measurements for cards that need it (deferred, non-blocking)
-      if (cardsNeedingAccurateMeasurement.length > 0) {
-        this._scheduleOverflowMeasurement(cardsNeedingAccurateMeasurement);
-      }
-    } catch (e) { }
+    try { this._ensureFixedScrollbar(); this._updateFixedThumb(); } catch (e) {}
   }
 
   _selectFeature(feature) {
-    this.dispatchEvent(new CustomEvent('feature-selected', { 
-      detail: { feature }, 
-      bubbles: true, 
-      composed: true 
+    this.dispatchEvent(new CustomEvent('feature-selected', {
+      detail: { feature }, bubbles: true, composed: true
     }));
   }
 
-  // Public API: center a feature card by id in the viewport
-  centerFeatureById(featureId){
-    try{
-      const card = this._cardMap.get(String(featureId)) || (this.shadowRoot && this.shadowRoot.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`)) || this.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
+  centerFeatureById(featureId) {
+    try {
+      const card = this._cardMap.get(String(featureId))
+        || this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
       const timeline = document.getElementById('timelineSection');
-      const featureBoard = this;
-      if(!card || !timeline || !featureBoard) return;
+      if (!card || !timeline) return;
 
-      // Compute centers
       const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
       const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
-      const targetX = Math.max(0, Math.round(cardCenterX - (timeline.clientWidth / 2)));
-      const targetY = Math.max(0, Math.round(cardCenterY - (featureBoard.clientHeight / 2)));
+      timeline.scrollTo({ left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)), behavior: 'smooth' });
+      this.scrollTo({ top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)), behavior: 'smooth' });
 
-      // Smooth scroll timeline (horizontal) and featureBoard (vertical)
-      timeline.scrollTo({ left: targetX, behavior: 'smooth' });
-      featureBoard.scrollTo({ top: targetY, behavior: 'smooth' });
-      // Add temporary highlight class to the host so its internal styles animate
-      try{
+      try {
         card.classList.add('search-highlight');
-        setTimeout(()=>{ try{ card.classList.remove('search-highlight'); }catch(e){} }, 950);
-      }catch(e){ /* ignore */ }
-    }catch(e){ console.warn('centerFeatureById failed', e); }
+        setTimeout(() => { try { card.classList.remove('search-highlight'); } catch (e) {} }, 950);
+      } catch (e) {}
+    } catch (e) { console.warn('centerFeatureById failed', e); }
   }
 
-  // Convenience: append a DOM node or feature data
   addFeature(nodeOrFeature) {
     if (!nodeOrFeature) return;
-
     if (nodeOrFeature instanceof Node) {
       this.appendChild(nodeOrFeature);
     } else {
@@ -1276,24 +546,19 @@ customElements.define('feature-board', FeatureBoard);
 
 export async function initBoard() {
   const board = document.querySelector('feature-board');
-  if (!board) {
-    console.warn('feature-board element not found');
-    return;
-  }
+  if (!board) { console.warn('feature-board element not found'); return; }
 
   let _boardReady = false;
   const renderFeatures = () => {
-    if (!board || ! _boardReady) return;
-    if (typeof board.renderFeatures === 'function') {
-      board.renderFeatures();
-    }
+    if (!board || !_boardReady) return;
+    if (typeof board.renderFeatures === 'function') board.renderFeatures();
   };
 
   const updateFeatures = (payload) => {
     if (!board || !_boardReady || typeof board.updateCardsById !== 'function') return;
     const ids = payload?.ids;
     if (Array.isArray(ids) && ids.length > 0) {
-      board.updateCardsById(ids, state.getEffectiveFeatures());
+      board.updateCardsById(ids);
     } else {
       board.renderFeatures();
     }
@@ -1301,8 +566,6 @@ export async function initBoard() {
 
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
-    
-    // Apply scenario-mode styling for non-readonly scenarios
     const activeScenario = state.scenarios.find(s => s.id === scenarioId);
     if (activeScenario && !activeScenario.readonly) {
       board.classList.add('scenario-mode');
@@ -1311,32 +574,17 @@ export async function initBoard() {
     }
   };
 
-  // Register event handlers (they will be no-ops until app signals readiness)
   bus.on(ProjectEvents.CHANGED, renderFeatures);
   bus.on(TeamEvents.CHANGED, renderFeatures);
   bus.on(TimelineEvents.MONTHS, renderFeatures);
-  bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures); // Re-render when zoom changes
-  // Ensure LayoutManager and measurements are refreshed after timeline zoom/scale changes
-  bus.on(TimelineEvents.SCALE_CHANGED, () => { 
-    try { 
-      // Invalidate cached computed values since scale change affects measurements
-      if (board && board._layout && typeof board._layout.invalidateComputedValues === 'function') {
-        board._layout.invalidateComputedValues();
-      }
-      if (board && typeof board._scheduleMeasureNow === 'function') {
-        board._scheduleMeasureNow();
-      }
-    } catch (e) { } 
-  });
+  bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures);
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
 
-  // Defer initial render until app initialization completes to avoid multiple renders
   bus.once(AppEvents.READY, () => {
     _boardReady = true;
     renderFeatures();
   });
 }
-

@@ -2,22 +2,17 @@
 // Lit 3.3.1 web component for feature cards
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, DragEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, DragEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { epicTemplate, featureTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';
- 
 
 /**
- * FeatureCardLit - Lit-based feature card component
- * @property {Object} feature - Feature data object
- * @property {Object} bus - EventBus instance for emitting events
- * @property {Array} teams - Array of team objects
- * @property {boolean} condensed - Whether to render in condensed mode
- * @property {boolean} selected - Whether this card is selected
- * @property {Object} project - Project object for border color
+ * FeatureCardLit - Lit-based feature card component.
+ * Each card self-manages layout classes and ghost title visibility
+ * via a ResizeObserver - no board-level measurement needed.
  */
 export class FeatureCardLit extends LitElement {
   static properties = {
@@ -27,7 +22,6 @@ export class FeatureCardLit extends LitElement {
     condensed: { type: Boolean },
     selected: { type: Boolean },
     project: { type: Object },
-    titleOverflows: { type: Boolean, state: true }
   };
 
   static styles = css`
@@ -404,618 +398,242 @@ export class FeatureCardLit extends LitElement {
     this.condensed = false;
     this.selected = false;
     this.project = null;
-    this.titleOverflows = false;
-    // Layout state supplied by FeatureBoard
-    this._lastLayout = null;
-    this._lastAppliedState = null; // Cache to avoid redundant applyLayout work
-    this._cachedRootCard = null; // Cache for root card element
-    this._cachedTitleEl = null; // Cache for title element
-    this._classState = { smallFeature: false, titleOverflow: false, narrow: false, culled: false, ghostVisible: false }; // Cache class state
-    this._abortController = new AbortController();
-    this._suppressClickUntil = 0; // ignore clicks shortly after drag end
-    // Create ghost title element (lives outside shadow DOM)
-    // Inline ghost element reference (now rendered in shadow DOM)
-    this._ghostTitle = null;
-    // Track whether a ghost title was visible before a drag so we can restore it
-    this._ghostTitleWasVisibleBeforeDrag = false;
-    this._suppressGhostDuringInteraction = false;
-    // Mark host as a possible tour anchor
-    try{ this.setAttribute('data-tour','feature-card'); }catch(e){}
+    this._suppressClickUntil = 0;
+    this._rootCard = null;
+    this._titleEl = null;
+    this._ghostEl = null;
+    this._width = 0;          // cached from ResizeObserver — no DOM read needed
+    this._lastTitle = null;    // track title changes for overflow re-check
+    try { this.setAttribute('data-tour', 'feature-card'); } catch (e) {}
   }
 
-  // ----- Ghost title helpers (centralized) -----
-  _appendGhostToBoard(g, featureBoard) {
-    // Deprecated: ghosts are now rendered inside the FeatureCard shadow DOM.
-    return;
-  }
+  // ---- Static batched layout scheduler ----
+  // Collects all cards needing layout, then does ALL reads in one pass
+  // followed by ALL writes — exactly one forced reflow per batch.
+  static _pendingCards = new Set();
+  static _batchScheduled = false;
 
-  _createGhostIfNeeded(featureBoard) {
-    // No-op: ghost exists in render output; ensure reference cached
-    try {
-      if (this._ghostTitle) return this._ghostTitle;
-      this._ghostTitle = this.shadowRoot && this.shadowRoot.querySelector('.ghost-title');
-      return this._ghostTitle;
-    } catch (e) { return null; }
-  }
+  static _scheduleBatch() {
+    if (FeatureCardLit._batchScheduled) return;
+    FeatureCardLit._batchScheduled = true;
+    requestAnimationFrame(() => {
+      FeatureCardLit._batchScheduled = false;
+      const cards = Array.from(FeatureCardLit._pendingCards);
+      FeatureCardLit._pendingCards.clear();
 
-  _showGhostWithLayout(layout, borderColor) {
-    try {
-      if (!layout) return;
-      // Ensure inline ghost exists
-      this._createGhostIfNeeded();
-      const g = this._ghostTitle;
-      if (!g) return;
-      // update content
-      try {
-        const textNode = g.querySelector('.ghost-title-text');
-        if (textNode) {
-          try { textNode.innerHTML = this._splitTitleAtMiddle(this.feature && this.feature.title); } catch (e) { textNode.textContent = this.feature && this.feature.title || ''; }
+      // --- Read phase (one forced reflow, then all reads are cached) ---
+      const results = [];
+      for (const card of cards) {
+        const rootCard = card._rootCard;
+        if (!rootCard) continue;
+        const w = card._width;
+        const isSmall = w < 40;
+        let titleOverflows = isSmall;
+        if (!isSmall) {
+          if (!card._titleEl) card._titleEl = rootCard.querySelector('.feature-title');
+          const titleEl = card._titleEl;
+          if (titleEl) {
+            titleOverflows = titleEl.scrollWidth > titleEl.clientWidth + 2;
+          }
         }
-      } catch (e) {}
-      // apply border color as left border to visually match previous behaviour
-      try { g.style.borderColor = borderColor || 'rgba(0,0,0,0.25)'; } catch (e) {}
-      // show via host class
-      try { this.classList.add('ghost-visible'); } catch (e) {}
-    } catch (e) { }
+        results.push({ card, rootCard, w, isSmall, isCulled: w < 70, titleOverflows });
+      }
+
+      // --- Write phase (no reads after this point) ---
+      for (const r of results) {
+        r.rootCard.classList.toggle('small-feature', r.isSmall);
+        r.rootCard.classList.toggle('culled', r.isCulled);
+        r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
+        r.card.classList.toggle('ghost-visible', r.titleOverflows);
+        r.card.classList.toggle('title-overflow', r.titleOverflows);
+
+        if (r.titleOverflows) {
+          if (!r.card._ghostEl) r.card._ghostEl = r.card.shadowRoot?.querySelector('.ghost-title');
+          const g = r.card._ghostEl;
+          if (g) {
+            const textNode = g.querySelector('.ghost-title-text');
+            if (textNode) {
+              try { textNode.innerHTML = r.card._splitTitleAtMiddle(r.card.feature?.title); }
+              catch (e) { textNode.textContent = r.card.feature?.title || ''; }
+            }
+            // Use style.left (set by board) instead of offsetLeft to avoid forced reflow
+            g.classList.toggle('right', (parseFloat(r.card.style.left) || 0) < 200);
+            g.style.borderColor = r.card.project?.color || 'rgba(0,0,0,0.25)';
+          }
+        }
+      }
+    });
   }
 
-  _hideGhost() {
-    try {
-      try { this.classList.remove('ghost-visible'); } catch (e) {}
-    } catch (e) { }
+  _requestLayout() {
+    // Skip if ResizeObserver hasn't delivered a real width yet.
+    // Prevents the first batch (triggered by updated()) from running
+    // with _width=0 and incorrectly showing ghosts on every card.
+    if (this._width === 0) return;
+    FeatureCardLit._pendingCards.add(this);
+    FeatureCardLit._scheduleBatch();
   }
 
-  _removeGhost() {
-    try {
-      // Inline ghost is rendered via template; only clear cached ref
-      try { this._ghostTitle = null; } catch (e) {}
-    } catch (e) { this._ghostTitle = null; }
+  connectedCallback() {
+    super.connectedCallback();
+    // ResizeObserver provides width via contentRect — no DOM read needed.
+    // Callback adds this card to the batched layout scheduler.
+    this._ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        this._width = entry.contentRect.width;
+      }
+      this._requestLayout();
+    });
+    this._ro.observe(this);
+    // Re-render when feature data updates
+    this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, () => {
+      try { this.requestUpdate(); } catch (e) {}
+    });
+    // Suppress clicks after drag ends
+    this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
+      if (p && String(p.featureId) === String(this.feature?.id)) {
+        this._suppressClickUntil = Date.now() + 250;
+      }
+    });
+    // Mouse handler for drag and resize
+    this._onMouseDown = this._handleMouseDown.bind(this);
+    this.addEventListener('mousedown', this._onMouseDown);
   }
-  // ----- end ghost helpers -----
 
-  updated(changed) {
-    // Reflect dirty state to inner card immediately so visual updates (resize/move) show the style
-    const inner = this.shadowRoot?.querySelector?.('.feature-card');
-    if (inner) inner.classList.toggle('dirty', this.feature.dirty);
-    // reflect dirty on host as well for external styles/tests
-    this.classList.toggle('dirty', this.feature?.dirty);
-    this.setAttribute('data-feature-id', String(this.feature.id));
-    // Reflect title overflow state as a host class so consumers can consistently
-    // determine whether to show ghost titles without reading layout DOM metrics.
-    try { this.classList.toggle('title-overflow', !!this.titleOverflows); } catch (e) { }
-    
-    // Ghost markup is rendered inside the FeatureCard; visibility is
-    // controlled via host class (`ghost-visible`).
+  firstUpdated() {
+    this._rootCard = this.shadowRoot?.querySelector('.feature-card');
+  }
+
+  updated() {
+    if (!this._rootCard) this._rootCard = this.shadowRoot?.querySelector('.feature-card');
+    const inner = this._rootCard;
+    if (inner) inner.classList.toggle('dirty', !!this.feature?.dirty);
+    this.classList.toggle('dirty', !!this.feature?.dirty);
+    this.setAttribute('data-feature-id', String(this.feature?.id));
+    // Only schedule a layout check when title text changes.
+    // Width changes are handled by ResizeObserver (no action needed here).
+    const title = this.feature?.title;
+    if (title !== this._lastTitle) {
+      this._lastTitle = title;
+      this._requestLayout();
+    }
+  }
+
+  disconnectedCallback() {
+    FeatureCardLit._pendingCards.delete(this);
+    this._ro?.disconnect();
+    try { this._unsubFeaturesUpdated?.(); } catch (e) {}
+    try { this._unsubDragEnd?.(); } catch (e) {}
+    this.removeEventListener('mousedown', this._onMouseDown);
+    if (this._boundOnPreMove) {
+      window.removeEventListener('mousemove', this._boundOnPreMove);
+      window.removeEventListener('pointermove', this._boundOnPreMove);
+    }
+    if (this._boundOnPreUp) {
+      window.removeEventListener('mouseup', this._boundOnPreUp);
+      window.removeEventListener('pointerup', this._boundOnPreUp);
+    }
+    super.disconnectedCallback();
   }
 
   /**
-   * Apply lightweight visual updates without forcing a full re-render.
-   * Accepts CSS left/width values (strings with px or numbers), selection and dirty flags, and project info.
+   * Apply lightweight visual updates without a full re-render.
+   * Called by FeatureBoard.updateCardsById() for incremental updates.
    */
   applyVisuals({ left, width, selected, dirty, project } = {}) {
-    // Optional instrumentation
-    if (featureFlags?.serviceInstrumentation) {
-      console.log('[FeatureCard] applyVisuals', this.feature.id, { left, width, selected, dirty, project });
-    }
-    console.log('[FeatureCard] applyVisuals', this.feature?.id, 'dirty:', dirty, 'current feature.dirty:', this.feature?.dirty);
-    
-    const widthChanged = width !== undefined;
-    
-    try {
-      const px = typeof left === 'number' ? `${left}px` : left;
-      this.style.left = px;
-      const pxw = typeof width === 'number' ? `${width}px` : width;
-      this.style.width = pxw;
-      this.selected = selected;
-      // Update dirty flag without overwriting the entire feature object
-      if (this.feature && dirty !== undefined) {
-        this.feature.dirty = dirty;
-      }
-      this.shadowRoot?.classList.toggle('dirty', dirty);
-      // Also reflect dirty on host to support tests and external styles
-      this.classList.toggle('dirty', dirty);
-      this.project = project;
-      // Force an update cycle if necessary
-      this.requestUpdate();
-      
-      // If width changed, ask parent board to re-measure layouts once.
-      if (widthChanged) {
-        try {
-          const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
-          const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
-          if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow();
-        } catch (e) { }
-      }
-    } catch (e) { /* swallow to allow caller fallback */ }
+    if (left !== undefined) this.style.left = typeof left === 'number' ? `${left}px` : left;
+    if (width !== undefined) this.style.width = typeof width === 'number' ? `${width}px` : width;
+    if (selected !== undefined) this.selected = selected;
+    if (dirty !== undefined && this.feature) this.feature.dirty = dirty;
+    if (project !== undefined) this.project = project;
+    this.classList.toggle('dirty', !!dirty);
+    this.requestUpdate();
   }
 
-  // Transient live-dates used during drag/resize to avoid writing directly
-  // into text nodes that lit manages. Use `setLiveDates(text)` to show
-  // a temporary date string; `clearLiveDates()` restores the lit-rendered value.
+  // Transient live-dates used during drag/resize
   setLiveDates(text) {
     try {
       const container = this.shadowRoot?.querySelector?.('.feature-dates');
       if (!container) return;
       const live = container.querySelector('.dates-live');
       const def = container.querySelector('.dates-default');
-      if (live) { 
-        live.textContent = text ?? ''; 
-        live.style.display = text ? '' : 'none'; 
-      }
-      if (def) { 
-        def.style.display = text ? 'none' : ''; 
-      }
-    } catch (e) { }
+      if (live) { live.textContent = text ?? ''; live.style.display = text ? '' : 'none'; }
+      if (def) { def.style.display = text ? 'none' : ''; }
+    } catch (e) {}
   }
 
   clearLiveDates() {
     this.setLiveDates('');
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    
-    // Ghost title will be created on-demand and owned by the FeatureCard
-    this._ghostTitle = null;
-    // Refresh visuals when features or capacity data update (childrenByEpic may change)
-    this._onFeaturesUpdated = () => { try { this.requestUpdate(); } catch(e){} };
-    this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
+  _handleMouseDown(e) {
+    const rootCard = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
+    if (rootCard?.classList.contains('small-feature')) return;
 
-    // Hide/restore ghost title during drag to avoid visual duplication; request board to re-measure after drag ends
-    try {
-      this._unsubDragMove = bus.on(DragEvents.MOVE, (p) => {
-        try {
-          if (p && String(p.featureId) === String(this.feature?.id)) {
-            try {
-              // Remember prior visibility and hide the ghost during move to
-              // prevent overlap between the moving card and the floating title.
-              try { this._createGhostIfNeeded(); } catch (e) {}
-              try { this._ghostTitleWasVisibleBeforeDrag = !!this.classList.contains('ghost-visible'); } catch (e) { this._ghostTitleWasVisibleBeforeDrag = false; }
-              // Suppress showing the ghost while the user is interacting (drag/resize)
-              this._suppressGhostDuringInteraction = true;
-              // Invalidate cached layout so next applyLayout will process the change
-              this._lastLayout = null;
-              try { this.classList.remove('ghost-visible'); } catch (e) {}
-            } catch (e) { }
-          }
-        } catch (e) { }
-      });
-      this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
-        try {
-          if (p && String(p.featureId) === String(this.feature?.id)) {
-            // Suppress clicks fired immediately after a drop
-            this._suppressClickUntil = Date.now() + 250;
-          }
-        } catch (e) { }
-        // After drag ends, restore the ghost visibility to its pre-drag state
-        try {
-          try {
-            const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
-            const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
-            const featureId = this.feature && this.feature.id;
-            
-            // Clear suppression now that interaction ended
-            this._suppressGhostDuringInteraction = false;
-            
-            // Restore ghost visibility to pre-drag state
-            if (this._ghostTitleWasVisibleBeforeDrag) {
-              try { this.classList.add('ghost-visible'); } catch (e) {}
-              this._classState.ghostVisible = true;
-            }
-            
-            // Mark dirty and schedule measurement to update geometry after move/resize
-            if (board) {
-              try {
-                if (board._layout && typeof board._layout.markDirty === 'function' && featureId) {
-                  board._layout.markDirty(String(featureId));
-                }
-              } catch (e) { }
-              try { if (typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) { }
-            }
-          } catch (e) { }
-        } catch (e) { }
-      });
-    } catch (e) { }
-    
-    // Add scroll listener to update ghost title position on scroll
-    this._onScroll = () => {
-      if (this.titleOverflows) {
-        try { const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null; const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board'); if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) {}
-      }
-    };
-    
-    // Find the scrollable parent container and attach listener
-    requestAnimationFrame(() => {
-      try {
-        let scrollParent = this.parentElement;
-        while (scrollParent) {
-          const overflow = window.getComputedStyle(scrollParent).overflow;
-          if (overflow === 'auto' || overflow === 'scroll') {
-            scrollParent.addEventListener('scroll', this._onScroll);
-            this._scrollParent = scrollParent;
-            break;
-          }
-          scrollParent = scrollParent.parentElement;
-        }
-      } catch (e) { }
-    });
-    
-    // Also listen to window scroll as fallback
-    window.addEventListener('scroll', this._onScroll, true);
-    
-    // attach mousedown handlers for dragging and resizing directly on the host
-    try {
-      this.addEventListener('mousedown', this._onHostMouseDown = (e) => {
-        // Check if this is a small feature - don't allow dragging
-        const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-        if (rootCard && rootCard.classList.contains('small-feature')) {
-          // Small features are click-only, no drag
-          return;
-        }
-        
-        const path = (e.composedPath && e.composedPath()) || [];
-        const rh = this.shadowRoot && this.shadowRoot.querySelector('.drag-handle');
-        const cameFromResizeHandle = path.includes(rh);
-        if (cameFromResizeHandle) { e.stopPropagation(); const datesEl = this.shadowRoot && this.shadowRoot.querySelector('.feature-dates'); startResize(e, this.feature, this, datesEl, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures()); return; }
-        e.stopPropagation();
-        const startX = e.clientX;
-        this._boundOnPreMove = null;
-        this._boundOnPreUp = null;
-        const self = this;
-        function onPreMove(ev) {
-          const dx = ev.clientX - startX;
-          if (Math.abs(dx) > 5) {
-            try { if (self._boundOnPreMove) { window.removeEventListener('mousemove', self._boundOnPreMove); window.removeEventListener('pointermove', self._boundOnPreMove); self._boundOnPreMove = null; } } catch (e) {}
-            try { if (self._boundOnPreUp) { window.removeEventListener('mouseup', self._boundOnPreUp); window.removeEventListener('pointerup', self._boundOnPreUp); self._boundOnPreUp = null; } } catch(e) {}
-            startDragMove(e, self.feature, self, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
-          }
-        }
-        // bind with correct `this` for inside onPreMove and keep reference so it can be removed
-        this._boundOnPreMove = onPreMove.bind(this);
-        this._boundOnPreUp = (function onUp(ev){
-          try {
-            if (self._boundOnPreMove) {
-              window.removeEventListener('mousemove', self._boundOnPreMove);
-              window.removeEventListener('pointermove', self._boundOnPreMove);
-              self._boundOnPreMove = null;
-            }
-          } catch (e) {}
-          try {
-            window.removeEventListener('mouseup', self._boundOnPreUp);
-            window.removeEventListener('pointerup', self._boundOnPreUp);
-            self._boundOnPreUp = null;
-          } catch(e) {}
-        }).bind(this);
-        window.addEventListener('mousemove', this._boundOnPreMove);
-        window.addEventListener('pointermove', this._boundOnPreMove);
-        window.addEventListener('mouseup', this._boundOnPreUp);
-        window.addEventListener('pointerup', this._boundOnPreUp);
-      });
-    } catch (e) {}
-
-    // Ghost creation is centralized in the board; FeatureBoard will create
-    // per-card ghost elements are rendered in the FeatureCard template.
-  }
-
-  /**
-   * Apply a lightweight layout object supplied by the FeatureBoard observer.
-   * This method applies classes and updates ghost title positioning synchronously
-   * to avoid additional requestAnimationFrame cycles per card.
-   */
-  applyLayout(layout = {}) {
-    try {
-      // Quick check: if state hasn't changed, bail out early
-      // Use a faster comparison by checking individual properties
-      // Note: don't early-exit if _suppressGhostDuringInteraction was recently changed
-      // (detected by _lastLayout being null, which we set when clearing suppression)
-      if (this._lastLayout && 
-          this._lastLayout.width === layout.width &&
-          this._lastLayout.smallFeature === layout.smallFeature &&
-          this._lastLayout.titleOverflows === layout.titleOverflows &&
-          this._lastLayout.contentFits === layout.contentFits &&
-          this._lastLayout.culled === layout.culled &&
-          this._cachedRootCard) {
-        // State unchanged - skip all DOM work
-        return;
-      }
-      this._lastLayout = layout;
-      
-      // Cache root card reference to avoid repeated querySelector
-      if (!this._cachedRootCard) {
-        this._cachedRootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
-      }
-      const rootCard = this._cachedRootCard;
-      if (!rootCard) return;
-
-      const tolerance = 2;
-      // Prefer layout.width (pre-computed) over DOM query
-      const w = layout.width !== undefined ? layout.width : (rootCard.clientWidth || 0);
-      const isSmallFeature = w < 40;
-
-      // Use cached state instead of classList.contains() to avoid forced style recalc
-      if (isSmallFeature !== this._classState.smallFeature) {
-        if (isSmallFeature) {
-          rootCard.classList.add('small-feature');
-          this.classList.add('small-feature');
-          this._classState.smallFeature = true;
-          this.titleOverflows = true;
-        } else {
-          rootCard.classList.remove('small-feature');
-          this.classList.remove('small-feature');
-          this._classState.smallFeature = false;
-          
-          // Use pre-computed titleOverflows from layout if available
-          if (layout.titleOverflows !== undefined) {
-            this.titleOverflows = !!layout.titleOverflows;
-          } else {
-            // Fallback to DOM measurement only when not pre-computed
-            try {
-              if (!this._cachedTitleEl) {
-                this._cachedTitleEl = rootCard.querySelector('.feature-title');
-              }
-              const innerTitle = this._cachedTitleEl;
-              if (innerTitle) {
-                const titleFits = innerTitle.scrollWidth <= (innerTitle.clientWidth + tolerance);
-                this.titleOverflows = !titleFits;
-              } else {
-                this.titleOverflows = false;
-              }
-            } catch (e) { this.titleOverflows = false; }
-          }
-        }
-      } else if (!isSmallFeature && layout.titleOverflows !== undefined) {
-        // Update titleOverflows from layout if available
-        this.titleOverflows = !!layout.titleOverflows;
-      }
-
-      // Title overflow class
-      if (this.titleOverflows !== this._classState.titleOverflow) {
-        this.classList.toggle('title-overflow', this.titleOverflows);
-        this._classState.titleOverflow = this.titleOverflows;
-      }
-
-      // Content fits (narrow) class
-      if (layout.contentFits !== undefined) {
-        const shouldBeNarrow = !layout.contentFits;
-        if (shouldBeNarrow !== this._classState.narrow) {
-          if (shouldBeNarrow) {
-            rootCard.classList.add('narrow');
-            this.classList.add('narrow');
-          } else {
-            rootCard.classList.remove('narrow');
-            this.classList.remove('narrow');
-          }
-          this._classState.narrow = shouldBeNarrow;
-        }
-      }
-
-      // Culled class
-      if (layout.culled !== undefined) {
-        const shouldBeCulled = !!layout.culled;
-        if (shouldBeCulled !== this._classState.culled) {
-          if (shouldBeCulled) {
-            rootCard.classList.add('culled');
-            this.classList.add('culled');
-          } else {
-            rootCard.classList.remove('culled');
-            this.classList.remove('culled');
-          }
-          this._classState.culled = shouldBeCulled;
-        }
-      }
-
-      // Create (once) and show/hide ghost title using centralized helpers.
-      // Don't require the board element to exist — ghost is inline in the card.
-      try {
-        // Use pre-computed borderColor from layout to avoid getComputedStyle call
-        const borderColor = layout.borderColor || 'rgba(0,0,0,0.25)';
-        const shouldShowGhost = this.titleOverflows && !this._suppressGhostDuringInteraction;
-        
-        // Use cached state instead of classList.contains()
-        if (shouldShowGhost !== this._classState.ghostVisible) {
-          this._classState.ghostVisible = shouldShowGhost;
-          
-          if (shouldShowGhost) {
-            // Show ghost and update content synchronously (text update is fast)
-            const g = this._createGhostIfNeeded();
-            if (g) {
-              const textNode = g.querySelector('.ghost-title-text');
-              if (textNode) {
-                try { textNode.innerHTML = this._splitTitleAtMiddle(this.feature && this.feature.title); } catch (e) { textNode.textContent = this.feature && this.feature.title || ''; }
-              }
-              g.style.borderColor = borderColor;
-            }
-            this.classList.add('ghost-visible');
-          } else {
-            this.classList.remove('ghost-visible');
-          }
-        }
-      } catch (e) { }
-    } catch (e) { }
-  }
-
-  disconnectedCallback() {
-    // No per-card ResizeObserver anymore; board-level observer handles measurements.
-    try { if (typeof this._unsubDragMove === 'function') this._unsubDragMove(); } catch (e) { }
-    try { if (typeof this._unsubDragEnd === 'function') this._unsubDragEnd(); } catch (e) { }
-    try { if (typeof this._unsubFeaturesUpdated === 'function') this._unsubFeaturesUpdated(); } catch (e) { }
-    try { if (this._onHostMouseDown) this.removeEventListener('mousedown', this._onHostMouseDown); } catch (e) {}
-    try { if (this._boundOnPreUp) { window.removeEventListener('mouseup', this._boundOnPreUp); window.removeEventListener('pointerup', this._boundOnPreUp); this._boundOnPreUp = null; } } catch (e) {}
-    
-    // Clean up scroll listeners
-    try {
-      if (this._scrollParent && this._onScroll) {
-        this._scrollParent.removeEventListener('scroll', this._onScroll);
-      }
-      if (this._onScroll) {
-        window.removeEventListener('scroll', this._onScroll, true);
-      }
-    } catch (e) { }
-    
-    // Remove ghost title element
-    try { this._removeGhost(); } catch (e) { }
-    
-    super.disconnectedCallback();
-  }
-
-  // Per-card ResizeObserver processing removed; FeatureBoard supplies layout via `applyLayout(layout)`.
-
-  _updateGhostTitlePosition() {
-    try {
-      if (!this._lastLayout) return;
-      const layout = this._lastLayout || {};
-      const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
-      const featureBoard = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
-      if (!featureBoard) return;
-
-      const cardRect = layout.cardRect || { left: this.offsetLeft || 0, top: this.offsetTop || 0, width: 0, height: 0 };
-      const boardRect = layout.boardRect || { left: 0, top: 0, width: 0, height: 0 };
-      const borderColor = layout.borderColor || '';
-
-      if (this.titleOverflows) {
-        this._createGhostIfNeeded(featureBoard);
-        this._showGhostWithLayout({ cardRect, boardRect }, borderColor);
-      } else {
-        this._hideGhost();
-      }
-    } catch (e) { }
-  }
-
-  // Force immediate ghost visibility check without waiting for full layout cycle
-  _updateGhostVisibilityNow() {
-    try {
-      // Measure current title overflow state directly from DOM
-      let actualTitleOverflows = false;
-      let measuredWidth = 0;
-      
-      const rootCard = this._cachedRootCard || (this.shadowRoot && this.shadowRoot.querySelector('.feature-card'));
-      if (rootCard) {
-        const width = rootCard.clientWidth || 0;
-        measuredWidth = width;
-        
-        // Check if it's a small feature (always overflows)
-        if (width < 40) {
-          actualTitleOverflows = true;
-        } else {
-          // Measure title element
-          const titleEl = this._cachedTitleEl || rootCard.querySelector('.feature-title');
-          if (titleEl) {
-            const tolerance = 2;
-            const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
-            actualTitleOverflows = !titleFits;
-          }
-        }
-      }
-      
-      // Update the cached property
-      this.titleOverflows = actualTitleOverflows;
-      
-      // Store accurate measurement in LayoutManager with current width
-      try {
-        const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
-        const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
-        const featureId = this.feature && this.feature.id;
-        if (board && board._layout && featureId) {
-          const geom = board._layout.getGeometry(String(featureId));
-          if (geom) {
-            board._layout.setGeometry(String(featureId), {
-              ...geom,
-              width: measuredWidth, // Update width to match measurement
-              titleOverflows: actualTitleOverflows,
-              contentFits: !actualTitleOverflows
-            });
-          }
-        }
-      } catch (e) { }
-      
-      const shouldShowGhost = actualTitleOverflows && !this._suppressGhostDuringInteraction;
-      
-      if (shouldShowGhost !== this._classState.ghostVisible) {
-        this._classState.ghostVisible = shouldShowGhost;
-        
-        if (shouldShowGhost) {
-          const g = this._createGhostIfNeeded();
-          if (g) {
-            const textNode = g.querySelector('.ghost-title-text');
-            if (textNode) {
-              try { textNode.innerHTML = this._splitTitleAtMiddle(this.feature && this.feature.title); } catch (e) { textNode.textContent = this.feature && this.feature.title || ''; }
-            }
-            // Use current border color or default
-            const borderColor = rootCard ? getComputedStyle(rootCard).borderLeftColor : 'rgba(0,0,0,0.25)';
-            g.style.borderColor = borderColor;
-          }
-          this.classList.add('ghost-visible');
-        } else {
-          this.classList.remove('ghost-visible');
-        }
-      }
-    } catch (e) { }
-  }
-
-  _splitTitleAtMiddle(title) {
-    if (!title) return '';
-    const words = String(title).split(/\s+/);
-    if (words.length < 4) return title;
-    const mid = Math.floor(words.length / 2);
-    const firstHalf = words.slice(0, mid).join(' ');
-    const secondHalf = words.slice(mid).join(' ');
-    return `${this._escapeHtml(firstHalf)}<br/>${this._escapeHtml(secondHalf)}`;
-  }
-
-  _escapeHtml(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  _handleClick(e) {
-    // If this click happened shortly after a drag end for this card, ignore it
-    if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
-
-    // If the click originated from the resize handle, ignore it
-    try {
-      const path = (e.composedPath && e.composedPath()) || [];
-      // path may include shadow DOM nodes; check for any element with class 'drag-handle'
-      const cameFromHandle = path.some(p => p && p.classList && p.classList.contains && p.classList.contains('drag-handle'));
-      if (cameFromHandle) return;
-    } catch (err) { /* ignore path errors and continue */ }
-
-    // If this click is part of a double-click it should be ignored (double-click handles revert)
-    if (e.detail && e.detail === 2) {
+    const path = (e.composedPath && e.composedPath()) || [];
+    const rh = this.shadowRoot?.querySelector('.drag-handle');
+    if (path.includes(rh)) {
+      e.stopPropagation();
+      const datesEl = this.shadowRoot?.querySelector('.feature-dates');
+      startResize(e, this.feature, this, datesEl, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
       return;
     }
 
-    // Emit the SELECTED events for other components to subscribe to.
-    // Use the latest effective feature from state to ensure changedFields/dirty
-    // are present for the details panel (handles queued optimistic updates).
-    const eff = state.getEffectiveFeatureById(this.feature && this.feature.id) || this.feature;
+    e.stopPropagation();
+    const startX = e.clientX;
+    const self = this;
+
+    const onPreMove = (ev) => {
+      if (Math.abs(ev.clientX - startX) > 5) {
+        cleanup();
+        startDragMove(e, self.feature, self, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
+      }
+    };
+    const onPreUp = () => cleanup();
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onPreMove);
+      window.removeEventListener('pointermove', onPreMove);
+      window.removeEventListener('mouseup', onPreUp);
+      window.removeEventListener('pointerup', onPreUp);
+      self._boundOnPreMove = null;
+      self._boundOnPreUp = null;
+    };
+
+    this._boundOnPreMove = onPreMove;
+    this._boundOnPreUp = onPreUp;
+    window.addEventListener('mousemove', onPreMove);
+    window.addEventListener('pointermove', onPreMove);
+    window.addEventListener('mouseup', onPreUp);
+    window.addEventListener('pointerup', onPreUp);
+  }
+
+  _handleClick(e) {
+    if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
+    try {
+      const path = (e.composedPath && e.composedPath()) || [];
+      if (path.some(p => p?.classList?.contains?.('drag-handle'))) return;
+    } catch (err) {}
+    if (e.detail === 2) return;
+    const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
     this.bus.emit(FeatureEvents.SELECTED, eff);
-    if (featureFlags && featureFlags.serviceInstrumentation)
-      console.log('[FeatureCardLit] emitted SELECTED for feature', this.feature.id, eff);
   }
 
   _handleDoubleClick(e) {
-    // If the dblclick originated from the resize handle, ignore it
     try {
       const path = (e.composedPath && e.composedPath()) || [];
-      const cameFromHandle = path.some(p => p && p.classList && p.classList.contains && p.classList.contains('drag-handle'));
-      if (cameFromHandle) return;
-    } catch (err) { /* ignore */ }
-
+      if (path.some(p => p?.classList?.contains?.('drag-handle'))) return;
+    } catch (err) {}
     try {
-      // Revert changes for this feature via state service
-      if (this.feature && this.feature.id) {
-        state.revertFeature(this.feature.id);
-        if (featureFlags && featureFlags.serviceInstrumentation) console.log('[FeatureCardLit] reverted feature', this.feature.id);
-      }
-    } catch (err) { /* swallow errors to avoid breaking UI */ }
+      if (this.feature?.id) state.revertFeature(this.feature.id);
+    } catch (err) {}
   }
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
-    // If this feature has children (epic with children), dim the capacity badges
     const hasChildren = (() => {
       try {
-        const map = state._dataInitService && state._dataInitService.getChildrenByEpicMap ? state._dataInitService.getChildrenByEpicMap() : state.childrenByEpic;
-        const arr = map && map.get ? map.get(this.feature.id) : (state.childrenByEpic && state.childrenByEpic.get ? state.childrenByEpic.get(this.feature.id) : null);
+        const map = state._dataInitService?.getChildrenByEpicMap?.() || state.childrenByEpic;
+        const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
       } catch (e) { return false; }
     })();
@@ -1038,7 +656,7 @@ export class FeatureCardLit extends LitElement {
 
     return html`
       <div class="team-load-row ${hasChildren ? 'dimmed' : ''}" title=${hasChildren ? 'This feature has child items; using allocations from children in calculations' : ''}>
-        ${hasChildren ? html`<span class="dim-info" role="img" style="font-size: 16px">ℹ️</span>` : ''}
+        ${hasChildren ? html`<span class="dim-info" role="img" style="font-size: 16px">\u2139\uFE0F</span>` : ''}
         ${orgBox}
         ${teamBoxes}
       </div>
@@ -1052,9 +670,23 @@ export class FeatureCardLit extends LitElement {
     return html`<span class="feature-card-icon feature">${featureTemplate}</span>`;
   }
 
+  _splitTitleAtMiddle(title) {
+    if (!title) return '';
+    const words = String(title).split(/\s+/);
+    if (words.length < 4) return title;
+    const mid = Math.floor(words.length / 2);
+    const firstHalf = words.slice(0, mid).join(' ');
+    const secondHalf = words.slice(mid).join(' ');
+    return `${this._escapeHtml(firstHalf)}<br/>${this._escapeHtml(secondHalf)}`;
+  }
+
+  _escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   render() {
     const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
-    
+
     const cardClasses = {
       'feature-card': true,
       'selected': this.selected,
@@ -1063,10 +695,8 @@ export class FeatureCardLit extends LitElement {
       'ghosted': isUnplanned
     };
 
-    const borderColor = this.project?.color || '#666';
-
     return html`
-      <div 
+      <div
         class=${Object.keys(cardClasses).filter(k => cardClasses[k]).join(' ')}
         data-id=${this.feature.id}
         role="listitem"
@@ -1087,7 +717,7 @@ export class FeatureCardLit extends LitElement {
         </div>
         ${!this.condensed ? html`
           <div class="feature-dates">
-            <span class="dates-default">${this.feature.start} → ${this.feature.end}</span>
+            <span class="dates-default">${this.feature.start} \u2192 ${this.feature.end}</span>
             <span class="dates-live" aria-hidden="true" style="display:none"></span>
           </div>
         ` : ''}

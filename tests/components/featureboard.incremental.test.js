@@ -51,15 +51,17 @@ describe('FeatureBoard incremental updates', () => {
     card1.style.left = '10px';
     card1.style.width = '100px';
     board.appendChild(card1);
+    try { if (board && board._cardMap) board._cardMap.set('F1', card1); } catch(e) {}
 
     const card2 = document.createElement('feature-card-lit');
     card2.feature = features[1];
     card2.style.left = '200px';
     card2.style.width = '120px';
     board.appendChild(card2);
+    try { if (board && board._cardMap) board._cardMap.set('F2', card2); } catch(e) {}
 
     // Ensure state will return our source features when updateCardsById queries for them
-    state._featureService = { getEffectiveFeatureById: (id) => features.find(f => f.id === id) };
+    state._featureService = { getEffectiveFeatureById: (id) => features.find(f => f.id === id), getEffectiveFeatures: () => features };
 
     // Now change features and call update; provide precomputed layout values used by tests
     features[0].start = '2025-01-02'; features[0].end = '2025-01-08'; features[0]._left = 50; features[0]._width = 120;
