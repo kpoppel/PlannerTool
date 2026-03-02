@@ -407,6 +407,10 @@ export class FeatureCardLit extends LitElement {
     this.titleOverflows = false;
     // Layout state supplied by FeatureBoard
     this._lastLayout = null;
+    this._lastAppliedState = null; // Cache to avoid redundant applyLayout work
+    this._cachedRootCard = null; // Cache for root card element
+    this._cachedTitleEl = null; // Cache for title element
+    this._classState = { smallFeature: false, titleOverflow: false, narrow: false, culled: false, ghostVisible: false }; // Cache class state
     this._abortController = new AbortController();
     this._suppressClickUntil = 0; // ignore clicks shortly after drag end
     // Create ghost title element (lives outside shadow DOM)
@@ -569,6 +573,8 @@ export class FeatureCardLit extends LitElement {
               try { this._ghostTitleWasVisibleBeforeDrag = !!this.classList.contains('ghost-visible'); } catch (e) { this._ghostTitleWasVisibleBeforeDrag = false; }
               // Suppress showing the ghost while the user is interacting (drag/resize)
               this._suppressGhostDuringInteraction = true;
+              // Invalidate cached layout so next applyLayout will process the change
+              this._lastLayout = null;
               try { this.classList.remove('ghost-visible'); } catch (e) {}
             } catch (e) { }
           }
@@ -581,18 +587,23 @@ export class FeatureCardLit extends LitElement {
             this._suppressClickUntil = Date.now() + 250;
           }
         } catch (e) { }
-        // After drag ends, trigger a re-measure so `applyLayout()` will
-        // determine whether the ghost should be visible and will position it
-        // correctly. Always mark the feature as dirty and schedule a measurement
-        // so short moves (1-2 days) re-evaluate ghost visibility. Also clear
-        // the interaction suppression so applyLayout can re-evaluate visibility.
+        // After drag ends, restore the ghost visibility to its pre-drag state
         try {
           try {
             const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
             const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
             const featureId = this.feature && this.feature.id;
+            
             // Clear suppression now that interaction ended
             this._suppressGhostDuringInteraction = false;
+            
+            // Restore ghost visibility to pre-drag state
+            if (this._ghostTitleWasVisibleBeforeDrag) {
+              try { this.classList.add('ghost-visible'); } catch (e) {}
+              this._classState.ghostVisible = true;
+            }
+            
+            // Mark dirty and schedule measurement to update geometry after move/resize
             if (board) {
               try {
                 if (board._layout && typeof board._layout.markDirty === 'function' && featureId) {
@@ -693,77 +704,131 @@ export class FeatureCardLit extends LitElement {
    */
   applyLayout(layout = {}) {
     try {
-      this._lastLayout = layout || null;
-      const rootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
+      // Quick check: if state hasn't changed, bail out early
+      // Use a faster comparison by checking individual properties
+      // Note: don't early-exit if _suppressGhostDuringInteraction was recently changed
+      // (detected by _lastLayout being null, which we set when clearing suppression)
+      if (this._lastLayout && 
+          this._lastLayout.width === layout.width &&
+          this._lastLayout.smallFeature === layout.smallFeature &&
+          this._lastLayout.titleOverflows === layout.titleOverflows &&
+          this._lastLayout.contentFits === layout.contentFits &&
+          this._lastLayout.culled === layout.culled &&
+          this._cachedRootCard) {
+        // State unchanged - skip all DOM work
+        return;
+      }
+      this._lastLayout = layout;
+      
+      // Cache root card reference to avoid repeated querySelector
+      if (!this._cachedRootCard) {
+        this._cachedRootCard = this.shadowRoot && this.shadowRoot.querySelector('.feature-card');
+      }
+      const rootCard = this._cachedRootCard;
       if (!rootCard) return;
 
       const tolerance = 2;
-      const w = layout.width || (rootCard.clientWidth || 0);
+      // Prefer layout.width (pre-computed) over DOM query
+      const w = layout.width !== undefined ? layout.width : (rootCard.clientWidth || 0);
+      const isSmallFeature = w < 40;
 
-      if (w < 40) {
-        rootCard.classList.add('small-feature');
-        this.classList.add('small-feature');
-        this.titleOverflows = true;
-      } else {
-        rootCard.classList.remove('small-feature');
-        this.classList.remove('small-feature');
-        // If board supplied an explicit titleOverflows value use it; otherwise
-        // perform a per-card DOM check to determine overflow and let the
-        // card manage its own ghost lifecycle.
-        if (layout.titleOverflows !== undefined) {
-          this.titleOverflows = !!layout.titleOverflows;
+      // Use cached state instead of classList.contains() to avoid forced style recalc
+      if (isSmallFeature !== this._classState.smallFeature) {
+        if (isSmallFeature) {
+          rootCard.classList.add('small-feature');
+          this.classList.add('small-feature');
+          this._classState.smallFeature = true;
+          this.titleOverflows = true;
         } else {
-          try {
-            const innerTitle = rootCard.querySelector('.feature-title');
-            if (innerTitle) {
-              const titleFits = innerTitle.scrollWidth <= (innerTitle.clientWidth + tolerance);
-              this.titleOverflows = !titleFits;
-            } else {
-              this.titleOverflows = false;
-            }
-          } catch (e) { this.titleOverflows = false; }
+          rootCard.classList.remove('small-feature');
+          this.classList.remove('small-feature');
+          this._classState.smallFeature = false;
+          
+          // Use pre-computed titleOverflows from layout if available
+          if (layout.titleOverflows !== undefined) {
+            this.titleOverflows = !!layout.titleOverflows;
+          } else {
+            // Fallback to DOM measurement only when not pre-computed
+            try {
+              if (!this._cachedTitleEl) {
+                this._cachedTitleEl = rootCard.querySelector('.feature-title');
+              }
+              const innerTitle = this._cachedTitleEl;
+              if (innerTitle) {
+                const titleFits = innerTitle.scrollWidth <= (innerTitle.clientWidth + tolerance);
+                this.titleOverflows = !titleFits;
+              } else {
+                this.titleOverflows = false;
+              }
+            } catch (e) { this.titleOverflows = false; }
+          }
+        }
+      } else if (!isSmallFeature && layout.titleOverflows !== undefined) {
+        // Update titleOverflows from layout if available
+        this.titleOverflows = !!layout.titleOverflows;
+      }
+
+      // Title overflow class
+      if (this.titleOverflows !== this._classState.titleOverflow) {
+        this.classList.toggle('title-overflow', this.titleOverflows);
+        this._classState.titleOverflow = this.titleOverflows;
+      }
+
+      // Content fits (narrow) class
+      if (layout.contentFits !== undefined) {
+        const shouldBeNarrow = !layout.contentFits;
+        if (shouldBeNarrow !== this._classState.narrow) {
+          if (shouldBeNarrow) {
+            rootCard.classList.add('narrow');
+            this.classList.add('narrow');
+          } else {
+            rootCard.classList.remove('narrow');
+            this.classList.remove('narrow');
+          }
+          this._classState.narrow = shouldBeNarrow;
         }
       }
 
-      // Expose overflow as a CSS class on the host so other logic (and tests)
-      // can query the presence without triggering layout reads.
-      try { this.classList.toggle('title-overflow', !!this.titleOverflows); } catch (e) { }
-
-      if (layout.contentFits === true) {
-        rootCard.classList.remove('narrow');
-        this.classList.remove('narrow');
-      } else if (layout.contentFits === false) {
-        rootCard.classList.add('narrow');
-        this.classList.add('narrow');
-      }
-
-      if (layout.culled === true) {
-        rootCard.classList.add('culled');
-        this.classList.add('culled');
-      } else if (layout.culled === false) {
-        rootCard.classList.remove('culled');
-        this.classList.remove('culled');
+      // Culled class
+      if (layout.culled !== undefined) {
+        const shouldBeCulled = !!layout.culled;
+        if (shouldBeCulled !== this._classState.culled) {
+          if (shouldBeCulled) {
+            rootCard.classList.add('culled');
+            this.classList.add('culled');
+          } else {
+            rootCard.classList.remove('culled');
+            this.classList.remove('culled');
+          }
+          this._classState.culled = shouldBeCulled;
+        }
       }
 
       // Create (once) and show/hide ghost title using centralized helpers.
       // Don't require the board element to exist — ghost is inline in the card.
       try {
-        const borderColor = layout.borderColor || window.getComputedStyle(rootCard).getPropertyValue('border-left-color');
-        // Update inline ghost text and visibility based on overflow state
-        if (this.titleOverflows && !this._suppressGhostDuringInteraction) {
-          const g = this._createGhostIfNeeded();
-          try {
+        // Use pre-computed borderColor from layout to avoid getComputedStyle call
+        const borderColor = layout.borderColor || 'rgba(0,0,0,0.25)';
+        const shouldShowGhost = this.titleOverflows && !this._suppressGhostDuringInteraction;
+        
+        // Use cached state instead of classList.contains()
+        if (shouldShowGhost !== this._classState.ghostVisible) {
+          this._classState.ghostVisible = shouldShowGhost;
+          
+          if (shouldShowGhost) {
+            // Show ghost and update content synchronously (text update is fast)
+            const g = this._createGhostIfNeeded();
             if (g) {
               const textNode = g.querySelector('.ghost-title-text');
               if (textNode) {
                 try { textNode.innerHTML = this._splitTitleAtMiddle(this.feature && this.feature.title); } catch (e) { textNode.textContent = this.feature && this.feature.title || ''; }
               }
-              try { g.style.borderColor = borderColor || 'rgba(0,0,0,0.25)'; } catch (e) {}
+              g.style.borderColor = borderColor;
             }
-          } catch (e) {}
-          try { this.classList.add('ghost-visible'); } catch (e) {}
-        } else {
-          try { this.classList.remove('ghost-visible'); } catch (e) {}
+            this.classList.add('ghost-visible');
+          } else {
+            this.classList.remove('ghost-visible');
+          }
         }
       } catch (e) { }
     } catch (e) { }
@@ -812,6 +877,77 @@ export class FeatureCardLit extends LitElement {
         this._showGhostWithLayout({ cardRect, boardRect }, borderColor);
       } else {
         this._hideGhost();
+      }
+    } catch (e) { }
+  }
+
+  // Force immediate ghost visibility check without waiting for full layout cycle
+  _updateGhostVisibilityNow() {
+    try {
+      // Measure current title overflow state directly from DOM
+      let actualTitleOverflows = false;
+      let measuredWidth = 0;
+      
+      const rootCard = this._cachedRootCard || (this.shadowRoot && this.shadowRoot.querySelector('.feature-card'));
+      if (rootCard) {
+        const width = rootCard.clientWidth || 0;
+        measuredWidth = width;
+        
+        // Check if it's a small feature (always overflows)
+        if (width < 40) {
+          actualTitleOverflows = true;
+        } else {
+          // Measure title element
+          const titleEl = this._cachedTitleEl || rootCard.querySelector('.feature-title');
+          if (titleEl) {
+            const tolerance = 2;
+            const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
+            actualTitleOverflows = !titleFits;
+          }
+        }
+      }
+      
+      // Update the cached property
+      this.titleOverflows = actualTitleOverflows;
+      
+      // Store accurate measurement in LayoutManager with current width
+      try {
+        const _root = (this.getRootNode && typeof this.getRootNode === 'function') ? this.getRootNode() : null;
+        const board = (_root && _root.host) ? _root.host : document.querySelector('feature-board');
+        const featureId = this.feature && this.feature.id;
+        if (board && board._layout && featureId) {
+          const geom = board._layout.getGeometry(String(featureId));
+          if (geom) {
+            board._layout.setGeometry(String(featureId), {
+              ...geom,
+              width: measuredWidth, // Update width to match measurement
+              titleOverflows: actualTitleOverflows,
+              contentFits: !actualTitleOverflows
+            });
+          }
+        }
+      } catch (e) { }
+      
+      const shouldShowGhost = actualTitleOverflows && !this._suppressGhostDuringInteraction;
+      
+      if (shouldShowGhost !== this._classState.ghostVisible) {
+        this._classState.ghostVisible = shouldShowGhost;
+        
+        if (shouldShowGhost) {
+          const g = this._createGhostIfNeeded();
+          if (g) {
+            const textNode = g.querySelector('.ghost-title-text');
+            if (textNode) {
+              try { textNode.innerHTML = this._splitTitleAtMiddle(this.feature && this.feature.title); } catch (e) { textNode.textContent = this.feature && this.feature.title || ''; }
+            }
+            // Use current border color or default
+            const borderColor = rootCard ? getComputedStyle(rootCard).borderLeftColor : 'rgba(0,0,0,0.25)';
+            g.style.borderColor = borderColor;
+          }
+          this.classList.add('ghost-visible');
+        } else {
+          this.classList.remove('ghost-visible');
+        }
       }
     } catch (e) { }
   }
