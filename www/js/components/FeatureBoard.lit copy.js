@@ -93,14 +93,30 @@ class FeatureBoard extends LitElement {
     }
     // Create a single ResizeObserver for all child cards' inner elements
     try {
+      // Create a ResizeObserver that forwards entries into a coalescing RAF
+      // scheduler `_scheduleProcessMeasurements` to avoid double-RAF and
+      // duplicate DOM reads when both RO and manual scheduling occur.
+      this._pendingMeasureEntries = null;
+      this._measureRafId = null;
+      this._scheduleProcessMeasurements = (entries) => {
+        try {
+          if (entries && entries.length) {
+            this._pendingMeasureEntries = this._pendingMeasureEntries || [];
+            this._pendingMeasureEntries.push(...entries);
+          }
+          if (this._measureRafId) return; // already scheduled
+          this._measureRafId = requestAnimationFrame(() => {
+            try {
+              this._measureRafId = null;
+              const pending = this._pendingMeasureEntries;
+              this._pendingMeasureEntries = null;
+              this._processMeasurements(pending);
+            } catch (err) { this._measureRafId = null; this._pendingMeasureEntries = null; }
+          });
+        } catch (err) { }
+      };
       this._ro = new ResizeObserver((entries) => {
-        if (this._measureScheduled) return;
-        // schedule a single batched measurement
-        this._measureScheduled = true;
-        requestAnimationFrame(() => {
-          this._measureScheduled = false;
-          this._processMeasurements(entries);
-        });
+        try { this._scheduleProcessMeasurements(entries); } catch (e) { }
       });
     } catch (e) {
       // ResizeObserver may not be available in some test envs
@@ -683,26 +699,47 @@ class FeatureBoard extends LitElement {
 
     // Seed layout manager with computed positions (fast, no DOM reads)
       try {
-        this._layout.recomputeAll(renderList); 
-        // Only mark cards as dirty if their geometry has actually changed.
-        // This avoids expensive DOM re-measurements when only visibility changes
-        // (e.g., toggling projects in sidebar).
-        if (this._layout && typeof this._layout.markDirtyIfChanged === 'function') {
-          let anyDirty = false;
-          for (const item of renderList) {
-            const id = item && item.feature && item.feature.id;
-            if (!id) continue;
-            const changed = this._layout.markDirtyIfChanged(id, {
-              left: item.left,
-              top: item.top,
-              width: item.width,
-              height: laneHeight()
-            });
-            if (changed) anyDirty = true;
+        // If the new renderList has identical geometry (ids + left/width/top)
+        // to the currently rendered `this.features`, skip calling
+        // `recomputeAll`/`markDirty` and avoid scheduling a measurement pass.
+        // This avoids a redundant DOM measurement when only selection/visibility
+        // changed but geometries are unchanged (common when toggling plans).
+        let geometryChanged = true;
+        try {
+          const prev = Array.isArray(this.features) ? this.features : [];
+          if (prev.length === renderList.length) {
+            geometryChanged = false;
+            for (let i = 0; i < renderList.length; i++) {
+              const a = prev[i];
+              const b = renderList[i];
+              const aid = a && a.feature && a.feature.id;
+              const bid = b && b.feature && b.feature.id;
+              if (String(aid) !== String(bid)) { geometryChanged = true; break; }
+              // Compare numeric geometry values conservatively
+              const al = Number(a.left || 0); const bl = Number(b.left || 0);
+              const aw = Number(a.width || 0); const bw = Number(b.width || 0);
+              const at = Number(a.top || 0); const bt = Number(b.top || 0);
+              if (al !== bl || aw !== bw || at !== bt) { geometryChanged = true; break; }
+            }
           }
-          // Only schedule measurements if at least one card geometry changed
-          if (anyDirty) {
+        } catch (e) { geometryChanged = true; }
+
+        if (geometryChanged) {
+          this._layout.recomputeAll(renderList);
+          // Ensure newly rendered cards are re-measured so applyLayout() runs
+          // and consumers (eg. per-card GhostTitle) update their visibility.
+          if (this._layout && typeof this._layout.markDirty === 'function') {
+            for (const item of renderList) {
+              const id = item && item.feature && item.feature.id;
+              if (id) this._layout.markDirty(id);
+            }
+            // Schedule a measurement pass to consume dirty ids and call applyLayout()
             this._scheduleMeasureNow();
+          }
+        } else {
+          // Geometry unchanged — avoid measurement but continue to update UI
+          if (typeof window !== 'undefined' && window.__GHOST_DEBUG) {
+            console.debug('[GhostDebug][FeatureBoard] skipping measure; geometry unchanged');
           }
         }
       } catch (e) { /* ignore */ }
@@ -918,62 +955,19 @@ class FeatureBoard extends LitElement {
   }
 
   _scheduleMeasureNow() {
+    // Use the coalescing scheduler when available so RO and manual requests
+    // don't produce duplicate RAF callbacks.
+    try {
+      if (typeof this._scheduleProcessMeasurements === 'function') {
+        this._scheduleProcessMeasurements();
+        return;
+      }
+    } catch (e) { }
     if (this._measureScheduled) return;
     this._measureScheduled = true;
     requestAnimationFrame(() => {
       this._measureScheduled = false;
       this._processMeasurements();
-    });
-  }
-  
-  // Perform one-time accurate scrollWidth measurements for cards that need it
-  // This is done in a separate pass to avoid blocking during bulk operations
-  _scheduleOverflowMeasurement(cardIds = []) {
-    if (!cardIds.length) return;
-    
-    // Defer to next frame to avoid blocking the main operation
-    requestAnimationFrame(() => {
-      const tolerance = 2;
-      for (const id of cardIds) {
-        try {
-          const host = this._cardMap.get(id);
-          if (!host) continue;
-          
-          const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-          if (!inner) continue;
-          
-          const titleEl = inner.querySelector('.feature-title');
-          if (!titleEl) continue;
-          
-          // One-time accurate measurement
-          const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
-          const titleOverflows = !titleFits;
-          
-          // Store in LayoutManager for future use
-          if (this._layout) {
-            const geom = this._layout.getGeometry(id);
-            if (geom) {
-              this._layout.setGeometry(id, {
-                ...geom,
-                titleOverflows,
-                contentFits: titleFits
-              });
-              // Re-apply layout with accurate values
-              if (host && typeof host.applyLayout === 'function') {
-                const layout = {
-                  width: geom.width,
-                  smallFeature: geom.width < 40,
-                  culled: geom.width < 70,
-                  titleOverflows,
-                  contentFits: titleFits,
-                  borderColor: geom.borderColor || ''
-                };
-                host.applyLayout(layout);
-              }
-            }
-          }
-        } catch (e) { /* ignore individual failures */ }
-      }
     });
   }
 
@@ -986,7 +980,6 @@ class FeatureBoard extends LitElement {
       const verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
 
       const tolerance = 2;
-      const cardsNeedingAccurateMeasurement = []; // Track cards for deferred accurate measurement
 
       // If ResizeObserver provided entries, measure those targets only.
       // Otherwise, consume the LayoutManager dirty-set and prefer using
@@ -1012,55 +1005,13 @@ class FeatureBoard extends LitElement {
             const geom = this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(id) : null;
             if (geom) {
               const boardRect = (this._layout && typeof this._layout.getBoardRect === 'function') ? this._layout.getBoardRect() : { left: 0, top: 0, width: this.clientWidth || 0, height: this.clientHeight || 0 };
-              
-              // Use cached computed values when available to avoid DOM queries
-              const width = geom.width;
-              const smallFeature = width < 40;
-              const culled = width < 70;
-              
-              // If we have cached overflow/fit states, use them
-              let titleOverflows, contentFits;
-              if (geom.titleOverflows !== undefined) {
-                titleOverflows = geom.titleOverflows;
-                contentFits = geom.contentFits !== undefined ? geom.contentFits : !titleOverflows;
-              } else {
-                // Cached values missing (after resize/invalidation) - measure immediately
-                // to avoid flashing wrong ghost visibility
-                try {
-                  const inner = host.shadowRoot && host.shadowRoot.querySelector('.feature-card');
-                  const titleEl = inner && inner.querySelector('.feature-title');
-                  if (titleEl && width >= 40) {
-                    const tolerance = 2;
-                    const titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
-                    titleOverflows = !titleFits;
-                    contentFits = titleFits;
-                    // Cache the measured values
-                    if (this._layout) {
-                      this._layout.setGeometry(id, { ...geom, titleOverflows, contentFits });
-                    }
-                  } else {
-                    // Small feature or no title element - use heuristic
-                    titleOverflows = width < 100;
-                    contentFits = width >= 100;
-                  }
-                } catch (e) {
-                  // Fallback to heuristic on error
-                  titleOverflows = width < 100;
-                  contentFits = width >= 100;
-                }
-              }
-              
-              const borderColor = geom.borderColor || '';
-              
               const layout = {
-                width,
-                smallFeature,
-                culled,
-                titleOverflows,
-                contentFits,
+                width: geom.width,
+                smallFeature: geom.width < 40,
+                culled: geom.width < 70,
                 cardRect: { left: geom.left, top: geom.top, width: geom.width, height: geom.height },
                 boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height },
-                borderColor
+                borderColor: ''
               };
 
               if (host && typeof host.applyLayout === 'function') {
@@ -1111,69 +1062,43 @@ class FeatureBoard extends LitElement {
           const teamRow = inner ? inner.querySelector('.team-load-row') : null;
           const titleEl = inner ? inner.querySelector('.feature-title') : null;
 
-          // Use cached overflow/fit states from LayoutManager to avoid expensive
-          // scrollWidth queries which force layout recalculation (1000ms+ bottleneck).
+          // Prefer to infer fit state from LayoutManager geometry to avoid
+          // expensive `scrollWidth` reads which force layout. Only fall back
+          // to DOM measurements when no cached geometry exists.
           let teamFits = true;
           let titleFits = true;
-          let needsAccurateMeasurement = false;
-          
           try {
             const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
             const geomForFits = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
-            
             if (geomForFits) {
-              // Use cached values if available (avoids scrollWidth queries entirely)
-              if (geomForFits.titleOverflows !== undefined) {
-                titleFits = !geomForFits.titleOverflows;
-              } else if (geomForFits.contentFits !== undefined) {
-                titleFits = geomForFits.contentFits;
+              // If we have the inner title element available, prefer an accurate
+              // DOM measurement here (we're already in the measurement pass).
+              // Otherwise fall back to the conservative geometry heuristic.
+              teamFits = true;
+              if (titleEl) {
+                try {
+                  titleFits = titleEl.scrollWidth <= (titleEl.clientWidth + tolerance);
+                } catch (e) {
+                  titleFits = !(geomForFits.width < 100);
+                }
               } else {
-                // Use width-based heuristic - avoid scrollWidth query
-                // Cards under 100px wide typically overflow
                 titleFits = !(geomForFits.width < 100);
-                // Schedule accurate measurement for next frame (non-blocking)
-                needsAccurateMeasurement = true;
               }
-              // Always assume team fits (they're compact badges)
-              teamFits = true;
             } else {
-              // No cached geometry - use width-based heuristics instead of DOM queries
-              // This avoids the expensive scrollWidth force-layout bottleneck
-              titleFits = cardWidth >= 100;
-              teamFits = true;
-              // Schedule accurate measurement for next frame
-              needsAccurateMeasurement = true;
+              teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
+              titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
             }
           } catch (e) {
-            // Fallback to safe heuristic (avoid DOM queries in error path)
-            titleFits = cardWidth >= 100;
-            teamFits = true;
+            teamFits = teamRow ? (teamRow.scrollWidth <= (teamRow.clientWidth + tolerance)) : true;
+            titleFits = titleEl ? (titleEl.scrollWidth <= (titleEl.clientWidth + tolerance)) : true;
           }
-          
-          // Track cards that need accurate measurement (deferred to avoid blocking)
-          if (needsAccurateMeasurement && host.feature && host.feature.id) {
-            cardsNeedingAccurateMeasurement.push(host.feature.id);
-          }
-          
           const contentFits = teamFits && titleFits;
 
           const titleOverflows = !titleFits;
           const smallFeature = cardWidth < 40;
           const culled = cardWidth < 70;
 
-          // Cache border color to avoid repeated getComputedStyle calls
-          let borderColor = '';
-          try {
-            // First check if we have a cached value
-            const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
-            const cachedGeom = featureId && this._layout && typeof this._layout.getGeometry === 'function' ? this._layout.getGeometry(featureId) : null;
-            if (cachedGeom && cachedGeom.borderColor) {
-              borderColor = cachedGeom.borderColor;
-            } else if (inner) {
-              // Only query DOM if not cached
-              borderColor = window.getComputedStyle(inner).getPropertyValue('border-left-color');
-            }
-          } catch (e) { borderColor = ''; }
+          const borderColor = inner ? window.getComputedStyle(inner).getPropertyValue('border-left-color') : '';
 
           const layout = {
             width: cardWidth,
@@ -1197,28 +1122,14 @@ class FeatureBoard extends LitElement {
               host._layout = layout;
             }
           } catch (e) { }
-          // Update LayoutManager geometry for this host (if available) including
-          // cached computed values to avoid repeated DOM queries
+          // Update LayoutManager geometry for this host (if available)
           try {
             const featureId = (host.feature && host.feature.id) || (host.getAttribute && host.getAttribute('data-feature-id'));
             if (featureId && this._layout) {
-              this._layout.setGeometry(featureId, { 
-                left: cardLeft, 
-                top: cardTop, 
-                width: cardWidth, 
-                height: cardHeight,
-                borderColor,
-                titleOverflows,
-                contentFits
-              });
+              this._layout.setGeometry(featureId, { left: cardLeft, top: cardTop, width: cardWidth, height: cardHeight });
             }
           } catch (e) { }
         } catch (e) { }
-      }
-      
-      // Schedule accurate overflow measurements for cards that need it (deferred, non-blocking)
-      if (cardsNeedingAccurateMeasurement.length > 0) {
-        this._scheduleOverflowMeasurement(cardsNeedingAccurateMeasurement);
       }
     } catch (e) { }
   }
@@ -1317,17 +1228,7 @@ export async function initBoard() {
   bus.on(TimelineEvents.MONTHS, renderFeatures);
   bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures); // Re-render when zoom changes
   // Ensure LayoutManager and measurements are refreshed after timeline zoom/scale changes
-  bus.on(TimelineEvents.SCALE_CHANGED, () => { 
-    try { 
-      // Invalidate cached computed values since scale change affects measurements
-      if (board && board._layout && typeof board._layout.invalidateComputedValues === 'function') {
-        board._layout.invalidateComputedValues();
-      }
-      if (board && typeof board._scheduleMeasureNow === 'function') {
-        board._scheduleMeasureNow();
-      }
-    } catch (e) { } 
-  });
+  bus.on(TimelineEvents.SCALE_CHANGED, () => { try { if (board && typeof board._scheduleMeasureNow === 'function') board._scheduleMeasureNow(); } catch (e) { } });
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);

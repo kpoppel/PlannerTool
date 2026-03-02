@@ -65,7 +65,7 @@ async function init(){
     try{ await import('./components/ColorPopover.lit.js'); }catch(e){}
     // MainGraph is initialized by TimelineBoard; ensure the module is available for other consumers
     //try{ await import('./components/MainGraph.lit.js'); }catch(e){ /* ignore if not available */ }
-    initDependencyRenderer();
+    //initDependencyRenderer();
     // Prefetch lightweight modal helpers during idle to improve perceived performance
     try{
       if ('requestIdleCallback' in window) requestIdleCallback(()=> import('./components/modalHelpers.js'));
@@ -75,6 +75,7 @@ async function init(){
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
     await state.initState();
+    initDependencyRenderer();
     // TimelineBoard handles initial scroll behavior
 
     // Load Plugin system

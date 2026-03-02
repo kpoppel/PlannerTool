@@ -1,7 +1,7 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
 
 class DependencyRenderer extends LitElement {
   createRenderRoot() {
@@ -120,7 +120,19 @@ class DependencyRenderer extends LitElement {
 
     const computeRect = (el) => {
       try {
-        // Prefer board's LayoutManager geometry when available
+        // If the host has inline styles (set during drag/resize), prefer
+        // these live values so dependency lines track the interaction.
+        const leftStyle = parseFloat(el.style.left);
+        const topStyle = parseFloat(el.style.top);
+        if (!isNaN(leftStyle) && !isNaN(topStyle)) {
+          const w = parseFloat(el.style.width) || el.offsetWidth;
+          const h = parseFloat(el.style.height) || laneHeight;
+          return { left: leftStyle, top: topStyle, width: w, height: h };
+        }
+      } catch (e) { /* ignore */ }
+
+      try {
+        // Prefer board's LayoutManager geometry when available (fallback)
         const id = (el.getAttribute && el.getAttribute('data-feature-id')) || (el.feature && el.feature.id && String(el.feature.id));
         if (id && board && board._layout && typeof board._layout.getGeometry === 'function') {
           const geom = board._layout.getGeometry(id);
@@ -145,15 +157,6 @@ class DependencyRenderer extends LitElement {
         }
       } catch (e) {
         // ignore and fallback
-      }
-
-      const leftStyle = parseFloat(el.style.left);
-      const topStyle = parseFloat(el.style.top);
-
-      if (!isNaN(leftStyle) && !isNaN(topStyle)) {
-        const w = parseFloat(el.style.width) || el.offsetWidth;
-        const h = parseFloat(el.style.height) || laneHeight;
-        return { left: leftStyle, top: topStyle, width: w, height: h };
       }
 
       try {
@@ -266,8 +269,19 @@ export async function initDependencyRenderer() {
       if (!lit) {
         lit = document.createElement('dependency-renderer');
         hostRoot.appendChild(lit);
+      } else {
+        // If a global/document-level renderer exists but hostRoot is the
+        // board's shadowRoot, move the existing renderer into the shadowRoot
+        // so its SVG overlays align with the board's coordinate space.
+        try {
+          const parent = lit.parentElement;
+          if (parent && parent !== hostRoot) {
+            hostRoot.appendChild(lit);
+          }
+        } catch (e) { /* ignore move failures */ }
 
-        lit.style.position = 'absolute';
+      
+      lit.style.position = 'absolute';
         lit.style.top = '0';
         lit.style.left = '0';
 
@@ -371,6 +385,21 @@ export async function initDependencyRenderer() {
     try {
       const lit = await attach();
       if (lit) {
+        // Ensure LayoutManager has seeded geometries before rendering.
+        try {
+          const board = document.querySelector('feature-board');
+          const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
+          if (board && board._layout && typeof board._layout.snapshot === 'function') {
+            const snap = board._layout.snapshot();
+            // If snapshot appears empty while we have features, it's likely
+            // the LayoutManager hasn't been seeded yet. Retry shortly.
+            if (features.length > 0 && (!snap || snap.size === 0)) {
+              // Retry on next animation frame to give FeatureBoard a chance to seed geometries
+              try { requestAnimationFrame(() => scheduleRender()); } catch (e) { setTimeout(() => scheduleRender(), 50); }
+              return;
+            }
+          }
+        } catch (e) { /* ignore and proceed */ }
         try {
           const lits = Array.from(document.querySelectorAll('dependency-renderer'));
           for (const L of lits) L.style.display = '';
@@ -395,15 +424,19 @@ export async function initDependencyRenderer() {
     }
   }
 
-  try {
-    bus.on(FeatureEvents.UPDATED, scheduleRender);
-    bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
-    bus.on(ProjectEvents.CHANGED, scheduleRender);
-    bus.on(TeamEvents.CHANGED, scheduleRender);
-    bus.on(DragEvents.MOVE, scheduleRender);
-  } catch (e) {
-    // ignore wiring failures
-  }
+    try {
+      bus.on(FeatureEvents.UPDATED, scheduleRender);
+      bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
+      bus.on(ProjectEvents.CHANGED, scheduleRender);
+      bus.on(TeamEvents.CHANGED, scheduleRender);
+      bus.on(DragEvents.MOVE, scheduleRender);
+      bus.on(DragEvents.END, scheduleRender);
+      // Ensure we attempt a render after app initialization completes so
+      // dependency lines are drawn when the dependency toggle is already active.
+      bus.on(AppEvents.READY, () => { try { setTimeout(scheduleRender, 0); } catch (e) {} });
+    } catch (e) {
+      // ignore wiring failures
+    }
 
   window.addEventListener('resize', scheduleRender);
 
