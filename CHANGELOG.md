@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.12.0] - 2026-03-03
+## [v1.13.0] - 2026-03-03
 
 ### Added
 
@@ -51,6 +51,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Fix dependency vire setting not saved in a View. Fixes [#13](https://github.com/kpoppel/PlannerTool/issues/13)
 - Fix for AnnotationPlugin where the toolbox started flashing when scrolling, and annotations scrolling at
   double speed.
+
+## [v1.12.0] - 2026-03-03
+
+- skipped
+
 
 ## [v1.11.0] - 2026-02-22
 
