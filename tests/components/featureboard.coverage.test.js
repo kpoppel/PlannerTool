@@ -56,7 +56,7 @@ describe('FeatureBoard helper coverage', () => {
     // Ensure view service flags
     state._viewService.setShowEpics(true);
     state._viewService.setShowFeatures(true);
-    state._viewService.setShowUnassignedCards(true);
+    state._viewService.setShowUnallocatedCards(true);
     state._viewService.setShowUnplannedWork(true);
     state._viewService.setShowOnlyProjectHierarchy(false);
     // State filter service selected states

@@ -114,7 +114,7 @@ The options include:
     - Show dependencies
       Add dependency display to the cards to see if a task depends on another.
       This feature requires the task to have a "Relates" or "Predecessor" of "Successor" link. (not implemented yet)
-    - Show unassigned
+    - Show unallocated
       Filter tasks which have no capacity assigned. Some tasks may not have an estimation of capacity needed.
     - Show unplanned
       Filter tasks which have no dates assigned.  Some tasks may not be placed on the timeline.

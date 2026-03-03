@@ -148,8 +148,8 @@ export function initViewOptions(container){
   const zoomSection = document.createElement('div');
   zoomSection.setAttribute('data-tour','zoom');
   renderSegmentedControl(zoomSection, 'Timeline Scale', [
-    { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
     { label: '3 Months', active: currentScale === 'threeMonths', onClick: () => state._viewService.setTimelineScale('threeMonths') },
+    { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
     { label: 'Months', active: currentScale === 'months', onClick: () => state._viewService.setTimelineScale('months') },
     { label: 'Quarters', active: currentScale === 'quarters', onClick: () => state._viewService.setTimelineScale('quarters') },
     { label: 'Years', active: currentScale === 'years', onClick: () => state._viewService.setTimelineScale('years') }
@@ -168,10 +168,10 @@ export function initViewOptions(container){
     (val)=> state._viewService.setShowDependencies(val),
     {"data-tour": "dependency-renderer"}
   );
-  // Show Unassigned Cards - use ViewService directly
-  renderToggle(root, 'Show Unassigned', 
+  // Show Unallocated Cards - use ViewService directly
+  renderToggle(root, 'Show Unallocated', 
     ()=> state._viewService.showUnassignedCards, 
-    (val)=> state._viewService.setShowUnassignedCards(val),
+    (val)=> state._viewService.setShowUnallocatedCards(val),
     {"data-tour": "unassigned-view"}
   );
   // Show Unplanned Work - only when feature flag is enabled

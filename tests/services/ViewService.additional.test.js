@@ -24,8 +24,8 @@ describe('ViewService additional coverage', () => {
     vs._featureSortMode = 'rank';
   });
 
-  it('setShowUnassignedCards and setShowUnplannedWork emit events and update state', () => {
-    vs.setShowUnassignedCards(false);
+  it('setShowUnallocatedCards and setShowUnplannedWork emit events and update state', () => {
+    vs.setShowUnallocatedCards(false);
     expect(vs.showUnassignedCards).to.equal(false);
     expect(emitCalls.some(c => c.event === FilterEvents.CHANGED)).to.be.true;
     expect(emitCalls.some(c => c.event === FeatureEvents.UPDATED)).to.be.true;

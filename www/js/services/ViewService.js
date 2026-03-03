@@ -182,9 +182,9 @@ export class ViewService {
    * Set unassigned cards visibility and emit change events
    * @param {boolean} val - Whether to show features without capacity
    */
-  setShowUnassignedCards(val) {
+  setShowUnallocatedCards(val) {
     this._showUnassignedCards = !!val;
-    console.debug('[ViewService] setShowUnassignedCards ->', this._showUnassignedCards);
+    console.debug('[ViewService] setShowUnallocatedCards ->', this._showUnassignedCards);
     if (!arguments[1]) {
       this.bus.emit(FilterEvents.CHANGED, { 
         showUnassignedCards: this._showUnassignedCards 

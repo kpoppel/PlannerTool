@@ -43,7 +43,7 @@ describe('FeatureBoard helper coverage (additional)', () => {
     state._viewService.setShowEpics(true);
     state._viewService.setShowFeatures(true);
     state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnassignedCards(true);
+    state._viewService.setShowUnallocatedCards(true);
     state._stateFilterService.restoreFilterState({ selectedStates: ['New'] });
 
     const feature = { id: 'f1', project: 'p1', type: 'feature', status: 'New', capacity: [{ team: 't1' }] };

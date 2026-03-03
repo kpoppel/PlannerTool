@@ -148,7 +148,7 @@ export class SidebarLit extends LitElement {
         const tag = (target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'textarea' || target.isContentEditable) return;
 
-        const digitMap = { '1': 'weeks', '2': 'threeMonths', '3': 'months', '4': 'quarters', '5': 'years' };
+        const digitMap = { '1': 'threeMonths', '2': 'weeks', '3': 'months', '4': 'quarters', '5': 'years' };
         if (digitMap[e.key]) {
           e.preventDefault();
           try { state.setTimelineScale(digitMap[e.key]); } catch (err) { console.warn('[Sidebar] setTimelineScale failed', err); }
@@ -173,7 +173,7 @@ export class SidebarLit extends LitElement {
         }
         if (k === 'a') {
           e.preventDefault();
-          try { state._viewService.setShowUnassignedCards(!state._viewService.showUnassignedCards); } catch (err) { console.warn('[Sidebar] toggle showUnassigned failed', err); }
+          try { state._viewService.setShowUnallocatedCards(!state._viewService.showUnassignedCards); } catch (err) { console.warn('[Sidebar] toggle showUnassigned failed', err); }
           return;
         }
         if (k === 'h') {
