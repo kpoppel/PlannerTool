@@ -14,15 +14,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v1.13.1] - unreleased
+## [v1.13.1] - 2026-03-03
 
-### Added
 ### Changed
 
 - Change label on "Show Unassigned" to "Show Unallocated"
 - Moved View zoom option "3 months" one spot left.
-
-### Fixed
 
 ## [v1.13.0] - 2026-03-03
 
