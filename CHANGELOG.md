@@ -14,6 +14,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.13.2] - 2026-03-04
+
+### Fixed
+
+- Shortcut keys introduced with v1.13.0 were not working properly. Shortcuts removed until proper fix.
+
 ## [v1.13.1] - 2026-03-03
 
 ### Changed

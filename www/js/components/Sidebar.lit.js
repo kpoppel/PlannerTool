@@ -140,6 +140,7 @@ export class SidebarLit extends LitElement {
 
     // Keyboard shortcuts: 1-5 set timeline scale (weeks, 3 months, months, quarters, years)
     // D,C,U,A,H toggle various view options
+    /*
     this._onKeyDown = (e) => {
       try {
         if (e.defaultPrevented) return;
@@ -181,9 +182,10 @@ export class SidebarLit extends LitElement {
           try { state._viewService.setShowOnlyProjectHierarchy(!state._viewService.showOnlyProjectHierarchy); } catch (err) { console.warn('[Sidebar] toggle showOnlyProjectHierarchy failed', err); }
           return;
         }
-      } catch (err) { /* defensive */ }
+      } catch (err) { / * defensive * / }
     };
     document.addEventListener('keydown', this._onKeyDown);
+    */
   }
 
   firstUpdated(){
