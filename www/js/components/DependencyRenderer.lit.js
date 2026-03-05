@@ -3,6 +3,29 @@ import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
 
+function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
+
+function findAllInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      if(root && root.querySelectorAll) return Array.from(root.querySelectorAll(selector));
+    }
+  }catch(e){}
+  return Array.from(document.querySelectorAll(selector));
+}
+
 class DependencyRenderer extends LitElement {
   createRenderRoot() {
     return this;
@@ -67,7 +90,7 @@ class DependencyRenderer extends LitElement {
   }
 
   renderLayer() {
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) {
       this.clear();
       return;
@@ -87,14 +110,34 @@ class DependencyRenderer extends LitElement {
 
     this.clear();
 
-    const hostCards = board.shadowRoot ? Array.from(board.shadowRoot.querySelectorAll('feature-card-lit')) : [];
-    const docCards = Array.from(document.querySelectorAll('feature-card-lit'));
     const cardById = new Map();
-
-    for (const c of [...hostCards, ...docCards]) {
-      const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
-      if (id) cardById.set(String(id), c);
-    }
+    // Collect cards from each feature-board's shadowRoot (preferred) and from document
+    try {
+      const boards = findAllInBoard('feature-board');
+      for (const b of boards) {
+        try {
+          if (b.shadowRoot) {
+            const hostCards = Array.from(b.shadowRoot.querySelectorAll('feature-card-lit'));
+            for (const c of hostCards) {
+              const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+              if (id) cardById.set(String(id), c);
+            }
+          } else {
+            const hostCards = Array.from(b.querySelectorAll ? b.querySelectorAll('feature-card-lit') : []);
+            for (const c of hostCards) {
+              const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+              if (id) cardById.set(String(id), c);
+            }
+          }
+        } catch (e) { /* ignore board-level errors */ }
+      }
+      // Also include any cards that might be in the document root
+      const docCards = Array.from(document.querySelectorAll('feature-card-lit'));
+      for (const c of docCards) {
+        const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+        if (id) cardById.set(String(id), c);
+      }
+    } catch (e) { /* ignore collection errors */ }
 
     const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
     // Prefer LayoutManager-provided values to avoid expensive DOM reads
@@ -258,7 +301,7 @@ export async function initDependencyRenderer() {
   };
 
   async function attach() {
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) return null;
 
     try {
@@ -353,7 +396,7 @@ export async function initDependencyRenderer() {
   async function render() {
     if (!(state && state._viewService.showDependencies)) {
       const lits = Array.from(document.querySelectorAll('dependency-renderer'));
-      const boards = Array.from(document.querySelectorAll('feature-board'));
+      const boards = findAllInBoard('feature-board');
 
       for (const b of boards) {
         try {
@@ -387,7 +430,7 @@ export async function initDependencyRenderer() {
       if (lit) {
         // Ensure LayoutManager has seeded geometries before rendering.
         try {
-          const board = document.querySelector('feature-board');
+          const board = findInBoard('feature-board');
           const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
           if (board && board._layout && typeof board._layout.snapshot === 'function') {
             const snap = board._layout.snapshot();
@@ -440,7 +483,7 @@ export async function initDependencyRenderer() {
 
   window.addEventListener('resize', scheduleRender);
 
-  const boardNow = document.querySelector('feature-board');
+  const boardNow = findInBoard('feature-board');
   if (boardNow) {
     boardNow.addEventListener('scroll', scheduleRender);
   } else {

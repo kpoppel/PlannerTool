@@ -24,7 +24,7 @@ export class ModalLit extends LitElement {
     .modal-overlay {
       position: fixed; inset: 0; display: none;
       background: rgba(0,0,0,0.5);
-      align-items: center; justify-content: center; z-index: 1000;
+      align-items: center; justify-content: center; z-index: 10000;
       padding: 12px;
     }
     .modal-overlay[open] { display: flex; }
@@ -40,6 +40,8 @@ export class ModalLit extends LitElement {
     .modal-content { margin-bottom: 12px; }
     .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
     ::slotted(.modal-footer) { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+    
+    /* Button styling */
     ::slotted(.btn) {
       padding:6px 10px;
       background:#e9e9e9;
@@ -79,6 +81,10 @@ export class ModalLit extends LitElement {
     this.open = false;
     this.wide = false;
     this.noClose = false;
+  }
+
+  connectedCallback(){
+    super.connectedCallback();
   }
 
   // Use class field-style handler so we don't need to bind in ctor

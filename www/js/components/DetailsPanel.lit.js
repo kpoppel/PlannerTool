@@ -48,12 +48,17 @@ export class DetailsPanelLit extends LitElement {
     .title-icon { display:inline-flex; width:20px; height:20px; vertical-align:middle; margin-right:8px; }
     .details-value { margin-bottom: 8px; font-size: 14px; }
     .details-changed { background: #fadd92ff; }
+    /* Status color variants (migrated from global CSS into details panel) */
+    .status-new { color: #27ae60; }
+    .status-inprogress { color: #f1c40f; }
+    .status-done { color: #888; }
     .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
     .details-revert { background: transparent; border: 1px solid #ccc; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
     .original-date { color: #666; font-size: 12px; margin-left: 6px; }
     .details-close { position: absolute; right: 18px; top: 18px; cursor: pointer; border: none; background: transparent; font-size: 18px; }
     .team-load-box { padding: 4px 8px; border-radius: 6px; color: white; font-weight: 600; margin-right: 6px; font-size: 12px; }
     .azure-relations-list { list-style: none; padding: 0; margin: 0; }
+    .relations-group { margin-bottom: 10px; }
     /* Capacity Progress Bars */
     .capacity-section { margin-top: 12px; }
     .capacity-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
@@ -437,13 +442,12 @@ export class DetailsPanelLit extends LitElement {
       transition: width 0.3s ease;
     }
     /* align icon with text baseline for pixel-accurate centering */
-    .azure-relation-item { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
-    .relation-icon { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; font-size: 14px; }
-    .relation-title, .relation-title a.details-link { line-height: 18px; display: inline-block; vertical-align: middle; }
-    .relation-content { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
-    .relation-content > * { margin: 0; padding: 0; }
-    .relation-title { margin: 0; line-height: 1.1; }
-    .relation-title a.details-link { display: inline; color: var(--color-accent, #3498db); text-decoration: underline; line-height: 1.1; }
+    .azure-relation-item { display: flex; gap: 8px; align-items: center; padding: 0; background: transparent; border-radius: 4px; margin: 6px 0; }
+    .relation-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 10px; background: rgba(0,0,0,0.06); flex: 0 0 20px; }
+    .relation-content { display: flex; flex-direction: row; gap: 8px; align-items: center; }
+    .relation-title, .relation-title a.details-link { line-height: 18px; display: inline-block; vertical-align: middle; margin: 0; }
+    .relation-title { font-weight: 700; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; line-height: 1.1; }
+    .relation-title a.details-link { color: var(--color-accent, #3498db); text-decoration: underline; }
     .state-chip { display:inline-block; padding:4px 8px; border-radius:12px; font-weight:600; font-size:13px; vertical-align:middle; }
     .state-select { padding:6px 8px; border-radius:6px; border:1px solid #ccc; font-size:13px; }
     .state-choices button.state-chip { padding:6px 8px; border-radius:12px; font-weight:600; font-size:13px; }

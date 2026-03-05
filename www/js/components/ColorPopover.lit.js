@@ -15,10 +15,21 @@ export class ColorPopoverLit extends LitElement {
   };
 
   static styles = css`
-    :host { position: absolute; display: block; z-index: 2000; }
-    .popover { display: grid; grid-template-columns: repeat(4, 28px); gap:6px; padding:8px; background: white; border:1px solid #ddd; box-shadow: 0 6px 18px rgba(0,0,0,0.12); border-radius:6px; }
-    button.sw { width:28px; height:28px; border-radius:4px; border:1px solid #ddd; cursor:pointer; }
+    :host { position: fixed; display: block; z-index: 2000; }
+    .color-popover {
+      display: grid;
+      grid-template-columns: repeat(4, 28px);
+      gap:4px;
+      padding:4px;
+      background: rgb(55, 85, 130);
+      border:1px solid rgb(35, 52, 77);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      border-radius:6px;
+    }
+    .color-swatch { width:28px; height:28px; border-radius:4px; border:0px solid #ddd; cursor:pointer; }
   `;
+
+  
 
   constructor(){
     super();
@@ -46,9 +57,8 @@ export class ColorPopoverLit extends LitElement {
     return el;
   }
 
-  // Render into light DOM so legacy selectors like `.color-popover` find the
-  // node inside the element (tests expect the popover to be in document.body).
-  createRenderRoot(){ return this; }
+  // Use the default Lit render root (shadow DOM) so this behaves as a proper
+  // Lit component with encapsulated styles.
 
   connectedCallback(){
     super.connectedCallback();
@@ -73,7 +83,7 @@ export class ColorPopoverLit extends LitElement {
   // Allow programmatic palette updates
   setPalette(p){ this.palette = Array.isArray(p) ? p.slice() : []; this.requestUpdate(); }
 
-  _onDocDown(e){ if(!this.open) return; if(!this.contains(e.target)) this.close(); }
+  _onDocDown(e){ if(!this.open) return; const path = (e.composedPath && e.composedPath()) || []; if(!path.includes(this)) this.close(); }
 
   async applyColor(color){
     if(!this.entityId || !this.entityType) return;
@@ -88,7 +98,17 @@ export class ColorPopoverLit extends LitElement {
     this.close();
   }
 
-  openFor(entityType, id, rect){ this.entityType=entityType; this.entityId=id; this.left = rect.left + window.scrollX; this.top = rect.bottom + window.scrollY + 4; this.open=true; this.requestUpdate(); }
+  openFor(entityType, id, rect){
+    this.entityType = entityType;
+    this.entityId = id;
+    // Position host relative to viewport using fixed positioning
+    const left = rect.left + window.scrollX;
+    const top = rect.bottom + window.scrollY + 4;
+    this.style.left = `${left}px`;
+    this.style.top = `${top}px`;
+    this.open = true;
+    this.requestUpdate();
+  }
   close(){ this.open=false; this.requestUpdate(); }
 
   render(){
@@ -96,7 +116,7 @@ export class ColorPopoverLit extends LitElement {
     // but toggle its `display` style between 'grid' and 'none' for show/hide.
     const display = this.open ? 'grid' : 'none';
     const palette = Array.isArray(this.palette) && this.palette.length ? this.palette : [];
-    return html`<div class="color-popover" style="left:${this.left}px; top:${this.top}px; position:absolute; display:${display}; grid-template-columns:repeat(4,28px); gap:6px;">${palette.map(c=> html`<button class="color-swatch" data-color="${c}" style="background:${c}" @click=${()=>this.applyColor(c)} aria-label="${c}"></button>`)} </div>`;
+    return html`<div class="color-popover" style="display:${display};">${palette.map(c=> html`<button class="color-swatch" data-color="${c}" style="background:${c}" @click=${()=>this.applyColor(c)} aria-label="${c}"></button>`)} </div>`;
   }
 }
 

@@ -5,6 +5,7 @@ import { AppEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { exportTimelineToPng, getExportRenderer } from './export/TimelineExportRenderer.js';
 import { copyPngBlobToClipboard } from './export/ExportUtils.js';
+import { findInBoard } from '../components/board-utils.js';
 
 export class PluginExportTimeline extends LitElement {
   static properties = { 
@@ -31,7 +32,7 @@ export class PluginExportTimeline extends LitElement {
     // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
     this._mouseDownHandler = () => {
       const timelineSection = document.getElementById('timelineSection');
-      const featureBoard = document.querySelector('feature-board');
+      const featureBoard = findInBoard('feature-board');
       if (timelineSection && featureBoard) {
         this._lastKnownScrollLeft = timelineSection.scrollLeft;
         this._lastKnownScrollTop = featureBoard.scrollTop;
@@ -210,6 +211,27 @@ export class PluginExportTimeline extends LitElement {
       color: #333;
       cursor: pointer;
     }
+
+    .close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: #999;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 0;
+    }
+
+    .close-btn:hover {
+      color: #333;
+      background: #f0f0f0;
+    }
   `;
 
   render(){
@@ -219,6 +241,7 @@ export class PluginExportTimeline extends LitElement {
     // Main export panel
     return html`
       <div class="panel" role="dialog" aria-modal="true">
+        <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <h3>Export Timeline</h3>
         
         <div class="section">
@@ -322,7 +345,7 @@ export class PluginExportTimeline extends LitElement {
     // Use scroll position captured on mousedown (before any DOM changes)
     // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
     const timelineSection = document.getElementById('timelineSection');
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     this._capturedScrollLeft = this._lastKnownScrollLeft ?? timelineSection?.scrollLeft ?? 0;
     this._capturedScrollTop = this._lastKnownScrollTop ?? featureBoard?.scrollTop ?? 0;
     
@@ -332,6 +355,12 @@ export class PluginExportTimeline extends LitElement {
     this.style.display = 'block'; 
     this.visible = true;
     this.setAttribute('visible', '');
+  }
+  
+  _handleClose() {
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-export-timeline');
+    if (plugin) plugin.deactivate();
   }
   
   close(){ 
@@ -399,7 +428,7 @@ export class PluginExportTimeline extends LitElement {
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
       // Read current viewport scroll positions at the moment of export
       const timelineSection = document.getElementById('timelineSection');
-      const featureBoard = document.querySelector('feature-board');
+      const featureBoard = findInBoard('feature-board');
       const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
       const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
 
@@ -428,7 +457,7 @@ export class PluginExportTimeline extends LitElement {
     try {
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
       const timelineSection = document.getElementById('timelineSection');
-      const featureBoard = document.querySelector('feature-board');
+      const featureBoard = findInBoard('feature-board');
       const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
       const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
 
@@ -460,7 +489,7 @@ export class PluginExportTimeline extends LitElement {
     try {
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
       const timelineSection = document.getElementById('timelineSection');
-      const featureBoard = document.querySelector('feature-board');
+      const featureBoard = findInBoard('feature-board');
       const currentScrollLeft = timelineSection ? timelineSection.scrollLeft : (this._capturedScrollLeft || 0);
       const currentScrollTop = featureBoard ? featureBoard.scrollTop : (this._capturedScrollTop || 0);
 

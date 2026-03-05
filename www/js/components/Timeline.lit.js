@@ -244,6 +244,21 @@ function computeRange(){
   return {min, max};
 }
 
+// Helper to locate elements that used to be queried from document when
+// TimelineBoard rendered into light DOM. If TimelineBoard uses shadow DOM
+// we need to query inside its renderRoot.
+function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
+
 function ensureComponentMounted(header){
   if(!timelineElement){
     // If the header argument is already a timeline-lit element, use it directly
@@ -251,7 +266,7 @@ function ensureComponentMounted(header){
       timelineElement = header;
     } else {
       // prefer existing element in DOM under the header or globally
-      timelineElement = header?.querySelector?.('timeline-lit') ?? document.querySelector('timeline-lit');
+      timelineElement = header?.querySelector?.('timeline-lit') ?? findInBoard('timeline-lit');
       if(!timelineElement && customElements.get('timeline-lit')){
         timelineElement = document.createElement('timeline-lit');
         timelineElement.bus = bus;
@@ -292,7 +307,7 @@ export async function initTimeline(){
       // Toggle class on the mounted timeline element so components/styles
       // can react to the 'years' zoom (prevent wrapping of labels)
       try {
-        const t = document.querySelector('timeline-lit');
+        const t = findInBoard('timeline-lit');
         if (t) {
           if (payload.scale === 'years') t.classList.add('scale-years');
           else t.classList.remove('scale-years');
@@ -304,7 +319,7 @@ export async function initTimeline(){
       let newMonthWidth = payload.monthWidth;
       if(payload.scale === 'threeMonths'){
         try{
-          const section = document.getElementById('timelineSection');
+          const section = findInBoard('#timelineSection');
           if(section && section.clientWidth){
             newMonthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
           }
@@ -327,7 +342,7 @@ export async function initTimeline(){
             // Left-align current month as the viewport's leftmost month
             const today = new Date();
             const idx = monthsCache.findIndex(m => m.getFullYear()===today.getFullYear() && m.getMonth()===today.getMonth());
-            const section = document.getElementById('timelineSection');
+            const section = findInBoard('#timelineSection');
             if(idx >= 0 && section){
               section.scrollLeft = idx * newMonthWidth;
             }
@@ -347,7 +362,7 @@ export async function initTimeline(){
       if(savedScale){
         _currentTimelineScale = savedScale;
         if(savedScale === 'threeMonths'){
-          const section = document.getElementById('timelineSection');
+          const section = findInBoard('#timelineSection');
           if(section && section.clientWidth){
             TIMELINE_CONFIG.monthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
             document.documentElement.style.setProperty('--timeline-month-width', `${TIMELINE_CONFIG.monthWidth}px`);
@@ -366,7 +381,7 @@ export async function initTimeline(){
       _resizeDebounceTimer = setTimeout(() => {
         try{
           if(_currentTimelineScale === 'threeMonths'){
-            const section = document.getElementById('timelineSection');
+            const section = findInBoard('#timelineSection');
             if(section && section.clientWidth){
               // Preserve the leftmost month index and fractional offset so the
               // visible left edge remains on the same logical date after resize.
@@ -400,7 +415,7 @@ async function renderTimelineHeader(payload){
   const shouldInstrument = featureFlags?.timelineInstrumentation;
   let t0;
   if(shouldInstrument && typeof performance !== 'undefined' && performance.now) t0 = performance.now();
-  const header = document.querySelector('timeline-lit'); 
+  const header = findInBoard('timeline-lit'); 
   if(!header) return;
 
   // If a payload with changed feature ids is provided, and we already have a
@@ -451,7 +466,7 @@ async function renderTimelineHeader(payload){
   
   // Ensure months fill the visible timeline width so header spans entire card area
   const monthWidth = TIMELINE_CONFIG.monthWidth;
-  const section = document.getElementById('timelineSection');
+  const section = findInBoard('#timelineSection');
   if(section){
     const targetWidth = section.clientWidth;
     const needed = Math.ceil(targetWidth / monthWidth);
@@ -474,7 +489,7 @@ async function renderTimelineHeader(payload){
     try{ bus.emit(TimelineEvents.MONTHS, monthsCache); }catch(e){}
     const totalWidth = monthsCache.length * TIMELINE_CONFIG.monthWidth;
     header.style.width = (totalWidth + 10) + 'px';
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if(board){ board.style.width = totalWidth + 'px'; }
   } else {
     // No component available; still emit months so consumers can respond
@@ -486,7 +501,7 @@ async function renderTimelineHeader(payload){
     const today = new Date();
     const idx = monthsCache.findIndex(m => m.getFullYear()===today.getFullYear() && m.getMonth()===today.getMonth());
     if(idx >= 0){
-      const section = document.getElementById('timelineSection');
+      const section = findInBoard('#timelineSection');
       if(section){ 
         requestAnimationFrame(()=>{ 
           section.scrollLeft = idx * TIMELINE_CONFIG.monthWidth; 
@@ -533,7 +548,7 @@ function scheduleRenderTimelineHeader(payload){
  * @returns {number} Board offset in pixels
  */
 function getBoardOffset() {
-  const board = document.querySelector('feature-board');
+  const board = findInBoard('feature-board');
   if (!board) return 0;
   const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
   return Number.isNaN(pl) ? 0 : pl;
@@ -544,7 +559,7 @@ function getBoardOffset() {
  * @returns {Date|null} Center date or null if timeline not ready
  */
 function getCenterDate() {
-  const section = document.getElementById('timelineSection');
+  const section = findInBoard('#timelineSection');
   if (!section || !monthsCache.length) return null;
   
   const monthWidth = TIMELINE_CONFIG.monthWidth;
@@ -571,7 +586,7 @@ function getCenterDate() {
  * @param {Array} months - Current months array
  */
 function scrollToCenterDate(targetDate, months) {
-  const section = document.getElementById('timelineSection');
+  const section = findInBoard('#timelineSection');
   if (!section || !targetDate || !months.length) return;
   
   const monthWidth = TIMELINE_CONFIG.monthWidth;
@@ -603,7 +618,7 @@ function scrollToCenterDate(targetDate, months) {
 }
 
 function enableTimelinePanning(){
-  const section = document.getElementById('timelineSection'); 
+  const section = findInBoard('#timelineSection'); 
   if(!section) return;
   let isPanning = false;
   let startX = 0, startY = 0;
@@ -617,7 +632,7 @@ function enableTimelinePanning(){
     startX = e.clientX; 
     startY = e.clientY; 
     startScrollLeft = section.scrollLeft;
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     startScrollTop = featureBoard?.scrollTop ?? 0;
     section.classList.add('panning');
     function onMove(ev) { 
@@ -662,8 +677,8 @@ export function ensureScrollToMonth(date){
     const tryScroll = () => {
       const idx = resolveIndex();
       if(idx === -1) return false;
-      const section = document.getElementById('timelineSection');
-      if(!section) return false;
+        const section = findInBoard('#timelineSection');
+        if(!section) return false;
       const left = idx * monthWidth;
       requestAnimationFrame(()=>{ section.scrollLeft = left; });
       return true;

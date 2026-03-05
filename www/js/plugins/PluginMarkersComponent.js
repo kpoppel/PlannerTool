@@ -6,8 +6,9 @@ import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.j
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { getBoardOffset } from '../components/board-utils.js';
+import { getBoardOffset, findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginMarkersComponent extends LitElement {
   static properties = { 
@@ -86,6 +87,8 @@ export class PluginMarkersComponent extends LitElement {
       border: none;
       color: #999;
       font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
       margin: 0;
     }
 
@@ -163,7 +166,7 @@ export class PluginMarkersComponent extends LitElement {
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
     
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (board) {
       this._scrollListener = () => {
         if (this.visible && !this._scrollScheduled) {
@@ -192,12 +195,12 @@ export class PluginMarkersComponent extends LitElement {
     }
     
     if (this._scrollListener) {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       board?.removeEventListener('scroll', this._scrollListener);
     }
     
     if (this._syncOverlayScroll) {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       board?.removeEventListener('scroll', this._syncOverlayScroll);
     }
     
@@ -207,9 +210,9 @@ export class PluginMarkersComponent extends LitElement {
   }
 
   firstUpdated() {
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) return;
-    
+
     const hostRoot = board.shadowRoot || board;
     let overlay = hostRoot.querySelector('.markers-overlay-svg');
     
@@ -319,7 +322,7 @@ export class PluginMarkersComponent extends LitElement {
     
     return this.visible ? html`
       <div class="floating-toolbar">
-        <button class="close-btn" @click="${this.close}" title="Close">×</button>
+        <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <div class="toolbar-title">Plan Markers</div>
         <button @click="${this.refresh}" ?disabled="${this.loading}">
           ${this.loading ? '⏳ Loading...' : '🔄 Refresh'}
@@ -355,6 +358,12 @@ export class PluginMarkersComponent extends LitElement {
     this.setAttribute('visible', '');
     if (this._overlay) this._overlay.style.display = 'block';
     await this.refresh();
+  }
+
+  _handleClose() {
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-markers');
+    if (plugin) plugin.deactivate();
   }
 
   close() {
@@ -419,7 +428,7 @@ export class PluginMarkersComponent extends LitElement {
     // If no markers loaded yet, nothing more to do
     if (!this.markers.length) return;
 
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) return;
 
     // Prefer LayoutManager-provided board rect when available (avoids DOM reads)

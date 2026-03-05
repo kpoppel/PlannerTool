@@ -7,6 +7,20 @@ import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { FeatureEvents, CapacityEvents, ProjectEvents, TeamEvents, FilterEvents, TimelineEvents, ViewEvents } from '../core/EventRegistry.js';
 
+// Helper to locate elements inside timeline-board's render root when TimelineBoard
+// uses shadow DOM. Falls back to document queries for older behavior.
+function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
+
 /**
  * MainGraphLit - Lit-based main graph component with canvas rendering
  * @property {Object} bus - EventBus instance for emitting events
@@ -126,7 +140,7 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleRender));
 
     // Also listen for scroll on timelineSection
-    const section = document.getElementById('timelineSection');
+    const section = findInBoard('#timelineSection');
     if(section){
       this._maingraphScrollHandler = scheduleRender;
       section.addEventListener('scroll', this._maingraphScrollHandler, { passive: true });
@@ -148,7 +162,7 @@ export class MainGraphLit extends LitElement {
     }catch(e){}
     // Remove scroll handler
     try{
-      const section = document.getElementById('timelineSection');
+      const section = findInBoard('#timelineSection');
       if(section && this._maingraphScrollHandler) section.removeEventListener('scroll', this._maingraphScrollHandler);
       this._maingraphScrollHandler = null;
     }catch(e){}
@@ -191,7 +205,7 @@ export class MainGraphLit extends LitElement {
 
     // Prefer the component's host size; fall back to timelineSection width or configured defaults
     const hostRect = this.getBoundingClientRect ? this.getBoundingClientRect() : null;
-    const sectionEl = document.getElementById('timelineSection');
+    const sectionEl = findInBoard('#timelineSection');
     const desiredWidth = (hostRect && hostRect.width) ? Math.floor(hostRect.width) : ((sectionEl && sectionEl.clientWidth) ? sectionEl.clientWidth : (this.width || 800));
     const desiredHeight = (hostRect && hostRect.height) ? Math.floor(hostRect.height) : (this.height || 120);
     // Only update canvas backing buffer when dimensions changed to avoid unnecessary redraws
@@ -257,7 +271,7 @@ export class MainGraphLit extends LitElement {
     function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
     // Visible range: use timelineSection scroll if present, otherwise assume full months range
-    const section = document.getElementById('timelineSection');
+    const section = findInBoard('#timelineSection');
     let range = { startDate: months[0], endDate: months[months.length-1] };
     let viewportOffsetPx = 0; // Offset from the start of visibleStartIdx to the viewport left edge
     

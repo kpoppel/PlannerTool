@@ -17,7 +17,7 @@ import {
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
 import { bus } from '../../core/EventBus.js';
 import { TimelineEvents } from '../../core/EventRegistry.js';
-import { getBoardOffset } from '../../components/board-utils.js';
+import { getBoardOffset, findInBoard } from '../../components/board-utils.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -798,8 +798,9 @@ export class AnnotationOverlay extends LitElement {
    * Horizontal scroll is on the feature-board, vertical scroll is on timeline-section.
    */
   _getScrollContainers() {
-    const timelineSection = document.getElementById('timelineSection');
-    const featureBoard = document.querySelector('feature-board');
+    // timelineSection may live inside the timeline-board render root (shadow DOM)
+    const timelineSection = findInBoard('#timelineSection') || document.getElementById('timelineSection');
+    const featureBoard = findInBoard('feature-board');
     return { timelineSection, featureBoard };
   }
   
@@ -862,7 +863,7 @@ export class AnnotationOverlay extends LitElement {
   _getEventCoords(e) {
     // Prefer the feature-board client rect from LayoutManager so we avoid
     // per-event DOM reads which are expensive during pointer moves.
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     let rect = null;
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
     try {
@@ -912,7 +913,7 @@ export class AnnotationOverlay extends LitElement {
     // adding the featureBoard's bounding rect.left. The boardRect.left already
     // accounts for horizontal scrolling, so do NOT subtract scrollLeft here.
     try {
-      const featureBoard = document.querySelector('feature-board');
+      const featureBoard = findInBoard('feature-board');
       let boardClient = null;
       try {
         if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
@@ -981,7 +982,7 @@ export class AnnotationOverlay extends LitElement {
       try { console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', { vx, vy, contentX }); } catch (err) {}
       // Add a transient visual marker so we can see the click position
       try {
-        const featureBoard = document.querySelector('feature-board');
+        const featureBoard = findInBoard('feature-board');
         let boardClient = null;
         try { if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') boardClient = featureBoard._layout.getBoardClientRect(); } catch (e) { boardClient = null; }
         const boardLeft = boardClient ? (boardClient.left || 0) : (featureBoard ? featureBoard.getBoundingClientRect().left : 0);
@@ -1027,7 +1028,7 @@ export class AnnotationOverlay extends LitElement {
     container.style.pointerEvents = 'auto';
 
     // Compute content Y and fallbackContentX for annotation creation
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
     const { scrollTop } = this._getScrollOffsets();
     const contentY = (clientY - (boardRect.top || 0)) + (scrollTop || 0);
@@ -1557,7 +1558,7 @@ export class AnnotationOverlay extends LitElement {
    * Position the overlay to cover the feature board only (not the timeline header)
    */
   _positionOverTimeline() {
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;
     // Prefer a cached client rect from LayoutManager to avoid expensive
     // per-call DOM measurements. Fall back to getBoundingClientRect once.

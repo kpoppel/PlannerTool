@@ -8,13 +8,12 @@ export class AzureDevopsModal extends LitElement {
   };
 
   constructor(){ super(); this.overrides = {}; this.state = null; this._selected = new Set(); }
-  createRenderRoot(){ return this; }
 
   firstUpdated(){
     // Start with no items selected by default for safety
     // User must explicitly check items they want to annotate
     // open the inner modal once rendered
-    const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
+    const inner = this.renderRoot ? this.renderRoot.querySelector('modal-lit') : this.querySelector('modal-lit'); if(inner) inner.open = true;
   }
 
   _formatRange(from, to){
@@ -75,6 +74,71 @@ export class AzureDevopsModal extends LitElement {
       <modal-lit wide>
         <div slot="header"><h3>Save to Azure DevOps</h3></div>
         <div>
+          <style>
+            p {
+              margin: 0 0 16px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .scenario-annotate-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 13px;
+              background: #fff;
+            }
+            .scenario-annotate-table thead {
+              background: #f5f5f5;
+              position: sticky;
+              top: 0;
+            }
+            .scenario-annotate-table th {
+              padding: 10px 12px;
+              text-align: left;
+              font-weight: 600;
+              color: #333;
+              border: 1px solid #ddd;
+              border-bottom: 2px solid #bbb;
+            }
+            .scenario-annotate-table td {
+              padding: 10px 12px;
+              border: 1px solid #ddd;
+              vertical-align: top;
+              color: #333;
+            }
+            .scenario-annotate-table tbody tr {
+              background: #fff;
+            }
+            .scenario-annotate-table tbody tr:nth-child(even) {
+              background: #fafafa;
+            }
+            .scenario-annotate-table tbody tr:hover {
+              background: #f0f7ff;
+            }
+            .scenario-annotate-table input[type="checkbox"] {
+              cursor: pointer;
+              width: 16px;
+              height: 16px;
+            }
+            .scenario-annotate-table td:first-child {
+              text-align: center;
+            }
+            .scenario-annotate-table strong {
+              color: #000;
+              font-weight: 600;
+            }
+            .btn {
+              padding: 6px 12px;
+              background: #e9e9e9;
+              border: 1px solid rgba(0,0,0,0.06);
+              border-radius: 6px;
+              cursor: pointer;
+              color: #333;
+              font-size: 13px;
+            }
+            .btn:hover {
+              background: #e0e0e0;
+            }
+          </style>
           <p>Select which items to annotate back to Azure DevOps:</p>
           ${entries.length === 0 ? html`<p style="color:#888;">No changes to save.</p>` : html`
           <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">

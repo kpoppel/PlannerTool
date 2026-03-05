@@ -7,8 +7,20 @@ import { featureFlags } from '../config.js';
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
+function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
+
 const getBoardOffset = () => {
-  const board = document.querySelector('feature-board');
+  const board = findInBoard('feature-board');
   if (!board) return 0;
   const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
   return Number.isNaN(pl) ? 0 : pl;

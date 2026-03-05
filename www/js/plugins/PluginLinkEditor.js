@@ -9,6 +9,7 @@ import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
 import { getLinkEditorState } from './linkeditor/LinkEditorState.js';
 import './PluginLinkEditorComponent.js';
+import { findInBoard } from '../components/board-utils.js';
 
 export class PluginLinkEditor extends Plugin {
   constructor(id = 'link-editor', config = {}) {
@@ -62,7 +63,7 @@ export class PluginLinkEditor extends Plugin {
 
     // Attach component to the board
     try {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       if (board) {
         const hostRoot = board.shadowRoot || board;
         

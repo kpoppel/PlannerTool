@@ -36,7 +36,8 @@
       "enabled": true,
       "activated": false,
       "exclusive": true,
-      "mountPoint": "timeline-board",
+      "fullscreen": true,
+      "mountPoint": "app",
       "dependencies": []
     }
     ,
@@ -76,7 +77,8 @@
       "enabled": true,
       "activated": false,
       "exclusive": true,
-      "mountPoint": "timeline-board",
+      "fullscreen": true,
+      "mountPoint": "app",
       "dependencies": []
     },
     {

@@ -8,6 +8,8 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { ACTIONS, getLinkEditorState } from './linkeditor/LinkEditorState.js';
 import './linkeditor/LinkEditorOverlay.js';
 import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
+import { findInBoard } from '../components/board-utils.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginLinkEditorComponent extends LitElement {
   static properties = { 
@@ -175,6 +177,27 @@ export class PluginLinkEditorComponent extends LitElement {
       margin-top: 8px;
       font-style: italic;
     }
+
+    .close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: #999;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 0;
+    }
+
+    .close-btn:hover {
+      color: #333;
+      background: #f0f0f0;
+    }
   `;
 
   connectedCallback() {
@@ -199,6 +222,7 @@ export class PluginLinkEditorComponent extends LitElement {
   render() {
     return html`
       <div class="floating-toolbar">
+        <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <div class="toolbar-title">
           Link Editor
         </div>
@@ -256,7 +280,7 @@ export class PluginLinkEditorComponent extends LitElement {
   firstUpdated() {
     // Ensure a single `link-editor-overlay` exists inside the feature board
     try {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       if (!board) return;
       const hostRoot = board.shadowRoot || board;
 
@@ -308,6 +332,12 @@ export class PluginLinkEditorComponent extends LitElement {
   }
 
   // --- Public API ---
+  
+  _handleClose() {
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-link-editor');
+    if (plugin) plugin.deactivate();
+  }
   
   open() { 
     console.log('[PluginLinkEditor] Opening plugin');

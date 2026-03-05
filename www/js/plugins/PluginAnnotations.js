@@ -6,6 +6,7 @@
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
+import { findInBoard } from '../components/board-utils.js';
 
 class PluginAnnotations {
   constructor(id = 'plugin-annotations', config = {}) {
@@ -36,7 +37,7 @@ class PluginAnnotations {
       this._componentLoaded = true;
     }
     const selector = this.config.mountPoint || 'feature-board';
-    this._host = document.querySelector(selector) || document.body;
+    this._host = findInBoard(selector) || document.body;
     this.initialized = true;
   }
 
@@ -44,7 +45,7 @@ class PluginAnnotations {
     if (!this._componentLoaded) await this.init();
     if (!this._host) {
       const selector = this.config.mountPoint || 'feature-board';
-      this._host = document.querySelector(selector) || document.body;
+      this._host = findInBoard(selector) || document.body;
     }
     if (!this._el) {
       this._el = document.createElement('plugin-annotations');
@@ -53,7 +54,7 @@ class PluginAnnotations {
       // by the component's `firstUpdated()` logic; the plugin's toolbox should
       // live in the app container so it's on top of the feature board UI.
       const selector = this.config.mountPoint || 'feature-board';
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       const appRoot = document.querySelector('.app-container') || document.getElementById('app') || document.body;
 
       // If the config explicitly requests mounting somewhere other than the
@@ -83,7 +84,7 @@ class PluginAnnotations {
 
       // Keep sizing in sync with the board so it doesn't float over sidebars
       try {
-        const board = document.querySelector('feature-board');
+        const board = findInBoard('feature-board');
         if (board) {
           // With inset positioning we don't need to explicitly set pixel
           // width/height on every resize — but we still need to trigger a

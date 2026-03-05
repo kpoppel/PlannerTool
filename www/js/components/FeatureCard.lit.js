@@ -34,6 +34,7 @@ export class FeatureCardLit extends LitElement {
       position: relative;
       background: white;
       border: 1px solid #ccc;
+      border-left: 4px solid var(--project-color, #ccc);
       border-radius: 6px;
       /* unified vertical padding so narrow and regular cards compute the same height */
       padding: 4px 8px;
@@ -93,6 +94,9 @@ export class FeatureCardLit extends LitElement {
       );
       border-style: dashed;
       border-color: #999;
+      /* Override left border for ghosted cards to keep dashed style */
+      border-left-width: 1px;
+      border-left-style: dashed;
     }
 
     .feature-card.ghosted:hover {
@@ -686,6 +690,7 @@ export class FeatureCardLit extends LitElement {
 
   render() {
     const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
+    const projectColor = this.project?.color || '#ccc';
 
     const cardClasses = {
       'feature-card': true,
@@ -701,6 +706,7 @@ export class FeatureCardLit extends LitElement {
         data-id=${this.feature.id}
         role="listitem"
         draggable="false"
+        style="--project-color: ${projectColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
         part="feature-card"

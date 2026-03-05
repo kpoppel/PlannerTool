@@ -46,7 +46,7 @@ describe('app-sidebar', () => {
     const tpl = sidebar.renderScenarios();
     // Lit TemplateResult stringification is environment-specific; simply call requestUpdate to ensure DOM updated
     await sidebar.requestUpdate();
-    const html = sidebar.innerHTML || '';
+    const html = (sidebar.shadowRoot ? sidebar.shadowRoot.innerHTML : sidebar.innerHTML) || '';
     expect(html).to.include('One');
     // active scenario should include 'active' class
     expect(html).to.include('active');

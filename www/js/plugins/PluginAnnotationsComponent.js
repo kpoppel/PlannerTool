@@ -11,6 +11,8 @@ import { TOOLS, TOOL_DEFINITIONS, getAnnotationState } from './annotations/Annot
 import { ANNOTATION_COLORS } from './annotations/AnnotationColors.js';
 import './annotations/AnnotationOverlay.js';
 import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
+import { findInBoard } from '../components/board-utils.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginAnnotationsComponent extends LitElement {
   static properties = {
@@ -151,18 +153,18 @@ export class PluginAnnotationsComponent extends LitElement {
       width: 24px;
       height: 24px;
       padding: 0;
+      background: transparent;
       border: none;
-      background: none;
-      cursor: pointer;
-      font-size: 16px;
       color: #999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 0;
     }
 
     .close-btn:hover {
       color: #333;
+      background: #f0f0f0;
     }
   `;
 
@@ -191,7 +193,7 @@ export class PluginAnnotationsComponent extends LitElement {
 
   _updateOverlayRect() {
     try {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       if (!board || !this._overlay) return;
 
       // Prefer LayoutManager-provided client rect to avoid expensive DOM reads
@@ -224,6 +226,7 @@ export class PluginAnnotationsComponent extends LitElement {
   render() {
     return html`
       <div class="floating-toolbar">
+        <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <div class="toolbar-title">
           Annotations
           ${this.annotationCount > 0 ? html`<span class="annotation-count">${this.annotationCount}</span>` : ''}
@@ -265,7 +268,7 @@ export class PluginAnnotationsComponent extends LitElement {
 
   firstUpdated() {
     try {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       if (!board) return;
 
       // Reuse existing overlay if present in the document, otherwise create it
@@ -309,6 +312,12 @@ export class PluginAnnotationsComponent extends LitElement {
         this._overlay.show();
       }
     });
+  }
+
+  _handleClose() {
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-annotations');
+    if (plugin) plugin.deactivate();
   }
 
   close() {

@@ -3,6 +3,7 @@
 
 import { LitElement, html, css } from '../../vendor/lit.js';
 import { getLinkEditorState } from './LinkEditorState.js';
+import { findInBoard } from '../../components/board-utils.js';
 
 /**
  * LinkEditorOverlay
@@ -202,7 +203,7 @@ export class LinkEditorOverlay extends LitElement {
    * @private
    */
   _attachEventHandlers() {
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) {
       console.warn('[LinkEditorOverlay] Board not found');
       return;

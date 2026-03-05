@@ -30,7 +30,8 @@ class PluginCostPlugin {
       description: this.config.description || 'Cost analysis plugin',
       icon: this.config.icon || 'attach_money',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
+      fullscreen: this.config.fullscreen || false
     };
   }
 
@@ -40,8 +41,9 @@ class PluginCostPlugin {
       await import('./PluginCostComponent.js');
       this._componentLoaded = true;
     }
-    const selector = this.config.mountPoint || 'timeline-board';
-    this._host = document.querySelector(selector) || document.body;
+    // Fullscreen plugins mount at app level
+    const selector = this.config.mountPoint || 'app';
+    this._host = document.querySelector(`#${selector}`) || document.querySelector(`.${selector}`) || document.body;
     this.initialized = true;
   }
 
@@ -52,10 +54,22 @@ class PluginCostPlugin {
 
   async activate(){
     if(!this._componentLoaded) await this.init();
-    if(!this._host){ const selector = this.config.mountPoint || 'timeline-board'; this._host = document.querySelector(selector) || document.body; }
+    if(!this._host){ const selector = this.config.mountPoint || 'app'; this._host = document.querySelector(`#${selector}`) || document.querySelector(`.${selector}`) || document.body; }
     if(!this._el){
       this._el = document.createElement('plugin-cost');
+      // Mount as peer to timeline-board with same layout class
+      this._el.classList.add('main');
+      this._el.style.display = 'none'; // Start hidden
       this._host.appendChild(this._el);
+    }
+    // Hide timeline-board if this is a fullscreen plugin
+    if(this.config.fullscreen){
+      const timelineBoard = document.querySelector('timeline-board');
+      if(timelineBoard){
+        this._savedTimelineBoardDisplay = timelineBoard.style.display || '';
+        timelineBoard.style.display = 'none';
+      }
+      this._el.style.display = 'flex';
     }
     // Open the plugin UI immediately; the component handles its own data
     // loading to avoid blocking the UI and to prevent duplicate fetches.
@@ -66,6 +80,14 @@ class PluginCostPlugin {
 
   async deactivate(){
     if(this._el && typeof this._el.close === 'function') this._el.close();
+    // Restore timeline-board visibility if this is a fullscreen plugin
+    if(this.config.fullscreen){
+      const timelineBoard = document.querySelector('timeline-board');
+      if(timelineBoard){
+        timelineBoard.style.display = this._savedTimelineBoardDisplay || '';
+      }
+      if(this._el) this._el.style.display = 'none';
+    }
     this.active = false;
     bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }

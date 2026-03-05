@@ -14,6 +14,20 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.14.0] - date
+
+### Added
+### Changed
+
+- Removed mix of light DOM and shadow DOM use and now only use shadow DOM. This paves the way to component independence.
+- Full screen plugins now render alongside the timeline board. Before they were mixed in with the board causing confusion.
+
+### Fixed
+
+- The card border accent for the plan colors got lost, now it is back.
+- Several plugins were missing a close button, and those with one did not unselect the tool chip in the sidebar.
+- The history plugin only rendered bars for the tasks on screen, and then nothing else unless resizing the browser.
+
 ## [v1.13.2] - 2026-03-04
 
 ### Fixed

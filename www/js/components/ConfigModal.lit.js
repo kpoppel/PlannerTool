@@ -14,18 +14,24 @@ class ConfigModal extends LitElement {
     this.open = false;
   }
 
-  // Render into light DOM so existing global CSS applies
-  createRenderRoot(){ return this; }
-
   connectedCallback(){
     super.connectedCallback();
   }
 
   disconnectedCallback(){ super.disconnectedCallback(); }
 
+  _getInner(){
+    return this.renderRoot.querySelector('modal-lit');
+  }
+
+  _qs(selector){
+    const inner = this._getInner();
+    return inner ? inner.querySelector(selector) : null;
+  }
+
   async _populate(){
-    const emailInput = this.querySelector('#configEmail');
-    const autosaveInput = this.querySelector('#autosaveInterval');
+    const emailInput = this._qs('#configEmail');
+    const autosaveInput = this._qs('#autosaveInterval');
     try{
       const storedEmail = await dataService.getLocalPref('user.email');
       if(storedEmail) emailInput.value = storedEmail;
@@ -39,6 +45,44 @@ class ConfigModal extends LitElement {
       <modal-lit wide>
         <div slot="header"><h3>Configuration</h3></div>
         <div>
+          <style>
+            .config-form {
+              display: block;
+            }
+            .form-row {
+              margin-bottom: 16px;
+            }
+            .form-row label {
+              display: block;
+              margin-bottom: 6px;
+              font-weight: 500;
+              color: #333;
+              font-size: 14px;
+            }
+            .form-row input {
+              width: 100%;
+              padding: 8px 10px;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              font-size: 14px;
+              font-family: inherit;
+            }
+            .form-row input:focus {
+              outline: 2px solid rgba(52, 152, 219, 0.3);
+              border-color: #3498db;
+            }
+            .status {
+              margin-top: 12px;
+              padding: 8px;
+              border-radius: 4px;
+              font-size: 14px;
+              color: #333;
+              background: #f0f0f0;
+            }
+            .status:empty {
+              display: none;
+            }
+          </style>
           <form id="configForm" class="config-form">
             <div class="form-row">
               <label for="configEmail">Email address</label>
@@ -67,16 +111,16 @@ class ConfigModal extends LitElement {
     // Populate now that the element has rendered and inputs are present
     this._populate();
 
-    const form = this.querySelector('#configForm');
-    const closeBtn = this.querySelector('#closeConfigBtn');
-    const status = this.querySelector('#configStatus');
-    const emailInput = this.querySelector('#configEmail');
-    const patInput = this.querySelector('#configPat');
-    const autosaveInput = this.querySelector('#autosaveInterval');
+    const form = this._qs('#configForm');
+    const closeBtn = this._qs('#closeConfigBtn');
+    const status = this._qs('#configStatus');
+    const emailInput = this._qs('#configEmail');
+    const patInput = this._qs('#configPat');
+    const autosaveInput = this._qs('#autosaveInterval');
 
     // Save handler wired to Save button so the footer button can trigger form submit
-    const saveBtn = this.querySelector('#saveConfigBtn');
-    saveBtn.addEventListener('click', async (e)=>{
+    const saveBtn = this._qs('#saveConfigBtn');
+    if (saveBtn) saveBtn.addEventListener('click', async (e)=>{
       e.preventDefault();
       const email = emailInput.value.trim();
       const pat = patInput.value;
@@ -94,14 +138,14 @@ class ConfigModal extends LitElement {
       bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });
     });
 
-    closeBtn.addEventListener('click', ()=>{
-      const innerModal = this.querySelector('modal-lit');
+    if (closeBtn) closeBtn.addEventListener('click', ()=>{
+      const innerModal = this._getInner();
       if(innerModal && typeof innerModal.close === 'function') innerModal.close();
       else this._close();
     });
 
     // Replay Tour link wiring
-    const replayLink = this.querySelector('#replayTourLink');
+    const replayLink = this._qs('#replayTourLink');
     if(replayLink){
       replayLink.addEventListener('click', async (e)=>{
         e.preventDefault();
@@ -112,7 +156,7 @@ class ConfigModal extends LitElement {
           }
         }catch(err){ console.warn('Failed to start tour', err); }
         // Close the inner modal so the tour is visible
-        const innerModal = this.querySelector('modal-lit');
+        const innerModal = this._getInner();
         if(innerModal && typeof innerModal.close === 'function') innerModal.close();
         else this._close();
       });
@@ -120,21 +164,20 @@ class ConfigModal extends LitElement {
 
     // Ensure the inner modal is opened after the <modal-lit> definition is available
     customElements.whenDefined('modal-lit').then(()=>{
-      const innerModal = this.querySelector('modal-lit');
+      const innerModal = this._getInner();
       if(innerModal){
-        // Remove the config-modal wrapper when the inner modal closes
         innerModal.addEventListener('modal-close', ()=> this.remove());
         try{ innerModal.open = true; }catch(e){ /* ignore */ }
       }
     }).catch(()=>{
       // If definition never arrives, still attempt to open any existing inner modal
-      const innerModal = this.querySelector('modal-lit');
+      const innerModal = this._getInner();
       if(innerModal){ try{ innerModal.open = true; }catch(e){} }
     });
     // Ensure the email input is focused when the inner modal is opened
     const tryFocusEmail = () => {
       try{
-        const emailInput = this.querySelector('#configEmail');
+        const emailInput = this._qs('#configEmail');
         if(emailInput && typeof emailInput.focus === 'function'){
           // small timeout to allow any modal open animation to complete
           setTimeout(()=> emailInput.focus(), 60);
@@ -142,7 +185,7 @@ class ConfigModal extends LitElement {
       }catch(e){}
     };
     // If modal-lit exists now, focus after it's opened
-    const existingInner = this.querySelector('modal-lit');
+    const existingInner = this._getInner();
     if(existingInner){
       // If modal-lit exposes open property, watch for it or attempt immediate focus
       try{ if(existingInner.open) tryFocusEmail(); else { existingInner.addEventListener('modal-open', tryFocusEmail, { once: true }); } }catch(e){ tryFocusEmail(); }
@@ -150,14 +193,13 @@ class ConfigModal extends LitElement {
   }
 
   _overlayClick(e){
-    if(e.target && e.target.classList && e.target.classList.contains('config-modal-overlay')){
-      this._close();
-    }
+    const innerModal = this._getInner();
+    if(innerModal && typeof innerModal.close === 'function') innerModal.close();
   }
 
   _close(){
-    const overlay = this.querySelector('.config-modal-overlay');
-    if(overlay) overlay.style.display = 'none';
+    const innerModal = this._getInner();
+    if(innerModal && typeof innerModal.close === 'function') innerModal.close();
     this.remove();
   }
 }

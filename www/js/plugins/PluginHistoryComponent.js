@@ -8,8 +8,9 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
-import { getBoardOffset } from '../components/board-utils.js';
+import { getBoardOffset, findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginHistoryComponent extends LitElement {
   static properties = { 
@@ -28,6 +29,54 @@ export class PluginHistoryComponent extends LitElement {
     this._overlay = null;
     this._tooltipEl = null;
     this._loadedProjects = new Set(); // Track which projects have been loaded
+  }
+
+  async _ensureVisibleProjectsLoaded(){
+    try{
+      const board = findInBoard('feature-board');
+      if(!board) return;
+      const hostRoot = board.shadowRoot || board;
+      const br = board.getBoundingClientRect();
+      const visibleProjectIds = new Set();
+
+      // Query likely card selectors
+      const cards = hostRoot.querySelectorAll('feature-card, .card, feature-card-lit');
+      for(const card of cards){
+        try{
+          const crect = card.getBoundingClientRect ? card.getBoundingClientRect() : null;
+          if(!crect) continue;
+          if(crect.bottom < br.top || crect.top > br.bottom) continue; // not visible
+          const ds = card.dataset || {};
+          const maybe = ds.projectId || ds.planId || ds.project || ds['project_id'] || ds['plan_id'];
+          if(maybe) visibleProjectIds.add(String(maybe));
+        }catch(e){/*ignore*/}
+      }
+
+      if(visibleProjectIds.size === 0) return;
+
+      const selectedProjects = (state.projects || []).filter(p => p.selected);
+      const toFetch = selectedProjects.filter(p => visibleProjectIds.has(String(p.id)) && !this._loadedProjects.has(p.id));
+      if(toFetch.length === 0) return;
+
+      console.log(`[PluginHistory] Lazy-loading history for visible projects: ${toFetch.map(p=>p.id).join(',')}`);
+      const newTasks = [];
+      for(const project of toFetch){
+        try{
+          const url = `/api/history/tasks?project=${project.id}&per_page=500`;
+          const res = await fetch(url);
+          if(!res.ok){ console.warn(`[PluginHistory] Failed to fetch history for ${project.id}: HTTP ${res.status}`); continue; }
+          const data = await res.json();
+          if(data.tasks && data.tasks.length) newTasks.push(...data.tasks);
+          this._loadedProjects.add(project.id);
+        }catch(e){ console.error('[PluginHistory] Error lazy-loading project history', e); }
+      }
+
+      if(newTasks.length){
+        const existingIds = new Set(this.historyData.map(t => t.task_id));
+        const unique = newTasks.filter(t => !existingIds.has(t.task_id));
+        this.historyData = [...this.historyData, ...unique];
+      }
+    }catch(e){ console.error('[PluginHistory] _ensureVisibleProjectsLoaded error', e); }
   }
 
   static styles = css`
@@ -88,6 +137,8 @@ export class PluginHistoryComponent extends LitElement {
       border: none;
       color: #999;
       font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
       margin: 0;
     }
 
@@ -139,7 +190,8 @@ export class PluginHistoryComponent extends LitElement {
           this._scrollScheduled = true;
           requestAnimationFrame(() => {
             this._scrollScheduled = false;
-            this._updateHistory();
+            // Ensure visible projects' history is loaded, then update
+            this._ensureVisibleProjectsLoaded().then(()=> this._updateHistory()).catch(()=> this._updateHistory());
           });
         }
       }
@@ -159,14 +211,14 @@ export class PluginHistoryComponent extends LitElement {
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
     
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (board) {
       this._scrollListener = () => {
         if (this.visible && !this._scrollScheduled) {
           this._scrollScheduled = true;
           requestAnimationFrame(() => {
             this._scrollScheduled = false;
-            this._updateHistory();
+            this._ensureVisibleProjectsLoaded().then(()=> this._updateHistory()).catch(()=> this._updateHistory());
           });
         }
       };
@@ -188,8 +240,13 @@ export class PluginHistoryComponent extends LitElement {
     }
     
     if (this._scrollListener) {
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       board?.removeEventListener('scroll', this._scrollListener);
+    }
+    
+    if (this._syncOverlayScroll) {
+      const board = findInBoard('feature-board');
+      board?.removeEventListener('scroll', this._syncOverlayScroll);
     }
     
     this._overlay?.remove();
@@ -200,7 +257,7 @@ export class PluginHistoryComponent extends LitElement {
   }
 
   firstUpdated() {
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) return;
     
     const hostRoot = board.shadowRoot || board;
@@ -254,8 +311,17 @@ export class PluginHistoryComponent extends LitElement {
       hostRoot.appendChild(this._tooltipEl);
     }
     
-    // No need for manual scroll tracking - the overlay is a child of feature-board
-    // and will scroll naturally with the board content
+    // Keep overlay aligned with the viewport as the board scrolls
+    // This allows us to render in viewport-space coordinates
+    if (board && !this._syncOverlayScroll) {
+      this._syncOverlayScroll = () => {
+        if (this._overlay && board) {
+          this._overlay.style.transform = `translateY(${board.scrollTop}px)`;
+        }
+      };
+      board.addEventListener('scroll', this._syncOverlayScroll);
+      this._syncOverlayScroll(); // Initial sync
+    }
     
     if (this._svgEl) {
       Object.assign(this._svgEl.style, {
@@ -283,7 +349,7 @@ export class PluginHistoryComponent extends LitElement {
     
     return this.visible ? html`
       <div class="floating-toolbar">
-        <button class="close-btn" @click="${this.close}" title="Close">×</button>
+        <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <div class="toolbar-title">Task History</div>
         <button @click="${this.refreshCache}" ?disabled="${this.loading}">
           ${this.loading ? '⏳ Loading...' : '🔄 Refresh Cache'}
@@ -310,6 +376,12 @@ export class PluginHistoryComponent extends LitElement {
     this.setAttribute('visible', '');
     if (this._overlay) this._overlay.style.display = 'block';
     await this.refresh();
+  }
+
+  _handleClose() {
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-history');
+    if (plugin) plugin.deactivate();
   }
 
   close() {
@@ -430,7 +502,7 @@ export class PluginHistoryComponent extends LitElement {
     
     if (!this.historyData?.length) return;
 
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) return;
 
     // Prefer LayoutManager-provided client rect (page coords) to avoid DOM reads
@@ -458,13 +530,17 @@ export class PluginHistoryComponent extends LitElement {
     this._svgEl.style.width = `${boardRect.width}px`;
     this._svgEl.style.height = `${boardRect.height}px`;
 
+    // Get scroll position for viewport-space calculations
+    const scrollTop = board.scrollTop || 0;
+    const viewportHeight = boardRect.height;
+
     // Process each task with history
     this.historyData.forEach(taskData => {
-      this._renderTaskHistory(taskData, months, monthWidth, boardOffset);
+      this._renderTaskHistory(taskData, months, monthWidth, boardOffset, scrollTop, viewportHeight);
     });
   }
 
-  _renderTaskHistory(taskData, months, monthWidth, boardOffset) {
+  _renderTaskHistory(taskData, months, monthWidth, boardOffset, scrollTop, viewportHeight) {
     const taskId = taskData.task_id;
     const history = taskData.history || [];
     
@@ -474,7 +550,7 @@ export class PluginHistoryComponent extends LitElement {
     }
     
     // Find the card element for this task
-    const board = document.querySelector('feature-board');
+    const board = findInBoard('feature-board');
     if (!board) {
       console.debug('[PluginHistory] Could not find feature-board element');
       return;
@@ -542,24 +618,32 @@ export class PluginHistoryComponent extends LitElement {
       }
     }
     
+    // Convert to viewport-space coordinates and check if visible
+    const cardViewportY = cardY - scrollTop;
+    
+    // Skip cards that are completely outside the visible viewport
+    if (cardViewportY + cardHeight < -50 || cardViewportY > viewportHeight + 50) {
+      return; // Card is not visible, skip rendering
+    }
+    
     // Separate history by field type
     const startHistory = history.filter(h => h.field === 'start');
     const endHistory = history.filter(h => h.field === 'end');
     
-    // Draw start history line (amber)
+    // Draw start history line (amber) - use viewport coordinates
     if (startHistory.length > 0) {
-      const startY = cardY + cardHeight * 0.33; // Upper third of card
+      const startY = cardViewportY + cardHeight * 0.33; // Upper third of card
       this._drawHistoryLine(startHistory, startY, '#ff9800', months, monthWidth, boardOffset, taskData.title, 'start');
     }
     
-    // Draw end history line (green)
+    // Draw end history line (green) - use viewport coordinates
     if (endHistory.length > 0) {
-      const endY = cardY + cardHeight * 0.67; // Lower third of card
+      const endY = cardViewportY + cardHeight * 0.67; // Lower third of card
       this._drawHistoryLine(endHistory, endY, '#4caf50', months, monthWidth, boardOffset, taskData.title, 'end');
     }
     
-    // Draw fish-bone connectors for paired changes
-    this._drawFishboneConnectors(history, cardY, cardHeight, months, monthWidth, boardOffset);
+    // Draw fish-bone connectors for paired changes - use viewport coordinates
+    this._drawFishboneConnectors(history, cardViewportY, cardHeight, months, monthWidth, boardOffset);
   }
 
   _drawHistoryLine(historyEntries, y, color, months, monthWidth, boardOffset, taskTitle, fieldType) {

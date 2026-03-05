@@ -5,6 +5,18 @@ import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
 
+export function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
+
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 let _cachedMonthsRef = null;
@@ -54,7 +66,7 @@ const findMonthIndexFor = (msVal) => {
 export const laneHeight = () => state._viewService.condensedCards ? 40 : 64;
 
 export const getBoardOffset = () => {
-  const board = document.querySelector('feature-board');
+  const board = findInBoard('feature-board');
   if (!board) return 0;
   const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
   return Number.isNaN(pl) ? 0 : pl;

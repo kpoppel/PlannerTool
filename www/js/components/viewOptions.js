@@ -3,6 +3,8 @@ import { bus } from '../core/EventBus.js';
 import { StateFilterEvents, TimelineEvents, FilterEvents, ViewEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
 
+let _lastViewOptionsContainer = null;
+
 function makeChip(label, { active=false, onClick, ariaPressed=false, role=null, ariaChecked=null, color=null }){
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -140,6 +142,7 @@ function renderStateFilter(container){
 
 export function initViewOptions(container){
   const root = container || document.getElementById('viewOptionsContainer');
+  _lastViewOptionsContainer = root;
   if(!root) return;
   root.innerHTML = '';
 
@@ -237,14 +240,14 @@ export function initViewOptions(container){
 }
 
 function reinit(){
-  const node = document.getElementById('viewOptionsContainer');
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer');
   if(!node) return;
   initViewOptions(node);
 }
 
 // Register the states:changed listener only once at module level
 bus.on(StateFilterEvents.CHANGED, ()=>{
-  const node = document.getElementById('viewOptionsContainer');
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer');
   if(!node) return;
   // Rebuild only the state filter portion: simplest is full re-init to sync active flags
   initViewOptions(node);
@@ -253,7 +256,7 @@ bus.on(StateFilterEvents.CHANGED, ()=>{
 // Re-init view options when timeline scale changes so the segmented control
 // reflects restored or programmatic changes to the timeline scale.
 bus.on(TimelineEvents.SCALE_CHANGED, ()=>{
-  const node = document.getElementById('viewOptionsContainer');
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer');
   if(!node) return;
   initViewOptions(node);
 });
@@ -261,21 +264,21 @@ bus.on(TimelineEvents.SCALE_CHANGED, ()=>{
 // Re-init view options when task type filters change (showEpics/showFeatures)
 // This ensures the UI chips reflect the current state when views are loaded.
 bus.on(FilterEvents.CHANGED, ()=>{
-  const node = document.getElementById('viewOptionsContainer');
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer');
   if(!node) return;
   initViewOptions(node);
 });
 
 // Re-init when view-related flags change so the chips reflect programmatic toggles
 bus.on(ViewEvents.CONDENSED, ()=>{
-  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });
 bus.on(ViewEvents.DEPENDENCIES, ()=>{
-  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });
 bus.on(ViewEvents.CAPACITY_MODE, ()=>{
-  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });
 bus.on(ViewEvents.SORT_MODE, ()=>{
-  const node = document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });

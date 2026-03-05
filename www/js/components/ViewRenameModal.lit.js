@@ -6,17 +6,25 @@ export class ViewRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
   constructor(){ super(); this.id=''; this.name=''; }
-  createRenderRoot(){ return this; }
-
+  
   connectedCallback(){ super.connectedCallback(); }
+
+  _getInner(){
+    return this.renderRoot.querySelector('modal-lit');
+  }
+  
+  _qs(selector){
+    const inner = this._getInner();
+    return inner ? inner.querySelector(selector) : null;
+  }
 
   firstUpdated(){
     // open after render
-    const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
-    const saveBtn = this.querySelector('#renameViewBtn');
-    const closeBtn = this.querySelector('#cancelRenameViewBtn');
-    const input = this.querySelector('#renameViewInput');
-    const status = this.querySelector('#renameViewStatus');
+    const inner = this._getInner(); if(inner) inner.open = true;
+    const saveBtn = this._qs('#renameViewBtn');
+    const closeBtn = this._qs('#cancelRenameViewBtn');
+    const input = this._qs('#renameViewInput');
+    const status = this._qs('#renameViewStatus');
     saveBtn.addEventListener('click', async ()=>{
       const val = input.value.trim();
       if (!val) {
@@ -32,14 +40,14 @@ export class ViewRenameModal extends LitElement {
         this._disableButtons(false);
       }
     });
-    closeBtn.addEventListener('click', ()=> this.remove());
-    input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
-    setTimeout(()=> input.focus(), 10);
+    if (closeBtn) closeBtn.addEventListener('click', ()=> this.remove());
+    if (input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
+    if (input) setTimeout(()=> input.focus(), 10);
   }
 
   _disableButtons(dis){ 
-    const saveBtn = this.querySelector('#renameViewBtn'); 
-    const closeBtn = this.querySelector('#cancelRenameViewBtn'); 
+    const saveBtn = this._qs('#renameViewBtn'); 
+    const closeBtn = this._qs('#cancelRenameViewBtn'); 
     if(saveBtn) saveBtn.disabled = dis; 
     if(closeBtn) closeBtn.disabled = dis; 
   }
@@ -49,6 +57,41 @@ export class ViewRenameModal extends LitElement {
       <modal-lit wide>
         <div slot="header"><h3>Rename View</h3></div>
         <div>
+          <style>
+            .modal-field {
+              margin-bottom: 16px;
+            }
+            .modal-field label {
+              display: block;
+              margin-bottom: 6px;
+              font-weight: 500;
+              color: #333;
+              font-size: 14px;
+            }
+            .modal-field input {
+              width: 100%;
+              padding: 8px 10px;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              font-size: 14px;
+              font-family: inherit;
+            }
+            .modal-field input:focus {
+              outline: 2px solid rgba(52, 152, 219, 0.3);
+              border-color: #3498db;
+            }
+            .status {
+              margin-top: 12px;
+              padding: 8px;
+              border-radius: 4px;
+              font-size: 14px;
+              color: #d32f2f;
+              background: #ffebee;
+            }
+            .status:empty {
+              display: none;
+            }
+          </style>
           <div class="modal-field">
             <label>Enter a new name for the view</label>
             <input id="renameViewInput" type="text" value="${this.name}" />

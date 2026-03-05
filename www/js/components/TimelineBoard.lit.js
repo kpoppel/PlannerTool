@@ -18,10 +18,8 @@ class TimelineBoard extends LitElement {
     this._onScroll = this._onScroll.bind(this);
   }
 
-  createRenderRoot() {
-    // Render into light DOM so children can measure easily
-    return this;
-  }
+//  createRenderRoot() {
+  
 
   connectedCallback() {
     super.connectedCallback();
@@ -89,6 +87,16 @@ class TimelineBoard extends LitElement {
         min-height: 0;
         height: 100%;
       }
+      /* Scrollbar styling for timeline section only */
+      .timeline-section::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+        background: #eee;
+      }
+      .timeline-section::-webkit-scrollbar-thumb {
+        background: #b0cbe6;
+        border-radius: 4px;
+      }
       .timeline-board-viewport {
         width: 100%;
         height: 100%;
@@ -141,10 +149,21 @@ class TimelineBoard extends LitElement {
         margin: 0;
         padding: 0;
         border: 0;
-        background: transparent;
         width: 100%;
         overflow: auto;
+        cursor: grab;
+        position: relative;
+        z-index: 10;
+        /* Alternating month background aligned with card lanes */
+        background: repeating-linear-gradient(to right,
+          var(--color-bg, #f7f7f7) 0,
+          var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
+          var(--color-month-alt, #ececec) var(--timeline-month-width, 120px),
+          var(--color-month-alt, #ececec) calc(var(--timeline-month-width, 120px) * 2)
+        );
+        background-position: 0 0;
       }
+      .timeline-section.panning { cursor: grabbing; }
       /* Header (months row) — let the timeline component size itself */
       .timeline-section > timeline-lit {
         flex: 0 0 auto;
@@ -169,7 +188,7 @@ class TimelineBoard extends LitElement {
         overflow: auto;
       }
       /* make timeline header fixed height and let feature-board grow */
-      .timeline-section > timeline-lit { flex: 0 0 80px; }
+      .timeline-section > timeline-lit { flex: 0 0 20px; }
       .timeline-section > feature-board { display: block; flex: 1 1 auto; min-height: 0; overflow: auto; }
     `;
   }

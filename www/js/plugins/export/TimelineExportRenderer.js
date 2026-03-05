@@ -14,6 +14,7 @@ import { state } from '../../services/State.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight, computePosition } from '../../components/board-utils.js';
 import { getBoardOffset } from '../../components/board-utils.js';
+import { findInBoard } from '../../components/board-utils.js';
 import { 
   createSvgElement, 
   createSvgText, 
@@ -292,7 +293,7 @@ export class TimelineExportRenderer {
    * Render feature cards as SVG rectangles
    */
   _renderFeatureCards(yOffset, viewport) {
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;
     
     const months = getTimelineMonths() || [];
@@ -621,7 +622,7 @@ export class TimelineExportRenderer {
     // If caller did not specify, fall back to the global view setting
     if (includeDependencies === undefined && !state.showDependencies) return;
 
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;
     
     const scrollLeft = viewport.scrollLeft;

@@ -5,6 +5,8 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, ProjectEvents, TeamEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { findInBoard } from '../components/board-utils.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginPlanHealthComponent extends LitElement {
   static properties = { 
@@ -56,22 +58,17 @@ export class PluginPlanHealthComponent extends LitElement {
       overflow-y: auto;
     }
     
-    .toolbar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #eee;
-    }
-
     .toolbar-title {
       font-size: 14px;
       font-weight: 600;
       color: #333;
+      margin-bottom: 12px;
     }
 
     .close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
       width: 24px;
       height: 24px;
       padding: 0;
@@ -81,6 +78,7 @@ export class PluginPlanHealthComponent extends LitElement {
       font-size: 16px;
       cursor: pointer;
       border-radius: 4px;
+      margin: 0;
     }
 
     .close-btn:hover {
@@ -832,7 +830,7 @@ export class PluginPlanHealthComponent extends LitElement {
     try {
       // Get only the features that are currently visible/rendered on the board
       // This respects filters like "show only project hierarchy", team selection, etc.
-      const board = document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       
       // Get full feature data from state (includes all properties like status)
       const allFeatures = state.getEffectiveFeatures() || [];
@@ -937,13 +935,13 @@ export class PluginPlanHealthComponent extends LitElement {
       
       // Scroll to the feature card
       try {
-        const board = document.querySelector('feature-board');
+        const board = findInBoard('feature-board');
         if (board && typeof board.centerFeatureById === 'function') {
           board.centerFeatureById(issueIdStr);
         } else {
           // Fallback: manually scroll to center the card
           const timeline = document.getElementById('timelineSection');
-          const fb = document.querySelector('feature-board');
+          const fb = findInBoard('feature-board');
           const card = document.querySelector(`feature-card-lit[data-feature-id="${issueIdStr}"]`);
           if (card && timeline && fb) {
             const targetX = card.offsetLeft - (timeline.clientWidth / 2) + (card.clientWidth / 2);
@@ -963,7 +961,9 @@ export class PluginPlanHealthComponent extends LitElement {
   }
 
   _handleClose() {
-    this.close();
+    // Call plugin.deactivate() which will call this.close()
+    const plugin = pluginManager.get('plugin-plan-health');
+    if (plugin) plugin.deactivate();
   }
 
   _toggleCheckSection(checkId) {
@@ -982,10 +982,8 @@ export class PluginPlanHealthComponent extends LitElement {
     
     return html`
       <div class="floating-toolbar">
-        <div class="toolbar-header">
-          <div class="toolbar-title">🏥 Plan Health</div>
-          <button class="close-btn" @click=${this._handleClose} title="Close">✕</button>
-        </div>
+        <button class="close-btn" @click=${this._handleClose} title="Close">×</button>
+        <div class="toolbar-title">🏥 Plan Health</div>
         
         <button class="refresh-btn" @click=${this._handleRefresh} ?disabled=${this.loading}>
           ${this.loading ? 'Checking...' : '🔄 Check Again'}

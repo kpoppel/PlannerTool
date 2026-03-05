@@ -6,17 +6,24 @@ export class ViewSaveModal extends LitElement {
   static properties = { name: { type: String } };
 
   constructor(){ super(); this.name=''; }
-  createRenderRoot(){ return this; }
-
   connectedCallback(){ super.connectedCallback(); }
+
+  _getInner(){
+    return this.renderRoot.querySelector('modal-lit');
+  }
+  
+  _qs(selector){
+    const inner = this._getInner();
+    return inner ? inner.querySelector(selector) : null;
+  }
 
   firstUpdated(){
     // open after render
-    const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
-    const saveBtn = this.querySelector('#saveViewBtn');
-    const closeBtn = this.querySelector('#cancelSaveViewBtn');
-    const input = this.querySelector('#saveViewInput');
-    const status = this.querySelector('#saveViewStatus');
+    const inner = this._getInner(); if(inner) inner.open = true;
+    const saveBtn = this._qs('#saveViewBtn');
+    const closeBtn = this._qs('#cancelSaveViewBtn');
+    const input = this._qs('#saveViewInput');
+    const status = this._qs('#saveViewStatus');
     saveBtn.addEventListener('click', async ()=>{
       const val = input.value.trim();
       if (!val) {
@@ -32,14 +39,14 @@ export class ViewSaveModal extends LitElement {
         this._disableButtons(false);
       }
     });
-    closeBtn.addEventListener('click', ()=> this.remove());
-    input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
-    setTimeout(()=> input.focus(), 10);
+    if (closeBtn) closeBtn.addEventListener('click', ()=> this.remove());
+    if (input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
+    if (input) setTimeout(()=> input.focus(), 10);
   }
 
   _disableButtons(dis){ 
-    const saveBtn = this.querySelector('#saveViewBtn'); 
-    const closeBtn = this.querySelector('#cancelSaveViewBtn'); 
+    const saveBtn = this._qs('#saveViewBtn'); 
+    const closeBtn = this._qs('#cancelSaveViewBtn'); 
     if(saveBtn) saveBtn.disabled = dis; 
     if(closeBtn) closeBtn.disabled = dis; 
   }
@@ -49,6 +56,41 @@ export class ViewSaveModal extends LitElement {
       <modal-lit wide>
         <div slot="header"><h3>Save View</h3></div>
         <div>
+          <style>
+            .modal-field {
+              margin-bottom: 16px;
+            }
+            .modal-field label {
+              display: block;
+              margin-bottom: 6px;
+              font-weight: 500;
+              color: #333;
+              font-size: 14px;
+            }
+            .modal-field input {
+              width: 100%;
+              padding: 8px 10px;
+              border: 1px solid #ccc;
+              border-radius: 4px;
+              font-size: 14px;
+              font-family: inherit;
+            }
+            .modal-field input:focus {
+              outline: 2px solid rgba(52, 152, 219, 0.3);
+              border-color: #3498db;
+            }
+            .status {
+              margin-top: 12px;
+              padding: 8px;
+              border-radius: 4px;
+              font-size: 14px;
+              color: #d32f2f;
+              background: #ffebee;
+            }
+            .status:empty {
+              display: none;
+            }
+          </style>
           <div class="modal-field">
             <label>Save current selections and filters as a new view</label>
             <input id="saveViewInput" type="text" value="${this.name}" placeholder="Enter view name..." />

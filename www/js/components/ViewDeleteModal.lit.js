@@ -6,25 +6,35 @@ export class ViewDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
   constructor(){ super(); this.id=''; this.name=''; }
-  createRenderRoot(){ return this; }
+  
+  connectedCallback(){ super.connectedCallback(); }
+
+  _getInner(){
+    return this.renderRoot.querySelector('modal-lit');
+  }
+  
+  _qs(selector){
+    const inner = this._getInner();
+    return inner ? inner.querySelector(selector) : null;
+  }
 
   firstUpdated(){
-    const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
-    const delBtn = this.querySelector('#deleteViewBtn');
-    const cancelBtn = this.querySelector('#cancelDeleteViewBtn');
-    const status = this.querySelector('#deleteViewStatus');
-    delBtn.addEventListener('click', async ()=>{
-      delBtn.disabled = true; cancelBtn.disabled = true;
+    const inner = this._getInner(); if(inner) inner.open = true;
+    const delBtn = this._qs('#deleteViewBtn');
+    const cancelBtn = this._qs('#cancelDeleteViewBtn');
+    const status = this._qs('#deleteViewStatus');
+    if (delBtn) delBtn.addEventListener('click', async ()=>{
+      delBtn.disabled = true; if (cancelBtn) cancelBtn.disabled = true;
       try{
         await state.viewManagementService.deleteView(this.id);
         this.remove();
       }catch(err){
-        status.textContent = `Failed to delete view: ${err.message || err}`;
+        if (status) status.textContent = `Failed to delete view: ${err.message || err}`;
         delBtn.disabled = false; 
-        cancelBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
       }
     });
-    cancelBtn.addEventListener('click', ()=> this.remove());
+    if (cancelBtn) cancelBtn.addEventListener('click', ()=> this.remove());
   }
 
   render(){
@@ -32,6 +42,24 @@ export class ViewDeleteModal extends LitElement {
       <modal-lit>
         <div slot="header"><h3>Delete View</h3></div>
         <div>
+          <style>
+            p {
+              margin: 0 0 16px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .status {
+              margin-top: 12px;
+              padding: 8px;
+              border-radius: 4px;
+              font-size: 14px;
+              color: #d32f2f;
+              background: #ffebee;
+            }
+            .status:empty {
+              display: none;
+            }
+          </style>
           <p>Delete view "${this.name}"? This cannot be undone.</p>
           <div id="deleteViewStatus" class="status"></div>
         </div>

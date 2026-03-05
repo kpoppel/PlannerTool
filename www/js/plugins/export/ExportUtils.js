@@ -3,6 +3,8 @@
  * Provides SVG creation and PNG export helpers
  */
 
+import { findInBoard } from '../../components/board-utils.js';
+
 /**
  * Get bounds of the visible timeline viewport
  * Queries the DOM to find timeline elements and calculate their bounds
@@ -13,7 +15,7 @@
  */
 export function getViewportBounds(options = {}) {
     const timelineSection = document.getElementById('timelineSection');
-    const featureBoard = document.querySelector('feature-board');
+    const featureBoard = findInBoard('feature-board');
     const mainGraph = document.querySelector('maingraph-lit');
     
     if (!timelineSection || !featureBoard) {

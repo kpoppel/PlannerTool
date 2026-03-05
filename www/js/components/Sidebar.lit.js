@@ -1,3 +1,4 @@
+
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
@@ -27,17 +28,203 @@ export class SidebarLit extends LitElement {
   static styles = css`
     :host { display:block; }
     /* Keep component-specific small tweaks; main styles come from www/css/main.css */
-    .chip { display:flex; gap:8px; align-items:center; padding:6px; border-radius:6px; cursor:pointer; }
-    .chip.active { opacity: 0.95; }
-    .color-dot { width:16px; height:16px; border-radius:4px; flex:0 0 auto; }
-    .chip-badge { padding:2px 6px; border-radius:10px; font-size:12px; background: rgba(255,255,255,0.06); }
-    /* Make the last two columns square so icons can be square boxes */
-    .counts-header { display:grid; grid-template-columns: 24px 28px 1fr 32px 32px; align-items:center; gap:8px; margin-bottom:4px; color:#ddd; min-height:32px; }
-    .type-icon { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; box-sizing:border-box; }
-    .type-icon svg { width: 100%; height: 100%; display: block; }
+    //  .chip { display:flex; gap:8px; align-items:center; padding:6px; border-radius:6px; cursor:pointer; }
+    //  .chip.active { opacity: 0.95; }
+    //  .color-dot { width:16px; height:16px; border-radius:4px; flex:0 0 auto; }
+    //  .chip-badge { padding:2px 6px; border-radius:10px; font-size:12px; background: rgba(255,255,255,0.06); }
+    /* Make the last two columns square so icons can be square boxes and match main.css */
+    .counts-header { 
+       display:grid;
+       grid-template-columns: 24px 28px 1fr 58px 31px;
+       align-items:center;
+       gap:8px;
+       //margin-bottom:4px;
+       color:#ddd;
+       //min-height:32px;
+    }
+    /* Use a compact 16x16 icon container and center it within the grid cell. */
+    .type-icon { display:inline-flex; align-items:center; }
+    .type-icon.epic { color: #ffcf33; margin-left:30px; }
+    /* Let the svg fill the 16x16 container */
+    .type-icon svg { width: 16px; height: 16px; display: block; }
     .group-title { font-weight:700; font-size:12px; margin:6px 0 10px; color:#3b3b3b; }
-    .plans-group .sidebar-list { margin-top:10px; margin-bottom:12px; }
+    .plans-group .sidebar-list { margin-top:4px; margin-bottom:4px; }
     .divider { border-top:1px dashed rgba(255,255,255,1); margin:10px 0; border-radius:2px; height:0; }
+    /* Sidebar container styles (migrated from www/css/main.css) */
+    .sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--color-sidebar-bg);
+      color: var(--color-sidebar-text);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: relative;
+      z-index: var(--z-sidebar);
+      font-size: 14px;
+      overflow-y: auto;
+      padding-bottom: 96px;
+      height: 100vh;
+    }
+
+    .sidebar-content { overflow: auto; max-height: calc(100vh - 160px); padding-bottom: 12px; }
+    .sidebar h2 { margin:0 0 8px; font-size:1.1rem; }
+    .sidebar-section { margin-bottom:12px; }
+    .sidebar-section h3 { margin:0 0 6px; font-size:0.93rem; }
+    .sidebar-list { list-style:none; margin:0; padding:0; }
+    .sidebar-list-item { display:flex; align-items:center; }
+    .sidebar-section-collapsed { display:none; }
+    .sidebar-section-header-collapsible {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 1rem;
+    }
+    .sidebar-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 1rem;
+    }
+    .sidebar-chevron { font-size: 1.1em; margin-right: 4px; cursor: pointer; transition: transform 0.15s; }
+    .sidebar-title { flex: 1; }
+    /* Chips, list and control styles (migrated from main.css) */
+    .chip-group { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+    .chip-group .group-label { width:100%; font-weight:600; font-size:0.85rem; opacity:0.9; }
+    .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:16px; border:1px solid rgba(255,255,255,0.25); color:var(--color-sidebar-text); background:rgba(255,255,255,0.08); cursor:pointer; font-size:0.8rem; line-height:1; user-select:none; transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease; }
+    .chip:hover { background:rgba(255,255,255,0.14); }
+    /* Active state: match when class is present or when ARIA attributes indicate pressed/checked */
+    .chip.active, .chip[aria-pressed="true"], .chip[aria-checked="true"] {
+      background:#fff;
+      color:#23344d;
+      border-color:#fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset, 0 1px 3px rgba(0,0,0,0.06);
+      //font-weight:600;
+    }
+    /* Make inactive chips slightly muted so active state stands out */
+    .chip:not(.active):not([aria-pressed="true"]):not([aria-checked="true"]) { opacity:0.95; }
+    .chip-badge { display:inline-flex; align-items:center; justify-content:center; width:30px; height:18px; border-radius:9px; font-size:0.7rem; font-weight:700; background:rgba(0,0,0,0.12); color:#fff; }
+    .chip.active .chip-badge { background:#23344d; color:#fff; }
+    .chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
+
+    /* Sidebar-specific chips and lists */
+    .sidebar-chip { padding:0 8px 0 0; border-radius:10px; background:transparent; border:1px solid rgba(0,0,0,0.06); box-sizing:border-box; min-height:25px; overflow:hidden; display:flex; align-items:stretch; }
+    .sidebar-chip:hover, .sidebar-chip.chip-hover { background: rgba(255,255,255,0.18); cursor: pointer; }
+    .sidebar-chip.active { background: transparent; border-color: transparent; background: rgb(55, 85, 130); }
+    .sidebar-chip.active:hover { background: rgba(255,255,255,0.18); }
+    .sidebar-list { list-style:none; padding:0; display:flex; flex-direction:column; gap:4px; }
+    .sidebar-list-item { display:block; }
+    .sidebar-list .color-dot { width:28px; border-radius:6px 0 0 6px; display:inline-block; flex:0 0 28px; align-self:stretch; cursor: pointer; }
+    .sidebar-chip .project-name-col, .sidebar-chip .team-name-col { padding-left:8px; font-weight:600; font-size:0.8rem; color:var(--color-sidebar-text); }
+    .chip-badge.small { font-size:0.75rem; min-width:20px; padding:0 6px; }
+    .sidebar-chip .chip-badge { background: rgba(0,0,0,0.06); color: var(--color-sidebar-text); }
+
+    /* Toggle and list controls */
+    .list-toggle { display:flex; align-items:center; justify-content:center; }
+    .list-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 50px;
+      height: 16px;
+      border: 1px solid #5481e6;
+      color: #5cc8ff;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-left: 3px;
+    }
+
+    /* Sidebar footer/config */
+    .sidebar-config { position:fixed; bottom:0; left:0; width: var(--sidebar-width); padding-left: 12px; background: var(--color-sidebar-bg); z-index: 1000; }
+    #openConfigBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
+    #openConfigBtn:hover { background:#eee; }
+    #openHelpBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
+    #openHelpBtn:hover { background:#eee; }
+    /* View options and segmented control (migrated from main.css -> viewOptions.js) */
+    .view-option-section { margin: 12px 0; }
+    .group-label { font-weight: 600; font-size: 0.85rem; opacity: 0.9; margin-bottom: 6px; }
+
+    .segmented-control {
+      display: flex;
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .segment {
+      flex: 1;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--color-sidebar-text);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-right: 1px solid rgba(255, 255, 255, 0.15);
+      user-select: none;
+      line-height: 1;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+
+    .segment:last-child { border-right: none; }
+    .segment:hover:not(.active) { background: rgba(255, 255, 255, 0.14); }
+    .segment.active { background: white; color: black; }
+    .segment.first { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
+    .segment.last { border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
+    .segment:focus-visible { outline: 2px solid #5cc8ff; outline-offset: -2px; z-index: 1; }
+
+    /* Accent-enabled chip variant */
+    .chip-with-accent.active { background: #fff; color: #23344d; border-left-color: var(--chip-accent); border-right-color: var(--chip-accent); border-left-style: solid; border-right-style: solid; border-left-width: 8px; border-right-width: 8px; }
+    .chip-with-accent.active .chip-badge { background: #23344d; color: #fff; }
+    .chip-with-accent:focus-visible { outline-offset: 2px; }
+    .chip-with-accent::before, .chip-with-accent::after { box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset; }
+    /* Scenario list styling */
+    .scenario-item { padding:4px 6px; border-radius:6px; width:100%; display:flex; align-items:center; gap:8px; box-sizing:border-box; position:relative; }
+    .scenario-item.active { background:rgba(255,255,255,0.18); }
+    .scenario-name { cursor:pointer; flex:1 1 auto; font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .scenario-controls { display:inline-flex; gap:4px; align-items:center; position:absolute; right:6px; top:50%; transform:translateY(-50%); }
+    .scenario-name { padding-right:56px; }
+    .scenario-btn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.75rem; line-height:1; }
+    .scenario-btn:hover { background:#ececec; }
+    .scenario-lock { font-size:0.9rem; margin-right:4px; }
+    .scenario-menu-popover { position:absolute; background:#fff; color:#222; border:1px solid var(--color-border); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.18); padding:6px 0; display:flex; flex-direction:column; min-width:160px; z-index:1200; }
+    .scenario-menu-item { padding:6px 12px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:6px; }
+    .scenario-menu-item:hover { background:#f3f5f7; }
+    .scenario-menu-item.disabled { color:#999; cursor:default; }
+    .scenario-annotate-table { width:100%; border-collapse:collapse; margin-top:8px; }
+    .scenario-annotate-table th, .scenario-annotate-table td { border:1px solid var(--color-border); padding:6px 8px; font-size:0.85rem; }
+    .scenario-annotate-table th { background:#f7f7f7; text-align:left; }
+
+    /* View list styling - matching scenario styling */
+    .view-item { padding:4px 6px; border-radius:6px; width:100%; display:flex; align-items:center; gap:8px; box-sizing:border-box; position:relative; }
+    .view-item.active { background:rgba(255,255,255,0.18); }
+    .view-name { cursor:pointer; flex:1 1 auto; font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:56px; }
+    .view-controls { display:inline-flex; gap:4px; align-items:center; position:absolute; right:6px; top:50%; transform:translateY(-50%); }
+    .view-btn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.75rem; line-height:1; }
+    .view-btn:hover { background:#ececec; }
+    /* Tools list styling (migrated from www/css/main.css) */
+    /* Plugin/tool buttons render as .chip.sidebar-chip inside #toolsList */
+    #toolsList { margin-top:6px; display:flex; flex-direction:column; gap:2px; }
+    #toolsList .sidebar-list-item { display:block; }
+    #toolsList .sidebar-chip { padding:6px 8px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,0.14); color:var(--color-sidebar-text); font-weight:600; font-size:0.85rem; }
+    #toolsList .sidebar-chip:hover { background: rgba(255,255,255,0.06); cursor:pointer; }
+    #toolsList .sidebar-chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
+    #toolsList .chip-icon { width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; margin-right:8px; flex:0 0 18px; }
+    #toolsList .plugin-meta { color: rgba(255,255,255,0.85); font-size:0.8rem; margin-left:auto; }
+    /* Match active style to scenario items for consistency */
+    #toolsList .sidebar-chip.active { background: rgba(255,255,255,0.18); color: var(--color-sidebar-text); border-color: transparent; }
   `;
 
   constructor(){
@@ -46,6 +233,8 @@ export class SidebarLit extends LitElement {
     this.serverStatus = 'loading';
     this.serverName = null;
     this._persistenceService = new SidebarPersistenceService(dataService);
+    // Ensure global styles for popovers appended to document.body
+    try { this._ensureGlobalPopoverStyles && this._ensureGlobalPopoverStyles(); } catch (e) { /* ignore in non-DOM env */ }
     this._didRestoreSidebarState = false;
 
     // Reactive properties
@@ -58,11 +247,59 @@ export class SidebarLit extends LitElement {
     this.activeViewData = null;
   }
 
-  // Render into light DOM so legacy selectors (IDs) can still be used if needed.
-  createRenderRoot(){ return this; }
+  _ensureGlobalPopoverStyles(){
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('sidebar-popover-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'sidebar-popover-styles';
+    s.textContent = `
+.scenario-menu-popover, .view-menu-popover {
+  position: absolute;
+  background: #fff;
+  color: #222;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  min-width: 160px;
+  z-index: 2000;
+  font-family: var(--font-family, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial);
+  font-size: 14px;
+}
+.scenario-menu-popover .scenario-menu-item,
+.view-menu-popover .scenario-menu-item {
+  margin: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+  color: #222;
+}
+.scenario-menu-popover .scenario-menu-item span:first-child,
+.view-menu-popover .scenario-menu-item span:first-child {
+  display: inline-flex;
+  width: 22px;
+  justify-content: center;
+  align-items: center;
+  font-size: 16px;
+}
+.scenario-menu-popover .scenario-menu-item span:last-child,
+.view-menu-popover .scenario-menu-item span:last-child {
+  flex: 1;
+}
+.scenario-menu-popover .scenario-menu-item:hover,
+.view-menu-popover .scenario-menu-item:hover { background: #f3f5f7; }
+.scenario-menu-popover .scenario-menu-item.disabled,
+.view-menu-popover .scenario-menu-item.disabled { color: #999; cursor: default; }
+`;
+    document.head.appendChild(s);
+  }
+
 
   connectedCallback(){
     super.connectedCallback();
+    // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
     this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
     this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
@@ -189,7 +426,7 @@ export class SidebarLit extends LitElement {
   }
 
   firstUpdated(){
-    const headers = this.querySelectorAll('.sidebar-section-header-collapsible');
+    const headers = this.shadowRoot.querySelectorAll('.sidebar-section-header-collapsible');
     this._collapsibleHandlers = Array.from(headers).flatMap(header => {
       const section = header.parentElement;
       const contentWrapper = section.children[1];
@@ -214,7 +451,7 @@ export class SidebarLit extends LitElement {
       return handlers;
     });
 
-    const container = this.querySelector('#viewOptionsContainer');
+    const container = this.shadowRoot.querySelector('#viewOptionsContainer');
     if(container) initViewOptions(container);
 
     const onPluginsChanged = () => this.requestUpdate();
@@ -293,38 +530,7 @@ export class SidebarLit extends LitElement {
     }
     super.disconnectedCallback();
   }
-
-  _renderPluginButtons(){
-    if(!isEnabled('USE_PLUGIN_SYSTEM')) return html``;
-    const list = pluginManager.list().filter(md => md.enabled !== false);
-    return html`${list.map(md => {
-      const active = pluginManager.isActive(md.id);
-      return html`<li class="sidebar-list-item">
-        <div class="chip sidebar-chip ${active? 'active':''}" 
-             style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" 
-             @click=${()=>this._onPluginClicked(md.id)} 
-             role="button" 
-             tabindex="0" 
-             aria-pressed="${active}" 
-             @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._onPluginClicked(md.id); }}}>
-          <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;" title="${md.name}">${md.name}</div>
-        </div>
-      </li>`;
-    })}`;
-  }
-
-  // _openSearchTool(){
-  //   try{
-  //     let st = document.querySelector('search-tool');
-  //     if(!st){
-  //       import('./SearchTool.lit.js').then(()=>{
-  //         st = document.createElement('search-tool');
-  //         document.body.appendChild(st);
-  //         st.open();
-  //       }).catch(console.warn);
-  //     } else { st.open(); st.focusInput(); }
-  //   }catch(e){ console.warn('openSearchTool failed', e); }
-  // }
+  
 
   _onPluginClicked(pluginId){
     const isActive = pluginManager.isActive(pluginId);
@@ -552,6 +758,27 @@ export class SidebarLit extends LitElement {
     `)}`;
   }
 
+  _renderPluginButtons(){
+    try{
+      // Prefer the public `list()` API which returns plugin metadata array
+      let regs = [];
+      if (pluginManager && typeof pluginManager.list === 'function') {
+        regs = pluginManager.list();
+      } else if (pluginManager && pluginManager.plugins instanceof Map) {
+        regs = [...pluginManager.plugins.values()].map(p => (typeof p.getMetadata === 'function' ? p.getMetadata() : p));
+      }
+      if(!Array.isArray(regs) || regs.length === 0) return html``;
+      return html`${regs.map(p => html`
+        <li class="sidebar-list-item">
+          <div class="chip sidebar-chip ${pluginManager && typeof pluginManager.isActive === 'function' && pluginManager.isActive(p.id) ? 'active' : ''}" role="button" tabindex="0" @click=${()=>this._onPluginClicked(p.id)}>${p.name || p.id}</div>
+        </li>
+      `)}`;
+    } catch (e) {
+      console.warn('[Sidebar] _renderPluginButtons error', e);
+      return html``;
+    }
+  }
+
   _onScenarioMenuClick(e, s){
     e.stopPropagation();
     document.querySelectorAll('.scenario-menu-popover').forEach(p=>p.remove());
@@ -608,10 +835,21 @@ export class SidebarLit extends LitElement {
     }
     
     const rect = menuBtn.getBoundingClientRect();
+    // The component's shadow DOM styles do not apply to elements appended
+    // directly to document.body. Apply inline styles so the menu appears
+    // correctly (matching previous `.scenario-menu-popover` rules) and
+    // ensure a sufficiently high z-index to appear above other UI.
     Object.assign(pop.style, {
       position: 'absolute',
       top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`
+      left: `${rect.left + window.scrollX - 20}px`,
+      background: '#fff',
+      color: '#222',
+      border: '1px solid rgba(0,0,0,0.12)',
+      borderRadius: '6px',
+      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
+      minWidth: '160px',
+      zIndex: '2000'
     });
     document.body.appendChild(pop);
     setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
@@ -706,10 +944,18 @@ export class SidebarLit extends LitElement {
     }
     
     const rect = menuBtn.getBoundingClientRect();
+    // Apply inline styles so the popover appears above other UI (match ColorPopover z-index)
     Object.assign(pop.style, {
       position: 'absolute',
       top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`
+      left: `${rect.left + window.scrollX - 20}px`,
+      background: '#fff',
+      color: '#222',
+      border: '1px solid rgba(0,0,0,0.12)',
+      borderRadius: '6px',
+      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
+      minWidth: '160px',
+      zIndex: '2000'
     });
     document.body.appendChild(pop);
     setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);

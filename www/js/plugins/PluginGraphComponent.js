@@ -13,6 +13,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
+import { findInBoard } from '../components/board-utils.js';
 import { ProjectEvents, TeamEvents, StateFilterEvents, FilterEvents, CapacityEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
 
 export class PluginGraph extends LitElement {
@@ -25,7 +26,6 @@ export class PluginGraph extends LitElement {
     super();
     this.visible = false;
     this.mode = 'project';
-    this._savedMainStyles = null;
     this._scheduledRenderTimer = null;
     this.svgEl = null;
     this.tooltipEl = null;
@@ -38,10 +38,12 @@ export class PluginGraph extends LitElement {
 
   // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
   _getAppHost(){
-    const host = document.querySelector('timeline-board');
+    // Prefer locating inside the board's render root (handles shadow DOM).
+    let host = null;
+    try{ host = findInBoard('timeline-board'); }catch(e){}
     if(!host){
-      console.error('[PluginGraph] required host <timeline-board> not found in DOM');
-      throw new Error('Missing required host element: <timeline-board>');
+      host = document.getElementById('app') || document.querySelector('.app-container') || document.body;
+      console.warn('[PluginGraph] <timeline-board> not found; falling back to app host', host);
     }
     return host;
   }
@@ -55,7 +57,15 @@ export class PluginGraph extends LitElement {
   _daysBetween(d0, d1){ const ms = new Date(d1).setHours(0,0,0,0) - new Date(d0).setHours(0,0,0,0); return Math.max(0, Math.floor(ms / (24*3600*1000)) + 1); }
 
   static styles = css`
-    :host { display: block; position: absolute; left:0; top:0; right:0; bottom:0; z-index:50; box-sizing: border-box; background: #fff; }
+    :host { 
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box; 
+      background: #fff;
+      overflow: auto;
+    }
     .container { width:100%; height:100%; display:flex; flex-direction:column; padding:0 8px; box-sizing:border-box; }
     .field-row { display:flex; gap:12px; align-items:center; padding:8px 12px; }
     #mountainViewHost { width:100%; flex:1 1 auto; min-height:0; position:relative; background:#fff; }
@@ -107,6 +117,29 @@ export class PluginGraph extends LitElement {
     bus.on(AppEvents.READY, ()=> { this._initDateRangeDefaults(); this._scheduleRender(20); });
     if(typeof state._viewService.capacityViewMode !== 'undefined') this.mode = state._viewService.capacityViewMode;
     this._initDateRangeDefaults();
+    // Apply initial left offset to avoid covering the sidebar
+    this._applyPosition();
+    window.addEventListener('resize', this._applyPositionBound = this._applyPosition.bind(this));
+  }
+
+  _applyPosition(){
+    try{
+      // Find sidebar and compute left offset relative to the app host
+      const host = this._getAppHost();
+      if(!host) return;
+      const hostRect = host.getBoundingClientRect ? host.getBoundingClientRect() : { left: 0 };
+      // Prefer sidebar inside the app host, then fall back to document-level
+      let sidebar = null;
+      try{ sidebar = host.querySelector('.sidebar') || host.querySelector('#sidebar') || document.querySelector('.sidebar') || document.getElementById('sidebar'); }catch(e){}
+      if(sidebar && sidebar.getBoundingClientRect){
+        const sb = sidebar.getBoundingClientRect();
+        const left = Math.max(0, sb.right - hostRect.left);
+        this.style.left = `${left}px`;
+      } else {
+        // No sidebar detected -> align to host left
+        this.style.left = `0px`;
+      }
+    }catch(e){ /* ignore */ }
   }
 
   _initDateRangeDefaults(){
@@ -160,7 +193,7 @@ export class PluginGraph extends LitElement {
         // Prefer using LayoutManager cached board client rect to avoid per-event DOM reads
         let hostLeft = null;
         try {
-          const board = document.querySelector('feature-board');
+          const board = findInBoard('feature-board');
           if (board && board._layout && typeof board._layout.getBoardClientRect === 'function') {
             const br = board._layout.getBoardClientRect();
             if (br && typeof br.left === 'number') hostLeft = br.left;
@@ -195,8 +228,8 @@ export class PluginGraph extends LitElement {
     if(mode) this.mode = mode;
     else if(state && typeof state._viewService.capacityViewMode !== 'undefined') this.mode = state._viewService.capacityViewMode;
     else this.mode = 'project';
-    const main = this._getAppHost();
-    if(main && !this._savedMainStyles){ this._savedMainStyles = []; Array.from(main.children).forEach(child=>{ if(child === this) return; this._savedMainStyles.push({ el: child, display: child.style.display || '' }); child.style.display = 'none'; }); }
+    
+    // Plugin's parent (PluginGraph.js) handles display and timeline-board hiding
     const months = getTimelineMonths();
     let d0, d1;
     if(months && months.length){ d0 = months[0]; const last = months[months.length-1]; d1 = new Date(last.getFullYear(), last.getMonth()+1, 0); }
@@ -207,12 +240,13 @@ export class PluginGraph extends LitElement {
     const endInp = this.renderRoot.querySelector('#mvEnd');
     if(startInp) startInp.value = this._fmtDate(this.startDate);
     if(endInp) endInp.value = this._fmtDate(this.endDate);
-    this.style.display = 'block';
     // schedule render (will no-op until data available); ensure quick render after DOM updates
     this._scheduleRender(20);
   }
 
-  close(){ this.style.display = 'none'; const main = this._getAppHost(); if(main && this._savedMainStyles){ this._savedMainStyles.forEach(s=>{ s.el.style.display = s.display; }); this._savedMainStyles = null; } }
+  close(){ 
+    // Plugin's parent (PluginGraph.js) handles display and timeline-board showing
+  }
 
   exportSvg(){ if(!this.svgEl) return; const serializer = new XMLSerializer(); const svgStr = serializer.serializeToString(this.svgEl); const blob = new Blob([svgStr], { type:'image/svg+xml' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mountain-view.svg'; a.click(); URL.revokeObjectURL(url); }
 

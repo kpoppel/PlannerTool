@@ -7,23 +7,33 @@ export class ScenarioDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
   constructor(){ super(); this.id=''; this.name=''; }
-  createRenderRoot(){ return this; }
+  
+  connectedCallback(){ super.connectedCallback(); }
+
+  _getInner(){
+    return this.renderRoot.querySelector('modal-lit');
+  }
+  
+  _qs(selector){
+    const inner = this._getInner();
+    return inner ? inner.querySelector(selector) : null;
+  }
 
   firstUpdated(){
-    const inner = this.querySelector('modal-lit'); if(inner) inner.open = true;
-    const delBtn = this.querySelector('#deleteBtn');
-    const cancelBtn = this.querySelector('#cancelDeleteBtn');
-    const status = this.querySelector('#deleteStatus');
-    delBtn.addEventListener('click', async ()=>{
-      delBtn.disabled = true; cancelBtn.disabled = true;
+    const inner = this._getInner(); if(inner) inner.open = true;
+    const delBtn = this._qs('#deleteBtn');
+    const cancelBtn = this._qs('#cancelDeleteBtn');
+    const status = this._qs('#deleteStatus');
+    if (delBtn) delBtn.addEventListener('click', async ()=>{
+      delBtn.disabled = true; if(cancelBtn) cancelBtn.disabled = true;
       try{
         try{ state.deleteScenario(this.id); }catch(e){}
         await dataService.deleteScenario(this.id).catch(()=>{});
         this.remove();
-      }catch(err){ status.textContent = 'Delete failed.'; }
-      delBtn.disabled = false; cancelBtn.disabled = false;
+      }catch(err){ if (status) status.textContent = 'Delete failed.'; }
+      delBtn.disabled = false; if(cancelBtn) cancelBtn.disabled = false;
     });
-    cancelBtn.addEventListener('click', ()=> this.remove());
+    if (cancelBtn) cancelBtn.addEventListener('click', ()=> this.remove());
   }
 
   render(){
@@ -31,6 +41,24 @@ export class ScenarioDeleteModal extends LitElement {
       <modal-lit>
         <div slot="header"><h3>Delete Scenario</h3></div>
         <div>
+          <style>
+            p {
+              margin: 0 0 16px 0;
+              color: #333;
+              font-size: 14px;
+            }
+            .status {
+              margin-top: 12px;
+              padding: 8px;
+              border-radius: 4px;
+              font-size: 14px;
+              color: #d32f2f;
+              background: #ffebee;
+            }
+            .status:empty {
+              display: none;
+            }
+          </style>
           <p>Delete scenario "${this.name}"? This cannot be undone.</p>
           <div id="deleteStatus" class="status"></div>
         </div>

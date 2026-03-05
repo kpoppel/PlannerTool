@@ -48,7 +48,18 @@ class PluginExportTimeline {
       this._el = document.createElement('plugin-export-timeline');
     }
     if (this._el && !this._el.parentNode) {
-      this._host.appendChild(this._el);
+      const appRoot = document.querySelector('.app-container') || document.getElementById('app') || document.body;
+      const mountToBoard = !!this.config.forceMountInBoard;
+      if (mountToBoard) {
+        try {
+          const hostRoot = (this._host && (this._host.shadowRoot || this._host.renderRoot)) ? (this._host.shadowRoot || this._host.renderRoot) : this._host;
+          hostRoot.appendChild(this._el);
+        } catch (e) {
+          try { appRoot.appendChild(this._el); } catch (err) { try { document.body.appendChild(this._el); } catch (err2) { /* ignore */ } }
+        }
+      } else {
+        try { appRoot.appendChild(this._el); } catch (e) { try { document.body.appendChild(this._el); } catch (err) { /* ignore */ } }
+      }
     }
     if (this._el && typeof this._el.open === 'function') {
       this._el.open(this.config.mode);

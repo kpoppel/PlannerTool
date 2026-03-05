@@ -5,6 +5,20 @@ import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
+ 
+// Helper to locate elements inside timeline-board's render root when TimelineBoard
+// uses shadow DOM. Falls back to document queries for older behavior.
+function findInBoard(selector){
+  try{
+    const boardEl = document.querySelector('timeline-board');
+    if(boardEl){
+      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+      const found = root && root.querySelector ? root.querySelector(selector) : null;
+      if(found) return found;
+    }
+  }catch(e){}
+  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+}
 
 class FeatureBoard extends LitElement {
   static properties = {
@@ -235,7 +249,7 @@ class FeatureBoard extends LitElement {
   _updateRailPosition() {
     try {
       if (!this._fixedRail) return;
-      const timelineHeader = document.querySelector('timeline-lit');
+      const timelineHeader = findInBoard('timeline-lit');
       if (timelineHeader) {
         const rect = timelineHeader.getBoundingClientRect();
         this._fixedRail.style.top = Math.max(8, rect.bottom + 6) + 'px';
@@ -513,7 +527,7 @@ class FeatureBoard extends LitElement {
     try {
       const card = this._cardMap.get(String(featureId))
         || this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
-      const timeline = document.getElementById('timelineSection');
+      const timeline = findInBoard('#timelineSection');
       if (!card || !timeline) return;
 
       const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
@@ -545,7 +559,7 @@ class FeatureBoard extends LitElement {
 customElements.define('feature-board', FeatureBoard);
 
 export async function initBoard() {
-  const board = document.querySelector('feature-board');
+  const board = findInBoard('feature-board');
   if (!board) { console.warn('feature-board element not found'); return; }
 
   let _boardReady = false;

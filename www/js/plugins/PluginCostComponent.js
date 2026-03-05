@@ -37,6 +37,7 @@ import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
 import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
+import { findInBoard } from '../components/board-utils.js';
 import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 import { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, buildMonths, buildProjects } from './PluginCostCalculator.js';
 import '../components/SpinnerModal.js';
@@ -101,9 +102,19 @@ export class PluginCostComponent extends LitElement {
   }
 
   static styles = css`
-    :host{ display:block; padding:12px; box-sizing:border-box; }
-    .table-wrapper{ width:100%; height:70vh; overflow:auto; border:1px solid #e6e6e6; }
-    .table{ width:100%; border-collapse:collapse; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial; min-width:900px; }
+    :host{ 
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 12px; 
+      box-sizing: border-box;
+      overflow: auto;
+      background: #fff;
+    }
+    .table-wrapper{ width:100%; max-height:calc(100vh - 160px); overflow:auto; overflow-x:scroll; overflow-y:auto; -webkit-overflow-scrolling:touch; border:1px solid #e6e6e6; }
+    .table-inner{ min-width:1200px; }
+    .table{ width:100%; border-collapse:collapse; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial; }
     .table th,.table td{ border:1px solid #eee; padding:6px 8px; text-align:right; font-size:13px; white-space:nowrap; }
     .table thead th{ position:sticky; top:0; background:#fff; z-index:2; }
     .project-row{ background:#fafafa; cursor:pointer; }
@@ -176,10 +187,13 @@ export class PluginCostComponent extends LitElement {
 
   // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
   _getAppHost(){
-    const host = document.querySelector('timeline-board');
+    // Prefer locating inside the board's render root (handles shadow DOM).
+    let host = null;
+    try{ host = findInBoard('timeline-board'); }catch(e){}
     if(!host){
-      console.error('[PluginCostComponent] required host <timeline-board> not found in DOM');
-      throw new Error('Missing required host element: <timeline-board>');
+      // Fall back to common app containers so the UI can mount in tests/dev
+      host = document.getElementById('app') || document.querySelector('.app-container') || document.body;
+      console.warn('[PluginCostComponent] <timeline-board> not found; falling back to app host', host);
     }
     return host;
   }
@@ -289,34 +303,16 @@ export class PluginCostComponent extends LitElement {
   }
 
   open(){
-    const main = this._getAppHost();
-    // Ensure we are subscribed to scenario events when shown
+    // Plugin's parent (PluginCost.js) handles display and timeline-board hiding
+    // Just load the data
     this._subscribe();
-    if(main && !this._savedMainStyles){
-      this._savedMainStyles = [];
-      Array.from(main.children).forEach(child => {
-        if(child === this) return;
-        this._savedMainStyles.push({ el: child, display: child.style.display || '' });
-        child.style.display = 'none';
-      });
-    }
-    this.style.display = 'block';
-    // Reload cost data for current scenario (capacity may have changed)
-    // Kick off load but don't block opening; show loading UI immediately
-    // so the user sees the plugin open while data fetch proceeds.
     this._isLoading = this._isLoading || false;
     if(!this._isLoading) this.loadData();
   }
 
   close(){
-    this.style.display = 'none';
     // When closed (hidden but not removed) unsubscribe to avoid background reloads
     this._unsubscribe();
-    const main = this._getAppHost();
-    if(main && this._savedMainStyles){
-      this._savedMainStyles.forEach(s => { s.el.style.display = s.display; });
-      this._savedMainStyles = null;
-    }
   }
 
   async loadData(){
@@ -362,15 +358,8 @@ export class PluginCostComponent extends LitElement {
       spinner.open = true;
     }
     try{
-      // Baseline: GET cached cost. If data already exists (e.g. preloaded), reuse it
+      // Baseline: GET cached cost. Always fetch fresh baseline data to avoid showing stale scenario data
       if(!scenarioId || scenarioId === 'baseline'){
-        if(this.data){
-          // already have baseline data - ensure UI renders
-          this.buildMonths(this.data.configuration);
-          this.buildProjects(this.data.projects || []);
-          this.requestUpdate();
-          return;
-        }
         const json = await dataService.getCost();
         if(!json) throw new Error('no cost data');
         this.data = json;
@@ -627,11 +616,14 @@ export class PluginCostComponent extends LitElement {
         </div>
         ${UIFeatureFlags.SHOW_COST_TEAMS_TAB && this.activeTab === 'teams' ? html`
           <div class="table-wrapper">
-            ${this.renderTeamsView()}
+            <div class="table-inner">
+              ${this.renderTeamsView()}
+            </div>
           </div>
         ` : html`
           <div class="table-wrapper">
-            <table class="table">
+            <div class="table-inner">
+              <table class="table">
             <thead>
               <tr>
                 <th class="left" rowspan="2">Project / Feature</th>
@@ -745,7 +737,8 @@ export class PluginCostComponent extends LitElement {
                 ${this.showBudgetDeviations ? html`<td class="right-extra"></td>` : ''}
               </tr>
             </tfoot>
-            </table>
+              </table>
+            </div>
           </div>
           
           ${this.projects && this.projects.length > 0 ? html`
