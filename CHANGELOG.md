@@ -17,6 +17,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v1.14.0] - date
 
 ### Added
+
+- If the user session has expired (by server restart, or opening another browser session), the application will
+  attempt to re-acquire a new session so the user can retry an action without loosing unsaved work.
+  
 ### Changed
 
 - Removed mix of light DOM and shadow DOM use and now only use shadow DOM. This paves the way to component independence.

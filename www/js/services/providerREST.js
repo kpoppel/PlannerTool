@@ -1,11 +1,12 @@
 // providerREST.js
 // REST API implementation of the BackendProvider interface (stub)
 import { bus } from '../core/EventBus.js';
-import { DataEvents } from '../core/EventRegistry.js';
+import { DataEvents, SessionEvents } from '../core/EventRegistry.js';
 
 export class ProviderREST {
     constructor(){
         this.sessionId = null;
+        this._reacquiring = false;
     }
     async init(){
         // Attempt to read user email from local storage prefs
@@ -31,8 +32,10 @@ export class ProviderREST {
         //}
         // Create a session via POST /api/session
         try{
-            const res = await fetch('/api/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email }) });
-            if(res.ok){
+            const res = await this._fetch('/api/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email }) });
+            if(res && res.sessionExpired){
+                console.error('Session creation failed: server indicated expired/invalid session', res.detail);
+            } else if(res.ok){
                 const data = await res.json();
                 this.sessionId = data.sessionId;
                 // Preload scenarios for the user so UI shows saved items
@@ -45,9 +48,53 @@ export class ProviderREST {
         }catch(err){ console.error('Session creation error', err); }
     }
 
+    async _handleSessionExpiry() {
+        // Notify listeners that session expired and attempt to re-acquire
+        try{
+            bus.emit(SessionEvents.EXPIRED, { message: 'Session expired, attempting to re-acquire.' });
+        }catch(e){ console.error('Error emitting session expired', e); }
+
+        if(this._reacquiring) return; // already in progress
+        this._reacquiring = true;
+        try{
+            await this.init();
+            try{ bus.emit(SessionEvents.REACQUIRED, { message: 'Session re-acquired — Please retry the action.' }); }catch(e){}
+        }catch(err){
+            console.error('Failed to re-acquire session', err);
+            try{ bus.emit(SessionEvents.REACQUIRED, { ok: false, error: String(err) }); }catch(e){}
+        } finally {
+            this._reacquiring = false;
+        }
+    }
+
+    // Centralized fetch wrapper that detects session expiry (401 + invalid_session)
+    async _fetch(url, opts) {
+        try{
+            opts = opts || {};
+            opts.headers = opts.headers || {};
+            if(!opts.headers['Accept']) opts.headers['Accept'] = 'application/json';
+            const res = await fetch(url, opts);
+            if(res.status === 401){
+                // Try to parse JSON body for error detail
+                let body = null;
+                try{ body = await res.json(); }catch(e){ body = null; }
+                const errCode = body && body.error ? body.error : null;
+                if(errCode === 'invalid_session' || errCode === 'missing_session_id'){
+                    // Trigger re-acquire attempt and let caller know
+                    this._handleSessionExpiry().catch(()=>{});
+                    return { sessionExpired: true, status: res.status, detail: body };
+                }
+                return res;
+            }
+            return res;
+        }catch(err){ throw err; }
+    }
+
     _headers(extra){
         const h = Object.assign({}, extra || {});
         if(this.sessionId){ h['X-Session-Id'] = this.sessionId; }
+        // Signal that we prefer JSON responses from the server
+        if(!h['Accept']) h['Accept'] = 'application/json';
         return h;
     }
 
@@ -59,7 +106,8 @@ export class ProviderREST {
 
     async listScenarios() {
         try{
-            const res = await fetch('/api/scenario', { headers: this._headers() });
+            const res = await this._fetch('/api/scenario', { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             const list = await res.json();
             try{ bus.emit(DataEvents.SCENARIOS_CHANGED, list); }catch{}
@@ -82,7 +130,8 @@ export class ProviderREST {
     }
     async getScenario(id) {
         try{
-            const res = await fetch(`/api/scenario?id=${encodeURIComponent(id)}`, { headers: this._headers() });
+            const res = await this._fetch(`/api/scenario?id=${encodeURIComponent(id)}`, { headers: this._headers() });
+            if(res && res.sessionExpired) return null;
             if(!res.ok) return null;
             const data = await res.json();
             console.log("providerREST:getScenario - Fetched scenario:", data);
@@ -99,7 +148,8 @@ export class ProviderREST {
         
         try{
             const body = JSON.stringify({ op: 'save', data: scenario });
-            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return { ok:false, error: 'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             const meta = await res.json();
             try{ const list = await this.listScenarios(); bus.emit(DataEvents.SCENARIOS_CHANGED, list); }catch{}
@@ -112,7 +162,8 @@ export class ProviderREST {
         // Persist name by saving the scenario metadata; backend stores raw structure.
         try{
             const body = JSON.stringify({ op: 'save', data: { id, name } });
-            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return { ok:false, error: 'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             const meta = await res.json();
                 try{ const list = await this.listScenarios(); bus.emit(DataEvents.SCENARIOS_CHANGED, list); }catch{}
@@ -124,7 +175,8 @@ export class ProviderREST {
     async deleteScenario(id) {
         try{
             const body = JSON.stringify({ op: 'delete', data: { id } });
-            const res = await fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/scenario', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return false;
             if(!res.ok){ return false; }
             const data = await res.json();
             const ok = !!data?.ok;
@@ -138,7 +190,8 @@ export class ProviderREST {
 
     async publishBaseline(selectedOverrides) {
         try{
-            const res = await fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(selectedOverrides) });
+            const res = await this._fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(selectedOverrides) });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             return await res.json();
         }catch(err){ return { ok:false, error: String(err) }; }
@@ -148,7 +201,8 @@ export class ProviderREST {
         // Send task updates with optional capacity data to /api/tasks
         // Expected format: [{ id, start?, end?, capacity?: [{team, capacity}] }]
         try{
-            const res = await fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(updates) });
+            const res = await this._fetch('/api/tasks', { method:'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(updates) });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             return await res.json();
         }catch(err){ return { ok:false, error: String(err) }; }
@@ -158,11 +212,12 @@ export class ProviderREST {
         // Update capacity for a specific work item
         // Expected format: capacity is [{team: 'team-id', capacity: number}]
         try{
-            const res = await fetch(`/api/tasks/${workItemId}/capacity`, { 
+            const res = await this._fetch(`/api/tasks/${workItemId}/capacity`, { 
                 method:'PUT', 
                 headers: this._headers({ 'Content-Type':'application/json' }), 
                 body: JSON.stringify(capacity) 
             });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             if(!res.ok){ 
                 const errorText = await res.text();
                 return { ok:false, error:`HTTP ${res.status}: ${errorText}` }; 
@@ -175,7 +230,8 @@ export class ProviderREST {
 
     async saveConfig(config) {
         try{
-            const res = await fetch('/api/account', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(config) });
+            const res = await this._fetch('/api/account', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(config) });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             return await res.json();
         }catch(err){ return { ok:false, error: String(err) }; }
     }
@@ -183,7 +239,8 @@ export class ProviderREST {
     async checkHealth() {
         // Perform an actual fetch to /api/health and return parsed JSON.
         try {
-            const res = await fetch('/api/health');
+            const res = await this._fetch('/api/health');
+            if(res && res.sessionExpired) return { status: 'error', error: 'session_expired' };
             if (!res.ok) return { status: 'error' };
             return await res.json();
         } catch (err) {
@@ -217,7 +274,8 @@ export class ProviderREST {
 
     async getFeatures(project) {
         const url = project ? `/api/tasks?project=${encodeURIComponent(project)}` : '/api/tasks';
-        const resTasks = await fetch(url, { headers: this._headers() });
+        const resTasks = await this._fetch(url, { headers: this._headers() });
+        if(resTasks && resTasks.sessionExpired) return [];
         if(!resTasks.ok) return [];
         const tasks = await resTasks.json();
         // Calculate derived fields used in the frontend
@@ -235,7 +293,8 @@ export class ProviderREST {
 
     async getTeams() {
         try{
-            const res = await fetch('/api/teams', { headers: this._headers() });
+            const res = await this._fetch('/api/teams', { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             let retval = await res.json();
             // TODO: move item selection state to scenario configuration
@@ -247,7 +306,8 @@ export class ProviderREST {
 
     async getProjects() {
         try{
-            const res = await fetch('/api/projects', { headers: this._headers() });
+            const res = await this._fetch('/api/projects', { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             let retval = await res.json();
             // TODO: move item selection state to scenario configuration
@@ -260,7 +320,8 @@ export class ProviderREST {
     async getIterations(project) {
         try{
             const url = project ? `/api/iterations?project=${encodeURIComponent(project)}` : '/api/iterations';
-            const res = await fetch(url, { headers: this._headers() });
+            const res = await this._fetch(url, { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             const data = await res.json();
             return data.iterations || [];
@@ -272,27 +333,31 @@ export class ProviderREST {
         try{
             // If no payload provided, GET cached cost for session (or schema when unauthenticated)
             if(!payload){
-                const res = await fetch('/api/cost', { headers: this._headers() });
+                const res = await this._fetch('/api/cost', { headers: this._headers() });
+                if(res && res.sessionExpired) throw Object.assign(new Error('session_expired'), { sessionExpired: true });
                 if(!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             }
 
             // If payload is an array, treat as legacy overrides array
             if(Array.isArray(payload)){
-                const res = await fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify({ overrides: payload }) });
+                const res = await this._fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify({ overrides: payload }) });
+                if(res && res.sessionExpired) throw Object.assign(new Error('session_expired'), { sessionExpired: true });
                 if(!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             }
 
             // If payload is an object, forward it directly (supports { features }, { scenarioId } etc.)
             if(typeof payload === 'object'){
-                const res = await fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
+                const res = await this._fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
+                if(res && res.sessionExpired) throw Object.assign(new Error('session_expired'), { sessionExpired: true });
                 if(!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             }
 
             // Fallback to GET
-            const res = await fetch('/api/cost', { headers: this._headers() });
+            const res = await this._fetch('/api/cost', { headers: this._headers() });
+            if(res && res.sessionExpired) throw Object.assign(new Error('session_expired'), { sessionExpired: true });
             if(!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
         }catch(err){
@@ -303,7 +368,8 @@ export class ProviderREST {
     
     async getCostTeams(){
         try{
-            const res = await fetch('/api/cost/teams', { headers: this._headers() });
+            const res = await this._fetch('/api/cost/teams', { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             const data = await res.json();
             console.log('providerREST:getCostTeams - Fetched cost teams', data);
@@ -313,7 +379,8 @@ export class ProviderREST {
 
     async getMarkers(){
         try{
-            const res = await fetch('/api/markers', { headers: this._headers() });
+            const res = await this._fetch('/api/markers', { headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok) return [];
             const data = await res.json();
             console.log('providerREST:getMarkers - Fetched markers', data);
@@ -323,10 +390,11 @@ export class ProviderREST {
     
     async invalidateCache(){
         try{
-            const res = await fetch('/api/cache/invalidate', { 
+            const res = await this._fetch('/api/cache/invalidate', { 
                 method: 'POST', 
                 headers: this._headers({ 'Content-Type':'application/json' }) 
             });
+            if(res && res.sessionExpired) return { ok: false, error: 'session_expired' };
             if(!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             console.log('providerREST:invalidateCache - Cache invalidated', data);
@@ -341,7 +409,8 @@ export class ProviderREST {
     
     async listViews() {
         try{
-            const res = await fetch('/api/view', { method: 'GET', headers: this._headers() });
+            const res = await this._fetch('/api/view', { method: 'GET', headers: this._headers() });
+            if(res && res.sessionExpired) return [];
             if(!res.ok){ return []; }
             return await res.json();
         }catch(err){ return []; }
@@ -349,7 +418,8 @@ export class ProviderREST {
 
     async getView(id) {
         try{
-            const res = await fetch(`/api/view?id=${id}`, { method: 'GET', headers: this._headers() });
+            const res = await this._fetch(`/api/view?id=${id}`, { method: 'GET', headers: this._headers() });
+            if(res && res.sessionExpired) return null;
             if(!res.ok){ return null; }
             return await res.json();
         }catch(err){ return null; }
@@ -358,7 +428,8 @@ export class ProviderREST {
     async saveView(view) {
         try{
             const body = JSON.stringify({ op: 'save', data: view });
-            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             const meta = await res.json();
             console.log("providerREST:saveView - Saved view:", meta);
@@ -373,7 +444,8 @@ export class ProviderREST {
             if (!view) return { ok:false, error:'View not found' };
             view.name = name;
             const body = JSON.stringify({ op: 'save', data: view });
-            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return { ok:false, error:'session_expired' };
             if(!res.ok){ return { ok:false, error:`HTTP ${res.status}` }; }
             const meta = await res.json();
             console.log("providerREST:renameView - Renamed view:", meta);
@@ -384,7 +456,8 @@ export class ProviderREST {
     async deleteView(id) {
         try{
             const body = JSON.stringify({ op: 'delete', data: { id } });
-            const res = await fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            const res = await this._fetch('/api/view', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body });
+            if(res && res.sessionExpired) return false;
             if(!res.ok){ return false; }
             const data = await res.json();
             const ok = !!data?.ok;

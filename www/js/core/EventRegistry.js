@@ -101,6 +101,12 @@ export const AppEvents = {
   INITIALIZED: Symbol('app:initialized')
 };
 
+// Session-related events
+export const SessionEvents = {
+  EXPIRED: Symbol('session:expired'),
+  REACQUIRED: Symbol('session:reacquired')
+};
+
 // Config events
 export const ConfigEvents = {
   UPDATED: Symbol('config:updated'),

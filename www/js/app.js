@@ -4,7 +4,7 @@ import { initDependencyRenderer } from './components/DependencyRenderer.lit.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { registerCoreServices } from './core/ServiceRegistry.js';
-import { AppEvents } from './core/EventRegistry.js';
+import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 
 async function init(){
   registerCoreServices();
@@ -114,6 +114,40 @@ async function init(){
         if(ts && ts.initTourFlow) await ts.initTourFlow();
       }catch(e){ console.warn('Failed to initialize tour flow', e); }
     bus.emit(AppEvents.READY);
+    // Session expiry handling: notify user and indicate when reacquired
+    try{
+      const showSpinnerMessage = (msg) => {
+        try{
+          const sp = document.getElementById('appSpinner');
+          if(sp){ sp.message = msg || 'Loading'; sp.open = true; }
+        }catch(e){ console.warn('Failed to show spinner', e); }
+      };
+      const hideSpinner = (delay = 0) => {
+        try{
+          const sp = document.getElementById('appSpinner');
+          if(sp){ if(delay) setTimeout(()=> sp.open = false, delay); else sp.open = false; }
+        }catch(e){ console.warn('Failed to hide spinner', e); }
+      };
+
+      bus.on(SessionEvents.EXPIRED, (p) => {
+        const msg = p?.message || 'Session expired — attempting to re-acquire...';
+        showSpinnerMessage(msg);
+      });
+
+      bus.on(SessionEvents.REACQUIRED, (p) => {
+        if(p && p.ok === false){
+          const msg = 'Session re-acquire failed: ' + (p.error || 'unknown');
+          showSpinnerMessage(msg);
+          // hide after a short delay so user can read the failure
+          hideSpinner(4000);
+        } else {
+          const msg = (p && p.message) || 'Session re-acquired — Please retry the action.';
+          showSpinnerMessage(msg);
+          // keep the spinner visible longer so user sees the retry instruction
+          hideSpinner(6000);
+        }
+      });
+    }catch(e){}
     // Register global shortcut for in-app search: Ctrl+Shift+F
     try{
       // Prevent browser default on keydown so the find UI doesn't steal focus
