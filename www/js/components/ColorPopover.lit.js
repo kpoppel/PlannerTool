@@ -41,6 +41,7 @@ export class ColorPopoverLit extends LitElement {
     this.palette = [];
     this._onDocDown = this._onDocDown.bind(this);
     this._onPaletteUpdated = this._onPaletteUpdated.bind(this);
+    this._onHostMouseDown = this._onHostMouseDown.bind(this);
   }
 
   // Ensure a single instance exists in document.body. Returns the instance.
@@ -67,12 +68,23 @@ export class ColorPopoverLit extends LitElement {
     document.addEventListener('keydown', this._onKeyDown);
     // Listen for palette updates via a DOM event (detail may be palette array or { palette })
     document.addEventListener('palette:updated', this._onPaletteUpdated);
+    // Prevent clicks inside the color popover from bubbling to document-level
+    // handlers (e.g. popover menus that close on outside click). This keeps
+    // the parent menu open when selecting a color.
+    this.addEventListener('mousedown', this._onHostMouseDown);
   }
   disconnectedCallback(){
     document.removeEventListener('mousedown', this._onDocDown);
     document.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('palette:updated', this._onPaletteUpdated);
+    this.removeEventListener('mousedown', this._onHostMouseDown);
     super.disconnectedCallback();
+  }
+
+  _onHostMouseDown(e){
+    // stop propagation so parent popovers (listening on document) don't
+    // treat this as an outside click and close themselves.
+    e.stopPropagation();
   }
 
   _onPaletteUpdated(e){

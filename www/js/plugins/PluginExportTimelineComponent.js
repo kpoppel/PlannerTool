@@ -56,7 +56,7 @@ export class PluginExportTimeline extends LitElement {
       top: 0; 
       right: 0; 
       bottom: 0; 
-      z-index: 60; 
+      z-index: 100; 
       box-sizing: border-box;
       pointer-events: none; /* let clicks pass through by default */
     }

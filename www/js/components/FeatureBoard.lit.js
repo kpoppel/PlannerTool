@@ -384,21 +384,7 @@ class FeatureBoard extends LitElement {
   }
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
-    const project = state.projects.find(p => p.id === feature.project && p.selected);
-    if (!project) return false;
-
-    if (state._viewService.showOnlyProjectHierarchy) {
-      const projectTypePlans = state.projects.filter(p => {
-        const planType = p.type ? String(p.type) : 'project';
-        return p.selected && planType === 'project';
-      });
-      const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
-      const projectTypeEpicIds = new Set(
-        allFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id)
-      );
-      if (!this._isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, projectTypeEpicIds)) return false;
-    }
-
+    // Basic filters that always apply
     const stateFilter = state.selectedFeatureStateFilter instanceof Set
       ? state.selectedFeatureStateFilter
       : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
@@ -413,6 +399,78 @@ class FeatureBoard extends LitElement {
       if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork) return false;
     }
 
+    // Build base set: features belonging to selected plans
+    const selectedProjects = state.projects.filter(p => p.selected).map(p => p.id);
+    const baseSet = new Set();
+    
+    for (const f of allFeatures) {
+      if (selectedProjects.includes(f.project)) {
+        baseSet.add(f.id);
+      }
+    }
+
+    // Apply showOnlyProjectHierarchy if enabled (filters base set)
+    let visibleFeatureIds = new Set(baseSet);
+    
+    if (state._viewService.showOnlyProjectHierarchy) {
+      const projectTypePlans = state.projects.filter(p => {
+        const planType = p.type ? String(p.type) : 'project';
+        return p.selected && planType === 'project';
+      });
+      const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
+      const projectTypeEpicIds = new Set(
+        allFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id)
+      );
+      
+      // Filter baseSet to only include hierarchically linked features
+      visibleFeatureIds = new Set();
+      for (const fid of baseSet) {
+        const feat = allFeatures.find(f => f.id === fid);
+        if (feat && this._isHierarchicallyLinkedToSelectedProjectEpics(feat, allFeatures, projectTypeEpicIds)) {
+          visibleFeatureIds.add(fid);
+        }
+      }
+    }
+
+    // Additive filtering: expand the visible set based on enabled filters
+    
+    // Expand with parent-child tree if enabled
+    if (state._viewService.showParentChildTree && visibleFeatureIds.size > 0) {
+      const expanded = state.featureService.getFeaturesByParentChildLinks(visibleFeatureIds);
+      for (const id of expanded) {
+        visibleFeatureIds.add(id);
+      }
+    }
+
+    // Expand with dependency links if enabled
+    if (state._viewService.showDependencyLinks && visibleFeatureIds.size > 0) {
+      const expanded = state.featureService.getFeaturesByDependencies(visibleFeatureIds);
+      for (const id of expanded) {
+        visibleFeatureIds.add(id);
+      }
+    }
+
+    // Expand with team allocations if enabled
+    if (state._viewService.showAllTeamAllocations) {
+      const selectedTeams = state.teams.filter(t => t.selected).map(t => t.id);
+      const teamFeatures = state.featureService.getFeaturesByTeamAllocation(new Set(selectedTeams));
+      for (const id of teamFeatures) {
+        visibleFeatureIds.add(id);
+      }
+    }
+
+    // Check if current feature is in the visible set
+    if (!visibleFeatureIds.has(feature.id)) {
+      // If showUnlinkedTasks is disabled, hide this feature
+      if (!state._viewService.showUnlinkedTasks) {
+        return false;
+      }
+      // Feature is not in visible set - check if it belongs to selected project
+      const project = state.projects.find(p => p.id === feature.project && p.selected);
+      if (!project) return false;
+    }
+
+    // Check team/capacity visibility for epics and features
     if (feature.type === 'epic') {
       const children = childrenMap.get(feature.id) || [];
       const anyChildVisible = children.some(child => {
@@ -436,6 +494,7 @@ class FeatureBoard extends LitElement {
         if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) return false;
       }
     }
+    
     return true;
   }
 
@@ -447,11 +506,176 @@ class FeatureBoard extends LitElement {
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
 
+    // Precompute lookups to avoid O(N^2) operations during per-feature checks
+    const featureById = new Map(sourceFeatures.map(f => [f.id, f]));
+
+    // Build reverse dependency map once if dependency expansion is enabled
+    let reverseDeps = null;
+    if (state._viewService.showDependencyLinks) {
+      reverseDeps = new Map();
+      for (const f of sourceFeatures) {
+        if (Array.isArray(f.relations)) {
+          for (const rel of f.relations) {
+            if ((rel.type === 'Predecessor' || rel.type === 'Successor') && rel.id) {
+              if (!reverseDeps.has(rel.id)) reverseDeps.set(rel.id, []);
+              reverseDeps.get(rel.id).push(f.id);
+            }
+          }
+        }
+      }
+    }
+
+    // Compute base set of visible features (by selected projects)
+    const selectedProjects = new Set(state.projects.filter(p => p.selected).map(p => p.id));
+    const baseSet = new Set();
+    for (const f of sourceFeatures) {
+      if (selectedProjects.has(f.project)) baseSet.add(f.id);
+    }
+
+    // Apply project-hierarchy filter if enabled
+    let visibleFeatureIds = new Set(baseSet);
+    if (state._viewService.showOnlyProjectHierarchy) {
+      const projectTypePlans = state.projects.filter(p => {
+        const planType = p.type ? String(p.type) : 'project';
+        return p.selected && planType === 'project';
+      });
+      const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
+      const projectTypeEpicIds = new Set(sourceFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id));
+
+      visibleFeatureIds = new Set();
+      for (const fid of baseSet) {
+        const feat = featureById.get(fid);
+        if (feat && this._isHierarchicallyLinkedToSelectedProjectEpics(feat, sourceFeatures, projectTypeEpicIds)) {
+          visibleFeatureIds.add(fid);
+        }
+      }
+    }
+
+    // Helper: expand via parent-child traversal using childrenMap and featureById
+    const expandParentChild = (startIds) => {
+      const res = new Set(startIds);
+      const visited = new Set();
+      const stack = [...startIds];
+      while (stack.length) {
+        const id = stack.pop();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        res.add(id);
+        // children
+        const childIds = childrenMap.get(id) || [];
+        for (const cid of childIds) if (!visited.has(cid)) stack.push(cid);
+        // parent via parentEpic or Parent relation
+        const f = featureById.get(id);
+        if (f) {
+          if (f.parentEpic) { if (!visited.has(f.parentEpic)) stack.push(f.parentEpic); }
+          if (Array.isArray(f.relations)) {
+            const parentRel = f.relations.find(r => r.type === 'Parent');
+            if (parentRel?.id && !visited.has(parentRel.id)) stack.push(parentRel.id);
+          }
+        }
+      }
+      return res;
+    };
+
+    // Helper: expand via dependency traversal using featureById and reverseDeps
+    const expandDependencies = (startIds) => {
+      const res = new Set(startIds);
+      const visited = new Set();
+      const stack = [...startIds];
+      while (stack.length) {
+        const id = stack.pop();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        res.add(id);
+        const f = featureById.get(id);
+        if (f && Array.isArray(f.relations)) {
+          for (const rel of f.relations) {
+            if ((rel.type === 'Predecessor' || rel.type === 'Successor') && rel.id && !visited.has(rel.id)) stack.push(rel.id);
+          }
+        }
+        const dependents = (reverseDeps && reverseDeps.get(id)) || [];
+        for (const depId of dependents) if (!visited.has(depId)) stack.push(depId);
+      }
+      return res;
+    };
+
+    // Expand visible set based on additive filters
+    if (state._viewService.showParentChildTree && visibleFeatureIds.size > 0) {
+      const expanded = expandParentChild(Array.from(visibleFeatureIds));
+      for (const id of expanded) visibleFeatureIds.add(id);
+    }
+
+    if (state._viewService.showDependencyLinks && visibleFeatureIds.size > 0) {
+      const expanded = expandDependencies(Array.from(visibleFeatureIds));
+      for (const id of expanded) visibleFeatureIds.add(id);
+    }
+
+    let teamFeatureSet = null;
+    if (state._viewService.showAllTeamAllocations) {
+      const selectedTeams = new Set(state.teams.filter(t => t.selected).map(t => t.id));
+      teamFeatureSet = new Set();
+      for (const f of sourceFeatures) {
+        if (Array.isArray(f.capacity)) {
+          for (const tl of f.capacity) {
+            if (tl && tl.team && selectedTeams.has(tl.team) && (Number(tl.capacity) || 0) > 0) {
+              teamFeatureSet.add(f.id);
+              break;
+            }
+          }
+        }
+      }
+      for (const id of teamFeatureSet) visibleFeatureIds.add(id);
+    }
+
     const renderList = [];
     let laneIndex = 0;
 
     for (const feature of ordered) {
-      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+      // Quick membership check against precomputed visible set
+      if (!visibleFeatureIds.has(feature.id)) continue;
+
+      // Per-feature state and type checks (still required)
+      const stateFilter = state.selectedFeatureStateFilter instanceof Set
+        ? state.selectedFeatureStateFilter
+        : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
+      if (stateFilter.size === 0) continue;
+      const featureState = feature.status || feature.state;
+      if (!stateFilter.has(featureState)) continue;
+
+      if (feature.type === 'epic' && !state._viewService.showEpics) continue;
+      if (feature.type === 'feature' && !state._viewService.showFeatures) continue;
+
+      if (featureFlags.SHOW_UNPLANNED_WORK) {
+        if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork) continue;
+      }
+
+      // Team allocation visibility (when not globally expanded)
+      if (!state._viewService.showAllTeamAllocations) {
+        if (feature.type === 'epic') {
+          // Epic visible if it or any child has selected team capacity
+          const childIds = childrenMap.get(feature.id) || [];
+          const anyChildVisible = childIds.some(cid => {
+            const child = featureById.get(cid);
+            if (!child) return false;
+            const hasCapacity = child.capacity?.length > 0;
+            if (!hasCapacity) return state._viewService.showUnassignedCards;
+            return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
+          });
+          const hasCapacity = feature.capacity?.length > 0;
+          const epicVisible = hasCapacity
+            ? feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))
+            : state._viewService.showUnassignedCards;
+          if (!epicVisible && !anyChildVisible) continue;
+        } else {
+          const hasCapacity = feature.capacity?.length > 0;
+          if (!hasCapacity) {
+            if (!state._viewService.showUnassignedCards) continue;
+          } else {
+            if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) continue;
+          }
+        }
+      }
+
       const pos = computePosition(feature, months) || {};
       feature._left = pos.left;
       feature._width = pos.width;
@@ -595,6 +819,10 @@ export async function initBoard() {
   bus.on(FeatureEvents.UPDATED, updateFeatures);
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
+  bus.on(ViewEvents.PARENT_CHILD_TREE, renderFeatures);
+  bus.on(ViewEvents.DEPENDENCY_LINKS, renderFeatures);
+  bus.on(ViewEvents.UNLINKED_TASKS, renderFeatures);
+  bus.on(ViewEvents.TEAM_ALLOCATIONS, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
 
   bus.once(AppEvents.READY, () => {

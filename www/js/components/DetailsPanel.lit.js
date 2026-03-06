@@ -19,7 +19,9 @@ export class DetailsPanelLit extends LitElement {
     .panel {
       position: fixed;
       right: 0;
-      top: 0;
+      /* ensure the panel sits below the application menubar
+         use a CSS variable so apps can override the exact height */
+      top: var(--menubar-height, 48px);
       bottom: 0;
       width: var(--details-width, 340px);
       background: var(--color-panel-bg, #f9f9f9);

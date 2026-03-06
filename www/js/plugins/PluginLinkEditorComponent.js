@@ -54,7 +54,7 @@ export class PluginLinkEditorComponent extends LitElement {
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       pointer-events: auto;
-      z-index: 200;
+      z-index: 100;
       min-width: 260px;
     }
     

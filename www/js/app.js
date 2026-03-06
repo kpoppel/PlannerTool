@@ -63,6 +63,15 @@ async function init(){
     }
     // Preload Lit-based color popover to avoid runtime race in tests
     try{ await import('./components/ColorPopover.lit.js'); }catch(e){}
+    
+    // Import menu bar and menu components
+    try{ await import('./components/MenuBar.lit.js'); }catch(e){ console.warn('Failed to load menu-bar', e); }
+    try{ await import('./components/menus/ViewsDropdown.lit.js'); }catch(e){ console.warn('Failed to load views-dropdown', e); }
+    try{ await import('./components/menus/ScenariosDropdown.lit.js'); }catch(e){ console.warn('Failed to load scenarios-dropdown', e); }
+    try{ await import('./components/menus/ToolsPopover.lit.js'); }catch(e){ console.warn('Failed to load tools-popover', e); }
+    try{ await import('./components/menus/PlansPopover.lit.js'); }catch(e){ console.warn('Failed to load plans-popover', e); }
+    try{ await import('./components/menus/AllocationPopover.lit.js'); }catch(e){ console.warn('Failed to load allocation-popover', e); }
+    
     // MainGraph is initialized by TimelineBoard; ensure the module is available for other consumers
     //try{ await import('./components/MainGraph.lit.js'); }catch(e){ /* ignore if not available */ }
     //initDependencyRenderer();

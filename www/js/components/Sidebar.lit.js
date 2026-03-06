@@ -1,26 +1,17 @@
-
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
-import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, ViewManagementEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
+import { bus } from '../core/EventBus.js';
+import { ProjectEvents, TeamEvents, ViewEvents, FilterEvents, StateFilterEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { initViewOptions } from './viewOptions.js';
 import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
-import { pluginManager } from '../core/PluginManager.js';
-import { isEnabled } from '../config.js';
 import { SidebarPersistenceService } from '../services/SidebarPersistenceService.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
     open: { type: Boolean },
     projects: { type: Array },
     teams: { type: Array },
-    scenarios: { type: Array },
-    activeScenarioId: { type: String },
-    views: { type: Array },
-    activeViewId: { type: String },
-    activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
   };
@@ -230,344 +221,75 @@ export class SidebarLit extends LitElement {
   constructor(){
     super();
     this.open = true;
+    this.projects = [];
+    this.teams = [];
     this.serverStatus = 'loading';
     this.serverName = null;
     this._persistenceService = new SidebarPersistenceService(dataService);
-    // Ensure global styles for popovers appended to document.body
-    try { this._ensureGlobalPopoverStyles && this._ensureGlobalPopoverStyles(); } catch (e) { /* ignore in non-DOM env */ }
-    this._didRestoreSidebarState = false;
-
-    // Reactive properties
-    this.projects = [];
-    this.teams = [];
-    this.scenarios = [];
-    this.activeScenarioId = null;
-    this.views = [];
-    this.activeViewId = null;
-    this.activeViewData = null;
   }
-
-  _ensureGlobalPopoverStyles(){
-    if (typeof document === 'undefined') return;
-    if (document.getElementById('sidebar-popover-styles')) return;
-    const s = document.createElement('style');
-    s.id = 'sidebar-popover-styles';
-    s.textContent = `
-.scenario-menu-popover, .view-menu-popover {
-  position: absolute;
-  background: #fff;
-  color: #222;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-  min-width: 160px;
-  z-index: 2000;
-  font-family: var(--font-family, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial);
-  font-size: 14px;
-}
-.scenario-menu-popover .scenario-menu-item,
-.view-menu-popover .scenario-menu-item {
-  margin: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  line-height: 1;
-  color: #222;
-}
-.scenario-menu-popover .scenario-menu-item span:first-child,
-.view-menu-popover .scenario-menu-item span:first-child {
-  display: inline-flex;
-  width: 22px;
-  justify-content: center;
-  align-items: center;
-  font-size: 16px;
-}
-.scenario-menu-popover .scenario-menu-item span:last-child,
-.view-menu-popover .scenario-menu-item span:last-child {
-  flex: 1;
-}
-.scenario-menu-popover .scenario-menu-item:hover,
-.view-menu-popover .scenario-menu-item:hover { background: #f3f5f7; }
-.scenario-menu-popover .scenario-menu-item.disabled,
-.view-menu-popover .scenario-menu-item.disabled { color: #999; cursor: default; }
-`;
-    document.head.appendChild(s);
-  }
-
 
   connectedCallback(){
     super.connectedCallback();
-    // Using shadow DOM; `static styles` will apply automatically.
-    // Wire event handlers to update reactive properties
     this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
     this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
-    this._onScenariosList = (payload) => {
-      // Use the authoritative scenario objects from `state.scenarios` so
-      // the UI has access to `overrides` and `isChanged` flags. The
-      // ScenarioEvents.LIST payload contains reduced metadata for lists,
-      // which would strip overrides and unsaved markers.
-      try {
-        const full = state.scenarios || [];
-        this.scenarios = Array.isArray(full) ? [...full] : [];
-      } catch (e) {
-        // Fallback to payload if state is not ready
-        const list = payload && payload.scenarios ? payload.scenarios : [];
-        this.scenarios = Array.isArray(list) ? [...list] : [];
-      }
-      // Prefer explicit activeScenarioId from payload if present, otherwise use state
-      if (payload && payload.activeScenarioId) this.activeScenarioId = payload.activeScenarioId;
-      else this.activeScenarioId = state.activeScenarioId;
-    };
-    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId; };
-    this._onScenariosUpdated = () => {
-      const sc = state.scenarios || [];
-      this.scenarios = [...sc];
-      this.activeScenarioId = state.activeScenarioId;
-    };
-    this._onViewsList = (payload) => {
-      console.log('[Sidebar] Received views list event:', payload);
-      this.views = payload && payload.views ? [...payload.views] : [];
-      this.activeViewId = payload && payload.activeViewId ? payload.activeViewId : null;
-      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
-      this.requestUpdate();
-    };
-    this._onViewActivated = (payload) => {
-      console.log('[Sidebar] Received view activated event:', payload);
-      this.activeViewId = payload && payload.viewId ? payload.viewId : null;
-      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
-      this.requestUpdate();
-    };
 
     bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
     bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
-    bus.on(ScenarioEvents.LIST, this._onScenariosList);
-    bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
-    bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
-    bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
-    bus.on(ViewManagementEvents.LIST, this._onViewsList);
-    bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
-    // Listen for view option changes to trigger sidebar state save
-    const onViewOptionChange = () => this._saveSidebarState();
-    bus.on(ViewEvents.CONDENSED, onViewOptionChange);
-    bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
-    bus.on(ViewEvents.CAPACITY_MODE, onViewOptionChange);
-    bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
-    bus.on(FilterEvents.CHANGED, onViewOptionChange);
-    bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
-    bus.on(TimelineEvents.SCALE_CHANGED, onViewOptionChange); // Save when timeline zoom changes
-    this._viewOptionChangeHandler = onViewOptionChange;
-    // Initialize reactive properties from current state in case events were
-    // emitted before this element was connected. This ensures the component
-    // renders current projects/teams immediately instead of waiting for
-    // subsequent change events.
+
+    // Save when view options or filters change
+    this._viewOptionChangeHandler = () => this._saveSidebarState();
+    bus.on(ViewEvents.CONDENSED, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.DEPENDENCIES, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.CAPACITY_MODE, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.SORT_MODE, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.PARENT_CHILD_TREE, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.DEPENDENCY_LINKS, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.UNLINKED_TASKS, this._viewOptionChangeHandler);
+    bus.on(ViewEvents.TEAM_ALLOCATIONS, this._viewOptionChangeHandler);
+    bus.on(FilterEvents.CHANGED, this._viewOptionChangeHandler);
+    bus.on(StateFilterEvents.CHANGED, this._viewOptionChangeHandler);
+    bus.on(TimelineEvents.SCALE_CHANGED, this._viewOptionChangeHandler);
+
+    // Initialize from state if available
     try {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
-      this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
-      console.log('[Sidebar] Initializing views from state:', state.savedViews);
-      this._onViewsList({ views: state.savedViews, activeViewId: state.activeViewId });
-    } catch (e) {
-      // Defensive: ignore if state is not yet ready
-      console.warn('[Sidebar] Error initializing from state:', e);
-    }
+    } catch (e) { /* ignore */ }
+
+    // Refresh server status asynchronously
     this.refreshServerStatus();
-    this.requestUpdate();
-
-    // Keyboard shortcuts: 1-5 set timeline scale (weeks, 3 months, months, quarters, years)
-    // D,C,U,A,H toggle various view options
-    /*
-    this._onKeyDown = (e) => {
-      try {
-        if (e.defaultPrevented) return;
-        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-        const target = e.target || {};
-        const tag = (target.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || target.isContentEditable) return;
-
-        const digitMap = { '1': 'threeMonths', '2': 'weeks', '3': 'months', '4': 'quarters', '5': 'years' };
-        if (digitMap[e.key]) {
-          e.preventDefault();
-          try { state.setTimelineScale(digitMap[e.key]); } catch (err) { console.warn('[Sidebar] setTimelineScale failed', err); }
-          return;
-        }
-
-        const k = (e.key || '').toLowerCase();
-        if (k === 'd') {
-          e.preventDefault();
-          try { state._viewService.setShowDependencies(!state._viewService.showDependencies); } catch (err) { console.warn('[Sidebar] toggle dependencies failed', err); }
-          return;
-        }
-        if (k === 'c') {
-          e.preventDefault();
-          try { state._viewService.setCondensedCards(!state._viewService.condensedCards); } catch (err) { console.warn('[Sidebar] toggle condensed failed', err); }
-          return;
-        }
-        if (k === 'u') {
-          e.preventDefault();
-          try { state._viewService.setShowUnplannedWork(!state._viewService.showUnplannedWork); } catch (err) { console.warn('[Sidebar] toggle showUnplanned failed', err); }
-          return;
-        }
-        if (k === 'a') {
-          e.preventDefault();
-          try { state._viewService.setShowUnallocatedCards(!state._viewService.showUnassignedCards); } catch (err) { console.warn('[Sidebar] toggle showUnassigned failed', err); }
-          return;
-        }
-        if (k === 'h') {
-          e.preventDefault();
-          try { state._viewService.setShowOnlyProjectHierarchy(!state._viewService.showOnlyProjectHierarchy); } catch (err) { console.warn('[Sidebar] toggle showOnlyProjectHierarchy failed', err); }
-          return;
-        }
-      } catch (err) { / * defensive * / }
-    };
-    document.addEventListener('keydown', this._onKeyDown);
-    */
-  }
-
-  firstUpdated(){
-    const headers = this.shadowRoot.querySelectorAll('.sidebar-section-header-collapsible');
-    this._collapsibleHandlers = Array.from(headers).flatMap(header => {
-      const section = header.parentElement;
-      const contentWrapper = section.children[1];
-      const chevron = header.querySelector('.sidebar-chevron');
-      
-      const toggleSection = () => {
-        const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
-        if(chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
-        // Save sidebar state when section is toggled
-        this._saveSidebarState();
-      };
-
-      const onHeaderClick = () => toggleSection();
-      header.addEventListener('click', onHeaderClick);
-      
-      const handlers = [{ el: header, fn: onHeaderClick }];
-      if (chevron) {
-        const onChevronClick = (e) => { e.stopPropagation(); toggleSection(); };
-        chevron.addEventListener('click', onChevronClick);
-        handlers.push({ el: chevron, fn: onChevronClick });
-      }
-      return handlers;
-    });
-
-    const container = this.shadowRoot.querySelector('#viewOptionsContainer');
-    if(container) initViewOptions(container);
-
-    const onPluginsChanged = () => this.requestUpdate();
-    this._onPluginsChanged = onPluginsChanged;
-    [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
-      .forEach(evt => bus.on(evt, onPluginsChanged));
-
-    // Restore sidebar state from localStorage after initial render
-    // Defer restore until projects/teams have been initialized. Listen for
-    // ProjectEvents.CHANGED / TeamEvents.CHANGED and run restore once when
-    // data is available. Also try once immediately in case data is already loaded.
-    this._restoreOnDataHandler = async () => {
-      if (this._didRestoreSidebarState) return;
-      const hasProjects = Array.isArray(this.projects) && this.projects.length > 0;
-      const hasTeams = Array.isArray(this.teams) && this.teams.length > 0;
-      if (hasProjects || hasTeams) {
-        this._didRestoreSidebarState = true;
-        await this._restoreSidebarState();
-        bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-        bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      }
-    };
-    bus.on(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-    bus.on(TeamEvents.CHANGED, this._restoreOnDataHandler);
-    // Try once immediately (microtask) in case projects/teams were loaded earlier
-    setTimeout(() => this._restoreOnDataHandler(), 0);
   }
 
   disconnectedCallback(){
-    // Remove reactive property handlers
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
-    if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
-    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
-    if (this._onScenariosUpdated) {
-      bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
-      bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
-    }
-
-    // Clean up view option change listeners
-    const viewHandler = this._viewOptionChangeHandler;
-    if(viewHandler){
-      bus.off(ViewEvents.CONDENSED, viewHandler);
-      bus.off(ViewEvents.DEPENDENCIES, viewHandler);
-      bus.off(ViewEvents.CAPACITY_MODE, viewHandler);
-      bus.off(ViewEvents.SORT_MODE, viewHandler);
-      bus.off(FilterEvents.CHANGED, viewHandler);
-      bus.off(StateFilterEvents.CHANGED, viewHandler);
-      bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
-    }
-    // Clean up restore-on-data handler if still registered
-    if (this._restoreOnDataHandler) {
-      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      this._restoreOnDataHandler = null;
-    }
-    
-    this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
-    this._collapsibleHandlers = null;
-
-    if (this._onKeyDown) {
-      document.removeEventListener('keydown', this._onKeyDown);
-      this._onKeyDown = null;
-    }
-    
-    if(this._onPluginsChanged){
-      [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
-        .forEach(evt => bus.off(evt, this._onPluginsChanged));
-    }
-    
-    // Clean up restore-on-data handler if still registered
-    if (this._restoreOnDataHandler) {
-      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      this._restoreOnDataHandler = null;
+    if (this._viewOptionChangeHandler) {
+      bus.off(ViewEvents.CONDENSED, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.DEPENDENCIES, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.CAPACITY_MODE, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.SORT_MODE, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.PARENT_CHILD_TREE, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.DEPENDENCY_LINKS, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.UNLINKED_TASKS, this._viewOptionChangeHandler);
+      bus.off(ViewEvents.TEAM_ALLOCATIONS, this._viewOptionChangeHandler);
+      bus.off(FilterEvents.CHANGED, this._viewOptionChangeHandler);
+      bus.off(StateFilterEvents.CHANGED, this._viewOptionChangeHandler);
+      bus.off(TimelineEvents.SCALE_CHANGED, this._viewOptionChangeHandler);
+      this._viewOptionChangeHandler = null;
     }
     super.disconnectedCallback();
   }
-  
-
-  _onPluginClicked(pluginId){
-    const isActive = pluginManager.isActive(pluginId);
-    const method = isActive ? 'deactivate' : 'activate';
-    pluginManager[method](pluginId).catch(console.warn);
-  }
-
-  async _openConfig(){
-    const { openConfigModal } = await import('./modalHelpers.js');
-    await openConfigModal();
-  }
-
-  async _openHelp(){
-    const { openHelpModal } = await import('./modalHelpers.js');
-    await openHelpModal();
-  }
-
-  _onProjectsChanged(){ this.requestUpdate(); }
-  _onTeamsChanged(){ this.requestUpdate(); }
-  _onScenariosChanged(){ this.requestUpdate(); }
-  _onDataEvents(){ this.requestUpdate(); }
 
   async refreshServerStatus(){
     try{
+      // best-effort; dataService may not be available in all test contexts
+      const { dataService } = await import('../services/dataService.js');
       const h = await dataService.checkHealth();
       const status = h.status || (h.ok ? 'ok' : 'error');
       this.serverName = h.server_name || null;
-      const ups = Number(h.uptime_seconds);
-      const uptimeStr = Number.isNaN(ups) ? '' : (() => {
-        const totalMinutes = Math.floor(ups / 60);
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        return ` - Uptime: ${hours}h ${minutes}m`;
-      })();
-      this.serverStatus = `Version: ${h.version} | Server: ${status}${uptimeStr}`;
+      this.serverStatus = `Version: ${h.version} | Server: ${status}`;
     }catch(err){
-      this.serverStatus = 'Server: error';
+      this.serverStatus = 'Server: unavailable';
     }
     this.requestUpdate();
   }
@@ -576,7 +298,6 @@ export class SidebarLit extends LitElement {
     const current = (this.projects || []).find(p=>p.id===pid);
     const newVal = !(current && current.selected);
     state.setProjectSelected(pid, newVal);
-    // persistence will be triggered; state change will update this.projects via bus
     this._saveSidebarState();
   }
 
@@ -587,39 +308,19 @@ export class SidebarLit extends LitElement {
     this._saveSidebarState();
   }
 
-  setAllInList(type, checked){
-    if(type === 'project'){
-      // Build a selections map and apply in bulk to avoid emitting per-item events
-      const selections = (this.projects || []).reduce((acc, p) => { acc[p.id] = !!checked; return acc; }, {});
-      state.setProjectsSelectedBulk(selections);
-    } else if(type === 'team'){
-      const selections = (this.teams || []).reduce((acc, t) => { acc[t.id] = !!checked; return acc; }, {});
-      state.setTeamsSelectedBulk(selections);
-    }
-    // Persist sidebar state after bulk update
-    this._saveSidebarState();
-  }
-
-  _anyUncheckedProjects(){
-    return (this.projects || []).some(p => !p.selected);
-  }
-
-  _anyUncheckedTeams(){
-    return (this.teams || []).some(t => !t.selected);
-  }
-
-  _handleProjectToggle(){
-    const anyUnchecked = this._anyUncheckedProjects();
-    this.setAllInList('project', anyUnchecked);
-  }
-
-  _handleTeamToggle(){
-    const anyUnchecked = this._anyUncheckedTeams();
-    this.setAllInList('team', anyUnchecked);
-  }
-
-  _featureIconSvg(){
-    return featureTemplate;
+  _renderEntityList(type, items, onToggle){
+    return html`${items.map(item => html`
+      <li class="sidebar-list-item">
+        <div class="chip sidebar-chip ${item.selected? 'active':''}" @click=${(e)=> { if(!e.target.closest('.color-dot')) onToggle(item.id); }}>
+          <span class="color-dot" style="background:${item.color}" @click=${(e) => this._openColorPopover(e, type, item.id)}></span>
+          <div style="padding-left:8px;font-weight:600">${item.name}</div>
+          <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
+            <span class="chip-badge">${type==='project' ? state.countEpicsForProject(item.id) : state.countEpicsForTeam(item.id)}</span>
+            <span class="chip-badge">${type==='project' ? state.countFeaturesForProject(item.id) : state.countFeaturesForTeam(item.id)}</span>
+          </div>
+        </div>
+      </li>
+    `)}`;
   }
 
   async _openColorPopover(e, type, id){
@@ -630,355 +331,48 @@ export class SidebarLit extends LitElement {
     cp.openFor(type, id, rect);
   }
 
-  _renderEntityList(type, items, onToggle){
-    return html`${items.map(item => {
-      // For teams, only count features with non-zero allocation
-      let epicsCount = 0;
-      let featuresCount = 0;
-      if (type === 'project') {
-        epicsCount = state.countEpicsForProject(item.id);
-        featuresCount = state.countFeaturesForProject(item.id);
-      } else {
-        epicsCount = state.countEpicsForTeam(item.id);
-        featuresCount = state.countFeaturesForTeam(item.id);
-      }
-      
-      return html`
-        <li class="sidebar-list-item">
-          <div class="chip sidebar-chip ${item.selected? 'active':''}" 
-               style="display:flex;align-items:stretch;gap:8px;width:100%;" 
-               @click=${(e)=> { if(!e.target.closest('.color-dot')) onToggle(item.id); }}>
-            <span class="color-dot" 
-                  data-color-id="${item.id}" 
-                  style="background:${item.color}" 
-                  aria-hidden="true" 
-                  @click=${(e) => this._openColorPopover(e, type, item.id)}></span>
-            <div class="${type}-name-col" title="${item.name}" style="align-self:center">
-              ${item.name}${type === 'team' && item.short ? html` <span class="team-short">(${item.short})</span>` : ''}
-            </div>
-            <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
-              <span class="chip-badge">${epicsCount}</span>
-              <span class="chip-badge">${featuresCount}</span>
-            </div>
-          </div>
-        </li>`;
-    })}`;
-  }
-  /**
-   * Get filtered projects based on active view
-   * If a non-default view is active, only show projects that were selected in that view
-   */
-  _getFilteredProjects() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      // Default view or no view active - show all
-      return this.projects;
-    }
-    
-    // Filter projects based on active view data
-    // Only show projects where selectedProjects[id] === true
-    return (this.projects || []).filter(project => 
-      this.activeViewData.selectedProjects?.[project.id] === true
-    );
-  }
-
-  /**
-   * Get filtered teams based on active view
-   * If a non-default view is active, only show teams that were selected in that view
-   */
-  _getFilteredTeams() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      // Default view or no view active - show all
-      return this.teams;
-    }
-    
-    // Filter teams based on active view data
-    // Only show teams where selectedTeams[id] === true
-    return (this.teams || []).filter(team => 
-      this.activeViewData.selectedTeams?.[team.id] === true
-    );
-  }
-  renderProjects(){
-    return this._renderEntityList('project', this._getFilteredProjects() || [], (id) => this.toggleProject(id));
-  }
-
   renderPlansGrouped(){
-    const all = this._getFilteredProjects() || [];
+    const all = this.projects || [];
     const delivery = all.filter(p => (p.type || 'project') === 'project');
     const teamBacklogs = all.filter(p => (p.type || 'project') !== 'project');
     return html`
       <div class="plans-group">
-        ${delivery.length ? html`<!-- <div class="group-title">Delivery Plans</div> -->
-          <ul class="sidebar-list" id="projectList">${this._renderEntityList('project', delivery, (id) => this.toggleProject(id))}</ul>` : ''}
+        ${delivery.length ? html`<ul class="sidebar-list">${this._renderEntityList('project', delivery, (id) => this.toggleProject(id))}</ul>` : ''}
+        ${teamBacklogs.length ? html`<ul class="sidebar-list">${this._renderEntityList('project', teamBacklogs, (id) => this.toggleProject(id))}</ul>` : ''}
+      </div>`;
+  }
 
-        ${delivery.length && teamBacklogs.length ? html`<div style="border-top:1px dashed rgba(255,255,255,0.32); margin:4px 0; border-radius:2px; height:0;" class="divider" role="separator" aria-hidden="true"></div>` : ''}
+  renderTeams(){
+    return this._renderEntityList('team', this.teams || [], (id) => this.toggleTeam(id));
+  }
 
-        ${teamBacklogs.length ? html`<!-- <div class="group-title">Team Backlogs</div> -->
-          <ul class="sidebar-list" id="projectListTeam">${this._renderEntityList('project', teamBacklogs, (id) => this.toggleProject(id))}</ul> ` : ''}
+  renderSelectedItemsLegend(){
+    const selectedProjects = (this.projects || []).filter(p => p.selected);
+    const selectedTeams = (this.teams || []).filter(t => t.selected);
+    if (selectedProjects.length === 0 && selectedTeams.length === 0) {
+      return html`<div style="font-size:13px;color:rgba(255,255,255,0.6);padding:8px 0;">No items selected</div>`;
+    }
+    return html`
+      <div class="legend-chips" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;">
+        ${selectedProjects.map(p => html`<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:${p.color}"></span><span>${p.name}</span></div>`) }
+        ${selectedTeams.map(t => html`<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:12px;background:rgba(255,255,255,0.08);font-size:12px;"><span style="width:12px;height:12px;border-radius:3px;background:${t.color}"></span><span>${t.name}${t.short ? ` (${t.short})` : ''}</span></div>`) }
       </div>
     `;
   }
 
-  renderTeams(){
-    return this._renderEntityList('team', this._getFilteredTeams() || [], (id) => this.toggleTeam(id));
-  }
-
-  renderScenarios(){
-    const sorted = [...(this.scenarios || [])].sort((a,b)=>{
-      // Sort readonly scenarios (like baseline) first
-      if(a.readonly && !b.readonly) return -1;
-      if(b.readonly && !a.readonly) return 1;
-      return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
-    });
-    return html`${sorted.map(s=> html`
-      <li class="sidebar-list-item scenario-item sidebar-chip ${s.id===this.activeScenarioId? 'active':''}" @click=${(e)=>this._onScenarioClick(e, s)}>
-        <span class="scenario-name" title="${s.name}">${s.name}</span>
-        ${state.isScenarioUnsaved(s) ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>` : ''}
-        <span class="scenario-controls">
-          <button type="button" class="scenario-btn" title="Scenario actions" @click=${(e)=>this._onScenarioMenuClick(e, s)}>${'⋯'}</button>
-        </span>
-      </li>
-    `)}`;
-  }
-
-  renderViews(){
-    console.log('[Sidebar] renderViews called, views:', this.views);
-    const sorted = [...(this.views || [])].sort((a,b)=>{
-      // Sort readonly views (like default) first
-      if(a.readonly && !b.readonly) return -1;
-      if(b.readonly && !a.readonly) return 1;
-      return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
-    });
-    return html`${sorted.map(v=> html`
-      <li class="sidebar-list-item view-item sidebar-chip ${v.id===this.activeViewId? 'active':''}" @click=${(e)=>this._onViewClick(e, v)}>
-        <span class="view-name" title="${v.name}">${v.name}</span>
-        <span class="view-controls">
-          <button type="button" class="view-btn" title="View actions" @click=${(e)=>this._onViewMenuClick(e, v)}>${'⋯'}</button>
-        </span>
-      </li>
-    `)}`;
-  }
-
-  _renderPluginButtons(){
-    try{
-      // Prefer the public `list()` API which returns plugin metadata array
-      let regs = [];
-      if (pluginManager && typeof pluginManager.list === 'function') {
-        regs = pluginManager.list();
-      } else if (pluginManager && pluginManager.plugins instanceof Map) {
-        regs = [...pluginManager.plugins.values()].map(p => (typeof p.getMetadata === 'function' ? p.getMetadata() : p));
-      }
-      if(!Array.isArray(regs) || regs.length === 0) return html``;
-      return html`${regs.map(p => html`
-        <li class="sidebar-list-item">
-          <div class="chip sidebar-chip ${pluginManager && typeof pluginManager.isActive === 'function' && pluginManager.isActive(p.id) ? 'active' : ''}" role="button" tabindex="0" @click=${()=>this._onPluginClicked(p.id)}>${p.name || p.id}</div>
-        </li>
-      `)}`;
-    } catch (e) {
-      console.warn('[Sidebar] _renderPluginButtons error', e);
-      return html``;
-    }
-  }
-
-  _onScenarioMenuClick(e, s){
-    e.stopPropagation();
-    document.querySelectorAll('.scenario-menu-popover').forEach(p=>p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div'); 
-    pop.className='scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled=false) => {
-      const item = document.createElement('div'); 
-      item.className = 'scenario-menu-item';
-      if(disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if(!disabled) item.addEventListener('click', ev=>{ ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    const defaultCloneName = (() => {
-      const now = new Date();
-      const mm = String(now.getMonth()+1).padStart(2,'0');
-      const dd = String(now.getDate()).padStart(2,'0');
-      const maxN = Math.max(0, ...(this.scenarios || [])
-        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
-      return `${mm}-${dd} Scenario ${maxN+1}`;
-    })();
-    
-    addItem('Clone Scenario', '⎘', async ()=>{ 
-      const { openScenarioCloneModal } = await import('./modalHelpers.js'); 
-      await openScenarioCloneModal({ id: s.id, name: defaultCloneName }); 
-    });
-    
-    if(s.readonly){
-      // Readonly scenarios (like baseline) can only be refreshed, not modified
-      addItem('Refresh Baseline', '🔄', () => state.refreshBaseline());
-    } else {
-      addItem('Rename', '✏️', async ()=>{ 
-        const { openScenarioRenameModal } = await import('./modalHelpers.js'); 
-        await openScenarioRenameModal({ id: s.id, name: s.name }); 
-      });
-      addItem('Delete', '🗑️', async ()=>{ 
-        const { openScenarioDeleteModal } = await import('./modalHelpers.js'); 
-        await openScenarioDeleteModal({ id: s.id, name: s.name }); 
-      });
-      addItem('Save Scenario', '💾', () => state.saveScenario(s.id));
-      addItem('Save to Azure DevOps', '💾', async ()=>{
-        const overrideEntries = Object.entries(s.overrides || {});
-        if(overrideEntries.length === 0) return;
-        const { openAzureDevopsModal } = await import('./modalHelpers.js'); 
-        const selected = await openAzureDevopsModal({ overrides: s.overrides, state }); 
-        if(selected?.length) await dataService.publishBaseline(selected);
-      }, (s.overrides && Object.keys(s.overrides).length === 0));
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    // The component's shadow DOM styles do not apply to elements appended
-    // directly to document.body. Apply inline styles so the menu appears
-    // correctly (matching previous `.scenario-menu-popover` rules) and
-    // ensure a sufficiently high z-index to appear above other UI.
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
-  }
-
-  async _onViewClick(e, v){
-    e.stopPropagation();
-    // Load and apply the view
-    try {
-      await state.viewManagementService.loadAndApplyView(v.id);
-    } catch (err) {
-      console.error('Failed to load view:', err);
-      // Show error in a simple way without alert
-      const status = document.createElement('div');
-      status.textContent = `Failed to load view: ${err.message || err}`;
-      status.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--error-bg,#fee);padding:1rem;border-radius:4px;z-index:10000;';
-      document.body.appendChild(status);
-      setTimeout(() => status.remove(), 3000);
-    }
-  }
-
-  async _saveNewView(){
-    const { openViewSaveModal } = await import('./modalHelpers.js');
-    const defaultName = (() => {
-      const now = new Date();
-      const mm = String(now.getMonth()+1).padStart(2,'0');
-      const dd = String(now.getDate()).padStart(2,'0');
-      const maxN = Math.max(0, ...(this.views || [])
-        .filter(v => !v.readonly)
-        .map(v => /^\d{2}-\d{2} View (\d+)$/i.exec(v.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
-      return `${mm}-${dd} View ${maxN+1}`;
-    })();
-    await openViewSaveModal({ name: defaultName });
-  }
-
-  _onViewMenuClick(e, v){
-    e.stopPropagation();
-    document.querySelectorAll('.view-menu-popover').forEach(p=>p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div'); 
-    pop.className='view-menu-popover scenario-menu-popover'; // Reuse scenario menu styles
-    
-    const addItem = (label, emoji, onClick, disabled=false) => {
-      const item = document.createElement('div'); 
-      item.className = 'scenario-menu-item';
-      if(disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if(!disabled) item.addEventListener('click', ev=>{ ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    if (v.readonly && v.id === 'default') {
-      // Default view menu - only show clone option
-      addItem('Clone & Save as New View', '⎘', async ()=>{ 
-        const { openViewSaveModal } = await import('./modalHelpers.js');
-        const defaultName = (() => {
-          const now = new Date();
-          const mm = String(now.getMonth()+1).padStart(2,'0');
-          const dd = String(now.getDate()).padStart(2,'0');
-          const maxN = Math.max(0, ...(this.views || [])
-            .filter(vw => !vw.readonly)
-            .map(vw => /^\d{2}-\d{2} View (\d+)$/i.exec(vw.name)?.[1])
-            .filter(Boolean)
-            .map(n => parseInt(n, 10)));
-          return `${mm}-${dd} View ${maxN+1}`;
-        })();
-        await openViewSaveModal({ name: defaultName });
-      });
-    } else {
-      // Custom view menu - show update/rename/delete options
-      addItem('Update View', '💾', async ()=>{ 
-        // Save current state over existing view
-        try {
-          await state.viewManagementService.saveCurrentView(v.name, v.id);
-        } catch (err) {
-          console.error('Failed to update view:', err);
-        }
-      });
-      
-      addItem('Rename View', '✏️', async ()=>{ 
-        const { openViewRenameModal } = await import('./modalHelpers.js');
-        await openViewRenameModal({ id: v.id, name: v.name });
-      });
-      
-      addItem('Delete View', '🗑️', async ()=>{ 
-        const { openViewDeleteModal } = await import('./modalHelpers.js');
-        await openViewDeleteModal({ id: v.id, name: v.name });
-      });
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    // Apply inline styles so the popover appears above other UI (match ColorPopover z-index)
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
-  }
-
-  /**
-   * Save current sidebar state to localStorage (debounced)
-   */
   _saveSidebarState() {
     if (!this._persistenceService) return;
     this._persistenceService.saveSidebarState(state, state._viewService, this);
   }
 
-  /**
-   * Restore sidebar state from localStorage
-   */
   async _restoreSidebarState() {
     if (!this._persistenceService) return;
     await this._persistenceService.restoreSidebarState(state, state._viewService, this);
   }
 
-  _onScenarioClick(e, s){
-    if(!e.target.closest('.scenario-controls')) state.activateScenario(s.id);
+  firstUpdated(){
+    const container = this.shadowRoot.querySelector('#viewOptionsContainer');
+    if(container) initViewOptions(container);
   }
 
   render(){
@@ -986,82 +380,20 @@ export class SidebarLit extends LitElement {
       <aside class="sidebar ${this.open? '' : 'closed'}">
         <h2>Planner Tool</h2>
         <div class="sidebar-content">
-        <section class="sidebar-section" id="viewOptionsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▲</span><span class="sidebar-title">View Options</span></div>
-          <div class="sidebar-section-collapsed"><div id="viewOptionsContainer"></div></div>
-        </section>
+          <section class="sidebar-section" id="viewOptionsSection">
+            <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">View Options</span></div>
+            <div><div id="viewOptionsContainer"></div></div>
+          </section>
 
-        <section class="sidebar-section" id="projectsSection" data-tour="planning">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Plans</span></div>
-          <div>
-            <div class="counts-header" aria-hidden="true">
-                  <span></span>
-                  <button id="projectToggleBtn" class="chip list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all projects" @click=${()=>this._handleProjectToggle()}>
-                    ${this._anyUncheckedProjects() ? 'All' : 'None'}
-                  </button>
-                  <span></span>
-                  <span class="type-icon epic" title="Epics">${epicTemplate}</span>
-                  <span class="type-icon feature" title="Features">${featureTemplate}</span>
-            </div>
-            ${this.renderPlansGrouped()}
-          </div>
-        </section>
-
-        <section class="sidebar-section" id="teamsSection" data-tour="allocations">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
-          <div>
-              <div class="counts-header" aria-hidden="true">
-              <span></span>
-              <button id="teamToggleBtn" class="chip list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all teams" @click=${()=>this._handleTeamToggle()}>
-                ${this._anyUncheckedTeams() ? 'All' : 'None'}
-              </button>
-              <span></span>
-              <span class="type-icon epic" title="Epics">${epicTemplate}</span>
-              <span class="type-icon feature" title="Features">${featureTemplate}</span>
-            </div>
-            <ul class="sidebar-list" id="teamList">${this.renderTeams()}</ul>
-          </div>
-        </section>
-
-        <section class="sidebar-section" id="scenariosSection" data-tour="scenarios">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
-          <div>
-            <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
-          </div>
-        </section>
-
-        <section class="sidebar-section" id="viewsSection" data-tour="views">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Views</span></div>
-          <div>
-            <ul class="sidebar-list" id="viewList">${this.renderViews()}</ul>
-          </div>
-        </section>
-
-        <section class="sidebar-section" id="toolsSection" data-tour="tools">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
-          <div>
-            <ul class="sidebar-list" id="toolsList">
-            <!--
-              <li class="sidebar-list-item">
-                <div class="chip sidebar-chip" style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" @click=${()=>this._openSearchTool()} role="button" tabindex="0" @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._openSearchTool(); }}}>
-                  <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;">Search</div>
-                </div>
-              </li>
-            -->
-              ${this._renderPluginButtons()}
-            </ul>
-          </div>
-        </section>
+          <section class="sidebar-section" id="selectedItemsSection">
+            <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Selected Items</span></div>
+            <div>${this.renderSelectedItemsLegend()}</div>
+          </section>
 
         </div>
         <section class="sidebar-config">
-          <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
-          <div class="config-row" style="display:flex;gap:8px;margin-top:6px;">
-            <button id="openConfigBtn" data-tour="gear" @click=${()=>this._openConfig()}>⚙️</button>
-            <button id="openHelpBtn" data-tour="help" @click=${()=>this._openHelp()}>❓</button>
-          </div>
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
-          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
+          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Planner Tool${this.serverName ? ' — ' + this.serverName : ''}</div>
         </section>
       </aside>
     `;

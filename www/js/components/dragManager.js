@@ -173,7 +173,8 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     if(feature.type === 'epic'){
       // Use full feature tree so parent/child constraints work across plans
       const allFeatures = getAllFeatures();
-      const children = allFeatures.filter(ch => ch.parentEpic === feature.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
+      //const children = allFeatures.filter(ch => ch.parentEpic === feature.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
+      const children = allFeatures.filter(ch => ch.parentEpic === feature.id);
       if(children.length){
         // consider only children with an end date and compare parsed dates
         const childEndDates = children.map(ch => ch.end).filter(Boolean).map(s => parseDate(s));

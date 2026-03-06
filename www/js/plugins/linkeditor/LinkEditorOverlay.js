@@ -31,7 +31,7 @@ export class LinkEditorOverlay extends LitElement {
       position: absolute;
       inset: 0;
       pointer-events: none;
-      z-index: 10;
+      z-index: 100;
     }
 
     :host([active]) {
@@ -92,7 +92,7 @@ export class LinkEditorOverlay extends LitElement {
       .link-editor-quadrants {
         position: absolute;
         pointer-events: auto;
-        z-index: 10;
+        z-index: 100;
         opacity: 0;
         transition: opacity 0.15s ease;
       }

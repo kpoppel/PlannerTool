@@ -66,7 +66,7 @@ export class AnnotationOverlay extends LitElement {
         be clipped by the board's overflow (preventing overlap with the
         sidebar). Using fixed positions it would float above page chrome. */
       position: absolute;
-      z-index: 50;
+      z-index: 100;
       pointer-events: none;
       overflow: hidden;
     }

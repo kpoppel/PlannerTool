@@ -12,8 +12,15 @@
   <modal-spinner id="appSpinner"></modal-spinner>
   <div id="app" class="app-container">
     <app-sidebar></app-sidebar>
+    <app-menu-bar></app-menu-bar>
     <timeline-board class="main"></timeline-board>
   </div>
+  <!-- Menu components (singletons) -->
+  <views-dropdown></views-dropdown>
+  <scenarios-dropdown></scenarios-dropdown>
+  <tools-popover></tools-popover>
+  <plans-popover></plans-popover>
+  <allocation-popover></allocation-popover>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

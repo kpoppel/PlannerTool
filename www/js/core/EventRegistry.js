@@ -84,7 +84,11 @@ export const ViewEvents = {
   CONDENSED: Symbol('view:condensed'),
   DEPENDENCIES: Symbol('view:dependencies'),
   CAPACITY_MODE: Symbol('view:capacityMode'),
-  SORT_MODE: Symbol('view:sortMode')
+  SORT_MODE: Symbol('view:sortMode'),
+  PARENT_CHILD_TREE: Symbol('view:parentChildTree'),
+  DEPENDENCY_LINKS: Symbol('view:dependencyLinks'),
+  UNLINKED_TASKS: Symbol('view:unlinkedTasks'),
+  TEAM_ALLOCATIONS: Symbol('view:teamAllocations')
 };
 
 // Saved view management events

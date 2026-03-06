@@ -65,6 +65,12 @@ export class ViewService {
     this._showUnplannedWork = true; // Show features without dates by default (when feature flag is ON)
     this._showOnlyProjectHierarchy = false; // Show only features hierarchically linked to selected projects
     
+    // New additive filtering properties
+    this._showParentChildTree = false; // Show parent-child tree relationships
+    this._showDependencyLinks = false; // Show dependency relationships
+    this._showUnlinkedTasks = true; // Show tasks with no links (default true)
+    this._showAllTeamAllocations = false; // Show all tasks where selected teams are allocated
+    
     // Display modes
     this._condensedCards = false;
     this._capacityViewMode = 'team'; // 'team' | 'project'
@@ -238,6 +244,88 @@ export class ViewService {
     }
   }
 
+  // ========== New Additive Filtering ==========
+  
+  /**
+   * Get whether to show parent-child tree relationships
+   * @returns {boolean}
+   */
+  get showParentChildTree() {
+    return this._showParentChildTree;
+  }
+
+  /**
+   * Set whether to show parent-child tree relationships
+   * @param {boolean} val - Whether to expand view to include parent-child relationships
+   */
+  setShowParentChildTree(val) {
+    this._showParentChildTree = !!val;
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.PARENT_CHILD_TREE, this._showParentChildTree);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
+  /**
+   * Get whether to show dependency link relationships
+   * @returns {boolean}
+   */
+  get showDependencyLinks() {
+    return this._showDependencyLinks;
+  }
+
+  /**
+   * Set whether to show dependency link relationships
+   * @param {boolean} val - Whether to expand view to include dependency relationships
+   */
+  setShowDependencyLinks(val) {
+    this._showDependencyLinks = !!val;
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.DEPENDENCY_LINKS, this._showDependencyLinks);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
+  /**
+   * Get whether to show unlinked tasks
+   * @returns {boolean}
+   */
+  get showUnlinkedTasks() {
+    return this._showUnlinkedTasks;
+  }
+
+  /**
+   * Set whether to show unlinked tasks
+   * @param {boolean} val - Whether to show tasks with no links to selected plans
+   */
+  setShowUnlinkedTasks(val) {
+    this._showUnlinkedTasks = !!val;
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.UNLINKED_TASKS, this._showUnlinkedTasks);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
+  /**
+   * Get whether to show all team allocations
+   * @returns {boolean}
+   */
+  get showAllTeamAllocations() {
+    return this._showAllTeamAllocations;
+  }
+
+  /**
+   * Set whether to show all team allocations
+   * @param {boolean} val - Whether to show all tasks where selected teams are allocated
+   */
+  setShowAllTeamAllocations(val) {
+    this._showAllTeamAllocations = !!val;
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.TEAM_ALLOCATIONS, this._showAllTeamAllocations);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
   // ========== Display Modes ==========
   
   /**
@@ -321,7 +409,11 @@ export class ViewService {
       timelineScale: this._timelineScale,
       showEpics: this._showEpics,
       showFeatures: this._showFeatures,
-      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
+      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
+      showParentChildTree: this._showParentChildTree,
+      showDependencyLinks: this._showDependencyLinks,
+      showUnlinkedTasks: this._showUnlinkedTasks,
+      showAllTeamAllocations: this._showAllTeamAllocations
     };
   }
   
@@ -346,6 +438,10 @@ export class ViewService {
     if (typeof viewState.showEpics !== 'undefined') this._showEpics = !!viewState.showEpics;
     if (typeof viewState.showFeatures !== 'undefined') this._showFeatures = !!viewState.showFeatures;
     if (typeof viewState.showOnlyProjectHierarchy !== 'undefined') this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
+    if (typeof viewState.showParentChildTree !== 'undefined') this._showParentChildTree = !!viewState.showParentChildTree;
+    if (typeof viewState.showDependencyLinks !== 'undefined') this._showDependencyLinks = !!viewState.showDependencyLinks;
+    if (typeof viewState.showUnlinkedTasks !== 'undefined') this._showUnlinkedTasks = !!viewState.showUnlinkedTasks;
+    if (typeof viewState.showAllTeamAllocations !== 'undefined') this._showAllTeamAllocations = !!viewState.showAllTeamAllocations;
   }
 
   /**
@@ -370,6 +466,10 @@ export class ViewService {
       this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
+      this.bus.emit(ViewEvents.PARENT_CHILD_TREE, this._showParentChildTree);
+      this.bus.emit(ViewEvents.DEPENDENCY_LINKS, this._showDependencyLinks);
+      this.bus.emit(ViewEvents.UNLINKED_TASKS, this._showUnlinkedTasks);
+      this.bus.emit(ViewEvents.TEAM_ALLOCATIONS, this._showAllTeamAllocations);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }

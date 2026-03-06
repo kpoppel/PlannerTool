@@ -6,8 +6,9 @@
   --color-accent: #3498db;
   --color-panel-bg: #f9f9f9;
   --color-shadow: rgba(0,0,0,0.08);
-  --sidebar-width: 320px;
+  --sidebar-width: 310px;
   --details-width: 340px;
+  --menu-bar-height: 32px;
   --timeline-month-width: 120px;
   --color-month-alt: #ececec; /* subtle alternate month background */
   --color-month-alt-scenario: #e2e2e2; /* slightly different grey for scenario mode */
@@ -24,6 +25,6 @@
 /* Ensure app root and main fill the viewport so children can flex to available space */
 .app-container { display:flex; height:100vh; overflow:hidden; min-height:0; }
 /* Important main content area styling */
-.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; }
+.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; padding-top: var(--menu-bar-height, 32px); }
 /* Ensure direct children that are flex containers can shrink/grow properly inside .main */
 .main > * { min-height:0; }

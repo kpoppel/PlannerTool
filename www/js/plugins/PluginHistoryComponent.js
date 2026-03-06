@@ -83,7 +83,7 @@ export class PluginHistoryComponent extends LitElement {
     :host { 
       display: none;
       position: fixed;
-      z-index: 200;
+      z-index: 100;
       pointer-events: none;
     }
     
@@ -98,7 +98,7 @@ export class PluginHistoryComponent extends LitElement {
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       pointer-events: auto;
-      z-index: 200;
+      z-index: 100;
       min-width: 140px;
     }
     
@@ -167,7 +167,7 @@ export class PluginHistoryComponent extends LitElement {
       font-size: 13px;
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
       white-space: nowrap;
-      z-index: 201;
+      z-index: 200;
       display: none;
     }
     

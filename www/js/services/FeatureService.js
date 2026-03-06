@@ -498,5 +498,132 @@ export class FeatureService {
     const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
     return t.features;
   }
-}
 
+  // ========== Link Discovery Methods ==========
+
+  /**
+   * Get all features connected via parent-child relationships (tree traversal)
+   * @param {Set<string>} featureIds - Set of feature IDs to start from
+   * @returns {Set<string>} Set of all feature IDs in the parent-child tree
+   */
+  getFeaturesByParentChildLinks(featureIds) {
+    const result = new Set(featureIds);
+    const features = this.getEffectiveFeatures() || [];
+    const featureById = new Map(features.map(f => [f.id, f]));
+    const visited = new Set();
+
+    const traverse = (id) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      result.add(id);
+
+      // Traverse down: children of this epic
+      const childIds = this._childrenByEpic.get(id) || [];
+      for (const childId of childIds) {
+        traverse(childId);
+      }
+
+      // Traverse up: parent via parentEpic field or Parent relation
+      const feature = featureById.get(id);
+      if (feature) {
+        if (feature.parentEpic) {
+          traverse(feature.parentEpic);
+        }
+        if (Array.isArray(feature.relations)) {
+          const parentRel = feature.relations.find(r => r.type === 'Parent');
+          if (parentRel?.id) {
+            traverse(parentRel.id);
+          }
+        }
+      }
+    };
+
+    for (const id of featureIds) {
+      traverse(id);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get all features connected via dependency relationships (Predecessor/Successor)
+   * @param {Set<string>} featureIds - Set of feature IDs to start from
+   * @returns {Set<string>} Set of all feature IDs with dependency links
+   */
+  getFeaturesByDependencies(featureIds) {
+    const result = new Set(featureIds);
+    const features = this.getEffectiveFeatures() || [];
+    const featureById = new Map(features.map(f => [f.id, f]));
+
+    // Build reverse dependency map (who depends on me)
+    const reverseDeps = new Map();
+    for (const feature of features) {
+      if (Array.isArray(feature.relations)) {
+        for (const rel of feature.relations) {
+          if ((rel.type === 'Predecessor' || rel.type === 'Successor') && rel.id) {
+            if (!reverseDeps.has(rel.id)) {
+              reverseDeps.set(rel.id, []);
+            }
+            reverseDeps.get(rel.id).push(feature.id);
+          }
+        }
+      }
+    }
+
+    const visited = new Set();
+
+    const traverse = (id) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      result.add(id);
+
+      const feature = featureById.get(id);
+      if (feature && Array.isArray(feature.relations)) {
+        // Traverse to features this depends on (predecessors/successors)
+        for (const rel of feature.relations) {
+          if ((rel.type === 'Predecessor' || rel.type === 'Successor') && rel.id) {
+            traverse(rel.id);
+          }
+        }
+      }
+
+      // Traverse to features that depend on this (reverse lookup)
+      const dependents = reverseDeps.get(id) || [];
+      for (const depId of dependents) {
+        traverse(depId);
+      }
+    };
+
+    for (const id of featureIds) {
+      traverse(id);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get all features where specified teams have non-zero capacity allocation
+   * @param {Set<string>} teamIds - Set of team IDs
+   * @returns {Set<string>} Set of feature IDs with allocations for these teams
+   */
+  getFeaturesByTeamAllocation(teamIds) {
+    const result = new Set();
+    const features = this.getEffectiveFeatures() || [];
+
+    for (const feature of features) {
+      if (Array.isArray(feature.capacity)) {
+        for (const tl of feature.capacity) {
+          if (tl && tl.team && teamIds.has(tl.team)) {
+            const cap = Number(tl.capacity) || 0;
+            if (cap > 0) {
+              result.add(feature.id);
+              break; // Found at least one matching team, no need to check more
+            }
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+}

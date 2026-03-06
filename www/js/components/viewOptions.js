@@ -191,6 +191,25 @@ export function initViewOptions(container){
     (val)=> state._viewService.setShowOnlyProjectHierarchy(val),
     {"data-tour": "hierarchy-view"}
   );
+  
+  // Additive filters - expand the visible task set
+  renderToggle(root, 'Show Parent-Child Tree', 
+    ()=> state._viewService.showParentChildTree, 
+    (val)=> state._viewService.setShowParentChildTree(val)
+  );
+  renderToggle(root, 'Show Dependency Links', 
+    ()=> state._viewService.showDependencyLinks, 
+    (val)=> state._viewService.setShowDependencyLinks(val)
+  );
+  renderToggle(root, 'Show Unlinked Tasks', 
+    ()=> state._viewService.showUnlinkedTasks, 
+    (val)=> state._viewService.setShowUnlinkedTasks(val)
+  );
+  renderToggle(root, 'Show All Team Allocations', 
+    ()=> state._viewService.showAllTeamAllocations, 
+    (val)=> state._viewService.setShowAllTeamAllocations(val)
+  );
+  
   // Capacity selector + Open Graph action
   const capWrapper = document.createElement('div');
   capWrapper.setAttribute('data-tour','capacity-view');
@@ -280,5 +299,17 @@ bus.on(ViewEvents.CAPACITY_MODE, ()=>{
   const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });
 bus.on(ViewEvents.SORT_MODE, ()=>{
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.PARENT_CHILD_TREE, ()=>{
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.DEPENDENCY_LINKS, ()=>{
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.UNLINKED_TASKS, ()=>{
+  const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
+});
+bus.on(ViewEvents.TEAM_ALLOCATIONS, ()=>{
   const node = _lastViewOptionsContainer || document.getElementById('viewOptionsContainer'); if(!node) return; initViewOptions(node);
 });

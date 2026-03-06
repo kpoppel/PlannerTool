@@ -29,7 +29,7 @@ export class SpinnerModal extends LitElement {
   width: 100vw;
   height: 100vh;
   background: rgba(0,0,0,0.4);
-  z-index: 9999;
+  z-index: 2000;
   display: flex;
   align-items: center;
   justify-content: center;
