@@ -9,7 +9,8 @@ describe('Color Components Consolidated', () => {
     cp.openFor('project','p1',{ left:0, bottom:0 });
     await new Promise(r=>setTimeout(r,0));
     const el = document.querySelector('color-popover');
-    const swatches = el.querySelectorAll('.color-swatch');
+    const root = el.renderRoot || el.shadowRoot || el;
+    const swatches = root.querySelectorAll('.color-swatch');
     expect(swatches.length).to.equal(palette.length);
     const computed = getComputedStyle(swatches[0]).backgroundColor;
     const toRgb = (hex) => { if(!hex || hex[0] !== '#') return hex; const r = parseInt(hex.substr(1,2),16); const g = parseInt(hex.substr(3,2),16); const b = parseInt(hex.substr(5,2),16); return `rgb(${r}, ${g}, ${b})`; };

@@ -16,9 +16,10 @@ describe('config-modal', () => {
   it('_populate reads prefs and fills inputs (mocked)', async () => {
     const origGet = dataService.getLocalPref;
     dataService.getLocalPref = async (k) => k === 'user.email' ? 'a@b.c' : 5;
-    // wait for Lit render/update lifecycle to complete
+    // wait for Lit render/update lifecycle to complete and find inner modal elements
     if (modal.updateComplete) await modal.updateComplete;
-    const emailInput = modal.querySelector('#configEmail');
+    const inner = modal.renderRoot ? modal.renderRoot.querySelector('modal-lit') : modal.querySelector('modal-lit');
+    const emailInput = inner ? inner.querySelector('#configEmail') : null;
     expect(emailInput).to.exist;
     expect(emailInput.value).to.equal('a@b.c');
     dataService.getLocalPref = origGet;
@@ -30,13 +31,14 @@ describe('config-modal', () => {
     let saved = {};
     dataService.setLocalPref = async (k,v)=> { saved[k]=v; };
     dataService.saveConfig = async (cfg) => ({ ok: true });
-    // wait for Lit render/update lifecycle to complete
+    // wait for Lit render/update lifecycle to complete and find inner modal elements
     if (modal.updateComplete) await modal.updateComplete;
-    const emailInput = modal.querySelector('#configEmail');
-    const autosaveInput = modal.querySelector('#autosaveInterval');
+    const inner2 = modal.renderRoot ? modal.renderRoot.querySelector('modal-lit') : modal.querySelector('modal-lit');
+    const emailInput = inner2 ? inner2.querySelector('#configEmail') : null;
+    const autosaveInput = inner2 ? inner2.querySelector('#autosaveInterval') : null;
     emailInput.value = 'z@y.z';
     autosaveInput.value = '10';
-    const saveBtn = modal.querySelector('#saveConfigBtn');
+    const saveBtn = inner2 ? inner2.querySelector('#saveConfigBtn') : null;
     expect(saveBtn).to.exist;
     // click save
     saveBtn.click();

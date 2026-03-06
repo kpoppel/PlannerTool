@@ -33,11 +33,11 @@ describe('Modal Consolidated Tests', () => {
     const s = { getFeatureTitleById: (id) => 'Title-' + id, baselineFeatures: [{ id: 'f1', start: '', end: '' }] };
     const { openAzureDevopsModal } = await import('../../www/js/components/modalHelpers.js');
     const prom = (async ()=>{ const p = openAzureDevopsModal({ overrides, state: s }); return p; })();
-    const start = Date.now(); let saveBtn, checkboxes;
+    const start = Date.now(); let saveBtn, checkboxes, modalEl, root;
     while(Date.now() - start < 500){ 
-      saveBtn = Array.from(document.querySelectorAll('button')).find(b => /Save/i.test(b.textContent)); 
-      checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-id]'));
-      if(saveBtn && checkboxes.length > 0) break; 
+      modalEl = document.querySelector('azure-devops-modal');
+      if(modalEl){ root = modalEl.renderRoot || modalEl.shadowRoot || modalEl; saveBtn = Array.from(root.querySelectorAll('button')).find(b => /Save/i.test(b.textContent)); checkboxes = Array.from(root.querySelectorAll('input[type="checkbox"][data-id]')); }
+      if(saveBtn && checkboxes && checkboxes.length > 0) break;
       await new Promise(r=>setTimeout(r,10)); 
     }
     expect(saveBtn).to.exist;
@@ -71,11 +71,11 @@ describe('Modal Consolidated Tests', () => {
     
     // Wait for modal to appear and get checkboxes
     const start = Date.now(); 
-    let checkboxes, saveBtn;
+    let checkboxes, saveBtn, modalEl, root;
     while(Date.now() - start < 500){ 
-      checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-id]'));
-      saveBtn = Array.from(document.querySelectorAll('button')).find(b => /Save/i.test(b.textContent));
-      if(checkboxes.length === 3 && saveBtn) break; 
+      modalEl = document.querySelector('azure-devops-modal');
+      if(modalEl){ root = modalEl.renderRoot || modalEl.shadowRoot || modalEl; checkboxes = Array.from(root.querySelectorAll('input[type="checkbox"][data-id]')); saveBtn = Array.from(root.querySelectorAll('button')).find(b => /Save/i.test(b.textContent)); }
+      if(checkboxes && checkboxes.length === 3 && saveBtn) break; 
       await new Promise(r=>setTimeout(r,10)); 
     }
     

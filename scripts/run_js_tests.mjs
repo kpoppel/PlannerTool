@@ -1,10 +1,31 @@
-import { readdirSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join, basename } from 'path';
 
-const testDir = join(process.cwd(), 'tests/frontend');
-const testFiles = readdirSync(testDir)
-  .filter(f => f.startsWith('test-') && f.endsWith('.js'))
-  .map(f => join(testDir, f));
+// Discover test files recursively under the repository `tests/` directory.
+const testDir = join(process.cwd(), 'tests');
+
+function walk(dir) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) files.push(...walk(p));
+    else if (/\.test\.js$/.test(e.name)) files.push(p);
+  }
+  return files;
+}
+
+// Filter out browser-only tests that use `describe`/fixture/etc so this Node runner
+// only attempts to run Node-targeted test files. We detect `describe(` or
+// `fixture(` usage and skip those files.
+const allFiles = walk(testDir);
+const testFiles = allFiles.filter(f => {
+  try {
+    const src = readFileSync(f, 'utf8');
+    if (/\b(describe|fixture|it|before|after)\s*\(/.test(src)) return false;
+    return true;
+  } catch (e) { return false; }
+});
 
 // List of test files that require DOM mocking (UI tests)
 // DEPRECATED: Use RUN_UI_TESTS flag instead
@@ -92,6 +113,14 @@ function injectDomMocks() {
           if (el.id) global.document._elements[el.id] = el;
         }
       },
+      createTreeWalker(root) {
+        let current = root || { childNodes: [] };
+        return {
+          currentNode: current,
+          nextNode() { return null; },
+          previousNode() { return null; }
+        };
+      },
       _elements: {}
     };
     // Pre-populate required elements for UI tests
@@ -105,6 +134,19 @@ function injectDomMocks() {
     global.document.body.appendChild(detailsPanel);
     const featureCard = makeElement('div'); featureCard.id = 'featureCard'; featureCard.className = 'feature-card';
     global.document.body.appendChild(featureCard);
+  }
+  // Minimal window/navigator mocks so browser-oriented test helpers can import.
+  if (typeof global !== 'undefined' && typeof global.window === 'undefined') {
+    global.window = {
+      location: { href: 'http://localhost/?sessionId=1' },
+      document: global.document,
+      localStorage: global.localStorage,
+      addEventListener: () => {},
+      customElements: { define() {} },
+    };
+    global.location = global.window.location;
+    global.navigator = { userAgent: 'node.js' };
+    global.self = global.window;
   }
   if (typeof global !== 'undefined' && typeof localStorage === 'undefined') {
     let store = {};

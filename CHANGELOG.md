@@ -31,6 +31,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - The card border accent for the plan colors got lost, now it is back.
 - Several plugins were missing a close button, and those with one did not unselect the tool chip in the sidebar.
 - The history plugin only rendered bars for the tasks on screen, and then nothing else unless resizing the browser.
+- Broken npm tests after refactoring fixed.
 
 ## [v1.13.2] - 2026-03-04
 
