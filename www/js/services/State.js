@@ -150,6 +150,8 @@ class State {
   get viewManagementService() { return this._viewManagementService; }
   get savedViews() { return this._viewManagementService.getViews(); }
   get activeViewId() { return this._viewManagementService.getActiveViewId(); }
+  // FeatureService accessor (lazy-initialized via _getFeatureService)
+  get featureService() { return this._getFeatureService(); }
   
   // DataInitService properties
   get baselineFeatureById() { return this._dataInitService.baselineFeatureById; }

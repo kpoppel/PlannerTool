@@ -26,6 +26,20 @@ const getBoardOffset = () => {
   return Number.isNaN(pl) ? 0 : pl;
 };
 
+/**
+ * Get all features (across all plans) for parent/child tree operations.
+ * Centralized accessor ensures drag/resize logic works with full feature tree
+ * regardless of current plan filters.
+ */
+function getAllFeatures() {
+  // Use FeatureService to get effective features (baseline + scenario overrides)
+  if (state.featureService && typeof state.featureService.getEffectiveFeatures === 'function') {
+    return state.featureService.getEffectiveFeatures() || [];
+  }
+  // Fallback to state.features if FeatureService isn't available
+  return state.features || [];
+}
+
 export function startDragMove(e, feature, card, updateDatesCb = state.updateFeatureDates.bind(state), featuresSource = state.features){
   const months = getTimelineMonths();
   const monthWidth = getMonthWidth();
@@ -85,11 +99,12 @@ export function startDragMove(e, feature, card, updateDatesCb = state.updateFeat
     const newStartStr = formatDate(newStartDate);
     const newEndStr = formatDate(newEndDate);
     if (newStartStr !== feature.start || newEndStr !== feature.end) {
-      const updates = computeMoveUpdates(feature, newStartDate, newEndDate, featuresSource);
+      const allFeatures = getAllFeatures();
+      const updates = computeMoveUpdates(feature, newStartDate, newEndDate, allFeatures);
       
       // If planning an unplanned child feature, also plan its parent epic
       if (isUnplanned && feature.parentEpic) {
-        const epic = featuresSource.find(f => f.id === feature.parentEpic);
+        const epic = allFeatures.find(f => f.id === feature.parentEpic);
         if (epic && (!epic.start || !epic.end)) {
           // Plan the epic with the same dates as the child
           updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
@@ -156,14 +171,18 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     let tentativeWidth = Math.max(10, origWidth + dx);
     let tentativeEnd = endDateFromWidth(tentativeWidth);
     if(feature.type === 'epic'){
-      // Use effective featuresSource so scenario overrides are respected during visual clamp feedback
-      const children = featuresSource.filter(ch => ch.parentEpic === feature.id);
+      // Use full feature tree so parent/child constraints work across plans
+      const allFeatures = getAllFeatures();
+      const children = allFeatures.filter(ch => ch.parentEpic === feature.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
       if(children.length){
-        const maxChildEndStr = children.reduce((max, ch) => ch.end > max ? ch.end : max, children[0].end);
-        const maxChildEnd = parseDate(maxChildEndStr);
-        if(tentativeEnd < maxChildEnd){
-          tentativeEnd = maxChildEnd;
-          tentativeWidth = widthForSpan(startDate, tentativeEnd);
+        // consider only children with an end date and compare parsed dates
+        const childEndDates = children.map(ch => ch.end).filter(Boolean).map(s => parseDate(s));
+        if(childEndDates.length){
+          const maxChildEnd = childEndDates.reduce((max, d) => d > max ? d : max, childEndDates[0]);
+          if(tentativeEnd < maxChildEnd){
+            tentativeEnd = maxChildEnd;
+            tentativeWidth = widthForSpan(startDate, tentativeEnd);
+          }
         }
       }
     }
@@ -187,11 +206,12 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     // For unplanned features, we need to set both start and end dates
     if (isUnplanned) {
       if (newEndStr !== feature.end || newStartStr !== feature.start) {
+        const allFeatures = getAllFeatures();
         const updates = [{ id: feature.id, start: newStartStr, end: newEndStr }];
         
         // If planning an unplanned child feature, also plan its parent epic
         if (feature.parentEpic) {
-          const epic = featuresSource.find(f => f.id === feature.parentEpic);
+          const epic = allFeatures.find(f => f.id === feature.parentEpic);
           if (epic && (!epic.start || !epic.end)) {
             // Plan the epic with the same dates as the child
             updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
@@ -206,7 +226,8 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     } else {
       // Normal resize for planned features (only end date changes)
       if (newEndStr !== feature.end) {
-        const updates = computeResizeUpdates(feature, adjustedFinalEnd, featuresSource);
+        const allFeatures = getAllFeatures();
+        const updates = computeResizeUpdates(feature, adjustedFinalEnd, allFeatures);
         applyUpdates(updates, updateDatesCb);
         bus.emit(DragEvents.END, { featureId: feature.id, end: newEndStr });
       } else {
@@ -223,10 +244,14 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
 }
 
 function clampEpicEndAgainstChildren(epic, features, proposedEndStr){
-  const children = features.filter(ch => ch.parentEpic === epic.id);
+  const children = features.filter(ch => ch.parentEpic === epic.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === epic.id)));
   if(!children.length) return proposedEndStr;
-  const maxChildEnd = children.reduce((max, ch) => ch.end > max ? ch.end : max, children[0].end);
-  return proposedEndStr < maxChildEnd ? maxChildEnd : proposedEndStr;
+  // Consider only children with an end date and compare using parsed dates
+  const childEnds = children.map(ch => ch.end).filter(Boolean).map(s => parseDate(s));
+  if(!childEnds.length) return proposedEndStr;
+  const maxChildEnd = childEnds.reduce((max, d) => d > max ? d : max, childEnds[0]);
+  const maxChildEndStr = formatDate(maxChildEnd);
+  return parseDate(proposedEndStr) < maxChildEnd ? maxChildEndStr : proposedEndStr;
 }
 
 // Build list of update ops {id,start,end}
@@ -249,7 +274,7 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features){
       // leave unplanned children alone. When disabled, legacy behaviour applies: if the
       // epic is being planned (isUnplannedEpic) we may assign default dates to unplanned children.
       if(deltaDays !== 0 || (isUnplannedEpic && !preserveUnplanned)){
-        const children = features.filter(ch => ch.parentEpic === feature.id);
+        const children = features.filter(ch => ch.parentEpic === feature.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
         for(const ch of children){
           const isUnplannedChild = featureFlags.SHOW_UNPLANNED_WORK && (!ch.start || !ch.end);
           if(isUnplannedChild){

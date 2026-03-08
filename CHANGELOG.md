@@ -14,6 +14,14 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v1.14.1] - 2026-03-08
+
+### Fixed
+
+- Card accent for ghost cards is back again
+- Sizing of parents, where the chldren are in other plans allowed the parent to be smaller than the children
+  last end date. Now a parent will not size smaller than their children regardless of the plan they come from.
+
 ## [v1.14.0] - 2026-03-06
 
 ### Added

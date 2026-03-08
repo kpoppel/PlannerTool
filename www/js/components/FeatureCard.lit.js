@@ -94,9 +94,10 @@ export class FeatureCardLit extends LitElement {
       );
       border-style: dashed;
       border-color: #999;
-      /* Override left border for ghosted cards to keep dashed style */
-      border-left-width: 1px;
+      /* Keep colored left border for plan identification even when ghosted */
+      border-left-width: 4px;
       border-left-style: dashed;
+      border-left-color: var(--project-color, #999);
     }
 
     .feature-card.ghosted:hover {
