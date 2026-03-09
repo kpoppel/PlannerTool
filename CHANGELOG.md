@@ -23,6 +23,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Changed
 ### Fixed
 
+- Session reacquisition wiped unsaved scenarios because REST interface init loaded scenarios as sideeffect
+  due to unclean design.
+
 ## [v1.14.1] - 2026-03-08
 
 ### Fixed

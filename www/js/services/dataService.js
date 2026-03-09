@@ -101,6 +101,7 @@ class DataService {
     async publishBaseline(selectedOverrides) { return this.providers['rest'].publishBaseline(selectedOverrides); }
     async listScenarios() { return this.providers['rest'].listScenarios(); }
     async getScenario(id) { return this.providers['rest'].getScenario(id); }
+    async loadAllScenarios() { return this.providers['rest'].loadAllScenarios(); }
     async deleteScenario(id) { return this.providers['rest'].deleteScenario(id); }
     async renameScenario(id, name) { return this.providers['rest'].renameScenario(id, name); }
     async saveScenario(scenario) { return this.providers['rest'].saveScenario(scenario); }
