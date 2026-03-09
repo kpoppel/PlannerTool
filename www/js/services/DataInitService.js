@@ -4,7 +4,8 @@ import {
   ProjectEvents,
   TeamEvents,
   CapacityEvents,
-  StateFilterEvents
+  StateFilterEvents,
+  DataEvents
 } from '../core/EventRegistry.js';
 
 /**
@@ -78,12 +79,18 @@ export class DataInitService {
       this._projectTeamService.getProjects(),
       this._projectTeamService.getTeams()
     );
-    
+
+    // initialize scenarios
+    try{
+      await this._dataService.loadAllScenarios();
+    }catch(e){ console.warn('Failed loading scenarios during initState', e); }
+
     // Emit initial events
     this._bus.emit(ProjectEvents.CHANGED, this._projectTeamService.getProjects());
     this._bus.emit(TeamEvents.CHANGED, this._projectTeamService.getTeams());
     this._bus.emit(StateFilterEvents.CHANGED, this._stateFilterService.availableFeatureStates);
     this._bus.emit(FeatureEvents.UPDATED);
+
     
     return {
       baselineProjects,

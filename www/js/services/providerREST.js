@@ -8,7 +8,19 @@ export class ProviderREST {
         this.sessionId = null;
         this._reacquiring = false;
     }
+    // Initialize provider and acquire a session. Init should only perform
+    // overall initialization; actual session acquisition is factored into
+    // `acquireSession` so callers can re-acquire without triggering full
+    // client-side reloads that would wipe WIP scenario data.
     async init(){
+        await this.acquireSession();
+    }
+
+    // Acquire a server session. This method only manages session lifecycle
+    // (create/refresh session) and must not perform UI data-loading side
+    // effects such as reloading scenarios which could overwrite client WIP.
+    async acquireSession(){
+
         // Attempt to read user email from local storage prefs
         let email = null;
         try {
@@ -20,16 +32,7 @@ export class ProviderREST {
             // If no email was found, don't do anything. The user needs to push the config first.
             return;
         }
-        //if(!email){
-            // // As a fallback, prompt the user for an email; in production, replace with real auth/user profile
-            // email = window.prompt('Enter your email to start a session:', 'user@example.com');
-            // try{
-            //     const raw = localStorage.getItem('az_planner:user_prefs:v1');
-            //     const prefs = raw ? JSON.parse(raw) : {};
-            //     prefs['user.email'] = email;
-            //     localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(prefs));
-            //}catch{}
-        //}
+
         // Create a session via POST /api/session
         try{
             const res = await this._fetch('/api/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email }) });
@@ -38,10 +41,7 @@ export class ProviderREST {
             } else if(res.ok){
                 const data = await res.json();
                 this.sessionId = data.sessionId;
-                // Preload scenarios for the user so UI shows saved items
-                console.log("Created session, loading scenarios...");
-                try { await this.loadAllScenarios(); } catch {}
-                console.log("Completed loading scenarios...");
+                console.log("Created session id:", this.sessionId);
             } else {
                 console.error('Failed to create session', res.status);
             }
@@ -57,7 +57,7 @@ export class ProviderREST {
         if(this._reacquiring) return; // already in progress
         this._reacquiring = true;
         try{
-            await this.init();
+            await this.acquireSession();
             try{ bus.emit(SessionEvents.REACQUIRED, { message: 'Session re-acquired — Please retry the action.' }); }catch(e){}
         }catch(err){
             console.error('Failed to re-acquire session', err);
