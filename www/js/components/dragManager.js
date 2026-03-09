@@ -173,6 +173,7 @@ export function startResize(e, feature, card, datesEl, updateDatesCb = state.upd
     if(feature.type === 'epic'){
       // Use full feature tree so parent/child constraints work across plans
       const allFeatures = getAllFeatures();
+      // TODO: If the next line is more correct, keep it, otherwise clean it out. It does look like the simpler check does the job correctly.
       //const children = allFeatures.filter(ch => ch.parentEpic === feature.id || (Array.isArray(ch.relations) && ch.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
       const children = allFeatures.filter(ch => ch.parentEpic === feature.id);
       if(children.length){
