@@ -93,12 +93,12 @@ export class PluginCostComponent extends LitElement {
     this.teamCostMode = 'all'; // 'all' or 'noproject' - controls team task visibility
     this.planTypeTab = 'projects'; // 'projects' or 'teams'
     
-    // Default to start of last year through end of this year
+    // Default to start of current year through end of this year
     const now = new Date();
-    const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
-    const thisYearEnd = new Date(now.getFullYear(), 11, 31);
-    this.startDate = lastYearStart.toISOString().split('T')[0];
-    this.endDate = thisYearEnd.toISOString().split('T')[0];
+    const year = now.getFullYear();
+    // Use plain YYYY-MM-DD strings to avoid timezone shifts from toISOString()
+    this.startDate = `${year}-01-01`;
+    this.endDate = `${year}-12-31`;
   }
 
   static styles = css`

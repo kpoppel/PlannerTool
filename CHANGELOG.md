@@ -28,6 +28,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Tasks with no dates set but an iteration will have dates set to the iteration dates when loading data from the server.
   This improves the user experience where iterations are used to set dates for a task without changing the
   start/end dates.
+- Cost plugin default start date is now set to the current year.
 
 ### Fixed
 
