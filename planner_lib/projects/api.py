@@ -158,7 +158,41 @@ async def api_config_iterations(request: Request):
         
         all_iterations.sort(key=sort_key)
         
-        return {'iterations': all_iterations}
+        # Filter out iterations without dates and iterations where both dates are before current year
+        from datetime import datetime
+        current_year = datetime.now().year
+        
+        def should_include_iteration(it):
+            start = it.get('startDate')
+            finish = it.get('finishDate')
+            
+            # Exclude if both dates are missing
+            if not start and not finish:
+                return False
+            
+            # Parse dates and check if at least one is in current year or later
+            try:
+                # Check if at least one date exists and is >= current year
+                has_valid_date = False
+                
+                if start:
+                    start_year = int(start[:4])
+                    if start_year >= current_year:
+                        has_valid_date = True
+                
+                if finish:
+                    finish_year = int(finish[:4])
+                    if finish_year >= current_year:
+                        has_valid_date = True
+                
+                return has_valid_date
+            except (ValueError, IndexError):
+                # If date parsing fails, exclude the iteration
+                return False
+        
+        filtered_iterations = [it for it in all_iterations if should_include_iteration(it)]
+        
+        return {'iterations': filtered_iterations}
     
     except HTTPException:
         raise

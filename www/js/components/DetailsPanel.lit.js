@@ -784,6 +784,22 @@ export class DetailsPanelLit extends LitElement {
     }catch(e){ console.warn('Failed to load iterations from state', e); }
   }
 
+  _formatIterationLabel(it) {
+    if (!it) return '';
+    const name = it.name || this._stripIterationPrefix(it.path);
+    const start = it.startDate ? it.startDate.slice(0, 10) : null;
+    const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
+    
+    if (start && end) {
+      return `${name} (${start} to ${end})`;
+    } else if (start) {
+      return `${name} (from ${start})`;
+    } else if (end) {
+      return `${name} (until ${end})`;
+    }
+    return name;
+  }
+
   _stripIterationPrefix(path){
     if(!path || typeof path !== 'string') return path;
     const m = path.match(/^(.+?)\\Iteration\\(.+)$/);
@@ -1087,7 +1103,7 @@ export class DetailsPanelLit extends LitElement {
                 <div class="details-value">
                   <select class="iteration-select" @change=${(e)=>this._onIterationChange(e)}>
                     <option value="">—</option>
-                    ${this.iterations && this.iterations.length ? this.iterations.map(it => html`<option value="${it.path}" ?selected=${(feature && ((feature.iterationPath||'') === it.path))}>${it.name || this._stripIterationPrefix(it.path)}</option>`) : html`<option disabled>Loading...</option>`}
+                    ${this.iterations && this.iterations.length ? this.iterations.map(it => html`<option value="${it.path}" ?selected=${(feature && ((feature.iterationPath||'') === it.path))}>${this._formatIterationLabel(it)}</option>`) : html`<option disabled>Loading...</option>`}
                   </select>
                 </div>
               </div>
