@@ -156,6 +156,7 @@ class State {
   // DataInitService properties
   get baselineFeatureById() { return this._dataInitService.baselineFeatureById; }
   get childrenByEpic() { return this._dataInitService.getChildrenByEpicMap(); }
+  get iterations() { return this._dataInitService.iterations || []; }
   
   // ========== Autosave Helper ==========
   
