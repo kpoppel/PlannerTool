@@ -7,6 +7,9 @@ export class ProviderREST {
     constructor(){
         this.sessionId = null;
         this._reacquiring = false;
+        this._reacquirePromise = null;
+        this._networkRetryCount = 2; // Number of retries for network errors
+        this._networkRetryDelay = 1000; // Delay between retries in ms
     }
     // Initialize provider and acquire a session. Init should only perform
     // overall initialization; actual session acquisition is factored into
@@ -49,26 +52,39 @@ export class ProviderREST {
     }
 
     async _handleSessionExpiry() {
-        // Notify listeners that session expired and attempt to re-acquire
-        try{
-            bus.emit(SessionEvents.EXPIRED, { message: 'Session expired, attempting to re-acquire.' });
-        }catch(e){ console.error('Error emitting session expired', e); }
-
-        if(this._reacquiring) return; // already in progress
-        this._reacquiring = true;
-        try{
-            await this.acquireSession();
-            try{ bus.emit(SessionEvents.REACQUIRED, { message: 'Session re-acquired — Please retry the action.' }); }catch(e){}
-        }catch(err){
-            console.error('Failed to re-acquire session', err);
-            try{ bus.emit(SessionEvents.REACQUIRED, { ok: false, error: String(err) }); }catch(e){}
-        } finally {
-            this._reacquiring = false;
+        // If already reacquiring, wait for that to complete
+        if(this._reacquiring && this._reacquirePromise) {
+            return await this._reacquirePromise;
         }
+
+        this._reacquiring = true;
+        this._reacquirePromise = (async () => {
+            try{
+                await this.acquireSession();
+                console.log('Session quietly re-acquired');
+                return true;
+            }catch(err){
+                console.error('Failed to re-acquire session', err);
+                // Only emit error event if reacquisition failed
+                try{ 
+                    bus.emit(SessionEvents.EXPIRED, { 
+                        ok: false, 
+                        error: String(err),
+                        message: 'Session could not be reacquired. Please check if the server is up and your PAT is valid.'
+                    }); 
+                }catch(e){}
+                return false;
+            } finally {
+                this._reacquiring = false;
+                this._reacquirePromise = null;
+            }
+        })();
+
+        return await this._reacquirePromise;
     }
 
-    // Centralized fetch wrapper that detects session expiry (401 + invalid_session)
-    async _fetch(url, opts) {
+    // Centralized fetch wrapper that detects session expiry (401 + invalid_session) and network errors
+    async _fetch(url, opts, _retryCount = 0) {
         try{
             opts = opts || {};
             opts.headers = opts.headers || {};
@@ -80,14 +96,45 @@ export class ProviderREST {
                 try{ body = await res.json(); }catch(e){ body = null; }
                 const errCode = body && body.error ? body.error : null;
                 if(errCode === 'invalid_session' || errCode === 'missing_session_id'){
-                    // Trigger re-acquire attempt and let caller know
-                    this._handleSessionExpiry().catch(()=>{});
-                    return { sessionExpired: true, status: res.status, detail: body };
+                    // Attempt to quietly reacquire session
+                    const reacquired = await this._handleSessionExpiry();
+                    
+                    if(reacquired){
+                        // Session reacquired successfully - retry the request
+                        // Update headers with new session ID if present
+                        if(this.sessionId){
+                            opts.headers['X-Session-Id'] = this.sessionId;
+                        }
+                        return await fetch(url, opts);
+                    } else {
+                        // Reacquisition failed - return error
+                        return { sessionExpired: true, status: res.status, detail: body };
+                    }
                 }
                 return res;
             }
             return res;
-        }catch(err){ throw err; }
+        }catch(err){
+            // Network error (server unreachable, timeout, etc.)
+            if(_retryCount < this._networkRetryCount){
+                // Quietly retry with exponential backoff
+                const delay = this._networkRetryDelay * Math.pow(2, _retryCount);
+                console.log(`Network error, retrying in ${delay}ms (attempt ${_retryCount + 1}/${this._networkRetryCount})...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return await this._fetch(url, opts, _retryCount + 1);
+            } else {
+                // All retries exhausted - emit error event and throw
+                console.error('Network error after retries exhausted:', err);
+                try{
+                    bus.emit(SessionEvents.EXPIRED, {
+                        ok: false,
+                        error: String(err),
+                        message: 'Cannot connect to server. Please check if the server is running and try again.'
+                    });
+                }catch(e){}
+                throw err;
+            }
+        }
     }
 
     _headers(extra){
