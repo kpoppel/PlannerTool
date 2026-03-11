@@ -4,6 +4,7 @@ import { state } from '../../services/State.js';
 import { bus } from '../../core/EventBus.js';
 import { ScenarioEvents } from '../../core/EventRegistry.js';
 import { dataService } from '../../services/dataService.js';
+import { saveIconTemplate, cloneIconTemplate, editIconTemplate, deleteIconTemplate, refreshIconTemplate, cloudIconTemplate } from '../../services/IconService.js';
 
 /**
  * ScenariosDropdown - Dropdown component for scenario management
@@ -36,56 +37,94 @@ export class ScenariosDropdown extends PopoverBase {
       .scenario-item {
         display: flex;
         align-items: center;
-        padding: 0px 4px;
+        padding: 4px 8px;
         cursor: pointer;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.15s ease;
         gap: 8px;
         margin: 0 4px;
         color: #222 !important;
+        min-height: 32px;
+        border: 1px solid transparent;
       }
 
       .scenario-item:hover {
-        background: #f3f5f7;
+        background: #dfe4ea;
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
 
       .scenario-item.active {
         background: #e8f0fe;
         font-weight: 600;
+        border-color: rgba(66, 133, 244, 0.3);
+      }
+
+      .scenario-item.active:hover {
+        background: #d2e3fc;
+        border-color: rgba(66, 133, 244, 0.5);
+        box-shadow: 0 1px 3px rgba(66, 133, 244, 0.2);
       }
 
       .scenario-name {
         flex: 1;
         color: #222 !important;
+        padding: 4px 0;
       }
 
       .scenario-warning {
         color: #ff9900;
         font-size: 14px;
+        margin-right: 4px;
       }
 
-      .scenario-controls {
+      .scenario-actions {
+        display: flex;
+        gap: 2px;
         opacity: 0;
         transition: opacity 0.2s;
       }
 
-      .scenario-item:hover .scenario-controls {
+      .scenario-item:hover .scenario-actions {
         opacity: 1;
       }
 
-      .context-menu-btn {
-        background: none;
-        border: none;
-        color: #666;
+      .action-icon-btn {
+        background: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 16px;
+        font-size: 14px;
+        transition: all 0.2s;
+        padding: 0;
       }
 
-      .context-menu-btn:hover {
-        background: rgba(0, 0, 0, 0.08);
-        color: #222;
+      .action-icon-btn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+
+      .action-icon-btn:hover {
+        background: rgba(0, 0, 0, 0.15);
+        border-color: rgba(0, 0, 0, 0.25);
+        transform: scale(1.05);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+      }
+
+      .action-icon-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+
+      .action-icon-btn:disabled:hover {
+        transform: none;
+        background: rgba(0, 0, 0, 0.05);
       }
 
       .actions-section {
@@ -207,81 +246,50 @@ export class ScenariosDropdown extends PopoverBase {
     return `${mm}-${dd} Scenario ${maxN + 1}`;
   }
 
-  async _onScenarioMenuClick(e, scenario) {
+  async _onCloneScenarioClick(e, scenario) {
+    e.stopPropagation();
+    const { openScenarioCloneModal } = await import('../modalHelpers.js');
+    const defaultName = this._generateDefaultScenarioName();
+    await openScenarioCloneModal({ id: scenario.id, name: defaultName });
+  }
+
+  async _onRefreshBaseline(e) {
+    e.stopPropagation();
+    state.refreshBaseline();
+  }
+
+  async _onRenameScenario(e, scenario) {
+    e.stopPropagation();
+    const { openScenarioRenameModal } = await import('../modalHelpers.js');
+    await openScenarioRenameModal({ id: scenario.id, name: scenario.name });
+  }
+
+  async _onDeleteScenario(e, scenario) {
+    e.stopPropagation();
+    const { openScenarioDeleteModal } = await import('../modalHelpers.js');
+    await openScenarioDeleteModal({ id: scenario.id, name: scenario.name });
+  }
+
+  async _onSaveScenario(e, scenario) {
+    e.stopPropagation();
+    await state.saveScenario(scenario.id);
+  }
+
+  async _onPublishToAzure(e, scenario) {
     e.stopPropagation();
     
-    document.querySelectorAll('.scenario-menu-popover').forEach(p => p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div');
-    pop.className = 'scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled = false) => {
-      const item = document.createElement('div');
-      item.className = 'scenario-menu-item';
-      if (disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if (!disabled) {
-        item.addEventListener('click', ev => {
-          ev.stopPropagation();
-          onClick();
-          pop.remove();
-        });
-      }
-      pop.appendChild(item);
-    };
-    
-    const defaultCloneName = this._generateDefaultScenarioName();
-    
-    addItem('Clone Scenario', '⎘', async () => {
-      const { openScenarioCloneModal } = await import('../modalHelpers.js');
-      await openScenarioCloneModal({ id: scenario.id, name: defaultCloneName });
-    });
-    
-    if (scenario.readonly) {
-      addItem('Refresh Baseline', '🔄', () => state.refreshBaseline());
-    } else {
-      addItem('Rename', '✏️', async () => {
-        const { openScenarioRenameModal } = await import('../modalHelpers.js');
-        await openScenarioRenameModal({ id: scenario.id, name: scenario.name });
-      });
-      
-      addItem('Delete', '🗑️', async () => {
-        const { openScenarioDeleteModal } = await import('../modalHelpers.js');
-        await openScenarioDeleteModal({ id: scenario.id, name: scenario.name });
-      });
-      
-      addItem('Save Scenario', '💾', () => state.saveScenario(scenario.id));
-      
-      addItem(
-        'Save to Azure DevOps',
-        '💾',
-        async () => {
-          const overrideEntries = Object.entries(scenario.overrides || {});
-          if (overrideEntries.length === 0) return;
-          const { openAzureDevopsModal } = await import('../modalHelpers.js');
-          const selected = await openAzureDevopsModal({ overrides: scenario.overrides, state });
-          if (selected?.length) await dataService.publishBaseline(selected);
-        },
-        scenario.overrides && Object.keys(scenario.overrides).length === 0
-      );
+    // Get overrides from state for active scenario to ensure we have current data
+    let overrides = scenario.overrides;
+    if (scenario.id === this.activeScenarioId) {
+      const activeScenario = state.scenarios?.find(s => s.id === scenario.id);
+      overrides = activeScenario?.overrides || {};
     }
     
-    const rect = menuBtn.getBoundingClientRect();
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
+    const overrideEntries = Object.entries(overrides || {});
+    if (overrideEntries.length === 0) return;
+    const { openAzureDevopsModal } = await import('../modalHelpers.js');
+    const selected = await openAzureDevopsModal({ overrides, state });
+    if (selected?.length) await dataService.publishBaseline(selected);
   }
 
   renderContent() {
@@ -294,34 +302,77 @@ export class ScenariosDropdown extends PopoverBase {
     return html`
       <div class="scenarios-list">
         ${sorted.map(
-          scenario => html`
-            <div
-              class="scenario-item ${scenario.id === this.activeScenarioId ? 'active' : ''}"
-              @click=${() => this._onScenarioClick(scenario)}>
-              <span class="scenario-name">${scenario.name}</span>
-              ${scenario.unsaved
-                ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>`
-                : ''}
-              <span class="scenario-controls">
-                <button
-                  class="context-menu-btn"
-                  @click=${e => this._onScenarioMenuClick(e, scenario)}
-                  title="Scenario actions">
-                  ⋯
-                </button>
-              </span>
-            </div>
-          `
+          scenario => {
+            // For active scenario, get overrides from state; otherwise use scenario's overrides
+            let hasOverrides = false;
+            if (scenario.id === this.activeScenarioId) {
+              const activeScenario = state.scenarios?.find(s => s.id === scenario.id);
+              hasOverrides = activeScenario?.overrides && Object.keys(activeScenario.overrides).length > 0;
+            } else {
+              hasOverrides = scenario.overrides && Object.keys(scenario.overrides).length > 0;
+            }
+            return html`
+              <div
+                class="scenario-item ${scenario.id === this.activeScenarioId ? 'active' : ''}"
+                @click=${() => this._onScenarioClick(scenario)}>
+                <span class="scenario-name">${scenario.name}</span>
+                ${scenario.unsaved
+                  ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>`
+                  : ''}
+                <div class="scenario-actions">
+                  ${scenario.readonly
+                    ? html`
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onCloneScenarioClick(e, scenario)}
+                          title="Clone Scenario">
+                          ${cloneIconTemplate}
+                        </button>
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onRefreshBaseline(e)}
+                          title="Refresh Baseline">
+                          ${refreshIconTemplate}
+                        </button>
+                      `
+                    : html`
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onSaveScenario(e, scenario)}
+                          title="Save Scenario">
+                          ${saveIconTemplate}
+                        </button>
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onCloneScenarioClick(e, scenario)}
+                          title="Clone Scenario">
+                          ${cloneIconTemplate}
+                        </button>
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onRenameScenario(e, scenario)}
+                          title="Rename">
+                          ${editIconTemplate}
+                        </button>
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onDeleteScenario(e, scenario)}
+                          title="Delete">
+                          ${deleteIconTemplate}
+                        </button>
+                        <button
+                          class="action-icon-btn"
+                          @click=${e => this._onPublishToAzure(e, scenario)}
+                          ?disabled=${!hasOverrides}
+                          title="${hasOverrides ? 'Save to Azure DevOps' : 'No changes to publish'}">
+                          ${cloudIconTemplate}
+                        </button>
+                      `}
+                </div>
+              </div>
+            `;
+          }
         )}
-      </div>
-      
-      <div class="actions-section">
-        <button class="action-button" @click=${() => this._onCloneScenario()}>
-          Copy selected to new scenario
-        </button>
-        <button class="action-button" @click=${() => this._onSaveScenario()}>
-          Save scenario
-        </button>
       </div>
     `;
   }

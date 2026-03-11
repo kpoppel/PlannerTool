@@ -52,11 +52,13 @@ export class AllocationPopover extends PopoverBase {
         color: #222;
         cursor: pointer;
         font-size: 12px;
-        transition: background 0.2s;
+        transition: all 0.15s ease;
       }
 
       .toggle-button:hover {
-        background: #ececec;
+        background: #d8dde3;
+        border-color: rgba(0, 0, 0, 0.2);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
       }
 
       .counts-header {
@@ -77,19 +79,29 @@ export class AllocationPopover extends PopoverBase {
         padding: 6px 8px;
         cursor: pointer;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.15s ease;
         gap: 8px;
         margin: 0 4px;
         color: #222;
+        border: 1px solid transparent;
       }
 
       .team-item:hover {
-        background: #f3f5f7;
+        background: #dfe4ea;
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
 
       .team-item.active {
         background: #e8f0fe;
         font-weight: 600;
+        border-color: rgba(66, 133, 244, 0.3);
+      }
+
+      .team-item.active:hover {
+        background: #d2e3fc;
+        border-color: rgba(66, 133, 244, 0.5);
+        box-shadow: 0 1px 3px rgba(66, 133, 244, 0.2);
       }
 
       .color-dot {
@@ -98,6 +110,14 @@ export class AllocationPopover extends PopoverBase {
         border-radius: 4px;
         flex: 0 0 auto;
         cursor: pointer;
+        transition: all 0.15s ease;
+        border: 2px solid transparent;
+      }
+
+      .color-dot:hover {
+        transform: scale(1.15);
+        border-color: rgba(0, 0, 0, 0.3);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       }
 
       .team-name {

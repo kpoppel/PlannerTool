@@ -3,6 +3,7 @@ import { html, css } from '../../vendor/lit.js';
 import { state } from '../../services/State.js';
 import { bus } from '../../core/EventBus.js';
 import { ViewManagementEvents } from '../../core/EventRegistry.js';
+import { saveIconTemplate, cloneIconTemplate, editIconTemplate, deleteIconTemplate } from '../../services/IconService.js';
 
 /**
  * ViewsDropdown - Dropdown component for view management
@@ -35,51 +36,78 @@ export class ViewsDropdown extends PopoverBase {
       .view-item {
         display: flex;
         align-items: center;
-        padding: 0px 4px;
+        padding: 4px 8px;
         cursor: pointer;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.15s ease;
         gap: 8px;
         margin: 0 4px;
         color: #222 !important;
+        min-height: 32px;
+        border: 1px solid transparent;
       }
 
       .view-item:hover {
-        background: #f3f5f7;
+        background: #dfe4ea;
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
 
       .view-item.active {
         background: #e8f0fe;
         font-weight: 600;
+        border-color: rgba(66, 133, 244, 0.3);
+      }
+
+      .view-item.active:hover {
+        background: #d2e3fc;
+        border-color: rgba(66, 133, 244, 0.5);
+        box-shadow: 0 1px 3px rgba(66, 133, 244, 0.2);
       }
 
       .view-name {
         flex: 1;
         color: #222 !important;
+        padding: 4px 0;
       }
 
-      .view-controls {
+      .view-actions {
+        display: flex;
+        gap: 2px;
         opacity: 0;
         transition: opacity 0.2s;
       }
 
-      .view-item:hover .view-controls {
+      .view-item:hover .view-actions {
         opacity: 1;
       }
 
-      .context-menu-btn {
-        background: none;
-        border: none;
-        color: #666;
+      .action-icon-btn {
+        background: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 16px;
+        font-size: 14px;
+        transition: all 0.2s;
+        padding: 0;
       }
 
-      .context-menu-btn:hover {
-        background: rgba(0, 0, 0, 0.08);
-        color: #222;
+      .action-icon-btn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+
+      .action-icon-btn:hover {
+        background: rgba(0, 0, 0, 0.15);
+        border-color: rgba(0, 0, 0, 0.25);
+        transform: scale(1.05);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
       }
 
       .actions-section {
@@ -144,7 +172,8 @@ export class ViewsDropdown extends PopoverBase {
   }
 
   _onViewActivated(data) {
-    this.activeViewId = data.view?.id || null;
+    // data contains { viewId, activeViewData }
+    this.activeViewId = data.viewId || data.view?.id || data.activeViewData?.id || null;
     this.requestUpdate();
   }
 
@@ -202,70 +231,30 @@ export class ViewsDropdown extends PopoverBase {
     return `${mm}-${dd} View ${maxN + 1}`;
   }
 
-  async _onViewMenuClick(e, view) {
+  async _onUpdateView(e, view) {
     e.stopPropagation();
-    
-    // Remove any existing context menus
-    document.querySelectorAll('.view-menu-popover').forEach(p => p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div');
-    pop.className = 'view-menu-popover scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled = false) => {
-      const item = document.createElement('div');
-      item.className = 'scenario-menu-item';
-      if (disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if (!disabled) {
-        item.addEventListener('click', ev => {
-          ev.stopPropagation();
-          onClick();
-          pop.remove();
-        });
-      }
-      pop.appendChild(item);
-    };
-    
-    if (view.readonly && view.id === 'default') {
-      addItem('Clone & Save as New View', '⎘', async () => {
-        await this._onSaveNewView();
-      });
-    } else {
-      addItem('Update View', '💾', async () => {
-        try {
-          await state.viewManagementService.saveCurrentView(view.name, view.id);
-        } catch (err) {
-          console.error('Failed to update view:', err);
-        }
-      });
-      
-      addItem('Rename View', '✏️', async () => {
-        const { openViewRenameModal } = await import('../modalHelpers.js');
-        await openViewRenameModal({ id: view.id, name: view.name });
-      });
-      
-      addItem('Delete View', '🗑️', async () => {
-        const { openViewDeleteModal } = await import('../modalHelpers.js');
-        await openViewDeleteModal({ id: view.id, name: view.name });
-      });
+    try {
+      await state.viewManagementService.saveCurrentView(view.name, view.id);
+    } catch (err) {
+      console.error('Failed to update view:', err);
     }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
+  }
+
+  async _onSaveAsNewView(e) {
+    e.stopPropagation();
+    await this._onSaveNewView();
+  }
+
+  async _onRenameView(e, view) {
+    e.stopPropagation();
+    const { openViewRenameModal } = await import('../modalHelpers.js');
+    await openViewRenameModal({ id: view.id, name: view.name });
+  }
+
+  async _onDeleteView(e, view) {
+    e.stopPropagation();
+    const { openViewDeleteModal } = await import('../modalHelpers.js');
+    await openViewDeleteModal({ id: view.id, name: view.name });
   }
 
   renderContent() {
@@ -283,26 +272,46 @@ export class ViewsDropdown extends PopoverBase {
               class="view-item ${view.id === this.activeViewId ? 'active' : ''}"
               @click=${() => this._onViewClick(view)}>
               <span class="view-name">${view.name}</span>
-              <span class="view-controls">
-                <button
-                  class="context-menu-btn"
-                  @click=${e => this._onViewMenuClick(e, view)}
-                  title="View actions">
-                  ⋯
-                </button>
-              </span>
+              <div class="view-actions">
+                ${view.readonly && view.id === 'default'
+                  ? html`
+                      <button
+                        class="action-icon-btn"
+                        @click=${e => this._onSaveAsNewView(e)}
+                        title="Save as New View">
+                        ${cloneIconTemplate}
+                      </button>
+                    `
+                  : html`
+                      <button
+                        class="action-icon-btn"
+                        @click=${e => this._onUpdateView(e, view)}
+                        title="Update View">
+                        ${saveIconTemplate}
+                      </button>
+                      <button
+                        class="action-icon-btn"
+                        @click=${e => this._onSaveAsNewView(e)}
+                        title="Save as New View">
+                        ${cloneIconTemplate}
+                      </button>
+                      <button
+                        class="action-icon-btn"
+                        @click=${e => this._onRenameView(e, view)}
+                        title="Rename View">
+                        ${editIconTemplate}
+                      </button>
+                      <button
+                        class="action-icon-btn"
+                        @click=${e => this._onDeleteView(e, view)}
+                        title="Delete View">
+                        ${deleteIconTemplate}
+                      </button>
+                    `}
+              </div>
             </div>
           `
         )}
-      </div>
-      
-      <div class="actions-section">
-        <button class="action-button" @click=${() => this._onCopyToNewView()}>
-          Copy selected to new view
-        </button>
-        <button class="action-button" @click=${() => this._onSaveNewView()}>
-          Save view
-        </button>
       </div>
     `;
   }

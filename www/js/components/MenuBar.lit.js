@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { ViewManagementEvents, ScenarioEvents, PluginEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
+import { state } from '../services/State.js';
 
 /**
  * MenuBar - Top menu bar containing Views, Scenarios, Tools, Plans, and Allocation controls
@@ -9,7 +10,9 @@ export class MenuBar extends LitElement {
   static properties = {
     activeView: { type: Object },
     activeScenario: { type: Object },
-    activePlugin: { type: String }
+    activePlugin: { type: String },
+    selectedPlansCount: { type: Number },
+    selectedTeamsCount: { type: Number }
   };
 
   static styles = css`
@@ -56,8 +59,8 @@ export class MenuBar extends LitElement {
     }
 
     .menu-button:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.5);
     }
 
     .menu-button:active {
@@ -93,6 +96,18 @@ export class MenuBar extends LitElement {
       margin-left: 4px;
       font-size: 12px;
     }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.3);
+      color: white;
+      border-radius: 10px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      min-width: 18px;
+      text-align: center;
+    }
   `;
 
   constructor() {
@@ -100,10 +115,14 @@ export class MenuBar extends LitElement {
     this.activeView = { name: 'Default View' };
     this.activeScenario = { name: 'Default Scenario' };
     this.activePlugin = null;
+    this.selectedPlansCount = 0;
+    this.selectedTeamsCount = 0;
 
     this._onViewActivated = this._onViewActivated.bind(this);
     this._onScenarioActivated = this._onScenarioActivated.bind(this);
     this._onPluginActivated = this._onPluginActivated.bind(this);
+    this._onProjectsChanged = this._onProjectsChanged.bind(this);
+    this._onTeamsChanged = this._onTeamsChanged.bind(this);
   }
 
   connectedCallback() {
@@ -115,27 +134,64 @@ export class MenuBar extends LitElement {
       this.activePlugin = null;
       this.requestUpdate();
     });
+    bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
+    bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
+    this._updateCounts();
   }
 
   disconnectedCallback() {
     bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
     bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     bus.off(PluginEvents.ACTIVATED, this._onPluginActivated);
+    bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
+    bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     super.disconnectedCallback();
   }
 
   _onViewActivated(data) {
-    this.activeView = data.view || { name: 'Default View' };
+    // data contains { viewId, activeViewData }
+    const viewData = data.activeViewData || data.view;
+    // If we have viewData with name, use it, otherwise get from state
+    if (viewData && viewData.name) {
+      this.activeView = viewData;
+    } else {
+      // Fallback to finding view in state
+      const views = state.viewManagementService?.getViews() || [];
+      const view = views.find(v => v.id === (data.viewId || data.view?.id));
+      this.activeView = view || { name: 'Default View' };
+    }
     this.requestUpdate();
   }
 
   _onScenarioActivated(data) {
-    this.activeScenario = data || { name: 'Default Scenario' };
+    // data contains { scenarioId }
+    const scenarioId = data.scenarioId || data.scenario?.id || data.id;
+    if (scenarioId) {
+      const scenarios = state.scenarios || [];
+      const scenario = scenarios.find(s => s.id === scenarioId);
+      this.activeScenario = scenario || { name: 'Default Scenario' };
+    } else {
+      this.activeScenario = data.scenario || data || { name: 'Default Scenario' };
+    }
     this.requestUpdate();
   }
 
   _onPluginActivated(data) {
     this.activePlugin = data.id || null;
+    this.requestUpdate();
+  }
+
+  _onProjectsChanged() {
+    this._updateCounts();
+  }
+
+  _onTeamsChanged() {
+    this._updateCounts();
+  }
+
+  _updateCounts() {
+    this.selectedPlansCount = (state.projects || []).filter(p => p.selected).length;
+    this.selectedTeamsCount = (state.teams || []).filter(t => t.selected).length;
     this.requestUpdate();
   }
 
@@ -215,6 +271,7 @@ export class MenuBar extends LitElement {
             @click=${this._handlePlansClick}
             title="Select plans">
             Plans
+            ${this.selectedPlansCount > 0 ? html`<span class="badge">${this.selectedPlansCount}</span>` : ''}
           </button>
           
           <button 
@@ -222,6 +279,7 @@ export class MenuBar extends LitElement {
             @click=${this._handleAllocationClick}
             title="Select team allocations">
             Teams
+            ${this.selectedTeamsCount > 0 ? html`<span class="badge">${this.selectedTeamsCount}</span>` : ''}
           </button>
         </div>
 

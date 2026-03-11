@@ -31,22 +31,32 @@ export class ToolsPopover extends PopoverBase {
       .tool-item {
         display: flex;
         align-items: center;
-        padding: 4px 4px;
+        padding: 4px 8px;
         cursor: pointer;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.15s ease;
         gap: 8px;
         margin: 0 4px;
         color: #222 !important;
+        border: 1px solid transparent;
       }
 
       .tool-item:hover {
-        background: #f3f5f7;
+        background: #dfe4ea;
+        border-color: rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
 
       .tool-item.active {
         background: #e8f0fe;
         font-weight: 600;
+        border-color: rgba(66, 133, 244, 0.3);
+      }
+
+      .tool-item.active:hover {
+        background: #d2e3fc;
+        border-color: rgba(66, 133, 244, 0.5);
+        box-shadow: 0 1px 3px rgba(66, 133, 244, 0.2);
       }
 
       .tool-name {
