@@ -28,6 +28,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Fixed
 
+- got rid of stray } in tables rendered in PluginCostComponent.js
+
 ## [v1.14.2] - 2026-03-09
 
 ### Fixed
