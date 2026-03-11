@@ -32,6 +32,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Details panel Iterations dropdown display iteration dates.
 - Server /api/iterations endpoint will not return iterations withot dates or iterations where dates are earlier than
   the current year.
+- Tasks with no dates set but an iteration will have dates set to the iteration dates when loading data from the server.
+  This improves the user experience where iterations are used to set dates for a task without changing the
+  start/end dates.
 
 ### Fixed
 
