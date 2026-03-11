@@ -727,7 +727,7 @@ export class PluginCostComponent extends LitElement {
                     return rendered;
                   })() : ''}
               `;
-              })}}
+              })}
             </tbody>
             <tfoot>
               <tr>
