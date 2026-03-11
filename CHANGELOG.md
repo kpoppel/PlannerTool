@@ -21,6 +21,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - UI completely revamped to improve flow of work and reduce clutter.
 
 ### Changed
+## [v1.14.3] - unreleased
+
+### Added
+### Changed
+
+- Re-acquiring a session is done inthe background now. Only if a session could not be acquired will a
+  message be displayed.
+
+### Fixed
+
 ## [v1.14.2] - 2026-03-09
 
 ### Fixed
