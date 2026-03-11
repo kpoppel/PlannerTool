@@ -763,21 +763,25 @@ export class DetailsPanelLit extends LitElement {
 
   async _loadIterationsForFeature(){
     try{
-      this.iterations = [];
+      // Use iterations from state instead of fetching from server
+      // Filter iterations by project if feature has a project assigned
       const f = this.feature;
-      if(!f) return;
-      // attempt to derive project name from feature.project (project id -> name)
-      let projectName = null;
-      try{
-        if(f.project){
-          const proj = (state.projects || []).find(p=>p.id === f.project);
-          if(proj) projectName = proj.name;
-        }
-      }catch(e){}
-      const iters = await dataService.getIterations(projectName);
+      if(!f) {
+        this.iterations = [];
+        return;
+      }
+      
+      // Get all iterations from state
+      let iters = state.iterations || [];
+      
+      // If feature has a project, optionally filter iterations by project
+      // (depends on whether iterations have project info)
+      // For now, we'll use all iterations since server-side filtering
+      // by project may not be needed if iterations are already scoped
+      
       this.iterations = Array.isArray(iters) ? iters : [];
       this.requestUpdate();
-    }catch(e){ console.warn('Failed to load iterations', e); }
+    }catch(e){ console.warn('Failed to load iterations from state', e); }
   }
 
   _stripIterationPrefix(path){

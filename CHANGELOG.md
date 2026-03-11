@@ -28,6 +28,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 - Re-acquiring a session is done inthe background now. Only if a session could not be acquired will a
   message be displayed.
+- Clicking a featurecard no longer contact the server to get iterations. Use internal state now.
 
 ### Fixed
 

@@ -37,6 +37,7 @@ export class DataInitService {
     const projects = await this._dataService.getProjects();
     const teams = await this._dataService.getTeams();
     const features = await this._dataService.getFeatures();
+    const iterations = await this._dataService.getIterations();
     
     // Store baseline data using BaselineStore service
     this._baselineStore.loadBaseline({ projects, teams, features });
@@ -80,6 +81,10 @@ export class DataInitService {
       this._projectTeamService.getTeams()
     );
 
+    // Store iterations in baseline store (via a simple property)
+    // We'll make iterations available via the state object
+    this.iterations = iterations || [];
+
     // initialize scenarios
     try{
       await this._dataService.loadAllScenarios();
@@ -118,6 +123,10 @@ export class DataInitService {
     const projects = await this._dataService.getProjects();
     const teams = await this._dataService.getTeams();
     const features = await this._dataService.getFeatures();
+    const iterations = await this._dataService.getIterations();
+    
+    // Store iterations
+    this.iterations = iterations || [];
     
     // Build features with originalRank first
     const featuresWithRank = features.map((f, i) => ({ ...f, originalRank: i }));
