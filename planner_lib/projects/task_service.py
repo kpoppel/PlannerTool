@@ -38,6 +38,74 @@ class TaskService(TaskServiceProtocol):
         self._capacity_service: CapacityServiceProtocol = capacity_service
         self._azure_client: AzureServiceProtocol = azure_client
 
+    def _build_iteration_map(self, client, azure_project: str) -> dict:
+        """Build a mapping of iteration paths to their start/end dates.
+        
+        Args:
+            client: Connected Azure client
+            azure_project: Azure project name
+            
+        Returns:
+            Dict mapping iteration path -> {startDate, finishDate}
+        """
+        try:
+            # Load iterations configuration to determine root paths
+            iterations_config = {}
+            if self._storage_config.exists('config', 'iterations'):
+                iterations_config = self._storage_config.load('config', 'iterations') or {}
+            
+            # Get root paths for this project (or use defaults)
+            project_overrides = iterations_config.get('project_overrides', {})
+            root_paths = project_overrides.get(azure_project, iterations_config.get('default_roots', []))
+            
+            # Fetch iterations from Azure for each root path
+            iteration_map = {}
+            if root_paths:
+                for root_path in root_paths:
+                    try:
+                        iterations = client.get_iterations(azure_project, root_path=root_path)  # type: ignore
+                        for iter_data in iterations:
+                            path = iter_data.get('path', '')
+                            if path:
+                                # Normalize the path for matching with work item iterationPath
+                                # Remove leading backslash and "Iteration\" component
+                                normalized_path = path.lstrip('\\')
+                                # Remove "Iteration\" component if present
+                                if '\\Iteration\\' in normalized_path:
+                                    normalized_path = normalized_path.replace('\\Iteration\\', '\\', 1)
+                                
+                                iteration_map[normalized_path] = {
+                                    'startDate': iter_data.get('startDate'),
+                                    'finishDate': iter_data.get('finishDate'),
+                                    'name': iter_data.get('name')
+                                }
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch iterations for root '{root_path}': {e}")
+            else:
+                # No roots configured, fetch all iterations for the project
+                try:
+                    iterations = client.get_iterations(azure_project)  # type: ignore
+                    for iter_data in iterations:
+                        path = iter_data.get('path', '')
+                        if path:
+                            # Normalize the path for matching with work item iterationPath
+                            normalized_path = path.lstrip('\\')
+                            if '\\Iteration\\' in normalized_path:
+                                normalized_path = normalized_path.replace('\\Iteration\\', '\\', 1)
+                            
+                            iteration_map[normalized_path] = {
+                                'startDate': iter_data.get('startDate'),
+                                'finishDate': iter_data.get('finishDate'),
+                                'name': iter_data.get('name')
+                            }
+                except Exception as e:
+                    logger.warning(f"Failed to fetch iterations for project '{azure_project}': {e}")
+            
+            return iteration_map
+        except Exception as e:
+            logger.warning(f"Error building iteration map for '{azure_project}': {e}")
+            return {}
+
     def list_tasks(self, pat: str, project_id: Optional[str] = None) -> List[dict]:
         cfg = self._storage_config.load('config', 'server_config')
         project_map = self._project_service.get_project_map()
@@ -57,6 +125,12 @@ class TaskService(TaskServiceProtocol):
                 if project_id and id != project_id:
                     continue
 
+                # Fetch iterations for this project to enable date inference
+                # Extract the Azure project name from area path (everything before first backslash/slash)
+                azure_project = path.split('\\')[0] if '\\' in path else (path.split('/')[0] if '/' in path else name)
+                iteration_map = self._build_iteration_map(client, azure_project)
+                logger.debug("Built iteration map with %d entries for project '%s'", len(iteration_map), name)
+
                 # Extract task_types and include_states from project configuration
                 task_types = p.get('task_types')
                 include_states = p.get('include_states')
@@ -74,8 +148,25 @@ class TaskService(TaskServiceProtocol):
                         filtered_capacity.append({'team': mapped, 'capacity': entry.get('capacity', 0)})
                     entry = dict(wi)
                     entry['project'] = slugify(name, prefix='project-')
-                    entry['start'] = entry.get('startDate') or None
-                    entry['end'] = entry.get('finishDate') or None
+                    
+                    # Infer start/end dates from iteration if not explicitly set
+                    start_date = entry.get('startDate')
+                    end_date = entry.get('finishDate')
+                    iteration_path = entry.get('iterationPath')
+                    
+                    if iteration_path and iteration_path in iteration_map:
+                        iter_data = iteration_map[iteration_path]
+                        # Infer start date if missing
+                        if not start_date and iter_data.get('startDate'):
+                            start_date = iter_data['startDate']
+                            entry['_inferred_start'] = True
+                        # Infer end date if missing
+                        if not end_date and iter_data.get('finishDate'):
+                            end_date = iter_data['finishDate']
+                            entry['_inferred_end'] = True
+                    
+                    entry['start'] = start_date
+                    entry['end'] = end_date
                     entry['capacity'] = filtered_capacity
                     items.append(entry)
         logger.debug('Returning total %d tasks from all projects', len(items))
