@@ -14,6 +14,18 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v] - unreleased
+
+### Added
+
+- Created menu components for TopMenu: PlanMenu.lit.js, TeamMenu.lit.js, ScenarioMenu.lit.js, ViewMenu.lit.js
+- Wired up menu components to TopMenu with proper z-indexing (2000 for menus, 3000 for action popovers)
+- Implemented data binding from TopMenu to menu components using Lit properties
+- Added event listeners in TopMenu to sync state changes with menu components
+
+### Changed
+### Fixed
+
 ## [v1.15.1] - 2026-03-13
 
 ### Fixed
@@ -57,6 +69,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Fixed
 
+- Fixed data binding for all menu components (PlanMenu, TeamMenu, ScenarioMenu, ViewMenu) - components now properly receive data as properties from TopMenu parent
+- Fixed TopMenu initialization to call event handlers with current state, ensuring menus display data even when state loads before component connects
+- Fixed menu components to rely on property binding from parent instead of initializing from state in connectedCallback
 - got rid of stray } in tables rendered in PluginCostComponent.js
 
 ## [v1.14.2] - 2026-03-09
