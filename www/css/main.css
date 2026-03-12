@@ -24,6 +24,6 @@
 /* Ensure app root and main fill the viewport so children can flex to available space */
 .app-container { display:flex; height:100vh; overflow:hidden; min-height:0; }
 /* Important main content area styling */
-.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; }
+.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; padding-top: 40px; }
 /* Ensure direct children that are flex containers can shrink/grow properly inside .main */
 .main > * { min-height:0; }

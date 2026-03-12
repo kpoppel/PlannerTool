@@ -60,12 +60,14 @@ export class SidebarLit extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 18px;
-      position: relative;
+      position: fixed;
+      top: 40px;
+      left: 0;
       z-index: var(--z-sidebar);
       font-size: 14px;
       overflow-y: auto;
       padding-bottom: 96px;
-      height: 100vh;
+      height: calc(100vh - 40px);
     }
 
     .sidebar-content { overflow: auto; max-height: calc(100vh - 160px); padding-bottom: 12px; }
@@ -984,7 +986,6 @@ export class SidebarLit extends LitElement {
   render(){
     return html`
       <aside class="sidebar ${this.open? '' : 'closed'}">
-        <h2>Planner Tool</h2>
         <div class="sidebar-content">
         <section class="sidebar-section" id="viewOptionsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▲</span><span class="sidebar-title">View Options</span></div>

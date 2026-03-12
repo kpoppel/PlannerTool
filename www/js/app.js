@@ -41,6 +41,9 @@ async function init(){
       if(mod && mod.initSidebar) await mod.initSidebar();
     }catch(e){ console.warn('Failed to mount Lit sidebar', e); }
 
+    // Load top menu bar component so the <top-menu-bar> element in index.html upgrades
+    try{ await import('./components/TopMenu.lit.js'); }catch(e){ console.warn('Failed to load top-menu-bar', e); }
+
     // Ensure TimelineBoard is registered so the element in index.html is upgraded
     try{ await import('./components/TimelineBoard.lit.js'); }catch(e){ console.warn('Failed to load timeline-board', e); }
 
