@@ -333,14 +333,14 @@ export class TopMenuBarLit extends LitElement {
     }
   }
 
-  _onConfig() {
-    const ev = new CustomEvent('topmenu:config', { bubbles: true, composed: true });
-    this.dispatchEvent(ev);
+  async _onConfig() {
+    const { openConfigModal } = await import('./modalHelpers.js');
+    await openConfigModal();
   }
 
-  _onHelp() {
-    const ev = new CustomEvent('topmenu:help', { bubbles: true, composed: true });
-    this.dispatchEvent(ev);
+  async _onHelp() {
+    const { openHelpModal } = await import('./modalHelpers.js');
+    await openHelpModal();
   }
 
   async _showScenarioActionsMenu(scenario, sourceEvent) {

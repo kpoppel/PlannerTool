@@ -22,6 +22,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Wired up menu components to TopMenu with proper z-indexing (2000 for menus, 3000 for action popovers)
 - Implemented data binding from TopMenu to menu components using Lit properties
 - Added event listeners in TopMenu to sync state changes with menu components
+- Implemented config and help modal functions in TopMenu right side buttons (⚙️ and ❓)
 
 ### Changed
 ### Fixed
@@ -56,7 +57,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Changed
 
-- Re-acquiring a session is done inthe background now. Only if a session could not be acquired will a
+- View Options section in Sidebar is now always visible (no longer collapsible)
+- Commented out Plans, Allocations (Teams), Scenarios, Views, and Configuration & Help sections from Sidebar - all functionality now available via TopMenu
+- Sidebar now only displays: View Options and Tools sections
+- Re-acquiring a session is done in the background now. Only if a session could not be acquired will a
   message be displayed.
 - Clicking a featurecard no longer contact the server to get iterations. Use internal state now.
 - Details panel Iterations dropdown display iteration dates.

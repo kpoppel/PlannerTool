@@ -988,10 +988,11 @@ export class SidebarLit extends LitElement {
       <aside class="sidebar ${this.open? '' : 'closed'}">
         <div class="sidebar-content">
         <section class="sidebar-section" id="viewOptionsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▲</span><span class="sidebar-title">View Options</span></div>
-          <div class="sidebar-section-collapsed"><div id="viewOptionsContainer"></div></div>
+          <div class="sidebar-section-header"><span class="sidebar-title">View Options</span></div>
+          <div><div id="viewOptionsContainer"></div></div>
         </section>
 
+        <!-- Plans section moved to TopMenu dropdown
         <section class="sidebar-section" id="projectsSection" data-tour="planning">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Plans</span></div>
           <div>
@@ -1007,7 +1008,9 @@ export class SidebarLit extends LitElement {
             ${this.renderPlansGrouped()}
           </div>
         </section>
+        -->
 
+        <!-- Allocations (Teams) section moved to TopMenu dropdown
         <section class="sidebar-section" id="teamsSection" data-tour="allocations">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
           <div>
@@ -1023,20 +1026,25 @@ export class SidebarLit extends LitElement {
             <ul class="sidebar-list" id="teamList">${this.renderTeams()}</ul>
           </div>
         </section>
+        -->
 
+        <!-- Scenarios section moved to TopMenu dropdown (ScenarioMenu.lit.js)
         <section class="sidebar-section" id="scenariosSection" data-tour="scenarios">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
           <div>
             <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
           </div>
         </section>
+        -->
 
+        <!-- Views section moved to TopMenu dropdown (ViewMenu.lit.js)
         <section class="sidebar-section" id="viewsSection" data-tour="views">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Views</span></div>
           <div>
             <ul class="sidebar-list" id="viewList">${this.renderViews()}</ul>
           </div>
         </section>
+        -->
 
         <section class="sidebar-section" id="toolsSection" data-tour="tools">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
@@ -1055,6 +1063,7 @@ export class SidebarLit extends LitElement {
         </section>
 
         </div>
+        <!-- Configuration & Help section moved to TopMenu (right side buttons)
         <section class="sidebar-config">
           <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
           <div class="config-row" style="display:flex;gap:8px;margin-top:6px;">
@@ -1064,6 +1073,7 @@ export class SidebarLit extends LitElement {
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
           <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
         </section>
+        -->
       </aside>
     `;
   }
