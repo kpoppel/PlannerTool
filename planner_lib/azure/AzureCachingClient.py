@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 
 from planner_lib.azure.AzureClient import AzureClient
-from planner_lib.azure.caching import CacheManager, CACHE_TTL, NAMESPACE
+from planner_lib.azure.caching import CacheManager, CACHE_TTL, HISTORY_CACHE_TTL, NAMESPACE
 from planner_lib.storage.interfaces import StorageProtocol
 
 
@@ -35,6 +35,14 @@ class AzureCachingClient(AzureClient):
         logger.info("Using AzureCachingClient (deferred connect) with storage backend")
         super().__init__(organization_url, storage=storage)
         self._cache = CacheManager(storage, namespace=NAMESPACE)
+        
+        # History cache metrics
+        self._history_metrics = {
+            "history_cache_hits": 0,
+            "history_cache_misses": 0,
+            "history_api_calls_saved": 0,
+            "revision_checks_performed": 0
+        }
     
     @property
     def _fetch_count(self):
@@ -85,6 +93,96 @@ class AzureCachingClient(AzureClient):
     def _key_for_revision_history(self, work_item_id: int) -> str:
         """Generate cache key for work item revision history."""
         return f"history_{work_item_id}"
+
+    def _write_history_cache(self, work_item_id: int, history: List[dict], revision: int, timestamp: Optional[datetime] = None) -> None:
+        """Write revision history to cache with revision and timestamp metadata.
+        
+        Args:
+            work_item_id: Work item ID
+            history: List of revision records
+            revision: Current revision number of the work item
+        """
+        key = self._key_for_revision_history(work_item_id)
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+        cache_entry = {
+            "data": history,
+            "metadata": {
+                "revision": revision,
+                "work_item_id": work_item_id,
+                "timestamp": timestamp.isoformat()
+            }
+        }
+        self._cache.write(key, cache_entry)
+        self._cache.update_timestamp(key)
+    
+    def _read_history_cache(self, work_item_id: int, ttl: timedelta = HISTORY_CACHE_TTL) -> tuple[Optional[List[dict]], Optional[int], bool]:
+        """Read revision history from cache with revision metadata and TTL check.
+        
+        Args:
+            work_item_id: Work item ID
+            ttl: Time-to-live for cache (default 24 hours)
+            
+        Returns:
+            Tuple of (history list, revision number, is_fresh)
+            - (None, None, False) if not cached
+            - (history, revision, True) if cached and within TTL
+            - (history, revision, False) if cached but TTL expired
+        """
+        key = self._key_for_revision_history(work_item_id)
+        cached = self._cache.read(key)
+        
+        if cached is None:
+            return None, None, False
+        
+        # Expected format with metadata
+        if isinstance(cached, dict) and "data" in cached and "metadata" in cached:
+            history = cached["data"]
+            metadata = cached["metadata"]
+            revision = metadata.get("revision")
+            timestamp_str = metadata.get("timestamp")
+            
+            # Check TTL if timestamp available
+            is_fresh = False
+            if timestamp_str:
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_str)
+                    age = datetime.now(timezone.utc) - timestamp
+                    is_fresh = age < ttl
+                    if is_fresh:
+                        logger.debug(f"History cache fresh for {work_item_id} (age={age}, ttl={ttl})")
+                    else:
+                        logger.debug(f"History cache stale for {work_item_id} (age={age}, ttl={ttl})")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid timestamp in cache for {work_item_id}: {e}")
+            
+            return history, revision, is_fresh
+        
+        # Invalid format - return None to force refetch
+        logger.warning(f"Invalid cache format for work item {work_item_id}, will refetch")
+        return None, None, False
+
+    def _get_current_revision(self, work_item_id: int) -> Optional[int]:
+        """Get current work item revision number (lightweight API call).
+        
+        Args:
+            work_item_id: Work item ID
+            
+        Returns:
+            Current revision number or None if work item not found
+        """
+        return self._work_item_ops.get_work_item_revision(work_item_id)
+    
+    def _get_current_revisions_batch(self, work_item_ids: List[int]) -> dict[int, Optional[int]]:
+        """Get current revision numbers for multiple work items (batch API call).
+        
+        Args:
+            work_item_ids: List of work item IDs
+            
+        Returns:
+            Dictionary mapping work item ID to revision number
+        """
+        return self._work_item_ops.get_work_item_revisions_batch(work_item_ids)
 
     def get_projects(self) -> List[str]:
         """Fetch projects (not cached)."""
@@ -184,8 +282,9 @@ class AzureCachingClient(AzureClient):
             # Use negative filter: exclude closed/removed by default
             states_clause = "AND [System.State] NOT IN ('Closed', 'Removed')"
 
+        # Query for IDs and Revisions for change detection
         wiql_query = f"""
-        SELECT [System.Id]
+        SELECT [System.Id], [System.Rev]
         FROM WorkItems
         WHERE [System.WorkItemType] IN ({types_clause})
         AND [System.AreaPath] = '{wiql_area_escaped}'
@@ -204,28 +303,83 @@ class AzureCachingClient(AzureClient):
             return []
         
         candidate_ws = getattr(result, 'work_items', []) or []
-        # Extract IDs safely with type filtering
+        
+        # Extract IDs
         task_ids = []
         for wi in candidate_ws:
             wid = getattr(wi, 'id', None)
             if wid is not None:
                 task_ids.append(int(wid))
         
-        # Add invalidated items to fetch list
+        # Get current revisions with lightweight fetch (just System.Rev field)
+        current_revisions = {}  # id -> revision
+        if task_ids:
+            # Fetch revisions in batches to avoid large single requests
+            def chunks(lst, n):
+                for i in range(0, len(lst), n):
+                    yield lst[i:i+n]
+            
+            for batch in chunks(task_ids, 200):
+                try:
+                    rev_items = wit_client.get_work_items(batch, fields=['System.Rev'])
+                    for item in rev_items or []:
+                        item_id = getattr(item, 'id', None)
+                        if item_id:
+                            fields = getattr(item, 'fields', {})
+                            rev = fields.get('System.Rev', 0) if fields else 0
+                            current_revisions[int(item_id)] = rev
+                except Exception as e:
+                    logger.warning(f"Failed to fetch revisions for batch: {e}")
+                    # Fall back to assuming all items need fetching
+                    for wid in batch:
+                        current_revisions[wid] = 0
+        
+        # Get cached revisions for comparison
+        cached_revisions = self._cache.get_revisions(area_key)
+        
+        # Determine which items actually changed
+        items_to_fetch = set()
+        
+        # Add invalidated items
         if invalidated_in_area:
-            task_ids = list(set(task_ids) | invalidated_in_area)
+            items_to_fetch.update(invalidated_in_area)
             logger.debug(f"Added {len(invalidated_in_area)} invalidated work items to fetch list")
         
-        logger.debug(f"WIQL returned {len(candidate_ws)} candidates, total to fetch: {len(task_ids)}")
+        # Compare revisions to find changed/new items
+        for wid in task_ids:
+            # If item not in cache revisions, it's new - fetch it
+            if wid not in cached_revisions:
+                items_to_fetch.add(wid)
+            else:
+                # Item exists in cache - check if revision changed
+                cached_rev = cached_revisions[wid]
+                current_rev = current_revisions.get(wid, 0)
+                
+                if cached_rev != current_rev:
+                    items_to_fetch.add(wid)
+        
+        # Check for deleted items (in cache but not in current query)
+        deleted_ids = set(cached_revisions.keys()) - set(task_ids)
+        
+        task_ids_to_fetch = list(items_to_fetch)
+        
+        logger.debug(f"WIQL returned {len(candidate_ws)} candidates")
+        logger.debug(f"Changed/new items: {len(items_to_fetch)}, Deleted: {len(deleted_ids)}")
+        logger.debug(f"Skipping {len(task_ids) - len(items_to_fetch)} unchanged items")
+        
+        # If nothing changed and no deletes, return cached data
+        if not items_to_fetch and not deleted_ids and not force_full_refresh:
+            logger.debug(f"No changes detected for area '{area_key}' - using cache")
+            return list(area_cache.values())
 
-        # Fetch work items in batches
+        # Fetch only changed work items in batches
         updated_items = []
-        if task_ids:
+        if task_ids_to_fetch:
             def chunks(lst, n):
                 for i in range(0, len(lst), n):
                     yield lst[i:i+n]
 
-            for batch in chunks(task_ids, 200):
+            for batch in chunks(task_ids_to_fetch, 200):
                 items = wit_client.get_work_items(batch, expand="relations")
                 for item in items or []:
                     relations = getattr(item, "relations", []) or []
@@ -264,7 +418,7 @@ class AzureCachingClient(AzureClient):
 
         logger.debug(f"Fetched {len(updated_items)} updated work items for area '{area_key}'")
 
-        # Update cache with fetched items
+        # Merge updated items with cache
         changed = False
         updated_count = 0
         for wi in updated_items:
@@ -272,12 +426,21 @@ class AzureCachingClient(AzureClient):
                 area_cache[wi['id']] = wi
                 changed = True
                 updated_count += 1
+        
+        # Remove deleted items from cache
+        for del_id in deleted_ids:
+            if del_id in area_cache:
+                del area_cache[del_id]
+                changed = True
 
-        logger.debug(f"Area '{area_key}': cached={cached_count}, fetched={len(updated_items)}, updated={updated_count}")
+        logger.debug(f"Area '{area_key}': cached={cached_count}, fetched={len(updated_items)}, updated={updated_count}, deleted={len(deleted_ids)}")
 
         # Write cache and update timestamps
         self._cache.write(area_key, list(area_cache.values()))
         self._cache.update_timestamp(area_key)
+        
+        # Store updated revisions for next comparison
+        self._cache.store_revisions(area_key, current_revisions)
         
         # Clear invalidated items that were successfully fetched
         if invalidated_in_area:
@@ -590,36 +753,66 @@ class AzureCachingClient(AzureClient):
         work_item_id: int,
         start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
         end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
-        iteration_field: str = "System.IterationPath"
+        iteration_field: str = "System.IterationPath",
+        force_refresh: bool = False
     ) -> List[dict]:
-        """Fetch revision history for a work item with caching.
+        """Fetch revision history for a work item with intelligent TTL-based caching.
         
-        Caches revision history per work item with a 24-hour TTL. This is longer
-        than the default TTL because revision history doesn't change as frequently
-        as work item data itself.
+        Uses TTL-based caching with revision-based change detection:
+        1. If cache is fresh (within TTL), return immediately - no Azure calls
+        2. If cache is stale, check revision (lightweight Azure call)
+        3. If revision unchanged, update TTL and return cache
+        4. If revision changed, fetch full history
         
         Args:
             work_item_id: Work item ID
             start_field: Field name for start date (project-specific)
             end_field: Field name for end/target date (project-specific)
             iteration_field: Field name for iteration path
+            force_refresh: If True, bypass TTL and check revision
             
         Returns:
             List of normalized revision records
         """
-        key = self._key_for_revision_history(work_item_id)
+        # Read cache with TTL check
+        cached_history, cached_revision, is_fresh = self._read_history_cache(work_item_id)
         
-        # Try cache first
-        cached = self._cache.read(key)
-        if cached is not None:
-            # Check if stale (24 hour TTL for history)
-            history_ttl = timedelta(hours=24)
-            if not self._cache.is_stale(key, ttl=history_ttl):
-                logger.debug(f"Cache hit for revision history of work item {work_item_id}")
-                return cached
-            logger.debug(f"Cache stale for revision history of work item {work_item_id}, refetching")
+        # Fast path: Fresh cache within TTL
+        if is_fresh and cached_history is not None and not force_refresh:
+            self._history_metrics["history_cache_hits"] += 1
+            self._history_metrics["history_api_calls_saved"] += 2  # Saved both revision check and history fetch
+            logger.debug(f"History cache fresh for {work_item_id} (TTL), no Azure call needed")
+            return cached_history
         
-        # Fetch from base implementation
+        # Cache exists but stale (or force refresh) - check if revision changed
+        if cached_history is not None and cached_revision is not None:
+            # Check current revision (lightweight call)
+            current_revision = self._get_current_revision(work_item_id)
+            self._history_metrics["revision_checks_performed"] += 1
+            
+            if current_revision is None:
+                # Work item deleted - invalidate cache
+                logger.info(f"Work item {work_item_id} not found, clearing cache")
+                key = self._key_for_revision_history(work_item_id)
+                self._cache.delete(key)
+                return []
+            
+            if current_revision == cached_revision:
+                # Revision unchanged - update TTL and return cache
+                self._history_metrics["history_cache_hits"] += 1
+                self._history_metrics["history_api_calls_saved"] += 1
+                logger.debug(f"History cache hit for {work_item_id} (rev {current_revision}), updating TTL")
+                # Refresh TTL by rewriting cache with new timestamp
+                self._write_history_cache(work_item_id, cached_history, current_revision)
+                return cached_history
+            
+            logger.debug(f"History changed for {work_item_id}: {cached_revision} → {current_revision}")
+            self._history_metrics["history_cache_misses"] += 1
+        else:
+            # No cached history, will need to fetch
+            self._history_metrics["history_cache_misses"] += 1
+        
+        # Fetch fresh history
         result = self._work_item_ops.get_task_revision_history(
             work_item_id=work_item_id,
             start_field=start_field,
@@ -627,10 +820,111 @@ class AzureCachingClient(AzureClient):
             iteration_field=iteration_field
         )
         
-        # Cache the result
-        self._cache.write(key, result)
-        self._cache.update_timestamp(key)
-        logger.debug(f"Cached {len(result)} revision records for work item {work_item_id}")
+        # Get current revision for caching
+        current_revision = self._get_current_revision(work_item_id)
+        if current_revision:
+            self._write_history_cache(work_item_id, result, current_revision)
+            logger.debug(f"Cached {len(result)} revision records for work item {work_item_id} (rev {current_revision})")
+        else:
+            # Fallback to old caching if we can't get revision
+            key = self._key_for_revision_history(work_item_id)
+            self._cache.write(key, result)
+            self._cache.update_timestamp(key)
+            logger.debug(f"Cached {len(result)} revision records for work item {work_item_id} (no revision metadata)")
+        
+        return result
+    
+    def get_task_revision_history_batch(
+        self,
+        work_item_ids: List[int],
+        start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
+        end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
+        iteration_field: str = "System.IterationPath",
+        force_refresh: bool = False
+    ) -> dict[int, List[dict]]:
+        """Fetch revision history for multiple work items with batch optimization.
+        
+        This method optimizes bulk fetching by:
+        1. Returning fresh cached items immediately (within TTL)
+        2. Batch checking revisions for stale items in one API call
+        3. Only fetching full history for items with changed revisions
+        
+        Args:
+            work_item_ids: List of work item IDs
+            start_field: Field name for start date (project-specific)
+            end_field: Field name for end/target date (project-specific)
+            iteration_field: Field name for iteration path
+            force_refresh: If True, bypass TTL and check revisions
+            
+        Returns:
+            Dictionary mapping work item ID to list of revision records
+        """
+        result = {}
+        items_to_check = []  # Items with stale cache that need revision check
+        items_to_fetch = []  # Items that need full history fetch
+        
+        # Phase 1: Check cache and collect items needing revision check
+        for work_item_id in work_item_ids:
+            cached_history, cached_revision, is_fresh = self._read_history_cache(work_item_id)
+            
+            if is_fresh and cached_history is not None and not force_refresh:
+                # Fresh cache - return immediately
+                result[work_item_id] = cached_history
+                self._history_metrics["history_cache_hits"] += 1
+                self._history_metrics["history_api_calls_saved"] += 2
+            elif cached_history is not None and cached_revision is not None:
+                # Stale cache - need to check revision
+                items_to_check.append((work_item_id, cached_history, cached_revision))
+            else:
+                # No cache - need full fetch
+                items_to_fetch.append(work_item_id)
+        
+        logger.debug(f"Batch processing: {len(result)} fresh, {len(items_to_check)} to check, {len(items_to_fetch)} to fetch")
+        
+        # Phase 2: Batch check revisions for stale items
+        if items_to_check:
+            check_ids = [item[0] for item in items_to_check]
+            current_revisions = self._get_current_revisions_batch(check_ids)
+            self._history_metrics["revision_checks_performed"] += len(check_ids)
+            
+            for work_item_id, cached_history, cached_revision in items_to_check:
+                current_revision = current_revisions.get(work_item_id)
+                
+                if current_revision is None:
+                    # Work item deleted
+                    logger.info(f"Work item {work_item_id} not found, clearing cache")
+                    key = self._key_for_revision_history(work_item_id)
+                    self._cache.delete(key)
+                    result[work_item_id] = []
+                elif current_revision == cached_revision:
+                    # Revision unchanged - use cache and refresh TTL
+                    result[work_item_id] = cached_history
+                    self._history_metrics["history_cache_hits"] += 1
+                    self._history_metrics["history_api_calls_saved"] += 1
+                    # Refresh TTL
+                    self._write_history_cache(work_item_id, cached_history, current_revision)
+                else:
+                    # Revision changed - need full fetch
+                    logger.debug(f"History changed for {work_item_id}: {cached_revision} → {current_revision}")
+                    items_to_fetch.append(work_item_id)
+                    self._history_metrics["history_cache_misses"] += 1
+        
+        # Phase 3: Fetch full history for changed/missing items
+        if items_to_fetch:
+            logger.debug(f"Fetching full history for {len(items_to_fetch)} items")
+            for work_item_id in items_to_fetch:
+                history = self._work_item_ops.get_task_revision_history(
+                    work_item_id=work_item_id,
+                    start_field=start_field,
+                    end_field=end_field,
+                    iteration_field=iteration_field
+                )
+                result[work_item_id] = history
+                
+                # Cache the result
+                current_revision = self._get_current_revision(work_item_id)
+                if current_revision:
+                    self._write_history_cache(work_item_id, history, current_revision)
         
         return result
     
@@ -668,4 +962,30 @@ class AzureCachingClient(AzureClient):
         count = self._cache.cleanup_orphaned_keys()
         return {'ok': True, 'orphaned_cleaned': count}
 
+    def get_cache_stats(self) -> dict:
+        """Get cache performance statistics.
+        
+        Returns dictionary with history cache metrics including hit rate,
+        API calls saved, and revision checks performed.
+        
+        Returns:
+            Dictionary with cache statistics
+        """
+        total_checks = (
+            self._history_metrics["history_cache_hits"] + 
+            self._history_metrics["history_cache_misses"]
+        )
+        hit_rate = (
+            self._history_metrics["history_cache_hits"] / total_checks 
+            if total_checks > 0 else 0
+        )
+        
+        return {
+            "history_cache_hit_rate": f"{hit_rate * 100:.1f}%",
+            "api_calls_saved": self._history_metrics["history_api_calls_saved"],
+            "history_cache_hits": self._history_metrics["history_cache_hits"],
+            "history_cache_misses": self._history_metrics["history_cache_misses"],
+            "revision_checks_performed": self._history_metrics["revision_checks_performed"],
+            "total_history_requests": total_checks
+        }
 

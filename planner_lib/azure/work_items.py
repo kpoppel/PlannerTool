@@ -367,6 +367,89 @@ class WorkItemOperations:
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} relations: {e}")
     
+    def get_work_item_revision(self, work_item_id: int) -> Optional[int]:
+        """Get current revision number for a work item (lightweight API call).
+        
+        This method fetches only the System.Rev field to minimize data transfer.
+        Useful for checking if a work item has changed without fetching full details.
+        
+        Args:
+            work_item_id: Work item ID
+            
+        Returns:
+            Current revision number or None if work item not found
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        assert self.client.conn is not None
+        wit = self.client.conn.clients.get_work_item_tracking_client()
+        
+        try:
+            # Only fetch the System.Rev field for minimal data transfer
+            work_item = wit.get_work_item(
+                id=work_item_id,
+                fields=["System.Rev"]
+            )
+            return work_item.fields.get("System.Rev")
+        except Exception as e:
+            logger.warning(f"Failed to get revision for work item {work_item_id}: {e}")
+            return None
+    
+    def get_work_item_revisions_batch(self, work_item_ids: List[int]) -> dict[int, Optional[int]]:
+        """Get current revision numbers for multiple work items (batch API call).
+        
+        This method fetches only the System.Rev field for multiple work items in
+        a single API call to minimize network overhead.
+        
+        Args:
+            work_item_ids: List of work item IDs
+            
+        Returns:
+            Dictionary mapping work item ID to revision number (or None if not found)
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        if not work_item_ids:
+            return {}
+        
+        assert self.client.conn is not None
+        wit = self.client.conn.clients.get_work_item_tracking_client()
+        
+        result = {}
+        
+        # Batch in chunks of 200 (Azure API limit)
+        def chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i+n]
+        
+        try:
+            for batch in chunks(work_item_ids, 200):
+                # Fetch only System.Rev field for minimal data transfer
+                work_items = wit.get_work_items(
+                    ids=batch,
+                    fields=["System.Rev"]
+                )
+                
+                for work_item in work_items:
+                    work_item_id = work_item.id
+                    revision = work_item.fields.get("System.Rev")
+                    result[work_item_id] = revision
+                
+                # Mark items not found as None
+                for work_item_id in batch:
+                    if work_item_id not in result:
+                        result[work_item_id] = None
+            
+            logger.debug(f"Batch fetched revisions for {len(work_item_ids)} work items")
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to batch fetch revisions for {len(work_item_ids)} work items: {e}")
+            # Return None for all items on error
+            return {wid: None for wid in work_item_ids}
+    
     def get_work_item_metadata(self, project: str) -> dict:
         """Retrieve work item types and states for a project.
         

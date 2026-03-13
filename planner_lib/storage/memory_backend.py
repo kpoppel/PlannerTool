@@ -18,9 +18,10 @@ class MemoryStorage:
         with self._lock:
             self._store[key] = value
 
-    def delete(self, key: str) -> None:
+    def delete(self, namespace: str, key: str) -> None:
         with self._lock:
-            self._store.pop(key, None)
+            if namespace in self._store and isinstance(self._store[namespace], dict):
+                self._store[namespace].pop(key, None)
 
     def save(self, namespace: str, key: str, value: Any) -> None:
         if namespace not in self._store:

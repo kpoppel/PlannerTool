@@ -7,16 +7,34 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ## Template:
 
-## [v] - date
+## [v] - unreleased
 
 ### Added
 ### Changed
 ### Fixed
 
 ---
-## [v1.14.3] - unreleased
+## [v1.15.0] - unreleased
 
 ### Added
+
+- TTL-based history caching with batch optimization. Before history retrieval would
+  invalidate the entire server cache every 24 hours causing a full frefresh of all
+  task history data. This optimisation batches revision calls checking for task updates
+  when the cache TTL runs out every 24h and only refresh those items which changed.
+
+### Changed
+
+- Azure task cache optimization. The cache tracks per-work-item revisions using `System.Rev` field and
+  only fetches changed items. This reduces API calls as full cache refresh on expiry is not needed.
+  Task cache TTL is set to 30 minutes.
+
+### Fixed
+
+- Fixed `MemoryStorage.delete()` signature to match `StorageProtocol` interface (namespace, key parameters)
+
+## [v1.14.3] - 2026-03-11
+
 ### Changed
 
 - Re-acquiring a session is done inthe background now. Only if a session could not be acquired will a

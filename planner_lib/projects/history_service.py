@@ -312,34 +312,61 @@ class HistoryService:
         logger.info(f"Fetching history for {len(page_tasks)} tasks with field mappings: {field_mappings}")
         
         with azure_client.connect(pat) as client:
+            # Collect all valid work item IDs
+            task_map = {}  # work_item_id -> task
+            valid_ids = []
+            
             for task in page_tasks:
                 work_item_id = int(task.get('id', 0))
                 if work_item_id == 0:
                     logger.warning(f"Skipping task with invalid ID: {task}")
                     continue
+                task_map[work_item_id] = task
+                valid_ids.append(work_item_id)
+            
+            # Batch fetch revision history if available (AzureCachingClient)
+            if hasattr(client, 'get_task_revision_history_batch'):
+                logger.debug(f"Using batch fetch for {len(valid_ids)} work items")
+                revisions_map = client.get_task_revision_history_batch(
+                    work_item_ids=valid_ids,
+                    start_field=field_mappings['start_field'],
+                    end_field=field_mappings['end_field'],
+                    iteration_field=field_mappings['iteration_field']
+                )
+            else:
+                # Fallback to individual fetches
+                logger.debug(f"Batch method not available, fetching individually for {len(valid_ids)} work items")
+                revisions_map = {}
+                for work_item_id in valid_ids:
+                    logger.debug(f"Fetching revision history for work item {work_item_id}")
+                    try:
+                        if hasattr(client, 'get_task_revision_history'):
+                            revisions = client.get_task_revision_history(
+                                work_item_id=work_item_id,
+                                start_field=field_mappings['start_field'],
+                                end_field=field_mappings['end_field'],
+                                iteration_field=field_mappings['iteration_field']
+                            )
+                        else:
+                            revisions = client._work_item_ops.get_task_revision_history(
+                                work_item_id=work_item_id,
+                                start_field=field_mappings['start_field'],
+                                end_field=field_mappings['end_field'],
+                                iteration_field=field_mappings['iteration_field']
+                            )
+                        revisions_map[work_item_id] = revisions
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch history for work item {work_item_id}: {e}")
+                        revisions_map[work_item_id] = []
+            
+            # Process all fetched revisions
+            for work_item_id in valid_ids:
+                task = task_map[work_item_id]
+                revisions = revisions_map.get(work_item_id, [])
                 
-                logger.debug(f"Fetching revision history for work item {work_item_id}")
+                logger.debug(f"Got {len(revisions)} revision records for work item {work_item_id}")
                 
                 try:
-                    # Fetch revisions - use caching method if available (AzureCachingClient)
-                    # Otherwise fall back to _work_item_ops method
-                    if hasattr(client, 'get_task_revision_history'):
-                        revisions = client.get_task_revision_history(
-                            work_item_id=work_item_id,
-                            start_field=field_mappings['start_field'],
-                            end_field=field_mappings['end_field'],
-                            iteration_field=field_mappings['iteration_field']
-                        )
-                    else:
-                        revisions = client._work_item_ops.get_task_revision_history(
-                            work_item_id=work_item_id,
-                            start_field=field_mappings['start_field'],
-                            end_field=field_mappings['end_field'],
-                            iteration_field=field_mappings['iteration_field']
-                        )
-                    
-                    logger.debug(f"Got {len(revisions)} revision records for work item {work_item_id}")
-                    
                     # Flatten revision changes into individual history entries
                     history_entries = []
                     for rev in revisions:
@@ -383,7 +410,7 @@ class HistoryService:
                     })
                     
                 except Exception as e:
-                    logger.warning(f"Failed to fetch history for task {work_item_id}: {e}")
+                    logger.warning(f"Failed to process history for task {work_item_id}: {e}")
                     # Still include task with empty history
                     result_tasks.append({
                         'task_id': work_item_id,

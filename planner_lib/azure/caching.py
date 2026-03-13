@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 NAMESPACE = 'azure_workitems'
 CACHE_TTL = timedelta(minutes=30)
+HISTORY_CACHE_TTL = timedelta(hours=24)  # History cache TTL - 24 hours
 
 
 class CacheManager:
@@ -151,6 +152,33 @@ class CacheManager:
             index.setdefault(key, {})
             index[key]['last_update'] = datetime.now(timezone.utc).isoformat()
             self._write_index(index)
+    
+    def store_revisions(self, key: str, revisions: dict[int, int]) -> None:
+        """Store work item revisions for an area.
+        
+        Args:
+            key: Cache key (area key)
+            revisions: Mapping of work_item_id -> revision_number
+        """
+        with self._lock:
+            index = self._read_index()
+            index.setdefault(key, {})
+            index[key]['revisions'] = revisions
+            self._write_index(index)
+    
+    def get_revisions(self, key: str) -> dict[int, int]:
+        """Get stored revisions for an area.
+        
+        Args:
+            key: Cache key (area key)
+            
+        Returns:
+            Mapping of work_item_id -> revision_number, or empty dict
+        """
+        with self._lock:
+            index = self._read_index()
+            entry = index.get(key, {})
+            return entry.get('revisions', {})
     
     def get_timestamp(self, key: str) -> Optional[datetime]:
         """Get the last update timestamp for a cache entry.
