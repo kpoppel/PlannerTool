@@ -1038,7 +1038,7 @@ export class DetailsPanelLit extends LitElement {
     }
 
     return html`
-      <div class="panel" data-tour="details-panel">
+      <div class="panel">
         <div class="details-header">
           <button class="details-close" @click=${()=>this.hide()} aria-label="Close details">✕</button>
           <div class="details-label">

@@ -76,11 +76,3 @@ export const openScenarioDeleteModal = (opts={}) => _simpleModal('./ScenarioDele
 export const openViewSaveModal = (opts={}) => _simpleModal('./ViewSaveModal.lit.js', 'view-save-modal', opts);
 export const openViewRenameModal = (opts={}) => _simpleModal('./ViewRenameModal.lit.js', 'view-rename-modal', opts);
 export const openViewDeleteModal = (opts={}) => _simpleModal('./ViewDeleteModal.lit.js', 'view-delete-modal', opts);
-
-export const openTour = async (opts={ parent: document.body }) => {
-  try{
-    const mod = await import('../tour/TourStarter.js');
-    if(mod && mod.startTour) return mod.startTour();
-  }catch(e){ console.warn('Failed to start tour', e); }
-  return null;
-};

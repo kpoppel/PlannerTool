@@ -409,7 +409,6 @@ export class FeatureCardLit extends LitElement {
     this._ghostEl = null;
     this._width = 0;          // cached from ResizeObserver — no DOM read needed
     this._lastTitle = null;    // track title changes for overflow re-check
-    try { this.setAttribute('data-tour', 'feature-card'); } catch (e) {}
   }
 
   // ---- Static batched layout scheduler ----

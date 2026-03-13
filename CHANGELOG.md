@@ -28,6 +28,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Integrated view filters into FeatureBoard display logic and Data Funnel calculations
 
 ### Changed
+
+- Removed tour functionality (Shepherd library, TourStarter.js, and all data-tour attributes). The guided tour is no longer needed with the refactored UI.
 ### Fixed
 
 ## [v1.15.1] - 2026-03-13

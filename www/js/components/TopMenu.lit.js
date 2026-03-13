@@ -331,8 +331,8 @@ export class TopMenuBarLit extends LitElement {
         </div>
 
         <div class="menu-right">
-          <button class="small-btn" id="openConfigBtn" data-tour="gear" @click=${this._onConfig}>⚙️</button>
-          <button class="small-btn" id="openHelpBtn" data-tour="help" @click=${this._onHelp}>❓</button>
+          <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>⚙️</button>
+          <button class="small-btn" id="openHelpBtn" @click=${this._onHelp}>❓</button>
         </div>
       </nav>
 

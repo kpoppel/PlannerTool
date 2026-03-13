@@ -111,11 +111,6 @@ async function init(){
 
     // Initialize complete
     hideModal();
-      // Delegate onboarding/config/tour flow to the TourStarter module
-      try{
-        const ts = await import('./tour/TourStarter.js');
-        if(ts && ts.initTourFlow) await ts.initTourFlow();
-      }catch(e){ console.warn('Failed to initialize tour flow', e); }
     bus.emit(AppEvents.READY);
     // Session expiry handling: notify user and indicate when reacquired
     try{

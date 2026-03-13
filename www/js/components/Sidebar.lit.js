@@ -1349,7 +1349,7 @@ export class SidebarLit extends LitElement {
         </section>
 
         <!-- Plans section moved to TopMenu dropdown
-        <section class="sidebar-section" id="projectsSection" data-tour="planning">
+        <section class="sidebar-section" id="projectsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Plans</span></div>
           <div>
             <div class="counts-header" aria-hidden="true">
@@ -1367,7 +1367,7 @@ export class SidebarLit extends LitElement {
         -->
 
         <!-- Allocations (Teams) section moved to TopMenu dropdown
-        <section class="sidebar-section" id="teamsSection" data-tour="allocations">
+        <section class="sidebar-section" id="teamsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
           <div>
               <div class="counts-header" aria-hidden="true">
@@ -1385,7 +1385,7 @@ export class SidebarLit extends LitElement {
         -->
 
         <!-- Scenarios section moved to TopMenu dropdown (ScenarioMenu.lit.js)
-        <section class="sidebar-section" id="scenariosSection" data-tour="scenarios">
+        <section class="sidebar-section" id="scenariosSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
           <div>
             <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
@@ -1394,7 +1394,7 @@ export class SidebarLit extends LitElement {
         -->
 
         <!-- Views section moved to TopMenu dropdown (ViewMenu.lit.js)
-        <section class="sidebar-section" id="viewsSection" data-tour="views">
+        <section class="sidebar-section" id="viewsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Views</span></div>
           <div>
             <ul class="sidebar-list" id="viewList">${this.renderViews()}</ul>
@@ -1402,7 +1402,7 @@ export class SidebarLit extends LitElement {
         </section>
         -->
 
-        <section class="sidebar-section" id="toolsSection" data-tour="tools">
+        <section class="sidebar-section" id="toolsSection">
           <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
           <div>
             <ul class="sidebar-list" id="toolsList">
@@ -1423,8 +1423,8 @@ export class SidebarLit extends LitElement {
         <section class="sidebar-config">
           <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
           <div class="config-row" style="display:flex;gap:8px;margin-top:6px;">
-            <button id="openConfigBtn" data-tour="gear" @click=${()=>this._openConfig()}>⚙️</button>
-            <button id="openHelpBtn" data-tour="help" @click=${()=>this._openHelp()}>❓</button>
+            <button id="openConfigBtn" @click=${()=>this._openConfig()}>⚙️</button>
+            <button id="openHelpBtn" @click=${()=>this._openHelp()}>❓</button>
           </div>
           <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
           <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>

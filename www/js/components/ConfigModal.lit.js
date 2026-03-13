@@ -144,24 +144,6 @@ class ConfigModal extends LitElement {
       else this._close();
     });
 
-    // Replay Tour link wiring
-    const replayLink = this._qs('#replayTourLink');
-    if(replayLink){
-      replayLink.addEventListener('click', async (e)=>{
-        e.preventDefault();
-        try{
-          const mh = await import('./modalHelpers.js');
-          if(mh && typeof mh.openTour === 'function'){
-            await mh.openTour();
-          }
-        }catch(err){ console.warn('Failed to start tour', err); }
-        // Close the inner modal so the tour is visible
-        const innerModal = this._getInner();
-        if(innerModal && typeof innerModal.close === 'function') innerModal.close();
-        else this._close();
-      });
-    }
-
     // Ensure the inner modal is opened after the <modal-lit> definition is available
     customElements.whenDefined('modal-lit').then(()=>{
       const innerModal = this._getInner();

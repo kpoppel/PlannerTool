@@ -146,10 +146,9 @@ export function initViewOptions(container){
   if(!root) return;
   root.innerHTML = '';
 
-  // Timeline Scale - segmented control for zoom levels (wrap so Shepherd can attach)
+  // Timeline Scale - segmented control for zoom levels
   const currentScale = state._viewService.timelineScale;
   const zoomSection = document.createElement('div');
-  zoomSection.setAttribute('data-tour','zoom');
   renderSegmentedControl(zoomSection, 'Timeline Scale', [
     { label: '3 Months', active: currentScale === 'threeMonths', onClick: () => state._viewService.setTimelineScale('threeMonths') },
     { label: 'Weeks', active: currentScale === 'weeks', onClick: () => state._viewService.setTimelineScale('weeks') },
@@ -162,38 +161,32 @@ export function initViewOptions(container){
   // Condensed cards - use ViewService directly
   renderToggle(root, 'Condensed', 
     ()=> state._viewService.condensedCards, 
-    (val)=> state._viewService.setCondensedCards(val),
-    {"data-tour": "condensed-view"}
+    (val)=> state._viewService.setCondensedCards(val)
   );
   // Dependencies - use ViewService directly
   renderToggle(root, 'Dependencies', 
     ()=> state._viewService.showDependencies, 
-    (val)=> state._viewService.setShowDependencies(val),
-    {"data-tour": "dependency-renderer"}
+    (val)=> state._viewService.setShowDependencies(val)
   );
   // Show Unallocated Cards - use ViewService directly
   renderToggle(root, 'Show Unallocated', 
     ()=> state._viewService.showUnassignedCards, 
-    (val)=> state._viewService.setShowUnallocatedCards(val),
-    {"data-tour": "unassigned-view"}
+    (val)=> state._viewService.setShowUnallocatedCards(val)
   );
   // Show Unplanned Work - only when feature flag is enabled
   if (featureFlags.SHOW_UNPLANNED_WORK) {
     renderToggle(root, 'Show Unplanned', 
       ()=> state._viewService.showUnplannedWork, 
-      (val)=> state._viewService.setShowUnplannedWork(val),
-      {"data-tour": "unplanned-view"}
+      (val)=> state._viewService.setShowUnplannedWork(val)
     );
   }
   // Show Only Project Hierarchy - filter to only show features linked to selected projects
   renderToggle(root, 'Show Only Project Hierarchy', 
     ()=> state._viewService.showOnlyProjectHierarchy, 
-    (val)=> state._viewService.setShowOnlyProjectHierarchy(val),
-    {"data-tour": "hierarchy-view"}
+    (val)=> state._viewService.setShowOnlyProjectHierarchy(val)
   );
   // Capacity selector + Open Graph action
   const capWrapper = document.createElement('div');
-  capWrapper.setAttribute('data-tour','capacity-view');
   const capTitle = document.createElement('div');
   capTitle.className = 'group-label';
   capTitle.textContent = 'Capacity:';
@@ -223,18 +216,16 @@ export function initViewOptions(container){
   renderRadioGroup(root, 'Sort', [
     { label:'Rank', active: state._viewService.featureSortMode==='rank', onClick: ()=> state._viewService.setFeatureSortMode('rank') },
     { label:'Date', active: state._viewService.featureSortMode==='date', onClick: ()=> state._viewService.setFeatureSortMode('date') }
-  ], ['data-tour', 'sort-view']);
+  ]);
 
   // Task types
   renderMultiSelect(root, 'Task Types', [
     { label:'Epics', active: state._viewService.showEpics, onClick: ()=> state._viewService.setShowEpics(!state._viewService.showEpics) },
     { label:'Features', active: state._viewService.showFeatures, onClick: ()=> state._viewService.setShowFeatures(!state._viewService.showFeatures) }
-  ], ['data-tour', 'tasktypes-view']);
+  ]);
 
   // State filter
   const stateFilterContainer = document.createElement('div');
-  // Mark the state filter wrapper with a tour anchor so Shepherd can attach
-  stateFilterContainer.setAttribute('data-tour','state-filters');
   renderStateFilter(stateFilterContainer);
   root.appendChild(stateFilterContainer);
 }
