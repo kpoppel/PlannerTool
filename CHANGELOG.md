@@ -23,6 +23,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Implemented data binding from TopMenu to menu components using Lit properties
 - Added event listeners in TopMenu to sync state changes with menu components
 - Implemented config and help modal functions in TopMenu right side buttons (⚙️ and ❓)
+- Added View Filters section to Sidebar with four dimensional filters: Schedule (planned/unplanned), Allocation (allocated/unallocated), Hierarchy (hasParent/noParent), Relations (hasLinks/noLinks)
+- Created ViewFilterService to manage dimensional view filters with independent checkbox toggles
+- Integrated view filters into FeatureBoard display logic and Data Funnel calculations
 
 ### Changed
 ### Fixed

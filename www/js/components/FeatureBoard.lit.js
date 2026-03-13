@@ -384,8 +384,22 @@ class FeatureBoard extends LitElement {
   }
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
-    const project = state.projects.find(p => p.id === feature.project && p.selected);
-    if (!project) return false;
+    // Check if feature is in expanded set (when expansion filters are active)
+    const expansionState = state.expansionState || {};
+    const hasExpansion = expansionState.expandParentChild || 
+                         expansionState.expandRelations || 
+                         expansionState.expandTeamAllocated;
+    
+    if (hasExpansion) {
+      const expandedIds = state.getExpandedFeatureIds();
+      // If expansion is active, only show features in expanded set
+      // Don't require project selection - expansion can pull in features from other projects
+      if (!expandedIds.has(feature.id)) return false;
+    } else {
+      // No expansion active - use standard project filter
+      const project = state.projects.find(p => p.id === feature.project && p.selected);
+      if (!project) return false;
+    }
 
     if (state._viewService.showOnlyProjectHierarchy) {
       const projectTypePlans = state.projects.filter(p => {
@@ -405,6 +419,11 @@ class FeatureBoard extends LitElement {
     if (stateFilter.size === 0) return false;
     const featureState = feature.status || feature.state;
     if (!stateFilter.has(featureState)) return false;
+
+    // Apply view filters (schedule, allocation, hierarchy, relations)
+    if (state.viewFilterService && !state.viewFilterService.featurePassesFilters(feature)) {
+      return false;
+    }
 
     if (feature.type === 'epic' && !state._viewService.showEpics) return false;
     if (feature.type === 'feature' && !state._viewService.showFeatures) return false;

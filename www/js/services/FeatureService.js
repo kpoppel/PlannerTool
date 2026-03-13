@@ -498,5 +498,162 @@ export class FeatureService {
     const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
     return t.features;
   }
+
+  /**
+   * Expand feature set with transitive closure of parent/child relations
+   * Given a set of feature IDs, return all features connected via parentEpic relationships
+   * Only includes features that exist in the database (excludes User Stories, etc.)
+   * @param {Set<string>} baseIds - Starting feature IDs
+   * @returns {Set<string>} - Expanded feature IDs including all ancestors and descendants
+   */
+  expandParentChildClosure(baseIds) {
+    const allFeatures = this.getEffectiveFeatures();
+    const featureById = new Map(allFeatures.map(f => [f.id, f]));
+    const expanded = new Set(baseIds);
+    const toProcess = [...baseIds];
+
+    while (toProcess.length > 0) {
+      const id = toProcess.pop();
+      const feature = featureById.get(id);
+      if (!feature) continue;
+
+      // Add parent epic if exists in database
+      if (feature.parentEpic && !expanded.has(feature.parentEpic)) {
+        // Only add if parent exists in our feature set
+        if (featureById.has(feature.parentEpic)) {
+          expanded.add(feature.parentEpic);
+          toProcess.push(feature.parentEpic);
+        }
+      }
+
+      // Add children (features that have this as parent)
+      // Only include children that exist in the database
+      const children = this._childrenByEpic.get(id) || [];
+      for (const childId of children) {
+        if (!expanded.has(childId) && featureById.has(childId)) {
+          expanded.add(childId);
+          toProcess.push(childId);
+        }
+      }
+    }
+
+    return expanded;
+  }
+
+  /**
+   * Expand feature set with all relation-linked tasks
+   * Includes successor, predecessor, and related-to links
+   * Only includes features that exist in the database (excludes User Stories, etc.)
+   * @param {Set<string>} baseIds - Starting feature IDs
+   * @returns {Set<string>} - Expanded feature IDs including all linked features
+   */
+  expandRelationLinks(baseIds) {
+    const allFeatures = this.getEffectiveFeatures();
+    const featureById = new Map(allFeatures.map(f => [f.id, f]));
+    const expanded = new Set(baseIds);
+    const toProcess = [...baseIds];
+
+    while (toProcess.length > 0) {
+      const id = toProcess.pop();
+      const feature = featureById.get(id);
+      if (!feature) continue;
+
+      // Process all relation types: successor, predecessor, related
+      // Only include relations that exist in our feature database
+      const relations = feature.relations || [];
+      for (const rel of relations) {
+        if (!rel || !rel.id) continue;
+        const relId = String(rel.id);
+        // Only add if the related feature exists in our database
+        if (!expanded.has(relId) && featureById.has(relId)) {
+          expanded.add(relId);
+          toProcess.push(relId);
+        }
+      }
+    }
+
+    return expanded;
+  }
+
+  /**
+   * Expand feature set with tasks allocated to selected teams
+   * @param {Array<string>} selectedTeamIds - Team IDs to filter by
+   * @returns {Set<string>} - Feature IDs that have allocations to any selected team
+   */
+  expandTeamAllocated(selectedTeamIds) {
+    const allFeatures = this.getEffectiveFeatures();
+    const teamIdSet = new Set(selectedTeamIds);
+    const expanded = new Set();
+
+    for (const feature of allFeatures) {
+      if (!feature.capacity || !Array.isArray(feature.capacity)) continue;
+
+      // Check if feature has any capacity allocated to selected teams
+      const hasAllocation = feature.capacity.some(cap => {
+        if (!cap || !cap.team) return false;
+        const capacity = Number(cap.capacity) || 0;
+        return capacity > 0 && teamIdSet.has(cap.team);
+      });
+
+      if (hasAllocation) {
+        expanded.add(feature.id);
+      }
+    }
+
+    return expanded;
+  }
+
+  /**
+   * Compute expanded feature set based on expansion options
+   * Each expansion type works from the original selectedIds to avoid compounding
+   * @param {Set<string>} selectedIds - Base selected feature IDs
+   * @param {Object} expansionOptions - Expansion configuration
+   * @param {boolean} expansionOptions.expandParentChild - Include parent/child transitive closure
+   * @param {boolean} expansionOptions.expandRelations - Include relation-linked tasks
+   * @param {boolean} expansionOptions.expandTeamAllocated - Include team-allocated tasks
+   * @param {Array<string>} expansionOptions.selectedTeamIds - Team IDs for team allocation expansion
+   * @returns {Object} - { expandedIds: Set, counts: { parentChild: number, relations: number, teamAllocated: number } }
+   */
+  computeExpandedFeatureSet(selectedIds, expansionOptions = {}) {
+    // Start with the base selected set
+    const expandedIds = new Set(selectedIds);
+    const counts = {
+      parentChild: 0,
+      relations: 0,
+      teamAllocated: 0
+    };
+
+    // Apply parent/child expansion FROM ORIGINAL SELECTED SET
+    if (expansionOptions.expandParentChild) {
+      const parentChildExpanded = this.expandParentChildClosure(selectedIds);
+      const beforeCount = expandedIds.size;
+      for (const id of parentChildExpanded) {
+        expandedIds.add(id);
+      }
+      counts.parentChild = expandedIds.size - beforeCount;
+    }
+
+    // Apply relation expansion FROM ORIGINAL SELECTED SET (not from parent/child expanded set)
+    if (expansionOptions.expandRelations) {
+      const relationsExpanded = this.expandRelationLinks(selectedIds);
+      const beforeCount = expandedIds.size;
+      for (const id of relationsExpanded) {
+        expandedIds.add(id);
+      }
+      counts.relations = expandedIds.size - beforeCount;
+    }
+
+    // Apply team allocation expansion (independent of selected set)
+    if (expansionOptions.expandTeamAllocated && expansionOptions.selectedTeamIds && expansionOptions.selectedTeamIds.length > 0) {
+      const teamAllocated = this.expandTeamAllocated(expansionOptions.selectedTeamIds);
+      const beforeCount = expandedIds.size;
+      for (const id of teamAllocated) {
+        expandedIds.add(id);
+      }
+      counts.teamAllocated = expandedIds.size - beforeCount;
+    }
+
+    return { expandedIds, counts };
+  }
 }
 

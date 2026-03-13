@@ -38,6 +38,11 @@ export class SidebarPersistenceService {
       sidebarState.viewOptions.selectedFeatureStates = state._stateFilterService.getSelectedStates();
     }
 
+    // Capture view filters
+    if (state.viewFilterService) {
+      sidebarState.viewOptions.viewFilters = state.viewFilterService.getFilters();
+    }
+
     // Capture project selections
     if (state.projects) {
       state.projects.forEach(project => {
@@ -136,6 +141,11 @@ export class SidebarPersistenceService {
       if (savedState.viewOptions) {
         // Apply view options silently; this method will not emit aggregated events when emitAggregated=false
         viewService.restoreView(savedState.viewOptions, false);
+
+        // Restore view filters if present
+        if (savedState.viewOptions.viewFilters && state.viewFilterService) {
+          state.viewFilterService.restoreFilters(savedState.viewOptions.viewFilters);
+        }
 
         // Restore state filters if present using silent restore, then emit consolidated updates
         if (savedState.viewOptions.selectedFeatureStates && Array.isArray(savedState.viewOptions.selectedFeatureStates)) {

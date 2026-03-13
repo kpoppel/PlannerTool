@@ -7,6 +7,7 @@ import { BaselineStore } from './BaselineStore.js';
 import { ScenarioManager } from './ScenarioManager.js';
 import { FeatureService } from './FeatureService.js';
 import { ViewService } from './ViewService.js';
+import { ViewFilterService } from './ViewFilterService.js';
 import { ColorService } from './ColorService.js';
 import { ConfigService } from './ConfigService.js';
 import { StateFilterService } from './StateFilterService.js';
@@ -54,6 +55,7 @@ class State {
     
     // View and configuration services
     this._viewService = new ViewService(bus);
+    this._viewFilterService = new ViewFilterService(bus);
     this._colorService = new ColorService(dataService);
     this._configService = new ConfigService(bus, dataService);
     this._stateFilterService = new StateFilterService(bus);
@@ -112,6 +114,15 @@ class State {
     // `state._initCompleted` to ensure persisted view state and other
     // initialization work has finished before proceeding.
     this._initCompleted = new Promise(resolve => { this._resolveInit = resolve; });
+    
+    // Dataset expansion state
+    this._expansionState = {
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false
+    };
+    // Cache for expanded feature IDs
+    this._expandedFeatureIdsCache = null;
   }
   
   // ========== Backward Compatibility Property Accessors ==========
@@ -125,6 +136,9 @@ class State {
   get condensedCards() { return this._viewService.condensedCards; }
   get capacityViewMode() { return this._viewService.capacityViewMode; }
   get featureSortMode() { return this._viewService.featureSortMode; }
+  
+  // ViewFilterService properties
+  get viewFilterService() { return this._viewFilterService; }
   
   // ConfigService properties
   get autosaveIntervalMin() { return this._configService.autosaveIntervalMin; }
@@ -150,6 +164,54 @@ class State {
   get viewManagementService() { return this._viewManagementService; }
   get savedViews() { return this._viewManagementService.getViews(); }
   get activeViewId() { return this._viewManagementService.getActiveViewId(); }
+  
+  // Expansion state properties
+  get expansionState() { return this._expansionState; }
+  
+  setExpansionState(options) {
+    if (options.expandParentChild !== undefined) this._expansionState.expandParentChild = options.expandParentChild;
+    if (options.expandRelations !== undefined) this._expansionState.expandRelations = options.expandRelations;
+    if (options.expandTeamAllocated !== undefined) this._expansionState.expandTeamAllocated = options.expandTeamAllocated;
+    // Invalidate cache
+    this._expandedFeatureIdsCache = null;
+  }
+  
+  /**
+   * Get expanded feature IDs based on current expansion state
+   * @returns {Set<string>} Set of feature IDs that pass expansion filters
+   */
+  getExpandedFeatureIds() {
+    // Return cached result if available
+    if (this._expandedFeatureIdsCache) return this._expandedFeatureIdsCache;
+    
+    const featureService = this._getFeatureService();
+    if (!featureService || !featureService.getEffectiveFeatures) {
+      return new Set();
+    }
+    
+    const allFeatures = featureService.getEffectiveFeatures();
+    const selectedProjectIds = this.projects.filter(p => p && p.selected).map(p => p.id);
+    const selectedFeatureIds = new Set(allFeatures.filter(f => selectedProjectIds.includes(f.project)).map(f => f.id));
+    
+    // If no expansion filters are active, return base selected set
+    if (!this._expansionState.expandParentChild && 
+        !this._expansionState.expandRelations && 
+        !this._expansionState.expandTeamAllocated) {
+      this._expandedFeatureIdsCache = selectedFeatureIds;
+      return selectedFeatureIds;
+    }
+    
+    const selectedTeamIds = this.teams.filter(t => t && t.selected).map(t => t.id);
+    const expansionResult = featureService.computeExpandedFeatureSet(selectedFeatureIds, {
+      expandParentChild: this._expansionState.expandParentChild,
+      expandRelations: this._expansionState.expandRelations,
+      expandTeamAllocated: this._expansionState.expandTeamAllocated,
+      selectedTeamIds: selectedTeamIds
+    });
+    
+    this._expandedFeatureIdsCache = expansionResult.expandedIds;
+    return expansionResult.expandedIds;
+  }
   // FeatureService accessor (lazy-initialized via _getFeatureService)
   get featureService() { return this._getFeatureService(); }
   
@@ -458,6 +520,8 @@ class State {
   setProjectSelected(id, selected) {
     this._ensureFilterManager();
     if (!this._projectTeamService.setProjectSelected(id, selected)) return;
+    // Invalidate expansion cache since project selection changed
+    this._expandedFeatureIdsCache = null;
     // Notify UI listeners of project list change (single consolidated event)
     try { bus.emit(ProjectEvents.CHANGED, this.projects); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
@@ -468,6 +532,8 @@ class State {
   setTeamSelected(id, selected) {
     this._ensureFilterManager();
     if (!this._projectTeamService.setTeamSelected(id, selected)) return;
+    // Invalidate expansion cache since team selection changed
+    this._expandedFeatureIdsCache = null;
     // Notify UI listeners of team list change (single consolidated event)
     try { bus.emit(TeamEvents.CHANGED, this.teams); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
@@ -483,6 +549,8 @@ class State {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setProjectsSelectedBulk(selections);
     if (!changed) return;
+    // Invalidate expansion cache since project selection changed
+    this._expandedFeatureIdsCache = null;
     // Notify listeners that project selection changed (single consolidated event)
     try { bus.emit(ProjectEvents.CHANGED, this.projects); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();
@@ -498,6 +566,8 @@ class State {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setTeamsSelectedBulk(selections);
     if (!changed) return;
+    // Invalidate expansion cache since team selection changed
+    this._expandedFeatureIdsCache = null;
     // Notify listeners that team selection changed (single consolidated event)
     try { bus.emit(TeamEvents.CHANGED, this.teams); } catch (e) { /* ignore */ }
     this.recomputeCapacityMetrics();

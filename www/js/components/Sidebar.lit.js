@@ -117,6 +117,109 @@ export class SidebarLit extends LitElement {
     .chip.active .chip-badge { background:#23344d; color:#fff; }
     .chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
 
+    /* Data Funnel (dataset status) */
+    .dataset-status {
+      background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .status-title { font-size: 11px; text-transform:uppercase; opacity:0.8; margin-bottom:8px; }
+    .status-flow { display:flex; align-items:center; gap:8px; }
+    .status-item { display:flex; flex-direction:column; align-items:center; flex:1; }
+    .status-number { font-size:16px; font-weight:800; color:var(--color-sidebar-text); }
+    .status-label { font-size:11px; opacity:0.85; }
+    .status-arrow { font-size:14px; opacity:0.6; }
+
+    /* Expand Dataset section */
+    .expansion-section {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(102, 126, 234, 0.03) 100%);
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .section-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; opacity: 0.95; }
+    .section-description { font-size: 11px; opacity: 0.75; margin-bottom: 10px; line-height: 1.4; }
+    .option-group { display: flex; flex-direction: column; gap: 8px; }
+    .option-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .option-row:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
+    .option-row.active { background: rgba(102, 126, 234, 0.25); border-color: rgba(102, 126, 234, 0.4); }
+    .option-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .option-checkbox {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.2);
+      flex-shrink: 0;
+    }
+    .option-row.active .option-checkbox { background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1); }
+    .option-checkbox::after { content: '✓'; color: white; font-size: 11px; font-weight: bold; opacity: 0; }
+    .option-row.active .option-checkbox::after { opacity: 1; }
+    .option-count { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.12); border-radius: 10px; font-weight: 600; }
+    .option-row.active .option-count { background: rgba(102, 126, 234, 0.4); }
+
+    /* View Filters section */
+    .filter-dimension {
+      margin-bottom: 10px;
+    }
+    .filter-dimension-title {
+      font-size: 11px;
+      font-weight: 600;
+      opacity: 0.8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .filter-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .filter-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-size: 12px;
+    }
+    .filter-option:hover { background: rgba(255,255,255,0.1); }
+    .filter-option.active { background: rgba(102, 126, 234, 0.25); border-color: rgba(102, 126, 234, 0.4); }
+    .filter-checkbox {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.2);
+      flex-shrink: 0;
+    }
+    .filter-option.active .filter-checkbox { background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1); }
+    .filter-checkbox::after { content: '✓'; color: white; font-size: 9px; font-weight: bold; opacity: 0; }
+    .filter-option.active .filter-checkbox::after { opacity: 1; }
+
     /* Sidebar-specific chips and lists */
     .sidebar-chip { padding:0 8px 0 0; border-radius:10px; background:transparent; border:1px solid rgba(0,0,0,0.06); box-sizing:border-box; min-height:25px; overflow:hidden; display:flex; align-items:stretch; }
     .sidebar-chip:hover, .sidebar-chip.chip-hover { background: rgba(255,255,255,0.18); cursor: pointer; }
@@ -247,6 +350,25 @@ export class SidebarLit extends LitElement {
     this.views = [];
     this.activeViewId = null;
     this.activeViewData = null;
+    // Data funnel metrics
+    this.selectedTasksCount = 0;
+    this.expandedTasksCount = 0; // placeholder until expansion features implemented
+    this.displayedTasksCount = 0;
+    // Expansion filter state
+    this.expandParentChild = false;
+    this.expandRelations = false;
+    this.expandTeamAllocated = false;
+    // Expansion counts for display
+    this.expandParentChildCount = 0;
+    this.expandRelationsCount = 0;
+    this.expandTeamAllocatedCount = 0;
+    // View filter state (from ViewFilterService)
+    this.viewFilters = {
+      schedule: { planned: true, unplanned: true },
+      allocation: { allocated: true, unallocated: true },
+      hierarchy: { hasParent: true, noParent: true },
+      relations: { hasLinks: true, noLinks: true }
+    };
   }
 
   _ensureGlobalPopoverStyles(){
@@ -303,8 +425,14 @@ export class SidebarLit extends LitElement {
     super.connectedCallback();
     // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
-    this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
-    this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
+    this._onProjectsChanged = (projects) => {
+      this.projects = projects ? [...projects] : [];
+      this._recomputeDataFunnel && this._recomputeDataFunnel();
+    };
+    this._onTeamsChanged = (teams) => {
+      this.teams = teams ? [...teams] : [];
+      this._recomputeDataFunnel && this._recomputeDataFunnel();
+    };
     this._onScenariosList = (payload) => {
       // Use the authoritative scenario objects from `state.scenarios` so
       // the UI has access to `overrides` and `isChanged` flags. The
@@ -350,6 +478,58 @@ export class SidebarLit extends LitElement {
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     bus.on(ViewManagementEvents.LIST, this._onViewsList);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    // Recompute data funnel when features or filters change
+    this._recomputeDataFunnel = () => {
+      try {
+        const feats = (state.featureService && state.featureService.getEffectiveFeatures && state.featureService.getEffectiveFeatures()) || [];
+        const selectedProjectIds = (this.projects || []).filter(p => p && p.selected).map(p => p.id);
+        
+        // Selected tasks: features whose project is selected
+        const selectedFeatureIds = new Set(feats.filter(f => selectedProjectIds.includes(f.project)).map(f => f.id));
+        this.selectedTasksCount = selectedFeatureIds.size;
+        
+        // Expanded tasks: apply expansion filters
+        const selectedTeamIds = (this.teams || []).filter(t => t && t.selected).map(t => t.id);
+        const expansionResult = state.featureService && state.featureService.computeExpandedFeatureSet 
+          ? state.featureService.computeExpandedFeatureSet(selectedFeatureIds, {
+              expandParentChild: this.expandParentChild,
+              expandRelations: this.expandRelations,
+              expandTeamAllocated: this.expandTeamAllocated,
+              selectedTeamIds: selectedTeamIds
+            })
+          : { expandedIds: selectedFeatureIds, counts: { parentChild: 0, relations: 0, teamAllocated: 0 } };
+        
+        const expandedFeatureIds = expansionResult.expandedIds;
+        this.expandedTasksCount = expandedFeatureIds.size - this.selectedTasksCount;
+        this.expandParentChildCount = expansionResult.counts.parentChild;
+        this.expandRelationsCount = expansionResult.counts.relations;
+        this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
+        
+        // Displayed tasks: apply state filter and view filters to expanded set
+        const stateFilter = state.selectedFeatureStateFilter || new Set();
+        let displayedFeatures = feats.filter(f => expandedFeatureIds.has(f.id));
+        
+        // Apply state filter
+        if (stateFilter && typeof stateFilter.has === 'function' && stateFilter.size > 0) {
+          displayedFeatures = displayedFeatures.filter(f => stateFilter.has(f.state || ''));
+        }
+        
+        // Apply view filters
+        if (state.viewFilterService) {
+          displayedFeatures = displayedFeatures.filter(f => state.viewFilterService.featurePassesFilters(f));
+        }
+        
+        this.displayedTasksCount = displayedFeatures.length;
+      } catch (e) {
+        console.warn('[Sidebar] _recomputeDataFunnel error:', e);
+        this.selectedTasksCount = 0; this.expandedTasksCount = 0; this.displayedTasksCount = 0;
+        this.expandParentChildCount = 0; this.expandRelationsCount = 0; this.expandTeamAllocatedCount = 0;
+      }
+      this.requestUpdate();
+    };
+    bus.on(FeatureEvents.UPDATED, this._recomputeDataFunnel);
+    bus.on(FilterEvents.CHANGED, this._recomputeDataFunnel);
+    bus.on(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
     // Listen for view option changes to trigger sidebar state save
     const onViewOptionChange = () => this._saveSidebarState();
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
@@ -370,6 +550,10 @@ export class SidebarLit extends LitElement {
       this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
       console.log('[Sidebar] Initializing views from state:', state.savedViews);
       this._onViewsList({ views: state.savedViews, activeViewId: state.activeViewId });
+      // Initialize view filters from service
+      if (state.viewFilterService) {
+        this.viewFilters = state.viewFilterService.getFilters();
+      }
     } catch (e) {
       // Defensive: ignore if state is not yet ready
       console.warn('[Sidebar] Error initializing from state:', e);
@@ -504,6 +688,12 @@ export class SidebarLit extends LitElement {
       bus.off(StateFilterEvents.CHANGED, viewHandler);
       bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
     }
+    if (this._recomputeDataFunnel) {
+      bus.off(FeatureEvents.UPDATED, this._recomputeDataFunnel);
+      bus.off(FilterEvents.CHANGED, this._recomputeDataFunnel);
+      bus.off(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
+      this._recomputeDataFunnel = null;
+    }
     // Clean up restore-on-data handler if still registered
     if (this._restoreOnDataHandler) {
       bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
@@ -618,6 +808,102 @@ export class SidebarLit extends LitElement {
   _handleTeamToggle(){
     const anyUnchecked = this._anyUncheckedTeams();
     this.setAllInList('team', anyUnchecked);
+  }
+
+  _toggleExpansion(type) {
+    if (type === 'parentChild') {
+      this.expandParentChild = !this.expandParentChild;
+    } else if (type === 'relations') {
+      this.expandRelations = !this.expandRelations;
+    } else if (type === 'teamAllocated') {
+      this.expandTeamAllocated = !this.expandTeamAllocated;
+    }
+    // Sync expansion state to State service
+    state.setExpansionState({
+      expandParentChild: this.expandParentChild,
+      expandRelations: this.expandRelations,
+      expandTeamAllocated: this.expandTeamAllocated
+    });
+    // Trigger data funnel recomputation
+    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    // Emit filter change event so the board updates
+    bus.emit(FilterEvents.CHANGED, { 
+      expansion: { 
+        parentChild: this.expandParentChild, 
+        relations: this.expandRelations, 
+        teamAllocated: this.expandTeamAllocated 
+      } 
+    });
+    this._saveSidebarState();
+  }
+
+  _toggleViewFilter(dimension, option) {
+    state.viewFilterService.toggleFilter(dimension, option);
+    this.viewFilters = state.viewFilterService.getFilters();
+    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    this._saveSidebarState();
+    this.requestUpdate();
+  }
+
+  _renderViewFilters() {
+    const filterDimensions = [
+      { 
+        key: 'schedule', 
+        title: 'Schedule',
+        options: [
+          { key: 'planned', label: 'Planned' },
+          { key: 'unplanned', label: 'Unplanned' }
+        ]
+      },
+      { 
+        key: 'allocation', 
+        title: 'Allocation',
+        options: [
+          { key: 'allocated', label: 'Allocated' },
+          { key: 'unallocated', label: 'Unallocated' }
+        ]
+      },
+      { 
+        key: 'hierarchy', 
+        title: 'Hierarchy',
+        options: [
+          { key: 'hasParent', label: 'Has Parent' },
+          { key: 'noParent', label: 'No Parent' }
+        ]
+      },
+      { 
+        key: 'relations', 
+        title: 'Relations',
+        options: [
+          { key: 'hasLinks', label: 'Has Links' },
+          { key: 'noLinks', label: 'No Links' }
+        ]
+      }
+    ];
+
+    return html`
+      <div class="filter-dimensions">
+        ${filterDimensions.map(dim => html`
+          <div class="filter-dimension">
+            <div class="filter-dimension-title">${dim.title}</div>
+            <div class="filter-options">
+              ${dim.options.map(opt => {
+                const isActive = this.viewFilters[dim.key][opt.key];
+                return html`
+                  <div 
+                    class="filter-option ${isActive ? 'active' : ''}"
+                    @click=${() => this._toggleViewFilter(dim.key, opt.key)}
+                  >
+                    <div class="filter-checkbox"></div>
+                    <span>${opt.label}</span>
+                  </div>
+                `;
+              })}
+            </div>
+          </div>
+        `)}
+      </div>
+    `;
   }
 
   _featureIconSvg(){
@@ -987,6 +1273,76 @@ export class SidebarLit extends LitElement {
     return html`
       <aside class="sidebar ${this.open? '' : 'closed'}">
         <div class="sidebar-content">
+        <section class="sidebar-section">
+          <div class="dataset-status">
+            <div class="status-title">Data Funnel</div>
+            <div class="status-flow">
+              <div class="status-item">
+                <div class="status-number">${this.selectedTasksCount}</div>
+                <div class="status-label">Selected</div>
+              </div>
+              <div class="status-arrow">→</div>
+              <div class="status-item">
+                <div class="status-number">${this.expandedTasksCount > 0 ? '+' + this.expandedTasksCount : this.expandedTasksCount}</div>
+                <div class="status-label">Expanded</div>
+              </div>
+              <div class="status-arrow">→</div>
+              <div class="status-item">
+                <div class="status-number">${this.displayedTasksCount}</div>
+                <div class="status-label">Displayed</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Expand Dataset Section -->
+        <section class="sidebar-section">
+          <div class="expansion-section">
+            <div class="section-title">🔗 Expand Dataset</div>
+            <div class="section-description">
+              Add related tasks to your working dataset
+            </div>
+            
+            <div class="option-group">
+              <div class="option-row ${this.expandParentChild ? 'active' : ''}" @click=${() => this._toggleExpansion('parentChild')}>
+                <div class="option-label">
+                  <div class="option-checkbox"></div>
+                  <span>Parent/Child Links</span>
+                </div>
+                <span class="option-count">${this.expandParentChildCount > 0 ? '+' + this.expandParentChildCount : this.expandParentChildCount}</span>
+              </div>
+              
+              <div class="option-row ${this.expandRelations ? 'active' : ''}" @click=${() => this._toggleExpansion('relations')}>
+                <div class="option-label">
+                  <div class="option-checkbox"></div>
+                  <span>Dependencies</span>
+                </div>
+                <span class="option-count">${this.expandRelationsCount > 0 ? '+' + this.expandRelationsCount : this.expandRelationsCount}</span>
+              </div>
+              
+              <div class="option-row ${this.expandTeamAllocated ? 'active' : ''}" @click=${() => this._toggleExpansion('teamAllocated')}>
+                <div class="option-label">
+                  <div class="option-checkbox"></div>
+                  <span>Team Allocated</span>
+                </div>
+                <span class="option-count">${this.expandTeamAllocatedCount > 0 ? '+' + this.expandTeamAllocatedCount : this.expandTeamAllocatedCount}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- View Filters Section -->
+        <section class="sidebar-section">
+          <div class="expansion-section">
+            <div class="section-title">👁️ View Filters</div>
+            <div class="section-description">
+              Filter displayed tasks by attributes
+            </div>
+            
+            ${this._renderViewFilters()}
+          </div>
+        </section>
+
         <section class="sidebar-section" id="viewOptionsSection">
           <div class="sidebar-section-header"><span class="sidebar-title">View Options</span></div>
           <div><div id="viewOptionsContainer"></div></div>
