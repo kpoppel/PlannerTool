@@ -48,6 +48,9 @@ class ConfigModal extends LitElement {
           <style>
             .config-form {
               display: block;
+              max-width: 640px;
+              width: 100%;
+              box-sizing: border-box;
             }
             .form-row {
               margin-bottom: 16px;
@@ -61,6 +64,8 @@ class ConfigModal extends LitElement {
             }
             .form-row input {
               width: 100%;
+              max-width: 100%;
+              box-sizing: border-box;
               padding: 8px 10px;
               border: 1px solid #ccc;
               border-radius: 4px;
