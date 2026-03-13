@@ -1,0 +1,4 @@
+[
+  { "title": "Introduction", "file": "intro.md", "tags": ["overview","getting-started"] },
+  { "title": "Quick Usage", "file": "usage.md", "tags": ["howto","examples"] }
+]
