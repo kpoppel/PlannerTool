@@ -169,22 +169,8 @@ export function initViewOptions(container){
     (val)=> state._viewService.setShowDependencies(val)
   );
   // Show Unallocated Cards - use ViewService directly
-  renderToggle(root, 'Show Unallocated', 
-    ()=> state._viewService.showUnassignedCards, 
-    (val)=> state._viewService.setShowUnallocatedCards(val)
-  );
-  // Show Unplanned Work - only when feature flag is enabled
-  if (featureFlags.SHOW_UNPLANNED_WORK) {
-    renderToggle(root, 'Show Unplanned', 
-      ()=> state._viewService.showUnplannedWork, 
-      (val)=> state._viewService.setShowUnplannedWork(val)
-    );
-  }
-  // Show Only Project Hierarchy - filter to only show features linked to selected projects
-  renderToggle(root, 'Show Only Project Hierarchy', 
-    ()=> state._viewService.showOnlyProjectHierarchy, 
-    (val)=> state._viewService.setShowOnlyProjectHierarchy(val)
-  );
+  // (Removed) Show Unallocated / Show Unplanned / Show Only Project Hierarchy
+  // These controls are now provided via the dimensional View Filters (Sidebar).
   // Capacity selector + Open Graph action
   const capWrapper = document.createElement('div');
   const capTitle = document.createElement('div');

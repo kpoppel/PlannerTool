@@ -30,6 +30,50 @@ export class ViewFilterService {
         noLinks: true     // No dependency links
       }
     };
+
+    // Prevent recursive sync loops when emitting/listening to FilterEvents.CHANGED
+    this._suppressSync = false;
+
+    // Listen for legacy FilterEvents.CHANGED emissions (from ViewService)
+    // and update internal filters silently so legacy toggles continue to work.
+    // Subscribe to legacy FilterEvents.CHANGED so ViewService toggles
+    // update these dimensional filters (silent update to avoid loops).
+    if (this.bus && typeof this.bus.on === 'function') {
+      this.bus.on(FilterEvents.CHANGED, (payload) => {
+      if (this._suppressSync) return;
+      if (!payload || typeof payload !== 'object') return;
+      let changed = false;
+      // Map legacy flags to dimensional filters
+      if (typeof payload.showUnassignedCards !== 'undefined') {
+        const val = !!payload.showUnassignedCards;
+        if (this._filters.allocation.unallocated !== val) {
+          this._filters.allocation.unallocated = val;
+          changed = true;
+        }
+      }
+      if (typeof payload.showUnplannedWork !== 'undefined') {
+        const val = !!payload.showUnplannedWork;
+        if (this._filters.schedule.unplanned !== val) {
+          this._filters.schedule.unplanned = val;
+          changed = true;
+        }
+      }
+      if (typeof payload.showOnlyProjectHierarchy !== 'undefined') {
+        // Best-effort mapping: when "show only project hierarchy" is true,
+        // prefer showing items with parents and hide orphans.
+        const val = !!payload.showOnlyProjectHierarchy;
+        if (this._filters.hierarchy.hasParent !== val || this._filters.hierarchy.noParent === val) {
+          this._filters.hierarchy.hasParent = val;
+          this._filters.hierarchy.noParent = !val;
+          changed = true;
+        }
+      }
+      if (changed) {
+        // Notify viewers to update display
+        this.bus.emit && this.bus.emit(FeatureEvents.UPDATED);
+      }
+      });
+    }
   }
   
   /**
@@ -123,7 +167,10 @@ export class ViewFilterService {
    * Emit filter change event
    */
   _emitFilterChanged() {
+    // Emit while suppressing our own listener to avoid loops
+    this._suppressSync = true;
     this.bus.emit(FilterEvents.CHANGED, { viewFilters: this._filters });
+    this._suppressSync = false;
     this.bus.emit(FeatureEvents.UPDATED);
   }
   

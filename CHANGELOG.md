@@ -30,6 +30,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Changed
 
 - Removed tour functionality (Shepherd library, TourStarter.js, and all data-tour attributes). The guided tour is no longer needed with the refactored UI.
+ - Removed view chips from View Options: "Show Unallocated", "Show Unplanned", and "Show Only Project Hierarchy". Their functionality is available via the dimensional View Filters (Sidebar) and expansion options.
+ - View service cleanup: `ViewFilterService` now syncs legacy `FilterEvents.CHANGED` flags (`showUnassignedCards`, `showUnplannedWork`, `showOnlyProjectHierarchy`) so existing code using `ViewService` setters remains compatible while filters are centralized.
+ - Removed legacy keyboard shortcut handlers for view toggles (D/C/U/A/H) from the Sidebar; global shortcuts remain limited to app search (Ctrl+Shift+F).
 ### Fixed
 
 ## [v1.15.1] - 2026-03-13
