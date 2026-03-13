@@ -7,6 +7,7 @@ import './PlanMenu.lit.js';
 import './TeamMenu.lit.js';
 import './ScenarioMenu.lit.js';
 import './ViewMenu.lit.js';
+import './ToolsMenu.lit.js';
 
 export class TopMenuBarLit extends LitElement {
   static properties = {
@@ -328,6 +329,13 @@ export class TopMenuBarLit extends LitElement {
             Team
             ${this.selectedTeamsCount ? html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>` : ''}
           </div>
+          <div class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
+            id="toolsMenuBtn"
+            role="button"
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('tools', e)}>
+            Tools
+          </div>
         </div>
 
         <div class="menu-right">
@@ -359,6 +367,8 @@ export class TopMenuBarLit extends LitElement {
         return html`<plan-menu style="${style}" .projects=${this.projects} .activeViewId=${this.activeViewId} .activeViewData=${this.activeViewData}></plan-menu>`;
       case 'team':
         return html`<team-menu style="${style}" .teams=${this.teams} .activeViewId=${this.activeViewId} .activeViewData=${this.activeViewData}></team-menu>`;
+      case 'tools':
+        return html`<tools-menu style="${style}"></tools-menu>`;
       default:
         return null;
     }

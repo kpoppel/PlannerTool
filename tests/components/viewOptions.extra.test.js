@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { initViewOptions } from '../../www/js/components/viewOptions.js';
+import { initViewOptions } from '../../www/js/components/Sidebar.lit.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('viewOptions extra', () => {

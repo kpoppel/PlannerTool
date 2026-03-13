@@ -4,12 +4,8 @@ import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, ViewManagementEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { initViewOptions } from './viewOptions.js';
-import { ColorPopoverLit } from '../components/ColorPopover.lit.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { isEnabled } from '../config.js';
 import { SidebarPersistenceService } from '../services/SidebarPersistenceService.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -174,7 +170,7 @@ export class SidebarLit extends LitElement {
     .option-count { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.12); border-radius: 10px; font-weight: 600; }
     .option-row.active .option-count { background: rgba(102, 126, 234, 0.4); }
 
-    /* View Filters section */
+    /* Task Filters section */
     .filter-dimension {
       margin-bottom: 10px;
     }
@@ -220,6 +216,44 @@ export class SidebarLit extends LitElement {
     .filter-checkbox::after { content: '✓'; color: white; font-size: 9px; font-weight: bold; opacity: 0; }
     .filter-option.active .filter-checkbox::after { opacity: 1; }
 
+    /* Segmented button groups for radio-style options */
+    .segmented-group {
+      display: flex;
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 4px;
+      padding: 2px;
+    }
+    .segment-btn {
+      flex: 1;
+      padding: 5px 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 3px;
+      color: var(--color-sidebar-text);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .segment-btn:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255,255,255,0.15);
+    }
+    .segment-btn.active {
+      background: rgba(102, 126, 234, 0.35);
+      border-color: rgba(102, 126, 234, 0.5);
+      color: var(--color-sidebar-text);
+      font-weight: 600;
+      box-shadow: 0 0 0 1px rgba(102, 126, 234, 0.3) inset;
+    }
+    .segment-btn:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 1px;
+    }
+
     /* Sidebar-specific chips and lists */
     .sidebar-chip { padding:0 8px 0 0; border-radius:10px; background:transparent; border:1px solid rgba(0,0,0,0.06); box-sizing:border-box; min-height:25px; overflow:hidden; display:flex; align-items:stretch; }
     .sidebar-chip:hover, .sidebar-chip.chip-hover { background: rgba(255,255,255,0.18); cursor: pointer; }
@@ -260,35 +294,42 @@ export class SidebarLit extends LitElement {
 
     .segmented-control {
       display: flex;
+      gap: 6px;
       border-radius: 16px;
-      overflow: hidden;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 4px;
+      background: transparent;
+      border: none;
+      align-items: center;
     }
 
     .segment {
-      flex: 1;
-      padding: 0;
-      border: none;
-      background: transparent;
-      color: var(--color-sidebar-text);
-      font-size: 0.8rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      border-right: 1px solid rgba(255, 255, 255, 0.15);
-      user-select: none;
-      line-height: 1;
-      padding-top: 6px;
-      padding-bottom: 6px;
+      /* Match .chip styles exactly for consistency */
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:4px 10px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.25);
+      color:var(--color-sidebar-text);
+      background:rgba(255,255,255,0.08);
+      cursor:pointer;
+      font-size:0.8rem;
+      font-weight:600;
+      line-height:1;
+      user-select:none;
+      transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
     }
 
-    .segment:last-child { border-right: none; }
-    .segment:hover:not(.active) { background: rgba(255, 255, 255, 0.14); }
-    .segment.active { background: white; color: black; }
-    .segment.first { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
-    .segment.last { border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
-    .segment:focus-visible { outline: 2px solid #5cc8ff; outline-offset: -2px; z-index: 1; }
+    .segment:hover:not(.active) { background: rgba(255,255,255,0.14); }
+    .segment.active, .segment[aria-pressed="true"], .segment[aria-checked="true"] {
+      background:#fff;
+      color:#23344d;
+      border-color:#fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset, 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .segment.first { border-top-left-radius:16px; border-bottom-left-radius:16px; }
+    .segment.last { border-top-right-radius:16px; border-bottom-right-radius:16px; }
+    .segment:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; z-index:2; }
 
     /* Accent-enabled chip variant */
     .chip-with-accent.active { background: #fff; color: #23344d; border-left-color: var(--chip-accent); border-right-color: var(--chip-accent); border-left-style: solid; border-right-style: solid; border-left-width: 8px; border-right-width: 8px; }
@@ -338,8 +379,7 @@ export class SidebarLit extends LitElement {
     this.serverStatus = 'loading';
     this.serverName = null;
     this._persistenceService = new SidebarPersistenceService(dataService);
-    // Ensure global styles for popovers appended to document.body
-    try { this._ensureGlobalPopoverStyles && this._ensureGlobalPopoverStyles(); } catch (e) { /* ignore in non-DOM env */ }
+    // Global popover styles are provided by TopMenu; no sidebar-specific injection needed
     this._didRestoreSidebarState = false;
 
     // Reactive properties
@@ -362,63 +402,21 @@ export class SidebarLit extends LitElement {
     this.expandParentChildCount = 0;
     this.expandRelationsCount = 0;
     this.expandTeamAllocatedCount = 0;
-    // View filter state (from ViewFilterService)
-    this.viewFilters = {
+    // Task filter state (from TaskFilterService)
+    this.taskFilters = {
       schedule: { planned: true, unplanned: true },
       allocation: { allocated: true, unallocated: true },
       hierarchy: { hasParent: true, noParent: true },
       relations: { hasLinks: true, noLinks: true }
     };
+    // Dynamic state & type filters (populated from baseline/features)
+    this.availableFeatureStates = state.availableFeatureStates || [];
+    this.availableTaskTypes = [];
+    this.selectedTaskTypes = new Set();
+    this._taskTypesInitialized = false;
   }
 
-  _ensureGlobalPopoverStyles(){
-    if (typeof document === 'undefined') return;
-    if (document.getElementById('sidebar-popover-styles')) return;
-    const s = document.createElement('style');
-    s.id = 'sidebar-popover-styles';
-    s.textContent = `
-.scenario-menu-popover, .view-menu-popover {
-  position: absolute;
-  background: #fff;
-  color: #222;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-  min-width: 160px;
-  z-index: 2000;
-  font-family: var(--font-family, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial);
-  font-size: 14px;
-}
-.scenario-menu-popover .scenario-menu-item,
-.view-menu-popover .scenario-menu-item {
-  margin: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  line-height: 1;
-  color: #222;
-}
-.scenario-menu-popover .scenario-menu-item span:first-child,
-.view-menu-popover .scenario-menu-item span:first-child {
-  display: inline-flex;
-  width: 22px;
-  justify-content: center;
-  align-items: center;
-  font-size: 16px;
-}
-.scenario-menu-popover .scenario-menu-item span:last-child,
-.view-menu-popover .scenario-menu-item span:last-child {
-  flex: 1;
-}
-.scenario-menu-popover .scenario-menu-item:hover,
-.view-menu-popover .scenario-menu-item:hover { background: #f3f5f7; }
-.scenario-menu-popover .scenario-menu-item.disabled,
-.view-menu-popover .scenario-menu-item.disabled { color: #999; cursor: default; }
-`;
-    document.head.appendChild(s);
-  }
+  
 
 
   connectedCallback(){
@@ -514,9 +512,9 @@ export class SidebarLit extends LitElement {
           displayedFeatures = displayedFeatures.filter(f => stateFilter.has(f.state || ''));
         }
         
-        // Apply view filters
-        if (state.viewFilterService) {
-          displayedFeatures = displayedFeatures.filter(f => state.viewFilterService.featurePassesFilters(f));
+        // Apply task filters
+        if (state.taskFilterService) {
+          displayedFeatures = displayedFeatures.filter(f => state.taskFilterService.featurePassesFilters(f));
         }
         
         this.displayedTasksCount = displayedFeatures.length;
@@ -530,6 +528,12 @@ export class SidebarLit extends LitElement {
     bus.on(FeatureEvents.UPDATED, this._recomputeDataFunnel);
     bus.on(FilterEvents.CHANGED, this._recomputeDataFunnel);
     bus.on(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
+    // Keep local copies of dynamic state/type lists in sync
+    this._onAvailableStatesChanged = (states) => { this.availableFeatureStates = Array.isArray(states) ? [...states] : (state.availableFeatureStates || []); this.requestUpdate(); };
+    bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
+
+    this._onFeaturesForTypes = () => { this._computeAvailableTaskTypes(); };
+    bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Listen for view option changes to trigger sidebar state save
     const onViewOptionChange = () => this._saveSidebarState();
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
@@ -550,10 +554,15 @@ export class SidebarLit extends LitElement {
       this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
       console.log('[Sidebar] Initializing views from state:', state.savedViews);
       this._onViewsList({ views: state.savedViews, activeViewId: state.activeViewId });
-      // Initialize view filters from service
-      if (state.viewFilterService) {
-        this.viewFilters = state.viewFilterService.getFilters();
+      // Initialize task filters from service
+      if (state.taskFilterService) {
+        this.taskFilters = state.taskFilterService.getFilters();
       }
+      // Initialize state & task type filters
+      this.availableFeatureStates = state.availableFeatureStates || [];
+      this._computeAvailableTaskTypes();
+      // Local Taskboard options state
+      this._graphType = 'capacity';
     } catch (e) {
       // Defensive: ignore if state is not yet ready
       console.warn('[Sidebar] Error initializing from state:', e);
@@ -590,8 +599,7 @@ export class SidebarLit extends LitElement {
       return handlers;
     });
 
-    const container = this.shadowRoot.querySelector('#viewOptionsContainer');
-    if(container) initViewOptions(container);
+
 
     const onPluginsChanged = () => this.requestUpdate();
     this._onPluginsChanged = onPluginsChanged;
@@ -647,6 +655,8 @@ export class SidebarLit extends LitElement {
       bus.off(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
       this._recomputeDataFunnel = null;
     }
+    if (this._onAvailableStatesChanged) bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
+    if (this._onFeaturesForTypes) bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Clean up restore-on-data handler if still registered
     if (this._restoreOnDataHandler) {
       bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
@@ -666,101 +676,6 @@ export class SidebarLit extends LitElement {
       [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
         .forEach(evt => bus.off(evt, this._onPluginsChanged));
     }
-    
-    // Clean up restore-on-data handler if still registered
-    if (this._restoreOnDataHandler) {
-      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      this._restoreOnDataHandler = null;
-    }
-    super.disconnectedCallback();
-  }
-  
-
-  _onPluginClicked(pluginId){
-    const isActive = pluginManager.isActive(pluginId);
-    const method = isActive ? 'deactivate' : 'activate';
-    pluginManager[method](pluginId).catch(console.warn);
-  }
-
-  async _openConfig(){
-    const { openConfigModal } = await import('./modalHelpers.js');
-    await openConfigModal();
-  }
-
-  async _openHelp(){
-    const { openHelpModal } = await import('./modalHelpers.js');
-    await openHelpModal();
-  }
-
-  _onProjectsChanged(){ this.requestUpdate(); }
-  _onTeamsChanged(){ this.requestUpdate(); }
-  _onScenariosChanged(){ this.requestUpdate(); }
-  _onDataEvents(){ this.requestUpdate(); }
-
-  async refreshServerStatus(){
-    try{
-      const h = await dataService.checkHealth();
-      const status = h.status || (h.ok ? 'ok' : 'error');
-      this.serverName = h.server_name || null;
-      const ups = Number(h.uptime_seconds);
-      const uptimeStr = Number.isNaN(ups) ? '' : (() => {
-        const totalMinutes = Math.floor(ups / 60);
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        return ` - Uptime: ${hours}h ${minutes}m`;
-      })();
-      this.serverStatus = `Version: ${h.version} | Server: ${status}${uptimeStr}`;
-    }catch(err){
-      this.serverStatus = 'Server: error';
-    }
-    this.requestUpdate();
-  }
-
-  toggleProject(pid){
-    const current = (this.projects || []).find(p=>p.id===pid);
-    const newVal = !(current && current.selected);
-    state.setProjectSelected(pid, newVal);
-    // persistence will be triggered; state change will update this.projects via bus
-    this._saveSidebarState();
-  }
-
-  toggleTeam(tid){
-    const current = (this.teams || []).find(t=>t.id===tid);
-    const newVal = !(current && current.selected);
-    state.setTeamSelected(tid, newVal);
-    this._saveSidebarState();
-  }
-
-  setAllInList(type, checked){
-    if(type === 'project'){
-      // Build a selections map and apply in bulk to avoid emitting per-item events
-      const selections = (this.projects || []).reduce((acc, p) => { acc[p.id] = !!checked; return acc; }, {});
-      state.setProjectsSelectedBulk(selections);
-    } else if(type === 'team'){
-      const selections = (this.teams || []).reduce((acc, t) => { acc[t.id] = !!checked; return acc; }, {});
-      state.setTeamsSelectedBulk(selections);
-    }
-    // Persist sidebar state after bulk update
-    this._saveSidebarState();
-  }
-
-  _anyUncheckedProjects(){
-    return (this.projects || []).some(p => !p.selected);
-  }
-
-  _anyUncheckedTeams(){
-    return (this.teams || []).some(t => !t.selected);
-  }
-
-  _handleProjectToggle(){
-    const anyUnchecked = this._anyUncheckedProjects();
-    this.setAllInList('project', anyUnchecked);
-  }
-
-  _handleTeamToggle(){
-    const anyUnchecked = this._anyUncheckedTeams();
-    this.setAllInList('team', anyUnchecked);
   }
 
   _toggleExpansion(type) {
@@ -790,15 +705,68 @@ export class SidebarLit extends LitElement {
     this._saveSidebarState();
   }
 
-  _toggleViewFilter(dimension, option) {
-    state.viewFilterService.toggleFilter(dimension, option);
-    this.viewFilters = state.viewFilterService.getFilters();
+  _toggleTaskFilter(dimension, option) {
+    state.taskFilterService.toggleFilter(dimension, option);
+    this.taskFilters = state.taskFilterService.getFilters();
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     this._saveSidebarState();
     this.requestUpdate();
   }
 
-  _renderViewFilters() {
+  // Compute available task types from baseline/features (no hardcoded fallback)
+  _computeAvailableTaskTypes(){
+    try{
+      const baseline = state.baselineFeatures || [];
+      const types = new Set();
+      baseline.forEach(f => {
+        const t = f.type || f.workItemType || f.work_item_type || null;
+        if (t) types.add(String(t));
+      });
+      this.availableTaskTypes = Array.from(types).sort();
+      // Default selection only on first initialization: select all if no prior selection exists
+      if (!this._taskTypesInitialized) {
+        if (this.availableTaskTypes.length > 0 && (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0)) {
+          this.selectedTaskTypes = new Set(this.availableTaskTypes);
+          // emit initial filter so other parts can respond
+          bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+        }
+        this._taskTypesInitialized = true;
+      }
+      this.requestUpdate();
+    }catch(e){ console.warn('[Sidebar] _computeAvailableTaskTypes error', e); }
+  }
+
+  _applySavedTaskTypes(arr){
+    if (!Array.isArray(arr)) return;
+    const valid = (this.availableTaskTypes || []).filter(t => arr.includes(t));
+    this.selectedTaskTypes = new Set(valid);
+    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+    this.requestUpdate();
+    this._taskTypesInitialized = true;
+  }
+
+  _toggleTaskType(type){
+    if (!type) return;
+    if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
+    if (this.selectedTaskTypes.has(type)) this.selectedTaskTypes.delete(type);
+    else this.selectedTaskTypes.add(type);
+    // Mirror legacy visibility toggles for epics/features when applicable
+    try{
+      const lowered = (type || '').toString().toLowerCase();
+      const hasEpic = Array.from(this.selectedTaskTypes).some(t => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics');
+      const hasFeature = Array.from(this.selectedTaskTypes).some(t => String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features');
+      if (state && state._viewService) {
+        state._viewService.setShowEpics(!!hasEpic);
+        state._viewService.setShowFeatures(!!hasFeature);
+      }
+    }catch(e){/* ignore */}
+    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+    this._saveSidebarState();
+    this.requestUpdate();
+  }
+
+
+  _renderTaskFilterDimensions() {
     const filterDimensions = [
       { 
         key: 'schedule', 
@@ -835,17 +803,17 @@ export class SidebarLit extends LitElement {
     ];
 
     return html`
-      <div class="filter-dimensions">
+      <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${filterDimensions.map(dim => html`
           <div class="filter-dimension">
             <div class="filter-dimension-title">${dim.title}</div>
-            <div class="filter-options">
+            <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
               ${dim.options.map(opt => {
-                const isActive = this.viewFilters[dim.key][opt.key];
+                const isActive = this.taskFilters[dim.key][opt.key];
                 return html`
                   <div 
                     class="filter-option ${isActive ? 'active' : ''}"
-                    @click=${() => this._toggleViewFilter(dim.key, opt.key)}
+                    @click=${() => this._toggleTaskFilter(dim.key, opt.key)}
                   >
                     <div class="filter-checkbox"></div>
                     <span>${opt.label}</span>
@@ -859,348 +827,54 @@ export class SidebarLit extends LitElement {
     `;
   }
 
-  _featureIconSvg(){
-    return featureTemplate;
-  }
-
-  async _openColorPopover(e, type, id){
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const cp = await ColorPopoverLit.ensureInstance(PALETTE);
-    await cp.updateComplete;
-    cp.openFor(type, id, rect);
-  }
-
-  _renderEntityList(type, items, onToggle){
-    return html`${items.map(item => {
-      // For teams, only count features with non-zero allocation
-      let epicsCount = 0;
-      let featuresCount = 0;
-      if (type === 'project') {
-        epicsCount = state.countEpicsForProject(item.id);
-        featuresCount = state.countFeaturesForProject(item.id);
-      } else {
-        epicsCount = state.countEpicsForTeam(item.id);
-        featuresCount = state.countFeaturesForTeam(item.id);
-      }
-      
-      return html`
-        <li class="sidebar-list-item">
-          <div class="chip sidebar-chip ${item.selected? 'active':''}" 
-               style="display:flex;align-items:stretch;gap:8px;width:100%;" 
-               @click=${(e)=> { if(!e.target.closest('.color-dot')) onToggle(item.id); }}>
-            <span class="color-dot" 
-                  data-color-id="${item.id}" 
-                  style="background:${item.color}" 
-                  aria-hidden="true" 
-                  @click=${(e) => this._openColorPopover(e, type, item.id)}></span>
-            <div class="${type}-name-col" title="${item.name}" style="align-self:center">
-              ${item.name}${type === 'team' && item.short ? html` <span class="team-short">(${item.short})</span>` : ''}
-            </div>
-            <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
-              <span class="chip-badge">${epicsCount}</span>
-              <span class="chip-badge">${featuresCount}</span>
-            </div>
+  _renderTaskFilters(){
+    // Render dynamic 'Task Filters' box with States and Types
+    const states = this.availableFeatureStates || [];
+    const types = this.availableTaskTypes || [];
+    return html`${states.length === 0 && types.length === 0 ? html`<div class="section-description"><span class="small">No filters available</span></div>` : html``}
+      ${states.length > 0 ? html`
+        <div class="filter-dimension">
+          <div class="filter-dimension-title">State</div>
+          <div class="filter-options">
+            ${(() => {
+              const colors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+              return states.map(s => {
+                const meta = colors && colors[s] ? colors[s] : null;
+                const bg = meta ? meta.background : (state.getFeatureStateColor ? state.getFeatureStateColor(s) : '#999');
+                const text = meta ? meta.text : '#fff';
+                const isActive = (state.selectedFeatureStateFilter && state.selectedFeatureStateFilter.has(s));
+                return html`
+                  <div class="filter-option ${ isActive ? 'active' : '' }" @click=${()=>{ state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); this._saveSidebarState(); }}>
+                    <div style="display:inline-flex;align-items:center;gap:8px;flex:1;">
+                      <span class="filter-state-dot" style="width:14px;height:14px;border-radius:3px;display:inline-block;background:${bg};border:1px solid rgba(0,0,0,0.06);box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);"></span>
+                      <div style="flex:1;color:#fff;">${s}</div>
+                    </div>
+                    <div class="filter-checkbox" style="margin-left:8px;${isActive? 'background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1);' : ''}"></div>
+                  </div>`;
+              });
+            })()}
           </div>
-        </li>`;
-    })}`;
-  }
-  /**
-   * Get filtered projects based on active view
-   * If a non-default view is active, only show projects that were selected in that view
-   */
-  _getFilteredProjects() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      // Default view or no view active - show all
-      return this.projects;
-    }
-    
-    // Filter projects based on active view data
-    // Only show projects where selectedProjects[id] === true
-    return (this.projects || []).filter(project => 
-      this.activeViewData.selectedProjects?.[project.id] === true
-    );
-  }
+        </div>` : html``}
 
-  /**
-   * Get filtered teams based on active view
-   * If a non-default view is active, only show teams that were selected in that view
-   */
-  _getFilteredTeams() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      // Default view or no view active - show all
-      return this.teams;
-    }
-    
-    // Filter teams based on active view data
-    // Only show teams where selectedTeams[id] === true
-    return (this.teams || []).filter(team => 
-      this.activeViewData.selectedTeams?.[team.id] === true
-    );
-  }
-  renderProjects(){
-    return this._renderEntityList('project', this._getFilteredProjects() || [], (id) => this.toggleProject(id));
-  }
-
-  renderPlansGrouped(){
-    const all = this._getFilteredProjects() || [];
-    const delivery = all.filter(p => (p.type || 'project') === 'project');
-    const teamBacklogs = all.filter(p => (p.type || 'project') !== 'project');
-    return html`
-      <div class="plans-group">
-        ${delivery.length ? html`<!-- <div class="group-title">Delivery Plans</div> -->
-          <ul class="sidebar-list" id="projectList">${this._renderEntityList('project', delivery, (id) => this.toggleProject(id))}</ul>` : ''}
-
-        ${delivery.length && teamBacklogs.length ? html`<div style="border-top:1px dashed rgba(255,255,255,0.32); margin:4px 0; border-radius:2px; height:0;" class="divider" role="separator" aria-hidden="true"></div>` : ''}
-
-        ${teamBacklogs.length ? html`<!-- <div class="group-title">Team Backlogs</div> -->
-          <ul class="sidebar-list" id="projectListTeam">${this._renderEntityList('project', teamBacklogs, (id) => this.toggleProject(id))}</ul> ` : ''}
-      </div>
+      ${types.length > 0 ? html`
+        <div class="filter-dimension">
+          <div class="filter-dimension-title">Task Types</div>
+          <div class="filter-options">
+            ${types.map(t => html`
+              <div class="filter-option ${ this.selectedTaskTypes && this.selectedTaskTypes.has(t) ? 'active' : '' }" @click=${()=>this._toggleTaskType(t)}>
+                <div class="filter-checkbox"></div>
+                <div style="flex:1;">${t}</div>
+              </div>
+            `)}
+          </div>
+        </div>` : html``}
     `;
   }
 
-  renderTeams(){
-    return this._renderEntityList('team', this._getFilteredTeams() || [], (id) => this.toggleTeam(id));
-  }
+  
 
-  renderScenarios(){
-    const sorted = [...(this.scenarios || [])].sort((a,b)=>{
-      // Sort readonly scenarios (like baseline) first
-      if(a.readonly && !b.readonly) return -1;
-      if(b.readonly && !a.readonly) return 1;
-      return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
-    });
-    return html`${sorted.map(s=> html`
-      <li class="sidebar-list-item scenario-item sidebar-chip ${s.id===this.activeScenarioId? 'active':''}" @click=${(e)=>this._onScenarioClick(e, s)}>
-        <span class="scenario-name" title="${s.name}">${s.name}</span>
-        ${state.isScenarioUnsaved(s) ? html`<span class="scenario-warning" title="Unsaved">⚠️</span>` : ''}
-        <span class="scenario-controls">
-          <button type="button" class="scenario-btn" title="Scenario actions" @click=${(e)=>this._onScenarioMenuClick(e, s)}>${'⋯'}</button>
-        </span>
-      </li>
-    `)}`;
-  }
-
-  renderViews(){
-    console.log('[Sidebar] renderViews called, views:', this.views);
-    const sorted = [...(this.views || [])].sort((a,b)=>{
-      // Sort readonly views (like default) first
-      if(a.readonly && !b.readonly) return -1;
-      if(b.readonly && !a.readonly) return 1;
-      return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());
-    });
-    return html`${sorted.map(v=> html`
-      <li class="sidebar-list-item view-item sidebar-chip ${v.id===this.activeViewId? 'active':''}" @click=${(e)=>this._onViewClick(e, v)}>
-        <span class="view-name" title="${v.name}">${v.name}</span>
-        <span class="view-controls">
-          <button type="button" class="view-btn" title="View actions" @click=${(e)=>this._onViewMenuClick(e, v)}>${'⋯'}</button>
-        </span>
-      </li>
-    `)}`;
-  }
-
-  _renderPluginButtons(){
-    try{
-      // Prefer the public `list()` API which returns plugin metadata array
-      let regs = [];
-      if (pluginManager && typeof pluginManager.list === 'function') {
-        regs = pluginManager.list();
-      } else if (pluginManager && pluginManager.plugins instanceof Map) {
-        regs = [...pluginManager.plugins.values()].map(p => (typeof p.getMetadata === 'function' ? p.getMetadata() : p));
-      }
-      if(!Array.isArray(regs) || regs.length === 0) return html``;
-      return html`${regs.map(p => html`
-        <li class="sidebar-list-item">
-          <div class="chip sidebar-chip ${pluginManager && typeof pluginManager.isActive === 'function' && pluginManager.isActive(p.id) ? 'active' : ''}" role="button" tabindex="0" @click=${()=>this._onPluginClicked(p.id)}>${p.name || p.id}</div>
-        </li>
-      `)}`;
-    } catch (e) {
-      console.warn('[Sidebar] _renderPluginButtons error', e);
-      return html``;
-    }
-  }
-
-  _onScenarioMenuClick(e, s){
-    e.stopPropagation();
-    document.querySelectorAll('.scenario-menu-popover').forEach(p=>p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div'); 
-    pop.className='scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled=false) => {
-      const item = document.createElement('div'); 
-      item.className = 'scenario-menu-item';
-      if(disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if(!disabled) item.addEventListener('click', ev=>{ ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    const defaultCloneName = (() => {
-      const now = new Date();
-      const mm = String(now.getMonth()+1).padStart(2,'0');
-      const dd = String(now.getDate()).padStart(2,'0');
-      const maxN = Math.max(0, ...(this.scenarios || [])
-        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
-      return `${mm}-${dd} Scenario ${maxN+1}`;
-    })();
-    
-    addItem('Clone Scenario', '⎘', async ()=>{ 
-      const { openScenarioCloneModal } = await import('./modalHelpers.js'); 
-      await openScenarioCloneModal({ id: s.id, name: defaultCloneName }); 
-    });
-    
-    if(s.readonly){
-      // Readonly scenarios (like baseline) can only be refreshed, not modified
-      addItem('Refresh Baseline', '🔄', () => state.refreshBaseline());
-    } else {
-      addItem('Rename', '✏️', async ()=>{ 
-        const { openScenarioRenameModal } = await import('./modalHelpers.js'); 
-        await openScenarioRenameModal({ id: s.id, name: s.name }); 
-      });
-      addItem('Delete', '🗑️', async ()=>{ 
-        const { openScenarioDeleteModal } = await import('./modalHelpers.js'); 
-        await openScenarioDeleteModal({ id: s.id, name: s.name }); 
-      });
-      addItem('Save Scenario', '💾', () => state.saveScenario(s.id));
-      addItem('Save to Azure DevOps', '💾', async ()=>{
-        const overrideEntries = Object.entries(s.overrides || {});
-        if(overrideEntries.length === 0) return;
-        const { openAzureDevopsModal } = await import('./modalHelpers.js'); 
-        const selected = await openAzureDevopsModal({ overrides: s.overrides, state }); 
-        if(selected?.length) await dataService.publishBaseline(selected);
-      }, (s.overrides && Object.keys(s.overrides).length === 0));
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    // The component's shadow DOM styles do not apply to elements appended
-    // directly to document.body. Apply inline styles so the menu appears
-    // correctly (matching previous `.scenario-menu-popover` rules) and
-    // ensure a sufficiently high z-index to appear above other UI.
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
-  }
-
-  async _onViewClick(e, v){
-    e.stopPropagation();
-    // Load and apply the view
-    try {
-      await state.viewManagementService.loadAndApplyView(v.id);
-    } catch (err) {
-      console.error('Failed to load view:', err);
-      // Show error in a simple way without alert
-      const status = document.createElement('div');
-      status.textContent = `Failed to load view: ${err.message || err}`;
-      status.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--error-bg,#fee);padding:1rem;border-radius:4px;z-index:10000;';
-      document.body.appendChild(status);
-      setTimeout(() => status.remove(), 3000);
-    }
-  }
-
-  async _saveNewView(){
-    const { openViewSaveModal } = await import('./modalHelpers.js');
-    const defaultName = (() => {
-      const now = new Date();
-      const mm = String(now.getMonth()+1).padStart(2,'0');
-      const dd = String(now.getDate()).padStart(2,'0');
-      const maxN = Math.max(0, ...(this.views || [])
-        .filter(v => !v.readonly)
-        .map(v => /^\d{2}-\d{2} View (\d+)$/i.exec(v.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
-      return `${mm}-${dd} View ${maxN+1}`;
-    })();
-    await openViewSaveModal({ name: defaultName });
-  }
-
-  _onViewMenuClick(e, v){
-    e.stopPropagation();
-    document.querySelectorAll('.view-menu-popover').forEach(p=>p.remove());
-    
-    const menuBtn = e.currentTarget;
-    const pop = document.createElement('div'); 
-    pop.className='view-menu-popover scenario-menu-popover'; // Reuse scenario menu styles
-    
-    const addItem = (label, emoji, onClick, disabled=false) => {
-      const item = document.createElement('div'); 
-      item.className = 'scenario-menu-item';
-      if(disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if(!disabled) item.addEventListener('click', ev=>{ ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    if (v.readonly && v.id === 'default') {
-      // Default view menu - only show clone option
-      addItem('Clone & Save as New View', '⎘', async ()=>{ 
-        const { openViewSaveModal } = await import('./modalHelpers.js');
-        const defaultName = (() => {
-          const now = new Date();
-          const mm = String(now.getMonth()+1).padStart(2,'0');
-          const dd = String(now.getDate()).padStart(2,'0');
-          const maxN = Math.max(0, ...(this.views || [])
-            .filter(vw => !vw.readonly)
-            .map(vw => /^\d{2}-\d{2} View (\d+)$/i.exec(vw.name)?.[1])
-            .filter(Boolean)
-            .map(n => parseInt(n, 10)));
-          return `${mm}-${dd} View ${maxN+1}`;
-        })();
-        await openViewSaveModal({ name: defaultName });
-      });
-    } else {
-      // Custom view menu - show update/rename/delete options
-      addItem('Update View', '💾', async ()=>{ 
-        // Save current state over existing view
-        try {
-          await state.viewManagementService.saveCurrentView(v.name, v.id);
-        } catch (err) {
-          console.error('Failed to update view:', err);
-        }
-      });
-      
-      addItem('Rename View', '✏️', async ()=>{ 
-        const { openViewRenameModal } = await import('./modalHelpers.js');
-        await openViewRenameModal({ id: v.id, name: v.name });
-      });
-      
-      addItem('Delete View', '🗑️', async ()=>{ 
-        const { openViewDeleteModal } = await import('./modalHelpers.js');
-        await openViewDeleteModal({ id: v.id, name: v.name });
-      });
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    // Apply inline styles so the popover appears above other UI (match ColorPopover z-index)
-    Object.assign(pop.style, {
-      position: 'absolute',
-      top: `${rect.top + window.scrollY + rect.height + 4}px`,
-      left: `${rect.left + window.scrollX - 20}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '2000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once:true }), 0);
-  }
+  // Project/team/view rendering and menu actions moved to TopMenu and small menu components;
+  // keep sidebar focused on dataset, expansions, filters and view options container.
 
   /**
    * Save current sidebar state to localStorage (debounced)
@@ -1208,6 +882,32 @@ export class SidebarLit extends LitElement {
   _saveSidebarState() {
     if (!this._persistenceService) return;
     this._persistenceService.saveSidebarState(state, state._viewService, this);
+  }
+
+  // Handlers for Taskboard Options
+  _setTimelineScale(scale){
+    try{ state._viewService.setTimelineScale(scale); }catch(e){ console.warn('[Sidebar] setTimelineScale failed', e); }
+    this._saveSidebarState();
+    this.requestUpdate();
+  }
+
+  _toggleCondensed(){
+    try{ state._viewService.setCondensedCards(!state._viewService.condensedCards); }catch(e){ console.warn('[Sidebar] toggleCondensed failed', e); }
+    this._saveSidebarState();
+    this.requestUpdate();
+  }
+
+  _setFeatureSortMode(mode){
+    try{ state._viewService.setFeatureSortMode(mode); }catch(e){ console.warn('[Sidebar] setFeatureSortMode failed', e); }
+    this._saveSidebarState();
+    this.requestUpdate();
+  }
+
+  _setGraphType(type){
+    this._graphType = type;
+    try{ bus.emit('graph:type-changed', { type }); }catch(e){ console.warn('[Sidebar] emit graph type change failed', e); }
+    this._saveSidebarState();
+    this.requestUpdate();
   }
 
   /**
@@ -1218,14 +918,72 @@ export class SidebarLit extends LitElement {
     await this._persistenceService.restoreSidebarState(state, state._viewService, this);
   }
 
-  _onScenarioClick(e, s){
-    if(!e.target.closest('.scenario-controls')) state.activateScenario(s.id);
+  async refreshServerStatus(){
+    try{
+      if(!dataService || typeof dataService.checkHealth !== 'function'){
+        this.serverStatus = 'unknown';
+        this.requestUpdate();
+        return;
+      }
+      const info = await dataService.checkHealth();
+      this.serverStatus = info && info.status ? info.status : 'ok';
+      this.serverName = info && info.server ? info.server : this.serverName;
+    }catch(e){
+      this.serverStatus = 'error: ' + (e && e.message ? e.message : String(e));
+    }
+    this.requestUpdate();
   }
+
+  // Scenario activation handled by TopMenu / Scenario components.
 
   render(){
     return html`
       <aside class="sidebar ${this.open? '' : 'closed'}">
         <div class="sidebar-content">
+
+        <!-- Taskboard Options (new) -->
+        <section class="sidebar-section">
+          <div class="expansion-section">
+            <div class="section-title">🧭 Taskboard Options</div>
+            <div class="section-description">Timeline and taskboard display settings</div>
+
+            <div class="filter-dimension">
+              <div class="filter-dimension-title">Timeline Scale</div>
+              <div class="segmented-group">
+                <button type="button" class="segment-btn ${state.timelineScale === 'threeMonths' ? 'active' : ''}" @click=${()=>this._setTimelineScale('threeMonths')}>3mo</button>
+                <button type="button" class="segment-btn ${state.timelineScale === 'weeks' ? 'active' : ''}" @click=${()=>this._setTimelineScale('weeks')}>Weeks</button>
+                <button type="button" class="segment-btn ${state.timelineScale === 'months' ? 'active' : ''}" @click=${()=>this._setTimelineScale('months')}>Months</button>
+                <button type="button" class="segment-btn ${state.timelineScale === 'quarters' ? 'active' : ''}" @click=${()=>this._setTimelineScale('quarters')}>Quarters</button>
+                <button type="button" class="segment-btn ${state.timelineScale === 'years' ? 'active' : ''}" @click=${()=>this._setTimelineScale('years')}>Years</button>
+              </div>
+            </div>
+
+            <div class="filter-dimension">
+              <div class="filter-dimension-title">Display</div>
+              <div class="segmented-group">
+                <button type="button" class="segment-btn ${!state.condensedCards ? 'active' : ''}" @click=${()=>state._viewService.setCondensedCards(false)}>Normal</button>
+                <button type="button" class="segment-btn ${state.condensedCards ? 'active' : ''}" @click=${()=>state._viewService.setCondensedCards(true)}>Compact</button>
+              </div>
+            </div>
+
+            <div class="filter-dimension">
+              <div class="filter-dimension-title">Task Sort</div>
+              <div class="segmented-group">
+                <button type="button" class="segment-btn ${state.featureSortMode === 'rank' ? 'active' : ''}" @click=${()=>this._setFeatureSortMode('rank')}>Rank</button>
+                <button type="button" class="segment-btn ${state.featureSortMode === 'date' ? 'active' : ''}" @click=${()=>this._setFeatureSortMode('date')}>Date</button>
+              </div>
+            </div>
+
+            <div class="filter-dimension">
+              <div class="filter-dimension-title">Graph Type</div>
+              <div class="segmented-group">
+                <button type="button" class="segment-btn ${this._graphType === 'capacity' ? 'active' : ''}" @click=${()=>this._setGraphType('capacity')}>Capacity</button>
+                <button type="button" class="segment-btn ${this._graphType === 'allocation' ? 'active' : ''}" @click=${()=>this._setGraphType('allocation')}>Allocation</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="sidebar-section">
           <div class="dataset-status">
             <div class="status-title">Data Funnel</div>
@@ -1264,7 +1022,6 @@ export class SidebarLit extends LitElement {
                 </div>
                 <span class="option-count">${this.expandParentChildCount > 0 ? '+' + this.expandParentChildCount : this.expandParentChildCount}</span>
               </div>
-              
               <div class="option-row ${this.expandRelations ? 'active' : ''}" @click=${() => this._toggleExpansion('relations')}>
                 <div class="option-label">
                   <div class="option-checkbox"></div>
@@ -1272,6 +1029,7 @@ export class SidebarLit extends LitElement {
                 </div>
                 <span class="option-count">${this.expandRelationsCount > 0 ? '+' + this.expandRelationsCount : this.expandRelationsCount}</span>
               </div>
+              
               
               <div class="option-row ${this.expandTeamAllocated ? 'active' : ''}" @click=${() => this._toggleExpansion('teamAllocated')}>
                 <div class="option-label">
@@ -1284,105 +1042,21 @@ export class SidebarLit extends LitElement {
           </div>
         </section>
 
-        <!-- View Filters Section -->
+        <!-- Task Filters Section -->
         <section class="sidebar-section">
           <div class="expansion-section">
-            <div class="section-title">👁️ View Filters</div>
+            <div class="section-title">👁️ Task Filters</div>
             <div class="section-description">
               Filter displayed tasks by attributes
             </div>
             
-            ${this._renderViewFilters()}
-          </div>
-        </section>
+            ${this._renderTaskFilterDimensions()}
 
-        <section class="sidebar-section" id="viewOptionsSection">
-          <div class="sidebar-section-header"><span class="sidebar-title">View Options</span></div>
-          <div><div id="viewOptionsContainer"></div></div>
-        </section>
-
-        <!-- Plans section moved to TopMenu dropdown
-        <section class="sidebar-section" id="projectsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Plans</span></div>
-          <div>
-            <div class="counts-header" aria-hidden="true">
-                  <span></span>
-                  <button id="projectToggleBtn" class="chip list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all projects" @click=${()=>this._handleProjectToggle()}>
-                    ${this._anyUncheckedProjects() ? 'All' : 'None'}
-                  </button>
-                  <span></span>
-                  <span class="type-icon epic" title="Epics">${epicTemplate}</span>
-                  <span class="type-icon feature" title="Features">${featureTemplate}</span>
-            </div>
-            ${this.renderPlansGrouped()}
-          </div>
-        </section>
-        -->
-
-        <!-- Allocations (Teams) section moved to TopMenu dropdown
-        <section class="sidebar-section" id="teamsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Allocations</span></div>
-          <div>
-              <div class="counts-header" aria-hidden="true">
-              <span></span>
-              <button id="teamToggleBtn" class="chip list-toggle-btn" role="button" tabindex="0" title="Select all / Clear all teams" @click=${()=>this._handleTeamToggle()}>
-                ${this._anyUncheckedTeams() ? 'All' : 'None'}
-              </button>
-              <span></span>
-              <span class="type-icon epic" title="Epics">${epicTemplate}</span>
-              <span class="type-icon feature" title="Features">${featureTemplate}</span>
-            </div>
-            <ul class="sidebar-list" id="teamList">${this.renderTeams()}</ul>
-          </div>
-        </section>
-        -->
-
-        <!-- Scenarios section moved to TopMenu dropdown (ScenarioMenu.lit.js)
-        <section class="sidebar-section" id="scenariosSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Scenarios</span></div>
-          <div>
-            <ul class="sidebar-list" id="scenarioList">${this.renderScenarios()}</ul>
-          </div>
-        </section>
-        -->
-
-        <!-- Views section moved to TopMenu dropdown (ViewMenu.lit.js)
-        <section class="sidebar-section" id="viewsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Views</span></div>
-          <div>
-            <ul class="sidebar-list" id="viewList">${this.renderViews()}</ul>
-          </div>
-        </section>
-        -->
-
-        <section class="sidebar-section" id="toolsSection">
-          <div class="sidebar-section-header-collapsible"><span class="sidebar-chevron">▼</span><span class="sidebar-title">Tools</span></div>
-          <div>
-            <ul class="sidebar-list" id="toolsList">
-            <!--
-              <li class="sidebar-list-item">
-                <div class="chip sidebar-chip" style="display:flex;align-items:center;gap:8px;width:100%;padding:0 8px;cursor:pointer;" @click=${()=>this._openSearchTool()} role="button" tabindex="0" @keydown=${(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); this._openSearchTool(); }}}>
-                  <div style="font-weight:600;font-size:0.8rem;color:var(--color-sidebar-text);flex:1;">Search</div>
-                </div>
-              </li>
-            -->
-              ${this._renderPluginButtons()}
-            </ul>
+              ${this._renderTaskFilters ? this._renderTaskFilters() : ''}
           </div>
         </section>
 
         </div>
-        <!-- Configuration & Help section moved to TopMenu (right side buttons)
-        <section class="sidebar-config">
-          <div class="sidebar-section-header"><span class="sidebar-title">Configuration & Help</span></div>
-          <div class="config-row" style="display:flex;gap:8px;margin-top:6px;">
-            <button id="openConfigBtn" @click=${()=>this._openConfig()}>⚙️</button>
-            <button id="openHelpBtn" @click=${()=>this._openHelp()}>❓</button>
-          </div>
-          <div id="serverStatusLabel" style="font-size:12px; margin-top:8px;">${this.serverStatus}</div>
-          <div id="attributionLabel" style="font-size:9px; margin-top:8px;">(c) 2025-2026 Kim Poulsen${this.serverName ? ' — ' + this.serverName : ''}</div>
-        </section>
-        -->
       </aside>
     `;
   }

@@ -38,9 +38,16 @@ export class SidebarPersistenceService {
       sidebarState.viewOptions.selectedFeatureStates = state._stateFilterService.getSelectedStates();
     }
 
-    // Capture view filters
-    if (state.viewFilterService) {
-      sidebarState.viewOptions.viewFilters = state.viewFilterService.getFilters();
+    // Capture selected task types (from sidebar element) if present
+    if (sidebarElement && sidebarElement.selectedTaskTypes) {
+      try {
+        sidebarState.viewOptions.selectedTaskTypes = Array.from(sidebarElement.selectedTaskTypes || []);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Capture task filters (formerly view filters). Overwrite legacy state — save only new key.
+    if (state.taskFilterService) {
+      sidebarState.viewOptions.taskFilters = state.taskFilterService.getFilters();
     }
 
     // Capture project selections
@@ -142,9 +149,9 @@ export class SidebarPersistenceService {
         // Apply view options silently; this method will not emit aggregated events when emitAggregated=false
         viewService.restoreView(savedState.viewOptions, false);
 
-        // Restore view filters if present
-        if (savedState.viewOptions.viewFilters && state.viewFilterService) {
-          state.viewFilterService.restoreFilters(savedState.viewOptions.viewFilters);
+        // Restore task filters if present
+        if (savedState.viewOptions.taskFilters && state.taskFilterService) {
+          state.taskFilterService.restoreFilters(savedState.viewOptions.taskFilters);
         }
 
         // Restore state filters if present using silent restore, then emit consolidated updates
@@ -162,6 +169,14 @@ export class SidebarPersistenceService {
               bus.emit(CapacityEvents.UPDATED, { dates: state.capacityDates, teamDailyCapacity: state.teamDailyCapacity, projectDailyCapacityRaw: state.projectDailyCapacityRaw, projectDailyCapacity: state.projectDailyCapacity, totalOrgDailyCapacity: state.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg });
               bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: validStates });
               bus.emit(FeatureEvents.UPDATED);
+            } catch (e) { /* ignore */ }
+          }
+          // Restore selected task types if present (sidebar handles application)
+          if (savedState.viewOptions.selectedTaskTypes && sidebarElement && typeof sidebarElement._applySavedTaskTypes === 'function') {
+            try {
+              const available = sidebarElement.availableTaskTypes || [];
+              const validTypes = savedState.viewOptions.selectedTaskTypes.filter(t => available.includes(t));
+              sidebarElement._applySavedTaskTypes(validTypes);
             } catch (e) { /* ignore */ }
           }
         }

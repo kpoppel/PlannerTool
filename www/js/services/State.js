@@ -7,7 +7,7 @@ import { BaselineStore } from './BaselineStore.js';
 import { ScenarioManager } from './ScenarioManager.js';
 import { FeatureService } from './FeatureService.js';
 import { ViewService } from './ViewService.js';
-import { ViewFilterService } from './ViewFilterService.js';
+import { TaskFilterService } from './TaskFilterService.js';
 import { ColorService } from './ColorService.js';
 import { ConfigService } from './ConfigService.js';
 import { StateFilterService } from './StateFilterService.js';
@@ -55,7 +55,8 @@ class State {
     
     // View and configuration services
     this._viewService = new ViewService(bus);
-    this._viewFilterService = new ViewFilterService(bus);
+    // TaskFilterService manages dimensional task filters.
+    this._taskFilterService = new TaskFilterService(bus);
     this._colorService = new ColorService(dataService);
     this._configService = new ConfigService(bus, dataService);
     this._stateFilterService = new StateFilterService(bus);
@@ -137,8 +138,8 @@ class State {
   get capacityViewMode() { return this._viewService.capacityViewMode; }
   get featureSortMode() { return this._viewService.featureSortMode; }
   
-  // ViewFilterService properties
-  get viewFilterService() { return this._viewFilterService; }
+  // TaskFilterService properties
+  get taskFilterService() { return this._taskFilterService; }
   
   // ConfigService properties
   get autosaveIntervalMin() { return this._configService.autosaveIntervalMin; }

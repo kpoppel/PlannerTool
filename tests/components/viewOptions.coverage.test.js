@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { initViewOptions } from '../../www/js/components/viewOptions.js';
+import { initViewOptions } from '../../www/js/components/Sidebar.lit.js';
 
 describe('viewOptions coverage', () => {
   it('initViewOptions builds DOM structure without error', () => {

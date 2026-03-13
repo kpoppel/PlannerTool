@@ -420,8 +420,8 @@ class FeatureBoard extends LitElement {
     const featureState = feature.status || feature.state;
     if (!stateFilter.has(featureState)) return false;
 
-    // Apply view filters (schedule, allocation, hierarchy, relations)
-    if (state.viewFilterService && !state.viewFilterService.featurePassesFilters(feature)) {
+    // Apply task filters (schedule, allocation, hierarchy, relations)
+    if (state.taskFilterService && !state.taskFilterService.featurePassesFilters(feature)) {
       return false;
     }
 

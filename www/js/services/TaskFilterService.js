@@ -1,12 +1,12 @@
 /**
- * ViewFilterService
- * Manages dimensional view filters (schedule, allocation, hierarchy, relations)
+ * TaskFilterService
+ * Manages dimensional task filters (schedule, allocation, hierarchy, relations)
  * Each dimension has two options that can be independently toggled
  */
 
 import { FilterEvents, FeatureEvents } from '../core/EventRegistry.js';
 
-export class ViewFilterService {
+export class TaskFilterService {
   constructor(bus) {
     this.bus = bus;
     
@@ -90,7 +90,7 @@ export class ViewFilterService {
    */
   toggleFilter(dimension, option) {
     if (!this._filters[dimension] || this._filters[dimension][option] === undefined) {
-      console.warn(`[ViewFilterService] Invalid filter: ${dimension}.${option}`);
+      console.warn(`[TaskFilterService] Invalid filter: ${dimension}.${option}`);
       return;
     }
     
@@ -103,7 +103,7 @@ export class ViewFilterService {
    */
   setFilter(dimension, option, value) {
     if (!this._filters[dimension] || this._filters[dimension][option] === undefined) {
-      console.warn(`[ViewFilterService] Invalid filter: ${dimension}.${option}`);
+      console.warn(`[TaskFilterService] Invalid filter: ${dimension}.${option}`);
       return;
     }
     
@@ -169,7 +169,8 @@ export class ViewFilterService {
   _emitFilterChanged() {
     // Emit while suppressing our own listener to avoid loops
     this._suppressSync = true;
-    this.bus.emit(FilterEvents.CHANGED, { viewFilters: this._filters });
+    // New payload key `taskFilters` to reflect rename from view->task
+    this.bus.emit(FilterEvents.CHANGED, { taskFilters: this._filters });
     this._suppressSync = false;
     this.bus.emit(FeatureEvents.UPDATED);
   }

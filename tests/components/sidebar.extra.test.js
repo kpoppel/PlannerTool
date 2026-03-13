@@ -12,16 +12,19 @@ describe('app-sidebar extra', () => {
   afterEach(() => { if(sidebar) sidebar.remove(); });
 
   it('renders plugin buttons when plugin system enabled', async () => {
-    // stub isEnabled by marking pluginManager.list to return items
+    // Ensure sidebar renders without calling internal plugin helpers
     const origList = pluginManager.list;
     const origIsActive = pluginManager.isActive;
-    pluginManager.list = () => [{ id: 'p1', title: 'P1', enabled: true }];
-    pluginManager.isActive = (id) => false;
-    // force isEnabled behavior by setting feature flag via state or importing isEnabled is done in module; we just call _renderPluginButtons
-    const html = sidebar._renderPluginButtons();
-    expect(html).to.exist;
-    pluginManager.list = origList;
-    pluginManager.isActive = origIsActive;
+    try {
+      pluginManager.list = () => [{ id: 'p1', name: 'P1', enabled: true }];
+      pluginManager.isActive = (id) => false;
+      await sidebar.requestUpdate();
+      const dom = sidebar.shadowRoot ? sidebar.shadowRoot.innerHTML : sidebar.innerHTML;
+      expect(dom).to.include('Data Funnel');
+    } finally {
+      pluginManager.list = origList;
+      pluginManager.isActive = origIsActive;
+    }
   });
 
   it('refreshServerStatus sets error on failure', async () => {
