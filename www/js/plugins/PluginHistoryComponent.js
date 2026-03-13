@@ -11,6 +11,7 @@ import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry
 import { getBoardOffset, findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
+import { dataService } from '../services/dataService.js';
 
 export class PluginHistoryComponent extends LitElement {
   static properties = { 
@@ -62,11 +63,8 @@ export class PluginHistoryComponent extends LitElement {
       const newTasks = [];
       for(const project of toFetch){
         try{
-          const url = `/api/history/tasks?project=${project.id}&per_page=500`;
-          const res = await fetch(url);
-          if(!res.ok){ console.warn(`[PluginHistory] Failed to fetch history for ${project.id}: HTTP ${res.status}`); continue; }
-          const data = await res.json();
-          if(data.tasks && data.tasks.length) newTasks.push(...data.tasks);
+          const data = await dataService.getHistory(project.id, { per_page: 500 });
+          if(data && data.tasks && data.tasks.length) newTasks.push(...data.tasks);
           this._loadedProjects.add(project.id);
         }catch(e){ console.error('[PluginHistory] Error lazy-loading project history', e); }
       }
@@ -428,19 +426,12 @@ export class PluginHistoryComponent extends LitElement {
       const newTasks = [];
       for (const project of projectsToFetch) {
         try {
-          const url = `/api/history/tasks?project=${project.id}&per_page=500${invalidateCache ? '&invalidate_cache=true' : ''}`;
-          const response = await fetch(url);
-          if (!response.ok) {
-            console.warn(`[PluginHistory] Failed to fetch history for ${project.id}: HTTP ${response.status}`);
-            continue;
-          }
-          
-          const data = await response.json();
-          if (data.tasks && data.tasks.length > 0) {
+          const data = await dataService.getHistory(project.id, { per_page: 500, invalidate_cache: !!invalidateCache });
+          if (data && data.tasks && data.tasks.length > 0) {
             newTasks.push(...data.tasks);
             console.log(`[PluginHistory] Loaded ${data.tasks.length} tasks from ${project.id}`);
           }
-          
+
           // Mark this project as loaded
           this._loadedProjects.add(project.id);
         } catch (err) {

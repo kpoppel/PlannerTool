@@ -60,6 +60,12 @@ class DataService {
     async getProjects() { return this.providers['rest'].getProjects(); }
     async getIterations(project) { return this.providers['rest'].getIterations(project); }
     async getTeams() { return this.providers['rest'].getTeams(); }
+    /**
+     * Fetch history entries for a project.
+     * @param {string} projectId
+     * @param {{per_page?:number, invalidate_cache?:boolean}} [opts]
+     */
+    async getHistory(projectId, opts) { return this.providers['rest'].getHistory(projectId, opts); }
     async getCostTeams() { return this.providers['rest'].getCostTeams ? this.providers['rest'].getCostTeams() : []; }
     async getFeatures() { return this.providers['rest'].getFeatures(); }
     async getCost(overrides){ return this.providers['rest'].getCost(overrides); }

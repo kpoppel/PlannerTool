@@ -434,6 +434,24 @@ export class ProviderREST {
             return data;
         }catch(err){ console.error('providerREST:getMarkers error', err); return []; }
     }
+
+    /**
+     * Fetch history entries for a given project.
+     * @param {string} projectId
+     * @param {{per_page?:number, invalidate_cache?:boolean}} [opts]
+     */
+    async getHistory(projectId, opts){
+        try{
+            const perPage = (opts && opts.per_page) ? opts.per_page : 500;
+            const invalidate = opts && opts.invalidate_cache ? '&invalidate_cache=true' : '';
+            const url = `/api/history/tasks?project=${encodeURIComponent(projectId)}&per_page=${perPage}${invalidate}`;
+            const res = await this._fetch(url, { headers: this._headers() });
+            if(res && res.sessionExpired) return { tasks: [], sessionExpired: true };
+            if(!res.ok){ console.warn('providerREST:getHistory failed', res.status); return { tasks: [] }; }
+            const data = await res.json();
+            return data || { tasks: [] };
+        }catch(err){ console.error('providerREST:getHistory error', err); return { tasks: [] }; }
+    }
     
     async invalidateCache(){
         try{
