@@ -18,6 +18,8 @@ export class TopMenuBarLit extends LitElement {
     views: { type: Array },
     activeViewId: { type: String },
     activeViewData: { type: Object },
+    selectedProjectsCount: { type: Number },
+    selectedTeamsCount: { type: Number },
   };
 
   static styles = css`
@@ -96,6 +98,19 @@ export class TopMenuBarLit extends LitElement {
       position: fixed;
       z-index: 2000;
     }
+
+    .menu-count-badge {
+      background: rgba(255,255,255,0.12);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 11px;
+      margin-left: 6px;
+      min-width: 20px;
+      text-align: center;
+      line-height: 1;
+    }
   `;
 
   constructor() {
@@ -108,6 +123,8 @@ export class TopMenuBarLit extends LitElement {
     this.views = [];
     this.activeViewId = null;
     this.activeViewData = null;
+    this.selectedProjectsCount = 0;
+    this.selectedTeamsCount = 0;
     this._ensureGlobalMenuStyles();
   }
 
@@ -189,8 +206,16 @@ export class TopMenuBarLit extends LitElement {
     this.addEventListener('view-menu', this._viewMenuHandler);
 
     // Listen to state changes to update menu data
-    this._onProjectsChanged = (projects) => { this.projects = projects ? [...projects] : []; };
-    this._onTeamsChanged = (teams) => { this.teams = teams ? [...teams] : []; };
+    this._onProjectsChanged = (projects) => {
+      const arr = projects ? [...projects] : [];
+      this.projects = arr;
+      this.selectedProjectsCount = arr.filter(p => p && p.selected).length;
+    };
+    this._onTeamsChanged = (teams) => {
+      const arr = teams ? [...teams] : [];
+      this.teams = arr;
+      this.selectedTeamsCount = arr.filter(t => t && t.selected).length;
+    };
     this._onScenariosList = (payload) => {
       this.scenarios = payload?.scenarios || [];
       this.activeScenarioId = payload?.activeId || null;
@@ -288,15 +313,21 @@ export class TopMenuBarLit extends LitElement {
                tabindex="0"
                @click=${(e) => this._toggleMenu('scenario', e)}>Scenario</div>
           <div class="menu-item ${this.openMenu === 'plan' ? 'active' : ''}" 
-               id="planMenuBtn"
-               role="button" 
-               tabindex="0"
-               @click=${(e) => this._toggleMenu('plan', e)}>Plan</div>
+            id="planMenuBtn"
+            role="button" 
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('plan', e)}>
+            Plan
+            ${this.selectedProjectsCount ? html`<span class="menu-count-badge">${this.selectedProjectsCount}</span>` : ''}
+          </div>
           <div class="menu-item ${this.openMenu === 'team' ? 'active' : ''}" 
-               id="teamMenuBtn"
-               role="button" 
-               tabindex="0"
-               @click=${(e) => this._toggleMenu('team', e)}>Team</div>
+            id="teamMenuBtn"
+            role="button" 
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('team', e)}>
+            Team
+            ${this.selectedTeamsCount ? html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>` : ''}
+          </div>
         </div>
 
         <div class="menu-right">
