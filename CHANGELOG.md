@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.0.0] - unreleased
+## [v2.0.0] - 2026-03-14
 
 The big two.oh.oh! This release brings a complete overhaul of the application user interface.
 
