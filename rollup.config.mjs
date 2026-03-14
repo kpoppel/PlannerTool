@@ -5,8 +5,8 @@ export default {
   input: 'src/vendor-entry.js',
   plugins: [resolve()],
   output: {
-    file: 'www/js/vendor/lit.bundle.js',
+    file: 'www/js/vendor/lit.js',
     format: 'es',
-    sourcemap: false,
+    sourcemap: true,
   }
 };

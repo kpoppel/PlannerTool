@@ -7,11 +7,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ## Template:
 
-## [v] - unreleased
+## [v2.0.1] - unreleased
 
 ### Added
 ### Changed
+- Removed redundant files from www/js/vendor . Lit bundle is built using Rollup and includes all dependencies.
+- Admin interface for projects now adds included states to display states automatically.
+
 ### Fixed
+
 
 ---
 ## [v2.0.0] - 2026-03-14

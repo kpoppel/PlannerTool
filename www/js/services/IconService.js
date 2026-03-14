@@ -1,5 +1,4 @@
-import { html } from '../vendor/lit.js';
-import { unsafeSVG } from '../vendor/unsafe-svg.js';
+import { html, unsafeSVG } from '../vendor/lit.js';
 
 // Icon colors are embedded directly in the SVG strings below (keep DRY)
 

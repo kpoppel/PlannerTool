@@ -299,12 +299,26 @@ export class AdminProjects extends BaseConfigComponent {
     const current = this.localProjects[index][field] || [];
     if (!current.includes(value.trim())) {
       this.updateProjectField(index, field, [...current, value.trim()]);
+      // Keep display_states in sync when include_states changes
+      if (field === 'include_states') {
+        const disp = this.localProjects[index]['display_states'] || [];
+        if (!disp.includes(value.trim())) {
+          this.updateProjectField(index, 'display_states', [...disp, value.trim()]);
+        }
+      }
     }
   }
 
   removeChip(index, field, chipValue) {
     const current = this.localProjects[index][field] || [];
     this.updateProjectField(index, field, current.filter(v => v !== chipValue));
+    // If removing from include_states, also remove from display_states
+    if (field === 'include_states') {
+      const disp = this.localProjects[index]['display_states'] || [];
+      if (disp.includes(chipValue)) {
+        this.updateProjectField(index, 'display_states', disp.filter(v => v !== chipValue));
+      }
+    }
   }
 
   renderDisplayRow(project, index) {
