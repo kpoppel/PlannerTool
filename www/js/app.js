@@ -86,19 +86,15 @@ async function init(){
       try {
         let cfg;
         try {
-          // Try native JSON module import first (may be blocked by server MIME)
-          cfg = await import('./modules.config.json', { assert: { type: 'json' } });
-          cfg = cfg.default || cfg;
-        } catch (impErr) {
-          // Fallback to fetch+json to avoid MIME type restrictions
-          try {
-            const url = new URL('./modules.config.json', import.meta.url).href;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Failed to fetch modules config: ${res.status}`);
-            cfg = await res.json();
-          } catch (fetchErr) {
-            throw fetchErr || impErr;
-          }
+          // Load modules config via fetch to avoid JSON module import and
+          // potential strict MIME-type handling by some dev servers/browsers.
+          const url = new URL('./modules.config.json', import.meta.url).href;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch modules config: ${res.status}`);
+          cfg = await res.json();
+        } catch (err) {
+          console.error('[App] Failed to load modules config', err);
+          throw err;
         }
 
         await pluginManager.loadFromConfig(cfg);

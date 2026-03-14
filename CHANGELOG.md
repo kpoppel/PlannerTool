@@ -41,6 +41,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Fixed
 
+- Fix error loding modules file in an unsupported way for newer browsers.
 - Fixed scenario name badge not showing in top menu - corrected ScenarioEvents.ACTIVATED payload property from `id` to `scenarioId`
 - Fixed active scenario not being highlighted in ScenarioMenu dropdown
 - Fixed scenario selection resetting when dragging cards - corrected ScenarioEvents.LIST payload property from `activeId` to `activeScenarioId` in TopMenu and ScenarioMenu handlers
