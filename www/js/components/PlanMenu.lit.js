@@ -196,7 +196,10 @@ export class PlanMenuLit extends LitElement {
   _handleProjectToggle() {
     const projects = this._getFilteredProjects();
     const anyUnchecked = projects.some(p => !p.selected);
-    projects.forEach(p => state.setProjectSelected(p.id, anyUnchecked));
+    // Use bulk update to avoid O(n) capacity recalculations
+    const selections = {};
+    projects.forEach(p => selections[p.id] = anyUnchecked);
+    state.setProjectsSelectedBulk(selections);
   }
 
   _anyUncheckedProjects() {

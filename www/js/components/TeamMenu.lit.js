@@ -186,7 +186,10 @@ export class TeamMenuLit extends LitElement {
   _handleTeamToggle() {
     const teams = this._getFilteredTeams();
     const anyUnchecked = teams.some(t => !t.selected);
-    teams.forEach(t => state.setTeamSelected(t.id, anyUnchecked));
+    // Use bulk update to avoid O(n) capacity recalculations
+    const selections = {};
+    teams.forEach(t => selections[t.id] = anyUnchecked);
+    state.setTeamsSelectedBulk(selections);
   }
 
   _anyUncheckedTeams() {

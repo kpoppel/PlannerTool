@@ -29,6 +29,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Integrated view filters into FeatureBoard display logic and Data Funnel calculations
 - Added expansion options (Parent/Child, Relations, Team Allocated) to view persistence
 
+### Fixed
+
+- Optimized Plan Menu and Team Menu select/deselect all operations to use batch updates, reducing compute time from ~3110ms to near-instant by eliminating O(n) capacity recalculations
+
 ### Changed
 
 - Revamped ScenarioMenu with inline action buttons matching ViewMenu design pattern - actions now always visible for better discoverability
