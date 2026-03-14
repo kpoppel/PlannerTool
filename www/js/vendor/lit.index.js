@@ -1,7 +1,6 @@
-// Re-export Lit for browsers from a CDN-friendly ESM bundle.
-// Using esm.sh provides a single entrypoint that the browser can import.
-// This avoids bare specifier imports like "@lit/reactive-element" which
-// the browser cannot resolve without an import map or bundler.
-// Prefer a local vendor shim that can be swapped for an actual bundled file.
-export * from './lit.bundle.local.js';
+// Re-export Lit from the built local bundle.
+// The build produces `www/js/vendor/lit.bundle.js` which contains Lit and
+// commonly used directives. This replaces the previous esm.sh-based shim.
+// Re-export everything from the built bundle. Exports must be top-level.
+export * from './lit.bundle.js';
 

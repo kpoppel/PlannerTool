@@ -19,6 +19,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [Unreleased]
 
 ### Added
+
+- Lit bundle generated and added to repo. Can be rebuilt using `npm run build:vendor`
+  This removed dependency on esm.sh and makes the app load even faster.
 - **Projects Schema v3**: Added `display_states` field to project configuration
   - Allows configuring which states are available for user selection in UI independently from fetched states
   - Enables use cases like allowing users to close tasks even when "closed" state is not fetched
