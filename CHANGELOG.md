@@ -38,21 +38,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Removed legacy scenario action popup menu from TopMenu in favor of inline actions
 - Reordered ScenarioMenu action buttons: Save to Azure (☁️) now appears between Save Scenario and Rename buttons for better workflow
 - Save Scenario button (💾) is now always visible for non-readonly scenarios instead of only appearing when changes are detected - provides clearer affordance and simpler UX
-
-### Fixed
-
-- Fix error loding modules file in an unsupported way for newer browsers.
-- Fixed scenario name badge not showing in top menu - corrected ScenarioEvents.ACTIVATED payload property from `id` to `scenarioId`
-- Fixed active scenario not being highlighted in ScenarioMenu dropdown
-- Fixed scenario selection resetting when dragging cards - corrected ScenarioEvents.LIST payload property from `activeId` to `activeScenarioId` in TopMenu and ScenarioMenu handlers
-- Fixed "Save to Azure" button not appearing when scenario has overrides - updated render condition to check both `s.overrides` and `s.overridesCount` properties
-- Fixed "Save to Azure" reporting no changes despite scenario having overrides - updated `_onSaveToAzure` to fetch full scenario data from state instead of relying on metadata-only scenario object from render
-- Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it, which was causing viewport to show months 5-6 months ahead
-- Fixed organizational capacity graph (maingraph) not rendering on initial application load - added call to `recomputeCapacityMetrics()` at end of `State.initState()` to ensure capacity data is calculated before components render
-- Fixed Graph Type buttons not changing the graph rendering mode - updated Sidebar `_setGraphType()` to properly call `ViewService.setCapacityViewMode()` and added event handler to sync local state when mode changes
-
-### Changed
-
 - Simplified Graph Type terminology: renamed buttons from "Capacity/Allocation" to "Team/Project" for clarity and consistency with underlying capacityViewMode values
 - Updated ViewManagementService and ViewSaveModal to use 'team'/'project' terminology instead of 'capacity'/'allocation'
 
@@ -64,6 +49,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
  
 ### Fixed
 
+- Fix MIME error loding modules file in an unsupported way for newer browsers.
+- Fixed scenario name badge not showing in top menu - corrected ScenarioEvents.ACTIVATED payload property from `id` to `scenarioId`
+- Fixed active scenario not being highlighted in ScenarioMenu dropdown
+- Fixed scenario selection resetting when dragging cards - corrected ScenarioEvents.LIST payload property from `activeId` to `activeScenarioId` in TopMenu and ScenarioMenu handlers
+- Fixed "Save to Azure" button not appearing when scenario has overrides - updated render condition to check both `s.overrides` and `s.overridesCount` properties
+- Fixed "Save to Azure" reporting no changes despite scenario having overrides - updated `_onSaveToAzure` to fetch full scenario data from state instead of relying on metadata-only scenario object from render
+- Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it, which was causing viewport to show months 5-6 months ahead
+- Fixed organizational capacity graph (maingraph) not rendering on initial application load - added call to `recomputeCapacityMetrics()` at end of `State.initState()` to ensure capacity data is calculated before components render
+- Fixed Graph Type buttons not changing the graph rendering mode - updated Sidebar `_setGraphType()` to properly call `ViewService.setCapacityViewMode()` and added event handler to sync local state when mode changes
 - Fixed task filter UI (Schedule, Allocation, Hierarchy, Relations) not updating immediately when restoring a view - added event listener in Sidebar to sync taskFilters property when FilterEvents.CHANGED is emitted
 
 ## [v1.15.1] - 2026-03-13
