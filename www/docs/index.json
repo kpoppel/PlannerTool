@@ -1,4 +1,22 @@
 [
-  { "title": "Introduction", "file": "intro.md", "tags": ["overview","getting-started"] },
-  { "title": "Quick Usage", "file": "usage.md", "tags": ["howto","examples"] }
+  { "title": "Introduction", "file": "intro.md", "tags": ["overview","help"] },
+  { "title": "Getting Started", "file": "getting_started.md", "tags": ["overview","help"] },
+  { "title": "Quick Usage", "file": "usage.md", "tags": ["howto","examples"] },
+  { "title": "Configuration", "file": "configuration.md", "tags": ["config","setup"] },
+  { "title": "Best Practices", "file": "best_practices.md", "tags": ["azure","best-practices"] },
+  { "title": "Top Menu & View Options", "file": "topmenu.md", "tags": ["topmenu","view"] },
+  { "title": "Sidebar (Filters & Options)", "file": "sidebar.md", "tags": ["sidebar","filters"] },
+  { "title": "Timeline & Board", "file": "timeline.md", "tags": ["timeline","board"] },
+  { "title": "Graph Area", "file": "graph.md", "tags": ["graph","overview"] },
+  { "title": "Card Anatomy & Workflows", "file": "card_workflows.md", "tags": ["cards","workflows"] },
+  { "title": "Details Panel", "file": "details.md", "tags": ["details","edit"] },
+  { "title": "Scenarios & Saving", "file": "scenarios.md", "tags": ["scenarios","save"] },
+  { "title": "Iterations (timeboxes)", "file": "iterations.md", "tags": ["iterations","timebox"] },
+  { "title": "Review Modal (Save to Azure)", "file": "review_modal.md", "tags": ["save","review"] },
+  { "title": "Advanced Filtering (Examples)", "file": "advanced_filters.md", "tags": ["filters","advanced"] },
+  { "title": "Tool - Export Timeline", "file": "plugin_export.md", "tags": ["export","share","tool"] },
+  { "title": "Tool - History & Revisions", "file": "plugin_history.md", "tags": ["history","audit","tool"] },
+  { "title": "Tool - Cost Estimates & Teams", "file": "plugin_cost.md", "tags": ["cost","teams","tool"] },
+  { "title": "Admin - Cache Invalidation", "file": "admin_cache_invalidation.md", "tags": ["admin","cache"] },
+  { "title": "Admin - Adding Documentation", "file": "admin_contributing_documentation.md", "tags": ["admin","contributing"] }
 ]

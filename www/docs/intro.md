@@ -1,44 +1,30 @@
+# PlannerTool Introduction
 
-# PlannerTool — Introduction
+Welcome to PlannerTool.
+This is a tool developed by Kim Poulsen starting 2025 to work around planning shortcomings in Azure Devops and eliminating Excel as a planning tool. The tool is context specific in that it specifically addresses a need to balance task load on a number of development teams across projects and features.  The tool is however not dependent on having balancing data to be useful. Specifying projects alone will give a graphically pleasing way to see flow of work including their dependencies if specified.
 
-Welcome to PlannerTool. This documentation is served from the `www/docs/` folder and rendered inside the application's Help modal.
+# Features
+The tool has several useful features:
 
-Quick navigation:
+- Ability to create and save scenarios for experimentation and review
+- Ability to create and save favorite views for plans, teams and filters
+- Ability to drill down to selected projects and teams using powerful dimensional filtering
+- Ability to interpret team capacity allocations from loaded tasks from Azure
+- Different modes to show cards and details
+- A graph area to quickly determine team allocation and organisational allocation surplus or deficit.
+- Ability to write adjusted dates to back Azure
+- Serverside configuration of projects and teams with an admin frontend interface
 
-- Use the left-hand index to browse pages.
-- Use the search box to filter pages by title or tag.
+For guidance on states, hierarchy and area-path conventions, see the Best Practices page: [Best Practices](best_practices.md)
 
-Contents
 
-1. Overview
-2. Examples
-3. Assets
+For detailed, topic-specific instructions see the manual pages in this Help index:
 
-Overview
+- Sidebar (filters & options): [Sidebar (Filters & Options)](sidebar.md)
+- Timeline & Board: [Timeline & Board](timeline.md)
+- Details panel and editing: [Details Panel](details.md)
+- Scenarios & saving: [Scenarios & Saving](scenarios.md)
+- Configuration and PAT setup: [Configuration](configuration.md)
+- Review modal: [Review Modal (Save to Azure)](review_modal.md)
 
-PlannerTool is a lightweight planning UI for working with projects, teams and features. Keep documentation pages as simple Markdown files in `www/docs/`.
-
-Examples and supported features
-
-- Headings (H1..H6)
-- Paragraphs
-- Lists (bulleted and numbered)
-- Code blocks (fenced with ```)
-- Inline code using backticks
-- Images and asset references (relative to `/static/docs/`)
-- Links to external sites or other docs
-
-Example diagram (served from `www/docs/`):
-
-![Sample diagram](diagram-example.svg)
-
-Assets
-
-Place images and other resources alongside markdown files. They will be served at `/static/docs/<filename>` so you can reference them directly in Markdown.
-
-Adding pages
-
-1. Add a new Markdown file under `www/docs/`.
-2. Add an entry to `index.json` with a `title`, `file` and optional `tags`.
-3. The Help modal will pick up the new doc and render it automatically.
-
+The sections above cover how to prepare datasets, adjust allocations, and save or push changes. For advanced topics, see the Best Practices page.

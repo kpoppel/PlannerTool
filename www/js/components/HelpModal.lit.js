@@ -59,12 +59,20 @@ export class HelpModal extends LitElement {
     try{
       const res = await fetch('/static/docs/index.json');
       if(res.ok) this.index = await res.json();
-      else this.index = [];
-    }catch(e){ this.index = []; }
-    // auto-select first document
-    if(this.index.length) this._selectDoc(this.index[0]);
+      else {
+        console.warn('[HelpModal] index.json fetch returned', res.status);
+        this.index = [];
+      }
+    }catch(e){ console.error('[HelpModal] failed to fetch index.json', e); this.index = []; }
+    // Auto-select first document if available, otherwise show fallback message
+    if(this.index.length){
+      try{ await this._selectDoc(this.index[0]); }catch(e){ console.error('[HelpModal] _selectDoc error', e); this.content = '<div class="empty">Could not load the first document.</div>'; }
+    } else {
+      this.content = '<div class="empty">No documentation found. Add files to <code>www/docs/</code> and update <code>index.json</code>.</div>';
+    }
+    // ensure component updates then open inner modal so content is visible
     await this.updateComplete;
-    const inner = this.renderRoot.querySelector('modal-lit'); if(inner) inner.open = true;
+    const inner = this.renderRoot.querySelector('modal-lit'); if(inner){ inner.open = true; }
   }
 
   async _selectDoc(doc){
@@ -101,6 +109,7 @@ export class HelpModal extends LitElement {
     let inCode = false;
     let codeLang = '';
     let listOpen = false;
+    let listType = '';
     for(let line of lines){
       if(line.startsWith('```')){
         if(!inCode){ inCode = true; codeLang = line.slice(3).trim(); html += `<pre><code class="lang-${this._escapeHtml(codeLang)}">`; }
@@ -111,12 +120,21 @@ export class HelpModal extends LitElement {
       // headings
       const h = line.match(/^(#{1,6})\s+(.*)$/);
       if(h){ const level = h[1].length; html += `<h${level}>${this._inline(h[2])}</h${level}>`; continue; }
-      if(/^\s*[-*]\s+/.test(line)){ if(!listOpen){ listOpen = true; html += '<ul>'; } html += `<li>${this._inline(line.replace(/^\s*[-*]\s+/,''))}</li>`; continue; }
-      if(listOpen){ listOpen = false; html += '</ul>'; }
+      const olMatch = line.match(/^\s*(\d+)\.\s+(.*)$/);
+      const ulMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if(olMatch || ulMatch){
+        const type = olMatch ? 'ol' : 'ul';
+        const text = olMatch ? olMatch[2] : ulMatch[1];
+        if(!listOpen){ listOpen = true; listType = type; html += `<${type}>`; }
+        else if(listType !== type){ html += `</${listType}>`; listType = type; html += `<${type}>`; }
+        html += `<li>${this._inline(text)}</li>`;
+        continue;
+      }
+      if(listOpen){ listOpen = false; html += `</${listType}>`; listType = ''; }
       if(line.trim()==='') { html += '<p></p>'; continue; }
       html += `<p>${this._inline(line)}</p>`;
     }
-    if(listOpen) html += '</ul>';
+    if(listOpen) html += `</${listType}>`;
     return html;
   }
 
@@ -129,8 +147,12 @@ export class HelpModal extends LitElement {
     });
     // links [text](url)
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m,t,u)=>{
-      const href = u.startsWith('http') ? u : `/static/docs/${u}`;
-      return `<a href="${href}" target="_blank" rel="noreferrer">${this._escapeHtml(t)}</a>`;
+      if(u.startsWith('http')){
+        return `<a href="${u}" target="_blank" rel="noreferrer">${this._escapeHtml(t)}</a>`;
+      }
+      // internal link: keep in-modal navigation using data attribute
+      const safe = this._escapeHtml(u).replace(/"/g,'&quot;');
+      return `<a href="#" data-internal="${safe}">${this._escapeHtml(t)}</a>`;
     });
     // inline code
     text = text.replace(/`([^`]+)`/g, (m,c)=>`<code>${this._escapeHtml(c)}</code>`);
@@ -139,6 +161,28 @@ export class HelpModal extends LitElement {
     // italic *text*
     text = text.replace(/\*([^*]+)\*/g, (m,c)=>`<em>${this._escapeHtml(c)}</em>`);
     return text;
+  }
+
+  firstUpdated(){
+    this.addEventListener('modal-close', this._onModalClose);
+    // delegated click handler for internal doc links inside rendered markdown
+    const panel = this.renderRoot.querySelector('.help-panel');
+    if(panel){
+      panel.addEventListener('click', (e)=>{
+        const a = e.target.closest && e.target.closest('a[data-internal]');
+        if(!a) return;
+        e.preventDefault();
+        const file = a.getAttribute('data-internal');
+        if(!file) return;
+        if(file.startsWith('#')){
+          const target = panel.querySelector(file);
+          if(target) target.scrollIntoView();
+          return;
+        }
+        // attempt to open the referenced doc in the help modal
+        try{ this._selectDoc({ file }); }catch(err){ console.warn('[HelpModal] failed to open internal link', err); }
+      });
+    }
   }
 
   render(){
