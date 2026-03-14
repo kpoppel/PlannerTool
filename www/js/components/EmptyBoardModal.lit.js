@@ -107,6 +107,26 @@ export class EmptyBoardModal extends LitElement {
       reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
     }
 
+    // If only teams are selected (no projects) and team-allocation expansion is disabled,
+    // explain that team-only selection won't surface tasks unless expansion is enabled.
+    if (selectedTeams.length > 0 && (!selectedProjects || selectedProjects.length === 0) && !state.expansionState.expandTeamAllocated) {
+      reasons.push("Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks.");
+    }
+
+    // Dimensional task filters (schedule, allocation, hierarchy, relations)
+    try {
+      const taskFilters = state.taskFilterService && typeof state.taskFilterService.getFilters === 'function' ? state.taskFilterService.getFilters() : null;
+      if (taskFilters) {
+        Object.keys(taskFilters).forEach(dim => {
+          const opts = taskFilters[dim];
+          const allFalse = Object.keys(opts).every(k => !opts[k]);
+          if (allFalse) {
+            reasons.push(`${dim.charAt(0).toUpperCase() + dim.slice(1)} filter excludes all options.`);
+          }
+        });
+      }
+    } catch (e) { /* ignore filter read errors */ }
+
     // Hierarchical/project-hierarchy filter
     if (state._viewService.showOnlyProjectHierarchy) {
       reasons.push('Hierarchy filter enabled — only epics from selected project-type plans are shown.');
@@ -123,52 +143,23 @@ export class EmptyBoardModal extends LitElement {
   // Determine whether any features would be visible under current filters
   _hasVisibleFeatures() {
     try {
+      // Use state's expanded feature ids to determine the base visible set (respects expansion options)
       const sourceFeatures = state.getEffectiveFeatures() || [];
       if (!sourceFeatures.length) return false;
 
-      // Build lookup map for parent relations
-      const byId = new Map(sourceFeatures.map(f => [f.id, f]));
+      const expandedIds = state.getExpandedFeatureIds();
+      if (!expandedIds || expandedIds.size === 0) return false;
 
+      // State filter
       const stateFilter = state.selectedFeatureStateFilter instanceof Set 
         ? state.selectedFeatureStateFilter 
         : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
 
-      const selectedProjectIds = new Set(state.projects.filter(p => p.selected).map(p => p.id));
-      const selectedTeams = state.teams.filter(t => t.selected);
-
-      const visited = new Set();
-
-      const isHierarchicallyLinked = (feature, projectTypeEpicIds, localVisited = new Set()) => {
-        if (!feature) return false;
-        if (localVisited.has(feature.id)) return false;
-        localVisited.add(feature.id);
-        if (projectTypeEpicIds.has(feature.id)) return true;
-        if (feature.parentEpic) {
-          const parent = byId.get(feature.parentEpic);
-          if (parent) return isHierarchicallyLinked(parent, projectTypeEpicIds, localVisited);
-        }
-        if (Array.isArray(feature.relations)) {
-          const parentRel = feature.relations.find(r => r.type === 'Parent');
-          if (parentRel && parentRel.id) {
-            const parent = byId.get(parentRel.id);
-            if (parent) return isHierarchicallyLinked(parent, projectTypeEpicIds, localVisited);
-          }
-        }
-        return false;
-      };
+      // Task/dimensional filters
+      const taskFilterSvc = state.taskFilterService;
 
       for (const feature of sourceFeatures) {
-        // project selected?
-        const project = state.projects.find(p => p.id === feature.project && p.selected);
-        if (!project) continue;
-
-        // hierarchical filter
-        if (state._viewService.showOnlyProjectHierarchy) {
-          const projectTypePlans = state.projects.filter(p => { const planType = p.type ? String(p.type) : 'project'; return p.selected && planType === 'project'; });
-          const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
-          const projectTypeEpicIds = new Set(sourceFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id));
-          if (!isHierarchicallyLinked(feature, projectTypeEpicIds)) continue;
-        }
+        if (!expandedIds.has(feature.id)) continue;
 
         // state filter
         if (stateFilter.size === 0) continue;
@@ -185,33 +176,15 @@ export class EmptyBoardModal extends LitElement {
           if (isUnplanned && !state._viewService.showUnplannedWork) continue;
         }
 
-        if (feature.type === 'epic') {
-          const children = sourceFeatures.filter(f => f.parentEpic === feature.id || (Array.isArray(f.relations) && f.relations.some(r => r.type === 'Parent' && r.id === feature.id)));
-          const anyChildVisible = children.some(child => {
-            const childProject = state.projects.find(p => p.id === child.project && p.selected);
-            if (!childProject) return false;
-            if (featureFlags.SHOW_UNPLANNED_WORK) {
-              const isChildUnplanned = !child.start || !child.end;
-              if (isChildUnplanned && !state._viewService.showUnplannedWork) return false;
-            }
-            const hasCapacity = child.capacity && child.capacity.length > 0;
-            if (!hasCapacity) return state._viewService.showUnassignedCards;
-            return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
-          });
-          const hasCapacity = feature.capacity && feature.capacity.length > 0;
-          const epicVisible = hasCapacity ? feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)) : state._viewService.showUnassignedCards;
-          if (epicVisible || anyChildVisible) return true;
-          continue;
-        } else {
-          const hasCapacity = feature.capacity && feature.capacity.length > 0;
-          if (!hasCapacity) {
-            if (!state._viewService.showUnassignedCards) continue;
-            return true;
-          } else {
-            if (feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) return true;
-            continue;
+        // Task/dimensional filters: if service exists, use it to validate feature
+        try {
+          if (taskFilterSvc && typeof taskFilterSvc.featurePassesFilters === 'function') {
+            if (!taskFilterSvc.featurePassesFilters(feature)) continue;
           }
-        }
+        } catch (e) { /* ignore filter errors */ }
+
+        // If we reached here, feature would be visible
+        return true;
       }
       return false;
     } catch (e) { return false; }

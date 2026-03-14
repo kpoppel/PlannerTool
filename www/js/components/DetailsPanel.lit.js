@@ -19,7 +19,7 @@ export class DetailsPanelLit extends LitElement {
     .panel {
       position: fixed;
       right: 0;
-      top: 0;
+      top: 40px;
       bottom: 0;
       width: var(--details-width, 340px);
       background: var(--color-panel-bg, #f9f9f9);

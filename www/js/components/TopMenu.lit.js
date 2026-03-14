@@ -47,7 +47,7 @@ export class TopMenuBarLit extends LitElement {
     .menu-left { display:flex; gap:12px; align-items:center; padding-left:12px; }
     .title-only { margin-left:6px; font-weight:700; }
     /* menu items positioned above timeline left edge (right edge of sidebar) */
-    .menu-items { position: absolute; left: calc(var(--sidebar-width) + 28px); top: 4px; display:flex; gap:12px; align-items:center; white-space:nowrap; z-index: 1100; }
+    .menu-items { position: absolute; left: var(--sidebar-width); top: 4px; display:flex; gap:12px; align-items:center; white-space:nowrap; z-index: 1100; }
     .menu-right { position: absolute; right: 8px; top: 4px; display:flex; gap:12px; align-items:center; white-space:nowrap; z-index: 1100; }
 
     .menu-item {

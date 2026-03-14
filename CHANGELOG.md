@@ -33,16 +33,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Added Examples section to admin_contributing_documentation.md with copyable markdown snippets
 
 ### Changed
+- Modal for messaging the user when no cards are shown, updated to new design
 
 ### Fixed
 
 - Fixed main area layout to respect sidebar width - added left margin so timeline-board and plugins render next to sidebar instead of underneath it
 - Fixed sidebar scrolling: moved scroll behavior to content wrapper
-
-### Fixed
-
+- Fixed Sidepanel Top edge so it does not overlap then menubar
 - Optimized Plan Menu and Team Menu select/deselect all operations to use batch updates, reducing compute time from ~3110ms to near-instant by eliminating O(n) capacity recalculations
-
+ 
 ### Changed
 
 - Revamped ScenarioMenu with inline action buttons matching ViewMenu design pattern - actions now always visible for better discoverability
