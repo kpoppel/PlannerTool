@@ -571,7 +571,12 @@ export class SidebarLit extends LitElement {
     const onViewOptionChange = () => { /* auto-save removed - use View feature instead */ };
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
-    bus.on(ViewEvents.CAPACITY_MODE, onViewOptionChange);
+    bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
+      // Sync local _graphType when capacity mode changes
+      this._graphType = mode || 'team';
+      this.requestUpdate();
+      onViewOptionChange();
+    });
     bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
     bus.on(FilterEvents.CHANGED, onViewOptionChange);
     bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
@@ -594,8 +599,8 @@ export class SidebarLit extends LitElement {
       // Initialize state & task type filters
       this.availableFeatureStates = state.availableFeatureStates || [];
       this._computeAvailableTaskTypes();
-      // Local Taskboard options state
-      this._graphType = 'capacity';
+      // Initialize graph type from current capacityViewMode
+      this._graphType = state.capacityViewMode || 'team';
     } catch (e) {
       // Defensive: ignore if state is not yet ready
       console.warn('[Sidebar] Error initializing from state:', e);
@@ -916,7 +921,7 @@ export class SidebarLit extends LitElement {
 
   _setGraphType(type){
     this._graphType = type;
-    try{ bus.emit('graph:type-changed', { type }); }catch(e){ console.warn('[Sidebar] emit graph type change failed', e); }
+    try{ state._viewService.setCapacityViewMode(type); }catch(e){ console.warn('[Sidebar] setCapacityViewMode failed', e); }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
@@ -996,8 +1001,8 @@ export class SidebarLit extends LitElement {
             <div class="filter-dimension">
               <div class="filter-dimension-title">Graph Type</div>
               <div class="segmented-group">
-                <button type="button" class="segment-btn ${this._graphType === 'capacity' ? 'active' : ''}" @click=${()=>this._setGraphType('capacity')}>Capacity</button>
-                <button type="button" class="segment-btn ${this._graphType === 'allocation' ? 'active' : ''}" @click=${()=>this._setGraphType('allocation')}>Allocation</button>
+                <button type="button" class="segment-btn ${this._graphType === 'team' ? 'active' : ''}" @click=${()=>this._setGraphType('team')}>Team</button>
+                <button type="button" class="segment-btn ${this._graphType === 'project' ? 'active' : ''}" @click=${()=>this._setGraphType('project')}>Project</button>
               </div>
             </div>
           </div>

@@ -40,60 +40,94 @@ export class ViewMenuLit extends LitElement {
       display:flex; 
       flex-direction:column; 
       gap:4px; 
-      margin:0; 
+      margin:0 0 8px 0; 
     }
     
     .sidebar-list-item { display:block; }
     
     .view-item { 
-      padding:4px 6px; 
+      padding:8px 10px; 
       border-radius:6px; 
       width:100%; 
       display:flex; 
       align-items:center; 
       gap:8px; 
       box-sizing:border-box; 
-      position:relative; 
+      position:relative;
+      cursor:pointer;
+      transition: background 120ms ease;
+    }
+    
+    .view-item:hover {
+      background:rgba(255,255,255,0.10);
     }
     
     .view-item.active { 
       background:rgba(255,255,255,0.18); 
     }
     
+    .view-item.active:hover {
+      background:rgba(255,255,255,0.22);
+    }
+    
     .view-name { 
-      cursor:pointer; 
       flex:1 1 auto; 
       font-weight:600; 
       font-size:0.85rem; 
       overflow:hidden; 
       text-overflow:ellipsis; 
       white-space:nowrap; 
-      padding-right:56px; 
+      padding-right:4px;
     }
     
-    .view-controls { 
+    .view-actions { 
       display:inline-flex; 
-      gap:4px; 
+      gap:2px; 
       align-items:center; 
-      position:absolute; 
-      right:6px; 
-      top:50%; 
-      transform:translateY(-50%); 
+      opacity:1;
+      transition: opacity 120ms ease;
     }
     
-    .view-btn { 
-      background:#f7f7f7; 
-      border:1px solid var(--color-border, #ccc); 
-      border-radius:4px; 
-      padding:2px 6px; 
+    .action-btn { 
+      background:transparent;
+      border:none;
+      border-radius:3px; 
+      padding:4px 6px; 
       cursor:pointer; 
-      font-size:0.75rem; 
+      font-size:0.8rem; 
       line-height:1; 
-      color: #333;
+      color: var(--color-sidebar-text);
+      transition: background 100ms ease;
+      opacity:0.7;
     }
     
-    .view-btn:hover { 
-      background:#ececec; 
+    .action-btn:hover { 
+      background:rgba(255,255,255,0.15);
+      opacity:1;
+    }
+
+    .action-btn:active {
+      background:rgba(255,255,255,0.25);
+    }
+
+    .save-view-btn {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(102, 126, 234, 0.2);
+      border: 1px solid rgba(102, 126, 234, 0.4);
+      border-radius: 6px;
+      color: var(--color-sidebar-text);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-align: center;
+      transition: all 0.15s;
+      margin-top: 4px;
+    }
+
+    .save-view-btn:hover {
+      background: rgba(102, 126, 234, 0.35);
+      border-color: rgba(102, 126, 234, 0.6);
     }
   `;
 
@@ -134,7 +168,7 @@ export class ViewMenuLit extends LitElement {
     e.stopPropagation();
     // Load and apply the view
     try {
-      await state.loadAndApplyView(view.id);
+      await state.viewManagementService.loadAndApplyView(view.id);
     } catch (err) {
       console.error('[ViewMenu] Failed to load view:', err);
       // Dispatch error event for parent to handle
@@ -146,15 +180,46 @@ export class ViewMenuLit extends LitElement {
     }
   }
 
-  _onViewMenuClick(e, view) {
+  async _onUpdateView(e, view) {
     e.stopPropagation();
-    
-    // Dispatch event to parent/app to show view menu
-    this.dispatchEvent(new CustomEvent('view-menu', {
-      detail: { view, sourceEvent: e },
-      bubbles: true,
-      composed: true
-    }));
+    try {
+      await state.viewManagementService.saveCurrentView(view.name, view.id);
+      console.log('[ViewMenu] Updated view:', view.name);
+    } catch (err) {
+      console.error('[ViewMenu] Failed to update view:', err);
+    }
+  }
+
+  async _onRenameView(e, view) {
+    e.stopPropagation();
+    try {
+      const { openViewRenameModal } = await import('./modalHelpers.js');
+      await openViewRenameModal({ id: view.id, name: view.name });
+    } catch (err) {
+      console.error('[ViewMenu] Failed to open rename modal:', err);
+    }
+  }
+
+  async _onDeleteView(e, view) {
+    e.stopPropagation();
+    try {
+      const { openViewDeleteModal } = await import('./modalHelpers.js');
+      await openViewDeleteModal({ id: view.id, name: view.name });
+    } catch (err) {
+      console.error('[ViewMenu] Failed to open delete modal:', err);
+    }
+  }
+
+  async _onSaveCurrentView(e) {
+    e.stopPropagation();
+    // Show save view modal
+    try {
+      const ViewSaveModal = (await import('./ViewSaveModal.lit.js')).ViewSaveModal;
+      const modal = document.createElement('view-save-modal');
+      document.body.appendChild(modal);
+    } catch (err) {
+      console.error('[ViewMenu] Failed to open save modal:', err);
+    }
   }
 
   render() {
@@ -171,15 +236,28 @@ export class ViewMenuLit extends LitElement {
             <li class="sidebar-list-item view-item ${v.id === this.activeViewId ? 'active' : ''}" 
                 @click=${(e) => this._onViewClick(e, v)}>
               <span class="view-name" title="${v.name}">${v.name}</span>
-              <span class="view-controls">
-                <button type="button" 
-                        class="view-btn" 
-                        title="View actions" 
-                        @click=${(e) => this._onViewMenuClick(e, v)}>⋯</button>
-              </span>
+              ${!v.readonly ? html`
+                <span class="view-actions">
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Update this view with current settings" 
+                          @click=${(e) => this._onUpdateView(e, v)}>💾</button>
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Rename view" 
+                          @click=${(e) => this._onRenameView(e, v)}>✏️</button>
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Delete view" 
+                          @click=${(e) => this._onDeleteView(e, v)}>🗑️</button>
+                </span>
+              ` : ''}
             </li>
           `)}
         </ul>
+        <button type="button" class="save-view-btn" @click=${this._onSaveCurrentView}>
+          💾 Save Settings as View
+        </button>
       </div>
     `;
   }

@@ -339,12 +339,14 @@ export async function initTimeline(){
       renderPromise.then(() => {
         try{
           if (payload && payload.scale === 'threeMonths'){
-            // Left-align current month as the viewport's leftmost month
+            // Center current month in the viewport
             const today = new Date();
             const idx = monthsCache.findIndex(m => m.getFullYear()===today.getFullYear() && m.getMonth()===today.getMonth());
             const section = findInBoard('#timelineSection');
             if(idx >= 0 && section){
-              section.scrollLeft = idx * newMonthWidth;
+              const targetScrollPos = idx * newMonthWidth;
+              const centeredScrollPos = targetScrollPos - (section.clientWidth / 2) + (newMonthWidth / 2);
+              section.scrollLeft = Math.max(0, centeredScrollPos);
             }
           } else {
             if (centerDate && monthsCache.length) {
@@ -679,7 +681,10 @@ export function ensureScrollToMonth(date){
       if(idx === -1) return false;
         const section = findInBoard('#timelineSection');
         if(!section) return false;
-      const left = idx * monthWidth;
+      // Center the target month in the viewport instead of left-aligning it
+      const targetScrollPos = idx * monthWidth;
+      const centeredScrollPos = targetScrollPos - (section.clientWidth / 2) + (monthWidth / 2);
+      const left = Math.max(0, centeredScrollPos);
       requestAnimationFrame(()=>{ section.scrollLeft = left; });
       return true;
     };

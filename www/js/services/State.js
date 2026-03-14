@@ -15,7 +15,6 @@ import { ProjectTeamService } from './ProjectTeamService.js';
 import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
 import { ViewManagementService } from './ViewManagementService.js';
-import { SidebarPersistenceService } from './SidebarPersistenceService.js';
 // Re-export color constants for backward compatibility
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
@@ -85,12 +84,10 @@ class State {
     );
     
     // View management service
-    this._sidebarPersistenceService = new SidebarPersistenceService(dataService);
     this._viewManagementService = new ViewManagementService(
       bus,
       this,
-      this._viewService,
-      this._sidebarPersistenceService
+      this._viewService
     );
     
     // Capacity metrics
@@ -286,51 +283,19 @@ class State {
       () => this._projectTeamService.captureCurrentFilters()
     );
     
-    // If there is a saved sidebar state, apply its filters and view silently
-    try {
-      const savedSidebar = await this._sidebarPersistenceService.getSavedState();
-      if (savedSidebar) {
-        // Apply project selections silently
-        if (savedSidebar.projects && this.projects) {
-          try { this._projectTeamService.setProjectsSelectedBulk(savedSidebar.projects); } catch(e){}
-        }
-
-        // Apply team selections silently
-        if (savedSidebar.teams && this.teams) {
-          try { this._projectTeamService.setTeamsSelectedBulk(savedSidebar.teams); } catch(e){}
-        }
-
-        // Apply view options silently (no events emitted)
-        if (savedSidebar.viewOptions) {
-          try { this._viewService.restoreView(savedSidebar.viewOptions, false); } catch(e){}
-
-          // Restore state filters silently
-          if (savedSidebar.viewOptions.selectedFeatureStates && Array.isArray(savedSidebar.viewOptions.selectedFeatureStates)) {
-            const availableStates = this.availableFeatureStates || [];
-            const savedStates = savedSidebar.viewOptions.selectedFeatureStates;
-            const validStates = savedStates.filter(s => availableStates.includes(s));
-            try { this._stateFilterService.restoreFilterState({ selectedStates: validStates }); } catch(e){}
-          }
-        }
-
-        // Now that everything is applied silently, compute metrics and emit a single consolidated update
-        try {
-          this.recomputeCapacityMetrics();
-          bus.emit(CapacityEvents.UPDATED, { dates: this.capacityDates, teamDailyCapacity: this.teamDailyCapacity, projectDailyCapacityRaw: this.projectDailyCapacityRaw, projectDailyCapacity: this.projectDailyCapacity, totalOrgDailyCapacity: this.totalOrgDailyCapacity, totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg });
-          // Notify consumers that features should be re-rendered once
-          bus.emit(FeatureEvents.UPDATED);
-        } catch (e) { /* ignore */ }
-      }
-    } catch (err) {
-      console.error('[State] Error applying saved sidebar state', err);
-    }
-
-    // Emit scenario events and load saved views after state has been applied
+    // Emit scenario events before loading views
     this._scenarioEventService.emitScenarioList();
     this._scenarioEventService.emitScenarioActivated();
 
     // Load saved views
     await this._viewManagementService.loadViews();
+    
+    // Restore the last active view (or default view if none)
+    // This will apply project/team selections and view options
+    await this._viewManagementService.restoreLastView();
+
+    // Calculate initial capacity metrics now that all data is loaded and selections are restored
+    this.recomputeCapacityMetrics();
 
     // Signal that initState has completed so other components waiting on
     // restored view state (eg. timeline) can proceed deterministically.

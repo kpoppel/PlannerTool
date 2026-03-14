@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { dataService } from '../services/dataService.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
 
@@ -40,65 +41,100 @@ export class ScenarioMenuLit extends LitElement {
       display:flex; 
       flex-direction:column; 
       gap:4px; 
-      margin:0; 
+      margin:0 0 8px 0; 
     }
     
     .sidebar-list-item { display:block; }
     
     .scenario-item { 
-      padding:4px 6px; 
+      padding:8px 10px; 
       border-radius:6px; 
       width:100%; 
       display:flex; 
       align-items:center; 
       gap:8px; 
       box-sizing:border-box; 
-      position:relative; 
+      position:relative;
+      cursor:pointer;
+      transition: background 120ms ease;
+    }
+    
+    .scenario-item:hover {
+      background:rgba(255,255,255,0.10);
     }
     
     .scenario-item.active { 
       background:rgba(255,255,255,0.18); 
     }
     
+    .scenario-item.active:hover {
+      background:rgba(255,255,255,0.22);
+    }
+    
     .scenario-name { 
-      cursor:pointer; 
       flex:1 1 auto; 
       font-weight:600; 
       font-size:0.85rem; 
       overflow:hidden; 
       text-overflow:ellipsis; 
       white-space:nowrap; 
-      padding-right:56px; 
+      padding-right:4px;
     }
     
     .scenario-warning {
       font-size: 0.9rem;
       margin-right: 4px;
+      opacity: 0.85;
     }
     
-    .scenario-controls { 
+    .scenario-actions { 
       display:inline-flex; 
-      gap:4px; 
+      gap:2px; 
       align-items:center; 
-      position:absolute; 
-      right:6px; 
-      top:50%; 
-      transform:translateY(-50%); 
+      opacity:1;
+      transition: opacity 120ms ease;
     }
     
-    .scenario-btn { 
-      background:#f7f7f7; 
-      border:1px solid var(--color-border, #ccc); 
-      border-radius:4px; 
-      padding:2px 6px; 
+    .action-btn { 
+      background:transparent;
+      border:none;
+      border-radius:3px; 
+      padding:4px 6px; 
       cursor:pointer; 
-      font-size:0.75rem; 
+      font-size:0.8rem; 
       line-height:1; 
-      color: #333;
+      color: var(--color-sidebar-text);
+      transition: background 100ms ease;
+      opacity:0.7;
     }
     
-    .scenario-btn:hover { 
-      background:#ececec; 
+    .action-btn:hover { 
+      background:rgba(255,255,255,0.15);
+      opacity:1;
+    }
+
+    .action-btn:active {
+      background:rgba(255,255,255,0.25);
+    }
+
+    .copy-scenario-btn {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(102, 126, 234, 0.2);
+      border: 1px solid rgba(102, 126, 234, 0.4);
+      border-radius: 6px;
+      color: var(--color-sidebar-text);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-align: center;
+      transition: all 0.15s;
+      margin-top: 4px;
+    }
+
+    .copy-scenario-btn:hover {
+      background: rgba(102, 126, 234, 0.35);
+      border-color: rgba(102, 126, 234, 0.6);
     }
   `;
 
@@ -113,13 +149,21 @@ export class ScenarioMenuLit extends LitElement {
     
     // Listen to scenario changes for real-time updates
     this._onScenariosList = (payload) => {
-      this.scenarios = payload?.scenarios ? [...payload.scenarios] : [];
-      this.activeScenarioId = payload?.activeId || null;
+      // Use full scenarios from state to get overrides data
+      try {
+        const full = state.scenarios || [];
+        this.scenarios = Array.isArray(full) ? [...full] : [];
+      } catch (e) {
+        // Fallback to payload if state is not ready
+        const list = payload?.scenarios || [];
+        this.scenarios = Array.isArray(list) ? [...list] : [];
+      }
+      this.activeScenarioId = payload?.activeScenarioId || null;
       this.requestUpdate();
     };
     
     this._onScenarioActivated = (payload) => {
-      this.activeScenarioId = payload?.id || null;
+      this.activeScenarioId = payload?.scenarioId || null;
       this.requestUpdate();
     };
     
@@ -150,20 +194,121 @@ export class ScenarioMenuLit extends LitElement {
   }
 
   _onScenarioClick(e, scenario) {
-    if (!e.target.closest('.scenario-controls')) {
-      state.activateScenario(scenario.id);
+    e.stopPropagation();
+    // Activate the scenario
+    state.activateScenario(scenario.id);
+  }
+
+  async _onSaveScenario(e, scenario) {
+    e.stopPropagation();
+    try {
+      await state.saveScenario(scenario.id);
+      console.log('[ScenarioMenu] Saved scenario:', scenario.name);
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to save scenario:', err);
     }
   }
 
-  _onScenarioMenuClick(e, scenario) {
+  async _onCloneScenario(e, scenario) {
     e.stopPropagation();
-    
-    // Dispatch event to parent/app to show scenario menu
-    this.dispatchEvent(new CustomEvent('scenario-menu', {
-      detail: { scenario, sourceEvent: e },
-      bubbles: true,
-      composed: true
-    }));
+    try {
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const scenarios = state.getScenarios?.() || [];
+      const maxN = Math.max(0, ...scenarios
+        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
+        .filter(Boolean)
+        .map(n => parseInt(n, 10)));
+      const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
+
+      const { openScenarioCloneModal } = await import('./modalHelpers.js');
+      await openScenarioCloneModal({ id: scenario.id, name: defaultCloneName });
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to clone scenario:', err);
+    }
+  }
+
+  async _onRenameScenario(e, scenario) {
+    e.stopPropagation();
+    try {
+      const { openScenarioRenameModal } = await import('./modalHelpers.js');
+      await openScenarioRenameModal({ id: scenario.id, name: scenario.name });
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to open rename modal:', err);
+    }
+  }
+
+  async _onDeleteScenario(e, scenario) {
+    e.stopPropagation();
+    try {
+      const { openScenarioDeleteModal } = await import('./modalHelpers.js');
+      await openScenarioDeleteModal({ id: scenario.id, name: scenario.name });
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to open delete modal:', err);
+    }
+  }
+
+  async _onRefreshBaseline(e, scenario) {
+    e.stopPropagation();
+    try {
+      await state.refreshBaseline();
+      console.log('[ScenarioMenu] Refreshed baseline');
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to refresh baseline:', err);
+    }
+  }
+
+  async _onCopyScenario(e) {
+    e.stopPropagation();
+    try {
+      // Copy the active scenario
+      const activeScenario = this.scenarios?.find(s => s.id === this.activeScenarioId);
+      if (!activeScenario) {
+        console.warn('[ScenarioMenu] No active scenario to copy');
+        return;
+      }
+
+      const now = new Date();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const scenarios = state.getScenarios?.() || [];
+      const maxN = Math.max(0, ...scenarios
+        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
+        .filter(Boolean)
+        .map(n => parseInt(n, 10)));
+      const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
+
+      const { openScenarioCloneModal } = await import('./modalHelpers.js');
+      await openScenarioCloneModal({ id: activeScenario.id, name: defaultCloneName });
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to copy scenario:', err);
+    }
+  }
+
+  async _onSaveToAzure(e, scenario) {
+    e.stopPropagation();
+    try {
+      // Get full scenario data from state to ensure we have the complete overrides object
+      const fullScenarios = state.getScenarios?.() || state.scenarios || [];
+      const fullScenario = fullScenarios.find(s => s.id === scenario.id) || scenario;
+      
+      const overrides = fullScenario.overrides || {};
+      const overrideEntries = Object.entries(overrides);
+      if (overrideEntries.length === 0) {
+        console.log('[ScenarioMenu] No changes to save to Azure');
+        return;
+      }
+      
+      const { openAzureDevopsModal } = await import('./modalHelpers.js');
+      const selected = await openAzureDevopsModal({ overrides, state });
+      if (selected?.length) {
+        await dataService.publishBaseline(selected);
+        console.log('[ScenarioMenu] Saved changes to Azure DevOps');
+      }
+    } catch (err) {
+      console.error('[ScenarioMenu] Failed to save to Azure:', err);
+    }
   }
 
   render() {
@@ -181,17 +326,43 @@ export class ScenarioMenuLit extends LitElement {
                 @click=${(e) => this._onScenarioClick(e, s)}>
               <span class="scenario-name" title="${s.name}">${s.name}</span>
               ${state.isScenarioUnsaved?.(s) ? html`
-                <span class="scenario-warning" title="Unsaved">⚠️</span>
+                <span class="scenario-warning" title="Unsaved changes">⚠️</span>
               ` : ''}
-              <span class="scenario-controls">
-                <button type="button" 
-                        class="scenario-btn" 
-                        title="Scenario actions" 
-                        @click=${(e) => this._onScenarioMenuClick(e, s)}>⋯</button>
-              </span>
+              ${s.readonly ? html`
+                <span class="scenario-actions">
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Refresh baseline data" 
+                          @click=${(e) => this._onRefreshBaseline(e, s)}>🔄</button>
+                </span>
+              ` : html`
+                <span class="scenario-actions">
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Save scenario changes" 
+                          @click=${(e) => this._onSaveScenario(e, s)}>💾</button>
+                  ${((s.overrides && Object.keys(s.overrides).length > 0) || s.overridesCount > 0) ? html`
+                    <button type="button" 
+                            class="action-btn" 
+                            title="Save to Azure DevOps" 
+                            @click=${(e) => this._onSaveToAzure(e, s)}>☁️</button>
+                  ` : ''}
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Rename scenario" 
+                          @click=${(e) => this._onRenameScenario(e, s)}>✏️</button>
+                  <button type="button" 
+                          class="action-btn" 
+                          title="Delete scenario" 
+                          @click=${(e) => this._onDeleteScenario(e, s)}>🗑️</button>
+                </span>
+              `}
             </li>
           `)}
         </ul>
+        <button type="button" class="copy-scenario-btn" @click=${this._onCopyScenario}>
+          📋 Copy Scenario
+        </button>
       </div>
     `;
   }

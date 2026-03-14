@@ -26,14 +26,44 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Added View Filters section to Sidebar with four dimensional filters: Schedule (planned/unplanned), Allocation (allocated/unallocated), Hierarchy (hasParent/noParent), Relations (hasLinks/noLinks)
 - Created ViewFilterService to manage dimensional view filters with independent checkbox toggles
 - Integrated view filters into FeatureBoard display logic and Data Funnel calculations
+- Added expansion options (Parent/Child, Relations, Team Allocated) to view persistence
 
 ### Changed
+
+- Revamped ScenarioMenu with inline action buttons matching ViewMenu design pattern - actions now always visible for better discoverability
+- Added scenario name badge to top menu bar (similar to View menu)
+- Replaced inline clone action with "Copy Scenario" button (📋) at bottom of ScenarioMenu
+- Added "Save to Azure DevOps" action (☁️) to ScenarioMenu for scenarios with overrides
+- Made action icons always visible in both ViewMenu and ScenarioMenu for improved UX
+- Removed legacy scenario action popup menu from TopMenu in favor of inline actions
+- Reordered ScenarioMenu action buttons: Save to Azure (☁️) now appears between Save Scenario and Rename buttons for better workflow
+- Save Scenario button (💾) is now always visible for non-readonly scenarios instead of only appearing when changes are detected - provides clearer affordance and simpler UX
+
+### Fixed
+
+- Fixed scenario name badge not showing in top menu - corrected ScenarioEvents.ACTIVATED payload property from `id` to `scenarioId`
+- Fixed active scenario not being highlighted in ScenarioMenu dropdown
+- Fixed scenario selection resetting when dragging cards - corrected ScenarioEvents.LIST payload property from `activeId` to `activeScenarioId` in TopMenu and ScenarioMenu handlers
+- Fixed "Save to Azure" button not appearing when scenario has overrides - updated render condition to check both `s.overrides` and `s.overridesCount` properties
+- Fixed "Save to Azure" reporting no changes despite scenario having overrides - updated `_onSaveToAzure` to fetch full scenario data from state instead of relying on metadata-only scenario object from render
+- Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it, which was causing viewport to show months 5-6 months ahead
+- Fixed organizational capacity graph (maingraph) not rendering on initial application load - added call to `recomputeCapacityMetrics()` at end of `State.initState()` to ensure capacity data is calculated before components render
+- Fixed Graph Type buttons not changing the graph rendering mode - updated Sidebar `_setGraphType()` to properly call `ViewService.setCapacityViewMode()` and added event handler to sync local state when mode changes
+
+### Changed
+
+- Simplified Graph Type terminology: renamed buttons from "Capacity/Allocation" to "Team/Project" for clarity and consistency with underlying capacityViewMode values
+- Updated ViewManagementService and ViewSaveModal to use 'team'/'project' terminology instead of 'capacity'/'allocation'
 
 - Removed tour functionality (Shepherd library, TourStarter.js, and all data-tour attributes). The guided tour is no longer needed with the refactored UI.
  - Removed view chips from View Options: "Show Unallocated", "Show Unplanned", and "Show Only Project Hierarchy". Their functionality is available via the dimensional View Filters (Sidebar) and expansion options.
  - View service cleanup: `ViewFilterService` now syncs legacy `FilterEvents.CHANGED` flags (`showUnassignedCards`, `showUnplannedWork`, `showOnlyProjectHierarchy`) so existing code using `ViewService` setters remains compatible while filters are centralized.
  - Removed legacy keyboard shortcut handlers for view toggles (D/C/U/A/H) from the Sidebar; global shortcuts remain limited to app search (Ctrl+Shift+F).
+- Improved View actions UX: replaced awkwardly positioned popover menu with inline action buttons (Update 💾, Rename ✏️, Delete 🗑️) that appear on hover over each view item
+ 
 ### Fixed
+
+- Fixed task filter UI (Schedule, Allocation, Hierarchy, Relations) not updating immediately when restoring a view - added event listener in Sidebar to sync taskFilters property when FilterEvents.CHANGED is emitted
 
 ## [v1.15.1] - 2026-03-13
 

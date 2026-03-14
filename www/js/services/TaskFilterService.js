@@ -161,6 +161,9 @@ export class TaskFilterService {
         });
       }
     });
+    
+    // Emit event to notify UI components to update
+    this._emitFilterChanged();
   }
   
   /**

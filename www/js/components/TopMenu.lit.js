@@ -190,22 +190,6 @@ export class TopMenuBarLit extends LitElement {
     };
     document.addEventListener('click', this._outsideClickHandler);
 
-    // Handle scenario menu actions
-    this._scenarioMenuHandler = async (e) => {
-      const { scenario, sourceEvent } = e.detail;
-      // Import and show scenario action menu (clone, rename, delete, etc.)
-      await this._showScenarioActionsMenu(scenario, sourceEvent);
-    };
-    this.addEventListener('scenario-menu', this._scenarioMenuHandler);
-
-    // Handle view menu actions
-    this._viewMenuHandler = async (e) => {
-      const { view, sourceEvent } = e.detail;
-      // Import and show view action menu (rename, delete, update, etc.)
-      await this._showViewActionsMenu(view, sourceEvent);
-    };
-    this.addEventListener('view-menu', this._viewMenuHandler);
-
     // Listen to state changes to update menu data
     this._onProjectsChanged = (projects) => {
       const arr = projects ? [...projects] : [];
@@ -219,9 +203,9 @@ export class TopMenuBarLit extends LitElement {
     };
     this._onScenariosList = (payload) => {
       this.scenarios = payload?.scenarios || [];
-      this.activeScenarioId = payload?.activeId || null;
+      this.activeScenarioId = payload?.activeScenarioId || null;
     };
-    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload?.id || null; };
+    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload?.scenarioId || null; };
     this._onScenariosUpdated = () => { this.scenarios = state.getScenarios?.() || []; };
     this._onViewsList = (payload) => {
       this.views = payload?.views || [];
@@ -247,7 +231,7 @@ export class TopMenuBarLit extends LitElement {
     try {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
-      this._onScenariosList({ scenarios: state.scenarios, activeId: state.activeScenarioId });
+      this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
       this._onViewsList({ views: state.savedViews, activeId: state.activeViewId });
       // Also get current view data
       const currentView = state.getActiveView?.();
@@ -263,12 +247,6 @@ export class TopMenuBarLit extends LitElement {
     super.disconnectedCallback();
     if (this._outsideClickHandler) {
       document.removeEventListener('click', this._outsideClickHandler);
-    }
-    if (this._scenarioMenuHandler) {
-      this.removeEventListener('scenario-menu', this._scenarioMenuHandler);
-    }
-    if (this._viewMenuHandler) {
-      this.removeEventListener('view-menu', this._viewMenuHandler);
     }
 
     // Clean up event listeners
@@ -295,6 +273,38 @@ export class TopMenuBarLit extends LitElement {
     }
   }
 
+  _getViewName() {
+    if (!this.activeViewId) return '';
+    
+    // Try to find view name from views list
+    const view = this.views?.find(v => v.id === this.activeViewId);
+    if (view) return view.name;
+    
+    // Fallback to activeViewData
+    if (this.activeViewData?.name) return this.activeViewData.name;
+    
+    // If still no name, return the ID (shouldn't happen)
+    return this.activeViewId;
+  }
+
+  _getScenarioName() {
+    if (!this.activeScenarioId) return '';
+    
+    // Try to find scenario name from scenarios list
+    const scenario = this.scenarios?.find(s => s.id === this.activeScenarioId);
+    if (scenario) return scenario.name || scenario.id;
+    
+    // Fallback: try state if available
+    if (state.activeScenarioId === this.activeScenarioId) {
+      const scenarios = state.getScenarios?.() || [];
+      const stateScenario = scenarios.find(s => s.id === this.activeScenarioId);
+      if (stateScenario) return stateScenario.name || stateScenario.id;
+    }
+    
+    // If still no name, return the ID
+    return this.activeScenarioId;
+  }
+
   render() {
     return html`
       <nav class="menu-bar" role="navigation" aria-label="Top menu">
@@ -307,12 +317,18 @@ export class TopMenuBarLit extends LitElement {
                id="viewMenuBtn"
                role="button" 
                tabindex="0"
-               @click=${(e) => this._toggleMenu('view', e)}>View</div>
+               @click=${(e) => this._toggleMenu('view', e)}>
+            View
+            ${this.activeViewId ? html`<span class="menu-count-badge">${this._getViewName()}</span>` : ''}
+          </div>
           <div class="menu-item ${this.openMenu === 'scenario' ? 'active' : ''}" 
                id="scenarioMenuBtn"
                role="button" 
                tabindex="0"
-               @click=${(e) => this._toggleMenu('scenario', e)}>Scenario</div>
+               @click=${(e) => this._toggleMenu('scenario', e)}>
+            Scenario
+            ${this.activeScenarioId ? html`<span class="menu-count-badge">${this._getScenarioName()}</span>` : ''}
+          </div>
           <div class="menu-item ${this.openMenu === 'plan' ? 'active' : ''}" 
             id="planMenuBtn"
             role="button" 
@@ -384,139 +400,7 @@ export class TopMenuBarLit extends LitElement {
     await openHelpModal();
   }
 
-  async _showScenarioActionsMenu(scenario, sourceEvent) {
-    document.querySelectorAll('.scenario-menu-popover').forEach(p => p.remove());
-    
-    const menuBtn = sourceEvent.currentTarget;
-    const pop = document.createElement('div');
-    pop.className = 'scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled = false) => {
-      const item = document.createElement('div');
-      item.className = 'scenario-menu-item';
-      if (disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if (!disabled) item.addEventListener('click', ev => { ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    const defaultCloneName = (() => {
-      const now = new Date();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const scenarios = state.getScenarios?.() || [];
-      const maxN = Math.max(0, ...scenarios
-        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
-      return `${mm}-${dd} Scenario ${maxN + 1}`;
-    })();
-    
-    addItem('Clone Scenario', '⎘', async () => {
-      const { openScenarioCloneModal } = await import('./modalHelpers.js');
-      await openScenarioCloneModal({ id: scenario.id, name: defaultCloneName });
-    });
-    
-    if (scenario.readonly) {
-      addItem('Refresh Baseline', '🔄', () => state.refreshBaseline());
-    } else {
-      addItem('Rename', '✏️', async () => {
-        const { openScenarioRenameModal } = await import('./modalHelpers.js');
-        await openScenarioRenameModal({ id: scenario.id, name: scenario.name });
-      });
-      addItem('Delete', '🗑️', async () => {
-        const { openScenarioDeleteModal } = await import('./modalHelpers.js');
-        await openScenarioDeleteModal({ id: scenario.id, name: scenario.name });
-      });
-      addItem('Save Scenario', '💾', () => state.saveScenario(scenario.id));
-      addItem('Save to Azure DevOps', '💾', async () => {
-        const overrideEntries = Object.entries(scenario.overrides || {});
-        if (overrideEntries.length === 0) return;
-        const { openAzureDevopsModal } = await import('./modalHelpers.js');
-        const selected = await openAzureDevopsModal({ overrides: scenario.overrides, state });
-        if (selected?.length) await dataService.publishBaseline(selected);
-      }, (scenario.overrides && Object.keys(scenario.overrides).length === 0));
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    Object.assign(pop.style, {
-      position: 'fixed',
-      top: `${rect.bottom + 4}px`,
-      left: `${rect.left}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '3000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
-  }
 
-  async _showViewActionsMenu(view, sourceEvent) {
-    document.querySelectorAll('.view-menu-popover').forEach(p => p.remove());
-    
-    const menuBtn = sourceEvent.currentTarget;
-    const pop = document.createElement('div');
-    pop.className = 'view-menu-popover scenario-menu-popover';
-    
-    const addItem = (label, emoji, onClick, disabled = false) => {
-      const item = document.createElement('div');
-      item.className = 'scenario-menu-item';
-      if (disabled) item.classList.add('disabled');
-      item.innerHTML = `<span>${emoji}</span><span>${label}</span>`;
-      if (!disabled) item.addEventListener('click', ev => { ev.stopPropagation(); onClick(); pop.remove(); });
-      pop.appendChild(item);
-    };
-    
-    if (view.readonly && view.id === 'default') {
-      addItem('Clone to New View', '⎘', async () => {
-        const { openViewSaveModal } = await import('./modalHelpers.js');
-        const defaultName = (() => {
-          const now = new Date();
-          const mm = String(now.getMonth() + 1).padStart(2, '0');
-          const dd = String(now.getDate()).padStart(2, '0');
-          const views = state.getViews?.() || [];
-          const maxN = Math.max(0, ...views
-            .map(v => /^\d{2}-\d{2} View (\d+)$/i.exec(v.name)?.[1])
-            .filter(Boolean)
-            .map(n => parseInt(n, 10)));
-          return `${mm}-${dd} View ${maxN + 1}`;
-        })();
-        await openViewSaveModal({ name: defaultName });
-      });
-    } else {
-      addItem('Update View', '💾', async () => {
-        await state.viewManagementService.updateView(view.id);
-      });
-      addItem('Rename', '✏️', async () => {
-        const { openViewRenameModal } = await import('./modalHelpers.js');
-        await openViewRenameModal({ id: view.id, name: view.name });
-      });
-      addItem('Delete', '🗑️', async () => {
-        const { openViewDeleteModal } = await import('./modalHelpers.js');
-        await openViewDeleteModal({ id: view.id, name: view.name });
-      });
-    }
-    
-    const rect = menuBtn.getBoundingClientRect();
-    Object.assign(pop.style, {
-      position: 'fixed',
-      top: `${rect.bottom + 4}px`,
-      left: `${rect.left}px`,
-      background: '#fff',
-      color: '#222',
-      border: '1px solid rgba(0,0,0,0.12)',
-      borderRadius: '6px',
-      boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-      minWidth: '160px',
-      zIndex: '3000'
-    });
-    document.body.appendChild(pop);
-    setTimeout(() => document.addEventListener('click', () => pop.remove(), { once: true }), 0);
-  }
 }
 
 customElements.define('top-menu-bar', TopMenuBarLit);
