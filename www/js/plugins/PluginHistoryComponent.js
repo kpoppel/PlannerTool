@@ -17,7 +17,12 @@ export class PluginHistoryComponent extends LitElement {
   static properties = { 
     visible: { type: Boolean },
     historyData: { type: Array },
-    loading: { type: Boolean }
+    loading: { type: Boolean },
+    // Progress tracking for toolbox feedback
+    totalPlans: { type: Number },
+    currentPlanIndex: { type: Number },
+    currentPlanId: { type: String },
+    tasksInvestigated: { type: Number }
   };
   
   constructor() { 
@@ -30,6 +35,10 @@ export class PluginHistoryComponent extends LitElement {
     this._overlay = null;
     this._tooltipEl = null;
     this._loadedProjects = new Set(); // Track which projects have been loaded
+    this.totalPlans = 0;
+    this.currentPlanIndex = 0;
+    this.currentPlanId = '';
+    this.tasksInvestigated = 0;
   }
 
   async _ensureVisibleProjectsLoaded(){
@@ -58,13 +67,24 @@ export class PluginHistoryComponent extends LitElement {
       const selectedProjects = (state.projects || []).filter(p => p.selected);
       const toFetch = selectedProjects.filter(p => visibleProjectIds.has(String(p.id)) && !this._loadedProjects.has(p.id));
       if(toFetch.length === 0) return;
-
       console.log(`[PluginHistory] Lazy-loading history for visible projects: ${toFetch.map(p=>p.id).join(',')}`);
+      // Initialize progress tracking for lazy load
+      this.totalPlans = toFetch.length;
+      this.currentPlanIndex = 0;
+      this.currentPlanId = '';
+      this.requestUpdate();
+
       const newTasks = [];
       for(const project of toFetch){
+        this.currentPlanIndex = (this.currentPlanIndex || 0) + 1;
+        this.currentPlanId = project.id;
+        this.requestUpdate();
         try{
           const data = await dataService.getHistory(project.id, { per_page: 500 });
-          if(data && data.tasks && data.tasks.length) newTasks.push(...data.tasks);
+          if(data && data.tasks && data.tasks.length) {
+            newTasks.push(...data.tasks);
+            this.tasksInvestigated = (this.tasksInvestigated || 0) + data.tasks.length;
+          }
           this._loadedProjects.add(project.id);
         }catch(e){ console.error('[PluginHistory] Error lazy-loading project history', e); }
       }
@@ -74,6 +94,9 @@ export class PluginHistoryComponent extends LitElement {
         const unique = newTasks.filter(t => !existingIds.has(t.task_id));
         this.historyData = [...this.historyData, ...unique];
       }
+      // clear lazy-load current indicator
+      this.currentPlanId = '';
+      this.requestUpdate();
     }catch(e){ console.error('[PluginHistory] _ensureVisibleProjectsLoaded error', e); }
   }
 
@@ -97,7 +120,8 @@ export class PluginHistoryComponent extends LitElement {
       box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       pointer-events: auto;
       z-index: 200;
-      min-width: 140px;
+      width: 300px;
+      box-sizing: border-box;
     }
     
     .toolbar-title {
@@ -352,6 +376,15 @@ export class PluginHistoryComponent extends LitElement {
         <button @click="${this.refreshCache}" ?disabled="${this.loading}">
           ${this.loading ? '⏳ Loading...' : '🔄 Refresh Cache'}
         </button>
+        ${this.loading ? html`
+          <div style="font-size:11px; margin-top:8px; color:#444;">
+            Investigating: <strong>${this.currentPlanId || '—'}</strong>
+          </div>
+          <div style="font-size:11px; margin-top:4px; color:#666;">
+            Plans left: <strong>${Math.max(0, (this.totalPlans || 0) - (this.currentPlanIndex || 0))}</strong>
+            &nbsp;•&nbsp; Tasks checked: <strong>${this.tasksInvestigated || 0}</strong>
+          </div>
+        ` : ''}
         ${!this.loading && taskCount > 0 ? html`
           <div class="task-count">
             ${taskCount} task${taskCount !== 1 ? 's' : ''} with history
@@ -421,14 +454,24 @@ export class PluginHistoryComponent extends LitElement {
       }
       
       console.log(`[PluginHistory] Fetching history for ${projectsToFetch.length} projects:`, projectsToFetch.map(p => p.id));
-      
+      // Initialize progress tracking
+      this.totalPlans = projectsToFetch.length;
+      this.currentPlanIndex = 0;
+      this.currentPlanId = '';
+      this.tasksInvestigated = 0;
+      this.requestUpdate();
+
       // Fetch history from API for projects that need loading
       const newTasks = [];
       for (const project of projectsToFetch) {
+        this.currentPlanIndex = (this.currentPlanIndex || 0) + 1;
+        this.currentPlanId = project.id;
+        this.requestUpdate();
         try {
           const data = await dataService.getHistory(project.id, { per_page: 500, invalidate_cache: !!invalidateCache });
           if (data && data.tasks && data.tasks.length > 0) {
             newTasks.push(...data.tasks);
+            this.tasksInvestigated += data.tasks.length;
             console.log(`[PluginHistory] Loaded ${data.tasks.length} tasks from ${project.id}`);
           }
 
@@ -467,6 +510,10 @@ export class PluginHistoryComponent extends LitElement {
       }
       
       console.log(`[PluginHistory] Total loaded: ${this.historyData.length} tasks with history`);
+      // clear progress indicators
+      this.currentPlanId = '';
+      this.currentPlanIndex = this.totalPlans || 0;
+      this.requestUpdate();
       
       // Log summary of history data
       const tasksWithHistory = this.historyData.filter(t => t.history && t.history.length > 0);
