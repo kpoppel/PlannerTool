@@ -28,6 +28,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Created ViewFilterService to manage dimensional view filters with independent checkbox toggles
 - Integrated view filters into FeatureBoard display logic and Data Funnel calculations
 - Added expansion options (Parent/Child, Relations, Team Allocated) to view persistence
+- Added ordered list (numbered list) support to HelpModal markdown renderer
+- Added internal link support to HelpModal - links without "https://" now navigate within the modal instead of opening new windows
+- Added Examples section to admin_contributing_documentation.md with copyable markdown snippets
+
+### Changed
+
+### Fixed
+
+- Fixed main area layout to respect sidebar width - added left margin so timeline-board and plugins render next to sidebar instead of underneath it
+- Fixed sidebar scrolling: moved scroll behavior to content wrapper
 
 ### Fixed
 
