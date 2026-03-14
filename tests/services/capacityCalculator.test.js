@@ -31,7 +31,7 @@ describe('CapacityCalculator (unit)', () => {
 
   it('generate date range and simple calculation', () => {
     const calc = new CapacityCalculator(bus);
-    const features = [{ id: 'f1', start: '2025-01-01', end: '2025-01-03', project: 'p1', status: 'active', capacity: [{ team: 't1', capacity: 2 }] }];
+    const features = [{ id: 'f1', start: '2025-01-01', end: '2025-01-03', project: 'p1', state: 'active', capacity: [{ team: 't1', capacity: 2 }] }];
     const teams = [{ id: 't1' }];
     const projects = [{ id: 'p1' }];
     const filters = { selectedProjects: ['p1'], selectedTeams: ['t1'], selectedStates: ['active'] };
@@ -46,7 +46,7 @@ describe('CapacityCalculator (unit)', () => {
 
   it('incremental delta updates adjust cached result', () => {
     const calc = new CapacityCalculator(bus);
-    const features = [{ id: 'f1', start: '2025-02-01', end: '2025-02-02', project: 'p1', status: 'active', capacity: [{ team: 't1', capacity: 1 }] }];
+    const features = [{ id: 'f1', start: '2025-02-01', end: '2025-02-02', project: 'p1', state: 'active', capacity: [{ team: 't1', capacity: 1 }] }];
     const teams = [{ id: 't1' }];
     const projects = [{ id: 'p1' }];
     const filters = { selectedProjects: ['p1'], selectedTeams: ['t1'], selectedStates: ['active'] };
@@ -55,7 +55,7 @@ describe('CapacityCalculator (unit)', () => {
     expect(first.totalOrgDaily.every(v => v === 1)).to.be.true;
 
     // Modify feature capacity and call calculate with changedFeatureIds to trigger deltas
-    const newFeatures = [{ id: 'f1', start: '2025-02-01', end: '2025-02-02', project: 'p1', status: 'active', capacity: [{ team: 't1', capacity: 3 }] }];
+    const newFeatures = [{ id: 'f1', start: '2025-02-01', end: '2025-02-02', project: 'p1', state: 'active', capacity: [{ team: 't1', capacity: 3 }] }];
     const updated = calc.calculate(newFeatures, filters, teams, projects, ['f1']);
     expect(updated.totalOrgDaily.every(v => v === 3)).to.be.true;
   });
@@ -73,7 +73,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'projectA', 
       start: '2025-03-01', 
       end: '2025-03-05', 
-      status: 'active',
+      state: 'active',
       capacity: [] // Epic itself has no direct capacity
     };
     
@@ -84,7 +84,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'teamB', // Feature belongs to team, not project
       start: '2025-03-01',
       end: '2025-03-03',
-      status: 'active',
+      state: 'active',
       capacity: [{ team: 't1', capacity: 2 }]
     };
     
@@ -95,7 +95,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'teamB', // Feature belongs to team, not project
       start: '2025-03-03',
       end: '2025-03-05',
-      status: 'active',
+      state: 'active',
       capacity: [{ team: 't1', capacity: 3 }]
     };
     
@@ -163,7 +163,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'teamB', // Epic in team project, no parent
       start: '2025-04-01',
       end: '2025-04-03',
-      status: 'active',
+      state: 'active',
       capacity: []
     };
     
@@ -174,7 +174,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'teamB',
       start: '2025-04-01',
       end: '2025-04-02',
-      status: 'active',
+      state: 'active',
       capacity: [{ team: 't1', capacity: 5 }]
     };
     
@@ -184,7 +184,7 @@ describe('CapacityCalculator (unit)', () => {
       project: 'teamB', // No parent, in team project
       start: '2025-04-02',
       end: '2025-04-03',
-      status: 'active',
+      state: 'active',
       capacity: [{ team: 't1', capacity: 3 }]
     };
     

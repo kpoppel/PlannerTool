@@ -1,5 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { startResize } from '../../../www/js/components/dragManager.js';
+import { startResize } from '../../www/js/components/dragManager.js';
 
 describe('startResize interactive', () => {
   it('startResize updates feature end on mousemove+mouseup', (done) => {

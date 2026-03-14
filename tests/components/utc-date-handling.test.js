@@ -257,67 +257,14 @@ describe('UTC Date Handling - April 1st Bug', () => {
       return { left, width, startIdx };
     }
 
-    // NOTE: These tests demonstrate the OLD buggy behavior using a simulation of
-    // the broken algorithm. They are kept for documentation but skipped since
-    // the real implementation is now fixed.
-    
-    it.skip('[OLD BUG DEMO] April 1st gets wrong month index due to DST', () => {
-      // This test demonstrates the actual bug that WAS in board-utils.js
-      // In timezones with DST (like Europe/Copenhagen), March only has
-      // ~30.96 days worth of milliseconds due to spring-forward.
-      // The binary search incorrectly includes April 1 in March's range.
-      
-      const monthWidth = 120;
-      const jan = parseDate('2025-01-01');
-      const dec = parseDate('2025-12-01');
-      const months = dateRangeInclusiveMonths(jan, dec);
-      
-      const feature = { start: '2025-04-01', end: '2025-04-30' };
-      const pos = simulateComputePositionWithDSTBug(feature, months, monthWidth);
-      
-      // Expected: April is month index 3, left should be 360
-      // Bug: In DST timezones, startIdx will be 2 (March), left will be 240
-      const expectedLeft = 3 * monthWidth;
-      
-      // This assertion demonstrates the bug - it will PASS in UTC timezone
-      // but FAIL in DST-affected timezones like Europe/Copenhagen
-      expect(pos.startIdx).to.equal(3,
-        `April 1 should be in month index 3 (April), got ${pos.startIdx}. ` +
-        `This is the DST bug - April 1 is incorrectly placed in March.`);
-      
-      expect(pos.left).to.be.closeTo(expectedLeft, 1,
-        `Feature starting April 1 should be at pixel ~${expectedLeft}, got ${pos.left}. ` +
-        `This indicates the feature is being positioned in the wrong month.`);
-    });
 
-    it.skip('[OLD BUG DEMO] Round-trip fails in DST timezones', () => {
-      const monthWidth = 120;
-      const jan = parseDate('2025-01-01');
-      const dec = parseDate('2025-12-01');
-      const months = dateRangeInclusiveMonths(jan, dec);
-      
-      // Simulate a feature that was dragged to April 1
-      const targetDate = '2025-04-01';
-      const targetPx = 3 * monthWidth; // April starts at month index 3
-      
-      // Convert pixel to date (like dateFromLeft)
-      const relative = targetPx / monthWidth;
-      const monthIndex = Math.floor(relative);
-      const monthStart = months[monthIndex];
-      const resultDate = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
-      const resultDateStr = formatDate(resultDate);
-      
-      expect(resultDateStr).to.equal(targetDate,
-        `Dragging to April position should result in ${targetDate}, got ${resultDateStr}`);
-      
-      // Now compute position for that date (like computePosition)
-      const feature = { start: resultDateStr, end: '2025-04-30' };
-      const pos = simulateComputePositionWithDSTBug(feature, months, monthWidth);
-      
-      // This will fail in DST timezones due to the bug
-      expect(pos.left).to.be.closeTo(targetPx, 1,
-        `After round-trip, feature should be at ${targetPx}px, got ${pos.left}px. ` +
-        `This shows the bug: dragging to April renders at wrong position.`);
+    // OLD BUG DEMO tests removed: they documented a historical DST bug
+    // that is environment-dependent and are not suitable for deterministic
+    // unit test runs. Kept other verification tests which exercise the
+    // fixed `computePosition` implementation.
+    it('OLD BUG DEMO removed - placeholder', () => {
+      // Placeholder to avoid empty-suite error in vitest.
+      expect(true).to.equal(true);
     });
   });
   

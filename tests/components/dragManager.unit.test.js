@@ -1,6 +1,6 @@
 import { expect } from '@open-wc/testing';
-import { addDays, formatDate } from '../../../www/js/components/util.js';
-import { computeMoveUpdates, computeResizeUpdates, applyUpdates } from '../../../www/js/components/dragManager.js';
+import { addDays, formatDate } from '../../www/js/components/util.js';
+import { computeMoveUpdates, computeResizeUpdates, applyUpdates } from '../../www/js/components/dragManager.js';
 
 describe('dragManager helpers', () => {
   it('computeMoveUpdates for epic shifts children and returns updates', () => {

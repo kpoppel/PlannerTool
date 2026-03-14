@@ -60,9 +60,7 @@ describe('Scenario Manager and DataService (consolidated)', () => {
       await dataService.updateTeamColor('t1', '#000');
       const colors = await dataService.getColorMappings();
       expect(colors).to.be.an('object');
-      try { await dataService.setFeatureDates('f1', 's', 'e'); } catch (e) {}
-      try { await dataService.setFeatureField('f1', 'foo', 'bar'); } catch (e) {}
-      try { await dataService.batchSetFeatureDates([{ id: 'f1', start: 's', end: 'e' }]); } catch (e) {}
+      // removed test-only wrapper calls: setFeatureDates, setFeatureField, batchSetFeatureDates
       try { await dataService.publishBaseline([]); } catch (e) {}
       try { await dataService.listScenarios(); } catch (e) {}
       try { await dataService.getScenario('s1'); } catch (e) {}

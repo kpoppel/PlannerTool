@@ -1,7 +1,7 @@
 import { expect } from '@open-wc/testing';
-import { buildMonths, buildProjects, monthKey } from '../../../www/js/plugins/PluginCostCalculator.js';
-import { toDate, firstOfMonth, lastOfMonth, addMonths, monthLabel } from '../../../www/js/plugins/PluginCostCalculator.js';
-import { enable, disable } from '../../../www/js/config.js';
+import { buildMonths, buildProjects, monthKey } from '../../www/js/plugins/PluginCostCalculator.js';
+import { toDate, firstOfMonth, lastOfMonth, addMonths, monthLabel } from '../../www/js/plugins/PluginCostCalculator.js';
+import { enable, disable } from '../../www/js/config.js';
 
 // Helper to create minimal project/feature structure returned by backend
 function makeFeature(id, start, end, internalCost, externalCost, internalHours=0, externalHours=0){

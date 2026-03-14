@@ -46,7 +46,7 @@ describe('FeatureBoard helper coverage (additional)', () => {
     state._viewService.setShowUnallocatedCards(true);
     state._stateFilterService.restoreFilterState({ selectedStates: ['New'] });
 
-    const feature = { id: 'f1', project: 'p1', type: 'feature', status: 'New', capacity: [{ team: 't1' }] };
+    const feature = { id: 'f1', project: 'p1', type: 'feature', state: 'New', capacity: [{ team: 't1' }] };
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.equal(true);
   });

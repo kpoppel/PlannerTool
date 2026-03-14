@@ -16,8 +16,9 @@ describe('config-modal', () => {
   it('_populate reads prefs and fills inputs (mocked)', async () => {
     const origGet = dataService.getLocalPref;
     dataService.getLocalPref = async (k) => k === 'user.email' ? 'a@b.c' : 5;
-    // wait for Lit render/update lifecycle to complete and find inner modal elements
+    // wait for Lit render/update lifecycle to complete and populate inputs
     if (modal.updateComplete) await modal.updateComplete;
+    if (typeof modal._populate === 'function') await modal._populate();
     const inner = modal.renderRoot ? modal.renderRoot.querySelector('modal-lit') : modal.querySelector('modal-lit');
     const emailInput = inner ? inner.querySelector('#configEmail') : null;
     expect(emailInput).to.exist;

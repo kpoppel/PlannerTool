@@ -23,7 +23,7 @@ describe('Modal Consolidated Tests', () => {
 
   it('visibility based on open and overlay behaviour', async () => {
     const el = await fixture(html`<modal-lit .open=${false}><div slot="title">Test Modal</div></modal-lit>`);
-    const overlay = el.shadowRoot.querySelector('.modal-overlay'); expect(overlay).to.exist; const isVisible = window.getComputedStyle(overlay).display !== 'none'; expect(isVisible).to.be.false;
+    const overlay = el.shadowRoot.querySelector('.modal-overlay'); expect(overlay).to.exist; expect(overlay.hasAttribute('open')).to.be.false;
     const elOpen = await fixture(html`<modal-lit .open=${true}><div slot="title">Test Modal</div></modal-lit>`);
     const overlay2 = elOpen.shadowRoot.querySelector('.modal-overlay'); overlay2.click(); await waitUntil(() => !elOpen.open, 'Modal should close on overlay click'); expect(elOpen.open).to.be.false;
   });

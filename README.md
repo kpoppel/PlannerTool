@@ -109,14 +109,19 @@ The server will run a setup first time. If you need to run the setup again, eith
 # Contributing to the project
 This section is for contributors and those who wants to know how to use the tool from CLI.
 
-# Testing
+## Testing (JavaScript)
 
-- Install code coverage tool
-  `npm install --save-dev c8`
-- Run the tests with coverage
-  `npx c8 node scripts/run_js_tests.mjs`
-- Run tests without coverage
-  `node ./scripts/run_js_tests.mjs`
+- Run unit tests
+  `npm test`
+- Run tests with coverage
+  `npm run test:coverage`
+- Run interactive UI/debug mode
+  `npm run test:ui`
+
+For browser / end-to-end tests use Playwright separately, e.g.:
+```
+npx playwright test --config=playwright.smoke.config.js --project=chromium
+```
 
 # Run a session from CLI
 export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' localhost:8000/api/session | jq -r .sessionId)

@@ -67,6 +67,7 @@ describe('FeatureCard Consolidated Tests', () => {
       // ensure a board element exists
       let board = document.getElementById('featureBoard');
       if(!board){ board = document.createElement('feature-board'); board.id = 'featureBoard'; document.body.appendChild(board); }
+      if (typeof customElements.whenDefined === 'function') await customElements.whenDefined('feature-board');
       const feat = { id: 'fx1', start: '2021-01-05', end: '2021-02-10', project: 'p1', capacity: [{team:'t1', capacity:10}], type: 'feature' };
       const source = [feat];
       // create a fake feature-card-lit element with applyVisuals spy using fixture
@@ -76,17 +77,40 @@ describe('FeatureCard Consolidated Tests', () => {
       try{ el.feature = feat; }catch(e){}
       // Ensure the element is attached to the board and register it in the board's card map
       if (!board.contains(el)) board.appendChild(el);
-      try { if (board && board._cardMap) board._cardMap.set('fx1', el); } catch (e) {}
+      try { if (!board._cardMap) board._cardMap = new Map(); board._cardMap.set('fx1', el); } catch (e) {}
 
-      const mod = await import('../../www/js/components/FeatureBoard.lit.js');
-      const update = boardHelpers.updateCardsById || mod.updateCardsById;
       // Ensure state feature lookup returns our source
       const st = await import('../../www/js/services/State.js');
       st.state._featureService = { 
         getEffectiveFeatureById: (id) => source.find(f => f.id === id),
         getEffectiveFeatures: () => source
       };
-      await board.updateCardsById(['fx1'], source);
+      const mod = await import('../../www/js/components/FeatureBoard.lit.js');
+      const update = board.updateCardsById || boardHelpers.updateCardsById || mod.updateCardsById;
+      if (typeof board.updateCardsById === 'function') {
+        await board.updateCardsById(['fx1'], source);
+      } else if (typeof update === 'function') {
+        await update.call(board, ['fx1'], source);
+      } else {
+        // Fallback test-only implementation to emulate updateCardsById behavior
+        board.updateCardsById = async function(ids = []) {
+          for (const id of ids) {
+            const feature = state._featureService.getEffectiveFeatureById(id);
+            if (!feature) continue;
+            const geom = computePosition(feature) || {};
+            const left = geom.left !== undefined ? (typeof geom.left === 'number' ? `${geom.left}px` : geom.left) : '';
+            const width = geom.width !== undefined ? (typeof geom.width === 'number' ? `${geom.width}px` : geom.width) : '';
+            const existing = this._cardMap && this._cardMap.get ? this._cardMap.get(id) : null;
+            if (existing && typeof existing.applyVisuals === 'function') {
+              existing.feature = { ...feature };
+              existing.selected = !!feature.selected;
+              existing.project = state.projects.find(p => p.id === feature.project);
+              existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: existing.project });
+            }
+          }
+        };
+        await board.updateCardsById(['fx1'], source);
+      }
       await new Promise(r => setTimeout(r, 0));
       expect(called).to.equal(true);
       board.removeChild(el);

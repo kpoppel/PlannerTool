@@ -58,7 +58,7 @@ describe('DataInitService helpers', () => {
   it('initState initializes baseline and emits events', async () => {
     const projects = [{ id: 'p1' }];
     const teams = [{ id: 't1' }];
-    const features = [{ id: 'f1', status: 'Done' }];
+    const features = [{ id: 'f1', state: 'Done' }];
 
     const bus = { emitted: [], emit(kind, payload) { this.emitted.push({ kind, payload }); } };
 
@@ -84,7 +84,9 @@ describe('DataInitService helpers', () => {
     const dataService = {
       getProjects: async () => projects,
       getTeams: async () => teams,
-      getFeatures: async () => features
+      getFeatures: async () => features,
+      getIterations: async () => [],
+      loadAllScenarios: async () => []
     };
 
     svc = new DataInitService(bus, dataService, baselineStore, projectTeamService, stateFilterService, colorService);
@@ -130,7 +132,9 @@ describe('DataInitService helpers', () => {
     const dataService = {
       getProjects: async () => projects,
       getTeams: async () => teams,
-      getFeatures: async () => features
+      getFeatures: async () => features,
+      getIterations: async () => [],
+      loadAllScenarios: async () => []
     };
 
     svc = new DataInitService(bus, dataService, baselineStore, projectTeamService, stateFilterService, colorService);

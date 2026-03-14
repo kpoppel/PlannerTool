@@ -2,7 +2,6 @@ import { expect } from '@open-wc/testing';
 
 // This integration test assumes a local dev server is running at http://localhost:8001
 describe.skip('FeatureBoard drag & resize (integration)', function(){
-  this.timeout(20000);
 
   it('drags a feature card and triggers update', async () => {
     const url = 'http://localhost:8001/';

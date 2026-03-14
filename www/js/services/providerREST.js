@@ -345,7 +345,7 @@ export class ProviderREST {
             retval = retval.map(team => ({ ...team, selected: true }));
             console.log("providerREST:getTeams - Fetched teams:", retval);
             return retval
-        }catch(err){ return {}; }
+        }catch(err){ console.error('providerREST:getTeams error', err); return {}; }
     }
 
     async getProjects() {
@@ -358,7 +358,7 @@ export class ProviderREST {
             retval = retval.map(project => ({ ...project, selected: true }));
             console.log("providerREST:getProjects - Fetched projects:", retval);
             return retval
-        }catch(err){ return {}; }
+        }catch(err){ console.error('providerREST:getProjects error', err); return {}; }
     }
     
     async getIterations(project) {

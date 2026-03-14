@@ -21,7 +21,7 @@ describe('State core behaviors', () => {
     // Minimal baseline data: one team, one project, one feature spanning 3 days
     state.baselineTeams = [{ id: 't1' }];
     state.baselineProjects = [{ id: 'p1' }];
-    state.baselineFeatures = [{ id: 'f1', start: '2024-01-01', end: '2024-01-03', project: 'p1', status: 'New', capacity: [{ team: 't1', capacity: 2 }] }];
+    state.baselineFeatures = [{ id: 'f1', start: '2024-01-01', end: '2024-01-03', project: 'p1', state: 'New', capacity: [{ team: 't1', capacity: 2 }] }];
     // Working copies (no selection filtering) - use ProjectTeamService
     state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
     state.setProjectSelected('p1', true);

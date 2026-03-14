@@ -7,6 +7,14 @@ export default {
   coverage: true,
   coverageConfig: {
     include: ['www/js/**/*.js'],
+    // Always exclude node_modules from coverage instrumentation and reporting
+    exclude: ['node_modules/**', '**/node_modules/**'],
+    // Also exclude any additional transitive modules that may be picked up
+    // via source maps or bundling. This helps ensure third-party libs are
+    // not counted in project coverage metrics.
+    excludeAdditions: ['**/node_modules/**', 'node_modules/**'],
+    // Do not follow source maps back to original node_modules sources
+    sourceMap: false,
     // Exclude large, DOM-/canvas-heavy modules that are difficult to fully exercise
     // in the headless test runner. These should be covered by targeted integration
     // or visual tests; excluding here lets unit coverage focus on logic.

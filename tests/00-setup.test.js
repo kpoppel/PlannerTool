@@ -37,23 +37,64 @@ if (!window.ConfigService) {
   };
 }
 
-// Avoid network fetches failing tests: intercept fetch to return 404 for unknown api paths
-if (typeof window.fetch === 'function') {
-  const _fetch = window.fetch.bind(window);
-  window.fetch = async (input, init) => {
-    try {
-      // let tests call real fetch for static files and same-origin paths
-      const url = typeof input === 'string' ? input : input.url || '';
-      if (url.includes('/api/')) {
-        return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-      }
-      return _fetch(input, init);
-    } catch (e) {
-      return new Response(null, { status: 500 });
-    }
+// Global fetch stub: return a resolved successful JSON response by default.
+// Individual tests should override `window.fetch` when they need specific
+// API responses; leaving this unmocked caused retries and browser timeouts.
+// Lightweight test router for `fetch` so tests that expect list endpoints
+// receive arrays while single-resource endpoints receive objects. Tests
+// can still override `window.fetch` when they need custom behavior.
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  const method = (init && init.method) || 'GET';
+  const path = (url.split('?')[0] || '').toLowerCase();
+
+  const json = async () => {
+    // Heuristic: plural resource names and common list endpoints return arrays
+    if (/\/(features|projects|teams|accounts|people)(?:\/|$)/.test(path)) return [];
+    if (/list|all|items/.test(path)) return [];
+    // Default: return empty object
+    return {};
   };
-}
+
+  return { ok: true, status: 200, json };
+};
 
 // expose some convenient globals
 window._TEST_SETUP = true;
 console.log('Global test setup applied');
+
+// Provide a no-op .timeout chaining for tests that use Mocha-style
+['it', 'test'].forEach(name => {
+  const orig = globalThis[name];
+  if (typeof orig === 'function') {
+    const wrapper = function(...args) {
+      orig.apply(this, args);
+      return { timeout: () => {} };
+    };
+    // preserve common static helpers if present (skip/only/todo)
+    ['skip', 'only', 'todo'].forEach(k => {
+      if (orig[k]) wrapper[k] = orig[k].bind(orig);
+      else wrapper[k] = (...a) => {};
+    });
+    globalThis[name] = wrapper;
+  }
+});
+
+// Provide Mocha-style lifecycle aliases if tests use them
+if (typeof globalThis.before === 'undefined' && typeof globalThis.beforeAll === 'function') {
+  globalThis.before = globalThis.beforeAll.bind(globalThis);
+}
+if (typeof globalThis.after === 'undefined' && typeof globalThis.afterAll === 'function') {
+  globalThis.after = globalThis.afterAll.bind(globalThis);
+}
+
+// Basic ResizeObserver shim for jsdom environment where it's not available.
+if (typeof window.ResizeObserver === 'undefined') {
+  class ResizeObserverStub {
+    constructor(callback) { this._cb = callback; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  window.ResizeObserver = ResizeObserverStub;
+}

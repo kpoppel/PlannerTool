@@ -132,7 +132,28 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
-  it.skip('_onIterationChange updates dates via state.updateFeatureDates', async () => {
-    // Skipped: flaky in headless test environment; covered elsewhere sufficiently
+  it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f10' };
+    // Provide iterations via state so _loadIterationsForFeature picks them up
+    // stub the state's iterations getter so _loadIterationsForFeature picks them up
+    const itersStub = sinon.stub(state, 'iterations').get(() => [{ path: 'Proj\\Iteration\\It1', startDate: '2025-02-01', finishDate: '2025-02-10' }]);
+    // trigger the load that runs in updated lifecycle
+    await el._loadIterationsForFeature();
+
+    const stub = sinon.stub(state, 'updateFeatureDates');
+    // simulate selection change - component accepts full path or suffix
+    // select elements may pass either full path or suffix; use suffix to match endsWith
+    const ev = { target: { value: 'It1' } };
+    await el._onIterationChange(ev);
+
+    expect(stub.calledOnce).to.be.true;
+    const arg = stub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('f10');
+    expect(arg.start).to.equal('2025-02-01');
+    expect(arg.end).to.equal('2025-02-10');
+
+    stub.restore();
+    itersStub.restore();
   });
 });

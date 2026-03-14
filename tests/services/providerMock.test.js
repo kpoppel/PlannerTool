@@ -48,20 +48,7 @@ describe('ProviderMock', () => {
     expect(res.ok).to.equal(true);
   });
 
-  it('setFeatureField updates feature and marks changedFields', async () => {
-    const f = pm.features[0];
-    const updated = await pm.setFeatureField(f.id, 'title', 'New Title');
-    expect(updated.title).to.equal('New Title');
-    expect(updated.changedFields).to.include('title');
-  });
-
-  it('setFeatureDates and batchSetFeatureDates behave as expected', async () => {
-    const f = pm.features[1];
-    const out = await pm.setFeatureDates(f.id, '2025-09-01', '2025-10-01');
-    expect(out.start).to.equal('2025-09-01');
-    const res = await pm.batchSetFeatureDates([{ id: f.id, start: '2025-01-01', end: '2025-02-02' }]);
-    expect(res[0].start).to.equal('2025-01-01');
-  });
+  // removed: feature field/date helpers are deprecated
 
   it('getConfig/getFeatures/getTeams/getProjects return data', async () => {
     const cfg = await pm.getConfig(); expect(cfg).to.have.property('developmentMode');

@@ -10,6 +10,11 @@ describe('ProviderREST unit tests', () => {
     pr = new ProviderREST();
     // save original fetch
     restoreFetch = window.fetch;
+    // Disable network retry delays during unit tests to avoid slow timeouts
+    pr._networkRetryCount = 0;
+    // Default fetch mock that returns an empty successful JSON response.
+    // Individual tests override this as needed.
+    window.fetch = () => Promise.resolve({ ok: true, json: async () => ({}) });
   });
   afterEach(() => {
     // restore fetch
@@ -102,15 +107,7 @@ describe('ProviderREST unit tests', () => {
     expect(r.status).to.equal('error');
   });
 
-  it('setFeatureField, batchSetFeatureDates, setFeatureDates and getConfig are simple passthroughs', async () => {
-    const out1 = await pr.setFeatureField('f1', 'foo', 'bar');
-    expect(out1.id).to.equal('f1'); expect(out1.foo).to.equal('bar');
-    const out2 = await pr.batchSetFeatureDates([{ id: 'f1', start: 's', end: 'e' }]);
-    expect(out2).to.be.an('array'); expect(out2[0].id).to.equal('f1');
-    const out3 = await pr.setFeatureDates('f2', 's2', 'e2');
-    expect(out3.id).to.equal('f2');
-    const cfg = await pr.getConfig(); expect(cfg).to.be.an('object');
-  });
+  // removed tests for feature date/field helpers (migrated to task update APIs)
 
   it('getFeatures maps parent relations into parentEpic', async () => {
     const tasks = [ { id: 't1', relations: [{ type: 'Parent', id: 'p1' }] } ];

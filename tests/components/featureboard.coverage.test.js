@@ -62,7 +62,7 @@ describe('FeatureBoard helper coverage', () => {
     // State filter service selected states
     state._stateFilterService.setSelectedStates(['New']);
 
-    const feature = { id: 'f1', project: 'p1', type: 'feature', status: 'New', capacity: [{ team: 't1' }] };
+    const feature = { id: 'f1', project: 'p1', type: 'feature', state: 'New', capacity: [{ team: 't1' }] };
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.be.true;
   });

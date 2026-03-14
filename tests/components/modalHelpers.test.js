@@ -7,7 +7,7 @@ import {
   openScenarioCloneModal,
   openScenarioRenameModal,
   openScenarioDeleteModal
-} from '../../../www/js/components/modalHelpers.js';
+} from '../../www/js/components/modalHelpers.js';
 
 describe('modalHelpers', () => {
   beforeEach(() => {

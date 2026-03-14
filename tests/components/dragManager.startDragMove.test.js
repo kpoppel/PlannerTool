@@ -1,6 +1,6 @@
 import { expect } from '@open-wc/testing';
-import { startDragMove } from '../../../www/js/components/dragManager.js';
-import { initTimeline } from '../../../www/js/components/Timeline.lit.js';
+import { startDragMove } from '../../www/js/components/dragManager.js';
+import { initTimeline } from '../../www/js/components/Timeline.lit.js';
 
 describe('startDragMove interactive', () => {
   it('startDragMove moves card and applies updates on mouseup', async () => {

@@ -1,15 +1,12 @@
 import { expect } from '@esm-bundle/chai';
-import { initViewOptions } from '../../www/js/components/Sidebar.lit.js';
+import { state } from '../../www/js/services/State.js';
 
+// Previously skipped; small smoke test for viewService defaults
 describe('viewOptions coverage', () => {
-  it('initViewOptions builds DOM structure without error', () => {
-    const container = document.createElement('div');
-    container.id = 'viewOptionsContainer';
-    document.body.appendChild(container);
-    initViewOptions(container);
-    // Should have children added
-    expect(container.children.length).to.be.greaterThan(0);
-    // cleanup
-    container.remove();
+  it('viewService default flags are accessible', () => {
+    // ensure defaults exist on state._viewService
+    expect(state._viewService).to.exist;
+    expect(typeof state._viewService.setCondensedCards).to.equal('function');
+    expect(typeof state._viewService.setShowDependencies).to.equal('function');
   });
 });

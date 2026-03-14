@@ -122,7 +122,7 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
 
       const teams = [ { id: 't1' }, { id: 't2' } ];
       const projects = [ { id: 'p1' } ];
-      const features = [ { id: 'f1', project: 'p1', status: 'In Progress', start: '2024-01-01', end: '2024-01-10', capacity: [ { team: 't1', capacity: 5 }, { team: 't2', capacity: 3 } ] } ];
+      const features = [ { id: 'f1', project: 'p1', state: 'In Progress', start: '2024-01-01', end: '2024-01-10', capacity: [ { team: 't1', capacity: 5 }, { team: 't2', capacity: 3 } ] } ];
       const filters = { selectedProjects: ['p1'], selectedTeams: ['t1', 't2'], selectedStates: ['In Progress'] };
 
       const calculator = new CapacityCalculator(bus);

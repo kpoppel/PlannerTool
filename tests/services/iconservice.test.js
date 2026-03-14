@@ -1,5 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { epicSvgElement, featureSvgElement } from '../../../www/js/services/IconService.js';
+import { epicSvgElement, featureSvgElement } from '../../www/js/services/IconService.js';
 
 describe('IconService', () => {
   it('creates epic svg element and sets attributes', () => {
