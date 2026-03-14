@@ -551,11 +551,16 @@ export class SidebarLit extends LitElement {
         
         // Displayed tasks: apply state filter and view filters to expanded set
         const stateFilter = state.selectedFeatureStateFilter || new Set();
+        // Build a lowercase version of the selected state set for case-insensitive checks
+        const stateFilterLower = (stateFilter && typeof stateFilter.size !== 'undefined')
+          ? new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()))
+          : new Set();
+
         let displayedFeatures = feats.filter(f => expandedFeatureIds.has(f.id));
-        
-        // Apply state filter
-        if (stateFilter && typeof stateFilter.has === 'function' && stateFilter.size > 0) {
-          displayedFeatures = displayedFeatures.filter(f => stateFilter.has(f.state || ''));
+
+        // Apply state filter (case-insensitive using original configured state casing)
+        if (stateFilterLower && stateFilterLower.size > 0) {
+          displayedFeatures = displayedFeatures.filter(f => stateFilterLower.has((f.state || '').toLowerCase()));
         }
         
         // Apply task filters

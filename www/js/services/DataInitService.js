@@ -69,11 +69,18 @@ export class DataInitService {
       /* noop on failure */
     }
     
-    // Compute available states from baseline features and initialize state filter
-    const discoveredStates = Array.from(
-      new Set(baselineFeatures.map(f => f.status || f.state).filter(x => !!x))
-    );
-    this._stateFilterService.setAvailableStates(discoveredStates);
+    // Set available states from configured display_states (server-provided)
+    // No fallback to dataset traversal - rely entirely on server configuration
+    const configuredDisplayStates = new Set();
+    const teamProjects = this._projectTeamService.getProjects();
+    for (const project of teamProjects) {
+      if (Array.isArray(project.display_states)) {
+        project.display_states.forEach(state => configuredDisplayStates.add(state));
+      }
+    }
+    
+    const availableStates = Array.from(configuredDisplayStates);
+    this._stateFilterService.setAvailableStates(availableStates);
     
     // Initialize colors
     await this._colorService.initColors(
@@ -160,11 +167,18 @@ export class DataInitService {
     Object.freeze(baselineTeams);
     Object.freeze(baselineFeatures);
     
-    // Recompute available states and update state filter service
-    const discoveredStates = Array.from(
-      new Set(baselineFeatures.map(f => f.status || f.state).filter(x => !!x))
-    );
-    this._stateFilterService.setAvailableStates(discoveredStates);
+    // Set available states from configured display_states (server-provided)
+    // No fallback to dataset traversal - rely entirely on server configuration
+    const configuredDisplayStates = new Set();
+    const teamProjects = this._projectTeamService.getProjects();
+    for (const project of teamProjects) {
+      if (Array.isArray(project.display_states)) {
+        project.display_states.forEach(state => configuredDisplayStates.add(state)); 
+      }
+    }
+    
+    const availableStates = Array.from(configuredDisplayStates);
+    this._stateFilterService.setAvailableStates(availableStates);
     
     console.log('Re-initializing colors after baseline refresh');
     await this._colorService.initColors(

@@ -22,7 +22,7 @@ export const PALETTE = [
   '#9b59b6','#8e44ad','#34495e','#7f8c8d'
 ];
 
-// Default mapping from feature status/state to color
+// Default mapping from feature state to color
 export const DEFAULT_STATE_COLOR_MAP = {
   'New': '#3498db',
   'Defined': '#2ecc71',
@@ -44,6 +44,12 @@ export class ColorService {
     
     // Default state->color mapping (can be overridden by config later)
     this.defaultStateColorMap = DEFAULT_STATE_COLOR_MAP;
+    
+    // Build lowercase version of state color map for case-insensitive lookups
+    this.lowerStateColorMap = {};
+    for (const [key, value] of Object.entries(DEFAULT_STATE_COLOR_MAP)) {
+      this.lowerStateColorMap[key.toLowerCase()] = value;
+    }
     
     // Runtime color assignments (may differ from saved mappings)
     this.projectColors = {}; // { projectId: '#hex' }
@@ -131,13 +137,16 @@ export class ColorService {
   getFeatureStateColor(stateName) {
     if (!stateName) return PALETTE[0];
     
-    // Try default state color map first
-    if (this.defaultStateColorMap[stateName]) {
-      return this.defaultStateColorMap[stateName];
+    // Normalize to lowercase for case-insensitive lookup
+    const lowerStateName = String(stateName).toLowerCase();
+    
+    // Try lowercase state color map first
+    if (this.lowerStateColorMap[lowerStateName]) {
+      return this.lowerStateColorMap[lowerStateName];
     }
     
-    // Deterministic fallback: hash the state name to pick a palette color
-    return this._hashToColor(stateName);
+    // Deterministic fallback: hash the lowercase state name to pick a palette color
+    return this._hashToColor(lowerStateName);
   }
   
   /**

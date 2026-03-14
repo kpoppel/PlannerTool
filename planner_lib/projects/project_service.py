@@ -26,9 +26,12 @@ class ProjectService(ProjectServiceProtocol):
         project_map = cfg["project_map"]
         if project_map:
             names = [
-                {"id": slugify(p.get("name"), prefix="project-"),
-                 "name": p.get("name"),
-                 "type": p.get("type") if isinstance(p.get("type"), str) else "project"}
+                {
+                    "id": slugify(p.get("name"), prefix="project-"),
+                    "name": p.get("name"),
+                    "type": p.get("type") if isinstance(p.get("type"), str) else "project",
+                    "display_states": p.get("display_states", [])
+                }
                 for p in project_map
             ]
             logger.debug("Returning %d configured projects", len(names))

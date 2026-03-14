@@ -474,12 +474,12 @@ class WorkItemOperations:
             states_by_type = {}
             
             for wi_type in wi_types:
-                type_name = wi_type.name.lower()
+                type_name = wi_type.name
                 types.append(type_name)
                 
                 # Retrieve states for this specific type
                 if hasattr(wi_type, 'states') and wi_type.states:
-                    states = [state.name.lower() for state in wi_type.states]
+                    states = [state.name for state in wi_type.states]
                     states_by_type[type_name] = states
             
             # Collect all unique states across all types
@@ -494,10 +494,10 @@ class WorkItemOperations:
             }
         except Exception as e:
             logger.warning(f"Failed to retrieve work item metadata for project '{project}': {e}")
-            # Return defaults if metadata retrieval fails
+            # Return defaults if metadata retrieval fails (using typical Azure DevOps case)
             return {
-                'types': ['feature', 'epic', 'user story', 'task', 'bug'],
-                'states': ['new', 'active', 'defined', 'resolved', 'closed', 'removed'],
+                'types': ['Feature', 'Epic', 'User Story', 'Task', 'Bug'],
+                'states': ['New', 'Active', 'Defined', 'Resolved', 'Closed', 'Removed'],
                 'states_by_type': {}
             }
     

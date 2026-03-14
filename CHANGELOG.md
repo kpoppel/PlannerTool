@@ -16,6 +16,48 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 ## [v] - unreleased
 
+## [Unreleased]
+
+### Added
+- **Projects Schema v3**: Added `display_states` field to project configuration
+  - Allows configuring which states are available for user selection in UI independently from fetched states
+  - Enables use cases like allowing users to close tasks even when "closed" state is not fetched
+  - Admin UI updated with separate editors for "States to Fetch" vs "States for UI Display"
+  - Automatic migration from v2 configs (display_states defaults to include_states)
+  - **Migration script**: `scripts/migrations/0013_projects_schema_v3_add_display_states.py`
+    - Automatically adds `display_states` field to all projects
+    - Includes "Closed" state by default for closing tasks from UI
+    - Preserves Azure DevOps state case (e.g., "Active", "New", "Closed")
+    - Run with: `python3 scripts/migrate.py --apply`
+
+### Changed
+- **State case handling**: Refactored to preserve Azure DevOps state case throughout the system
+  - Azure metadata now returns states with original case (not lowercased)
+  - Config and UI display states with proper Azure case (e.g., "Active", "New", "Closed")
+  - State updates sent to Azure DevOps preserve original case
+  - Filter comparisons remain case-insensitive for robustness
+  - Affects: planner_lib/azure/work_items.py, migration 0013, DataInitService, DetailsPanel
+
+### Fixed
+- **State case-sensitivity bugs**: Comprehensive fix for state handling across the application
+  - Removed lowercasing from Azure metadata retrieval to preserve original case
+  - Updated migration to add "Closed" (proper case) instead of "closed"
+  - Filter comparisons use case-insensitive matching for robustness
+  - Display and Azure updates preserve original state case
+  - ColorService supports case-insensitive fallback lookups while maintaining proper case
+  - Affects: FeatureBoard, EmptyBoardModal, Sidebar, DetailsPanel, ColorService
+- **Azure State Exploration Tools**: Created CLI tools to explore Azure DevOps state categories
+  - `scripts/explore_azure_states.py`: Detailed state analysis per area path
+  - `scripts/azure_states_summary.py`: Summary of state categories across projects
+  - Documentation in `scripts/README_azure_states.md` and `docs/AZURE_STATE_CATEGORIES_ANALYSIS.md`
+
+### Changed  
+- **State Discovery**: Frontend now uses only configured `display_states` from server, eliminating dataset traversal fallback for better performance
+- **Project API**: `/api/projects` endpoint now returns `display_states` field for each project
+
+### Fixed
+- Backward compatibility maintained for projects.yml schema version 2
+
 ### Added
 
 - Added feedback in the history plugin to let the user know what is being processed

@@ -242,6 +242,10 @@ export class AdminProjects extends BaseConfigComponent {
     if (props.include_states?.default) {
       this.availableStates = props.include_states.default;
     }
+    // Also check display_states for available states
+    if (props.display_states?.default && this.availableStates.length === 0) {
+      this.availableStates = props.display_states.default;
+    }
   }
 
   addNewProject() {
@@ -250,7 +254,8 @@ export class AdminProjects extends BaseConfigComponent {
       type: 'project',
       area_path: '',
       task_types: [],
-      include_states: []
+      include_states: [],
+      display_states: []
     };
     this.localProjects = [...this.localProjects, newProject];
     this.editingIndex = this.localProjects.length - 1;
@@ -318,10 +323,17 @@ export class AdminProjects extends BaseConfigComponent {
           ${(project.task_types || []).length === 0 ? html`<span class="small">—</span>` : ''}
         </td>
         <td>
+          <div class="small" style="margin-bottom:4px">Fetch:</div>
           ${(project.include_states || []).map(state => html`
             <span class="chip">${state}</span>
           `)}
           ${(project.include_states || []).length === 0 ? html`<span class="small">—</span>` : ''}
+          ${(project.display_states || []).length > 0 ? html`
+            <div class="small" style="margin-top:8px;margin-bottom:4px">Display:</div>
+            ${(project.display_states || []).map(state => html`
+              <span class="chip" style="background:#e0f2fe">${state}</span>
+            `)}
+          ` : ''}
         </td>
         <td>
           <div class="actions">
@@ -409,7 +421,7 @@ export class AdminProjects extends BaseConfigComponent {
               </div>
 
               <div class="form-section">
-                <div class="form-section-title">States</div>
+                <div class="form-section-title">States to Fetch</div>
                 <div class="chip-editor">
                   ${(project.include_states || []).map(state => html`
                     <span class="chip removable" @click="${() => this.removeChip(index, 'include_states', state)}">
@@ -427,7 +439,7 @@ export class AdminProjects extends BaseConfigComponent {
                       }
                     }}"
                   >
-                    <option value="">+ Add state</option>
+                    <option value="">+ Add state to fetch</option>
                     ${this.availableStates.filter(s => !(project.include_states || []).includes(s)).map(state => html`
                       <option value="${state}">${state}</option>
                     `)}
@@ -439,6 +451,43 @@ export class AdminProjects extends BaseConfigComponent {
                   @keydown="${(e) => {
                     if (e.key === 'Enter') {
                       this.addChip(index, 'include_states', e.target.value);
+                      e.target.value = '';
+                    }
+                  }}"
+                />
+              </div>
+
+              <div class="form-section">
+                <div class="form-section-title">States for UI Display</div>
+                <div class="chip-editor">
+                  ${(project.display_states || []).map(state => html`
+                    <span class="chip removable" style="background:#e0f2fe" @click="${() => this.removeChip(index, 'display_states', state)}">
+                      ${state}<span class="chip-remove">×</span>
+                    </span>
+                  `)}
+                </div>
+                ${this.availableStates.length > 0 ? html`
+                  <select 
+                    class="add-chip-select"
+                    @change="${(e) => {
+                      if (e.target.value) {
+                        this.addChip(index, 'display_states', e.target.value);
+                        e.target.value = '';
+                      }
+                    }}"
+                  >
+                    <option value="">+ Add display state</option>
+                    ${this.availableStates.filter(s => !(project.display_states || []).includes(s)).map(state => html`
+                      <option value="${state}">${state}</option>
+                    `)}
+                  </select>
+                ` : ''}
+                <input 
+                  class="add-chip-input"
+                  placeholder="Add custom state and press Enter"
+                  @keydown="${(e) => {
+                    if (e.key === 'Enter') {
+                      this.addChip(index, 'display_states', e.target.value);
                       e.target.value = '';
                     }
                   }}"

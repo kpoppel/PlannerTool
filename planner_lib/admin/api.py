@@ -988,8 +988,15 @@ async def admin_get_schema(request: Request, config_type: str):
         'projects': {
             'type': 'object',
             'title': 'Project Configuration',
-            'description': 'Map projects to Azure DevOps area paths',
+            'description': 'Map projects to Azure DevOps area paths (schema v3)',
             'properties': {
+                'schema_version': {
+                    'type': 'integer',
+                    'title': 'Schema Version',
+                    'description': 'Configuration schema version',
+                    'default': 3,
+                    'minimum': 1
+                },
                 'project_map': {
                     'type': 'array',
                     'title': 'Project Mappings',
@@ -1025,12 +1032,21 @@ async def admin_get_schema(request: Request, config_type: str):
                             },
                             'include_states': {
                                 'type': 'array',
-                                'title': 'Work Item States',
-                                'description': 'States of work items to include',
+                                'title': 'Work Item States to Fetch',
+                                'description': 'States of work items to fetch from Azure DevOps',
                                 'items': {
                                     'type': 'string'
                                 },
                                 'default': ['new', 'active', 'defined', 'resolved']
+                            },
+                            'display_states': {
+                                'type': 'array',
+                                'title': 'Displayable States',
+                                'description': 'States available for selection in UI (includes include_states + additional states like closed)',
+                                'items': {
+                                    'type': 'string'
+                                },
+                                'default': ['new', 'active', 'defined', 'resolved', 'closed']
                             }
                         },
                         'required': ['name', 'area_path']
@@ -1316,6 +1332,10 @@ async def admin_get_schema(request: Request, config_type: str):
                             if metadata.get('states'):
                                 project_items['include_states']['default'] = metadata['states']
                                 logger.info(f"Retrieved {len(metadata['states'])} states from Azure: {metadata['states']}")
+                            
+                            # Update display_states default (include all states as they may want to set closed)
+                            if metadata.get('states'):
+                                project_items['display_states']['default'] = metadata['states']
                     except Exception as e:
                         logger.warning(f"Failed to fetch Azure metadata for schema: {e}")
                         # Continue with default schema if metadata fetch fails
