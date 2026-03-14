@@ -296,21 +296,18 @@ export class ProviderREST {
     }
 
     async setFeatureField(id, field, value) {
-        // Example: update feature field via REST API (stub)
-        // return fetch(`/api/features/${id}/field`, { method: 'POST', body: JSON.stringify({ field, value }) }).then(res => res.json());
-        return { id, [field]: value };
+        // Removed: feature field helper moved to task-capacity/updates API.
+        throw new Error('setFeatureField is removed; use updateTasksWithCapacity or updateWorkItemCapacity');
     }
 
     async batchSetFeatureDates(updates) {
-        // Example: batch update via REST API (stub)
-        // return fetch('/api/features/batchUpdate', { method: 'POST', body: JSON.stringify(updates) }).then(res => res.json());
-        return updates.map(u => ({ id: u.id, start: u.start, end: u.end }));
+        // Removed: batch feature date helper — use updateTasksWithCapacity
+        throw new Error('batchSetFeatureDates is removed; use updateTasksWithCapacity');
     }
 
     async setFeatureDates(id, start, end) {
-        // Example: update feature dates via REST API (stub)
-        // return fetch(`/api/features/${id}/dates`, { method: 'POST', body: JSON.stringify({ start, end }) }).then(res => res.json());
-        return { id, start, end };
+        // Removed: feature date helper — use updateTasksWithCapacity
+        throw new Error('setFeatureDates is removed; use updateTasksWithCapacity');
     }
 
     async getConfig() {

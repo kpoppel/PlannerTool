@@ -70,10 +70,10 @@ class DataService {
     async getFeatures() { return this.providers['rest'].getFeatures(); }
     async getCost(overrides){ return this.providers['rest'].getCost(overrides); }
     async getMarkers() { return this.providers['rest'].getMarkers(); }
-    async setFeatureDates(id, start, end) { return this.providers['mock'].setFeatureDates(id, start, end); }
+    // (removed) setFeatureDates — previously test-only helper
     async invalidateCache() { return this.providers['rest'].invalidateCache(); }
-    async setFeatureField(id, field, value) { return this.providers['mock'].setFeatureField(id, field, value); }
-    async batchSetFeatureDates(updates) { return this.providers['mock'].batchSetFeatureDates(updates); }
+    // (removed) setFeatureField — previously test-only helper
+    // (removed) batchSetFeatureDates — previously test-only helper
     /**
      * Update tasks with optional dates and/or capacity data.
      * @param {Array<{id:string, start?:string, end?:string, capacity?:Array<{team:string, capacity:number}>}>} updates

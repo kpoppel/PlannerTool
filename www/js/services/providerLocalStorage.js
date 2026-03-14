@@ -67,32 +67,6 @@ export class ProviderLocalStorage {
         // Simulate health check for localStorage
         return { ok: true };
     }
-    async setFeatureField(id, field, value) {
-        this.logCall('setFeatureField', arguments);
-        let features = JSON.parse(localStorage.getItem('features') || '[]');
-        const idx = features.findIndex(f => f.id === id);
-        if (idx >= 0) {
-            features[idx][field] = value;
-            localStorage.setItem('features', JSON.stringify(features));
-            return features[idx];
-        }
-        return null;
-    }
-    async batchSetFeatureDates(updates) {
-        this.logCall('batchSetFeatureDates', arguments);
-        let features = JSON.parse(localStorage.getItem('features') || '[]');
-        const results = [];
-        for (const u of updates) {
-            const idx = features.findIndex(f => f.id === u.id);
-            if (idx >= 0) {
-                features[idx].start = u.start;
-                features[idx].end = u.end;
-                results.push(features[idx]);
-            }
-        }
-        localStorage.setItem('features', JSON.stringify(features));
-        return results;
-    }
 
     async updateTasksWithCapacity(updates) {
         this.logCall('updateTasksWithCapacity', arguments);
@@ -100,19 +74,7 @@ export class ProviderLocalStorage {
         return { ok: true, updated: updates.length, errors: [] };
     }
 
-    async setFeatureDates(id, start, end) {
-        this.logCall('setFeatureDates', arguments);
-        // Update feature dates in localStorage
-        let features = JSON.parse(localStorage.getItem('features') || '[]');
-        const idx = features.findIndex(f => f.id === id);
-        if (idx >= 0) {
-            features[idx].start = start;
-            features[idx].end = end;
-            localStorage.setItem('features', JSON.stringify(features));
-            return features[idx];
-        }
-        return null;
-    }
+    // feature date/field helpers removed — use updateTasksWithCapacity or REST endpoints
 
     async getConfig() {
         this.logCall('getConfig', arguments);
