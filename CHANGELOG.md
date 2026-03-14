@@ -14,110 +14,47 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v] - unreleased
+## [v2.0.0] - unreleased
 
-## [Unreleased]
+The big two.oh.oh! This release brings a complete overhaul of the application user interface.
 
 ### Added
 
 - Lit bundle generated and added to repo. Can be rebuilt using `npm run build:vendor`
-  This removed dependency on esm.sh and makes the app load even faster.
-- **Projects Schema v3**: Added `display_states` field to project configuration
+  This removes dependency on esm.sh and makes the app load even faster.
+- Projects Schema v3 which adds `display_states` field to project configuration.
   - Allows configuring which states are available for user selection in UI independently from fetched states
   - Enables use cases like allowing users to close tasks even when "closed" state is not fetched
   - Admin UI updated with separate editors for "States to Fetch" vs "States for UI Display"
   - Automatic migration from v2 configs (display_states defaults to include_states)
-  - **Migration script**: `scripts/migrations/0013_projects_schema_v3_add_display_states.py`
-    - Automatically adds `display_states` field to all projects
-    - Includes "Closed" state by default for closing tasks from UI
-    - Preserves Azure DevOps state case (e.g., "Active", "New", "Closed")
-    - Run with: `python3 scripts/migrate.py --apply`
-
-### Changed
-- **State case handling**: Refactored to preserve Azure DevOps state case throughout the system
-  - Azure metadata now returns states with original case (not lowercased)
-  - Config and UI display states with proper Azure case (e.g., "Active", "New", "Closed")
-  - State updates sent to Azure DevOps preserve original case
-  - Filter comparisons remain case-insensitive for robustness
-  - Affects: planner_lib/azure/work_items.py, migration 0013, DataInitService, DetailsPanel
-
-### Fixed
-- **State case-sensitivity bugs**: Comprehensive fix for state handling across the application
-  - Removed lowercasing from Azure metadata retrieval to preserve original case
-  - Updated migration to add "Closed" (proper case) instead of "closed"
-  - Filter comparisons use case-insensitive matching for robustness
-  - Display and Azure updates preserve original state case
-  - ColorService supports case-insensitive fallback lookups while maintaining proper case
-  - Affects: FeatureBoard, EmptyBoardModal, Sidebar, DetailsPanel, ColorService
-- **Azure State Exploration Tools**: Created CLI tools to explore Azure DevOps state categories
-  - `scripts/explore_azure_states.py`: Detailed state analysis per area path
-  - `scripts/azure_states_summary.py`: Summary of state categories across projects
-  - Documentation in `scripts/README_azure_states.md` and `docs/AZURE_STATE_CATEGORIES_ANALYSIS.md`
-
-### Changed  
-- **State Discovery**: Frontend now uses only configured `display_states` from server, eliminating dataset traversal fallback for better performance
-- **Project API**: `/api/projects` endpoint now returns `display_states` field for each project
-
-### Fixed
-- Backward compatibility maintained for projects.yml schema version 2
-
-### Added
-
+- Migration scripts to upgrade to new project scheme. Run with: `python3 scripts/migrate.py --apply`
 - Added feedback in the history plugin to let the user know what is being processed
-- Created menu components for TopMenu: PlanMenu.lit.js, TeamMenu.lit.js, ScenarioMenu.lit.js, ViewMenu.lit.js
-- Wired up menu components to TopMenu with proper z-indexing (2000 for menus, 3000 for action popovers)
-- Implemented data binding from TopMenu to menu components using Lit properties
-- Added event listeners in TopMenu to sync state changes with menu components
-- Implemented config and help modal functions in TopMenu right side buttons (⚙️ and ❓)
-- Added View Filters section to Sidebar with four dimensional filters: Schedule (planned/unplanned), Allocation (allocated/unallocated), Hierarchy (hasParent/noParent), Relations (hasLinks/noLinks)
-- Created ViewFilterService to manage dimensional view filters with independent checkbox toggles
-- Integrated view filters into FeatureBoard display logic and Data Funnel calculations
-- Added expansion options (Parent/Child, Relations, Team Allocated) to view persistence
-- Added ordered list (numbered list) support to HelpModal markdown renderer
-- Added internal link support to HelpModal - links without "https://" now navigate within the modal instead of opening new windows
-- Added Examples section to admin_contributing_documentation.md with copyable markdown snippets
+- Created completely new sidebar and top menu layout.  This eases the clutter and creates a whole new look and feel.
+  - The filtering is much more powerful and intitive: A base set of tasks are selected with Plans.
+  - Task pool is extended through simple buttons to include relations to the task pool
+  - The application displays the total pool and currently displayed tasks.
+- Added completely new help system. Documentation much improved and work in progress. No one is going to read it anyway.
 
 ### Changed
+- Harmonised task state case handling. State case as returned from Azure Devops is now used throughout
+  the application. This removes a lot of logic with upper/lower case handling
+- State discovery inthe frontend is removed. Now it uses configured `display_states` from server.
 - Modal for messaging the user when no cards are shown, updated to new design
+- Removed tour functionality (Shepherd library, TourStarter.js, and all data-tour attributes). The guided tour is no longer needed with the refactored UI.
+- Removed legacy keyboard shortcut handlers for view toggles (D/C/U/A/H) from the Sidebar; global shortcuts remain limited to app search (Ctrl+Shift+F).
+- Improved actions UX for Scenarios and Views: replaced awkwardly positioned popover menu with inline action buttons (Update 💾, Rename ✏️, Delete 🗑️)
+  that appear on hover over each item
 
 ### Fixed
-
 - Fixed main area layout to respect sidebar width - added left margin so timeline-board and plugins render next to sidebar instead of underneath it
 - Fixed sidebar scrolling: moved scroll behavior to content wrapper
 - Fixed Sidepanel Top edge so it does not overlap then menubar
-- Optimized Plan Menu and Team Menu select/deselect all operations to use batch updates, reducing compute time from ~3110ms to near-instant by eliminating O(n) capacity recalculations
- 
-### Changed
-
-- Revamped ScenarioMenu with inline action buttons matching ViewMenu design pattern - actions now always visible for better discoverability
-- Added scenario name badge to top menu bar (similar to View menu)
-- Replaced inline clone action with "Copy Scenario" button (📋) at bottom of ScenarioMenu
-- Added "Save to Azure DevOps" action (☁️) to ScenarioMenu for scenarios with overrides
-- Made action icons always visible in both ViewMenu and ScenarioMenu for improved UX
-- Removed legacy scenario action popup menu from TopMenu in favor of inline actions
-- Reordered ScenarioMenu action buttons: Save to Azure (☁️) now appears between Save Scenario and Rename buttons for better workflow
-- Save Scenario button (💾) is now always visible for non-readonly scenarios instead of only appearing when changes are detected - provides clearer affordance and simpler UX
-- Simplified Graph Type terminology: renamed buttons from "Capacity/Allocation" to "Team/Project" for clarity and consistency with underlying capacityViewMode values
-- Updated ViewManagementService and ViewSaveModal to use 'team'/'project' terminology instead of 'capacity'/'allocation'
-
-- Removed tour functionality (Shepherd library, TourStarter.js, and all data-tour attributes). The guided tour is no longer needed with the refactored UI.
- - Removed view chips from View Options: "Show Unallocated", "Show Unplanned", and "Show Only Project Hierarchy". Their functionality is available via the dimensional View Filters (Sidebar) and expansion options.
- - View service cleanup: `ViewFilterService` now syncs legacy `FilterEvents.CHANGED` flags (`showUnassignedCards`, `showUnplannedWork`, `showOnlyProjectHierarchy`) so existing code using `ViewService` setters remains compatible while filters are centralized.
- - Removed legacy keyboard shortcut handlers for view toggles (D/C/U/A/H) from the Sidebar; global shortcuts remain limited to app search (Ctrl+Shift+F).
-- Improved View actions UX: replaced awkwardly positioned popover menu with inline action buttons (Update 💾, Rename ✏️, Delete 🗑️) that appear on hover over each view item
- 
-### Fixed
-
+- Fixed Details panel Top edge so it does not overlap then menubar
+- Optimized Plan Menu and Team Menu select/deselect all operations to use batch updates, reducing compute time from ~3110ms
+  to near-instant by eliminating O(n) capacity recalculations
 - Fix MIME error loding modules file in an unsupported way for newer browsers.
-- Fixed scenario name badge not showing in top menu - corrected ScenarioEvents.ACTIVATED payload property from `id` to `scenarioId`
-- Fixed active scenario not being highlighted in ScenarioMenu dropdown
-- Fixed scenario selection resetting when dragging cards - corrected ScenarioEvents.LIST payload property from `activeId` to `activeScenarioId` in TopMenu and ScenarioMenu handlers
-- Fixed "Save to Azure" button not appearing when scenario has overrides - updated render condition to check both `s.overrides` and `s.overridesCount` properties
-- Fixed "Save to Azure" reporting no changes despite scenario having overrides - updated `_onSaveToAzure` to fetch full scenario data from state instead of relying on metadata-only scenario object from render
-- Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it, which was causing viewport to show months 5-6 months ahead
-- Fixed organizational capacity graph (maingraph) not rendering on initial application load - added call to `recomputeCapacityMetrics()` at end of `State.initState()` to ensure capacity data is calculated before components render
-- Fixed Graph Type buttons not changing the graph rendering mode - updated Sidebar `_setGraphType()` to properly call `ViewService.setCapacityViewMode()` and added event handler to sync local state when mode changes
-- Fixed task filter UI (Schedule, Allocation, Hierarchy, Relations) not updating immediately when restoring a view - added event listener in Sidebar to sync taskFilters property when FilterEvents.CHANGED is emitted
+- Fixed timeline not centering on current month on initial load - timeline now centers on current month instead of left-aligning it,
+  which was causing viewport to show months 5-6 months ahead
 
 ## [v1.15.1] - 2026-03-13
 

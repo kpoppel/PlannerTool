@@ -45,6 +45,11 @@ Setup the environment and run the service
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+## To build the www/js/lit bundle if needed.
+npm install
+npm run build:vendor
+
 uvicorn planner:make_app --factory
 ```
 
