@@ -404,7 +404,7 @@ export class PluginCostComponent extends LitElement {
           capacity: capacity,
           title: f.title || f.name || '',
           type: f.type || f.feature_type || '',
-          state: f.state || f.status || '',
+          state: f.state || '',
           relations: f.relations || []
         };
       });

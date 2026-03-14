@@ -150,10 +150,11 @@ export class EmptyBoardModal extends LitElement {
       const expandedIds = state.getExpandedFeatureIds();
       if (!expandedIds || expandedIds.size === 0) return false;
 
-      // State filter
+      // State filter (preserve configured casing; compare case-insensitively)
       const stateFilter = state.selectedFeatureStateFilter instanceof Set 
         ? state.selectedFeatureStateFilter 
         : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
+      const stateFilterLower = new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()));
 
       // Task/dimensional filters
       const taskFilterSvc = state.taskFilterService;
@@ -161,10 +162,10 @@ export class EmptyBoardModal extends LitElement {
       for (const feature of sourceFeatures) {
         if (!expandedIds.has(feature.id)) continue;
 
-        // state filter
+        // state filter (case-insensitive using configured state names)
         if (stateFilter.size === 0) continue;
-        const featureState = feature.status || feature.state;
-        if (!stateFilter.has(featureState)) continue;
+        const featureStateLower = (feature.state || '').toLowerCase();
+        if (!stateFilterLower.has(featureStateLower)) continue;
 
         // view options
         if (feature.type === 'epic' && !state._viewService.showEpics) continue;

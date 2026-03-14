@@ -732,7 +732,7 @@ export class PluginPlanHealthComponent extends LitElement {
         }
       }
       
-      const status = feature.state || feature.status || '';
+      const status = feature.state || '';
       const statusLower = status.toLowerCase();
       
       // Check 1: Tasks that ended in the past should be marked as complete
@@ -745,7 +745,7 @@ export class PluginPlanHealthComponent extends LitElement {
             type: 'state-consistency',
             severity: 'warning',
             title: 'Past task not marked as complete',
-            description: `"${feature.title}" ended ${feature.end} (in the past) but has status "${status || '(empty)'}" - should be "Closed"`,
+            description: `"${feature.title}" ended ${feature.end} (in the past) but has state "${status || '(empty)'}" - should be "Closed"`,
             featureId: featureIdStr
           });
         }
@@ -780,7 +780,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const parent = featureMap.get(parentIdStr);
       if (!parent) continue;
       
-      const parentStatus = (parent.state || parent.status || '').toLowerCase();
+      const parentStatus = (parent.state || '').toLowerCase();
       
       // Only check if parent is NOT active
       if (parentStatus === 'active') continue;
@@ -797,11 +797,11 @@ export class PluginPlanHealthComponent extends LitElement {
         const child = featureMap.get(childIdStr);
         if (!child) continue;
         
-        const childStatus = (child.state || child.status || '').toLowerCase();
+        const childStatus = (child.state || '').toLowerCase();
         
         // Child has a state that should require active parent
         if (childStatus === 'active' || childStatus === 'resolved' || childStatus === 'defined') {
-          problematicChildren.push({ title: child.title, status: child.state || child.status });
+          problematicChildren.push({ title: child.title, status: child.state });
         }
       }
       
@@ -811,7 +811,7 @@ export class PluginPlanHealthComponent extends LitElement {
           type: 'state-consistency',
           severity: 'warning',
           title: 'Parent/child state mismatch',
-          description: `Parent "${parent.title}" has status "${parent.state || parent.status}" but has active/resolved/defined children: ${childList}`,
+          description: `Parent "${parent.title}" has state "${parent.state || ''}" but has active/resolved/defined children: ${childList}`,
           featureId: parentIdStr
         });
       }

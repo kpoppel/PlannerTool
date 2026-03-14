@@ -59,7 +59,7 @@ export class AzureDevopsModal extends LitElement {
       const origStart = baseFeature.start || '';
       const origEnd = baseFeature.end || '';
       const origCapacity = baseFeature.capacity || [];
-      const origState = baseFeature.state || baseFeature.status || '';
+      const origState = baseFeature.state || '';
       
       // Check if there are actual changes
       const hasStartChange = ov.start && ov.start !== origStart;
@@ -153,7 +153,7 @@ export class AzureDevopsModal extends LitElement {
                   const origStart = baseFeature.start || '';
                   const origEnd = baseFeature.end || '';
                   const origCapacity = baseFeature.capacity || [];
-                  const origState = baseFeature.state || baseFeature.status || '';
+                  const origState = baseFeature.state || '';
                   const checked = this._selected.has(id);
                   
                   // Format capacity changes with details

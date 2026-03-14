@@ -417,8 +417,11 @@ class FeatureBoard extends LitElement {
       ? state.selectedFeatureStateFilter
       : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
     if (stateFilter.size === 0) return false;
-    const featureState = feature.status || feature.state;
-    if (!stateFilter.has(featureState)) return false;
+
+    // Build lowercase version of selected states for case-insensitive comparison
+    const stateFilterLower = new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()));
+    const featureStateLower = (feature.state || '').toLowerCase();
+    if (!stateFilterLower.has(featureStateLower)) return false;
 
     // Apply task filters (schedule, allocation, hierarchy, relations)
     if (state.taskFilterService && !state.taskFilterService.featurePassesFilters(feature)) {

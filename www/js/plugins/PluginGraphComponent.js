@@ -325,7 +325,7 @@ export class PluginGraph extends LitElement {
     const msPerDay = 24*60*60*1000;
 
     for(const item of effective){
-      const itemState = item.status || item.state;
+      const itemState = item.state;
       if(stateSetSelected.size > 0 && !stateSetSelected.has(itemState)) continue;
       const isEpic = item.type === 'epic';
       if(!projectSetSelected.has(item.project)) continue;

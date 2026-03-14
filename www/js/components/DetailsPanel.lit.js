@@ -1018,7 +1018,7 @@ export class DetailsPanelLit extends LitElement {
             let title = '';
             try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.title) title = linked.title; }catch(e){}
             let metaParts = [];
-            try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.status) metaParts.push(linked.status); }catch(e){}
+            try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.state) metaParts.push(linked.state); }catch(e){}
             const meta = metaParts.join(' • ');
             let iconTemplate = '';
             if (type === 'Parent') iconTemplate = epicTemplate;

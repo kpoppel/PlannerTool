@@ -244,7 +244,7 @@ export class CapacityCalculator {
     for (const f of features) {
       if (!f || !f.start || !f.end) continue;
       if (!selectedProjectSet.has(f.project)) continue;
-      const fState = f.status || f.state;
+      const fState = f.state;
       if (!selectedStateSet.has(fState)) continue;
 
       if (f.type === 'epic') {
@@ -352,7 +352,7 @@ export class CapacityCalculator {
       const processFeature = (f, sign) => {
         if (!f || !f.start || !f.end) return;
         if (!selectedProjectSet.has(f.project)) return;
-        const fState = f.status || f.state;
+        const fState = f.state;
         if (!selectedStateSet.has(fState)) return;
 
         if (f.type === 'epic') {
@@ -518,7 +518,7 @@ export class CapacityCalculator {
         if (!selectedProjectSet.has(f.project)) continue;
         
         // Filter by selected states
-        const fState = f.status || f.state;
+        const fState = f.state;
         if (!selectedStateSet.has(fState)) continue;
         
         // Handle epic capacity based on mode

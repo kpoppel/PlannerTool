@@ -161,8 +161,8 @@ export class FeatureService {
       if (override.start && override.start !== featureBase.start) changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
       if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
-      // Support state/status override detection
-      const baseState = featureBase.state || featureBase.status || '';
+      // Support state override detection
+      const baseState = featureBase.state || '';
       if (override.state && override.state !== baseState) changedFields.push('state');
     }
     return { changedFields, dirty: changedFields.length > 0 };
