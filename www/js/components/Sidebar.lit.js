@@ -52,7 +52,7 @@ export class SidebarLit extends LitElement {
       max-width: var(--sidebar-width);
       background: var(--color-sidebar-bg);
       color: var(--color-sidebar-text);
-      padding: 16px 12px;
+      padding: 0px 6px;
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -74,17 +74,13 @@ export class SidebarLit extends LitElement {
     .sidebar-content { 
       flex: 1;
       overflow: hidden auto;
-      padding-bottom: 8px;
+      padding-bottom: 40px;
       min-height: 0;
       width: 100%;
     }
     
-    /* Footer stays at bottom */
-    .sidebar-config {
-      flex-shrink: 0;
-    }
     .sidebar h2 { margin:0 0 8px; font-size:1.1rem; word-wrap: break-word; }
-    .sidebar-section { margin-bottom:12px; overflow: hidden; }
+    .sidebar-section { overflow: hidden; }
     .sidebar-section h3 { margin:0 0 6px; font-size:0.93rem; word-wrap: break-word; }
     .sidebar-list { list-style:none; margin:0; padding:0; }
     .sidebar-list-item { display:flex; align-items:center; }
@@ -299,7 +295,19 @@ export class SidebarLit extends LitElement {
     }
 
     /* Sidebar footer/config */
-    .sidebar-config { position:fixed; bottom:0; left:0; width: var(--sidebar-width); padding:0 12px; background: var(--color-sidebar-bg); box-sizing: border-box; z-index: 1000; overflow: hidden; }
+    /* Footer stays at bottom */
+    .sidebar-config {
+      flex-shrink: 0;
+      position:fixed;
+      bottom:0;
+      left:0;
+      width: var(--sidebar-width);
+      padding:0 6px;
+      background: var(--color-sidebar-bg);
+      box-sizing: border-box;
+      z-index: 1000;
+      overflow: hidden;
+    }
     .sidebar-config .sidebar-footer-box {
       background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
       border: 1px solid rgba(255,255,255,0.06);
