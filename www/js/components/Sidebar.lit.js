@@ -5,7 +5,6 @@ import { bus } from '../core/EventBus.js';
 import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, ViewManagementEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { SidebarPersistenceService } from '../services/SidebarPersistenceService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -62,11 +61,14 @@ export class SidebarLit extends LitElement {
       z-index: var(--z-sidebar);
       font-size: 14px;
       overflow-y: auto;
-      padding-bottom: 96px;
+      /* reserve space for footer using a variable so layout adapts */
+      --sidebar-footer-height: 44px;
+      padding-bottom: calc(var(--sidebar-footer-height) + 8px);
       height: calc(100vh - 40px);
     }
 
-    .sidebar-content { overflow: auto; max-height: calc(100vh - 160px); padding-bottom: 12px; }
+    /* Make content area stop above the footer box so footer isn't squeezed */
+    .sidebar-content { overflow: auto; max-height: calc(100% - var(--sidebar-footer-height) - 24px); padding-bottom: 8px; }
     .sidebar h2 { margin:0 0 8px; font-size:1.1rem; }
     .sidebar-section { margin-bottom:12px; }
     .sidebar-section h3 { margin:0 0 6px; font-size:0.93rem; }
@@ -283,7 +285,30 @@ export class SidebarLit extends LitElement {
     }
 
     /* Sidebar footer/config */
-    .sidebar-config { position:fixed; bottom:0; left:0; width: var(--sidebar-width); padding-left: 12px; background: var(--color-sidebar-bg); z-index: 1000; }
+    .sidebar-config { position:fixed; bottom:0; left:0; width: var(--sidebar-width); padding:0 12px; background: var(--color-sidebar-bg); box-sizing: border-box; z-index: 1000; }
+    .sidebar-config .sidebar-footer-box {
+      background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 6px;
+      padding: 6px 8px; /* give a bit more breathing room */
+      display: block;
+      line-height: 1.2; /* slightly increased line spacing */
+      gap: 0;
+      min-height: 0;
+    }
+    .sidebar-config .footer-line {
+      font-size: 12px;
+      color: var(--color-sidebar-text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .sidebar-config .footer-line.author {
+      font-size: 11px;
+      color: rgba(255,255,255,0.85);
+    }
     #openConfigBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
     #openConfigBtn:hover { background:#eee; }
     #openHelpBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
@@ -294,7 +319,7 @@ export class SidebarLit extends LitElement {
 
     .segmented-control {
       display: flex;
-      gap: 6px;
+      gap: 0;
       border-radius: 16px;
       padding: 4px;
       background: transparent;
@@ -378,7 +403,6 @@ export class SidebarLit extends LitElement {
     this.open = true;
     this.serverStatus = 'loading';
     this.serverName = null;
-    this._persistenceService = new SidebarPersistenceService(dataService);
     // Global popover styles are provided by TopMenu; no sidebar-specific injection needed
     this._didRestoreSidebarState = false;
 
@@ -532,10 +556,19 @@ export class SidebarLit extends LitElement {
     this._onAvailableStatesChanged = (states) => { this.availableFeatureStates = Array.isArray(states) ? [...states] : (state.availableFeatureStates || []); this.requestUpdate(); };
     bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
 
+    // Listen for task filter updates from TaskFilterService
+    this._onTaskFiltersChanged = (payload) => {
+      if (payload && payload.taskFilters) {
+        this.taskFilters = payload.taskFilters;
+        this.requestUpdate();
+      }
+    };
+    bus.on(FilterEvents.CHANGED, this._onTaskFiltersChanged);
+
     this._onFeaturesForTypes = () => { this._computeAvailableTaskTypes(); };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Listen for view option changes to trigger sidebar state save
-    const onViewOptionChange = () => this._saveSidebarState();
+    const onViewOptionChange = () => { /* auto-save removed - use View feature instead */ };
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
     bus.on(ViewEvents.CAPACITY_MODE, onViewOptionChange);
@@ -584,7 +617,7 @@ export class SidebarLit extends LitElement {
         const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
         if(chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
         // Save sidebar state when section is toggled
-        this._saveSidebarState();
+        // Auto-save removed - use View feature instead
       };
 
       const onHeaderClick = () => toggleSection();
@@ -606,25 +639,8 @@ export class SidebarLit extends LitElement {
     [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
       .forEach(evt => bus.on(evt, onPluginsChanged));
 
-    // Restore sidebar state from localStorage after initial render
-    // Defer restore until projects/teams have been initialized. Listen for
-    // ProjectEvents.CHANGED / TeamEvents.CHANGED and run restore once when
-    // data is available. Also try once immediately in case data is already loaded.
-    this._restoreOnDataHandler = async () => {
-      if (this._didRestoreSidebarState) return;
-      const hasProjects = Array.isArray(this.projects) && this.projects.length > 0;
-      const hasTeams = Array.isArray(this.teams) && this.teams.length > 0;
-      if (hasProjects || hasTeams) {
-        this._didRestoreSidebarState = true;
-        await this._restoreSidebarState();
-        bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-        bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      }
-    };
-    bus.on(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-    bus.on(TeamEvents.CHANGED, this._restoreOnDataHandler);
-    // Try once immediately (microtask) in case projects/teams were loaded earlier
-    setTimeout(() => this._restoreOnDataHandler(), 0);
+    // Sidebar state restore removed - views are now the primary persistence mechanism
+    // Last active view will be restored via ViewManagementService on app init
   }
 
   disconnectedCallback(){
@@ -656,13 +672,8 @@ export class SidebarLit extends LitElement {
       this._recomputeDataFunnel = null;
     }
     if (this._onAvailableStatesChanged) bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
+    if (this._onTaskFiltersChanged) bus.off(FilterEvents.CHANGED, this._onTaskFiltersChanged);
     if (this._onFeaturesForTypes) bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
-    // Clean up restore-on-data handler if still registered
-    if (this._restoreOnDataHandler) {
-      bus.off(ProjectEvents.CHANGED, this._restoreOnDataHandler);
-      bus.off(TeamEvents.CHANGED, this._restoreOnDataHandler);
-      this._restoreOnDataHandler = null;
-    }
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
     this._collapsibleHandlers = null;
@@ -702,14 +713,14 @@ export class SidebarLit extends LitElement {
         teamAllocated: this.expandTeamAllocated 
       } 
     });
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
   }
 
   _toggleTaskFilter(dimension, option) {
     state.taskFilterService.toggleFilter(dimension, option);
     this.taskFilters = state.taskFilterService.getFilters();
     this._recomputeDataFunnel && this._recomputeDataFunnel();
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -761,7 +772,7 @@ export class SidebarLit extends LitElement {
       }
     }catch(e){/* ignore */}
     bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
@@ -844,7 +855,7 @@ export class SidebarLit extends LitElement {
                 const text = meta ? meta.text : '#fff';
                 const isActive = (state.selectedFeatureStateFilter && state.selectedFeatureStateFilter.has(s));
                 return html`
-                  <div class="filter-option ${ isActive ? 'active' : '' }" @click=${()=>{ state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); this._saveSidebarState(); }}>
+                  <div class="filter-option ${ isActive ? 'active' : '' }" @click=${()=>{ state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); }}>
                     <div style="display:inline-flex;align-items:center;gap:8px;flex:1;">
                       <span class="filter-state-dot" style="width:14px;height:14px;border-radius:3px;display:inline-block;background:${bg};border:1px solid rgba(0,0,0,0.06);box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);"></span>
                       <div style="flex:1;color:#fff;">${s}</div>
@@ -878,44 +889,44 @@ export class SidebarLit extends LitElement {
 
   /**
    * Save current sidebar state to localStorage (debounced)
+   * DEPRECATED: Views are now the only persistence mechanism.
    */
   _saveSidebarState() {
-    if (!this._persistenceService) return;
-    this._persistenceService.saveSidebarState(state, state._viewService, this);
+    // No-op: This method is deprecated - use View feature to save settings
   }
 
   // Handlers for Taskboard Options
   _setTimelineScale(scale){
     try{ state._viewService.setTimelineScale(scale); }catch(e){ console.warn('[Sidebar] setTimelineScale failed', e); }
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
   _toggleCondensed(){
     try{ state._viewService.setCondensedCards(!state._viewService.condensedCards); }catch(e){ console.warn('[Sidebar] toggleCondensed failed', e); }
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
   _setFeatureSortMode(mode){
     try{ state._viewService.setFeatureSortMode(mode); }catch(e){ console.warn('[Sidebar] setFeatureSortMode failed', e); }
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
   _setGraphType(type){
     this._graphType = type;
     try{ bus.emit('graph:type-changed', { type }); }catch(e){ console.warn('[Sidebar] emit graph type change failed', e); }
-    this._saveSidebarState();
+    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
   /**
    * Restore sidebar state from localStorage
+   * DEPRECATED: Views are restored via ViewManagementService.
    */
   async _restoreSidebarState() {
-    if (!this._persistenceService) return;
-    await this._persistenceService.restoreSidebarState(state, state._viewService, this);
+    // No-op: This method is deprecated - views restored automatically
   }
 
   async refreshServerStatus(){
@@ -925,11 +936,19 @@ export class SidebarLit extends LitElement {
         this.requestUpdate();
         return;
       }
-      const info = await dataService.checkHealth();
-      this.serverStatus = info && info.status ? info.status : 'ok';
-      this.serverName = info && info.server ? info.server : this.serverName;
+      const h = await dataService.checkHealth();
+      const status = (h && (h.status || (h.ok ? 'ok' : null))) || 'error';
+      this.serverName = (h && (h.server_name || h.server)) || this.serverName;
+      const ups = Number(h && h.uptime_seconds);
+      const uptimeStr = Number.isNaN(ups) ? '' : (() => {
+        const totalMinutes = Math.floor(ups / 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return ` - Uptime: ${hours}h ${minutes}m`;
+      })();
+      this.serverStatus = `${h.version} | Server: ${status}${uptimeStr}`;
     }catch(e){
-      this.serverStatus = 'error: ' + (e && e.message ? e.message : String(e));
+      this.serverStatus = 'Server: error';
     }
     this.requestUpdate();
   }
@@ -1056,6 +1075,12 @@ export class SidebarLit extends LitElement {
           </div>
         </section>
 
+        </div>
+        <div class="sidebar-config">
+          <div class="sidebar-footer-box">
+            <div class="footer-line status">${this.serverName ? this.serverName + ' | ' : ''}${this.serverStatus}</div>
+            <div class="footer-line author">PlannerTool (C) 2025-2026 Kim Poulsen</div>
+          </div>
         </div>
       </aside>
     `;
