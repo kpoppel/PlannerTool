@@ -1,3 +1,68 @@
+import { expect } from '@esm-bundle/chai';
+import { ProviderREST } from '../../www/js/services/providerREST.js';
+
+describe('ProviderREST basic coverage', () => {
+  let prov;
+  beforeEach(() => {
+    prov = new ProviderREST();
+    // ensure no real network calls
+    if(window.fetch && window.fetch._isStubbed) delete window.fetch;
+  });
+
+  it('saveScenario readonly guard', async () => {
+    const res = await prov.saveScenario({ id: 's1', readonly: true });
+    expect(res).to.be.an('object');
+    expect(res.ok).to.equal(false);
+  });
+
+  it('headers include session id when set', () => {
+    prov.sessionId = 'sid-123';
+    const h = prov._headers({ 'X-Custom': 'x' });
+    expect(h['X-Session-Id']).to.equal('sid-123');
+    expect(h['X-Custom']).to.equal('x');
+    expect(h['Accept']).to.equal('application/json');
+  });
+
+  it('getFeatures maps parentEpic and original', async () => {
+    const origFetch = window.fetch;
+    window.fetch = async () => ({ ok: true, status: 200, json: async () => ([{ id: 'f1', relations: [{ type: 'Parent', id: 'e1' }] }]) });
+    const res = await prov.getFeatures();
+    expect(Array.isArray(res)).to.equal(true);
+    expect(res[0].parentEpic).to.equal('e1');
+    expect(res[0].original).to.be.an('object');
+    window.fetch = origFetch;
+  });
+
+  it('retries network errors and succeeds', async () => {
+    const origFetch = window.fetch;
+    let calls = 0;
+    window.fetch = async () => {
+      calls += 1;
+      if(calls < 3) throw new Error('network');
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    // allow retries (default retry count is 2 so third attempt should succeed)
+    const res = await prov._fetch('/api/x', {});
+    expect(res).to.have.property('ok');
+    window.fetch = origFetch;
+  }).timeout(5000);
+
+  it('handles 401 invalid_session by calling acquireSession and retrying', async () => {
+    const origFetch = window.fetch;
+    let seq = 0;
+    // first call returns 401 with invalid_session, second call after reacquire should succeed
+    window.fetch = async () => {
+      seq += 1;
+      if(seq === 1) return { status: 401, ok: false, json: async () => ({ error: 'invalid_session' }) };
+      return { status: 200, ok: true, json: async () => ({ ok: true }) };
+    };
+    // stub acquireSession to set a session id without making network calls
+    prov.acquireSession = async () => { prov.sessionId = 'reacquired'; };
+    const res = await prov._fetch('/api/x', {});
+    expect(res.ok).to.equal(true);
+    window.fetch = origFetch;
+  });
+});
 import { expect } from '@open-wc/testing';
 import sinon from 'sinon';
 

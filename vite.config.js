@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { resolve, dirname } from 'path'
 import fs from 'fs'
+import sirv from 'sirv'
 
 // Plugin: help resolve relative imports that reference the repo's `www/js` files
 function resolveWwwJsPlugin(rootDir) {
@@ -41,13 +42,40 @@ function resolveWwwJsPlugin(rootDir) {
 
 export default defineConfig({
 	resolve: {
-		alias: {
-			// tests import '@esm-bundle/chai' — alias to installed 'chai'
-			'@esm-bundle/chai': 'chai',
-			// Provide aliases so absolute-style imports to the app's www/* resolve in tests
-			'www': resolve(__dirname, 'www'),
-			'www/js': resolve(__dirname, 'www/js')
-		}
+		// Use an array form to allow regex-based aliasing for absolute imports like
+		// '/static/js/...' so Vite's import-analysis can resolve them to local files.
+		alias: [
+			{ find: '@esm-bundle/chai', replacement: 'chai' },
+			{ find: 'www', replacement: resolve(__dirname, 'www') },
+			{ find: 'www/js', replacement: resolve(__dirname, 'www/js') },
+			{ find: '/static', replacement: resolve(__dirname, 'www') },
+			{ find: '/admin/static', replacement: resolve(__dirname, 'www-admin') },
+			// Regex to map absolute /static/js/<path> imports to the local www/js/<path>
+			{ find: /^\/static\/js\/(.*)/, replacement: resolve(__dirname, 'www/js') + '/$1' },
+			{ find: /^\/admin\/static\/js\/(.*)/, replacement: resolve(__dirname, 'www-admin/js') + '/$1' },
+			// Specific vendor alias as fallback
+			{ find: '/static/js/vendor/lit.js', replacement: resolve(__dirname, 'www/js/vendor/lit.js') }
+		]
 	},
-	plugins: [resolveWwwJsPlugin(resolve(__dirname))]
+	plugins: [resolveWwwJsPlugin(resolve(__dirname))],
+	// Serve the runtime www tree at /static and the admin site at /admin/static
+	configureServer(server) {
+		const serveWww = sirv(resolve(__dirname, 'www'), { dev: true, single: false })
+		const serveAdmin = sirv(resolve(__dirname, 'www-admin'), { dev: true, single: false })
+		server.middlewares.use((req, res, next) => {
+			try {
+				if (req.url.startsWith('/admin/static/')) {
+					req.url = req.url.replace(/^\/admin\/static/, '')
+					return serveAdmin(req, res, next)
+				}
+				if (req.url.startsWith('/static/')) {
+					req.url = req.url.replace(/^\/static/, '')
+					return serveWww(req, res, next)
+				}
+			} catch (e) {
+				// fall through
+			}
+			next()
+		})
+	}
 })

@@ -27,11 +27,10 @@ describe('startResize interactive', () => {
     const up = new MouseEvent('mouseup');
     window.dispatchEvent(up);
 
-    // Allow event loop to flush
-    setTimeout(() => {
+    return new Promise(resolve => setTimeout(() => {
       expect(updatesReceived.length).to.be.at.least(0);
-      done();
-    }, 10);
+      resolve();
+    }, 10));
   }).timeout(2000);
 
   it('startResize epic clamps to child end and calls updateDates', (done) => {
@@ -42,10 +41,10 @@ describe('startResize interactive', () => {
     startResize({ clientX: 0 }, epic, card, null, (u) => updates.push(u), [epic, child]);
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 500 }));
     window.dispatchEvent(new MouseEvent('mouseup'));
-    setTimeout(() => {
+    return new Promise(resolve => setTimeout(() => {
       // For epic, when resized earlier than child end, clamp should cause an update
       expect(updates.length).to.be.at.least(0);
-      done();
-    }, 10);
+      resolve();
+    }, 10));
   }).timeout(2000);
 });
