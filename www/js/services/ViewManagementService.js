@@ -154,20 +154,20 @@ export class ViewManagementService {
         
         // Select all projects
         if (this._state.projects) {
+          const projectSelections = {};
           this._state.projects.forEach(project => {
-            if (!project.selected) {
-              this._state.setProjectSelected(project.id, true);
-            }
+            projectSelections[project.id] = true;
           });
+          this._state.setProjectsSelectedBulk(projectSelections);
         }
         
         // Select all teams
         if (this._state.teams) {
+          const teamSelections = {};
           this._state.teams.forEach(team => {
-            if (!team.selected) {
-              this._state.setTeamSelected(team.id, true);
-            }
+            teamSelections[team.id] = true;
           });
+          this._state.setTeamsSelectedBulk(teamSelections);
         }
         
         // Select all available states
@@ -219,23 +219,20 @@ export class ViewManagementService {
         }
       } else {
         // For custom views, apply specific selections
-        // First, deselect all projects/teams
         if (this._state.projects) {
+          const projectSelections = {};
           this._state.projects.forEach(project => {
-            const shouldBeSelected = response.selectedProjects?.[project.id] === true;
-            if (project.selected !== shouldBeSelected) {
-              this._state.setProjectSelected(project.id, shouldBeSelected);
-            }
+            projectSelections[project.id] = response.selectedProjects?.[project.id] === true;
           });
+          this._state.setProjectsSelectedBulk(projectSelections);
         }
 
         if (this._state.teams) {
+          const teamSelections = {};
           this._state.teams.forEach(team => {
-            const shouldBeSelected = response.selectedTeams?.[team.id] === true;
-            if (team.selected !== shouldBeSelected) {
-              this._state.setTeamSelected(team.id, shouldBeSelected);
-            }
+            teamSelections[team.id] = response.selectedTeams?.[team.id] === true;
           });
+          this._state.setTeamsSelectedBulk(teamSelections);
         }
 
         // Apply view options

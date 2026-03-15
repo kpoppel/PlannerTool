@@ -14,6 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Removed redundant files from www/js/vendor . Lit bundle is built using Rollup and includes all dependencies.
 - Admin interface for projects now adds included states to display states automatically.
 - Retooling to use vite for testing instead of c8 and web-test-runner
+- ViewManagementService now uses bulk selection functions for improved performance when switching views
 
 ### Fixed
 
