@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
-## [v2.0.4] - unreleased
+## [v2.0.4] - 2026-03-16
 
 ### Fixed
 - View menu did not show save modal when saving a view.
