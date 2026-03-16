@@ -108,6 +108,17 @@ async function init(){
     // Initialize complete
     hideModal();
     bus.emit(AppEvents.READY);
+    // Auto-show onboarding modal on first run when user hasn't dismissed it
+    try{
+      const seen = localStorage.getItem('az_planner:onboarding_seen');
+      if(!seen){
+        try{
+          await import('./components/OnboardingModal.lit.js');
+          const em = document.createElement('onboarding-modal');
+          document.body.appendChild(em);
+        }catch(err){ console.warn('[App] failed to load/show onboarding modal', err); }
+      }
+    }catch(e){}
     // Session expiry handling: notify user and indicate when reacquired
     try{
       const showSpinnerMessage = (msg) => {

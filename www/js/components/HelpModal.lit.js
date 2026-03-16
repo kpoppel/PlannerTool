@@ -94,6 +94,20 @@ export class HelpModal extends LitElement {
 
   _onModalClose(){ this.remove(); }
 
+  async _showOnboarding(){
+    try{
+      // Dynamically import onboarding module if not already loaded, then append or reopen it
+      try{ await import('./OnboardingModal.lit.js'); }catch(e){}
+      let existing = document.querySelector('onboarding-modal');
+      if(existing){
+        try{ const inner = existing.renderRoot && existing.renderRoot.querySelector('modal-lit'); if(inner) inner.open = true; }
+        catch(e){ /* ignore */ }
+      } else {
+        try{ const el = document.createElement('onboarding-modal'); document.body.appendChild(el); }catch(e){ console.warn('[HelpModal] failed to create onboarding element', e); }
+      }
+    }catch(e){ console.warn('[HelpModal] show onboarding failed', e); }
+  }
+
   _filteredIndex(){
     const q = (this.query || '').trim().toLowerCase();
     if(!q) return this.index;
@@ -200,6 +214,7 @@ export class HelpModal extends LitElement {
           <div class="help-panel" .innerHTML=${this.content}></div>
         </div>
         <div slot="footer" class="modal-footer">
+          <button class="btn secondary" @click=${()=>this._showOnboarding()}>Show Onboarding</button>
           <button class="btn" @click=${()=>{ const m = this.renderRoot.querySelector('modal-lit'); try{ if(m) m.close(); }catch(e){ this._onModalClose(); } }}>Close</button>
         </div>
       </modal-lit>
