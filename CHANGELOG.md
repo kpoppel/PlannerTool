@@ -13,11 +13,16 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v2.0.5] - unreleased
+
+### Fixed
+- Dependency overlay now updates immediately when the "Dependencies" expand toggle is changed in the sidebar. Added FilterEvents.CHANGED listener to DependencyRenderer.
+- Expand filters (Parent/Child Links, Dependencies, Team Allocated) are now properly applied when loading a view. Previously, the checkboxes would show as checked but the filtering wouldn't be applied until the user clicked one of the filters. Fixed by syncing expansion state to State service, triggering data funnel recomputation, and emitting filter:changed event when restoring view options.
 
 ## [v2.0.4] - 2026-03-16
 
 ### Fixed
-- View menu did not show save modal when saving a view.
+- View menu did not show save modal when saving a view. Refactored ViewSaveModal to use declarative Lit @click handlers instead of imperative querySelector + addEventListener pattern.
 - Project and Team menus now always show all available options regardless of active view, allowing users to update views with new selections.
 
 ## [v2.0.3] - 2026-03-16

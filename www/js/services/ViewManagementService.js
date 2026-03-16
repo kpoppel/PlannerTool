@@ -286,14 +286,41 @@ export class ViewManagementService {
             }
             
             // Restore expansion options if saved
+            let expansionChanged = false;
             if (typeof response.viewOptions.expandParentChild !== 'undefined') {
               sidebarElement.expandParentChild = response.viewOptions.expandParentChild;
+              expansionChanged = true;
             }
             if (typeof response.viewOptions.expandRelations !== 'undefined') {
               sidebarElement.expandRelations = response.viewOptions.expandRelations;
+              expansionChanged = true;
             }
             if (typeof response.viewOptions.expandTeamAllocated !== 'undefined') {
               sidebarElement.expandTeamAllocated = response.viewOptions.expandTeamAllocated;
+              expansionChanged = true;
+            }
+            
+            // Sync expansion state to State service and trigger updates
+            if (expansionChanged) {
+              this._state.setExpansionState({
+                expandParentChild: sidebarElement.expandParentChild,
+                expandRelations: sidebarElement.expandRelations,
+                expandTeamAllocated: sidebarElement.expandTeamAllocated
+              });
+              
+              // Trigger data funnel recomputation
+              if (typeof sidebarElement._recomputeDataFunnel === 'function') {
+                sidebarElement._recomputeDataFunnel();
+              }
+              
+              // Emit filter change event so the board updates
+              this._bus.emit('filter:changed', { 
+                expansion: { 
+                  parentChild: sidebarElement.expandParentChild, 
+                  relations: sidebarElement.expandRelations, 
+                  teamAllocated: sidebarElement.expandTeamAllocated 
+                } 
+              });
             }
             
             // Request update to reflect changes

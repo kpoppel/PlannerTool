@@ -1,7 +1,7 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents, AppEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents, AppEvents, FilterEvents } from '../core/EventRegistry.js';
 
 function findInBoard(selector){
   try{
@@ -472,6 +472,7 @@ export async function initDependencyRenderer() {
       bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
       bus.on(ProjectEvents.CHANGED, scheduleRender);
       bus.on(TeamEvents.CHANGED, scheduleRender);
+      bus.on(FilterEvents.CHANGED, scheduleRender);
       bus.on(DragEvents.MOVE, scheduleRender);
       bus.on(DragEvents.END, scheduleRender);
       // Ensure we attempt a render after app initialization completes so
