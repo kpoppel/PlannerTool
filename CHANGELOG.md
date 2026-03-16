@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.0.5] - unreleased
+## [v2.0.5] - 2026-03-16
 
 ### Fixed
 - Dependency overlay now updates immediately when the "Dependencies" expand toggle is changed in the sidebar. Added FilterEvents.CHANGED listener to DependencyRenderer.
