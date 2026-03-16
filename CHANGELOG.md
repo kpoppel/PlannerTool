@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.0.2] - unreleased
+## [v2.0.2] - 2026-03-16
 
 ### Fixed
 - Onboarding modal was not displaying. Fixed.
