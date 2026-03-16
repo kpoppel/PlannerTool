@@ -29,8 +29,10 @@ from planner_lib.setup import has_feature_flag
 @dataclass
 class Config:
     data_dir: str = "data"
-    storage_backend: str = "file"
+    config_storage_backend: str = "file"
+    storage_backend: str = "diskcache" #"file"
     people_storage_backend: str = "single_file"
+    raw_serializer: str = "raw"
     yaml_serializer: str = "yaml"
     pickle_serializer: str = "pickle"
     # If None, check feature-flag at runtime via has_feature_flag
@@ -47,14 +49,20 @@ def create_app(config: Config) -> FastAPI:
 
 
     # Compose storages
-    storage_yaml = cast(StorageBackend, create_storage(
+    storage_diskcache = cast(StorageBackend, create_storage(
         backend=config.storage_backend,
+        serializer=config.raw_serializer,
+        accessor=None,
+        data_dir=config.data_dir+"/cache",
+    ))
+    storage_yaml = cast(StorageBackend, create_storage(
+        backend=config.config_storage_backend,
         serializer=config.yaml_serializer,
         accessor=None,
         data_dir=config.data_dir,
     ))
     storage_pickle = cast(StorageBackend, create_storage(
-        backend=config.storage_backend,
+        backend=config.config_storage_backend,
         serializer=config.pickle_serializer,
         accessor=None,
         data_dir=config.data_dir,
@@ -91,7 +99,8 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.azure import AzureService
     org = server_cfg.get('azure_devops_organization')
     feature_flags = server_cfg.get('feature_flags', {})
-    azure_client = AzureService(org, storage_pickle, feature_flags=feature_flags)
+    #azure_client = AzureService(org, storage_pickle, feature_flags=feature_flags)
+    azure_client = AzureService(org, storage_diskcache, feature_flags=feature_flags)
 
     from planner_lib.projects.task_service import TaskService
     task_service = TaskService(

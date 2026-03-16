@@ -7,3 +7,4 @@ httpx
 brotli
 brotli-asgi
 cryptography
+diskcache

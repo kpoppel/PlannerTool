@@ -84,7 +84,7 @@ class ValueNavigatingStorage:
         # Prefer to store serialized bytes; fall back to raw object if backend
         # expects Python objects.
         try:
-            data = self._serializer.dump(value)
+            data = self._serializer.dump(value) if self._serializer else value
             self._backend.save(namespace, key, data)
         except Exception:
             self._backend.save(namespace, key, value)
@@ -93,7 +93,7 @@ class ValueNavigatingStorage:
         raw = self._backend.load(namespace, key)
         if isinstance(raw, (bytes, bytearray)):
             try:
-                return self._serializer.load(bytes(raw))
+                return self._serializer.load(bytes(raw)) if self._serializer else raw
             except Exception:
                 return raw
         return raw

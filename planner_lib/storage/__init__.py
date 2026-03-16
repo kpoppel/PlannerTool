@@ -54,18 +54,14 @@ Example:
 from typing import Optional
 
 from .base import StorageBackend, ValueNavigatingStorage
-from .file_backend import FileStorageBackend
-from .single_file_backend import SingleFileStorage
 from .serializer import PickleSerializer, JSONSerializer, EncryptedSerializer, YAMLSerializer
 from .base import SerializerBackend
 from .accessor import DictAccessor, ListAccessor
 
-
+# Optional diskcache backend (imported lazily in factory)
 __all__ = [
 	"create_storage",
-	"StorageBackend",
-	"FileStorageBackend",
-	"SingleFileStorage",
+	"StorageBackend"
 ]
 
 def create_storage(
@@ -91,14 +87,20 @@ def create_storage(
 	"""
 	# Backend selection
 	if backend == "file":
+		from .file_backend import FileStorageBackend
 		be = FileStorageBackend(data_dir=data_dir)
 	elif backend == "memory":
 		from .memory_backend import MemoryStorage
 		be = MemoryStorage()
 	elif backend == "single_file":
 		# file_path takes precedence, fall back to data_dir for backward compat
+		from .single_file_backend import SingleFileStorage
 		fp = file_path or data_dir
 		be = SingleFileStorage(fp)
+	elif backend == "diskcache":
+		from .diskcache_backend import DiskCacheStorage
+		# Use data_dir as the cache directory by default
+		be = DiskCacheStorage(data_dir=data_dir)
 	else:
 		raise ValueError(f"unsupported backend: {backend}")
 
@@ -111,6 +113,8 @@ def create_storage(
 		ser = JSONSerializer()
 	elif serializer == "encrypted":
 		ser = EncryptedSerializer(key=key, password=password)
+	elif serializer == "raw":
+		ser = None
 	else:
 		raise ValueError(f"unsupported serializer: {serializer}")
 
@@ -123,7 +127,12 @@ def create_storage(
 		# ignore if backend doesn't support extensions
 		pass
 	if accessor is None:
-		# if serializer transforms values, wrap the backend with SerializerBackend
+		# If no serializer is requested (`raw`), return the raw backend directly.
+		# Otherwise wrap with SerializerBackend so callers get transparent
+		# serialization. Returning a SerializerBackend with `ser is None`
+		# would cause AttributeError when `save` calls `self._serializer.dump`.
+		if ser is None:
+			return be
 		return SerializerBackend(be, ser)
 	if accessor == "dict":
 		acc = DictAccessor()
