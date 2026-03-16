@@ -168,15 +168,6 @@ export class TeamMenuLit extends LitElement {
     if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
   }
 
-  _getFilteredTeams() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      return this.teams || [];
-    }
-    return (this.teams || []).filter(team => 
-      this.activeViewData.selectedTeams?.[team.id] === true
-    );
-  }
-
   _toggleTeam(tid) {
     const current = (this.teams || []).find(t => t.id === tid);
     const newVal = !(current && current.selected);
@@ -184,7 +175,7 @@ export class TeamMenuLit extends LitElement {
   }
 
   _handleTeamToggle() {
-    const teams = this._getFilteredTeams();
+    const teams = this.teams || [];
     const anyUnchecked = teams.some(t => !t.selected);
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
@@ -193,7 +184,7 @@ export class TeamMenuLit extends LitElement {
   }
 
   _anyUncheckedTeams() {
-    return this._getFilteredTeams().some(t => !t.selected);
+    return (this.teams || []).some(t => !t.selected);
   }
 
   async _openColorPopover(e, teamId) {
@@ -205,7 +196,7 @@ export class TeamMenuLit extends LitElement {
   }
 
   render() {
-    const teams = this._getFilteredTeams();
+    const teams = this.teams || [];
 
     return html`
       <div class="menu-popover">

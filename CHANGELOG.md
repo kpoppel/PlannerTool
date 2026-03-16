@@ -14,6 +14,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
+## [v2.0.4] - unreleased
+
+### Fixed
+- View menu did not show save modal when saving a view.
+- Project and Team menus now always show all available options regardless of active view, allowing users to update views with new selections.
+
 ## [v2.0.3] - 2026-03-16
 
 ### Fixed

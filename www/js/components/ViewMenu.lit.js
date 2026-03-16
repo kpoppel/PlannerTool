@@ -212,11 +212,9 @@ export class ViewMenuLit extends LitElement {
 
   async _onSaveCurrentView(e) {
     e.stopPropagation();
-    // Show save view modal
     try {
-      const ViewSaveModal = (await import('./ViewSaveModal.lit.js')).ViewSaveModal;
-      const modal = document.createElement('view-save-modal');
-      document.body.appendChild(modal);
+      const { openViewSaveModal } = await import('./modalHelpers.js');
+      await openViewSaveModal();
     } catch (err) {
       console.error('[ViewMenu] Failed to open save modal:', err);
     }

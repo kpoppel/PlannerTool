@@ -5,62 +5,64 @@ import { state } from '../services/State.js';
 export class ViewSaveModal extends LitElement {
   static properties = { 
     name: { type: String },
-    previewData: { type: Object }
+    previewData: { type: Object },
+    _status: { type: String },
+    _saving: { type: Boolean }
   };
 
   constructor(){ 
     super(); 
     this.name=''; 
     this.previewData = null;
+    this._status = '';
+    this._saving = false;
   }
   
   connectedCallback(){ 
     super.connectedCallback();
     // Capture current state for preview
-    this._capturePreviewData();
-  }
-
-  _getInner(){
-    return this.renderRoot.querySelector('modal-lit');
-  }
-  
-  _qs(selector){
-    const inner = this._getInner();
-    return inner ? inner.querySelector(selector) : null;
+    try { this._capturePreviewData(); } catch(e) { /* ignore preview capture errors */ }
   }
 
   firstUpdated(){
-    // open after render
-    const inner = this._getInner(); if(inner) inner.open = true;
-    const saveBtn = this._qs('#saveViewBtn');
-    const closeBtn = this._qs('#cancelSaveViewBtn');
-    const input = this._qs('#saveViewInput');
-    const status = this._qs('#saveViewStatus');
-    saveBtn.addEventListener('click', async ()=>{
-      const val = input.value.trim();
-      if (!val) {
-        status.textContent = 'Please enter a view name.';
-        return;
-      }
-      this._disableButtons(true);
-      try{
-        await state.viewManagementService.saveCurrentView(val);
-        this.remove();
-      }catch(err){
-        status.textContent = `Failed to save view: ${err.message || err}`;
-        this._disableButtons(false);
-      }
-    });
-    if (closeBtn) closeBtn.addEventListener('click', ()=> this.remove());
-    if (input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
-    if (input) setTimeout(()=> input.focus(), 10);
+    // Open the inner modal-lit after the first render. Using the renderRoot
+    // directly avoids the fragile nested querySelector pattern.
+    const inner = this.renderRoot.querySelector('modal-lit');
+    if (inner) inner.open = true;
+    // Auto-focus the name input
+    setTimeout(() => {
+      const input = this.renderRoot.querySelector('#saveViewInput');
+      if (input) input.focus();
+    }, 10);
   }
 
-  _disableButtons(dis){ 
-    const saveBtn = this._qs('#saveViewBtn'); 
-    const closeBtn = this._qs('#cancelSaveViewBtn'); 
-    if(saveBtn) saveBtn.disabled = dis; 
-    if(closeBtn) closeBtn.disabled = dis; 
+  async _handleSave() {
+    const input = this.renderRoot.querySelector('#saveViewInput');
+    const val = input ? input.value.trim() : '';
+    if (!val) {
+      this._status = 'Please enter a view name.';
+      return;
+    }
+    this._saving = true;
+    this._status = '';
+    try {
+      await state.viewManagementService.saveCurrentView(val);
+      this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+      this.remove();
+    } catch(err) {
+      this._status = `Failed to save view: ${err.message || err}`;
+      this._saving = false;
+    }
+  }
+
+  _handleCancel() {
+    this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+    this.remove();
+  }
+
+  _handleKeydown(e) {
+    if (e.key === 'Enter') this._handleSave();
+    if (e.key === 'Escape') this._handleCancel();
   }
 
   _capturePreviewData() {
@@ -226,8 +228,9 @@ export class ViewSaveModal extends LitElement {
           </style>
           <div class="modal-content">
             <div class="modal-field">
-              <label>View Name</label>
-              <input id="saveViewInput" type="text" value="${this.name}" placeholder="Enter view name..." />
+              <label for="saveViewInput">View Name</label>
+              <input id="saveViewInput" type="text" value="${this.name}" placeholder="Enter view name..."
+                     @keydown=${this._handleKeydown} />
             </div>
 
             ${this.previewData ? html`
@@ -280,12 +283,12 @@ export class ViewSaveModal extends LitElement {
               </div>
             ` : ''}
 
-            <div id="saveViewStatus" class="status"></div>
+            ${this._status ? html`<div class="status">${this._status}</div>` : ''}
           </div>
         </div>
         <div slot="footer" class="modal-footer">
-          <button id="saveViewBtn" class="btn primary">Save</button>
-          <button id="cancelSaveViewBtn" class="btn">Cancel</button>
+          <button class="btn primary" ?disabled=${this._saving} @click=${this._handleSave}>Save</button>
+          <button class="btn" ?disabled=${this._saving} @click=${this._handleCancel}>Cancel</button>
         </div>
       </modal-lit>
     `;

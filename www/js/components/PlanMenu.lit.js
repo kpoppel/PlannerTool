@@ -178,15 +178,6 @@ export class PlanMenuLit extends LitElement {
     if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
   }
 
-  _getFilteredProjects() {
-    if (!this.activeViewId || this.activeViewId === 'default' || !this.activeViewData) {
-      return this.projects || [];
-    }
-    return (this.projects || []).filter(project => 
-      this.activeViewData.selectedProjects?.[project.id] === true
-    );
-  }
-
   _toggleProject(pid) {
     const current = (this.projects || []).find(p => p.id === pid);
     const newVal = !(current && current.selected);
@@ -194,7 +185,7 @@ export class PlanMenuLit extends LitElement {
   }
 
   _handleProjectToggle() {
-    const projects = this._getFilteredProjects();
+    const projects = this.projects || [];
     const anyUnchecked = projects.some(p => !p.selected);
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
@@ -203,7 +194,7 @@ export class PlanMenuLit extends LitElement {
   }
 
   _anyUncheckedProjects() {
-    return this._getFilteredProjects().some(p => !p.selected);
+    return (this.projects || []).some(p => !p.selected);
   }
 
   async _openColorPopover(e, projectId) {
@@ -241,7 +232,7 @@ export class PlanMenuLit extends LitElement {
   }
 
   render() {
-    const projects = this._getFilteredProjects();
+    const projects = this.projects || [];
     const delivery = projects.filter(p => (p.type || 'project') === 'project');
     const teamBacklogs = projects.filter(p => (p.type || 'project') !== 'project');
 
