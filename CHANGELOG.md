@@ -13,6 +13,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+
+## [v2.0.3] - unreleased
+
+### Fixed
+- MainGraph stayed blank when all plans were deselected but teams were selected with "Expand by Team Allocation" active. Fixed by introducing `State.getEffectiveSelectedProjectIds()` which derives the capacity-relevant project set from team-allocated features; both `recomputeCapacityMetrics` (State) and `buildSnapshot` (MainGraph) now use this method. `setExpansionState` also triggers a capacity recomputation when `expandTeamAllocated` changes. The `_fullRender` early-exit in MainGraph is now view-mode-aware (team mode checks team IDs; project mode checks project IDs) to avoid blanking in mixed-selection scenarios.
+
 ## [v2.0.2] - 2026-03-16
 
 ### Fixed

@@ -96,4 +96,50 @@ describe('State small function coverage', () => {
     state.recomputeCapacityMetrics();
     expect(Array.isArray(state.capacityDates)).to.equal(true);
   });
+
+  describe('getEffectiveSelectedProjectIds', () => {
+    it('returns raw selected project IDs when expandTeamAllocated is off', () => {
+      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state.setProjectSelected('p1', true);
+      state.setProjectSelected('p2', false);
+      state.setExpansionState({ expandTeamAllocated: false });
+      const ids = state.getEffectiveSelectedProjectIds();
+      expect(ids).to.deep.equal(['p1']);
+    });
+
+    it('includes projects from team-allocated features when expandTeamAllocated is on', () => {
+      // Setup: p1 selected, p2 not selected; t1 selected
+      // Feature f2 belongs to p2 but is allocated to t1
+      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state.setProjectSelected('p1', true);
+      state.setProjectSelected('p2', false);
+      state.setTeamSelected('t1', true);
+
+      // Stub featureService.expandTeamAllocated and getEffectiveFeatures
+      const origFS = state._featureService;
+      state._featureService = {
+        expandTeamAllocated: (teamIds) => new Set(['f2']),
+        getEffectiveFeatures: () => [
+          { id: 'f1', project: 'p1', capacity: [] },
+          { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] }
+        ]
+      };
+
+      state._expansionState.expandTeamAllocated = true;
+      const ids = state.getEffectiveSelectedProjectIds();
+      state._featureService = origFS;
+
+      // p2 must be included because f2 is allocated to the selected team t1
+      expect(new Set(ids)).to.deep.equal(new Set(['p1', 'p2']));
+    });
+
+    it('returns only raw selected IDs when no teams are selected', () => {
+      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state.setProjectSelected('p1', true);
+      state.setTeamSelected('t1', false);
+      state.setExpansionState({ expandTeamAllocated: true });
+      const ids = state.getEffectiveSelectedProjectIds();
+      expect(ids).to.deep.equal(['p1']);
+    });
+  });
 });

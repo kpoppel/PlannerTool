@@ -100,6 +100,11 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs = [];
     const buildSnapshot = () => {
       const months = getTimelineMonths() || [];
+      // Use expansion-aware project IDs so the graph is consistent with the
+      // feature cards shown on the board (e.g. when expand-by-allocation is on).
+      const selectedProjectIds = state.getEffectiveSelectedProjectIds
+        ? state.getEffectiveSelectedProjectIds()
+        : (state.projects || []).filter(p=>p.selected).map(p=>p.id);
       return {
         months,
         teams: state.teams || [],
@@ -112,7 +117,7 @@ export class MainGraphLit extends LitElement {
         totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg || [],
         capacityViewMode: state._viewService.capacityViewMode || 'team',
         selectedTeamIds: (state.teams || []).filter(t=>t.selected).map(t=>t.id),
-        selectedProjectIds: (state.projects || []).filter(p=>p.selected).map(p=>p.id)
+        selectedProjectIds
       };
     };
 
@@ -351,11 +356,13 @@ export class MainGraphLit extends LitElement {
     const orgTotalsProject = new Map();
     const nTeams = teams.length || 1;
 
-    // Early exit if selection excludes all
-    if ((teams && teams.length > 0 && selectedTeamIds && selectedTeamIds.size === 0) ||
-        (projects && projects.length > 0 && selectedProjectIds && selectedProjectIds.size === 0)){
-      return;
-    }
+    // Early exit only if the selection relevant to the current view mode is empty.
+    // Team mode cares about selectedTeamIds; project mode cares about selectedProjectIds.
+    // Using OR here would cause the graph to blank out when plans are deselected but
+    // teams are selected (e.g. expand-by-allocation scenario).
+    const _earlyExitUsingTeam = capacityViewMode === 'team';
+    if (_earlyExitUsingTeam && teams && teams.length > 0 && selectedTeamIds && selectedTeamIds.size === 0) return;
+    if (!_earlyExitUsingTeam && projects && projects.length > 0 && selectedProjectIds && selectedProjectIds.size === 0) return;
 
     for(let d = visibleStartIdx; d <= visibleEndIdx; d++){
       const localIdx = d - visibleStartIdx;

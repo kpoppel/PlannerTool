@@ -167,11 +167,48 @@ class State {
   get expansionState() { return this._expansionState; }
   
   setExpansionState(options) {
+    const prevExpandTeamAllocated = this._expansionState.expandTeamAllocated;
     if (options.expandParentChild !== undefined) this._expansionState.expandParentChild = options.expandParentChild;
     if (options.expandRelations !== undefined) this._expansionState.expandRelations = options.expandRelations;
     if (options.expandTeamAllocated !== undefined) this._expansionState.expandTeamAllocated = options.expandTeamAllocated;
     // Invalidate cache
     this._expandedFeatureIdsCache = null;
+    // expandTeamAllocated changes the effective project set used for capacity
+    // calculation, so we must recompute immediately.
+    if (this._expansionState.expandTeamAllocated !== prevExpandTeamAllocated) {
+      this.recomputeCapacityMetrics();
+    }
+  }
+
+  /**
+   * Returns the project IDs that should feed into capacity calculation and the
+   * main graph, taking the current expansion state into account.  When
+   * "expand by team allocation" is active, any project that has at least one
+   * feature allocated to a selected team is included even if that project is
+   * not explicitly selected.  This keeps the capacity graph consistent with
+   * the set of feature cards shown on the board.
+   * @returns {string[]}
+   */
+  getEffectiveSelectedProjectIds() {
+    const rawSelected = (this.projects || []).filter(p => p.selected).map(p => p.id);
+    if (!this._expansionState.expandTeamAllocated) return rawSelected;
+
+    const selectedTeams = (this.teams || []).filter(t => t.selected).map(t => t.id);
+    if (selectedTeams.length === 0) return rawSelected;
+
+    const featureService = this._getFeatureService();
+    if (!featureService || !featureService.expandTeamAllocated) return rawSelected;
+
+    // Collect the project of every feature allocated to a selected team
+    const teamAllocatedIds = featureService.expandTeamAllocated(selectedTeams);
+    const allFeatures = featureService.getEffectiveFeatures();
+    const featureById = new Map(allFeatures.map(f => [f.id, f]));
+    const derived = new Set(rawSelected);
+    for (const fid of teamAllocatedIds) {
+      const f = featureById.get(fid);
+      if (f && f.project) derived.add(f.project);
+    }
+    return Array.from(derived);
   }
   
   /**
@@ -734,7 +771,9 @@ class State {
     // Always use all projects for capacity calculations to ensure features from all projects are counted.
     // Project type filtering should only affect display/grouping, not calculation.
     const projectsForCapacity = projects || [];
-    const selectedProjects = (this.projects || []).filter(p => p.selected).map(p => p.id);
+    // Use expansion-aware project IDs so the graph stays populated when
+    // "expand by team allocation" makes features visible from unselected plans.
+    const selectedProjects = this.getEffectiveSelectedProjectIds();
     const selectedTeams = (this.teams || []).filter(t => t.selected).map(t => t.id);
     const selectedStateIds = this.selectedFeatureStateFilter instanceof Set 
       ? Array.from(this.selectedFeatureStateFilter) 
