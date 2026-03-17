@@ -52,4 +52,59 @@ describe('DetailsPanel helper coverage', () => {
     expect(args[1]).to.equal('capacity');
     stub.restore();
   });
+
+  it('capacity input value updates when switching features', async () => {
+    // Stub state.teams getter to return test data
+    const teamsStub = sinon.stub(state._projectTeamService, 'getTeams').returns([
+      { id: 't1', name: 'Team Alpha', color: '#ff0000' },
+      { id: 't2', name: 'Team Beta', color: '#00ff00' }
+    ]);
+    const projectsStub = sinon.stub(state, 'projects').get(() => [
+      { id: 'p1', name: 'Project 1' }
+    ]);
+
+    const el = await fixture(html`<details-panel></details-panel>`);
+    
+    // First feature with t1 at 30%
+    el.feature = { 
+      id: 'f1', 
+      title: 'Feature 1',
+      project: 'p1',
+      capacity: [{ team: 't1', capacity: 30 }], 
+      original: {},
+      orgLoad: '30%'
+    };
+    el.open = true;
+    await el.updateComplete;
+
+    // Get the input field for team t1
+    const input1 = el.shadowRoot.querySelector('.capacity-bar-input');
+    expect(input1).to.exist;
+    expect(input1.value).to.equal('30');
+
+    // Simulate user editing the value (but not submitting)
+    input1.value = '45';
+    input1.dispatchEvent(new Event('input'));
+    await el.updateComplete;
+
+    // Switch to second feature with t1 at 70%
+    el.feature = { 
+      id: 'f2', 
+      title: 'Feature 2',
+      project: 'p1',
+      capacity: [{ team: 't1', capacity: 70 }], 
+      original: {},
+      orgLoad: '70%'
+    };
+    await el.updateComplete;
+
+    // The input should now show 70, not the user's temporary 45
+    const input2 = el.shadowRoot.querySelector('.capacity-bar-input');
+    expect(input2).to.exist;
+    expect(input2.value).to.equal('70');
+
+    // Restore stubs
+    teamsStub.restore();
+    projectsStub.restore();
+  });
 });

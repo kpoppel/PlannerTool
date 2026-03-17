@@ -873,7 +873,7 @@ export class DetailsPanelLit extends LitElement {
                      class="capacity-bar-input"
                      min="0" 
                      max="100" 
-                     value="${cap}"
+                     .value="${cap}"
                      @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
                      @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}
                      @focus=${(e) => { e.target.select(); }}
