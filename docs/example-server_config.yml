@@ -7,7 +7,18 @@ log_level: <level: DEBUG, INFO, WARNING, ERRRR, CRITICAL>
 feature_flags:
   # Optional: Enable Azure Cache (default: false)
   enable_azure_cache: true
+  # Optional: Enable in-memory cache layer (default: false, requires enable_azure_cache: true)
+  # When enabled, provides <1ms cache response times for hot data
+  enable_memory_cache: true
   # Optional: Enable Brotli middleware for compression (default: false)
   enable_brotli_middleware: true
+
+# Optional: Memory cache configuration (only used when enable_memory_cache: true)
+memory_cache:
+  # Maximum memory cache size in MB (default: 50)
+  max_size_mb: 50
+  # Cache staleness threshold in seconds (default: 1800 = 30 minutes)
+  # Data older than this is considered stale and will be refreshed on next access
+  staleness_seconds: 1800
 # Optional: Relative or absolute path to the database directory or full path and filename
 database_path: </path/to/database/directory/or/file.yaml>

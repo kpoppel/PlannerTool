@@ -20,7 +20,7 @@ _MEM_STORES = {}
 def _get_store_for(tmp_dir: str):
     from planner_lib.storage import create_storage
     if tmp_dir not in _MEM_STORES:
-        _MEM_STORES[tmp_dir] = create_storage(backend='memory', serializer='pickle', accessor='dict')
+        _MEM_STORES[tmp_dir] = create_storage(backend='memory', serializer='json')
     return _MEM_STORES[tmp_dir]
 
 

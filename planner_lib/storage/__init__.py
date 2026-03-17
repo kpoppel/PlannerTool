@@ -1,64 +1,43 @@
 """Storage abstraction package for PlannerTool.
 
-Provides a small factory `create_storage` to compose a persistence backend
-with a serializer and value-accessor. This keeps import sites simple while
-allowing flexible combinations for testing and runtime configuration.
+Provides a simple factory `create_storage` to compose a persistence backend
+with a serializer. This keeps import sites simple while allowing flexible
+combinations for testing and runtime configuration.
 
 Examples:
 
-	# dict-style access (create nested mappings on set_in)
+	# Raw access (no serialization)
 	>>> from planner_lib.storage import create_storage
-	>>> s = create_storage(serializer='pickle', accessor='dict', data_dir='./tmp')
-	>>> s.set_in('ns', 'doc', ['a', 'b'], 123)
-	>>> s.get_in('ns', 'doc', ['a', 'b'])
-	123
+	>>> s = create_storage(serializer='raw', data_dir='./tmp')
+	>>> s.save('ns', 'key', b'binary data')
+	>>> s.load('ns', 'key')
+	b'binary data'
 
-	# list-style access (operate on existing list values)
-	>>> s2 = create_storage(serializer='pickle', accessor='list', data_dir='./tmp')
-	>>> s2.save('ns', 'lst', [0, 1, 2])
-	>>> s2.set_in('ns', 'lst', [1], 42)
-	>>> s2.get_in('ns', 'lst', [1])
-	42
+	# YAML serialization (human-readable configs)
+	>>> sy = create_storage(serializer='yaml', data_dir='./tmp')
+	>>> sy.save('ns', 'config', {'foo': 'bar', 'count': 42})
+	>>> sy.load('ns', 'config')
+	{'foo': 'bar', 'count': 42}
 
-	# encrypted serializer with password (values are transparently encrypted)
-	>>> se = create_storage(serializer='encrypted', password='s3cr3t', accessor='dict', data_dir='./tmp_enc')
-	>>> se.set_in('ns', 'secret', ['x'], {'foo': 'bar'})
-	>>> se.get_in('ns', 'secret', ['x'])
+	# JSON serialization
+	>>> sj = create_storage(serializer='json', data_dir='./tmp')
+	>>> sj.save('ns', 'data', {'items': [1, 2, 3]})
+	>>> sj.load('ns', 'data')
+	{'items': [1, 2, 3]}
+
+	# Encrypted serializer with password (values are transparently encrypted)
+	>>> se = create_storage(serializer='encrypted', password='s3cr3t', data_dir='./tmp_enc')
+	>>> se.save('ns', 'secret', {'foo': 'bar'})
+	>>> se.load('ns', 'secret')
 	{'foo': 'bar'}
-
-Accessor helpers
------------------
-
-The package also provides lightweight in-memory access helpers useful for
-tests and interactive use. These are not required by the storage backend but
-are convenient when you want container-like operations on nested values.
-
-- `AccessorView` / `StorageProxy`: create a proxy view over a dict/list value
-	and use chained indexing (e.g. `view['a']['b'] = 1` or
-	`my_view['arr'][0]['x'] = 42`). The factory `StorageProxy(storage, ns, key)`
-	returns a view rooted at `storage[ns][key]` (creating intermediate mappings
-	as needed).
-
-Example:
-
-		>>> from planner_lib.storage.accessor import StorageProxy
-		>>> storage = {}
-		>>> v = StorageProxy(storage)
-		>>> v['a']['b'] = 123
-		>>> storage
-		{'a': {'b': 123}}
-
 
 """
 
 from typing import Optional
 
-from .base import StorageBackend, ValueNavigatingStorage
-from .serializer import PickleSerializer, JSONSerializer, EncryptedSerializer, YAMLSerializer
-from .base import SerializerBackend
-from .accessor import DictAccessor, ListAccessor
+from .base import StorageBackend, SerializerBackend
+from .serializer import JSONSerializer, EncryptedSerializer, YAMLSerializer
 
-# Optional diskcache backend (imported lazily in factory)
 __all__ = [
 	"create_storage",
 	"StorageBackend"
@@ -67,23 +46,20 @@ __all__ = [
 def create_storage(
 	*,
 	backend: str = "file",
-	serializer: str = "pickle",
-	accessor: Optional[str] = "dict",
+	serializer: str = "raw",
 	password: Optional[str] = None,
 	key: Optional[bytes] = None,
 	data_dir: str = "./data",
-	file_path: Optional[str] = None,
-) -> StorageBackend | ValueNavigatingStorage:
+) -> StorageBackend:
 	"""Create and return a storage backend instance.
 
 	Parameters
-	- backend: currently only 'file' is supported (returns `FileStorageBackend`).
-	- data_dir: path for file backend.
-	- serializer: 'pickle' or 'json'. If provided, the returned storage will
-	  be a `ValueNavigatingStorage` that uses the chosen serializer.
-	- accessor: 'dict' or 'list' or None. If provided, the returned storage
-	  will expose value-level helpers (`get_in`/`set_in`/`delete_in`). If
-	  None, the raw backend is returned.
+	- backend: 'file' (file-based), 'memory' (in-memory for tests), or 'diskcache' (SQLite-backed cache).
+	- data_dir: path for file/diskcache backend.
+	- serializer: 'raw' (no serialization), 'yaml', 'json', or 'encrypted'.
+	  If provided, the returned storage will transparently serialize/deserialize values.
+	- password: password for encrypted serializer (mutually exclusive with key).
+	- key: encryption key for encrypted serializer (mutually exclusive with password).
 	"""
 	# Backend selection
 	if backend == "file":
@@ -92,14 +68,8 @@ def create_storage(
 	elif backend == "memory":
 		from .memory_backend import MemoryStorage
 		be = MemoryStorage()
-	elif backend == "single_file":
-		# file_path takes precedence, fall back to data_dir for backward compat
-		from .single_file_backend import SingleFileStorage
-		fp = file_path or data_dir
-		be = SingleFileStorage(fp)
 	elif backend == "diskcache":
 		from .diskcache_backend import DiskCacheStorage
-		# Use data_dir as the cache directory by default
 		be = DiskCacheStorage(data_dir=data_dir)
 	else:
 		raise ValueError(f"unsupported backend: {backend}")
@@ -107,38 +77,19 @@ def create_storage(
 	# Serializer selection
 	if serializer == "yaml":
 		ser = YAMLSerializer()
-	elif serializer == "pickle":
-		ser = PickleSerializer()
 	elif serializer == "json":
 		ser = JSONSerializer()
 	elif serializer == "encrypted":
 		ser = EncryptedSerializer(key=key, password=password)
 	elif serializer == "raw":
-		ser = None
+		# No serialization - return raw backend directly
+		return be
 	else:
 		raise ValueError(f"unsupported serializer: {serializer}")
 
-	# If backend supports an extension attribute, inform it of the
-	# serializer's on-disk file extension. This keeps filename handling
-	# centralized in the backend while callers continue to use logical keys.
-	try:
-		be.file_extension = getattr(ser, "file_extension")
-	except Exception:
-		# ignore if backend doesn't support extensions
-		pass
-	if accessor is None:
-		# If no serializer is requested (`raw`), return the raw backend directly.
-		# Otherwise wrap with SerializerBackend so callers get transparent
-		# serialization. Returning a SerializerBackend with `ser is None`
-		# would cause AttributeError when `save` calls `self._serializer.dump`.
-		if ser is None:
-			return be
-		return SerializerBackend(be, ser)
-	if accessor == "dict":
-		acc = DictAccessor()
-	elif accessor == "list":
-		acc = ListAccessor()
-	else:
-		raise ValueError(f"unsupported accessor: {accessor}")
+	# Set file extension on backend if it supports it (file backend does)
+	if hasattr(be, 'file_extension') and hasattr(ser, 'file_extension'):
+		be.file_extension = ser.file_extension
 
-	return ValueNavigatingStorage(be, ser, acc)
+	# Wrap backend with serializer
+	return SerializerBackend(be, ser)

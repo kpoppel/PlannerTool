@@ -4,7 +4,7 @@ This client adds TTL-based caching on top of the base AzureClient operations.
 It uses the CacheManager to handle all cache storage, TTL checks, and invalidation.
 """
 from __future__ import annotations
-from typing import List, Optional
+from typing import List, Optional, Any
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -26,15 +26,21 @@ class AzureCachingClient(AzureClient):
     - Periodically prunes old cache entries
     """
 
-    def __init__(self, organization_url: str, storage: StorageProtocol):
-        """Initialize caching client with storage backend.
+    def __init__(self, organization_url: str, storage: StorageProtocol, memory_cache=None):
+        """Initialize caching client with storage backend and optional memory cache.
 
         The client is instantiated without a PAT; use the `connect(pat)` 
         context-manager to obtain a connected client.
+        
+        Args:
+            organization_url: Azure DevOps organization URL
+            storage: Disk storage backend (DiskCache)
+            memory_cache: Optional MemoryCacheManager for hot in-memory caching
         """
         logger.info("Using AzureCachingClient (deferred connect) with storage backend")
         super().__init__(organization_url, storage=storage)
         self._cache = CacheManager(storage, namespace=NAMESPACE)
+        self._memory_cache = memory_cache
         
         # History cache metrics
         self._history_metrics = {
@@ -53,6 +59,44 @@ class AzureCachingClient(AzureClient):
     def _fetch_count(self, value):
         """Set fetch count for tests."""
         self._cache._fetch_count = value
+    
+    @property
+    def _has_memory_cache(self) -> bool:
+        """Check if memory cache is available."""
+        return self._memory_cache is not None
+    
+    def _read_memory_cache(self, key: str) -> tuple[Optional[Any], bool]:
+        """Read from memory cache with staleness check.
+        
+        Returns:
+            Tuple of (data, is_fresh) where is_fresh indicates if data is not stale
+        """
+        if not self._has_memory_cache:
+            return None, False
+        
+        data = self._memory_cache.read(NAMESPACE, key)
+        if data is None:
+            return None, False
+        
+        # Check if stale
+        metadata = self._memory_cache.get_metadata(NAMESPACE, key)
+        is_fresh = metadata and not metadata.needs_refresh if metadata else True
+        
+        return data, is_fresh
+    
+    def _write_memory_cache(self, key: str, data: Any) -> None:
+        """Write to memory cache."""
+        if not self._has_memory_cache:
+            return
+        
+        self._memory_cache.write(NAMESPACE, key, data)
+    
+    def _mark_stale(self, key: str) -> None:
+        """Mark a cache key as stale in memory cache."""
+        if not self._has_memory_cache:
+            return
+        
+        self._memory_cache.mark_stale(NAMESPACE, key)
 
     def _key_for_area(self, area_path: str) -> str:
         """Generate cache key for an area path."""
@@ -197,6 +241,7 @@ class AzureCachingClient(AzureClient):
         """Fetch work items with caching and invalidation support.
         
         This implements:
+        - Three-tier caching: Memory (hot) → Disk (persistent) → Azure API
         - TTL-based cache refresh (30 min default)
         - Per-area invalidation tracking
         - Incremental updates using ModifiedDate filter
@@ -223,12 +268,6 @@ class AzureCachingClient(AzureClient):
         """
         logger.debug(f"Fetching work items for area path: {area_path}")
         
-        if not self._connected:
-            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-        
-        assert self.conn is not None
-        wit_client = self.conn.clients.get_work_item_tracking_client()
-        
         # Use defaults if not provided
         if task_types is None:
             task_types = ['epic', 'feature']
@@ -237,6 +276,23 @@ class AzureCachingClient(AzureClient):
         
         # Use _key_for_area for cache key (consistent with other cache keys)
         area_key = self._key_for_area(area_path)
+        
+        # FAST PATH: Check memory cache first (hot path, <1ms)
+        if self._has_memory_cache:
+            mem_data, is_fresh = self._read_memory_cache(area_key)
+            if mem_data is not None and is_fresh:
+                logger.debug(f"Memory cache HIT (fresh) for area '{area_key}' - returning {len(mem_data)} items")
+                return mem_data
+            elif mem_data is not None:
+                logger.debug(f"Memory cache HIT (stale) for area '{area_key}' - will refresh")
+        
+        # Memory cache miss or stale - continue to disk/Azure refresh
+        if not self._connected:
+            raise RuntimeError("AzureCachingClient is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        
+        assert self.conn is not None
+        wit_client = self.conn.clients.get_work_item_tracking_client()
+        
         # Use _sanitize_area_path for WIQL query (needs backslashes)
         wiql_area = self._sanitize_area_path(area_path)
 
@@ -267,6 +323,17 @@ class AzureCachingClient(AzureClient):
         # The WIQL query is lightweight (just IDs and Revs) and provides the
         # canonical StackRank ordering that must be preserved for the UI
         logger.debug(f"Running WIQL for area '{area_key}' (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
+
+        # Cache hit: skip WIQL if cache is fresh and no invalidations
+        if not force_full_refresh and not invalidated_in_area and last_update:
+            logger.debug(f"Cache hit for area '{area_key}' ({len(area_cache)} items) - skipping WIQL")
+            result = list(area_cache.values())
+            # Update memory cache with fresh disk data
+            if self._has_memory_cache:
+                self._write_memory_cache(area_key, result)
+            return result
+        
+        logger.debug(f"Cache miss for area '{area_key}' - running WIQL (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
 
         # Build WIQL query with optional ModifiedDate filter
         modified_where = f"AND [System.ChangedDate] > '{last_update}'" if last_update and not force_full_refresh else ''
@@ -394,10 +461,13 @@ class AzureCachingClient(AzureClient):
         # cached list as-is; otherwise preserve WIQL order.
         if not items_to_fetch and not deleted_ids and not force_full_refresh:
             logger.debug(f"No changes detected for area '{area_key}' - using cache")
-            if limited_wiql:
-                return list(area_cache.values())
+            #if limited_wiql:
+            #    return list(area_cache.values())
             # Sort by task_ids order (preserves StackRank from WIQL)
             result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+            # Update memory cache if it was stale
+            if self._has_memory_cache:
+                self._write_memory_cache(area_key, result)
             return result
 
         # Fetch only changed work items in batches
@@ -477,72 +547,127 @@ class AzureCachingClient(AzureClient):
         # Periodic pruning
         self._cache.prune_old_entries(keep_count=50)
         
+        # Update memory cache (write-through)
         # Sort by task_ids order (preserves StackRank from WIQL) before returning
         result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+        if self._has_memory_cache:
+            self._write_memory_cache(area_key, result)
+            logger.debug(f"Updated memory cache for area '{area_key}' with {len(result)} items")
 
         return result
 
     def get_all_teams(self, project: str) -> List[dict]:
-        """Fetch teams with caching."""
+        """Fetch teams with memory and disk caching."""
+        key = self._key_for_teams(project)
+        
+        # Check memory cache first
+        if self._has_memory_cache:
+            mem_data, is_fresh = self._read_memory_cache(key)
+            if mem_data is not None and is_fresh:
+                logger.debug(f"Memory cache HIT (fresh) for teams '{key}'")
+                return mem_data
+        
         if not self._connected:
             raise RuntimeError("AzureCachingClient is not connected.")
         
-        key = self._key_for_teams(project)
+        # Check disk cache
         cached = self._cache.read(key)
         
         if cached and not self._cache.is_stale(key, ttl=CACHE_TTL):
+            # Update memory cache
+            if self._has_memory_cache:
+                self._write_memory_cache(key, cached)
             return cached
         
         # Fetch from Azure
         teams = super().get_all_teams(project)
         
-        # Cache the result
+        # Write to disk cache
         self._cache.write(key, teams)
         self._cache.update_timestamp(key)
+        
+        # Write to memory cache
+        if self._has_memory_cache:
+            self._write_memory_cache(key, teams)
         
         return teams
 
     def get_all_plans(self, project: str) -> List[dict]:
-        """Fetch plans with caching."""
+        """Fetch plans with memory and disk caching."""
+        key = self._key_for_plans(project)
+        
+        # Check memory cache first
+        if self._has_memory_cache:
+            mem_data, is_fresh = self._read_memory_cache(key)
+            if mem_data is not None and is_fresh:
+                logger.debug(f"Memory cache HIT (fresh) for plans '{key}'")
+                return mem_data
+        
         if not self._connected:
             raise RuntimeError("AzureCachingClient is not connected.")
         
-        key = self._key_for_plans(project)
+        # Check disk cache
         cached = self._cache.read(key)
         
         if cached and not self._cache.is_stale(key, ttl=CACHE_TTL):
+            # Update memory cache
+            if self._has_memory_cache:
+                self._write_memory_cache(key, cached)
             return cached
         
         # Fetch from Azure
         plans = super().get_all_plans(project)
         
-        # Cache the result
+        # Write to disk cache
         self._cache.write(key, plans)
         self._cache.update_timestamp(key)
+        
+        # Write to memory cache
+        if self._has_memory_cache:
+            self._write_memory_cache(key, plans)
         
         return plans
 
     def get_markers_for_plan(self, project: str, plan_id: str) -> List[dict]:
-        """Fetch markers for a plan with caching."""
+        """Fetch markers for a plan with memory and disk caching."""
+        key = self._key_for_plan_markers(project, plan_id)
+        
+        # Check memory cache first
+        if self._has_memory_cache:
+            mem_data, is_fresh = self._read_memory_cache(key)
+            # Memory cache stores the markers list directly (unwrapped)
+            if mem_data is not None and is_fresh:
+                logger.debug(f"Memory cache HIT (fresh) for plan markers '{key}'")
+                return mem_data
+        
         if not self._connected:
             raise RuntimeError("AzureCachingClient is not connected.")
         
-        key = self._key_for_plan_markers(project, plan_id)
+        # Check disk cache
         cached = self._cache.read(key)
         
         if cached and isinstance(cached, dict) and 'markers' in cached:
             if not self._cache.is_stale(key, ttl=CACHE_TTL):
                 logger.debug(f"Using cached markers for plan {plan_id} (key: {key})")
-                return cached['markers']
+                markers = cached['markers']
+                # Update memory cache with unwrapped list
+                if self._has_memory_cache:
+                    self._write_memory_cache(key, markers)
+                return markers
         
         # Fetch from Azure
         logger.info(f"Fetching markers from Azure for plan {plan_id} in project {project}")
         markers = super().get_markers_for_plan(project, plan_id)
         
-        # Cache with timestamp
+        # Write to disk cache (wrapped)
         payload = {'markers': markers, 'last_update': datetime.now(timezone.utc).isoformat()}
         self._cache.write(key, payload)
         self._cache.update_timestamp(key)
+        
+        # Write to memory cache (unwrapped list)
+        if self._has_memory_cache:
+            self._write_memory_cache(key, markers)
+        
         logger.debug(f"Cached {len(markers)} markers for plan {plan_id} with key: {key}")
         return markers
 
@@ -612,6 +737,7 @@ class AzureCachingClient(AzureClient):
         
         Attempts to map work item IDs to their areas for per-area invalidation.
         Falls back to storing unmapped IDs under a special key.
+        Also marks affected areas as stale in memory cache.
         """
         if not work_item_ids:
             return
@@ -620,6 +746,7 @@ class AzureCachingClient(AzureClient):
         
         # Try to map IDs to areas by scanning existing caches
         unmapped = set(work_item_ids)
+        invalidated_keys = set()
         
         # Read index to get area keys
         try:
@@ -635,6 +762,7 @@ class AzureCachingClient(AzureClient):
                 matched = unmapped & area_ids
                 if matched:
                     self._cache.mark_invalidated(area_key, list(matched))
+                    invalidated_keys.add(area_key)
                     unmapped -= matched
                 
                 if not unmapped:
@@ -645,20 +773,30 @@ class AzureCachingClient(AzureClient):
         # Store any unmapped IDs under special key
         if unmapped:
             self._cache.mark_invalidated('_unmapped', list(unmapped))
+        
+        # Mark affected areas as stale in memory cache
+        if self._has_memory_cache:
+            for area_key in invalidated_keys:
+                self._mark_stale(area_key)
+                logger.debug(f"Marked memory cache key '{area_key}' as stale")
 
     def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None):
         """Invalidate cached plans and markers.
         
         If plan_ids is None, invalidates all plans for the project.
         Otherwise, only invalidates the specified plans.
+        Also marks affected keys as stale in memory cache.
         """
         logger.debug(f"Invalidating plans for project {project}: {plan_ids}")
+        
+        invalidated_keys = set()
         
         # Invalidate plans list cache
         if plan_ids is None:
             plans_key = self._key_for_plans(project)
             self._cache.delete(plans_key)
             self._cache.invalidate([plans_key])
+            invalidated_keys.add(plans_key)
         
         # Invalidate per-plan markers
         pids_to_invalidate = plan_ids if plan_ids else []
@@ -673,6 +811,7 @@ class AzureCachingClient(AzureClient):
             key = self._key_for_plan_markers(project, str(pid))
             self._cache.delete(key)
             self._cache.invalidate([key])
+            invalidated_keys.add(key)
         
         # Clean up area->plan mappings that reference invalidated plans
         try:
@@ -695,6 +834,7 @@ class AzureCachingClient(AzureClient):
                     # Remove entire mapping
                     self._cache.delete(map_key)
                     self._cache.invalidate([map_key])
+                    invalidated_keys.add(map_key)
                 else:
                     # Remove specific plans from mapping
                     new_plans = [p for p in plans if p not in plan_ids]
@@ -703,8 +843,16 @@ class AzureCachingClient(AzureClient):
                         mapping['last_update'] = datetime.now(timezone.utc).isoformat()
                         self._cache.write(map_key, mapping)
                         self._cache.update_timestamp(map_key)
+                        # Mark as stale so it refreshes from disk next time
+                        invalidated_keys.add(map_key)
         except Exception as e:
             logger.exception(f"Error cleaning area->plan mappings: {e}")
+        
+        # Mark affected keys as stale in memory cache
+        if self._has_memory_cache:
+            for key in invalidated_keys:
+                self._mark_stale(key)
+                logger.debug(f"Marked memory cache key '{key}' as stale")
 
     def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
         """Update work item dates and invalidate cache."""
@@ -748,7 +896,7 @@ class AzureCachingClient(AzureClient):
         return result
     
     def get_iterations(self, project: str, root_path: Optional[str] = None, depth: int = 10) -> List[dict]:
-        """Fetch iterations with per-root-path caching.
+        """Fetch iterations with memory and disk caching per root path.
         
         Args:
             project: Project name or ID
@@ -758,23 +906,40 @@ class AzureCachingClient(AzureClient):
         Returns:
             List of cached or freshly-fetched iteration dicts sorted by startDate
         """
+        key = self._key_for_iterations(project, root_path)
+        
+        # Check memory cache first
+        if self._has_memory_cache:
+            mem_data, is_fresh = self._read_memory_cache(key)
+            if mem_data is not None and is_fresh:
+                logger.debug(f"Memory cache HIT (fresh) for iterations '{key}'")
+                return mem_data
+        
         if not self._connected:
             raise RuntimeError("AzureCachingClient is not connected.")
         
-        key = self._key_for_iterations(project, root_path)
+        # Check disk cache
         cached = self._cache.read(key)
         
         if cached and isinstance(cached, list) and not self._cache.is_stale(key, ttl=CACHE_TTL):
             logger.debug(f"Using cached iterations for project={project}, root={root_path}")
+            # Update memory cache
+            if self._has_memory_cache:
+                self._write_memory_cache(key, cached)
             return cached
         
         # Fetch from Azure
         logger.info(f"Fetching iterations from Azure for project={project}, root={root_path}")
         iterations = super().get_iterations(project, root_path=root_path, depth=depth)
         
-        # Cache the result
+        # Write to disk cache
         self._cache.write(key, iterations)
         self._cache.update_timestamp(key)
+        
+        # Write to memory cache
+        if self._has_memory_cache:
+            self._write_memory_cache(key, iterations)
+        
         logger.debug(f"Cached {len(iterations)} iterations with key: {key}")
         
         return iterations
@@ -965,6 +1130,7 @@ class AzureCachingClient(AzureClient):
         This clears all work items, teams, plans, markers, and iterations
         from the cache, forcing a complete refresh on the next fetch.
         Also cleans up any orphaned index entries.
+        Clears both disk and memory caches.
         
         Returns:
             Dictionary with count of cleared entries
@@ -976,9 +1142,21 @@ class AzureCachingClient(AzureClient):
         if orphaned > 0:
             logger.info(f"Cleaned up {orphaned} orphaned keys before cache clear")
         
-        # Then clear all caches
+        # Clear disk caches
         count = self._cache.clear_all_caches()
-        return {'ok': True, 'cleared': count, 'orphaned_cleaned': orphaned}
+        
+        # Clear memory cache
+        memory_cleared = 0
+        if self._has_memory_cache:
+            memory_cleared = self._memory_cache.clear(NAMESPACE)
+            logger.info(f"Cleared {memory_cleared} items from memory cache")
+        
+        return {
+            'ok': True,
+            'cleared': count,
+            'memory_cleared': memory_cleared,
+            'orphaned_cleaned': orphaned
+        }
     
     def cleanup_orphaned_cache_keys(self) -> dict:
         """Clean up orphaned index entries without clearing cache data.

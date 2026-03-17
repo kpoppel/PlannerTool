@@ -1018,6 +1018,12 @@ async def admin_get_schema(request: Request, config_type: str):
                             'description': 'Cache Azure DevOps API responses',
                             'default': True
                         },
+                        'enable_memory_cache': {
+                            'type': 'boolean',
+                            'title': 'Enable Memory Cache',
+                            'description': 'Enable hot memory cache layer for Azure data (<1ms reads)',
+                            'default': True
+                        },
                         'enable_brotli_middleware': {
                             'type': 'boolean',
                             'title': 'Enable Brotli Compression',
@@ -1033,6 +1039,29 @@ async def admin_get_schema(request: Request, config_type: str):
                     },
                     'additionalProperties': {
                         'type': 'boolean'
+                    }
+                },
+                'memory_cache': {
+                    'type': 'object',
+                    'title': 'Memory Cache Configuration',
+                    'description': 'Settings for hot memory cache layer (when enable_memory_cache is true)',
+                    'properties': {
+                        'max_size_mb': {
+                            'type': 'integer',
+                            'title': 'Max Cache Size (MB)',
+                            'description': 'Maximum memory allocated for cache in megabytes',
+                            'default': 50,
+                            'minimum': 10,
+                            'maximum': 500
+                        },
+                        'staleness_seconds': {
+                            'type': 'integer',
+                            'title': 'Staleness Threshold (seconds)',
+                            'description': 'Time before cached data is marked stale and eligible for refresh',
+                            'default': 1800,
+                            'minimum': 60,
+                            'maximum': 86400
+                        }
                     }
                 }
             },

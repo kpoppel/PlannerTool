@@ -12,7 +12,7 @@ def bootstrap_server(storage_yaml, logger) -> dict:
     """Ensure `server_config` exists and return server_cfg.
 
     Parameters
-    - storage_yaml: ValueNavigatingStorage or StorageBackend used for YAML configs
+    - storage_yaml: StorageBackend used for YAML configs
     - logger: logger instance for informational messages
 
     Returns server_cfg dictionary loaded from storage_yaml.

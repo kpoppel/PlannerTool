@@ -31,10 +31,8 @@ class Config:
     data_dir: str = "data"
     config_storage_backend: str = "file"
     storage_backend: str = "diskcache" #"file"
-    people_storage_backend: str = "single_file"
     raw_serializer: str = "raw"
     yaml_serializer: str = "yaml"
-    pickle_serializer: str = "pickle"
     # If None, check feature-flag at runtime via has_feature_flag
     enable_brotli: Optional[bool] = None
 
@@ -49,40 +47,52 @@ def create_app(config: Config) -> FastAPI:
 
 
     # Compose storages
+    # ALL persistent storage now uses diskcache (unified backend)
     storage_diskcache = cast(StorageBackend, create_storage(
         backend=config.storage_backend,
         serializer=config.raw_serializer,
-        accessor=None,
         data_dir=config.data_dir+"/cache",
     ))
+    # Config still uses YAML for human editability
     storage_yaml = cast(StorageBackend, create_storage(
         backend=config.config_storage_backend,
         serializer=config.yaml_serializer,
-        accessor=None,
         data_dir=config.data_dir,
     ))
-    storage_pickle = cast(StorageBackend, create_storage(
-        backend=config.config_storage_backend,
-        serializer=config.pickle_serializer,
-        accessor=None,
-        data_dir=config.data_dir,
-    ))
-    
-    # Create memory storage for cost engine cache (team rates)
-    # Use pickle serializer for efficient in-memory caching
-    storage_cost_cache = cast(StorageBackend, create_storage(
-        backend="memory",
-        serializer=config.pickle_serializer,
-        accessor=None,
-        data_dir=config.data_dir,
-    ))
+    # Note: storage_pickle removed - all persistent storage now uses diskcache
+    # Note: storage_cost_cache now uses diskcache instead of memory
     # Bootstrap server
     from planner_lib.bootstrap import bootstrap_server
     server_cfg = bootstrap_server(storage_yaml, logger)
 
+    # Get feature flags early for conditional initialization
+    feature_flags = server_cfg.get('feature_flags', {})
+
+    # Create memory cache layer for hot Azure data (only if enabled)
+    memory_cache = None
+    if feature_flags.get('enable_memory_cache', False):
+        from planner_lib.storage.memory_cache_manager import MemoryCacheManager
+        # Read memory cache config from server_config.yml
+        memory_cache_config = server_cfg.get('memory_cache', {})
+        max_size_mb = memory_cache_config.get('max_size_mb', 50)
+        staleness_seconds = memory_cache_config.get('staleness_seconds', 1800)
+        
+        memory_cache = MemoryCacheManager(
+            disk_cache=storage_diskcache,
+            size_limit_mb=max_size_mb,
+            staleness_seconds=staleness_seconds
+        )
+        logger.info(
+            f"Memory cache initialized: {max_size_mb}MB limit, "
+            f"{staleness_seconds}s staleness threshold"
+        )
+    else:
+        logger.info("Memory cache disabled")
+
     # Compose services
     from planner_lib.accounts.config import AccountManager
-    account_manager = AccountManager(account_storage=storage_pickle)
+    # Use diskcache for all account storage (regular and admin)
+    account_manager = AccountManager(account_storage=storage_diskcache)
 
     from planner_lib.middleware.session import SessionManager
     session_manager = SessionManager(session_storage=None, account_manager=account_manager)
@@ -98,9 +108,13 @@ def create_app(config: Config) -> FastAPI:
 
     from planner_lib.azure import AzureService
     org = server_cfg.get('azure_devops_organization')
-    feature_flags = server_cfg.get('feature_flags', {})
-    #azure_client = AzureService(org, storage_pickle, feature_flags=feature_flags)
-    azure_client = AzureService(org, storage_diskcache, feature_flags=feature_flags)
+    # Create AzureService with memory cache support
+    azure_client = AzureService(
+        org,
+        storage_diskcache,
+        feature_flags=feature_flags,
+        memory_cache=memory_cache
+    )
 
     from planner_lib.projects.task_service import TaskService
     task_service = TaskService(
@@ -117,13 +131,13 @@ def create_app(config: Config) -> FastAPI:
         people_service=people_service,
         project_service=project_service,
         team_service=team_service,
-        cache_storage=storage_cost_cache,
+        cache_storage=storage_diskcache,  # Use diskcache instead of memory
     )
 
-    # Admin service depends on account storage (pickle) and config storage (yaml)
+    # Admin service depends on account storage (diskcache) and config storage (yaml)
     from planner_lib.admin.service import AdminService
     admin_service = AdminService(
-        account_storage=storage_pickle,
+        account_storage=storage_diskcache,  # Use diskcache for all accounts
         config_storage=storage_yaml,
         team_service=team_service,
         project_service=project_service,
@@ -143,10 +157,11 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("server_config_storage", storage_yaml)
     container.register_singleton("people_service", people_service)
     container.register_singleton("azure_client", azure_client)
-    container.register_singleton("account_storage", storage_pickle)
-    container.register_singleton("scenarios_storage", storage_pickle)
-    container.register_singleton("views_storage", storage_pickle)
-    container.register_singleton("cost_cache_storage", storage_cost_cache)
+    # All storage now uses diskcache for consistency
+    container.register_singleton("account_storage", storage_diskcache)
+    container.register_singleton("scenarios_storage", storage_diskcache)
+    container.register_singleton("views_storage", storage_diskcache)
+    container.register_singleton("cost_cache_storage", storage_diskcache)
     container.register_singleton("project_service", project_service)
     container.register_singleton("team_service", team_service)
     container.register_singleton("capacity_service", capacity_service)
@@ -155,6 +170,7 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("account_manager", account_manager)
     container.register_singleton("session_manager", session_manager)
     container.register_singleton("admin_service", admin_service)
+    container.register_singleton("memory_cache", memory_cache)
 
     # Build FastAPI app and expose services on app.state for request-time access
     app = FastAPI(title="AZ Planner Server")
@@ -220,5 +236,39 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(cost_router, prefix='/api')
     app.include_router(server_router, prefix='/api')
     app.include_router(admin_router, prefix='')
+    
+    # Register Azure cache API if memory cache enabled
+    if feature_flags.get('enable_memory_cache', False):
+        from planner_lib.azure.api import router as azure_cache_router
+        app.include_router(azure_cache_router)
+        logger.info("Azure cache API endpoints registered at /api/cache/")
+    
+    # Warmup cache on startup if enabled
+    if feature_flags.get('enable_memory_cache', False):
+        from planner_lib.azure.warmup import CacheWarmupService
+        warmup_service = CacheWarmupService(memory_cache, storage_diskcache)
+        
+        @app.on_event("startup")
+        async def warmup_cache():
+            try:
+                stats = await warmup_service.warmup_async()
+                logger.info(
+                    f"Cache warmup complete: {stats.entries_loaded} entries, "
+                    f"{stats.bytes_loaded // 1024}KB, {stats.duration_seconds:.2f}s"
+                )
+                if stats.errors:
+                    logger.warning(f"Cache warmup had {len(stats.errors)} errors")
+            except Exception as e:
+                logger.error(f"Cache warmup failed: {e}")
+    
+    # Cleanup on shutdown
+    @app.on_event("shutdown")
+    async def shutdown_cache():
+        if memory_cache is not None:
+            try:
+                memory_cache.close()
+                logger.info("Memory cache closed")
+            except Exception as e:
+                logger.error(f"Error closing memory cache: {e}")
 
     return app

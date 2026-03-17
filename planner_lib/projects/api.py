@@ -87,7 +87,7 @@ async def api_config_iterations(request: Request):
         
         # Load iterations config
         from planner_lib.storage import create_storage
-        storage = create_storage(serializer='yaml', accessor='dict', data_dir='data')
+        storage = create_storage(serializer='yaml', data_dir='data')
         try:
             iterations_cfg = storage.load('config', 'iterations') or {}
         except KeyError:
@@ -301,7 +301,7 @@ async def api_history_tasks(request: Request):
         from planner_lib.projects.history_service import HistoryService
         from planner_lib.storage import create_storage
         
-        storage = create_storage(serializer='yaml', accessor='dict', data_dir='data')
+        storage = create_storage(serializer='yaml', data_dir='data')
         history_svc = HistoryService(storage_config=storage)
         
         # Get task service and azure client for fetching tasks and revisions

@@ -1,5 +1,8 @@
+"""Serializers for storage backends.
+
+Provides JSON, YAML, and Encrypted serializers. Pickle has been removed for security reasons.
+"""
 from typing import Any, Protocol
-import pickle
 import json
 import yaml
 
@@ -14,23 +17,6 @@ class Serializer(Protocol):
     def load(self, data: bytes) -> Any: ...
 
 
-class PickleSerializer:
-    """Default serializer using pickle (binary).
-
-    This is a practical default since stored values may be arbitrary Python
-    objects. Consumers can choose `JSONSerializer` when interoperable text
-    is desired.
-    """
-
-    def dump(self, value: Any) -> bytes:
-        return pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-
-    def load(self, data: bytes) -> Any:
-        return pickle.loads(data)
-    # file extension used when storing on-disk
-    file_extension = ".pkl"
-
-
 class JSONSerializer:
     """Serializer using JSON (text). Caller must ensure values are JSON-serializable."""
 
@@ -40,6 +26,7 @@ class JSONSerializer:
     def load(self, data: bytes) -> Any:
         return json.loads(data.decode("utf-8"))
     file_extension = ".json"
+
 
 class YAMLSerializer:
     """Serializer using YAML (text). Caller must ensure values are YAML-serializable."""
@@ -65,6 +52,8 @@ class EncryptedSerializer:
         - Key rotation and metadata (key id, algorithm version) should be handled
             at a higher layer; this class focuses on encrypt/decrypt with a single key.
         """
+        
+        file_extension = ".enc"
 
         def __init__(
             self,

@@ -95,7 +95,7 @@ def patch_config(monkeypatch, data_dir):
 
 def test_cache_miss_updates_cache(patch_config, data_dir):
     # Empty cache, WIQL returns id 1 and get_work_items returns the item -> cache should be created
-    fb = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    fb = create_storage(backend='memory', serializer='json')
     with AzureCachingClient("org", storage=fb).connect("pat") as client:
 
         # prepare fake azure responses
@@ -120,7 +120,7 @@ def test_cache_hit_served_from_cache(patch_config, data_dir):
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
     # Prepare storage-backed per-area cache and index
-    fb = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    fb = create_storage(backend='memory', serializer='json')
     cached_obj = {"id": "1", "title": "Cached"}
     fb.save(NS, 'A', [cached_obj])
     fb.save(NS, '_index', {"A": {"last_update": "2025-12-22"}})
@@ -140,7 +140,7 @@ def test_cache_stale_in_azure_fetch_updates(patch_config, data_dir):
     # Prepopulate cache with old changed_date; Azure has newer changed_date -> should be updated
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    fb = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    fb = create_storage(backend='memory', serializer='json')
     fb.save(NS, 'A', [{"id": "1", "title": "Old"}])
     fb.save(NS, '_index', {"1": {"changed_date": "2020-01-01T00:00:00Z", "project": "P", "areaPath": "A"}})
 
@@ -162,7 +162,7 @@ def test_cache_prune_removed_state(patch_config, data_dir):
     # Prepopulate cache with id 2, but WIQL returns only id 1 -> id 2 should be removed from cache
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    fb = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    fb = create_storage(backend='memory', serializer='json')
     fb.save(NS, 'A', [{"id": "2", "title": "ToBeRemoved"}])
     fb.save(NS, '_index', {"2": {"changed_date": "2025-12-22T12:00:00Z", "project": "P", "areaPath": "A"}})
 
@@ -184,7 +184,7 @@ def test_cache_invalidation_after_update(patch_config, data_dir):
     # Prepopulate cache with multiple items
     if os.path.exists(data_dir):
         shutil.rmtree(data_dir)
-    fb = create_storage(backend='memory', serializer='pickle', accessor='dict')
+    fb = create_storage(backend='memory', serializer='json')
     # Create cache with items 1, 2, 3
     cached_items = [
         {"id": "1", "title": "Item1", "startDate": "2025-01-01", "finishDate": "2025-02-01"},

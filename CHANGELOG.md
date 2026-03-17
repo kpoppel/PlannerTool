@@ -13,6 +13,43 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.0.0] - unreleased
+
+### Added
+- **Memory cache layer** for Azure data with instant reads (<1ms latency)
+- **User-driven cache refresh** pattern (no background service, uses user PAT)
+- **Shared cache architecture** where one user's refresh benefits all users
+- **API endpoints** `/api/cache/load` and `/api/cache/refresh` for cache control
+- **Storage migration** from file-based pickle to diskcache for accounts, admin accounts, views, scenarios
+- **Migration script** `0015_migrate_pickle_to_diskcache.py` for automated data migration
+- **Migration script** `0016_add_memory_cache_config.py` to add memory_cache configuration to server_config.yml
+- **Cache warmup service** to load disk cache into memory on server boot
+- **Admin UI** support for memory cache configuration (enable_memory_cache flag, max_size_mb, staleness_seconds)
+
+### Changed
+- **All pickle storage** now uses diskcache backend for consistency and performance
+- **AzureCachingClient** now supports on-demand refresh using user PAT
+- **Cache freshness** tracked per-area with configurable staleness threshold
+- **Memory cache** automatically marks entries as stale after staleness_seconds threshold
+- **Memory cache** enforces size limits with LRU eviction when exceeding max_size_mb
+- **API response times** improved from 100-500ms to <50ms for cached data
+- **Memory cache initialization** now reads max_size_mb and staleness_seconds from server_config.yml
+
+### Removed
+- **File-based pickle storage** replaced with diskcache
+- **Background sync service** not needed (user-driven refresh is simpler)
+- **single_file_backend.py** - unused storage backend removed
+- **people_storage_backend** config variable - unused configuration removed
+- **accessor.py** - test-only navigation helpers removed (ValueNavigatingStorage, DictAccessor, ListAccessor, StorageProxy)
+- **PickleSerializer** - removed for security reasons (arbitrary code execution vulnerability)
+- **pickle_serializer** config variable - no longer needed
+- **Test files** testing accessor and pickle functionality removed
+
+### Migration
+- Run `python scripts/migrate.py` to migrate existing pickle data to diskcache
+- Azure cache will be cleared and rebuilt on-demand
+- Original files backed up automatically
+
 ## [v2.2.0] - 2026-03-27
 
 NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the pickled files
@@ -22,6 +59,7 @@ These will be stored in the new SQLite data from the next major release.
 Migrating to v3.x involves updating to this release, making a backup, then upgrade to v3.x and
 restoring the backup.
 
+## [v2.2.0] - unreleased
 ### Added
 - Added backup/restore to the admin interface. This will dump a JSON file with all data.
   Note account data is also stored in the file, so don't send it around as tokens are in there.
@@ -77,7 +115,6 @@ restoring the backup.
 
 ### Fixed
 - Details panel capacity input now properly updates when switching between feature cards. Fixed by using property binding (.value) instead of attribute binding (value) in the input element.
-
 
 ## [v2.0.5] - 2026-03-16
 

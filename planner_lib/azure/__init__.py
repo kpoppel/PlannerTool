@@ -19,10 +19,11 @@ class AzureService(AzureServiceProtocol):
     for the duration of the context. The service does not hold the PAT or
     an active SDK connection itself.
     """
-    def __init__(self, organization_url: str, storage: StorageProtocol, feature_flags: dict = None):
+    def __init__(self, organization_url: str, storage: StorageProtocol, feature_flags: dict = None, memory_cache=None):
         self.organization_url = organization_url
         self.storage = storage
         self.feature_flags = feature_flags or {}
+        self.memory_cache = memory_cache
 
     def connect(self, pat: str):
         """Return the concrete client's context-manager bound to `pat`.
@@ -33,7 +34,11 @@ class AzureService(AzureServiceProtocol):
         # Check feature flag from instance, not global state
         if self.feature_flags.get("enable_azure_cache", False):
             from planner_lib.azure.AzureCachingClient import AzureCachingClient
-            client = AzureCachingClient(self.organization_url, storage=self.storage)
+            client = AzureCachingClient(
+                self.organization_url,
+                storage=self.storage,
+                memory_cache=self.memory_cache
+            )
         else:
             from planner_lib.azure.AzureNativeClient import AzureNativeClient
             # Determine whether in-memory plans/teams caching should be enabled.
