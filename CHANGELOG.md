@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.0.6] - unreleased
+## [v2.0.6] - 2026-03-17
 
 ### Fixed
 - Details panel capacity input now properly updates when switching between feature cards. Fixed by using property binding (.value) instead of attribute binding (value) in the input element.
