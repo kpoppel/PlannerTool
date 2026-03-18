@@ -13,6 +13,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v2.0.7] - unreleased
+
+### Fixed
+- Work items are now returned in proper StackRank order (Azure backlog order) when using cached data. The fix ensures WIQL rank order is preserved when returning items from cache. Since Azure DevOps increments System.Rev when items are reordered, revision-based change detection automatically catches rank changes, and the system refetches affected items. Minimizes Azure API calls by only running lightweight WIQL queries for rank order and fetching full item details only for changed items.
+
 ## [v2.0.6] - 2026-03-17
 
 ### Fixed

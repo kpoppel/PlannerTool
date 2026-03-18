@@ -70,8 +70,11 @@ class DummyWitClient:
     def query_by_wiql(self, wiql=None):
         class Res:
             pass
+        class WorkItemRef:
+            def __init__(self, id):
+                self.id = id
         res = Res()
-        res.work_items = [{'id': i} for i in self._wiql_ids]
+        res.work_items = [WorkItemRef(i) for i in self._wiql_ids]
         return res
 
     def get_work_items(self, ids, expand=None, fields=None):
@@ -166,17 +169,129 @@ def make_client(tmp_dir, wit_client):
 
 
 def test_cache_hit_skips_wiql(tmp_data_dir):
-    index = {'AreaX': {'last_update': datetime.now(timezone.utc).isoformat()}}
+    """Test that cached items are returned in WIQL rank order.
+    
+    WIQL is now always executed to get current rank order, but expensive
+    work item fetches are skipped when revision numbers haven't changed.
+    """
+    index = {'AreaX': {'last_update': datetime.now(timezone.utc).isoformat(), 'revisions': {1: 1, 2: 1}}}
     write_index(tmp_data_dir, index)
     items = [{'id': '1', 'title': 'one'}, {'id': '2', 'title': 'two'}]
     write_area(tmp_data_dir, 'AreaX', items)
 
-    wit = DummyWitClient(wiql_result_ids=[3], work_items=[])
+    # WIQL returns items 2, 1 in that rank order (reversed from cache)
+    wit = DummyWitClient(wiql_result_ids=[2, 1], work_items=[
+        {'id': 2, 'fields': {'System.Rev': 1}},
+        {'id': 1, 'fields': {'System.Rev': 1}}
+    ])
     client = make_client(tmp_data_dir, wit)
 
     res = client.get_work_items('AreaX')
     assert isinstance(res, list)
     assert len(res) == 2
+    # Verify items are returned in WIQL order (StackRank), not cache dictionary order
+    assert res[0]['id'] == '2', "First item should be ID 2 (WIQL rank order)"
+    assert res[1]['id'] == '1', "Second item should be ID 1 (WIQL rank order)"
+
+
+def test_rank_ordering_preserved(tmp_data_dir):
+    """Test that work items are always returned in Azure DevOps StackRank order.
+    
+    This test verifies that regardless of cache storage order, the returned items
+    match the StackRank ordering from Azure DevOps WIQL query.
+    """
+    # Setup: Cache items in arbitrary order (5, 3, 1, 4, 2)
+    index = {
+        'RankArea': {
+            'last_update': datetime.now(timezone.utc).isoformat(),
+            'revisions': {1: 10, 2: 20, 3: 15, 4: 25, 5: 5}
+        }
+    }
+    write_index(tmp_data_dir, index)
+    
+    # Cache items in non-sequential order
+    cached_items = [
+        {'id': '5', 'title': 'Fifth', 'type': 'feature'},
+        {'id': '3', 'title': 'Third', 'type': 'feature'},
+        {'id': '1', 'title': 'First', 'type': 'feature'},
+        {'id': '4', 'title': 'Fourth', 'type': 'feature'},
+        {'id': '2', 'title': 'Second', 'type': 'feature'}
+    ]
+    write_area(tmp_data_dir, 'RankArea', cached_items)
+    
+    # WIQL returns items in proper StackRank order: 1, 2, 3, 4, 5
+    work_items = [
+        {'id': 1, 'fields': {'System.Rev': 10, 'System.WorkItemType': 'Feature', 'System.Title': 'First'}},
+        {'id': 2, 'fields': {'System.Rev': 20, 'System.WorkItemType': 'Feature', 'System.Title': 'Second'}},
+        {'id': 3, 'fields': {'System.Rev': 15, 'System.WorkItemType': 'Feature', 'System.Title': 'Third'}},
+        {'id': 4, 'fields': {'System.Rev': 25, 'System.WorkItemType': 'Feature', 'System.Title': 'Fourth'}},
+        {'id': 5, 'fields': {'System.Rev': 5, 'System.WorkItemType': 'Feature', 'System.Title': 'Fifth'}}
+    ]
+    wit = DummyWitClient(wiql_result_ids=[1, 2, 3, 4, 5], work_items=work_items)
+    client = make_client(tmp_data_dir, wit)
+    
+    # Act: Fetch work items
+    result = client.get_work_items('RankArea')
+    
+    # Assert: Items are returned in WIQL StackRank order (1, 2, 3, 4, 5)
+    assert isinstance(result, list), "Result should be a list"
+    assert len(result) == 5, f"Expected 5 items, got {len(result)}"
+    
+    result_ids = [item['id'] for item in result]
+    expected_ids = ['1', '2', '3', '4', '5']
+    assert result_ids == expected_ids, f"Items not in StackRank order. Got {result_ids}, expected {expected_ids}"
+    
+    # Verify titles match the expected order
+    assert result[0]['title'] == 'First', "First item should have title 'First'"
+    assert result[1]['title'] == 'Second', "Second item should have title 'Second'"
+    assert result[2]['title'] == 'Third', "Third item should have title 'Third'"
+    assert result[3]['title'] == 'Fourth', "Fourth item should have title 'Fourth'"
+    assert result[4]['title'] == 'Fifth', "Fifth item should have title 'Fifth'"
+
+
+def test_rank_ordering_with_changes(tmp_data_dir):
+    """Test that rank ordering is preserved even when reordering happens in Azure.
+    
+    Simulates the case where a user reorders items in Azure DevOps, and ensures
+    the cache returns items in the new order.
+    """
+    # Initial state: Items ranked 3, 2, 1
+    index = {
+        'ReorderArea': {
+            'last_update': (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+            'revisions': {1: 1, 2: 1, 3: 1}
+        }
+    }
+    write_index(tmp_data_dir, index)
+    
+    cached_items = [
+        {'id': '3', 'title': 'Task C', 'type': 'feature'},
+        {'id': '2', 'title': 'Task B', 'type': 'feature'},
+        {'id': '1', 'title': 'Task A', 'type': 'feature'}
+    ]
+    write_area(tmp_data_dir, 'ReorderArea', cached_items)
+    
+    # After reordering in Azure: New rank order is 2, 3, 1 (B moved to top)
+    work_items = [
+        {'id': 2, 'fields': {'System.Rev': 1, 'System.WorkItemType': 'Feature', 'System.Title': 'Task B'}},
+        {'id': 3, 'fields': {'System.Rev': 1, 'System.WorkItemType': 'Feature', 'System.Title': 'Task C'}},
+        {'id': 1, 'fields': {'System.Rev': 1, 'System.WorkItemType': 'Feature', 'System.Title': 'Task A'}}
+    ]
+    wit = DummyWitClient(wiql_result_ids=[2, 3, 1], work_items=work_items)
+    client = make_client(tmp_data_dir, wit)
+    
+    # Fetch work items
+    result = client.get_work_items('ReorderArea')
+    
+    # Assert: Items are in new rank order (2, 3, 1)
+    result_ids = [item['id'] for item in result]
+    expected_ids = ['2', '3', '1']
+    assert result_ids == expected_ids, f"Items not in new StackRank order. Got {result_ids}, expected {expected_ids}"
+    
+    # Verify the order matches what user would see in Azure backlog
+    assert result[0]['title'] == 'Task B', "Task B should be first after reordering"
+    assert result[1]['title'] == 'Task C', "Task C should be second after reordering"
+    assert result[2]['title'] == 'Task A', "Task A should be third after reordering"
 
 
 def test_cache_invalidation_refetch(tmp_data_dir):

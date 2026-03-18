@@ -200,7 +200,9 @@ class AzureCachingClient(AzureClient):
         - TTL-based cache refresh (30 min default)
         - Per-area invalidation tracking
         - Incremental updates using ModifiedDate filter
-        - Cache hit optimization when no changes detected
+        - Revision-based change detection (catches rank changes automatically)
+        - StackRank ordering preservation (items always returned in Azure backlog order)
+        - Minimal API calls: WIQL for rank order, get_work_items only for changed items
         
         Args:
             area_path: Azure DevOps area path
@@ -209,9 +211,15 @@ class AzureCachingClient(AzureClient):
             include_states: List of states to include (e.g., ['new', 'active']).
                            If not provided, excludes 'Closed' and 'Removed' states.
         
+        Returns:
+            List of work items sorted by StackRank (Azure backlog order)
+        
         Note: Uses _key_for_area() for cache keys to ensure consistent key format
         across all cache operations (converts backslashes to double underscores).
         Uses _sanitize_area_path() for WIQL queries (preserves backslashes).
+        
+        Performance: WIQL is always executed (lightweight: ~50ms), but expensive
+        get_work_items() calls only happen for items with changed revisions.
         """
         logger.debug(f"Fetching work items for area path: {area_path}")
         
@@ -255,12 +263,10 @@ class AzureCachingClient(AzureClient):
         cached_ids_in_area = {int(cid) for cid in area_cache.keys() if cid}
         invalidated_in_area = invalidated_ids & cached_ids_in_area
 
-        # Cache hit: skip WIQL if cache is fresh and no invalidations
-        if not force_full_refresh and not invalidated_in_area and last_update:
-            logger.debug(f"Cache hit for area '{area_key}' ({len(area_cache)} items) - skipping WIQL")
-            return list(area_cache.values())
-        
-        logger.debug(f"Cache miss for area '{area_key}' - running WIQL (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
+        # Always run WIQL to get current rank order (even for cache hits)
+        # The WIQL query is lightweight (just IDs and Revs) and provides the
+        # canonical StackRank ordering that must be preserved for the UI
+        logger.debug(f"Running WIQL for area '{area_key}' (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
 
         # Build WIQL query with optional ModifiedDate filter
         modified_where = f"AND [System.ChangedDate] > '{last_update}'" if last_update and not force_full_refresh else ''
@@ -359,7 +365,9 @@ class AzureCachingClient(AzureClient):
                     items_to_fetch.add(wid)
         
         # Check for deleted items (in cache but not in current query)
-        deleted_ids = set(cached_revisions.keys()) - set(task_ids)
+        # Compare against actual cache keys, not just cached_revisions
+        cached_item_ids = {int(k) for k in area_cache.keys()}
+        deleted_ids = cached_item_ids - set(task_ids)
         
         task_ids_to_fetch = list(items_to_fetch)
         
@@ -367,10 +375,12 @@ class AzureCachingClient(AzureClient):
         logger.debug(f"Changed/new items: {len(items_to_fetch)}, Deleted: {len(deleted_ids)}")
         logger.debug(f"Skipping {len(task_ids) - len(items_to_fetch)} unchanged items")
         
-        # If nothing changed and no deletes, return cached data
+        # If nothing changed and no deletes, return cached data in WIQL rank order
         if not items_to_fetch and not deleted_ids and not force_full_refresh:
             logger.debug(f"No changes detected for area '{area_key}' - using cache")
-            return list(area_cache.values())
+            # Sort by task_ids order (preserves StackRank from WIQL)
+            result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+            return result
 
         # Fetch only changed work items in batches
         updated_items = []
@@ -448,8 +458,11 @@ class AzureCachingClient(AzureClient):
         
         # Periodic pruning
         self._cache.prune_old_entries(keep_count=50)
+        
+        # Sort by task_ids order (preserves StackRank from WIQL) before returning
+        result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
 
-        return list(area_cache.values())
+        return result
 
     def get_all_teams(self, project: str) -> List[dict]:
         """Fetch teams with caching."""
