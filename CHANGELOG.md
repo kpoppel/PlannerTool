@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.0.7] - unreleased
+## [v2.0.7] - 2026-03-18
 
 ### Added
 - Dockerfile for deployment using docker.
