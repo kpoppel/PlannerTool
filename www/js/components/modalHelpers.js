@@ -2,8 +2,47 @@
 // Helpers dynamically import the module, create or reuse an element,
 // wait for user action events, then cleanup and resolve with a value.
 
+const _availableStaticImports = (typeof import.meta !== 'undefined' && typeof import.meta.glob === 'function') ? import.meta.glob('./*.js') : {};
+
 const _createModal = async (modulePath, tagName, { parent = document.body, attrs = {}, autoOpen = false } = {}) => {
-  await import(modulePath);
+  // Prefer build-time glob imports so the bundler includes modal files and
+  // loads them with their hashed chunk URLs automatically. Keys in
+  // `_availableStaticImports` are relative to this file (e.g. './ConfigModal.lit.js').
+  let importedViaGlob = false;
+  try {
+    const keyCandidates = [modulePath, './' + modulePath.replace(/^\.\//, ''), modulePath.replace(/^\.\//, './')];
+    for (const k of keyCandidates) {
+      if (k && Object.prototype.hasOwnProperty.call(_availableStaticImports, k)) {
+        // Call the importer function returned by import.meta.glob
+        await _availableStaticImports[k]();
+        importedViaGlob = true;
+        break;
+      }
+    }
+  } catch (e) {
+    // Ignore and fallthrough to resolver/fallback below
+  }
+
+  if (!importedViaGlob) {
+    // If the glob didn't handle it (e.g., running in dev server without build),
+    // fall back to asking the server for a resolved URL, then import that.
+    try {
+      const res = await fetch(`/api/assets/resolve?path=${encodeURIComponent(modulePath)}`);
+      if (res && res.ok) {
+        const j = await res.json();
+        if (j && j.url) {
+          await import(j.url);
+        } else {
+          await import(modulePath);
+        }
+      } else {
+        await import(modulePath);
+      }
+    } catch (e) {
+      // Last resort: direct import
+      await import(modulePath);
+    }
+  }
   const existing = parent.querySelector(tagName);
   let el;
   let created = false;

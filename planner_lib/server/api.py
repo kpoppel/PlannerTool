@@ -6,6 +6,21 @@ from .health import get_health
 router = APIRouter()
 
 
+@router.get('/assets/resolve')
+async def api_resolve_asset(request: Request, path: str):
+    """Resolve a logical asset path to the built hashed URL using the
+    server-side Vite manifest resolver. Returns JSON: { "url": "/static/.." }
+    If no manifest or mapping is available, returns the original `path`.
+    """
+    resolver = getattr(request.app.state, 'resolve_asset_url', None)
+    try:
+        if resolver:
+            return { 'url': resolver(path) }
+    except Exception:
+        pass
+    return { 'url': path }
+
+
 @router.get('/v1/server/projects')
 @require_session
 async def api_config_projects(request):
