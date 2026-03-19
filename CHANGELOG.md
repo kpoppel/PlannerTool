@@ -13,6 +13,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v2.0.8] - 2026-03-19
+
+### Fixed
+- Cache hit would return empty list of tasks if no tasks were changed since last cache hit.
+
 ## [v2.0.7] - 2026-03-18
 
 ### Added

@@ -270,6 +270,10 @@ class AzureCachingClient(AzureClient):
 
         # Build WIQL query with optional ModifiedDate filter
         modified_where = f"AND [System.ChangedDate] > '{last_update}'" if last_update and not force_full_refresh else ''
+        # If `modified_where` is set we are doing a limited WIQL that only
+        # returns changed items since `last_update`. Remember this so we do
+        # not treat missing IDs from that limited query as deletions.
+        limited_wiql = bool(modified_where)
         
         wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
         
@@ -306,7 +310,11 @@ class AzureCachingClient(AzureClient):
             result = wit_client.query_by_wiql(wiql=wiql_obj)
         except Exception as e:
             logger.warning(f"WIQL query for area '{area_path}' failed: {e}")
-            return []
+            # On WIQL failure, return whatever is in the cache instead of
+            # an empty list. This ensures fast refreshes that briefly fail
+            # (e.g. transient API/connectivity errors) still show cached
+            # work items to the frontend.
+            return list(area_cache.values())
         
         candidate_ws = getattr(result, 'work_items', []) or []
         
@@ -365,9 +373,15 @@ class AzureCachingClient(AzureClient):
                     items_to_fetch.add(wid)
         
         # Check for deleted items (in cache but not in current query)
-        # Compare against actual cache keys, not just cached_revisions
+        # If we ran a limited WIQL (modified_where present) the query only
+        # returns changed items and cannot be used to infer deletions, so
+        # don't mark deletes in that case. Otherwise compare cached IDs to
+        # the full WIQL result to detect deletions.
         cached_item_ids = {int(k) for k in area_cache.keys()}
-        deleted_ids = cached_item_ids - set(task_ids)
+        if limited_wiql:
+            deleted_ids = set()
+        else:
+            deleted_ids = cached_item_ids - set(task_ids)
         
         task_ids_to_fetch = list(items_to_fetch)
         
@@ -375,9 +389,13 @@ class AzureCachingClient(AzureClient):
         logger.debug(f"Changed/new items: {len(items_to_fetch)}, Deleted: {len(deleted_ids)}")
         logger.debug(f"Skipping {len(task_ids) - len(items_to_fetch)} unchanged items")
         
-        # If nothing changed and no deletes, return cached data in WIQL rank order
+        # If nothing changed and no deletes, return cached data. If we ran a
+        # limited WIQL we don't have a full rank ordering, so return the
+        # cached list as-is; otherwise preserve WIQL order.
         if not items_to_fetch and not deleted_ids and not force_full_refresh:
             logger.debug(f"No changes detected for area '{area_key}' - using cache")
+            if limited_wiql:
+                return list(area_cache.values())
             # Sort by task_ids order (preserves StackRank from WIQL)
             result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
             return result
