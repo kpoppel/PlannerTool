@@ -213,6 +213,12 @@ export class PluginManager {
     // Sort by dependencies
     const sorted = this._topologicalSort(modules);
 
+    // Build-time glob of available plugin modules so bundlers (Vite/Rollup)
+    // include them and emit hashed chunk filenames. Keys match the same
+    // relative paths used in `modules.config.json` (e.g. "../plugins/Foo.js").
+    // This lets us resolve runtime module paths to build-time imports.
+    const available = import.meta.glob('../plugins/**/*.js');
+
     for (const moduleConfig of sorted) {
       try {
         // If module is explicitly disabled, skip loading/registering it entirely
@@ -220,7 +226,23 @@ export class PluginManager {
           console.log(`[PluginManager] Skipping disabled module ${moduleConfig.id}`);
           continue;
         }
-        const module = await import(moduleConfig.path);
+        // Resolve module import via glob mapping when possible so bundlers
+        // can statically include plugin files. Fall back to dynamic import
+        // for environments where glob is not available.
+        let module;
+        try {
+          const importer = available[moduleConfig.path];
+          if (importer) {
+            module = await importer();
+          } else {
+            module = await import(moduleConfig.path);
+          }
+        } catch (e) {
+          // Last-resort attempt: try resolving with explicit './' prefix
+          const altImporter = available['./' + moduleConfig.path] || available[moduleConfig.path.replace('../', './')];
+          if (altImporter) module = await altImporter();
+          else throw e;
+        }
         // Expect the module to export a plugin class (constructor) which we instantiate.
         const exported = module[moduleConfig.export];
         if (typeof exported !== 'function') throw new Error('Unsupported plugin export type for ' + moduleConfig.id);
