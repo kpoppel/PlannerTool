@@ -46,6 +46,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
+#3 Install npm
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm install --lts
+node -v
+npm -v
+
 ## To build the www/js/lit bundle if needed.
 npm install
 npm run build:vendor
