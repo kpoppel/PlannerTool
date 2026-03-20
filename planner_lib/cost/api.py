@@ -115,6 +115,48 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post('/cost/features')
+@require_session
+async def api_cost_features_post(request: Request, payload: dict = Body(default={})):
+    """New endpoint returning per-feature detailed allocations.
+
+    Accepts payload: { features: [{ id, start?, end?, capacity? }, ...], mode?: 'full' }
+    Falls back to session tasks if `features` not provided.
+    """
+    sid = get_session_id_from_request(request)
+    logger.debug("Calculating feature-level cost details for session %s", sid)
+    try:
+        session_manager = resolve_service(request, 'session_manager')
+        from planner_lib.cost import build_cost_schema
+        ctx = session_manager.get(sid) or {}
+
+        features = (payload or {}).get('features')
+        if features is None:
+            task_svc = resolve_service(request, 'task_service')
+            tasks = task_svc.list_tasks(pat=ctx.get('pat'))
+            features = []
+            for t in (tasks or []):
+                features.append({
+                    'id': t.get('id'),
+                    'project': t.get('project'),
+                    'start': t.get('start'),
+                    'end': t.get('end'),
+                    'capacity': t.get('capacity') or [],
+                })
+
+        ctx = dict(ctx)
+        ctx['features'] = features
+
+        cost_svc = resolve_service(request, 'cost_service')
+        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        raw = result.get('projects', {})
+        project_types = result.get('project_types', {})
+        return build_cost_schema(raw, mode='full', session_features=ctx.get('features'), project_types=project_types)
+    except Exception as e:
+        logger.exception('Failed to calculate feature costs: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get('/cost')
 @require_session
 async def api_cost_get(request: Request):

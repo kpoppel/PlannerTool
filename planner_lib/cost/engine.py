@@ -123,8 +123,10 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
             hrs = int(site_hours_map.get(site, {}).get("external", 0))
             entry["external_hourly_rate_total"] += rate_val
             entry["external_hours_total"] += hrs
+            # monthly cost will be computed after aggregation as
+            # external_hourly_rate_total * external_hours_total
             entry.setdefault("external_monthly_cost_total", 0.0)
-            entry["external_monthly_cost_total"] += rate_val * hrs
+            # maintain per-site hourly totals so we can compute site monthly costs
             # maintain per-site aggregates for this team
             site_entry = entry['sites'].setdefault(site, {
                 'internal_count': 0,
@@ -133,31 +135,63 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
                 'external_count': 0,
                 'external_hours_total': 0.0,
                 'external_monthly_cost_total': 0.0,
+                'external_hourly_rate_total': 0.0,
             })
             site_entry['external_count'] += 1
             site_entry['external_hours_total'] += hrs
-            site_entry['external_monthly_cost_total'] += rate_val * hrs
+            site_entry['external_hourly_rate_total'] = site_entry.get('external_hourly_rate_total', 0.0) + rate_val
         else:
             entry["internal_count"] += 1
             rate_val = float(cost_cfg.get("internal_cost", {}).get("default_hourly_rate", 0) or 0)
             hrs = int(site_hours_map.get(site, {}).get("internal", 0))
             entry["internal_hourly_rate_total"] += rate_val
             entry["internal_hours_total"] += hrs
+            # monthly cost will be computed after aggregation as
+            # internal_hourly_rate_total * internal_hours_total
             entry.setdefault("internal_monthly_cost_total", 0.0)
-            entry["internal_monthly_cost_total"] += rate_val * hrs
             # maintain per-site aggregates for this team
             site_entry = entry['sites'].setdefault(site, {
                 'internal_count': 0,
                 'internal_hours_total': 0.0,
                 'internal_monthly_cost_total': 0.0,
+                'internal_hourly_rate_total': 0.0,
                 'external_count': 0,
                 'external_hours_total': 0.0,
                 'external_monthly_cost_total': 0.0,
             })
             site_entry['internal_count'] += 1
             site_entry['internal_hours_total'] += hrs
-            site_entry['internal_monthly_cost_total'] += rate_val * hrs
+            site_entry['internal_hourly_rate_total'] = site_entry.get('internal_hourly_rate_total', 0.0) + rate_val
     
+    # After aggregating counts and hourly-rate totals, compute monthly cost
+    # as (hourly_rate_total * hours_total) so that the team-level monthly
+    # cost reflects the combined cost of all members for their available hours.
+    for team_key, entry in res.items():
+        try:
+            # internal
+            ihours = float(entry.get('internal_hours_total') or 0.0)
+            ihr_total = float(entry.get('internal_hourly_rate_total') or 0.0)
+            entry['internal_monthly_cost_total'] = round(ihr_total * ihours, 2)
+            # external
+            ehours = float(entry.get('external_hours_total') or 0.0)
+            ehr_total = float(entry.get('external_hourly_rate_total') or 0.0)
+            entry['external_monthly_cost_total'] = round(ehr_total * ehours, 2)
+
+            # per-site recalculation when hourly totals at site level exist
+            sites = entry.get('sites', {}) or {}
+            for site_key, sv in sites.items():
+                # internal site
+                s_ihours = float(sv.get('internal_hours_total') or 0.0)
+                s_ihr = float(sv.get('internal_hourly_rate_total') or 0.0)
+                sv['internal_monthly_cost_total'] = round(s_ihr * s_ihours, 2)
+                # external site
+                s_ehours = float(sv.get('external_hours_total') or 0.0)
+                s_ehr = float(sv.get('external_hourly_rate_total') or 0.0)
+                sv['external_monthly_cost_total'] = round(s_ehr * s_ehours, 2)
+        except Exception:
+            # if anything goes wrong, leave existing values as-is
+            logger.debug("Failed to compute derived monthly costs for team %s", team_key)
+
     # Cache the result
     try:
         cache_storage.save('cost_cache', 'team_rates', res)
@@ -216,18 +250,155 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
             # fraction of a typical month covered by the span
             fraction_internal = base_hours_internal / max(1.0, float(team_summary["internal_hours_total"]))
             team_monthly_cost_internal = float(team_summary.get("internal_monthly_cost_total", 0.0))
-            entry["internal_cost"] += round(team_monthly_cost_internal * (team["capacity"] / 100.0) * fraction_internal, 2)
+            internal_cost_local = round(team_monthly_cost_internal * (team["capacity"] / 100.0) * fraction_internal, 2)
+            entry["internal_cost"] += internal_cost_local
+            logger.debug("[INSTR][engine] team=%s cap=%s base_hours_int=%.2f alloc_hours_int=%.2f internal_cost=%.2f sites=%s", team["team"], team.get("capacity"), base_hours_internal, alloc_hours_internal, internal_cost_local, team_summary.get('sites'))
         if team_summary.get("external_hours_total"):
             base_hours_external = _hours_between(start, end, team_summary["external_hours_total"])
             alloc_hours_external = round(base_hours_external * team["capacity"] / 100, 2)
             entry["external_hours"] += alloc_hours_external
             fraction_external = base_hours_external / max(1.0, float(team_summary["external_hours_total"]))
             team_monthly_cost_external = float(team_summary.get("external_monthly_cost_total", 0.0))
-            entry["external_cost"] += round(team_monthly_cost_external * (team["capacity"] / 100.0) * fraction_external, 2)
+            external_cost_local = round(team_monthly_cost_external * (team["capacity"] / 100.0) * fraction_external, 2)
+            entry["external_cost"] += external_cost_local
+            logger.debug("[INSTR][engine] team=%s cap=%s base_hours_ext=%.2f alloc_hours_ext=%.2f external_cost=%.2f sites=%s", team["team"], team.get("capacity"), base_hours_external, alloc_hours_external, external_cost_local, team_summary.get('sites'))
         #logger.debug("Team '%s' default hours per month: internal %s, external %s", team["team"], team_summary["internal_hours_total"], team_summary["external_hours_total"])
         #logger.debug("Team '%s' task hours: internal %.2f, external %.2f", team["team"], entry["internal_hours"], entry["external_hours"])
         #logger.debug("Team '%s' task costs: internal %.2f, external %.2f", team["team"], entry["internal_cost"], entry["external_cost"])
     return entry
+
+
+def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageProtocol) -> Dict[str, Any]:
+    """Calculate costs for a single task and return detailed per-team, per-month allocations.
+
+    Returns dict with overall totals plus a `teams` mapping containing per-team
+    month buckets for `hours` and `cost`, site breakdowns, and team totals.
+    """
+    team_aggregates = _team_members(config, cache_storage=cache_storage)
+
+    # Ensure capacity is a list
+    if not isinstance(capacity, list):
+        capacity = []
+
+    teams_out: Dict[str, Any] = {}
+    totals = {
+        "internal_cost": 0.0,
+        "external_cost": 0.0,
+        "internal_hours": 0.0,
+        "external_hours": 0.0,
+    }
+
+    for team in (capacity or []):
+        team_key = team.get("team")
+        try:
+            cap_pct = float(team.get("capacity", 0)) / 100.0
+        except Exception:
+            cap_pct = 0.0
+        if not team_key or team_key not in team_aggregates:
+            continue
+        summary = team_aggregates[team_key]
+
+        team_entry: Dict[str, Any] = {
+            "cost": {"internal": {}, "external": {}},
+            "hours": {"internal": {}, "external": {}},
+            "totalCost": 0.0,
+            "totalHours": 0.0,
+            "sites": {}
+        }
+
+        # Internal allocations
+        if summary.get("internal_hours_total"):
+            month_buckets = _allocate_months(start, end, int(summary.get("internal_hours_total") or 0))
+            team_monthly_cost_internal = float(summary.get("internal_monthly_cost_total", 0.0))
+            denom = float(summary.get("internal_hours_total") or 1)
+            for m_k, base_hours in (month_buckets or {}).items():
+                alloc_hours = round(base_hours * cap_pct, 2)
+                team_entry["hours"]["internal"][m_k] = alloc_hours
+                fraction = base_hours / max(1.0, denom)
+                cost_val = round(team_monthly_cost_internal * cap_pct * fraction, 2)
+                team_entry["cost"]["internal"][m_k] = cost_val
+                team_entry["totalCost"] += cost_val
+                team_entry["totalHours"] += alloc_hours
+
+            # per-site breakdown for internal
+            sites_info = summary.get("sites", {}) or {}
+            denom_sites = sum((sv.get("internal_hours_total", 0) or 0) for sv in sites_info.values()) or float(summary.get("internal_hours_total") or 1)
+            for m_k, base_hours in (month_buckets or {}).items():
+                alloc_hours_team = base_hours * cap_pct
+                for site, sv in sites_info.items():
+                    site_hours_share = (sv.get("internal_hours_total", 0) or 0) / denom_sites if denom_sites else 0
+                    site_hours = round(alloc_hours_team * site_hours_share, 2)
+                    if sv.get("internal_hours_total"):
+                        site_cost_per_hour = float(sv.get("internal_monthly_cost_total", 0.0)) / max(1.0, float(sv.get("internal_hours_total") or 1))
+                    else:
+                        site_cost_per_hour = float(summary.get("internal_monthly_cost_total", 0.0)) / max(1.0, float(summary.get("internal_hours_total") or 1))
+                    site_cost = round(site_hours * site_cost_per_hour, 2)
+                    site_entry = team_entry["sites"].setdefault(site, {"hours": {}, "cost": {}})
+                    site_entry["hours"][m_k] = site_entry["hours"].get(m_k, 0.0) + site_hours
+                    site_entry["cost"][m_k] = site_entry["cost"].get(m_k, 0.0) + site_cost
+
+            totals["internal_cost"] += team_entry["totalCost"]
+            totals["internal_hours"] += team_entry["totalHours"]
+
+        # External allocations
+        if summary.get("external_hours_total"):
+            month_buckets_ext = _allocate_months(start, end, int(summary.get("external_hours_total") or 0))
+            team_monthly_cost_external = float(summary.get("external_monthly_cost_total", 0.0))
+            denom_ext = float(summary.get("external_hours_total") or 1)
+            for m_k, base_hours in (month_buckets_ext or {}).items():
+                alloc_hours = round(base_hours * cap_pct, 2)
+                team_entry["hours"]["external"][m_k] = alloc_hours
+                fraction = base_hours / max(1.0, denom_ext)
+                cost_val = round(team_monthly_cost_external * cap_pct * fraction, 2)
+                team_entry["cost"]["external"][m_k] = cost_val
+                team_entry["totalCost"] += cost_val
+                team_entry["totalHours"] += alloc_hours
+
+            # external site breakdown
+            sites_info = summary.get("sites", {}) or {}
+            denom_sites_ext = sum((sv.get("external_hours_total", 0) or 0) for sv in sites_info.values()) or float(summary.get("external_hours_total") or 1)
+            for m_k, base_hours in (month_buckets_ext or {}).items():
+                alloc_hours_team = base_hours * cap_pct
+                for site, sv in sites_info.items():
+                    site_hours_share = (sv.get("external_hours_total", 0) or 0) / denom_sites_ext if denom_sites_ext else 0
+                    site_hours = round(alloc_hours_team * site_hours_share, 2)
+                    if sv.get("external_hours_total"):
+                        site_cost_per_hour = float(sv.get("external_monthly_cost_total", 0.0)) / max(1.0, float(sv.get("external_hours_total") or 1))
+                    else:
+                        site_cost_per_hour = float(summary.get("external_monthly_cost_total", 0.0)) / max(1.0, float(summary.get("external_hours_total") or 1))
+                    site_cost = round(site_hours * site_cost_per_hour, 2)
+                    site_entry = team_entry["sites"].setdefault(site, {"hours": {}, "cost": {}})
+                    site_entry["hours"][m_k] = site_entry["hours"].get(m_k, 0.0) + site_hours
+                    site_entry["cost"][m_k] = site_entry["cost"].get(m_k, 0.0) + site_cost
+
+            totals["external_cost"] += team_entry["totalCost"] - team_entry.get("totalCost", 0.0) + 0.0
+            totals["external_hours"] += 0.0
+
+        teams_out[team_key] = team_entry
+
+    # Compute overall sums more robustly
+    overall_internal_cost = 0.0
+    overall_external_cost = 0.0
+    overall_internal_hours = 0.0
+    overall_external_hours = 0.0
+    for t in teams_out.values():
+        # sum costs split by internal/external from months
+        for v in t.get("cost", {}).get("internal", {}).values():
+            overall_internal_cost += float(v or 0)
+        for v in t.get("cost", {}).get("external", {}).values():
+            overall_external_cost += float(v or 0)
+        for v in t.get("hours", {}).get("internal", {}).values():
+            overall_internal_hours += float(v or 0)
+        for v in t.get("hours", {}).get("external", {}).values():
+            overall_external_hours += float(v or 0)
+
+    return {
+        "internal_cost": round(overall_internal_cost, 2),
+        "external_cost": round(overall_external_cost, 2),
+        "internal_hours": round(overall_internal_hours, 2),
+        "external_hours": round(overall_external_hours, 2),
+        "teams": teams_out,
+    }
 
 
 def _allocate_months(start: Optional[str], end: Optional[str], default_hours_per_month: int) -> Dict[str, float]:

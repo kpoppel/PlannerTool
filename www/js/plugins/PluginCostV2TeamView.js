@@ -1,5 +1,5 @@
 import { html } from '../vendor/lit.js';
-import { monthLabel, monthKey, allocateToMonths } from './PluginCostV2Calculator.js';
+import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
 
 export function renderTeamView(component) {
@@ -109,30 +109,27 @@ function renderTeamTable(component, team, monthKeys) {
   };
 
   const featureAllocations = teamFeatures.map(feature => {
-    const allocation = allocateToMonths(feature, component.months);
-    const teamCapacityEntry = feature.capacity.find(c => String(c.team) === teamId);
-    const teamFraction = teamCapacityEntry ? (teamCapacityEntry.capacity || 0) / 100 : 0;
+    const serversideTeams = feature && feature.metrics && feature.metrics.teams ? feature.metrics.teams : null;
+    // Only use server-provided team buckets. If absent, skip client computation.
+    if (!serversideTeams || !serversideTeams[teamId]) return null;
 
+    const t = serversideTeams[teamId];
     const teamAllocation = {
       cost: { internal: new Map(), external: new Map() },
       hours: { internal: new Map(), external: new Map() }
     };
 
-    for (const [mKey, val] of allocation.cost.internal.entries()) {
-      teamAllocation.cost.internal.set(mKey, val * teamFraction);
-    }
-    for (const [mKey, val] of allocation.cost.external.entries()) {
-      teamAllocation.cost.external.set(mKey, val * teamFraction);
-    }
-    for (const [mKey, val] of allocation.hours.internal.entries()) {
-      teamAllocation.hours.internal.set(mKey, val * teamFraction);
-    }
-    for (const [mKey, val] of allocation.hours.external.entries()) {
-      teamAllocation.hours.external.set(mKey, val * teamFraction);
-    }
+    const h_internal = (t.hours && t.hours.internal) || {};
+    const h_external = (t.hours && t.hours.external) || {};
+    const c_internal = (t.cost && t.cost.internal) || {};
+    const c_external = (t.cost && t.cost.external) || {};
+    for (const [mKey, val] of Object.entries(c_internal)) teamAllocation.cost.internal.set(mKey, Number(val || 0));
+    for (const [mKey, val] of Object.entries(c_external)) teamAllocation.cost.external.set(mKey, Number(val || 0));
+    for (const [mKey, val] of Object.entries(h_internal)) teamAllocation.hours.internal.set(mKey, Number(val || 0));
+    for (const [mKey, val] of Object.entries(h_external)) teamAllocation.hours.external.set(mKey, Number(val || 0));
 
     return { feature, allocation: teamAllocation };
-  });
+  }).filter(x => x !== null);
 
   const teamTotals = {
     cost: { internal: new Map(), external: new Map() },

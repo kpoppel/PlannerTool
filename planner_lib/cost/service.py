@@ -149,11 +149,49 @@ class CostService:
             end = f.get("end")
             capacity = f.get("capacity", [])
 
-            # Calculate cost for projects
-            cost = calculate(cfg, start=start, end=end, capacity=capacity, cache_storage=self._cache_storage)
+            # Calculate detailed cost for projects (including per-team monthly allocations)
+            cost = _engine.calculate_detailed(cfg, start=start, end=end, capacity=capacity, cache_storage=self._cache_storage)
             # Add has_project_parent metadata for filtering
             cost_with_meta = dict(cost)
             cost_with_meta['has_project_parent'] = has_project_parent
+            # Instrumentation: when inspecting a specific feature, log per-team contributions
+            try:
+                if str(f.get('id')) == '688051':
+                    try:
+                        ta = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
+                        logger.debug("[INSTR][server] feature=688051 start=%s end=%s capacity=%s", start, end, capacity)
+                        for team_entry in (capacity or []):
+                            team_key = team_entry.get('team')
+                            cap_pct = float(team_entry.get('capacity') or 0)
+                            if team_key not in ta:
+                                logger.debug("[INSTR][server] team=%s missing from aggregates", team_key)
+                                continue
+                            summary = ta[team_key]
+                            try:
+                                base_hours_internal = _engine._hours_between(start, end, int(summary.get('internal_hours_total') or 0))
+                            except Exception:
+                                base_hours_internal = float(summary.get('internal_hours_total') or 0)
+                            alloc_hours_internal = round(base_hours_internal * (cap_pct / 100.0), 2)
+                            internal_cost = 0.0
+                            if summary.get('internal_hours_total'):
+                                fraction_internal = base_hours_internal / max(1.0, float(summary.get('internal_hours_total')))
+                                internal_cost = round(float(summary.get('internal_monthly_cost_total', 0.0)) * (cap_pct / 100.0) * fraction_internal, 2)
+
+                            try:
+                                base_hours_external = _engine._hours_between(start, end, int(summary.get('external_hours_total') or 0))
+                            except Exception:
+                                base_hours_external = float(summary.get('external_hours_total') or 0)
+                            alloc_hours_external = round(base_hours_external * (cap_pct / 100.0), 2)
+                            external_cost = 0.0
+                            if summary.get('external_hours_total'):
+                                fraction_external = base_hours_external / max(1.0, float(summary.get('external_hours_total')))
+                                external_cost = round(float(summary.get('external_monthly_cost_total', 0.0)) * (cap_pct / 100.0) * fraction_external, 2)
+
+                            logger.debug("[INSTR][server] feature=688051 team=%s cap=%s alloc_hours_int=%s alloc_hours_ext=%s internal_cost=%s external_cost=%s sites=%s", team_key, cap_pct, alloc_hours_internal, alloc_hours_external, internal_cost, external_cost, summary.get('sites'))
+                    except Exception as e:
+                        logger.exception('Failed to instrument feature 688051 internals: %s', e)
+            except Exception:
+                pass
             for target_project_id in target_projects:
                 if target_project_id not in projects:
                     projects[target_project_id] = {}
@@ -163,9 +201,37 @@ class CostService:
         # Additionally compute per-project per-site monthly totals so the
         # frontend can present site-level internal breakdown directly.
         team_aggregates = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
+        # Debug: log specific team aggregates for investigation
+        try:
+            logger.debug("[DBG] team_aggregates['team-architecture'] = %s", team_aggregates.get('team-architecture'))
+        except Exception:
+            pass
         project_sites: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
+        # Determine which features are parents (have children) so we can
+        # treat children as authoritative and skip parent entries when
+        # computing per-project site totals. This mirrors the client-side
+        # behavior that only counts leaf features.
+        parent_has_children = set()
+        for ftmp in features:
+            rels = ftmp.get('relations') or []
+            if isinstance(rels, list):
+                for rel in rels:
+                    if isinstance(rel, dict) and rel.get('type') == 'Parent':
+                        parent_id = rel.get('id')
+                        if parent_id is not None:
+                            parent_has_children.add(str(parent_id))
+
+        # Track which features have already been counted per project to
+        # avoid duplicate allocations when the same feature appears multiple
+        # times in the dataset (e.g., via relations or multiple mappings).
+        seen_per_project: Dict[str, set] = {}
+
         for f in features:
                 fid = f.get('id')
+                fid_s = str(fid) if fid is not None else None
+                # Skip parent features — children are authoritative
+                if fid_s and fid_s in parent_has_children:
+                    continue
                 project_id = f.get('project')
                 start = f.get('start')
                 end = f.get('end')
@@ -184,6 +250,12 @@ class CostService:
                                 target_projects.append(parent_proj)
 
                 for target_project_id in target_projects:
+                    # ensure we only count each feature once per project
+                    seen = seen_per_project.setdefault(target_project_id, set())
+                    if fid_s and fid_s in seen:
+                        continue
+                    if fid_s:
+                        seen.add(fid_s)
                     proj_sites = project_sites.setdefault(target_project_id, {})
                     for team in (capacity or []):
                         team_key = team.get('team')
@@ -333,7 +405,7 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 continue
             if not isinstance(fval, dict):
                 continue
-            metrics = {"internal": {}, "external": {}, "misc": {}}
+            metrics = {"internal": {}, "external": {}, "misc": {}, "teams": {}}
             for m_k, m_v in fval.items():
                 if m_k.startswith("internal_"):
                     metric_name = m_k.split("internal_", 1)[1]
@@ -342,7 +414,11 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                     metric_name = m_k.split("external_", 1)[1]
                     metrics["external"][metric_name] = m_v
                 else:
-                    metrics.setdefault("misc", {})[m_k] = m_v
+                    # Preserve the teams structure if present directly on feature value
+                    if m_k == 'teams' and isinstance(m_v, dict):
+                        metrics["teams"] = m_v
+                    else:
+                        metrics.setdefault("misc", {})[m_k] = m_v
 
             fid_s = str(fid)
             meta_entry = feature_meta.get(fid_s, {})
@@ -369,6 +445,50 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
                 "end": feature_end,
                 "metrics": metrics,
             }
+            # Derive per-month maps for metrics.internal and metrics.external
+            # from the per-team monthly buckets when available. This allows the
+            # frontend to render month columns directly from feature.metrics
+            # without requiring client-side allocation fallbacks.
+            try:
+                teams_map = metrics.get('teams') or {}
+                if isinstance(teams_map, dict) and teams_map:
+                    # initialize month maps
+                    mi_cost = {}
+                    mi_hours = {}
+                    me_cost = {}
+                    me_hours = {}
+                    for team_k, tval in teams_map.items():
+                        if not isinstance(tval, dict):
+                            continue
+                        # cost and hours shapes expected: { cost: { internal: {m: v} }, hours: { internal: {m: v} } }
+                        t_cost = tval.get('cost') or {}
+                        t_hours = tval.get('hours') or {}
+                        # internal
+                        tinc = t_cost.get('internal') or {}
+                        tinh = t_hours.get('internal') or {}
+                        for m, v in (tinc.items() if isinstance(tinc, dict) else []):
+                            mi_cost[m] = mi_cost.get(m, 0) + (float(v or 0))
+                        for m, v in (tinh.items() if isinstance(tinh, dict) else []):
+                            mi_hours[m] = mi_hours.get(m, 0) + (float(v or 0))
+                        # external
+                        tinc_e = t_cost.get('external') or {}
+                        tinh_e = t_hours.get('external') or {}
+                        for m, v in (tinc_e.items() if isinstance(tinc_e, dict) else []):
+                            me_cost[m] = me_cost.get(m, 0) + (float(v or 0))
+                        for m, v in (tinh_e.items() if isinstance(tinh_e, dict) else []):
+                            me_hours[m] = me_hours.get(m, 0) + (float(v or 0))
+                    # Only attach month maps if we collected any entries
+                    if mi_cost or mi_hours or me_cost or me_hours:
+                        metrics.setdefault('internal', {})
+                        metrics.setdefault('external', {})
+                        # Replace numeric totals with month maps if applicable
+                        if mi_cost: metrics['internal']['cost'] = mi_cost
+                        if mi_hours: metrics['internal']['hours'] = mi_hours
+                        if me_cost: metrics['external']['cost'] = me_cost
+                        if me_hours: metrics['external']['hours'] = me_hours
+            except Exception:
+                # be tolerant — if aggregation fails, leave metrics as-is
+                pass
             # Include has_project_parent flag if present in cost data
             if 'has_project_parent' in fval:
                 feature_obj['has_project_parent'] = fval.get('has_project_parent')

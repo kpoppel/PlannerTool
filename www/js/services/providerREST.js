@@ -397,9 +397,11 @@ export class ProviderREST {
                 return await res.json();
             }
 
-            // If payload is an object, forward it directly (supports { features }, { scenarioId } etc.)
+            // If payload is an object, forward it to the new feature-focused endpoint
+            // when it contains a `features` array; otherwise fall back to legacy /api/cost
             if(typeof payload === 'object'){
-                const res = await this._fetch('/api/cost', { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
+                const url = (payload && Array.isArray(payload.features)) ? '/api/cost/features' : '/api/cost';
+                const res = await this._fetch(url, { method: 'POST', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
                 if(res && res.sessionExpired) throw Object.assign(new Error('session_expired'), { sessionExpired: true });
                 if(!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();

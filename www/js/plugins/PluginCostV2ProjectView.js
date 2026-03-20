@@ -1,7 +1,7 @@
 import { html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
-import { expandDataset, allocateToMonths } from './PluginCostV2Calculator.js';
+import { expandDataset } from './PluginCostV2Calculator.js';
 
 function getTeamLabel(component, teamKey) {
   const costTeams = (component && component.costTeams && Array.isArray(component.costTeams.teams)) ? component.costTeams.teams : [];
@@ -126,16 +126,39 @@ function renderProjectTable(component, project, monthKeys) {
 function buildTeamMonthAllocations(component, features, monthKeys) {
   const teamAllocations = new Map();
 
+  // Avoid double-counting when the same feature appears multiple times
+  // in the expanded dataset (e.g., present under multiple projects).
+  const seenFeatures = new Set();
+  // Track seen contribution keys to avoid adding the same feature->team->month
+  // multiple times (shape: `${team}|${fid}|${metricType}|${direction}|${mKey}`).
+  const seenContrib = new Set();
+  // Precompute set of feature ids present in the expanded dataset so we only
+  // skip parent features when their children are actually included in the
+  // dataset (i.e. when children are authoritative). This allows epics to be
+  // counted when the sidebar selection includes only epics and no children.
+  const featureIdSet = new Set((features || []).map(f => String(f && f.id)));
+
   for (const feature of features) {
-    const allocation = allocateToMonths(feature, component.months);
+    const fid = feature && (feature.id || feature.id === 0) ? String(feature.id) : null;
+    try {
+      const childrenMap = (state && state.childrenByEpic) ? state.childrenByEpic : new Map();
+      const childrenList = fid ? (childrenMap.get(Number(fid)) || childrenMap.get(fid) || []) : [];
+      // Only skip the parent if at least one child is present in our expanded dataset
+      const hasChildInDataset = Array.isArray(childrenList) && childrenList.some(cid => featureIdSet.has(String(cid)));
+      if (hasChildInDataset) continue;
+    } catch (e) {}
+    if (fid && seenFeatures.has(fid)) continue;
+    if (fid) seenFeatures.add(fid);
+    const serversideTeams = feature && feature.metrics && feature.metrics.teams ? feature.metrics.teams : null;
+    if (!serversideTeams) continue; // do not compute client-side allocations
 
-    const teams = (feature.capacity || []).map(c => c.team);
-    if (teams.length === 0) continue;
-
-    for (const teamCapacity of (feature.capacity || [])) {
-      const teamName = teamCapacity.team;
-      const teamFraction = (teamCapacity.capacity || 0) / 100;
-
+    for (const teamName of Object.keys(serversideTeams)) {
+      const t = serversideTeams[teamName] || {};
+      try {
+        if (teamName === 'team-architecture') {
+          console.debug('[PluginCostV2][DBG][client][trace] processing feature', { fid, teamName, c_internal: t.cost && t.cost.internal, h_internal: t.hours && t.hours.internal });
+        }
+      } catch (e) {}
       if (!teamAllocations.has(teamName)) {
         teamAllocations.set(teamName, {
           cost: { internal: new Map(), external: new Map() },
@@ -144,24 +167,46 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
           totalHours: 0
         });
       }
-
       const teamData = teamAllocations.get(teamName);
-
-      for (const [mKey, val] of allocation.cost.internal.entries()) {
-        const current = teamData.cost.internal.get(mKey) || 0;
-        teamData.cost.internal.set(mKey, current + (val * teamFraction));
+      const c_internal = (t.cost && t.cost.internal) || {};
+      const c_external = (t.cost && t.cost.external) || {};
+      const h_internal = (t.hours && t.hours.internal) || {};
+      const h_external = (t.hours && t.hours.external) || {};
+      for (const [mKey, val] of Object.entries(c_internal)) {
+        const key = `${teamName}|${fid}|cost|internal|${mKey}`;
+        if (seenContrib.has(key)) {
+          try { if (teamName === 'team-architecture') console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key); } catch (e) {}
+          continue;
+        }
+        seenContrib.add(key);
+        teamData.cost.internal.set(mKey, (teamData.cost.internal.get(mKey) || 0) + Number(val || 0));
       }
-      for (const [mKey, val] of allocation.cost.external.entries()) {
-        const current = teamData.cost.external.get(mKey) || 0;
-        teamData.cost.external.set(mKey, current + (val * teamFraction));
+      for (const [mKey, val] of Object.entries(c_external)) {
+        const key = `${teamName}|${fid}|cost|external|${mKey}`;
+        if (seenContrib.has(key)) {
+          try { if (teamName === 'team-architecture') console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key); } catch (e) {}
+          continue;
+        }
+        seenContrib.add(key);
+        teamData.cost.external.set(mKey, (teamData.cost.external.get(mKey) || 0) + Number(val || 0));
       }
-      for (const [mKey, val] of allocation.hours.internal.entries()) {
-        const current = teamData.hours.internal.get(mKey) || 0;
-        teamData.hours.internal.set(mKey, current + (val * teamFraction));
+      for (const [mKey, val] of Object.entries(h_internal)) {
+        const key = `${teamName}|${fid}|hours|internal|${mKey}`;
+        if (seenContrib.has(key)) {
+          try { if (teamName === 'team-architecture') console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key); } catch (e) {}
+          continue;
+        }
+        seenContrib.add(key);
+        teamData.hours.internal.set(mKey, (teamData.hours.internal.get(mKey) || 0) + Number(val || 0));
       }
-      for (const [mKey, val] of allocation.hours.external.entries()) {
-        const current = teamData.hours.external.get(mKey) || 0;
-        teamData.hours.external.set(mKey, current + (val * teamFraction));
+      for (const [mKey, val] of Object.entries(h_external)) {
+        const key = `${teamName}|${fid}|hours|external|${mKey}`;
+        if (seenContrib.has(key)) {
+          try { if (teamName === 'team-architecture') console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key); } catch (e) {}
+          continue;
+        }
+        seenContrib.add(key);
+        teamData.hours.external.set(mKey, (teamData.hours.external.get(mKey) || 0) + Number(val || 0));
       }
     }
   }
@@ -173,6 +218,20 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
     for (const val of teamData.cost.external.values()) teamData.totalCost += val;
     for (const val of teamData.hours.internal.values()) teamData.totalHours += val;
     for (const val of teamData.hours.external.values()) teamData.totalHours += val;
+    // One-off detailed debug to inspect map contents vs totals
+    try {
+      if (teamName === 'team-architecture') {
+        const toObj = (m) => (m instanceof Map) ? Object.fromEntries(Array.from(m.entries())) : (m || {});
+        console.debug('[PluginCostV2][DBG][client][detailed] team-architecture maps', {
+          cost_internal: toObj(teamData.cost.internal),
+          cost_external: toObj(teamData.cost.external),
+          hours_internal: toObj(teamData.hours.internal),
+          hours_external: toObj(teamData.hours.external),
+          totalCost: teamData.totalCost,
+          totalHours: teamData.totalHours
+        });
+      }
+    } catch (e) {}
   }
 
   return teamAllocations;
@@ -188,6 +247,13 @@ function renderProjectSummaryTable(component, projectData, teams, teamAllocation
 
   for (const teamName of teams) {
     const teamData = teamAllocations.get(teamName);
+    // One-time debug: print team allocation for server/client comparison
+    try {
+      if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
+        component.__dbg_logged_team_arch = true;
+        console.debug('[PluginCostV2][DBG][client] team-architecture', teamData);
+      }
+    } catch (e) {}
     if (!teamData) continue;
     for (const mKey of monthKeys) {
       const iHours = teamData.hours.internal.get(mKey) || 0;
@@ -201,6 +267,12 @@ function renderProjectSummaryTable(component, projectData, teams, teamAllocation
       totals.external.cost.set(mKey, (totals.external.cost.get(mKey) || 0) + eCost);
     }
   }
+
+  // One-off debug: show totals and server-provided project totals for inspection
+  try {
+    const pid = projectData && projectData.id ? projectData.id : '(unknown)';
+    console.debug('[PluginCostV2][DBG][client][summary]', { project: pid, monthKeys, totals_internal_hours: Object.fromEntries(Array.from(totals.internal.hours.entries())), totals_internal_cost: Object.fromEntries(Array.from(totals.internal.cost.entries())), projectTotals: projectData && projectData.totals ? projectData.totals : null });
+  } catch (e) {}
 
   const sum = (map) => Array.from(map.values()).reduce((a, b) => a + b, 0);
 
@@ -232,47 +304,9 @@ function renderProjectSummaryTable(component, projectData, teams, teamAllocation
       siteTotals[siteName] = { hours: hoursMap, cost: costMap };
     }
   } else {
-    // Fallback: compute client-side site allocation using costTeams metadata (not preferred)
-    console.warn('[PluginCostV2] Server did not provide per-site totals; falling back to client-side allocation. Consider moving aggregation to server.');
-    const costTeams = (component.costTeams && component.costTeams.teams) ? component.costTeams.teams : [];
-    const teamSiteFractions = new Map();
-    for (const ct of costTeams) {
-      let totalInternal = 0;
-      const bySite = {};
-      if (Array.isArray(ct.members)) {
-        for (const m of ct.members) {
-          if (m.external) continue;
-          const hours = (m.hours_per_month || 0);
-          const site = m.site || 'Unknown';
-          bySite[site] = (bySite[site] || 0) + hours;
-          totalInternal += hours;
-        }
-      }
-      if (totalInternal > 0) {
-        const fractions = {};
-        for (const s of Object.keys(bySite)) fractions[s] = bySite[s] / totalInternal;
-        teamSiteFractions.set(ct.id, fractions);
-        teamSiteFractions.set(ct.name, fractions);
-        if (ct.short_name) teamSiteFractions.set(ct.short_name, fractions);
-      }
-    }
-
-    for (const teamName of teams) {
-      const teamData = teamAllocations.get(teamName);
-      if (!teamData) continue;
-      const fractions = teamSiteFractions.get(teamName) || {};
-      if (Object.keys(fractions).length === 0) continue;
-      for (const mKey of monthKeys) {
-        const iHours = teamData.hours.internal.get(mKey) || 0;
-        const iCost = teamData.cost.internal.get(mKey) || 0;
-        for (const site of Object.keys(fractions)) {
-          const f = fractions[site] || 0;
-          if (!siteTotals[site]) siteTotals[site] = { hours: new Map(), cost: new Map() };
-          siteTotals[site].hours.set(mKey, (siteTotals[site].hours.get(mKey) || 0) + (iHours * f));
-          siteTotals[site].cost.set(mKey, (siteTotals[site].cost.get(mKey) || 0) + (iCost * f));
-        }
-      }
-    }
+    // No server-provided per-site totals: do not compute client-side site allocations.
+    // Per requirement, when the server omits site totals there's nothing to show.
+    siteTotals = {};
   }
 
   return html`
@@ -443,19 +477,32 @@ function renderFeatureList(component, features, monthKeys) {
       </thead>
       <tbody>
         ${features.map(feature => {
-          const allocation = allocateToMonths(feature, component.months);
-          const dataMap = component.viewMode === 'cost' ? allocation.cost : allocation.hours;
+          const metrics = feature && feature.metrics ? feature.metrics : null;
+          const dataMap = { cost: { internal: new Map(), external: new Map() }, hours: { internal: new Map(), external: new Map() } };
 
+          if (metrics) {
+            // prefer shapes: metrics.internal.cost, metrics.internal.hours or metrics.cost, metrics.hours
+            const fill = (kind) => {
+              const internalObj = (metrics.internal && metrics.internal[kind]) || (metrics[kind] && metrics[kind].internal) || {};
+              const externalObj = (metrics.external && metrics.external[kind]) || (metrics[kind] && metrics[kind].external) || {};
+              for (const [k, v] of Object.entries(internalObj || {})) dataMap[kind].internal.set(k, Number(v || 0));
+              for (const [k, v] of Object.entries(externalObj || {})) dataMap[kind].external.set(k, Number(v || 0));
+            };
+            fill('cost');
+            fill('hours');
+          }
+
+          const curMap = component.viewMode === 'cost' ? dataMap.cost : dataMap.hours;
           let total = 0;
-          for (const val of dataMap.internal.values()) total += val;
-          for (const val of dataMap.external.values()) total += val;
+          for (const val of curMap.internal.values()) total += val;
+          for (const val of curMap.external.values()) total += val;
 
           return html`
             <tr>
               <td>${feature.title || feature.name || feature.id}</td>
               ${monthKeys.map(mKey => {
-                const intVal = dataMap.internal.get(mKey) || 0;
-                const extVal = dataMap.external.get(mKey) || 0;
+                const intVal = curMap.internal.get(mKey) || 0;
+                const extVal = curMap.external.get(mKey) || 0;
                 return html`
                   <td class="numeric">${formatValue(intVal)}</td>
                   <td class="numeric">${formatValue(extVal)}</td>

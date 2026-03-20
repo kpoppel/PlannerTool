@@ -435,6 +435,9 @@ class FeatureBoard extends LitElement {
       if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork) return false;
     }
 
+    // If a project/plan is selected, show tasks from that project regardless of team selection.
+    const selectedProjectIds = new Set(state.projects.filter(p => p.selected).map(p => String(p.id)));
+
     if (feature.type === 'epic') {
       const children = childrenMap.get(feature.id) || [];
       const anyChildVisible = children.some(child => {
@@ -443,11 +446,13 @@ class FeatureBoard extends LitElement {
         if (featureFlags.SHOW_UNPLANNED_WORK && this._isUnplanned(child) && !state._viewService.showUnplannedWork) return false;
         const hasCapacity = child.capacity?.length > 0;
         if (!hasCapacity) return state._viewService.showUnassignedCards;
+        // If the child's project is among selected projects, ignore team-selection and show it.
+        if (selectedProjectIds.has(String(child.project))) return true;
         return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
       });
       const hasCapacity = feature.capacity?.length > 0;
       const epicVisible = hasCapacity
-        ? feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))
+        ? (selectedProjectIds.has(String(feature.project)) || feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)))
         : state._viewService.showUnassignedCards;
       if (!epicVisible && !anyChildVisible) return false;
     } else {
@@ -455,7 +460,8 @@ class FeatureBoard extends LitElement {
       if (!hasCapacity) {
         if (!state._viewService.showUnassignedCards) return false;
       } else {
-        if (!feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected))) return false;
+        // If this feature belongs to a selected project, ignore team-selection and show it.
+        if (!(selectedProjectIds.has(String(feature.project)) || feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)))) return false;
       }
     }
     return true;

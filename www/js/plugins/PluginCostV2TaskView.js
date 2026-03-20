@@ -1,5 +1,5 @@
 import { html } from '../vendor/lit.js';
-import { buildTaskTree, calculateBudgetDeviation, hasSignificantDeviation, allocateToMonths } from './PluginCostV2Calculator.js';
+import { buildTaskTree, calculateBudgetDeviation, hasSignificantDeviation } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
 
 export function renderTaskView(component) {
@@ -63,13 +63,19 @@ function renderTaskNode(component, featureId, featureMap, childrenMap, depth) {
   const children = hasChildren ? childrenMap.get(String(featureId)) : [];
   const isExpanded = component.expandedTasks.has(String(featureId));
 
-  const allocation = allocateToMonths(feature, component.months);
+  const metrics = feature && feature.metrics ? feature.metrics : null;
   let totalCost = 0;
   let totalHours = 0;
-  for (const val of allocation.cost.internal.values()) totalCost += val;
-  for (const val of allocation.cost.external.values()) totalCost += val;
-  for (const val of allocation.hours.internal.values()) totalHours += val;
-  for (const val of allocation.hours.external.values()) totalHours += val;
+  if (metrics) {
+    const c_internal = (metrics.internal && metrics.internal.cost) || (metrics.cost && metrics.cost.internal) || {};
+    const c_external = (metrics.external && metrics.external.cost) || (metrics.cost && metrics.cost.external) || {};
+    const h_internal = (metrics.internal && metrics.internal.hours) || (metrics.hours && metrics.hours.internal) || {};
+    const h_external = (metrics.external && metrics.external.hours) || (metrics.hours && metrics.hours.external) || {};
+    for (const v of Object.values(c_internal)) totalCost += Number(v || 0);
+    for (const v of Object.values(c_external)) totalCost += Number(v || 0);
+    for (const v of Object.values(h_internal)) totalHours += Number(v || 0);
+    for (const v of Object.values(h_external)) totalHours += Number(v || 0);
+  }
 
   let deviation = null;
   let childrenFeatures = [];
