@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { TeamEvents, ViewManagementEvents } from '../core/EventRegistry.js';
+import { TeamEvents, ViewManagementEvents, FeatureEvents, ScenarioEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
 import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
@@ -158,14 +158,22 @@ export class TeamMenuLit extends LitElement {
       this.requestUpdate();
     };
 
+    // Re-render when features or scenario activation change so counts update
+    this._onFeaturesUpdated = () => { this.requestUpdate(); };
+    this._onScenarioActivated = () => { this.requestUpdate(); };
+
     bus.on(TeamEvents.CHANGED, this._onTeamsChanged);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
+    bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onFeaturesUpdated) bus.off(FeatureEvents.UPDATED, this._onFeaturesUpdated);
+    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
   }
 
   _toggleTeam(tid) {

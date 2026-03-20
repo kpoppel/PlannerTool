@@ -39,8 +39,21 @@
       "fullscreen": true,
       "mountPoint": "app",
       "dependencies": []
-    }
-    ,
+    },
+    {
+      "id": "plugin-cost-v2",
+      "name": "Cost Analysis (v2)",
+      "version": "1.0.0",
+      "description": "Three-view cost analysis with project, task, and team breakdowns",
+      "path": "../plugins/PluginCostV2.js",
+      "export": "default",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "fullscreen": true,
+      "mountPoint": "app",
+      "dependencies": []
+    },
     {
       "id": "plugin-export-timeline",
       "name": "Export Timeline",

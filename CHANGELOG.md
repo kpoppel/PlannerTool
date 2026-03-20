@@ -13,6 +13,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v2.1.0] - unreleased
+### Added
+- PluginCostV2: Three-view cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
+
+### Changed
+### Fixed
+
 ## [v2.0.8] - 2026-03-19
 
 ### Fixed

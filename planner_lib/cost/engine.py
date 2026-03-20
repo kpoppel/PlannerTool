@@ -111,6 +111,7 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
             "external_count": 0,
             "external_hourly_rate_total": 0.0,
             "external_hours_total": 0.0,
+            "sites": {},
         })
 
         if is_external:
@@ -124,6 +125,18 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
             entry["external_hours_total"] += hrs
             entry.setdefault("external_monthly_cost_total", 0.0)
             entry["external_monthly_cost_total"] += rate_val * hrs
+            # maintain per-site aggregates for this team
+            site_entry = entry['sites'].setdefault(site, {
+                'internal_count': 0,
+                'internal_hours_total': 0.0,
+                'internal_monthly_cost_total': 0.0,
+                'external_count': 0,
+                'external_hours_total': 0.0,
+                'external_monthly_cost_total': 0.0,
+            })
+            site_entry['external_count'] += 1
+            site_entry['external_hours_total'] += hrs
+            site_entry['external_monthly_cost_total'] += rate_val * hrs
         else:
             entry["internal_count"] += 1
             rate_val = float(cost_cfg.get("internal_cost", {}).get("default_hourly_rate", 0) or 0)
@@ -132,6 +145,18 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
             entry["internal_hours_total"] += hrs
             entry.setdefault("internal_monthly_cost_total", 0.0)
             entry["internal_monthly_cost_total"] += rate_val * hrs
+            # maintain per-site aggregates for this team
+            site_entry = entry['sites'].setdefault(site, {
+                'internal_count': 0,
+                'internal_hours_total': 0.0,
+                'internal_monthly_cost_total': 0.0,
+                'external_count': 0,
+                'external_hours_total': 0.0,
+                'external_monthly_cost_total': 0.0,
+            })
+            site_entry['internal_count'] += 1
+            site_entry['internal_hours_total'] += hrs
+            site_entry['internal_monthly_cost_total'] += rate_val * hrs
     
     # Cache the result
     try:
@@ -203,3 +228,70 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
         #logger.debug("Team '%s' task hours: internal %.2f, external %.2f", team["team"], entry["internal_hours"], entry["external_hours"])
         #logger.debug("Team '%s' task costs: internal %.2f, external %.2f", team["team"], entry["internal_cost"], entry["external_cost"])
     return entry
+
+
+def _allocate_months(start: Optional[str], end: Optional[str], default_hours_per_month: int) -> Dict[str, float]:
+    """Allocate hours into month buckets (YYYY-MM) for the span from start to end.
+
+    Returns a mapping { 'YYYY-MM': hours } where the hours are scaled from
+    `default_hours_per_month` using working-day fractions within each month.
+    """
+    from datetime import date, timedelta
+    import calendar
+
+    # Average working days per month used elsewhere
+    avg_working_days_per_month = 5 * 52.0 / 12.0
+
+    def month_key(d: date) -> str:
+        return f"{d.year:04d}-{d.month:02d}"
+
+    # If no start/end, allocate a single month worth of hours to a generic key
+    if not start or not end:
+        # Use current month as key
+        today = datetime.now().date()
+        return { month_key(today): float(default_hours_per_month) }
+
+    try:
+        s = datetime.fromisoformat(start).date()
+        e = datetime.fromisoformat(end).date()
+    except Exception:
+        today = datetime.now().date()
+        return { month_key(today): float(default_hours_per_month) }
+
+    if e < s:
+        s, e = e, s
+
+    # Iterate months between s and e inclusive
+    cur_year = s.year
+    cur_month = s.month
+    out: Dict[str, float] = {}
+    while True:
+        # month start and end
+        month_start = date(cur_year, cur_month, 1)
+        last_day = calendar.monthrange(cur_year, cur_month)[1]
+        month_end = date(cur_year, cur_month, last_day)
+
+        # compute overlap range
+        seg_start = s if s > month_start else month_start
+        seg_end = e if e < month_end else month_end
+
+        # count working days in segment
+        days = (seg_end - seg_start).days + 1
+        working = 0
+        for i in range(days):
+            if (seg_start + timedelta(days=i)).weekday() < 5:
+                working += 1
+
+        hours = (working / avg_working_days_per_month) * float(default_hours_per_month) if avg_working_days_per_month else float(default_hours_per_month)
+        out[month_key(seg_start)] = round(hours, 2)
+
+        # advance month
+        if cur_year == e.year and cur_month == e.month:
+            break
+        if cur_month == 12:
+            cur_month = 1
+            cur_year += 1
+        else:
+            cur_month += 1
+
+    return out

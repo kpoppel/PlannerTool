@@ -93,6 +93,11 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         ctx['features'] = features
 
         cost_svc = resolve_service(request, 'cost_service')
+        # If there are no features to calculate, return a minimal schema
+        if not features:
+            from planner_lib.cost import build_cost_schema
+            return build_cost_schema({}, mode='schema', session_features=None)
+
         result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
@@ -156,6 +161,10 @@ async def api_cost_get(request: Request):
 
         ctx = dict(ctx)
         ctx['features'] = features
+        # If no features are present in the session, return a minimal schema
+        if not features:
+            return build_cost_schema({}, mode='schema', session_features=None)
+
         cost_svc = resolve_service(request, 'cost_service')
         result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})

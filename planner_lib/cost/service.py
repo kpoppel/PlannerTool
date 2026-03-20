@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from .engine import calculate, invalidate_team_rates_cache
+from . import engine as _engine
 import logging
 from datetime import datetime, timezone
 from planner_lib.storage.interfaces import StorageProtocol
@@ -91,7 +92,9 @@ class CostService:
             allowed_projects = None
 
         # First pass: build a mapping from work item ID to project ID
-        # This helps us identify which work items are projects
+        # This helps us identify which work items are projects. Allow plans
+        # of all types to participate in the Project View - do not filter by
+        # configured project types here.
         workitem_to_project: Dict[str, str] = {}
         for f in features:
             fid = str(f.get("id", ""))
@@ -108,6 +111,7 @@ class CostService:
             title = f.get("title", "") or f.get("name", "")
             
             # Check if this feature has a parent that is a project via relations
+            # Treat any parent project id as valid (plans of all types allowed)
             parent_project_ids = []
             has_project_parent = False
             relations = f.get("relations", [])
@@ -119,23 +123,20 @@ class CostService:
                         parent_proj = workitem_to_project.get(parent_id)
                         if parent_proj:
                             parent_project_ids.append(parent_proj)
-                            # Check if the parent is actually a project type (not a team)
-                            # Only set has_project_parent if we know the type, don't assume
-                            if parent_proj in project_types:
-                                parent_type = project_types[parent_proj]
-                                if parent_type == 'project':
-                                    has_project_parent = True
+                            # mark that a project parent exists (no type-based filtering)
+                            has_project_parent = True
             
             # Determine which projects should include this feature
             target_projects = []
             
-            # Add the feature's own project if valid
-            if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
+            # Add the feature's own project (allow any project/plan id)
+            if project_id:
                 target_projects.append(project_id)
             
-            # Add parent projects (if different from own project)
+            # Add parent projects (if different from own project). Include
+            # descendants/parent links regardless of configured project types.
             for parent_proj in parent_project_ids:
-                if parent_proj != project_id and (not isinstance(allowed_projects, set) or not allowed_projects or parent_proj in allowed_projects):
+                if parent_proj != project_id:
                     target_projects.append(parent_proj)
             
             # Skip if no valid project to assign to
@@ -159,6 +160,73 @@ class CostService:
                 projects[target_project_id][fid] = cost_with_meta
 
         # Return both the projects dict and the type mapping
+        # Additionally compute per-project per-site monthly totals so the
+        # frontend can present site-level internal breakdown directly.
+        team_aggregates = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
+        project_sites: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
+        for f in features:
+                fid = f.get('id')
+                project_id = f.get('project')
+                start = f.get('start')
+                end = f.get('end')
+                capacity = f.get('capacity', []) or []
+                # Determine target projects same as above logic
+                target_projects = []
+                if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
+                    target_projects.append(project_id)
+                relations = f.get('relations', [])
+                if isinstance(relations, list):
+                    for rel in relations:
+                        if isinstance(rel, dict) and rel.get('type') == 'Parent':
+                            parent_id = str(rel.get('id', ''))
+                            parent_proj = workitem_to_project.get(parent_id)
+                            if parent_proj and parent_proj != project_id:
+                                target_projects.append(parent_proj)
+
+                for target_project_id in target_projects:
+                    proj_sites = project_sites.setdefault(target_project_id, {})
+                    for team in (capacity or []):
+                        team_key = team.get('team')
+                        cap = float(team.get('capacity', 0)) / 100.0
+                        if not team_key or team_key not in team_aggregates:
+                            continue
+                        team_summary = team_aggregates[team_key]
+                        # only consider internal site breakdown here
+                        if not team_summary.get('internal_hours_total'):
+                            continue
+                        # allocate base hours per month for the team over the span
+                        month_buckets = _engine._allocate_months(start, end, int(team_summary.get('internal_hours_total') or 0))
+                        # gather per-site info inside team
+                        sites_info = team_summary.get('sites', {}) or {}
+                        denom = sum((sv.get('internal_hours_total', 0) or 0) for sv in sites_info.values()) or float(team_summary.get('internal_hours_total') or 1)
+                        for m_k, base_hours in (month_buckets or {}).items():
+                            alloc_hours_team = base_hours * cap
+                            # cost per hour for the team average
+                            team_cost_per_hour = 0.0
+                            if team_summary.get('internal_hours_total'):
+                                team_cost_per_hour = float(team_summary.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(team_summary.get('internal_hours_total')))
+                            for site, sv in sites_info.items():
+                                site_hours_share = (sv.get('internal_hours_total', 0) or 0) / denom if denom else 0
+                                site_hours = alloc_hours_team * site_hours_share
+                                # prefer site-specific cost per hour when available
+                                if sv.get('internal_hours_total'):
+                                    site_cost_per_hour = float(sv.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(sv.get('internal_hours_total')))
+                                else:
+                                    site_cost_per_hour = team_cost_per_hour
+                                site_cost = site_hours * site_cost_per_hour
+                                site_entry = proj_sites.setdefault(site, {'hours': {}, 'cost': {}})
+                                site_entry['hours'][m_k] = site_entry['hours'].get(m_k, 0.0) + round(site_hours, 2)
+                                site_entry['cost'][m_k] = site_entry['cost'].get(m_k, 0.0) + round(site_cost, 2)
+        # NOTE: intentionally do not swallow exceptions here — let errors
+        # propagate so issues are visible and cannot be silently ignored.
+
+        # Attach computed site totals into the projects dict under a 'totals' key
+        for pid, pdata in projects.items():
+            totals = pdata.setdefault('totals', {})
+            sites = project_sites.get(pid) or {}
+            if sites:
+                totals['sites'] = sites
+
         return {'projects': projects, 'project_types': project_types}
 
 
@@ -253,6 +321,12 @@ def build_cost_schema(src: Dict[str, Any], mode: str = 'full', session_features:
         else:
             name = proj_id
         totals = _parse_totals(val.get("totals", {}) if isinstance(val.get("totals", {}), dict) else {})
+        # If the raw project data provided a structured 'sites' totals mapping,
+        # carry that through to the schema so the frontend can render per-site
+        # monthly totals directly.
+        raw_totals = val.get('totals') if isinstance(val.get('totals'), dict) else {}
+        if isinstance(raw_totals.get('sites'), dict):
+            totals.setdefault('sites', raw_totals.get('sites'))
         features = []
         for fid, fval in val.items():
             if fid == "totals":

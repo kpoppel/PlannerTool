@@ -185,6 +185,38 @@ const buildFeature = (raw, monthKeys, months) => {
       hoursExternal[mk] = perMonExtH;
     }
     
+    // compute per-team allocations when capacity is present
+    const teams = {};
+    if (Array.isArray(raw.capacity) && raw.capacity.length) {
+      const totalCap = raw.capacity.reduce((a, b) => a + (b.capacity || 0), 0) || 0;
+      for (const entry of raw.capacity) {
+        const tid = String(entry.team || entry.id || entry.name || 'unassigned');
+        const cap = (entry.capacity || 0) / (totalCap || 1);
+        const tValuesInternal = zerosFor(monthKeys);
+        const tValuesExternal = zerosFor(monthKeys);
+        const tHoursInternal = zerosFor(monthKeys);
+        const tHoursExternal = zerosFor(monthKeys);
+        for (const mk of monthKeys) {
+          tValuesInternal[mk] = (valuesInternal[mk] || 0) * cap;
+          tValuesExternal[mk] = (valuesExternal[mk] || 0) * cap;
+          tHoursInternal[mk] = (hoursInternal[mk] || 0) * cap;
+          tHoursExternal[mk] = (hoursExternal[mk] || 0) * cap;
+        }
+        teams[tid] = {
+          valuesInternal: tValuesInternal,
+          valuesExternal: tValuesExternal,
+          hoursInternal: tHoursInternal,
+          hoursExternal: tHoursExternal,
+          internalTotal: sum(Object.values(tValuesInternal)),
+          externalTotal: sum(Object.values(tValuesExternal)),
+          internalHoursTotal: sum(Object.values(tHoursInternal)),
+          externalHoursTotal: sum(Object.values(tHoursExternal)),
+          total: +(sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))).toFixed(2),
+          totalHours: +(sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))).toFixed(2)
+        };
+      }
+    }
+
     return {
       id: String(raw.id),
       title: raw.title,
@@ -199,7 +231,8 @@ const buildFeature = (raw, monthKeys, months) => {
       externalTotal,
       internalHoursTotal,
       externalHoursTotal,
-      has_project_parent: raw.has_project_parent
+      has_project_parent: raw.has_project_parent,
+      teams
     };
   }
 
@@ -260,7 +293,39 @@ const buildFeature = (raw, monthKeys, months) => {
     externalTotal,
     internalHoursTotal,
     externalHoursTotal,
-    has_project_parent: raw.has_project_parent
+    has_project_parent: raw.has_project_parent,
+    // compute per-team allocations when capacity is present
+    teams: (Array.isArray(raw.capacity) && raw.capacity.length) ? (() => {
+      const t = {};
+      const totalCap = raw.capacity.reduce((a, b) => a + (b.capacity || 0), 0) || 0;
+      for (const entry of raw.capacity) {
+        const tid = String(entry.team || entry.id || entry.name || 'unassigned');
+        const cap = (entry.capacity || 0) / (totalCap || 1);
+        const tValuesInternal = zerosFor(monthKeys);
+        const tValuesExternal = zerosFor(monthKeys);
+        const tHoursInternal = zerosFor(monthKeys);
+        const tHoursExternal = zerosFor(monthKeys);
+        for (const mk of monthKeys) {
+          tValuesInternal[mk] = (valuesInternal[mk] || 0) * cap;
+          tValuesExternal[mk] = (valuesExternal[mk] || 0) * cap;
+          tHoursInternal[mk] = (hoursInternal[mk] || 0) * cap;
+          tHoursExternal[mk] = (hoursExternal[mk] || 0) * cap;
+        }
+        t[tid] = {
+          valuesInternal: tValuesInternal,
+          valuesExternal: tValuesExternal,
+          hoursInternal: tHoursInternal,
+          hoursExternal: tHoursExternal,
+          internalTotal: sum(Object.values(tValuesInternal)),
+          externalTotal: sum(Object.values(tValuesExternal)),
+          internalHoursTotal: sum(Object.values(tHoursInternal)),
+          externalHoursTotal: sum(Object.values(tHoursExternal)),
+          total: +(sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))).toFixed(2),
+          totalHours: +(sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))).toFixed(2)
+        };
+      }
+      return t;
+    })() : {}
   };
 };
 
@@ -384,6 +449,26 @@ const buildProjects = (projects, months, state) => {
 
       const total = +(sum(Object.values(internal)) + sum(Object.values(external))).toFixed(2);
       const totalHours = +(sum(Object.values(hoursI)) + sum(Object.values(hoursE))).toFixed(2);
+      // normalize per-team maps if present
+      const teamsMap = {};
+      if (f.teams && typeof f.teams === 'object') {
+        for (const [tid, t] of Object.entries(f.teams)) {
+          const tInternal = roundMap(t.valuesInternal || {}, t.internalTotal || 0);
+          const tExternal = roundMap(t.valuesExternal || {}, t.externalTotal || 0);
+          const tHoursI = roundMap(t.hoursInternal || {}, t.internalHoursTotal || 0);
+          const tHoursE = roundMap(t.hoursExternal || {}, t.externalHoursTotal || 0);
+          teamsMap[tid] = {
+            values: { internal: tInternal, external: tExternal },
+            hours: { internal: tHoursI, external: tHoursE },
+            internalTotal: +(sum(Object.values(tInternal)).toFixed(2)),
+            externalTotal: +(sum(Object.values(tExternal)).toFixed(2)),
+            total: +(sum(Object.values(tInternal)) + sum(Object.values(tExternal))).toFixed(2),
+            internalHoursTotal: +(sum(Object.values(tHoursI)).toFixed(2)),
+            externalHoursTotal: +(sum(Object.values(tHoursE)).toFixed(2)),
+            totalHours: +(sum(Object.values(tHoursI)) + sum(Object.values(tHoursE))).toFixed(2)
+          };
+        }
+      }
 
       return {
         id: f.id,
@@ -405,6 +490,7 @@ const buildProjects = (projects, months, state) => {
         originalTotalHours: f.originalTotalHours,
         // Preserve has_project_parent flag for filtering
         has_project_parent: f.has_project_parent
+        ,teams: teamsMap
       };
     });
 
@@ -442,6 +528,26 @@ const buildProjects = (projects, months, state) => {
       }
     }
 
+    // Build per-project team totals by aggregating feature-level team splits
+    const teamTotals = {};
+    for (const f of normalizedFeatures) {
+      if (allChildIds.has(String(f.id))) continue;
+      // If feature has explicit team splits, aggregate those, otherwise
+      // attribute the feature to an 'unassigned' bucket
+      const teamsForFeature = f.teams && Object.keys(f.teams).length ? f.teams : { unassigned: { values: { internal: f.values.internal, external: f.values.external }, hours: { internal: f.hours.internal, external: f.hours.external }, internalTotal: f.internalTotal, externalTotal: f.externalTotal, total: f.total, internalHoursTotal: f.internalHoursTotal, externalHoursTotal: f.externalHoursTotal, totalHours: f.totalHours } };
+      for (const [tid, t] of Object.entries(teamsForFeature)) {
+        if (!teamTotals[tid]) teamTotals[tid] = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) }, total: 0, totalHours: 0 };
+        for (const k of monthKeys) {
+          teamTotals[tid].internal[k] += (t.values && t.values.internal && (t.values.internal[k] || 0)) || 0;
+          teamTotals[tid].external[k] += (t.values && t.values.external && (t.values.external[k] || 0)) || 0;
+          teamTotals[tid].hours.internal[k] += (t.hours && t.hours.internal && (t.hours.internal[k] || 0)) || 0;
+          teamTotals[tid].hours.external[k] += (t.hours && t.hours.external && (t.hours.external[k] || 0)) || 0;
+        }
+        teamTotals[tid].total += t.total || 0;
+        teamTotals[tid].totalHours += t.totalHours || 0;
+      }
+    }
+
     return { 
       id: p.id, 
       name: p.name, 
@@ -454,6 +560,7 @@ const buildProjects = (projects, months, state) => {
       totalsNoProject,
       noProjectTotal: +noProjectTotal.toFixed(2),
       noProjectTotalHours: +noProjectTotalHours.toFixed(2)
+      ,teamTotals
     };
   });
 

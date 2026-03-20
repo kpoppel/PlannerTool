@@ -375,6 +375,12 @@ export class ProviderREST {
     // Fetch cost data (GET) or request a recalculation with payload (POST)
     async getCost(payload){
         try{
+            // Guard: if caller provided an explicit features list that's empty,
+            // avoid calling the backend and return a minimal cost schema.
+            if(payload && typeof payload === 'object' && Array.isArray(payload.features) && payload.features.length === 0){
+                console.log('providerREST:getCost - empty features payload, skipping backend call');
+                return { projects: [], months: [], teams: [] };
+            }
             // If no payload provided, GET cached cost for session (or schema when unauthenticated)
             if(!payload){
                 const res = await this._fetch('/api/cost', { headers: this._headers() });
