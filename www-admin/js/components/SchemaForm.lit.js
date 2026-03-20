@@ -364,8 +364,8 @@ export class SchemaForm extends LitElement {
   }
 
   _dispatchChange() {
-    this.dispatchEvent(new CustomEvent('data-change', {
-      detail: { data: this.data },
+    this.dispatchEvent(new CustomEvent('change', {
+      detail: this.data,
       bubbles: true,
       composed: true
     }));

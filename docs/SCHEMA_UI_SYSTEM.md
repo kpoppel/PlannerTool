@@ -100,7 +100,7 @@ render() {
     <schema-form 
       .schema=${this.schema}
       .data=${this.config}
-      @data-change=${this._handleChange}
+      @change=${this._handleChange}
     ></schema-form>
   `;
 }
@@ -137,7 +137,7 @@ const schema = await adminProvider.getSchema('projects');
 <schema-form 
   .schema=${this.schema}
   .data=${this.projects}
-  @data-change=${this._handleChange}
+  @change=${this._handleChange}
 ></schema-form>
 
 // 3. Validate before save
