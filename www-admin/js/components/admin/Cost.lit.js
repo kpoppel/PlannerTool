@@ -382,6 +382,8 @@ export class AdminCost extends LitElement {
   }
 
   parseContent(data) {
+    // Accept either a JSON/text payload, a wrapper `{ content: ... }`,
+    // or a raw object (some provider helpers return the inner object).
     if (typeof data === 'string') {
       try {
         return JSON.parse(data);
@@ -389,7 +391,10 @@ export class AdminCost extends LitElement {
         return this.defaultContent;
       }
     }
-    return data?.content || this.defaultContent;
+    if (!data) return this.defaultContent;
+    if (data.content !== undefined) return data.content;
+    if (typeof data === 'object') return data;
+    return this.defaultContent;
   }
 
   async loadInspectData() {
@@ -429,6 +434,12 @@ export class AdminCost extends LitElement {
     try {
       const formData = this.shadowRoot.querySelector('schema-form')?.getData();
       await adminProvider.saveCost(formData || this.content);
+      // Trigger server-side reload so in-memory services pick up new config,
+      // then refresh local view state to reflect persisted values.
+      try{
+        await adminProvider.reloadConfig();
+      }catch(e){ /* best-effort */ }
+      await this.loadConfig();
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
     } catch (e) {
@@ -460,7 +471,7 @@ export class AdminCost extends LitElement {
           </div>
           <div class="actions">
             <button class="primary" @click=${this.handleSave}>Save Changes</button>
-            <button @click=${this.loadConfig}>Reload</button>
+            <button @click=${async () => { try{ await adminProvider.reloadConfig(); }catch(e){}; this.loadConfig(); }}>Reload</button>
             ${this.statusMsg ? html`<span class="status ${this.statusType}">${this.statusMsg}</span>` : ''}
           </div>
         `}
