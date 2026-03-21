@@ -446,7 +446,10 @@ export class PluginCostV2Component extends LitElement {
       expansion: ['parentChild','relations','teamAllocated']
     };
     state.setSidebarDisabledElements(disabled);
-    //try { state.setSidebarDisabledElements(disabled); } catch (e) { bus.emit(FilterEvents.CHANGED, { disabledSidebar: disabled }); }
+    // Ensure Parent/Child expansion is enabled while plugin is active so
+    // children from selected plans are included in calculations and the
+    // Sidebar shows Parent/Child Links as checked.
+    try { state.setExpansionState({ expandParentChild: true, expandRelations: true, expandTeamAllocated: true }); } catch (e) {}
   }
 
   connectedCallback() {
@@ -473,7 +476,11 @@ export class PluginCostV2Component extends LitElement {
       this._unsubscribes = [];
     } catch (e) {}
     if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
-    try { state.clearSidebarDisabledElements(); } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: null }); } catch (err) {} }
+    try { 
+      state.clearSidebarDisabledElements(); 
+      // restore expansion defaults when plugin unloads
+      state.setExpansionState({ expandParentChild: false, expandRelations: false, expandTeamAllocated: false });
+    } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: null }); } catch (err) {} }
     super.disconnectedCallback();
   }
 
@@ -497,7 +504,11 @@ export class PluginCostV2Component extends LitElement {
     this.removeAttribute('visible');
     if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
     // Clear any sidebar masks/disabled maps so the UI restores immediately
-    try { state.clearSidebarDisabledElements(); } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: {} }); } catch (err) {} }
+    try { 
+      state.clearSidebarDisabledElements(); 
+      // restore expansion defaults when plugin closes
+      state.setExpansionState({ expandParentChild: false, expandRelations: false, expandTeamAllocated: false });
+    } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: {} }); } catch (err) {} }
   }
 
   async loadData() {
@@ -583,6 +594,28 @@ export class PluginCostV2Component extends LitElement {
             const ff = filteredFeatures.filter(f => tfs.featurePassesFilters(f));
             filteredFeatures.length = 0;
             Array.prototype.push.apply(filteredFeatures, ff);
+          }
+        }
+      } catch (e) {}
+
+      // Ensure expansion (parent/child, relations, team-allocated) is respected
+      // Include any features from the expanded feature id set so the server
+      // will compute costs for those child/related features even if they
+      // are not part of the original filtered set.
+      try {
+        if (typeof state.getExpandedFeatureIds === 'function') {
+          const expandedIds = state.getExpandedFeatureIds() || new Set();
+          if (expandedIds.size > 0) {
+            const present = new Set((filteredFeatures || []).map(f => String(f && f.id)));
+            const allEffective = state.getEffectiveFeatures() || [];
+            const byId = new Map(allEffective.map(f => [String(f.id), f]));
+            for (const id of expandedIds) {
+              const sid = String(id);
+              if (!present.has(sid) && byId.has(sid)) {
+                filteredFeatures.push(byId.get(sid));
+                present.add(sid);
+              }
+            }
           }
         }
       } catch (e) {}
