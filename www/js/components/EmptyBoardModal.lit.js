@@ -23,7 +23,7 @@ export class EmptyBoardModal extends LitElement {
       width: calc(100% - 48px);
       font-size: 14px;
       color: #111;
-      z-index: 1200;
+      z-index: 200;
       pointer-events: auto;
       opacity: 0;
       transition: opacity 220ms ease-in-out, transform 220ms ease-in-out;

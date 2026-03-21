@@ -25,6 +25,7 @@ import { renderTeamView } from './PluginCostV2TeamView.js';
 import { renderTeamMembersView } from './PluginCostV2TeamMembersView.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, ProjectEvents, TeamEvents, ScenarioEvents, FilterEvents } from '../core/EventRegistry.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginCostV2Component extends LitElement {
   static properties = {
@@ -70,6 +71,7 @@ export class PluginCostV2Component extends LitElement {
       height: 100vh;
       background: white;
       overflow: hidden;
+      z-index: 300;
     }
 
     :host([visible]) {
@@ -391,11 +393,60 @@ export class PluginCostV2Component extends LitElement {
     .summary-table tr.site-pair.alt td { background: #efefef; }
     .summary-table tr.group-row.alt td { background: #efefef; }
     .summary-table tr.site-pair td:first-child { padding-left: 12px; }
+    
+      /* Icon sizing for type icons used in lists/tables */
+      .type-icon { display: inline-flex; align-items: center; vertical-align: middle; }
+      .type-icon svg { width: 16px; height: 16px; display: block; }
   `;
 
   open() {
     this.setAttribute('visible', '');
     this.loadData();
+    // Ensure sidebar disabled state is applied when plugin UI opens
+    try { this._applySidebarDisabled(); } catch (e) {}
+  }
+
+  // Apply the sidebar disabled configuration
+  _applySidebarDisabled() {
+    // Ensure unplanned is unchecked, and all other task filters are checked
+    state.taskFilterService.setFilter('schedule', 'unplanned', false);
+    // Schedule: ensure planned is true
+    state.taskFilterService.setFilter('schedule', 'planned', true);
+    // Allocation
+    state.taskFilterService.setFilter('allocation', 'allocated', true);
+    state.taskFilterService.setFilter('allocation', 'unallocated', true);
+    // Hierarchy
+    state.taskFilterService.setFilter('hierarchy', 'hasParent', true);
+    state.taskFilterService.setFilter('hierarchy', 'noParent', true);
+    // Relations
+    state.taskFilterService.setFilter('relations', 'hasLinks', true);
+    state.taskFilterService.setFilter('relations', 'noLinks', true);
+
+    // Force all states selected via public State API
+    state.setAllStatesSelected(true);
+
+    // Ensure all task types are checked via public State API
+    // Prefer the sidebar's known available task types. The ViewManagementService
+    // does not reliably expose the loaded task types at runtime.
+    // Read available task types from State service (preferred) or fall back
+    // to any saved view options. Do NOT query other components' internals.
+    console.log(state.availableTaskTypes);
+    state.setSelectedTaskTypes(state.availableTaskTypes);
+
+    // Now disable buttons
+    const disabled = {
+      taskFilters: {
+        schedule: ['planned'],
+        allocation: ['allocated','unallocated'],
+        hierarchy: ['hasParent','noParent'],
+        relations: ['hasLinks','noLinks']
+      },
+      taskTypes: [],
+      states: Array.isArray(state.availableFeatureStates) ? Array.from(state.availableFeatureStates) : [],
+      expansion: ['parentChild','relations','teamAllocated']
+    };
+    state.setSidebarDisabledElements(disabled);
+    //try { state.setSidebarDisabledElements(disabled); } catch (e) { bus.emit(FilterEvents.CHANGED, { disabledSidebar: disabled }); }
   }
 
   connectedCallback() {
@@ -411,6 +462,8 @@ export class PluginCostV2Component extends LitElement {
     } catch (e) {
       console.warn('[PluginCostV2] failed to subscribe to state events', e);
     }
+    // Signal sidebar which controls are not relevant while this plugin is active
+    this._applySidebarDisabled();
   }
 
   disconnectedCallback() {
@@ -420,6 +473,7 @@ export class PluginCostV2Component extends LitElement {
       this._unsubscribes = [];
     } catch (e) {}
     if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
+    try { state.clearSidebarDisabledElements(); } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: null }); } catch (err) {} }
     super.disconnectedCallback();
   }
 
@@ -433,10 +487,17 @@ export class PluginCostV2Component extends LitElement {
     } catch (e) { this.loadData(); }
   }
 
+  _closeClicked() {
+    const plugin = pluginManager.get('plugin-cost-v2');
+    plugin.deactivate();
+  }
+
   close() {
     // Hide UI and cancel any pending reloads so we don't fetch while closed
     this.removeAttribute('visible');
     if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
+    // Clear any sidebar masks/disabled maps so the UI restores immediately
+    try { state.clearSidebarDisabledElements(); } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: {} }); } catch (err) {} }
   }
 
   async loadData() {
@@ -460,7 +521,73 @@ export class PluginCostV2Component extends LitElement {
       }
 
       // Build features payload for cost API
-      const featuresPayload = effectiveFeatures.map(f => ({
+      // Honor sidebar-selected task types when present. If multiple types
+      // are selected, apply the "lowest level counts" rule: when a parent
+      // item has children of a selected type, skip the parent so children
+      // are authoritative.
+      let selectedTypes = null;
+      try {
+        const sidebar = document.querySelector('app-sidebar');
+        if (sidebar && sidebar.selectedTaskTypes && typeof sidebar.selectedTaskTypes.values === 'function') {
+          selectedTypes = new Set(Array.from(sidebar.selectedTaskTypes).map(s => String(s).toLowerCase()));
+        }
+      } catch (e) { selectedTypes = null; }
+
+      // Helper: determine if a feature has children according to state.childrenByEpic
+      const hasChildren = (fid) => {
+        try {
+          const map = state.childrenByEpic || new Map();
+          const list = map.get(Number(fid)) || map.get(String(fid)) || [];
+          return Array.isArray(list) && list.length > 0;
+        } catch (e) { return false; }
+      };
+
+      let filteredFeatures = (effectiveFeatures || []).filter(f => {
+        if (!f) return false;
+        if (!selectedTypes || selectedTypes.size === 0) return true;
+        const ftype = String(f.type || f.feature_type || '').toLowerCase();
+        if (!selectedTypes.has(ftype)) return false;
+        // If multiple types selected, prefer lowest-level: skip parents
+        if (selectedTypes.size > 1) {
+          if (hasChildren(f.id)) return false;
+        }
+        return true;
+      });
+
+      // Apply task filters (planned/unplanned, allocation, etc.) from TaskFilterService
+      try {
+        const tfs = state.taskFilterService;
+        if (tfs) {
+          // If the schedule.unplanned option is turned off, proactively
+          // filter out features that are truly unplanned. Some backends
+          // set placeholder dates (today) for unplanned items which would
+          // otherwise appear as "planned"; treat those as unplanned too.
+          let taskFilters = null;
+          try { if (typeof tfs.getFilters === 'function') taskFilters = tfs.getFilters(); } catch (e) { taskFilters = null; }
+          if (taskFilters && taskFilters.schedule && taskFilters.schedule.unplanned === false) {
+            const today = (new Date()).toISOString().slice(0,10);
+            filteredFeatures = filteredFeatures.filter(f => {
+              try {
+                const hasStart = !!(f && f.start);
+                const hasEnd = !!(f && f.end);
+                // No dates => unplanned
+                if (!hasStart && !hasEnd) return false;
+                // Placeholder: start===end===today => treat as unplanned
+                if (hasStart && hasEnd && String(f.start).startsWith(today) && String(f.end).startsWith(today) && String(f.start) === String(f.end)) return false;
+                return true;
+              } catch (e) { return true; }
+            });
+          }
+
+          if (typeof tfs.featurePassesFilters === 'function') {
+            const ff = filteredFeatures.filter(f => tfs.featurePassesFilters(f));
+            filteredFeatures.length = 0;
+            Array.prototype.push.apply(filteredFeatures, ff);
+          }
+        }
+      } catch (e) {}
+
+      const featuresPayload = filteredFeatures.map(f => ({
         id: f.id,
         project: f.project,
         start: f.start,
@@ -631,7 +758,7 @@ export class PluginCostV2Component extends LitElement {
           </button>
         </div>
 
-        <button class="close-btn" @click="${() => this.close()}">Close</button>
+        <button class="close-btn" @click="${() => this._closeClicked()}">Close</button>
       </div>
     `;
   }

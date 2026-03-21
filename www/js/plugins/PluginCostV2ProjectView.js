@@ -2,6 +2,7 @@ import { html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
 import { expandDataset } from './PluginCostV2Calculator.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 function getTeamLabel(component, teamKey) {
   const costTeams = (component && component.costTeams && Array.isArray(component.costTeams.teams)) ? component.costTeams.teams : [];
@@ -77,6 +78,21 @@ function renderProjectTable(component, project, monthKeys) {
 
   return html`
     <div style="margin-bottom: 32px;">
+      ${(() => {
+        // Notification banner describing current counting rules
+        let sidebarMsg = '';
+        try {
+          const sidebar = document.querySelector('app-sidebar');
+          const tfs = state.taskFilterService;
+          const taskFilters = tfs ? tfs.getFilters() : null;
+          const showUnplanned = taskFilters ? !!taskFilters.schedule.unplanned : true;
+          const selectedTypes = (sidebar && sidebar.selectedTaskTypes) ? Array.from(sidebar.selectedTaskTypes).map(s=>String(s)) : [];
+          const typesLabel = selectedTypes.length === 0 ? 'All task types' : selectedTypes.join(', ');
+          const levelMsg = (selectedTypes.length > 1) ? 'Children (lowest-level) are authoritative' : (selectedTypes.length === 1 ? `${selectedTypes[0]} selected` : 'All task types');
+          sidebarMsg = `${typesLabel} · ${showUnplanned ? 'Counting Unplanned work' : 'Excluding Unplanned work'} · ${levelMsg}`;
+        } catch (e) { sidebarMsg = '' }
+        return sidebarMsg ? html`<div style="margin-bottom:8px;padding:8px;border-radius:6px;background:#fffbe6;border:1px solid #f0e6b6;color:#333;font-size:13px;">${sidebarMsg}</div>` : '';
+      })()}
       <div 
         class="project-header expandable" 
         @click="${() => component.toggleProject(project.id)}">
@@ -465,11 +481,13 @@ function renderFeatureList(component, features, monthKeys) {
     <table>
       <thead>
         <tr>
+          <th style="width:36px;"></th>
           <th>Feature</th>
           ${component.months.map(m => html`<th class="numeric" colspan="2">${monthLabel(m)}</th>`)}
           <th class="numeric">Sum</th>
         </tr>
         <tr>
+          <th></th>
           <th></th>
           ${component.months.map(() => html`<th class="numeric">Int</th><th class="numeric">Ext</th>`)}
           <th></th>
@@ -499,7 +517,19 @@ function renderFeatureList(component, features, monthKeys) {
 
           return html`
             <tr>
-              <td>${feature.title || feature.name || feature.id}</td>
+              <td style="text-align:center;">
+                ${(() => {
+                  const ft = (feature.type || '').toString().toLowerCase();
+                  if (ft === 'epic' || ft === 'epics') {
+                    return html`<span class="type-icon epic" title="Epic">${epicTemplate}</span>`;
+                  }
+                  if (ft === 'feature' || ft === 'features') {
+                    return html`<span class="type-icon feature" title="Feature">${featureTemplate}</span>`;
+                  }
+                  return html`<span class="type-icon" title="Task">•</span>`;
+                })()}
+              </td>
+              <td style="vertical-align:top;">${feature.title || feature.name || feature.id}</td>
               ${monthKeys.map(mKey => {
                 const intVal = curMap.internal.get(mKey) || 0;
                 const extVal = curMap.external.get(mKey) || 0;

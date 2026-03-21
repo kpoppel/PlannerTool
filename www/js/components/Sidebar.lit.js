@@ -182,6 +182,8 @@ export class SidebarLit extends LitElement {
     .option-count { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.12); border-radius: 10px; font-weight: 600; }
     .option-row.active .option-count { background: rgba(102, 126, 234, 0.4); }
 
+    .option-row.disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+
     /* Task Filters section */
     .filter-dimension {
       margin-bottom: 10px;
@@ -227,6 +229,9 @@ export class SidebarLit extends LitElement {
     .filter-option.active .filter-checkbox { background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1); }
     .filter-checkbox::after { content: '✓'; color: white; font-size: 9px; font-weight: bold; opacity: 0; }
     .filter-option.active .filter-checkbox::after { opacity: 1; }
+
+    /* Disabled visuals applied when external plugins set disabled maps */
+    .filter-option.disabled { opacity: 0.2; cursor: not-allowed; pointer-events: none; }
 
     /* Segmented button groups for radio-style options */
     .segmented-group {
@@ -460,6 +465,9 @@ export class SidebarLit extends LitElement {
     this.availableTaskTypes = [];
     this.selectedTaskTypes = new Set();
     this._taskTypesInitialized = false;
+    // Controls disabled by external components (plugins)
+    this._disabledSidebar = {};
+    
   }
 
   
@@ -592,6 +600,29 @@ export class SidebarLit extends LitElement {
     };
     bus.on(FilterEvents.CHANGED, this._onTaskFiltersChanged);
 
+    // Listen for sidebar disabled maps emitted via state
+    this._onSidebarFilterChanged = (payload) => {
+      try {
+        if (payload && Object.prototype.hasOwnProperty.call(payload, 'disabledSidebar')) {
+          this._disabledSidebar = payload.disabledSidebar || {};
+          this.requestUpdate();
+        }
+        // Allow external callers (plugins) to programmatically set which
+        // task types are selected in the sidebar via FilterEvents.CHANGED
+        // with `selectedTaskTypes: [ ... ]`.
+        if (payload && Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')) {
+          try {
+            const arr = Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
+            this.selectedTaskTypes = new Set(arr);
+            // Mark types initialized so default-selection logic does not override
+            this._taskTypesInitialized = true;
+            this.requestUpdate();
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) { /* ignore */ }
+    };
+    bus.on(FilterEvents.CHANGED, this._onSidebarFilterChanged);
+
     this._onFeaturesForTypes = () => { this._computeAvailableTaskTypes(); };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Listen for view option changes to trigger sidebar state save
@@ -705,6 +736,7 @@ export class SidebarLit extends LitElement {
     }
     if (this._onAvailableStatesChanged) bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
     if (this._onTaskFiltersChanged) bus.off(FilterEvents.CHANGED, this._onTaskFiltersChanged);
+    if (this._onSidebarFilterChanged) bus.off(FilterEvents.CHANGED, this._onSidebarFilterChanged);
     if (this._onFeaturesForTypes) bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     
     this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
@@ -788,6 +820,58 @@ export class SidebarLit extends LitElement {
     this._taskTypesInitialized = true;
   }
 
+  // Returns true if a control has been disabled via state.setSidebarDisabledElements
+  _isControlDisabled(kind, key, opt) {
+    try {
+      if (!this._disabledSidebar) return false;
+      if (kind === 'taskFilter') {
+        const tf = this._disabledSidebar.taskFilters || {};
+        if (tf && Array.isArray(tf[key]) && opt) return tf[key].includes(opt);
+      }
+      if (kind === 'taskType') {
+        const t = this._disabledSidebar.taskTypes || [];
+        return Array.isArray(t) && t.includes(key);
+      }
+      if (kind === 'expansion') {
+        const e = this._disabledSidebar.expansion || [];
+        return Array.isArray(e) && e.includes(key);
+      }
+      if (kind === 'state') {
+        const s = this._disabledSidebar.states || [];
+        return Array.isArray(s) && s.includes(key);
+      }
+      return false;
+    } catch (e) { return false; }
+  }
+
+  // Programmatic API: set a task filter option checked/unchecked
+  setTaskFilterChecked(dimension, option, checked) {
+    try {
+      if (state && state.taskFilterService && typeof state.taskFilterService.setFilter === 'function') {
+        state.taskFilterService.setFilter(dimension, option, !!checked);
+        this.taskFilters = state.taskFilterService.getFilters();
+        this._recomputeDataFunnel && this._recomputeDataFunnel();
+        this.requestUpdate();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // Programmatic API: set a task type checked/unchecked
+  setTaskTypeChecked(type, checked) {
+    try {
+      if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
+      if (checked) this.selectedTaskTypes.add(type);
+      else this.selectedTaskTypes.delete(type);
+      bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+      this.requestUpdate();
+    } catch (e) { /* ignore */ }
+  }
+
+  // Programmatic API: disable/enable sidebar controls via State service
+  disableSidebarElements(map) { try { state.setSidebarDisabledElements(map || {}); } catch (e) {} }
+  clearSidebarDisabledElements() { try { state.clearSidebarDisabledElements(); } catch (e) {} }
+
+
   _toggleTaskType(type){
     if (!type) return;
     if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
@@ -853,10 +937,13 @@ export class SidebarLit extends LitElement {
             <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
               ${dim.options.map(opt => {
                 const isActive = this.taskFilters[dim.key][opt.key];
+                const isDisabled = this._isControlDisabled('taskFilter', dim.key, opt.key);
                 return html`
-                  <div 
-                    class="filter-option ${isActive ? 'active' : ''}"
-                    @click=${() => this._toggleTaskFilter(dim.key, opt.key)}
+                  <div
+                    class="filter-option ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}"
+                    aria-disabled="${isDisabled ? 'true' : 'false'}"
+                    @click=${() => { if (!isDisabled) this._toggleTaskFilter(dim.key, opt.key); }}
+                    title=${isDisabled ? 'Not relevant in current tool context' : ''}
                   >
                     <div class="filter-checkbox"></div>
                     <span>${opt.label}</span>
@@ -881,13 +968,19 @@ export class SidebarLit extends LitElement {
           <div class="filter-options">
             ${(() => {
               const colors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
-              return states.map(s => {
+                return states.map(s => {
                 const meta = colors && colors[s] ? colors[s] : null;
                 const bg = meta ? meta.background : (state.getFeatureStateColor ? state.getFeatureStateColor(s) : '#999');
                 const text = meta ? meta.text : '#fff';
                 const isActive = (state.selectedFeatureStateFilter && state.selectedFeatureStateFilter.has(s));
+                const isDisabled = this._isControlDisabled('state', s);
                 return html`
-                  <div class="filter-option ${ isActive ? 'active' : '' }" @click=${()=>{ state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); }}>
+                  <div
+                    class="filter-option ${ isActive ? 'active' : '' } ${isDisabled ? 'disabled' : ''}"
+                    aria-disabled="${isDisabled ? 'true' : 'false'}"
+                    @click=${() => { if (!isDisabled) { state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); } }}
+                    title=${isDisabled ? 'Not relevant in current tool context' : ''}
+                  >
                     <div style="display:inline-flex;align-items:center;gap:8px;flex:1;">
                       <span class="filter-state-dot" style="width:14px;height:14px;border-radius:3px;display:inline-block;background:${bg};border:1px solid rgba(0,0,0,0.06);box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);"></span>
                       <div style="flex:1;color:#fff;">${s}</div>
@@ -1066,29 +1159,41 @@ export class SidebarLit extends LitElement {
             </div>
             
             <div class="option-group">
-              <div class="option-row ${this.expandParentChild ? 'active' : ''}" @click=${() => this._toggleExpansion('parentChild')}>
-                <div class="option-label">
-                  <div class="option-checkbox"></div>
-                  <span>Parent/Child Links</span>
-                </div>
-                <span class="option-count">${this.expandParentChildCount > 0 ? '+' + this.expandParentChildCount : this.expandParentChildCount}</span>
-              </div>
-              <div class="option-row ${this.expandRelations ? 'active' : ''}" @click=${() => this._toggleExpansion('relations')}>
-                <div class="option-label">
-                  <div class="option-checkbox"></div>
-                  <span>Dependencies</span>
-                </div>
-                <span class="option-count">${this.expandRelationsCount > 0 ? '+' + this.expandRelationsCount : this.expandRelationsCount}</span>
-              </div>
+              ${(() => {
+                const disabledParentChild = this._isControlDisabled('expansion', 'parentChild');
+                return html`
+                  <div class="option-row ${this.expandParentChild ? 'active' : ''} ${disabledParentChild ? 'disabled' : ''}" aria-disabled="${disabledParentChild? 'true' : 'false'}" @click=${() => { if (!disabledParentChild) this._toggleExpansion('parentChild'); }} title=${disabledParentChild? 'Not relevant in current tool context' : ''}>
+                    <div class="option-label">
+                      <div class="option-checkbox"></div>
+                      <span>Parent/Child Links</span>
+                    </div>
+                    <span class="option-count">${this.expandParentChildCount > 0 ? '+' + this.expandParentChildCount : this.expandParentChildCount}</span>
+                  </div>`;
+              })()}
+              ${(() => {
+                const disabledRelations = this._isControlDisabled('expansion', 'relations');
+                return html`
+                  <div class="option-row ${this.expandRelations ? 'active' : ''} ${disabledRelations ? 'disabled' : ''}" aria-disabled="${disabledRelations? 'true' : 'false'}" @click=${() => { if (!disabledRelations) this._toggleExpansion('relations'); }} title=${disabledRelations ? 'Not relevant in current tool context' : ''}>
+                    <div class="option-label">
+                      <div class="option-checkbox"></div>
+                      <span>Dependencies</span>
+                    </div>
+                    <span class="option-count">${this.expandRelationsCount > 0 ? '+' + this.expandRelationsCount : this.expandRelationsCount}</span>
+                  </div>`;
+              })()}
               
               
-              <div class="option-row ${this.expandTeamAllocated ? 'active' : ''}" @click=${() => this._toggleExpansion('teamAllocated')}>
-                <div class="option-label">
-                  <div class="option-checkbox"></div>
-                  <span>Team Allocated</span>
-                </div>
-                <span class="option-count">${this.expandTeamAllocatedCount > 0 ? '+' + this.expandTeamAllocatedCount : this.expandTeamAllocatedCount}</span>
-              </div>
+              ${(() => {
+                const disabledTeamAllocated = this._isControlDisabled('expansion', 'teamAllocated');
+                return html`
+                  <div class="option-row ${this.expandTeamAllocated ? 'active' : ''} ${disabledTeamAllocated ? 'disabled' : ''}" aria-disabled="${disabledTeamAllocated? 'true' : 'false'}" @click=${() => { if (!disabledTeamAllocated) this._toggleExpansion('teamAllocated'); }} title=${disabledTeamAllocated ? 'Not relevant in current tool context' : ''}>
+                    <div class="option-label">
+                      <div class="option-checkbox"></div>
+                      <span>Team Allocated</span>
+                    </div>
+                    <span class="option-count">${this.expandTeamAllocatedCount > 0 ? '+' + this.expandTeamAllocatedCount : this.expandTeamAllocatedCount}</span>
+                  </div>`;
+              })()}
             </div>
           </div>
         </section>

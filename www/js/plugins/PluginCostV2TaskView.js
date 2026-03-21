@@ -1,6 +1,7 @@
 import { html } from '../vendor/lit.js';
 import { buildTaskTree, calculateBudgetDeviation, hasSignificantDeviation } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export function renderTaskView(component) {
   if (!component.data || !component.data.projects) {
@@ -13,27 +14,23 @@ export function renderTaskView(component) {
   }
 
   const selectedProjects = (state.projects || []).filter(p => p.selected);
-  const selectedTeams = (state.teams || []).filter(t => t.selected);
-  if (selectedProjects.length === 0 || selectedTeams.length === 0) {
+  if (selectedProjects.length === 0) {
     return html`
       <div class="empty-state">
         <h3>No Selection</h3>
-        <p>Please select projects (Top menu → Plan) and teams (Top menu → Team) to view task costs.</p>
+        <p>Please select projects (Top menu → Plan) to view task costs.</p>
       </div>
     `;
   }
 
   const selectedProjectIds = new Set(selectedProjects.map(p => String(p.id)));
-  const selectedTeamIds = new Set(selectedTeams.map(t => String(t.id)));
 
   const allFeatures = Object.values(component.data.projects || {})
     .flatMap(p => p.features || [])
     .filter(f => selectedProjectIds.has(String(f.project)));
 
-  const filteredFeatures = allFeatures.filter(f => {
-    if (!f.capacity || f.capacity.length === 0) return false;
-    return f.capacity.some(c => selectedTeamIds.has(String(c.team)));
-  });
+  // Use tasks from the selected plans regardless of team selection
+  const filteredFeatures = allFeatures.slice();
 
   if (filteredFeatures.length === 0) {
     return html`
@@ -44,14 +41,113 @@ export function renderTaskView(component) {
     `;
   }
 
-  const { roots, childrenMap, parentMap } = buildTaskTree(filteredFeatures, state.childrenByEpic || new Map());
-  const featureMap = new Map(filteredFeatures.map(f => [String(f.id), f]));
+  // Group features by project id so we can render per-project sections
+  const featuresByProject = new Map();
+  for (const f of allFeatures) {
+    const pid = String(f.project);
+    if (!featuresByProject.has(pid)) featuresByProject.set(pid, []);
+    featuresByProject.get(pid).push(f);
+  }
+
+  // Ensure expandedSections exists and default to expanded for each project
+  if (!component._expandedSections) component._expandedSections = new Set(Array.from(featuresByProject.keys()).map(k => `project-${k}`));
 
   return html`
     <div>
-      <h3 style="margin-bottom:16px; font-size:16px; color:#333;">Task Tree (${filteredFeatures.length} tasks)</h3>
-      ${roots.map(rootId => renderTaskNode(component, rootId, featureMap, childrenMap, 0))}
+      ${selectedProjects.map(project => {
+        const key = `project-${String(project.id)}`;
+        const isExpanded = component._expandedSections.has(key);
+        const projectFeatures = featuresByProject.get(String(project.id)) || [];
+        return html`
+          <div style="margin-bottom:20px;">
+            <div class="project-header expandable" @click="${() => { if (!component._expandedSections) component._expandedSections = new Set(); if (component._expandedSections.has(key)) component._expandedSections.delete(key); else component._expandedSections.add(key); component.requestUpdate(); }}">
+              <span class="expand-icon ${isExpanded ? 'expanded' : ''}">▶</span>
+              ${project.name}
+            </div>
+            ${isExpanded ? html`<div style="margin-left:12px; margin-top:8px;">${renderTasksInProjectTable(component, projectFeatures)}</div>` : ''}
+          </div>
+        `;
+      })}
     </div>
+  `;
+}
+
+function renderTasksInProjectTable(component, features) {
+  if (!features || features.length === 0) {
+    return html`<div style="color:#666; font-size:13px; margin-bottom:12px;">No tasks available for the selected projects.</div>`;
+  }
+
+  const formatValue = (val) => {
+    const n = typeof val === 'number' ? val : Number(val || 0);
+    return String(Math.round(n));
+  };
+
+  // Build project name lookup
+  const projects = component.data && component.data.projects ? component.data.projects : {};
+  const projectNames = {};
+  for (const pid of Object.keys(projects)) {
+    try { projectNames[String(projects[pid].id)] = projects[pid].name; } catch (e) {}
+  }
+
+  return html`
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px;"></th>
+          <th>Task</th>
+          <th class="numeric">Start</th>
+          <th class="numeric">End</th>
+          <th class="numeric">Teams</th>
+          <th class="numeric">Cost</th>
+          <th class="numeric">Hours</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${features.map(feature => {
+          const metrics = feature && feature.metrics ? feature.metrics : null;
+          let totalCost = 0;
+          let totalHours = 0;
+          if (metrics) {
+            const c_internal = (metrics.internal && metrics.internal.cost) || (metrics.cost && metrics.cost.internal) || {};
+            const c_external = (metrics.external && metrics.external.cost) || (metrics.cost && metrics.cost.external) || {};
+            const h_internal = (metrics.internal && metrics.internal.hours) || (metrics.hours && metrics.hours.internal) || {};
+            const h_external = (metrics.external && metrics.external.hours) || (metrics.hours && metrics.hours.external) || {};
+            for (const v of Object.values(c_internal)) totalCost += Number(v || 0);
+            for (const v of Object.values(c_external)) totalCost += Number(v || 0);
+            for (const v of Object.values(h_internal)) totalHours += Number(v || 0);
+            for (const v of Object.values(h_external)) totalHours += Number(v || 0);
+          }
+
+          const teams = Array.isArray(feature.capacity) ? feature.capacity.map(c => String(c.team)).filter(Boolean) : [];
+          // Resolve team id/slug to friendly name using component.costTeams
+          const costTeamsList = component && component.costTeams ? (Array.isArray(component.costTeams.teams) ? component.costTeams.teams : (Array.isArray(component.costTeams) ? component.costTeams : [])) : [];
+          const teamNameByKey = {};
+          for (const tt of costTeamsList) {
+            try {
+              if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
+              if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
+              if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
+            } catch (e) {}
+          }
+          const teamsLabel = teams.map(t => teamNameByKey[t] || t).join(', ');
+
+          const ft = (feature.type || '').toString().toLowerCase();
+          const iconTemplate = (ft === 'epic' || ft === 'epics') ? epicTemplate : ((ft === 'feature' || ft === 'features') ? featureTemplate : html`<span style="display:inline-block;width:10px;">•</span>`);
+
+          return html`
+            <tr>
+              <td style="text-align:center;"><span class="type-icon">${iconTemplate}</span></td>
+              <td style="vertical-align:top;"> <div style="max-width:60%;">${feature.title || feature.name || feature.id}</div> </td>
+              <td class="numeric">${feature.start || ''}</td>
+              <td class="numeric">${feature.end || ''}</td>
+              <td class="numeric">${teamsLabel}</td>
+              <td class="numeric">${totalCost.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})}</td>
+              <td class="numeric">${Math.round(totalHours)}</td>
+            </tr>
+          `;
+        })}
+      </tbody>
+    </table>
   `;
 }
 

@@ -1,6 +1,7 @@
 import { html } from '../vendor/lit.js';
 import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
+import { epicTemplate, featureTemplate } from '../services/IconService.js';
 
 export function renderTeamView(component) {
   if (!component.data || !component.data.projects) {
@@ -23,6 +24,9 @@ export function renderTeamView(component) {
   }
 
   const monthKeys = component.months.map(m => monthKey(m));
+
+  // Ensure expandedTeams set exists on component; default to expanded
+  if (!component._expandedTeams) component._expandedTeams = new Set(selectedTeams.map(t => `team-${t.id}`));
 
   return html`
     <div>
@@ -92,11 +96,17 @@ function renderTeamTable(component, team, monthKeys) {
   }
   teamFeatures = finalFeatures;
 
+  const key = `team-${String(team.id)}`;
+  const isExpanded = component._expandedTeams && component._expandedTeams.has(key);
+
   if (teamFeatures.length === 0) {
     return html`
       <div style="margin-bottom:32px;">
-        <div class="team-header">${team.name}</div>
-        <p style="color:#999; font-size:13px; margin:8px 0;">No features allocated to this team.</p>
+        <div class="team-header expandable" @click="${() => { if (!component._expandedTeams) component._expandedTeams = new Set(); if (component._expandedTeams.has(key)) component._expandedTeams.delete(key); else component._expandedTeams.add(key); component.requestUpdate(); }}">
+          <span class="expand-icon ${isExpanded ? 'expanded' : ''}">▶</span>
+          ${team.name}
+        </div>
+        ${isExpanded ? html`<p style="color:#999; font-size:13px; margin:8px 0;">No features allocated to this team.</p>` : ''}
       </div>
     `;
   }
@@ -163,16 +173,20 @@ function renderTeamTable(component, team, monthKeys) {
 
   return html`
     <div style="margin-bottom:32px;">
-      <div class="team-header">${team.name} (${teamFeatures.length} features)</div>
+      <div class="team-header expandable" @click="${() => { if (!component._expandedTeams) component._expandedTeams = new Set(); if (component._expandedTeams.has(key)) component._expandedTeams.delete(key); else component._expandedTeams.add(key); component.requestUpdate(); }}">
+        <span class="expand-icon ${isExpanded ? 'expanded' : ''}">▶</span>
+        ${team.name} (${teamFeatures.length} features)
+      </div>
 
-      <table>
+      ${isExpanded ? html`<table>
         <thead>
-          <tr>
-            <th>Feature</th>
-            <th>Project</th>
-            ${component.months.map(m => html`<th class="numeric" colspan="2">${monthLabel(m)}</th>`)}
-            <th class="numeric">Sum</th>
-          </tr>
+              <tr>
+                <th style="width:36px;"></th>
+                <th>Feature</th>
+                <th>Project</th>
+                ${component.months.map(m => html`<th class="numeric" colspan="2">${monthLabel(m)}</th>`)}
+                <th class="numeric">Sum</th>
+              </tr>
           <tr>
             <th></th>
             <th></th>
@@ -192,8 +206,12 @@ function renderTeamTable(component, team, monthKeys) {
             );
             const projectName = projectData ? projectData.name : feature.project || '-';
 
+            const ft = (feature.type || '').toString().toLowerCase();
+            const iconTemplate = (ft === 'epic' || ft === 'epics') ? epicTemplate : ((ft === 'feature' || ft === 'features') ? featureTemplate : html`<span style="display:inline-block;width:10px;">•</span>`);
+
             return html`
               <tr>
+                <td style="text-align:center;"><span class="type-icon">${iconTemplate}</span></td>
                 <td>${feature.title || feature.name || feature.id}</td>
                 <td style="font-size:11px; color:#666;">${projectName}</td>
                 ${monthKeys.map(mKey => {
@@ -224,7 +242,7 @@ function renderTeamTable(component, team, monthKeys) {
             </td>
           </tr>
         </tbody>
-      </table>
+      </table>` : ''}
     </div>
   `;
 }

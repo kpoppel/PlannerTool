@@ -119,8 +119,14 @@ class State {
       expandRelations: false,
       expandTeamAllocated: false
     };
+    // Sidebar disabled controls map
+    // shape: { taskFilters: { <dim>: [optKey,...] }, taskTypes: [type,...], expansion: ["parentChild","relations","teamAllocated"] }
+    this._sidebarDisabled = {};
+    
     // Cache for expanded feature IDs
     this._expandedFeatureIdsCache = null;
+    // Cache for available task types (computed from baselineFeatures)
+    this._availableTaskTypesCache = null;
   }
   
   // ========== Backward Compatibility Property Accessors ==========
@@ -178,6 +184,52 @@ class State {
     if (this._expansionState.expandTeamAllocated !== prevExpandTeamAllocated) {
       this.recomputeCapacityMetrics();
     }
+  }
+
+  // Sidebar disabled controls API
+  getSidebarDisabledElements() {
+    return this._sidebarDisabled || {};
+  }
+
+  setSidebarDisabledElements(map) {
+    this._sidebarDisabled = map || {};
+    try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: this._sidebarDisabled }); } catch (e) { /* ignore */ }
+  }
+
+  clearSidebarDisabledElements() {
+    this.setSidebarDisabledElements({});
+  }
+
+  // ---- Helpers for plugins / external callers ----
+  // Set which task types are selected in the Sidebar. Accepts an array of type names.
+  setSelectedTaskTypes(types) {
+    try {
+      const arr = Array.isArray(types) ? Array.from(types) : [];
+      try { bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: arr }); } catch (e) { /* ignore */ }
+    } catch (e) {}
+  }
+
+  // Set selected feature states via StateFilterService (re-emit events from the service)
+  setSelectedStates(states) {
+    try {
+      if (this._stateFilterService && typeof this._stateFilterService.setSelectedStates === 'function') {
+        this._stateFilterService.setSelectedStates(states || []);
+      } else {
+        try { bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.isArray(states) ? states : [] }); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  setAllStatesSelected(selectAll) {
+    try {
+      if (this._stateFilterService && typeof this._stateFilterService.setAllStatesSelected === 'function') {
+        this._stateFilterService.setAllStatesSelected(!!selectAll);
+      } else if (selectAll) {
+        try { bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: Array.from(this.availableFeatureStates || []) }); } catch (e) {}
+      } else {
+        try { bus.emit(FilterEvents.CHANGED, { selectedFeatureStateFilter: [] }); } catch (e) {}
+      }
+    } catch (e) {}
   }
 
   /**
@@ -254,6 +306,30 @@ class State {
   get baselineFeatureById() { return this._dataInitService.baselineFeatureById; }
   get childrenByEpic() { return this._dataInitService.getChildrenByEpicMap(); }
   get iterations() { return this._dataInitService.iterations || []; }
+
+  // Available task types derived from baseline features
+  get availableTaskTypes() {
+    try {
+      // TODO: (HIGH PRIORITY) Prefer server-provided `task_types` in project
+      // configuration. Currently we fall back to deriving the list from the
+      // loaded baseline features when the server hasn't provided types.
+      // This is a temporary compatibility measure and must be replaced with
+      // explicit transfer of `task_types` from the backend.
+      if (this._availableTaskTypesCache && Array.isArray(this._availableTaskTypesCache)) return this._availableTaskTypesCache;
+      // Derive from baseline features if cache is null/empty
+      const baseline = this.baselineFeatures || [];
+      const types = new Set();
+      baseline.forEach(f => {
+        const t = f.type || f.workItemType || f.work_item_type || null;
+        if (t) types.add(String(t));
+      });
+      this._availableTaskTypesCache = Array.from(types).sort();
+      return this._availableTaskTypesCache;
+    } catch (e) {
+      this._availableTaskTypesCache = [];
+      return [];
+    }
+  }
   
   // ========== Autosave Helper ==========
   
@@ -309,7 +385,16 @@ class State {
     this.baselineProjects = result.baselineProjects;
     this.baselineTeams = result.baselineTeams;
     this.baselineFeatures = result.baselineFeatures;
-    
+    // Populate available task types by delegating to the getter so computation
+    // and caching are centralized. The getter prefers server-provided
+    // configuration when available and falls back to deriving from features.
+    // TODO: FIX THIS so task types are loaded from the server instead of this ugly hack.
+    try {
+      this._availableTaskTypesCache = this.availableTaskTypes || [];
+    } catch (e) {
+      this._availableTaskTypesCache = [];
+    }
+
     // Update FeatureService with new childrenByEpic if it exists
     if (this._featureService) {
       this._featureService.setChildrenByEpic(this.childrenByEpic);

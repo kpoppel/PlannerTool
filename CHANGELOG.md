@@ -19,6 +19,12 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Changed
 ### Fixed
+- Admin interface cost config was never loaded, just used defaults.
+
+### TODO:
+4. When the tool opens apply sensible filters: disable unplanned counting, select all task types.
+5. Put a notification box above all the tables telling the user what they are looking at: Parent (Epics) data, children data, counting planned/unplanned.
+
 
 ## [v2.0.8] - 2026-03-19
 
