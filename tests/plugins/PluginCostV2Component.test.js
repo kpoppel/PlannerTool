@@ -211,7 +211,7 @@ describe('PluginCostV2Component', () => {
       el.setAttribute('visible', '');
       await el.updateComplete;
       
-      el.close();
+      el._closeClicked();
       await el.updateComplete;
       
       expect(el.hasAttribute('visible')).to.be.false;

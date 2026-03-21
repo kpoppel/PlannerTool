@@ -50,6 +50,7 @@ export class PluginCostV2Component extends LitElement {
     this.error = null;
     this.expandedProjects = new Set();
     this.expandedTasks = new Set();
+    this.expandedTeams = new Set();
     this.projectViewSelection = {}; // per-project: 'teams' | 'features'
     
     // Default date range: current year
@@ -126,6 +127,11 @@ export class PluginCostV2Component extends LitElement {
       display: flex;
       gap: 4px;
       margin-left: auto;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
     }
 
     .view-toggle button {
@@ -240,9 +246,6 @@ export class PluginCostV2Component extends LitElement {
       background: #f5f5f5;
       font-weight: 600;
       color: #333;
-      position: sticky;
-      top: 0;
-      z-index: 1;
     }
 
     td {
@@ -397,13 +400,46 @@ export class PluginCostV2Component extends LitElement {
       /* Icon sizing for type icons used in lists/tables */
       .type-icon { display: inline-flex; align-items: center; vertical-align: middle; }
       .type-icon svg { width: 16px; height: 16px; display: block; }
+      /* Team Members summary grid for consistent alignment */
+      .team-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+      .team-name {
+        min-width: 260px;
+        flex: 1 1 auto;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .team-metrics {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        color: #333;
+        font-size: 13px;
+        flex: 0 0 auto;
+      }
+      .team-metric {
+        min-width: 120px;
+        text-align: right;
+        color: #333;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
   `;
 
   open() {
     this.setAttribute('visible', '');
     this.loadData();
     // Ensure sidebar disabled state is applied when plugin UI opens
-    try { this._applySidebarDisabled(); } catch (e) {}
+    this._applySidebarDisabled();
   }
 
   // Apply the sidebar disabled configuration
@@ -497,18 +533,6 @@ export class PluginCostV2Component extends LitElement {
   _closeClicked() {
     const plugin = pluginManager.get('plugin-cost-v2');
     plugin.deactivate();
-  }
-
-  close() {
-    // Hide UI and cancel any pending reloads so we don't fetch while closed
-    this.removeAttribute('visible');
-    if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
-    // Clear any sidebar masks/disabled maps so the UI restores immediately
-    try { 
-      state.clearSidebarDisabledElements(); 
-      // restore expansion defaults when plugin closes
-      state.setExpansionState({ expandParentChild: false, expandRelations: false, expandTeamAllocated: false });
-    } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: {} }); } catch (err) {} }
   }
 
   async loadData() {
@@ -722,6 +746,15 @@ export class PluginCostV2Component extends LitElement {
     this.requestUpdate();
   }
 
+  toggleTeam(teamId) {
+    if (this.expandedTeams.has(teamId)) {
+      this.expandedTeams.delete(teamId);
+    } else {
+      this.expandedTeams.add(teamId);
+    }
+    this.requestUpdate();
+  }
+
   setProjectView(projectId, view) {
     // Toggle behaviour: if the requested view is already selected, unset it
     const current = this.projectViewSelection && this.projectViewSelection[projectId];
@@ -763,6 +796,7 @@ export class PluginCostV2Component extends LitElement {
           </button>
         </div>
 
+        ${this.activeView !== 'team-members' ? html`
         <div class="date-controls">
           <label for="start-date">From:</label>
           <input 
@@ -777,20 +811,52 @@ export class PluginCostV2Component extends LitElement {
             .value="${this.endDate}"
             @change="${(e) => { this.endDate = e.target.value; this.handleDateChange(); }}" />
         </div>
+        ` : ''}
 
-        <div class="view-toggle">
-          <button 
-            class="${this.viewMode === 'cost' ? 'active' : ''}"
-            @click="${() => this.handleViewModeChange('cost')}">
-            Cost
-          </button>
-          <button 
-            class="${this.viewMode === 'hours' ? 'active' : ''}"
-            @click="${() => this.handleViewModeChange('hours')}">
-            Hours
-          </button>
-        </div>
+        ${(() => {
+          // For Team view always show the global Cost/Hours toggle.
+          if (this.activeView === 'team') {
+            return html`
+              <div class="view-toggle">
+                <button 
+                  class="${this.viewMode === 'cost' ? 'active' : ''}"
+                  @click="${() => this.handleViewModeChange('cost')}">
+                  Cost
+                </button>
+                <button 
+                  class="${this.viewMode === 'hours' ? 'active' : ''}"
+                  @click="${() => this.handleViewModeChange('hours')}">
+                  Hours
+                </button>
+              </div>
+            `;
+          }
+          // For Project (Plan) view only show when at least one expanded project
+          // has a selected sub-view (teams or features) so the sub-tables are visible.
+          if (this.activeView === 'project') {
+            const expanded = Array.from(this.expandedProjects || []);
+            const show = expanded.some(pid => this.projectViewSelection && this.projectViewSelection[pid]);
+            if (show) {
+              return html`
+                <div class="view-toggle">
+                  <button 
+                    class="${this.viewMode === 'cost' ? 'active' : ''}"
+                    @click="${() => this.handleViewModeChange('cost')}">
+                    Cost
+                  </button>
+                  <button 
+                    class="${this.viewMode === 'hours' ? 'active' : ''}"
+                    @click="${() => this.handleViewModeChange('hours')}">
+                    Hours
+                  </button>
+                </div>
+              `;
+            }
+          }
+          return '';
+        })()}
 
+        <div class="toolbar-spacer"></div>
         <button class="close-btn" @click="${() => this._closeClicked()}">Close</button>
       </div>
     `;

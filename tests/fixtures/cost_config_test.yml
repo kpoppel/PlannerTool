@@ -1,0 +1,16 @@
+cost:
+  internal_cost:
+    default_hourly_rate: 50
+  external_cost:
+    default_hourly_rate: 120
+    external:
+      "Ext Contractor": 150
+  working_hours:
+    siteA:
+      internal: 160
+      external: 20
+    siteB:
+      internal: 150
+      external: 10
+
+database: {}

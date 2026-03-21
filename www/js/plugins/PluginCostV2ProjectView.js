@@ -381,12 +381,12 @@ function renderProjectSummaryTable(component, projectData, teams, teamAllocation
           const cls = pairClass();
           return html`
             <tr class="group-row ${cls}">
-              <td class="metric">Hours</td>
+              <td class="metric">Sum External Hours</td>
               ${monthKeys.map(mKey => html`<td class="numeric">${formatValue(totals.external.hours.get(mKey)||0)}</td>`) }
               <td class="numeric sum-column">${formatValue(sum(totals.external.hours))}</td>
             </tr>
             <tr class="group-row ${cls}">
-              <td class="metric">Cost</td>
+              <td class="metric">Sum External Cost</td>
               ${monthKeys.map(mKey => html`<td class="numeric">${formatValue(totals.external.cost.get(mKey)||0)}</td>`) }
               <td class="numeric sum-column">${formatValue(sum(totals.external.cost))}</td>
             </tr>
@@ -413,12 +413,12 @@ function renderProjectSummaryTable(component, projectData, teams, teamAllocation
           const cls = pairClass();
           return html`
             <tr class="group-row ${cls}">
-              <td class="metric">Hours</td>
+              <td class="metric">Sum Internal Hours</td>
               ${monthKeys.map(mKey => html`<td class="numeric">${formatValue(totals.internal.hours.get(mKey)||0)}</td>`)}
               <td class="numeric sum-column">${formatValue(sum(totals.internal.hours))}</td>
             </tr>
             <tr class="group-row ${cls}">
-              <td class="metric">Cost</td>
+              <td class="metric">Sum Internal Cost</td>
               ${monthKeys.map(mKey => html`<td class="numeric">${formatValue(totals.internal.cost.get(mKey)||0)}</td>`)}
               <td class="numeric sum-column">${formatValue(sum(totals.internal.cost))}</td>
             </tr>
@@ -447,7 +447,7 @@ function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {
         </tr>
       </thead>
       <tbody>
-        ${teams.map(teamName => {
+          ${teams.map(teamName => {
           const teamData = teamAllocations.get(teamName);
           const dataMap = component.viewMode === 'cost' ? teamData.cost : teamData.hours;
 
@@ -469,6 +469,33 @@ function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {
             </tr>
           `;
         })}
+        ${(() => {
+          // Compute column sums (internal & external) per month and grand total
+          const intTotals = new Map();
+          const extTotals = new Map();
+          for (const mKey of monthKeys) { intTotals.set(mKey, 0); extTotals.set(mKey, 0); }
+          let grandTotal = 0;
+          for (const teamName of teams) {
+            const td = teamAllocations.get(teamName);
+            if (!td) continue;
+            const dm = component.viewMode === 'cost' ? td.cost : td.hours;
+            for (const mKey of monthKeys) {
+              const i = dm.internal.get(mKey) || 0;
+              const e = dm.external.get(mKey) || 0;
+              intTotals.set(mKey, intTotals.get(mKey) + i);
+              extTotals.set(mKey, extTotals.get(mKey) + e);
+            }
+            grandTotal += (component.viewMode === 'cost' ? td.totalCost : td.totalHours) || 0;
+          }
+
+          return html`
+            <tr class="totals-row">
+              <td class="metric">Sum</td>
+              ${monthKeys.map(mKey => html`<td class="numeric totals-row sum-column">${formatValue(intTotals.get(mKey)||0)}</td><td class="numeric totals-row sum-column">${formatValue(extTotals.get(mKey)||0)}</td>`)}
+              <td class="numeric totals-row sum-column"><strong>${formatValue(grandTotal)}</strong></td>
+            </tr>
+          `;
+        })()}
       </tbody>
     </table>
   `;

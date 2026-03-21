@@ -1,0 +1,54 @@
+{
+  "features": [
+    {
+      "id": 1,
+      "project": "project-1",
+      "title": "Single Team Full",
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "capacity": [
+        {"team": "team-alpha", "capacity": 100}
+      ]
+    },
+    {
+      "id": 2,
+      "project": "project-1",
+      "title": "Multi Team Split",
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "capacity": [
+        {"team": "team-alpha", "capacity": 60},
+        {"team": "team-beta", "capacity": 40}
+      ]
+    },
+    {
+      "id": 3,
+      "project": "project-2",
+      "title": "Parent",
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "capacity": [
+        {"team": "team-alpha", "capacity": 100}
+      ],
+      "relations": [{"type": "Parent", "id": 4}]
+    },
+    {
+      "id": 4,
+      "project": "project-2",
+      "title": "Child of 3",
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "capacity": [
+        {"team": "team-beta", "capacity": 100}
+      ]
+    },
+    {
+      "id": 5,
+      "project": "project-1",
+      "title": "Zero Capacity",
+      "start": "2026-03-01",
+      "end": "2026-03-31",
+      "capacity": []
+    }
+  ]
+}

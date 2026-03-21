@@ -22,20 +22,22 @@ export function renderTeamMembersView(component) {
       const internalRateTotal = totals.internal_hourly_rate_total || 0;
       const externalRateTotal = totals.external_hourly_rate_total || 0;
       const members = Array.isArray(team.members) ? team.members : [];
+      const teamKey = team.id || team.name || JSON.stringify(team);
+      const expanded = component.expandedTeams && component.expandedTeams.has(teamKey);
       return html`
         <div style="border:1px solid #e6e6e6; padding:10px; border-radius:6px; background:#fff">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px">
-            <div style="font-weight:600">${team.name || team.id}</div>
-            <div style="display:flex; gap:12px; font-size:13px; color:#333">
-              <div>Internal: ${internalCount} members</div>
-              <div>External: ${externalCount} members</div>
-              <div>Internal hours: ${internalHours}</div>
-              <div>External hours: ${externalHours}</div>
-              <div>Internal rate total: ${fmtCurrency(internalRateTotal)}</div>
-              <div>External rate total: ${fmtCurrency(externalRateTotal)}</div>
+          <div class="team-summary" @click="${() => component.toggleTeam(teamKey)}">
+            <div class="team-name">${expanded ? '▾ ' : '▸ '}${team.name || team.id}</div>
+            <div class="team-metrics">
+              <div class="team-metric">Int: ${internalCount}</div>
+              <div class="team-metric">Ext: ${externalCount}</div>
+              <div class="team-metric">Int hrs: ${internalHours}</div>
+              <div class="team-metric">Ext hrs: ${externalHours}</div>
+              <div class="team-metric">Int rate: ${fmtCurrency(internalRateTotal)}</div>
+              <div class="team-metric">Ext rate: ${fmtCurrency(externalRateTotal)}</div>
             </div>
           </div>
-          <div>
+          ${expanded ? html`<div>
             <table class="table" style="min-width:700px; margin-bottom:4px">
               <thead>
                 <tr>
@@ -86,7 +88,7 @@ export function renderTeamMembersView(component) {
                 })()}
               </tbody>
             </table>
-          </div>
+          </div>` : ''}
         </div>`;
     })}
   </div>`;

@@ -1,0 +1,14 @@
+- name: Alice
+  team_name: Alpha
+  site: siteA
+  external: false
+
+- name: "Ext Contractor"
+  team_name: Alpha
+  site: siteA
+  external: true
+
+- name: Charlie
+  team_name: Beta
+  site: siteB
+  external: false
