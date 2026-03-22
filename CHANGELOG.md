@@ -16,15 +16,20 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v2.1.0] - unreleased
 ### Added
 - PluginCostV2: Three-view cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
+  It upgrades the old plugin by having a simpler, less colorful interface, and supporting three views of cost data for plans, team and task level.
+  It also reacts to filter changes and selections which the old plugin did not so.
+- The sidebar allows others UI elements to disable and programmatically change filter settings. disabled elements are dimmed to hint the user on
+  still-active elements while keeping the setting of disabled elements visible.
 
-### Changed
+### Removed:
+- Thw new cost plugin does not have the ability to hint budget deviations in this release.
+- The Original Cost plugin is disabled as the server side calculation engine is no longer compatible.
+
 ### Fixed
 - Admin interface cost config was never loaded, just used defaults.
-
-### TODO:
-4. When the tool opens apply sensible filters: disable unplanned counting, select all task types.
-5. Put a notification box above all the tables telling the user what they are looking at: Parent (Epics) data, children data, counting planned/unplanned.
-
+- Feature card display for plan tasks was dependent of team selection. Now team selection is only a visual thing t o show allocation number on tasks.
+  Team selections matter when using the expand filter for team allocation.
+- Updated z-order of plugin and no tasks modal so fll screen plugins are not overlais by this modal.
 
 ## [v2.0.8] - 2026-03-19
 

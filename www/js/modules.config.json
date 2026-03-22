@@ -33,7 +33,7 @@
       "description": "Cost analysis plugin",
       "path": "../plugins/PluginCost.js",
       "export": "default",
-      "enabled": true,
+      "enabled": false,
       "activated": false,
       "exclusive": true,
       "fullscreen": true,

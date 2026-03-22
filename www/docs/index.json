@@ -16,7 +16,8 @@
   { "title": "Advanced Filtering (Examples)", "file": "advanced_filters.md", "tags": ["filters","advanced"] },
   { "title": "Tool - Export Timeline", "file": "plugin_export.md", "tags": ["export","share","tool"] },
   { "title": "Tool - History & Revisions", "file": "plugin_history.md", "tags": ["history","audit","tool"] },
-  { "title": "Tool - Cost Estimates & Teams", "file": "plugin_cost.md", "tags": ["cost","teams","tool"] },
+  { "title": "Tool - Cost Estimates & Teams", "file": "plugin_cost_v2.md", "tags": ["cost","teams","tool"] },
+  { "title": "Tool - Cost Estimates & Teams v1. (deprecated)", "file": "plugin_cost.md", "tags": ["cost","teams","tool"] },
   { "title": "Admin - Cache Invalidation", "file": "admin_cache_invalidation.md", "tags": ["admin","cache"] },
   { "title": "Admin - Adding Documentation", "file": "admin_contributing_documentation.md", "tags": ["admin","contributing"] }
 ]

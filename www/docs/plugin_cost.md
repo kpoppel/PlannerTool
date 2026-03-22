@@ -1,4 +1,4 @@
-# Cost Estimates & Teams
+# Cost Estimates & Teams (deprecated)
 
 PlannerTool provides cost estimation features and a teams summary API to help evaluate resource and external costs.
 
