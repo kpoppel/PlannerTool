@@ -30,6 +30,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Feature card display for plan tasks was dependent of team selection. Now team selection is only a visual thing t o show allocation number on tasks.
   Team selections matter when using the expand filter for team allocation.
 - Updated z-order of plugin and no tasks modal so fll screen plugins are not overlais by this modal.
+- The new cost plugin only loads data for what is selected, making it much faster.
+
+### To do:
+- Remove old server side api endpoints for cost plugin v1.
+- Rename cost plugin v2 when it finally takes over.
 
 ## [v2.0.8] - 2026-03-19
 
