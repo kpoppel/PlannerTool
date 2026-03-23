@@ -13,9 +13,9 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.1.0] - unreleased
+## [v2.1.0] - 2026-03-23
 ### Added
-- PluginCostV2: Three-view cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
+- PluginCostV2: New cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
   It upgrades the old plugin by having a simpler, less colorful interface, and supporting three views of cost data for plans, team and task level.
   It also reacts to filter changes and selections which the old plugin did not so.
 - The sidebar allows others UI elements to disable and programmatically change filter settings. disabled elements are dimmed to hint the user on
