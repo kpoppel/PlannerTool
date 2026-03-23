@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Optional, cast
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -163,114 +163,14 @@ def create_app(config: Config) -> FastAPI:
         from planner_lib.middleware import BrotliCompression
         app.add_middleware(BrotliCompression)
 
-    # Serve built assets from `dist/` when present (production), otherwise
-    # fall back to the development `www/` tree. Built `index.html` will
-    # reference hashed assets under /static/ so we mount appropriately.
-    from pathlib import Path
-    dist_index = Path('dist/index.html')
-    if dist_index.exists():
-        @app.get('/', response_class=HTMLResponse)
-        async def root():
-            html = dist_index.read_text(encoding='utf-8')
-            # If manifest resolver available, rewrite known asset paths to
-            # their hashed equivalents so the browser loads correct files.
-            resolver = getattr(app.state, 'resolve_asset_url', None)
-            if resolver:
-                # Replace common app entry points and assets. Keep this list
-                # minimal and explicit to avoid accidental rewrites.
-                    # Resolve common app assets. For timeline-line.svg prefer
-                    # keeping the `/static/` path when the manifest doesn't map
-                    # the file (it's copied into `dist/` but not necessarily in
-                    # the manifest). This preserves the server's static mount.
-                    app_js = resolver('js/app.js')
-                    css_main = resolver('css/main.css')
-                    # Try resolving timeline under several logical keys
-                    tl_resolved = resolver('timeline-line.svg')
-                    if tl_resolved and isinstance(tl_resolved, str) and tl_resolved.startswith('/static/'):
-                        timeline_url = tl_resolved
-                    else:
-                        # Fall back to the canonical static path which maps to dist/timeline-line.svg
-                        timeline_url = '/static/timeline-line.svg'
+    # Serve main SPA entry at root
+    @app.get("/", response_class=HTMLResponse)
+    async def root():
+        with open("www/index.html", "r", encoding="utf-8") as f:
+            return f.read()
 
-                    replacements = [
-                        ('js/app.js', app_js),
-                        ('css/main.css', css_main),
-                        ('/static/timeline-line.svg', timeline_url),
-                        ('timeline-line.svg', timeline_url),
-                    ]
-
-                    for orig, new in replacements:
-                        if not new or new == orig:
-                            continue
-                        html = html.replace(f'src="{orig}"', f'src="{new}"')
-                        html = html.replace(f'href="{orig}"', f'href="{new}"')
-            return html
-
-        # Serve built static files at /static
-        app.mount('/static', StaticFiles(directory='dist'), name='static')
-
-        # Keep legacy direct reference to the timeline image working by
-        # redirecting requests for `/timeline-line.svg` to the mounted
-        # `/static/` path where the file lives in production builds.
-        @app.get('/timeline-line.svg')
-        async def timeline_redirect():
-            return RedirectResponse(url='/static/timeline-line.svg')
-    else:
-        # Serve main SPA entry at root (dev)
-        @app.get('/', response_class=HTMLResponse)
-        async def root():
-            with open('www/index.html', 'r', encoding='utf-8') as f:
-                return f.read()
-
-        # Serve static UI from www/ under /static (dev)
-        app.mount('/static', StaticFiles(directory='www'), name='static')
-
-    # If a Vite manifest exists, load it so the server can resolve logical
-    # module/source paths to the actual hashed asset filenames produced by
-    # the build. Expose via `app.state.asset_manifest` and a helper
-    # `app.state.resolve_asset_url(logical_path)`.
-    try:
-        import json
-        # Support manifest placed at dist/manifest.json (common) or
-        # dist/.vite/manifest.json (some build setups).
-        manifest_path = Path('dist/manifest.json')
-        if not manifest_path.exists():
-            alt = Path('dist/.vite/manifest.json')
-            if alt.exists():
-                manifest_path = alt
-
-        if manifest_path.exists():
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-                app.state.asset_manifest = manifest
-
-                def resolve_asset_url(logical: str) -> str:
-                    # Try direct lookup
-                    if logical in manifest:
-                        return '/static/' + manifest[logical]['file']
-                    key = logical.lstrip('./')
-                    if key in manifest:
-                        return '/static/' + manifest[key]['file']
-
-                    # Try matching against src or keys by suffix
-                    for k, v in manifest.items():
-                        src = v.get('src') or ''
-                        if src == logical or src.endswith('/' + key) or k.endswith('/' + key) or k == key:
-                            return '/static/' + v.get('file')
-
-                    # Fallback to returning the logical path unchanged
-                    return logical
-
-                app.state.resolve_asset_url = resolve_asset_url
-            except Exception:
-                app.state.asset_manifest = None
-                app.state.resolve_asset_url = lambda s: s
-        else:
-            app.state.asset_manifest = None
-            app.state.resolve_asset_url = lambda s: s
-    except Exception:
-        app.state.asset_manifest = None
-        app.state.resolve_asset_url = lambda s: s
+    # Serve static UI from www/ under /static
+    app.mount("/static", StaticFiles(directory="www"), name="static")
 
     # Exception handlers
     @app.exception_handler(HTTPException)

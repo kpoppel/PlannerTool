@@ -20,6 +20,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   It also reacts to filter changes and selections which the old plugin did not so.
 - The sidebar allows others UI elements to disable and programmatically change filter settings. disabled elements are dimmed to hint the user on
   still-active elements while keeping the setting of disabled elements visible.
+- Vite bundling, building dist/ static files. App will bust the browser cache when new files are added or existing changed.
+  This should ensure the users don't have to manually clear the browser cache any longer.
 
 ### Removed:
 - Thw new cost plugin does not have the ability to hint budget deviations in this release.

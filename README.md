@@ -46,7 +46,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-#3 Install npm
+## Install npm
 curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -57,9 +57,23 @@ npm -v
 ## To build the www/js/lit bundle if needed.
 npm install
 npm run build:vendor
-
-uvicorn planner:make_app --factory
 ```
+
+### Development (unbundled)
+```bash
+uvicorn planner:make_app --factory --reload --port 8001 2>&1 |tee logfile.log
+```
+
+### Production (bundled)
+```bash
+# Build first
+npm run build
+
+# Run production server
+uvicorn planner:make_dist_app --factory --port 8000 --reload 2>&1 |tee logfile.log
+```
+Leave out --port and --reload and the tee to logfile if you don't need this.
+
 
 If this works, proceed to setting up the tool to automatically update and start.  This step uses `scripts/systemd_runner.sh` and `scripts/plannertool.service`. Ensure the shell script is `chmod +x`
 
