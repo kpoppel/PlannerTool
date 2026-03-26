@@ -4,7 +4,7 @@ Thank you for your interest in contributing to this project! To ensure a high-qu
 
 ## Getting Started
 - **Read `LICENSE`** to understand licensing terms.
-- **Read `PROJECT_CONTEXT.md` and `ARCHITECTURE.md`** to understand the project’s goals, structure, and design principles.
+- **Read `docs/README.PROJECT_CONTEXT.md` and `docs/ARCHITECTURE.md`** to understand the project’s goals, structure, and design principles.
 - **Fork the repository** and create a feature branch for your changes.
 - **Follow the installation guide from `README.md`** and set up your environment.
 
@@ -13,12 +13,14 @@ Thank you for your interest in contributing to this project! To ensure a high-qu
   - Follow PEP8 style guidelines.
   - Use OOP and modular design; keep functions and classes focused and reusable.
   - Place new modules in the appropriate directory (e.g., `planner_lib/<module>`).
+  - Document data schemes and APIs
 - **JavaScript/HTML/CSS:**
   - Use clear, modular code and separate UI logic from API interaction.
   - Prefer ES6+ syntax and Lit components for advanced UI features.
+  - Do not rely on an external CSS style file except for common color variables.
 - **Documentation:**
   - Update or add docstrings and comments for all public classes, functions, and modules.
-  - Keep documentation (`ARCHITECTURE.md`, `PRODUCT.md`) up to date with major changes.
+  - Keep documentation (`docs/ARCHITECTURE.md`, `docs/PRODUCT.md`) up to date with major changes.
 
 ## Testing
 Generally aim for leaving at least 80% unit test coverage. Help improve coverage.

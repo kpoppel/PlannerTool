@@ -1,6 +1,83 @@
+# Proxmox/Virtualised Linux Deployment
+
+On your favorite virtualiser or bare metal machine, install ltest Debian 13.x as the base.
+
+If you want to run using LXC on Proxmox, install Proxmox 9.x . Debian 13 is not supported on Proxmox 8.x.
+Use a Debian 13 base template. Setup the LXC, give it reasonable settings (2 CPU, 512 MB RAM, 8 GB disk, Static or DHCP IP)
+
+Login and update the container `apt update; apt upgrade; apt install nginx git python3-venv`. If you intend to use docker, add
+`docker.io docker-compose`
+
+Add a non-root user to run the service `adduser planner`. Set a password, then `su planner` and go to the user home directory.
+
+Since you are reading this you have probably followed the README.md instructions for getting started already. If not, do these steps.
+
+# Single-Instance Docker Deployment
+
+This application can be deployed in multiple ways:
+- As a service running on a port, like port 8000
+- Using nginx as proxy and using systemd to start the service
+- As a docker container with or without a proxy.
+
+## Running as a service without proxy
+
+The application can be run from the command line directly
+
+`uvicorn planner:make_app --port 8000 --factory --reload 2>&1 |tee logfile.log`
+
+If you want to run the Vite build version:
+```
+npm run build
+uvicorn planner:make_dist_app --port 8000 --factory --reload 2>&1 |tee logfile.log
+```
+
+## Running as a service with nginx proxy
+
+Add the file `nano /etc/nginx/sites-enabled/plannertool`
+```
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Remove the symlink for default site `unlink /etc/nginx/sites-enabled/default` and relad nginx `systemctl reload nginx`.
+
+Proceed to set up the tool to automatically update and start.  This step uses `scripts/systemd_runner.sh` and `scripts/plannertool.service`. Ensure the shell script is `chmod +x`
+
+As root copy the `plannertool.service` to `/etc/systemd/system/`. Then reload and start it:
+```
+systemctl daemon-reload
+systemctl enable plannertool
+systemctl start plannertool
+```
+
+To update, run `systemctl restart plannertool` as root.
+
+## Running as a service in docker
+
+First build he containerr and tag it with the version in `VERSION`:
+
+```
+docker build -f docker/Dockerfile -t plannertool:latest -t plannertool:v2.1.0 .`
+docker image prune
+```
+
+Next run the container with the volumes mounted:
+
+`docker run -d -p 8000 -v /app/data:/app/data -v <path-to-people-database>/database.yaml:/app/data/config/database.yaml --name plannertool plannertool`
+
+Point the proxy to the container port if applying a proxy.
+
 # Multi-Instance Docker Deployment
 
-This application can be deployed using Docker Compose to host multiple isolated instances on the same server, all routed through a single Caddy reverse proxy.
+This application can also be deployed using Docker Compose to host multiple isolated instances on the same server, all routed through a single Caddy reverse proxy.
 
 ## Requirements
 - Docker
