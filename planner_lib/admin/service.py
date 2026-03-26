@@ -150,7 +150,6 @@ class AdminService:
         """Synchronize user and admin accounts with full data."""
         current_users = set(self._account_storage.list_keys('accounts') or [])
         current_admins = set(self._account_storage.list_keys('accounts_admin') or [])
-        
         incoming_users = set(users.keys())
         incoming_admins = set(admins.keys())
 
