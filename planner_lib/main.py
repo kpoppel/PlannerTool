@@ -143,8 +143,8 @@ def create_app(config: Config) -> FastAPI:
         project_service=project_service,
         account_manager=account_manager,
         azure_client=azure_client,
-        views_storage=storage_pickle,
-        scenarios_storage=storage_pickle,
+        views_storage=storage_diskcache,
+        scenarios_storage=storage_diskcache,
     )
 
     # Create a minimal service container and register composed services.
