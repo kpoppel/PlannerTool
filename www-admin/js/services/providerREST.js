@@ -233,6 +233,33 @@ export class AdminProviderREST {
       return await res.json();
     }catch(err){ console.error('AdminProviderREST:reloadConfig', err); return { ok:false, error: String(err) }; }
   }
+
+  async getBackup() {
+    try {
+      const res = await this._fetch('/admin/v1/backup', { method: 'GET', credentials: 'same-origin' });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:getBackup', err);
+      return null;
+    }
+  }
+
+  async restoreBackup(payload) {
+    try {
+      const res = await this._fetch('/admin/v1/restore', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:restoreBackup', err);
+      return { ok: false, error: String(err) };
+    }
+  }
 }
 
 // Export a default instance for simple imports

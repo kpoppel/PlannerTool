@@ -99,6 +99,23 @@ export class AdminUtilities extends LitElement {
       animation: spin 0.6s linear infinite;
       margin-right: 6px;
     }
+
+    .backup-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+        padding: 16px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+    }
+
+    .backup-options label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+    }
     
     @keyframes spin {
       to { transform: rotate(360deg); }
@@ -111,10 +128,18 @@ export class AdminUtilities extends LitElement {
     cleanupLoading: { type: Boolean },
     invalidateStatus: { type: String },
     invalidateType: { type: String },
-    invalidateLoading: { type: Boolean }
-    , reloadStatus: { type: String }
-    , reloadType: { type: String }
-    , reloadLoading: { type: Boolean }
+    invalidateLoading: { type: Boolean },
+    reloadStatus: { type: String },
+    reloadType: { type: String },
+    reloadLoading: { type: Boolean },
+    backupStatus: { type: String },
+    backupType: { type: String },
+    backupLoading: { type: Boolean },
+    restoreStatus: { type: String },
+    restoreType: { type: String },
+    restoreLoading: { type: Boolean },
+    restoreOptions: { state: true },
+    restoreData: { state: true }
   };
 
   constructor() {
@@ -128,6 +153,19 @@ export class AdminUtilities extends LitElement {
     this.reloadStatus = '';
     this.reloadType = '';
     this.reloadLoading = false;
+    this.backupStatus = '';
+    this.backupType = '';
+    this.backupLoading = false;
+    this.restoreStatus = '';
+    this.restoreType = '';
+    this.restoreLoading = false;
+    this.restoreOptions = {
+        config: true,
+        users: true,
+        views: true,
+        scenarios: true
+      };
+    this.restoreData = null;
   }
 
   async handleReloadConfig() {
@@ -204,9 +242,157 @@ export class AdminUtilities extends LitElement {
     }
   }
 
+  async handleBackup() {
+    this.backupLoading = true;
+    this.backupStatus = 'Backing up...';
+    this.backupType = 'info';
+
+    try {
+      const backupData = await adminProvider.getBackup();
+      if (backupData) {
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `planner-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.backupStatus = 'Backup successful!';
+        this.backupType = 'success';
+      } else {
+        this.backupStatus = 'Backup failed. See console for details.';
+        this.backupType = 'error';
+      }
+    } catch (e) {
+      this.backupStatus = `Error: ${e.message}`;
+      this.backupType = 'error';
+    } finally {
+      this.backupLoading = false;
+    }
+  }
+
+  handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        this.restoreData = JSON.parse(event.target.result);
+        this.restoreStatus = 'File loaded. Ready to restore.';
+        this.restoreType = 'info';
+      } catch (err) {
+        this.restoreStatus = `Error parsing file: ${err.message}`;
+        this.restoreType = 'error';
+        this.restoreData = null;
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  handleToggleRestoreOption(key) {
+    this.restoreOptions = {
+        ...this.restoreOptions,
+        [key]: !this.restoreOptions[key]
+    };
+  }
+
+  async handleRestore() {
+    if (!this.restoreData) {
+      this.restoreStatus = 'No file loaded to restore.';
+      this.restoreType = 'error';
+      return;
+    }
+
+    if (!confirm('This will overwrite existing data. Are you sure you want to restore?')) return;
+    
+    this.restoreLoading = true;
+    this.restoreStatus = 'Restoring...';
+    this.restoreType = 'info';
+
+    const dataToRestore = {};
+    for (const key in this.restoreOptions) {
+        if (this.restoreOptions[key] && this.restoreData[key]) {
+            dataToRestore[key] = this.restoreData[key];
+        }
+    }
+
+    try {
+      const result = await adminProvider.restoreBackup(dataToRestore);
+      if (result.ok) {
+        this.restoreStatus = 'Restore successful!';
+        this.restoreType = 'success';
+      } else {
+        this.restoreStatus = `Restore failed: ${result.error || 'Unknown error'}`;
+        this.restoreType = 'error';
+      }
+    } catch (e) {
+      this.restoreStatus = `Error: ${e.message}`;
+      this.restoreType = 'error';
+    } finally {
+      this.restoreLoading = false;
+    }
+  }
+
+  renderBackupAndRestore() {
+    const restoreCategories = this.restoreData ? Object.keys(this.restoreData) : [];
+
+    return html`
+      <div class="panel">
+        <h3>Backup & Restore</h3>
+        <p>
+          Backup or restore the complete system configuration, including users, views, and scenarios.
+          Cached data is not included in the backup.
+        </p>
+        <div class="actions">
+          <button @click=${this.handleBackup} ?disabled=${this.backupLoading} class="primary">
+            ${this.backupLoading ? html`<span class="spinner"></span>` : ''}
+            Backup All
+          </button>
+        </div>
+        ${this.backupStatus ? html`<div class="status ${this.backupType}">${this.backupStatus}</div>` : ''}
+
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+
+        <h4>Restore from File</h4>
+        <div class="actions">
+          <input type="file" @change=${this.handleFileSelect} accept=".json">
+        </div>
+        
+        ${this.restoreData ? html`
+            <div class="backup-options">
+                <p>Select data to restore:</p>
+                ${restoreCategories.map(key => html`
+                    <label>
+                        <input
+                            type="checkbox"
+                            .checked=${this.restoreOptions[key] !== false}
+                            @change=${() => this.handleToggleRestoreOption(key)}
+                        >
+                        ${key.charAt(0).toUpperCase() + key.slice(1)}
+                    </label>
+                `)}
+            </div>
+            <div class="actions" style="margin-top: 16px;">
+                <button @click=${this.handleRestore} ?disabled=${this.restoreLoading} class="danger">
+                    ${this.restoreLoading ? html`<span class="spinner"></span>` : ''}
+                    Restore Selected
+                </button>
+            </div>
+        ` : ''}
+
+        ${this.restoreStatus ? html`<div class="status ${this.restoreType}" style="margin-top: 12px;">${this.restoreStatus}</div>` : ''}
+      </div>
+    `;
+  }
+
   render() {
     return html`
       <h2>Utilities</h2>
+
+      ${this.renderBackupAndRestore()}
 
       <div class="panel">
         <h3>Cache Cleanup</h3>

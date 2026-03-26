@@ -4,7 +4,7 @@ This mirrors the style of other services in `planner_lib/projects` and is
 constructed in `main.create_app` with explicit storage and service
 dependencies.
 """
-from typing import Any
+from typing import Any, Optional
 import logging
 
 from planner_lib.services.interfaces import StorageProtocol
@@ -28,6 +28,8 @@ class AdminService:
         project_service: Any,
         account_manager: Any,
         azure_client: Any,
+        views_storage: Optional[StorageProtocol] = None,
+        scenarios_storage: Optional[StorageProtocol] = None,
     ) -> None:
         self._account_storage = account_storage
         self._config_storage = config_storage
@@ -35,6 +37,9 @@ class AdminService:
         self._project_service = project_service
         self._account_manager = account_manager
         self._azure_client = azure_client
+        # Optional separate storages for views/scenarios (may use pickle serializer)
+        self._views_storage = views_storage
+        self._scenarios_storage = scenarios_storage
 
     def is_admin(self, email: str) -> bool:
         """Return True when `data/accounts_admin/<email>` exists."""
@@ -42,6 +47,129 @@ class AdminService:
             return bool(self._account_storage.exists('accounts_admin', email))
         except Exception:
             return False
+
+    def get_backup(self):
+        """Create a backup of all configuration and data."""
+        backup_data = {
+            "config": {},
+            "accounts": {},
+            "views": {},
+            "scenarios": {},
+        }
+
+        # Backup configuration files
+        config_keys = [
+            "projects", "teams", "people", "cost_config", 
+            "area_plan_map", "iterations", "server_config"
+        ]
+        for key in config_keys:
+            try:
+                backup_data["config"][key] = self._config_storage.load('config', key)
+            except KeyError:
+                backup_data["config"][key] = None
+
+        # Backup user accounts and admins
+        try:
+            users = {}
+            for user_key in self._account_storage.list_keys('accounts'):
+                users[user_key] = self._account_storage.load('accounts', user_key)
+
+            admins = {}
+            for admin_key in self._account_storage.list_keys('accounts_admin'):
+                admins[admin_key] = self._account_storage.load('accounts_admin', admin_key)
+
+            backup_data["accounts"] = {"users": users, "admins": admins}
+        except Exception as e:
+            logger.error(f"Failed to backup accounts: {e}")
+            backup_data["accounts"] = {"users": {}, "admins": {}}
+
+        # Backup views (use dedicated views storage when available)
+        try:
+            storage = self._views_storage or self._config_storage
+            view_keys = list(storage.list_keys('views') or [])
+            for key in view_keys:
+                try:
+                    backup_data["views"][key] = storage.load('views', key)
+                except Exception as e:
+                    logger.error("Failed to backup view %s: %s", key, e)
+        except Exception as e:
+            logger.error("Failed to list views for backup: %s", e)
+
+        # Backup scenarios (use dedicated scenarios storage when available)
+        try:
+            storage = self._scenarios_storage or self._config_storage
+            scenario_keys = list(storage.list_keys('scenarios') or [])
+            for key in scenario_keys:
+                try:
+                    backup_data["scenarios"][key] = storage.load('scenarios', key)
+                except Exception as e:
+                    logger.error("Failed to backup scenario %s: %s", key, e)
+        except Exception as e:
+            logger.error("Failed to list scenarios for backup: %s", e)
+            
+        return backup_data
+
+    def restore_backup(self, data, current_user_email=None):
+        """Restore data from a backup."""
+        if "config" in data:
+            for key, content in data["config"].items():
+                if content is not None:
+                    self._config_storage.save('config', key, content)
+
+        if "accounts" in data:
+            users = data["accounts"].get("users", {})
+            admins = data["accounts"].get("admins", {})
+            
+            # Prevent current admin from being removed
+            if current_user_email and current_user_email in self.get_all_admins() and current_user_email not in admins:
+                raise ValueError("Cannot remove the current admin account.")
+
+            # Restore users and admins
+            self.sync_accounts_full(users, admins)
+
+        if "views" in data:
+            storage = self._views_storage or self._config_storage
+            for key, content in data["views"].items():
+                storage.save('views', key, content)
+        
+        if "scenarios" in data:
+            storage = self._scenarios_storage or self._config_storage
+            for key, content in data["scenarios"].items():
+                storage.save('scenarios', key, content)
+
+        return {"ok": True, "message": "Restore completed successfully."}
+
+    def get_all_admins(self):
+        """Returns a list of all admin emails."""
+        try:
+            return list(self._account_storage.list_keys('accounts_admin'))
+        except Exception:
+            return []
+
+    def sync_accounts_full(self, users, admins):
+        """Synchronize user and admin accounts with full data."""
+        current_users = set(self._account_storage.list_keys('accounts') or [])
+        current_admins = set(self._account_storage.list_keys('accounts_admin') or [])
+        
+        incoming_users = set(users.keys())
+        incoming_admins = set(admins.keys())
+
+        # Add/update users
+        for user_key, user_data in users.items():
+            self._account_storage.save('accounts', user_key, user_data)
+
+        # Remove users
+        for user_key in current_users - incoming_users:
+            self._account_storage.delete('accounts', user_key)
+
+        # Add/update admins
+        for admin_key, admin_data in admins.items():
+            self._account_storage.save('accounts_admin', admin_key, admin_data)
+        
+        # Remove admins
+        for admin_key in current_admins - incoming_admins:
+            self._account_storage.delete('accounts_admin', admin_key)
+
 
     def reload_config(self, request=None) -> dict:
         """Reload configuration artifacts touched by the admin UI.

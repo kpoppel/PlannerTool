@@ -1401,6 +1401,41 @@ async def admin_get_schema(request: Request, config_type: str):
     return schema
 
 
+
+@router.get('/admin/v1/backup')
+@require_admin_session
+async def admin_get_backup(request: Request):
+    """Return a backup of all configuration and data."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        backup_data = admin_svc.get_backup()
+        return JSONResponse(content=backup_data)
+    except Exception as e:
+        logger.exception('Failed to create backup: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post('/admin/v1/restore')
+@require_admin_session
+async def admin_restore_backup(request: Request):
+    """Restore data from a backup."""
+    try:
+        payload = await request.json()
+        admin_svc = resolve_service(request, 'admin_service')
+        
+        # Get current user's email to prevent self-removal
+        sid = _get_session_id_or_raise(request)
+        session_mgr = resolve_service(request, 'session_manager')
+        current_user_email = session_mgr.get_val(sid, 'email')
+
+        result = admin_svc.restore_backup(payload, current_user_email)
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception('Failed to restore backup: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get('/admin/v1/cost')
 @require_admin_session
 async def admin_get_cost(request: Request):
@@ -1761,60 +1796,9 @@ async def admin_save_users(request: Request):
             if current_email in current_users and current_email not in incoming_users:
                 raise HTTPException(status_code=400, detail={'error': 'forbidden', 'message': 'Cannot remove current admin user account'})
 
-        # --- Users: add missing, remove extra ---
-        to_add_users = incoming_users - current_users
-        to_remove_users = current_users - incoming_users
 
-        for u in to_add_users:
-            # Try to preserve any existing user data if a non-accounts backend
-            # contained data under another namespace; otherwise create minimal.
-            try:
-                storage.save('accounts', u, {'email': u})
-                logger.info('Created user account %s', u)
-            except Exception:
-                logger.exception('Failed to create user account %s', u)
-
-        for u in to_remove_users:
-            try:
-                storage.delete('accounts', u)
-                logger.info('Deleted user account %s', u)
-            except KeyError:
-                # already gone
-                pass
-            except Exception:
-                logger.exception('Failed to delete user account %s', u)
-
-        # --- Admins: add missing (copy from accounts if present), remove extra ---
-        to_add_admins = incoming_admins - current_admins
-        to_remove_admins = current_admins - incoming_admins
-
-        for a in to_add_admins:
-            try:
-                # prefer to copy existing user payload to admin namespace
-                try:
-                    payload_obj = storage.load('accounts', a)
-                except KeyError:
-                    payload_obj = {'email': a}
-                storage.save('accounts_admin', a, payload_obj)
-                logger.info('Added admin account %s', a)
-            except Exception:
-                logger.exception('Failed to add admin account %s', a)
-
-        for a in to_remove_admins:
-            try:
-                storage.delete('accounts_admin', a)
-                logger.info('Removed admin account %s', a)
-            except KeyError:
-                pass
-            except Exception:
-                logger.exception('Failed to remove admin account %s', a)
-
-        # If a user was removed, also remove admin marker if present
-        for u in to_remove_users:
-            try:
-                storage.delete('accounts_admin', u)
-            except Exception:
-                pass
+        # Restore users and admins
+        admin_svc.sync_accounts_full(users, admins)
 
         return {'ok': True}
     except HTTPException:
