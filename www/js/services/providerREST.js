@@ -85,6 +85,9 @@ export class ProviderREST {
 
     // Centralized fetch wrapper that detects session expiry (401 + invalid_session) and network errors
     async _fetch(url, opts, _retryCount = 0) {
+        if (url.startsWith('/')) {
+            url = (window.APP_BASE_URL || '') + url;
+        }
         try{
             opts = opts || {};
             opts.headers = opts.headers || {};

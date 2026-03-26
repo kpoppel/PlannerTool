@@ -214,7 +214,7 @@ export class ProviderMock {
         // The built site serves files from the `www/` folder at the web root.
         // `www/docs/cost.json` is therefore available at `/js/docs/cost.json`
         // for client code loaded from `www/js/...` paths.
-        const resp = await fetch('/static/docs/cost.json', { cache: 'no-cache' });
+        const resp = await fetch((window.APP_BASE_URL || '') + '/static/docs/cost.json', { cache: 'no-cache' });
         if(!resp.ok) throw new Error(`HTTP ${resp.state}`);
         const data = await resp.json();
         return data;

@@ -112,7 +112,7 @@ export default defineConfig({
 		plugins: [
 			resolveWwwJsPlugin(resolve(__dirname)),
 			// Copy timeline image and the docs directory into dist for production
-			copySelectedAssetsPlugin(['/timeline-line.svg', 'docs'])
+			copySelectedAssetsPlugin(['/timeline-line.svg', 'docs', '/js', '/css'])
 		],
 	// Disable the default publicDir copy (we'll copy only selected files)
 	publicDir: false,
@@ -120,7 +120,7 @@ export default defineConfig({
 	// server can perform cache-busting by resolving logical asset names to
 	// their hashed outputs. Use `/static/` as the base so built assets can
 	// be served from the existing `/static/` path.
-	base: '/static/',
+	base: './',
 	build: {
 		manifest: true,
 		// Write build output to top-level `dist` directory (absolute path)

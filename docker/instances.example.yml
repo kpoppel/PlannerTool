@@ -1,0 +1,18 @@
+instances:
+  # Default: uses a Docker named volume (data-alpha) and the latest build version
+  - name: alpha
+  
+  # Explicitly use a local bind mount
+  - name: beta
+    volume_type: bind
+    volume_source: ./data/beta
+    
+  # Explicitly use a custom Docker named volume and deploy a specific version
+  - name: esw
+    image: plannertool:v2.0.0
+    volume_type: volume
+    volume_source: custom-esw-data
+    
+  # Example with an external people database mapped into the container
+  - name: gamma
+    external_database: /opt/shared/company-people-db.yaml

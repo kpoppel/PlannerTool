@@ -13,6 +13,22 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v2.2.0] - unreleased
+### Added
+- Docker compose setup with caddy to serve multiple instances on the same machine on port 80
+  The Dockerised version will use the vite build system
+- On first start, the application will redirect to the admin interface for first account creation
+### Changed
+- Project service will return {} if no projects are defined - as is the case on a fresh install.
+- Application will use window.APP_BASE_URL to determine its real path.
+### Fixed
+
+### To do:
+- Remove old server side api endpoints for cost plugin v1.
+- Rename cost plugin v2 when it finally takes over.
+- Pan markers are dependent of teams being selected.
+
+
 ## [v2.1.0] - 2026-03-23
 ### Added
 - PluginCostV2: New cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
@@ -33,10 +49,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Team selections matter when using the expand filter for team allocation.
 - Updated z-order of plugin and no tasks modal so fll screen plugins are not overlais by this modal.
 - The new cost plugin only loads data for what is selected, making it much faster.
-
-### To do:
-- Remove old server side api endpoints for cost plugin v1.
-- Rename cost plugin v2 when it finally takes over.
 
 ## [v2.0.8] - 2026-03-19
 

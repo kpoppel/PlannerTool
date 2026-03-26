@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Optional, cast
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -165,7 +165,9 @@ def create_app(config: Config) -> FastAPI:
 
     # Serve main SPA entry at root
     @app.get("/", response_class=HTMLResponse)
-    async def root():
+    async def root(request: Request):
+        if not request.url.path.endswith('/'):
+            return RedirectResponse(url=str(request.url.replace(path=request.url.path + '/')))
         with open("www/index.html", "r", encoding="utf-8") as f:
             return f.read()
 

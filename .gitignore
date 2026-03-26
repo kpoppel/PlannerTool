@@ -37,7 +37,9 @@ dist/
 Thumbs.db
 
 # Configutation files
+deployment/
 data*/
+instances.yml
 
 # Test output
 test-results/

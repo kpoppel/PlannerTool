@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 import mimetypes
 from planner_lib.middleware import require_admin_session
@@ -14,6 +14,70 @@ from planner_lib.util import slugify
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.get('/admin/v1/setup-status')
+async def admin_setup_status(request: Request):
+    """Check if the admin system needs initial setup (no admins exist)."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._account_storage
+        try:
+            admins = list(storage.list_keys('accounts_admin'))
+        except Exception:
+            admins = []
+        response = JSONResponse({'needs_setup': len(admins) == 0})
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        return response
+    except Exception as e:
+        logger.exception('Failed to check setup status: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post('/admin/v1/setup')
+async def admin_setup(request: Request):
+    """Create the initial admin account if none exists."""
+    try:
+        payload = await request.json()
+        email = payload.get('email')
+        pat = payload.get('pat')
+        if not email or not pat:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Email and PAT are required'})
+            
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._account_storage
+        
+        try:
+            admins = list(storage.list_keys('accounts_admin'))
+        except Exception:
+            admins = []
+            
+        if len(admins) > 0:
+            raise HTTPException(status_code=403, detail={'error': 'already_setup', 'message': 'Admin accounts already exist'})
+            
+        # Create user account if it doesn't exist, or update if it does
+        try:
+            user_data = storage.load('accounts', email)
+            user_data['pat'] = pat
+        except KeyError:
+            user_data = {'email': email, 'pat': pat}
+        storage.save('accounts', email, user_data)
+            
+        # Elevate to admin account
+        storage.save('accounts_admin', email, user_data)
+        
+        # Automatically create session for the new admin using the injected session manager
+        session_mgr = resolve_service(request, 'session_manager')
+        sid = session_mgr.create(email, request=request)
+        # Also store the PAT in the new session
+        session_mgr.set_val(sid, 'pat', pat)
+        
+        response = JSONResponse({'ok': True, 'message': f'Admin account created for {email}'})
+        response.headers['x-set-session-id'] = sid
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to setup initial admin: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get('/admin/static/{path:path}')
 async def admin_static(request: Request, path: str):
@@ -55,67 +119,56 @@ async def api_admin_reload_config(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get('/admin/', response_class=HTMLResponse)
 @router.get('/admin', response_class=HTMLResponse)
 async def admin_root(request: Request):
     """Serve the admin UI entrypoint (placeholder) from `www-admin/index.html`."""
-    # Behavior:
-    # - If there is no session id provided, serve the admin index so the
-    #   frontend can bootstrap and create a session client-side.
-    # - If a session id is present and valid, only serve the index when the
-    #   session's account is an admin. Otherwise return 401 so the global
-    #   401 handler renders the access-denied page.
+    if not request.url.path.endswith('/'):
+        return RedirectResponse(url=str(request.url.replace(path=request.url.path + '/')))
+        
     base_path = Path('www-admin')
     index_path = base_path / 'index.html'
+    login_path = base_path / 'login.html'
+
+    def serve_file(target: Path, fallback: Path = None):
+        try:
+            with open(target, 'r', encoding='utf-8') as f:
+                return HTMLResponse(f.read())
+        except FileNotFoundError:
+            if fallback:
+                try:
+                    with open(fallback, 'r', encoding='utf-8') as f:
+                        return HTMLResponse(f.read())
+                except FileNotFoundError:
+                    pass
+            raise HTTPException(status_code=404, detail='Admin UI not found')
 
     # Resolve session id from headers/cookies without raising on missing
     sid = request.headers.get('X-Session-Id') or request.cookies.get(SESSION_COOKIE)
     if not sid:
-        # No session — serve the login page so the client can create a session
-        login_path = base_path / 'login.html'
-        try:
-            with open(login_path, 'r', encoding='utf-8') as f:
-                return HTMLResponse(f.read())
-        except FileNotFoundError:
-            # Fallback to index if login page missing
-            try:
-                with open(index_path, 'r', encoding='utf-8') as f:
-                    return HTMLResponse(f.read())
-            except FileNotFoundError:
-                raise HTTPException(status_code=404, detail='Admin UI not found')
+        # No session — serve the login page
+        return serve_file(login_path, fallback=index_path)
 
     # Session id present — validate existence and admin status
     try:
         session_mgr = resolve_service(request, 'session_manager')
         if not session_mgr.exists(sid):
-            # Treat invalid/expired session like missing session: allow bootstrap
-            try:
-                with open(index_path, 'r', encoding='utf-8') as f:
-                    return HTMLResponse(f.read())
-            except FileNotFoundError:
-                raise HTTPException(status_code=404, detail='Admin UI not found')
+            # Treat invalid/expired session like missing session: serve login page
+            return serve_file(login_path, fallback=index_path)
 
         # Session exists — check admin status via AdminService
-        try:
-            admin_svc = resolve_service(request, 'admin_service')
-            # attempt to fetch email from session manager
-            ctx = session_mgr.get(sid) or {}
-            email = ctx.get('email')
-            if email and admin_svc.is_admin(email):
-                try:
-                    with open(index_path, 'r', encoding='utf-8') as f:
-                        return HTMLResponse(f.read())
-                except FileNotFoundError:
-                    raise HTTPException(status_code=404, detail='Admin UI not found')
-            # Session present but not admin — return 401 so access_denied_response is used
-            raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
-        except HTTPException:
-            raise
-        except Exception:
-            # If admin service not available, fall back to denying access
-            raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
-    except Exception:
-        # On unexpected errors, propagate as 500
+        admin_svc = resolve_service(request, 'admin_service')
+        ctx = session_mgr.get(sid) or {}
+        email = ctx.get('email')
+        if email and admin_svc.is_admin(email):
+            return serve_file(index_path)
+            
+        # Session present but not admin — return 401
+        raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
+    except HTTPException:
         raise
+    except Exception:
+        raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
 
 
 @router.get('/admin/check')

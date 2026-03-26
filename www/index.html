@@ -1,12 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        // Dynamically compute base URL for API requests to support reverse proxy sub-paths
+        window.APP_BASE_URL = window.location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
+        
+        // Dynamically inject import map for native ES modules
+        const im = document.createElement('script');
+        im.type = 'importmap';
+        im.textContent = JSON.stringify({
+            imports: {
+                '/static/': window.APP_BASE_URL + '/static/',
+                '/admin/static/': window.APP_BASE_URL + '/admin/static/'
+            }
+        });
+        document.currentScript.after(im);
+    </script>
+    
+    <script>
+        // Check if initial setup is needed and redirect to admin UI
+        fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.needs_setup) {
+                    window.location.href = (window.APP_BASE_URL || '') + '/admin/';
+                }
+            }).catch(e => console.warn('Setup status check failed', e));
+    </script>
+
   <meta charset="UTF-8" />
   <title>AZ Planner</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <base href="/static/" />
+  <base href="./static/" />
   <link rel="stylesheet" href="css/main.css" />
-  <link rel="icon" href="/static/timeline-line.svg" type="image/svg+xml">
+  <link rel="icon" href="timeline-line.svg" type="image/svg+xml">
 </head>
 <body>
   <modal-spinner id="appSpinner"></modal-spinner>

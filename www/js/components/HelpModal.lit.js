@@ -57,7 +57,7 @@ export class HelpModal extends LitElement {
 
   async _loadIndex(){
     try{
-      const res = await fetch('/static/docs/index.json');
+      const res = await fetch((window.APP_BASE_URL || '') + '/static/docs/index.json');
       if(res.ok) this.index = await res.json();
       else {
         console.warn('[HelpModal] index.json fetch returned', res.status);
@@ -81,7 +81,7 @@ export class HelpModal extends LitElement {
     this.content = 'Loading...';
     this.requestUpdate();
     try{
-      const res = await fetch(`/static/docs/${doc.file}`);
+      const res = await fetch((window.APP_BASE_URL || '') + `/static/docs/${doc.file}`);
       if(res.ok) {
         const md = await res.text();
         this.content = this._renderMarkdown(md, doc.file);

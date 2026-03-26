@@ -7,7 +7,8 @@ To run in production:
     uvicorn planner:make_dist_app --factory --port 8001
 """
 from pathlib import Path
-from fastapi.responses import HTMLResponse
+from fastapi import Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from planner_lib.main import create_app, Config
@@ -26,7 +27,9 @@ def create_dist_app(config: Config):
     
     # Serve built index.html at root
     @app.get("/", response_class=HTMLResponse)
-    async def root():
+    async def root(request: Request):
+        if not request.url.path.endswith('/'):
+            return RedirectResponse(url=str(request.url.replace(path=request.url.path + '/')))
         dist_index = Path('dist/index.html')
         if not dist_index.exists():
             raise FileNotFoundError(

@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import argparse
+
+try:
+    import yaml
+except ImportError:
+    print("Error: The 'pyyaml' package is required.")
+    print("Please install it in your environment: pip install pyyaml")
+    sys.exit(1)
+
+def get_version():
+    try:
+        with open('VERSION', 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "latest"
+
+def generate_index_html(instances):
+    html = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head>",
+        "  <title>PlannerTool Instances</title>",
+        "  <style>",
+        "    body { font-family: system-ui, -apple-system, sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 2rem; display: flex; flex-direction: column; align-items: center; }",
+        "    h1 { color: #2c3e50; margin-bottom: 2rem; }",
+        "    ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 400px; }",
+        "    li { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: transform 0.2s, box-shadow 0.2s; }",
+        "    li:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }",
+        "    a { display: block; padding: 1rem 1.5rem; text-decoration: none; color: #3498db; font-weight: bold; font-size: 1.2rem; text-align: center; border-radius: 8px; }",
+        "    a:hover { background-color: #f8fbfe; color: #2980b9; }",
+        "  </style>",
+        "</head>",
+        "<body>",
+        "<h1>Available PlannerTool Instances</h1>",
+        "<ul>"
+    ]
+    for inst in instances:
+        name = inst['name']
+        html.append(f'  <li><a href="/{name}/">{name}</a></li>')
+    html.extend(["</ul>", "</body>", "</html>"])
+    return "\n".join(html)
+
+def generate_caddyfile(instances):
+    lines = [":80 {"]
+    for inst in instances:
+        name = inst['name']
+        lines.extend([
+            f"    redir /{name} /{name}/",
+            f"    redir /{name}/admin /{name}/admin/",
+            f"    handle_path /{name}* {{",
+            f"        reverse_proxy planner-{name}:8000",
+            "    }"
+        ])
+    lines.extend([
+        "    handle / {",
+        "        root * /srv",
+        "        file_server",
+        "    }"
+    ])
+    lines.append("}")
+    return "\n".join(lines)
+
+def generate_docker_compose(instances, version):
+    compose = {
+        "services": {
+            "caddy": {
+                "image": "caddy:2-alpine",
+                "ports": ["80:80"],
+                "volumes": [
+                    "./Caddyfile:/etc/caddy/Caddyfile",
+                    "./index.html:/srv/index.html"
+                ],
+                "depends_on": [f"planner-{inst['name']}" for inst in instances]
+            }
+        },
+        "volumes": {}
+    }
+    
+    for inst in instances:
+        name = inst['name']
+        container_name = f"planner-{name}"
+        
+        vol_type = inst.get('volume_type', 'volume')
+        if vol_type == 'bind':
+            vol_source = inst.get('volume_source', f"./data/{name}")
+            # Ensure host directory exists to prevent Docker creating it as root.
+            # Resolve relative to 'deployment/' since docker-compose runs from there.
+            target_dir = os.path.join('deployment', vol_source) if not os.path.isabs(vol_source) else vol_source
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            vol_source = inst.get('volume_source', f"data-{name}")
+        
+        image = inst.get('image', f"plannertool:{version}")
+        
+        volumes = [f"{vol_source}:/app/data"]
+        if 'external_database' in inst:
+            volumes.append(f"{inst['external_database']}:/app/data/config/database.yaml:ro")
+        
+        compose["services"][container_name] = {
+            "image": image,
+            "environment": [
+                f"ROOT_PATH=/{name}"
+            ],
+            "volumes": volumes,
+            "restart": "unless-stopped"
+        }
+        
+        # Only add the build block for instances tracking the current version or latest
+        if image in ["plannertool:latest", f"plannertool:{version}"]:
+            compose["services"][container_name]["build"] = {
+                "context": "..",
+                "dockerfile": "docker/Dockerfile",
+                "tags": [
+                    "plannertool:latest",
+                    f"plannertool:{version}"
+                ]
+            }
+        
+        if vol_type == 'volume':
+            compose["volumes"][vol_source] = {}
+        
+    return compose
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate deployment files for PlannerTool instances and optionally start them.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        '--config',
+        default='instances.yml',
+        help="Path to the instances configuration file.\n(default: %(default)s)"
+    )
+    parser.add_argument(
+        '--start',
+        action='store_true',
+        help="Start the docker containers after generating the files."
+    )
+    
+    args = parser.parse_args()
+
+    instances_file = args.config
+    
+    if not os.path.exists(instances_file):
+        if instances_file == 'instances.yml': # Default file not found
+            print(f"Error: Default configuration file '{instances_file}' not found.")
+            print("Please create one (e.g., using instances.example.yml as a template) or specify the path using the --config <path> argument.")
+        else: # User-specified file not found
+            print(f"Error: Specified configuration file not found: {instances_file}")
+        sys.exit(1)
+    
+    version = get_version()
+    
+    with open(instances_file, 'r') as f:
+        config = yaml.safe_load(f) or {}
+            
+    instances = config.get('instances', [])
+    if not instances:
+        print(f"No instances found inside {instances_file}")
+        sys.exit(1)
+    
+    os.makedirs('deployment', exist_ok=True)
+    
+    with open('deployment/Caddyfile', 'w') as f:
+        f.write(generate_caddyfile(instances))
+        
+    with open('deployment/docker-compose.yml', 'w') as f:
+        yaml.dump(generate_docker_compose(instances, version), f, sort_keys=False)
+        
+    with open('deployment/index.html', 'w') as f:
+        f.write(generate_index_html(instances))
+        
+    print(f"Generated Caddyfile, docker-compose.yml, and index.html in the 'deployment/' directory for {len(instances)} instance(s).")
+
+    if args.start:
+        print("Deploying instances...")
+        try:
+            subprocess.run(["docker", "compose", "up", "-d", "--remove-orphans"], cwd="deployment", check=True)
+            print("\nDeployment successful!")
+
+            print("\nCleaning up dangling Docker images...")
+            # The -f flag forces the prune without a confirmation prompt
+            subprocess.run(["docker", "image", "prune", "-f"], check=True)
+            print("Cleanup complete.")
+        except subprocess.CalledProcessError as e:
+            print(f"\nDeployment failed with error code {e.returncode}")
+            sys.exit(e.returncode)
+    else:
+        print("\nConfiguration files generated. To start the stack, run the following command:")
+        print("  cd deployment && docker compose up -d")
+
+if __name__ == '__main__':
+    main()

@@ -38,6 +38,13 @@ class PeopleService(PeopleServiceProtocol):
     def _load_people(self) -> None:
         """Load people database from config and database_file."""
         try:
+            # Check if people config exists before trying to load it
+            if not self._storage.exists("config", "people"):
+                logger.warning("People configuration ('people.yml') not found. People-related features will be disabled.")
+                self._people_cache = []
+                self._config = {}
+                return
+
             # Load people configuration
             self._config = self._storage.load("config", "people") or {}
             
@@ -75,7 +82,7 @@ class PeopleService(PeopleServiceProtocol):
             logger.debug(f"Loaded {len(self._people_cache)} people entries")
             
         except Exception as e:
-            logger.error(f"Failed to load people database: {e}", exc_info=True)
+            logger.error(f"Failed to process people database: {e}", exc_info=True)
             self._people_cache = []
             self._config = {}
 
