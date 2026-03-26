@@ -313,10 +313,14 @@ export class AdminUtilities extends LitElement {
     this.restoreType = 'info';
 
     const dataToRestore = {};
+    // Map UI restore options to top-level keys in the backup file
+    const mapping = { config: 'config', users: 'accounts', views: 'views', scenarios: 'scenarios' };
     for (const key in this.restoreOptions) {
-        if (this.restoreOptions[key] && this.restoreData[key]) {
-            dataToRestore[key] = this.restoreData[key];
-        }
+      const srcKey = mapping[key];
+      if (!srcKey) continue;
+      if (this.restoreOptions[key] && this.restoreData[srcKey]) {
+        dataToRestore[srcKey] = this.restoreData[srcKey];
+      }
     }
 
     try {
