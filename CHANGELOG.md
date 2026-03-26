@@ -14,22 +14,27 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 ## [v2.2.0] - unreleased
+
+NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the picked files
+are gone and replaced by a SQlite database. Current pickled files cover task and history data
+from the plans as well as user accounts, scenarios and views for those users.
+These will be stored in the new SQLite data from the next major release.
+Migrating to v3.x involves updating to this release, making a backup, then upgrade to v3.x and
+restoring the backup.
+
 ### Added
+- Added backup/restore to the admin interface. This will dump a JSON file with all data.
+  Note account data is also stored in the file, so don't send it around as tokens are in there.
 - Docker compose setup with caddy to serve multiple instances on the same machine on port 80
   The Dockerised version will use the vite build system
 - On first start, the application will redirect to the admin interface for first account creation
+
 ### Changed
 - Project service will return {} if no projects are defined - as is the case on a fresh install.
 - Application will use window.APP_BASE_URL to determine its real path.
-### Fixed
-
-### To do:
-- Remove old server side api endpoints for cost plugin v1.
-- Rename cost plugin v2 when it finally takes over.
-- Pan markers are dependent of teams being selected.
-
 
 ## [v2.1.0] - 2026-03-23
+
 ### Added
 - PluginCostV2: New cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
   It upgrades the old plugin by having a simpler, less colorful interface, and supporting three views of cost data for plans, team and task level.
@@ -40,7 +45,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   This should ensure the users don't have to manually clear the browser cache any longer.
 
 ### Removed:
-- Thw new cost plugin does not have the ability to hint budget deviations in this release.
+- The new cost plugin does not have the ability to hint budget deviations in this release.
 - The Original Cost plugin is disabled as the server side calculation engine is no longer compatible.
 
 ### Fixed
