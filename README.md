@@ -62,6 +62,13 @@ Use the application by browsing to `http://localhost:8000`
 
 # Getting started - deployment
 
+**Tip:**
+- Shortcut setting up the first account:
+  ```
+  curl -i -X POST http://localhost:8001/admin/v1/setup -H "Content-Type: application/json" -d '{"email":"user@example.com","pat":"SOME_PAT"}'
+  ```
+
+
 Checkout the `docs/DEPLOYMENT.md` file.
 
 # First time use

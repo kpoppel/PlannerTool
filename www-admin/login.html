@@ -44,7 +44,7 @@
 
     <script>
       let isSetupMode = false;
-      
+
       // Check if setup is needed
       fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')
         .then(r => r.json())
@@ -66,12 +66,12 @@
         const pat = document.getElementById('pat').value;
         const errorEl = document.getElementById('error-message');
         const btn = document.getElementById('submit-btn');
-        
+
         errorEl.style.display = 'none';
         btn.disabled = true;
-        
+
         const endpoint = isSetupMode ? '/admin/v1/setup' : '/api/session';
-        
+
         const payload = { email: email };
         if (isSetupMode) {
           payload.pat = pat;
@@ -90,12 +90,25 @@
           return r.json();
         })
         .then(() => {
+          // Persist the entered email into localStorage so the admin
+          // frontend (which may auto-acquire a session) uses the same
+          // email when it initializes. This prevents a null/absent
+          // localStorage state from causing a mismatched session.
+          try {
+            const prefsRaw = localStorage.getItem('az_planner:user_prefs:v1');
+            const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
+            prefs['user.email'] = email;
+            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(prefs));
+          } catch (e) { /* ignore localStorage errors */ }
+
           // Redirect into the protected admin root on success
           window.location.href = (window.APP_BASE_URL || '') + '/admin/';
         })
         .catch(err => {
           errorEl.innerText = err.message;
           errorEl.style.display = 'block';
+        })
+        .finally(() => {
           btn.disabled = false;
         });
       });

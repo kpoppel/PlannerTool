@@ -15,8 +15,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 ## [v2.2.0] - unreleased
 
-NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the picked files
-are gone and replaced by a SQlite database. Current pickled files cover task and history data
+NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the pickled files
+are gone and replaced by a SQlite database. Current pickled files cover cached task and history data
 from the plans as well as user accounts, scenarios and views for those users.
 These will be stored in the new SQLite data from the next major release.
 Migrating to v3.x involves updating to this release, making a backup, then upgrade to v3.x and
@@ -26,12 +26,17 @@ restoring the backup.
 - Added backup/restore to the admin interface. This will dump a JSON file with all data.
   Note account data is also stored in the file, so don't send it around as tokens are in there.
 - Docker compose setup with caddy to serve multiple instances on the same machine on port 80
-  The Dockerised version will use the vite build system
+  The Dockerised version will use the vite build system to ensure cache busting
 - On first start, the application will redirect to the admin interface for first account creation
 
 ### Changed
 - Project service will return {} if no projects are defined - as is the case on a fresh install.
 - Application will use window.APP_BASE_URL to determine its real path.
+
+### Fixed
+- Login screen on first account setup would not redirect to admin interface
+- Login screen on first account setup would not authenticate because localstorage is used to store
+  current user email.
 
 ## [v2.1.0] - 2026-03-23
 

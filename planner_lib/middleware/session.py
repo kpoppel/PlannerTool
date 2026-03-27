@@ -119,6 +119,18 @@ class SessionManager:
                 return None
             return ctx.get(key)
 
+    def set_val(self, sid: str, key: str, value: Any) -> None:
+        """Set a single value in the session context if the session exists.
+
+        Silently no-ops when the session id is unknown to keep callers
+        resilient (matching get_val/get semantics used elsewhere).
+        """
+        with self._lock:
+            ctx = self._store.get(sid)
+            if not ctx:
+                return
+            ctx[key] = value
+
 
 def create_session(email: str, request: Request) -> str:
     """Create a session for `email` and return the session id.
