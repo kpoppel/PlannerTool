@@ -15,40 +15,39 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 ## [v3.0.0] - unreleased
 
+After installing this release, restore backups on a clean data directory.
+
 ### Added
-- **Memory cache layer** for Azure data with instant reads (<1ms latency)
-- **User-driven cache refresh** pattern (no background service, uses user PAT)
-- **Shared cache architecture** where one user's refresh benefits all users
-- **API endpoints** `/api/cache/load` and `/api/cache/refresh` for cache control
-- **Storage migration** from file-based pickle to diskcache for accounts, admin accounts, views, scenarios
-- **Migration script** `0015_migrate_pickle_to_diskcache.py` for automated data migration
-- **Migration script** `0016_add_memory_cache_config.py` to add memory_cache configuration to server_config.yml
-- **Cache warmup service** to load disk cache into memory on server boot
-- **Admin UI** support for memory cache configuration (enable_memory_cache flag, max_size_mb, staleness_seconds)
+- SQLite backend storage introduced.
+- Storage migration from file-based pickle to diskcache for accounts, admin accounts, views, scenarios
+  and all cached task data.
+- Memory cache layer for Azure data to provide faster data returns.
+  - The caching is shared among all users, so only the user triggering a read after cache timeout will
+    experience a small initial wait.
+- New API endpoints for cache control: `/api/cache/load` and `/api/cache/refresh`
+- Cache warmup service loads disk cache into memory on server boot
+- Admin UI support added for memory cache configuration (enable_memory_cache flag, max_size_mb, staleness_seconds)
 
 ### Changed
-- **All pickle storage** now uses diskcache backend for consistency and performance
-- **AzureCachingClient** now supports on-demand refresh using user PAT
-- **Cache freshness** tracked per-area with configurable staleness threshold
-- **Memory cache** automatically marks entries as stale after staleness_seconds threshold
-- **Memory cache** enforces size limits with LRU eviction when exceeding max_size_mb
-- **API response times** improved from 100-500ms to <50ms for cached data
-- **Memory cache initialization** now reads max_size_mb and staleness_seconds from server_config.yml
+- All pickle storage now uses diskcache backend
+- AzureCachingClient now supports on-demand refresh using user PAT
+- Cache freshness tracked per-area with configurable staleness threshold
+- Memory cache automatically marks entries as stale after staleness_seconds threshold
+- Memory cache enforces size limits with LRU eviction when exceeding max_size_mb
+- Performance: API response times improved from 100-500ms to <50ms for cached data
+- File-based pickle storage is replaced with diskcache
+- single_file_backend.py - unused storage backend removed
+- people_storage_backend - config variable - unused configuration removed
+- accessor.py - test-only navigation helpers removed (ValueNavigatingStorage, DictAccessor, ListAccessor, StorageProxy)
+- PickleSerializer - removed to be replaced by diskcache
+- pickle_serializer - config variable - no longer needed
+- Test files - testing accessor and pickle functionality removed
+- Removed featureflags no longer relevant
+- All admin interface API calls now go through providerREST so that sub-ptah handling is centralised
+- npm modules updated to newer versions which are not deprecated
 
-### Removed
-- **File-based pickle storage** replaced with diskcache
-- **Background sync service** not needed (user-driven refresh is simpler)
-- **single_file_backend.py** - unused storage backend removed
-- **people_storage_backend** config variable - unused configuration removed
-- **accessor.py** - test-only navigation helpers removed (ValueNavigatingStorage, DictAccessor, ListAccessor, StorageProxy)
-- **PickleSerializer** - removed for security reasons (arbitrary code execution vulnerability)
-- **pickle_serializer** config variable - no longer needed
-- **Test files** testing accessor and pickle functionality removed
-
-### Migration
-- Run `python scripts/migrate.py` to migrate existing pickle data to diskcache
-- Azure cache will be cleared and rebuilt on-demand
-- Original files backed up automatically
+### Fixed
+- enable_brotli_middleware feature flag was newer actually used due to wrong flag check.
 
 ## [v2.2.0] - 2026-03-27
 
