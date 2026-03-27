@@ -361,10 +361,10 @@ export class AdminPeople extends LitElement {
   async loadConfig() {
     this.loading = true;
     try {
-      // Load schema
-      const schemaRes = await fetch(`/admin/v1/schema/${this.configType}`);
-      if (schemaRes.ok) {
-        this.schema = await schemaRes.json();
+      // Load schema via centralized admin provider
+      const schema = await adminProvider.getSchema(this.configType);
+      if (schema) {
+        this.schema = schema;
       }
 
       // Load content

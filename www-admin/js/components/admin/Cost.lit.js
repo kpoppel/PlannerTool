@@ -400,15 +400,9 @@ export class AdminCost extends LitElement {
   async loadInspectData() {
     this.inspectLoading = true;
     try {
-      const response = await fetch('/admin/v1/cost/inspect', {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load inspection data: ${response.statusText}`);
-      }
-      
-      this.inspectData = await response.json();
+      const data = await adminProvider.getCostInspect();
+      if (!data) throw new Error('Failed to load inspection data');
+      this.inspectData = data;
       this.statusMsg = 'Inspection data loaded successfully';
       this.statusType = 'success';
     } catch (e) {

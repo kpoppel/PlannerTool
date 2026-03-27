@@ -6,7 +6,7 @@
 # so that application state survives container upgrades.
 
 ######### Builder: frontend #########
-FROM node:18-bullseye-slim AS nodebuilder
+FROM node:20-bullseye-slim AS nodebuilder
 WORKDIR /build
 
 # Copy package files and install node deps
@@ -71,6 +71,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source
 COPY ./*.py ./
+COPY VERSION ./
 COPY docs ./docs
 COPY planner_lib ./planner_lib
 COPY www-admin ./www-admin

@@ -1029,12 +1029,6 @@ async def admin_get_schema(request: Request, config_type: str):
                             'title': 'Enable Brotli Compression',
                             'description': 'Compress HTTP responses with Brotli',
                             'default': True
-                        },
-                        'enable_history_plugin': {
-                            'type': 'boolean',
-                            'title': 'Enable History Plugin',
-                            'description': 'Track work item history changes',
-                            'default': False
                         }
                     },
                     'additionalProperties': {

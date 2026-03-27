@@ -184,7 +184,7 @@ def create_app(config: Config) -> FastAPI:
     app.add_middleware(SessionMiddleware, session_manager=session_manager)
 
     # Add Brotli compression middleware if enabled via config or feature flag
-    enable_brotli = config.enable_brotli if config.enable_brotli is not None else has_feature_flag('planner_use_brotli')
+    enable_brotli = config.enable_brotli if config.enable_brotli is not None else has_feature_flag('enable_brotli_middleware')
     if enable_brotli:
         logger.info("Brotli compression middleware is enabled")
         from planner_lib.middleware import BrotliCompression

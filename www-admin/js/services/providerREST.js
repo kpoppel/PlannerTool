@@ -115,6 +115,14 @@ export class AdminProviderREST {
     }catch(err){ console.error('AdminProviderREST:getPeopleInspect', err); return null; }
   }
 
+  async getCostInspect(){
+    try{
+      const res = await this._fetch('/admin/v1/cost/inspect', { method: 'GET', credentials: 'same-origin' });
+      if(!res.ok) return null;
+      return await res.json();
+    }catch(err){ console.error('AdminProviderREST:getCostInspect', err); return null; }
+  }
+
   async getCost(){
     try{
       const res = await this._fetch('/admin/v1/cost', { method: 'GET', credentials: 'same-origin' });

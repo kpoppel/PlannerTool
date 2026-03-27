@@ -24,7 +24,11 @@ class BrotliCompression(BaseHTTPMiddleware):
         if response.headers.get('content-encoding'):
             return response
 
-        body = response.body or b''
+        # Safely access response body. Some response types (eg. StreamingResponse)
+        # don't expose a `.body` attribute and previously caused AttributeError
+        # which crashed the middleware. Use getattr to avoid the exception and
+        # skip compression for streaming responses.
+        body = getattr(response, 'body', b'') or b''
         if not body or len(body) < self.minimum_size:
             return response
 
