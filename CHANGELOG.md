@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v3.0.0] - unreleased
+## [v3.0.0] - 2026-03-27
 
 After installing this release, restore backups on a clean data directory.
 
@@ -59,7 +59,7 @@ These will be stored in the new SQLite data from the next major release.
 Migrating to v3.x involves updating to this release, making a backup, then upgrade to v3.x and
 restoring the backup.
 
-## [v2.2.0] - unreleased
+## [v2.2.0] - 2026-03-27
 ### Added
 - Added backup/restore to the admin interface. This will dump a JSON file with all data.
   Note account data is also stored in the file, so don't send it around as tokens are in there.
