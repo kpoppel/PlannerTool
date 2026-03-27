@@ -370,7 +370,14 @@ export class AdminPeople extends LitElement {
       // Load content
       const methodName = `get${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
       const content = await adminProvider[methodName]();
-      this.content = content || this.defaultContent;
+      // If server returned no content, use default from schema when available
+      if (content) {
+        this.content = content;
+      } else {
+        const schemaDefault = this.schema && this.schema.properties && this.schema.properties.database_file && this.schema.properties.database_file.default;
+        const dbFile = schemaDefault || this.defaultContent.database_file;
+        this.content = Object.assign({}, this.defaultContent, { database_file: dbFile });
+      }
     } catch (e) {
       this.statusMsg = `Error loading config: ${e.message}`;
       this.statusType = 'error';

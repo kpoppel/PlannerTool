@@ -45,6 +45,7 @@ After installing this release, restore backups on a clean data directory.
 - Removed featureflags no longer relevant
 - All admin interface API calls now go through providerREST so that sub-ptah handling is centralised
 - npm modules updated to newer versions which are not deprecated
+- Session logging drops an INFO when sessions are initiated to help with debugging
 
 ### Fixed
 - enable_brotli_middleware feature flag was newer actually used due to wrong flag check.

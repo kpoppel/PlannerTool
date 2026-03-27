@@ -70,7 +70,7 @@ class CacheWarmupService:
                     self._logger.debug(f"No keys found in namespace '{namespace}'")
                     continue
                 
-                self._logger.info(f"Loading {len(keys)} entries from namespace '{namespace}'")
+                self._logger.debug(f"Loading {len(keys)} entries from namespace '{namespace}'")
                 
                 for key in keys:
                     try:

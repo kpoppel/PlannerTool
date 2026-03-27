@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from contextlib import asynccontextmanager
 
 from planner_lib.logging_config import configure_logging
 from planner_lib.storage import create_storage, StorageBackend
@@ -173,7 +174,30 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("memory_cache", memory_cache)
 
     # Build FastAPI app and expose services on app.state for request-time access
-    app = FastAPI(title="AZ Planner Server")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Warm up memory cache on startup if enabled
+        if feature_flags.get('enable_memory_cache', False):
+            try:
+                from planner_lib.azure.warmup import CacheWarmupService
+                warmup_service = CacheWarmupService(memory_cache, storage_diskcache)
+                await warmup_service.warmup_async()
+            except Exception:
+                logger.exception('Failed to initialize cache warmup service')
+
+        try:
+            yield
+        finally:
+            # Cleanup memory cache on shutdown
+            if memory_cache is not None:
+                try:
+                    memory_cache.close()
+                    logger.info("Memory cache closed")
+                except Exception as e:
+                    logger.error(f"Error closing memory cache: {e}")
+
+    app = FastAPI(title="AZ Planner Server", lifespan=lifespan)
     # Expose only the explicit service container on app.state. All runtime
     # code should resolve services from this container instead of relying on
     # legacy `app.state.<name>` attributes.
@@ -252,10 +276,6 @@ def create_app(config: Config) -> FastAPI:
         async def warmup_cache():
             try:
                 stats = await warmup_service.warmup_async()
-                logger.info(
-                    f"Cache warmup complete: {stats.entries_loaded} entries, "
-                    f"{stats.bytes_loaded // 1024}KB, {stats.duration_seconds:.2f}s"
-                )
                 if stats.errors:
                     logger.warning(f"Cache warmup had {len(stats.errors)} errors")
             except Exception as e:

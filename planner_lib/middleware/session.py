@@ -71,6 +71,11 @@ class SessionManager:
                             }
 
                             self._store[sid] = ctx
+                            try:
+                                ip = request.client.host if request is not None and getattr(request, 'client', None) else None
+                            except Exception:
+                                ip = None
+                            logger.info('Session created (admin): %s by %s%s', sid, email, f" from {ip}" if ip else '')
                             return sid
                 except Exception:
                     logger.debug('Admin fallback lookup failed')
@@ -92,6 +97,11 @@ class SessionManager:
             }
 
             self._store[sid] = ctx
+            try:
+                ip = request.client.host if request is not None and getattr(request, 'client', None) else None
+            except Exception:
+                ip = None
+            logger.info('Session created: %s by %s%s', sid, email, f" from {ip}" if ip else '')
             return sid
 
     def get(self, sid: str) -> Optional[dict[str, Any]]:

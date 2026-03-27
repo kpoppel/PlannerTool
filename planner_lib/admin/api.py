@@ -1191,7 +1191,8 @@ async def admin_get_schema(request: Request, config_type: str):
                     'type': 'string',
                     'title': 'Database File Path',
                     'description': 'Path to the main people database YAML file (relative to data directory or absolute)',
-                    'minLength': 1
+                    'minLength': 1,
+                    'default': '/app/data/config/database.yaml'
                 },
                 'database': {
                     'type': 'object',
