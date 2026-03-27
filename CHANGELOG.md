@@ -13,7 +13,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v2.2.0] - unreleased
+## [v2.2.0] - 2026-03-27
 
 NOTE: This is the last v2.x release. BACKUP YOUR DATA! From v3.0.0 onwards the pickled files
 are gone and replaced by a SQlite database. Current pickled files cover cached task and history data
