@@ -1,0 +1,30 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:lit/recommended",
+    "plugin:lit-a11y/recommended",
+    "prettier"
+  ],
+  "plugins": ["lit", "lit-a11y"],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"],
+      "extends": ["plugin:vitest/recommended"]
+    }
+  ],
+  "ignorePatterns": ["dist/", "www/js/vendor/", "docs/"]
+}

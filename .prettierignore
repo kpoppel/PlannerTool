@@ -1,0 +1,14 @@
+# Comments are allowed in this file
+
+# Build output
+dist
+coverage
+
+# Dependencies
+node_modules
+www/js/vendor/
+
+# Data, logs, and other generated files
+docs/
+data/
+*.log
