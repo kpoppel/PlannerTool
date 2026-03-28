@@ -5,7 +5,7 @@
   "type": "module",
   "main": "planner.py",
   "scripts": {
-    "test": "vitest",
+    "test": "NODE_OPTIONS='--no-deprecation' NODE_ENV=production vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui --browser.enabled=true",
     "build": "vite build",
