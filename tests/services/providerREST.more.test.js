@@ -23,9 +23,9 @@ describe('ProviderREST more branches', () => {
     res = await prov.getCost([{ id: 'x' }]);
     expect(res.arr).to.equal(true);
 
-    // object payload
+    // object payload (non-empty features -> backend call expected)
     window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ obj: true }) });
-    res = await prov.getCost({ features: [] });
+    res = await prov.getCost({ features: [{ id: 'f1' }] });
     expect(res.obj).to.equal(true);
 
     // error path

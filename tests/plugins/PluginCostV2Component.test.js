@@ -5,6 +5,7 @@
 
 import { expect, fixture, html } from '@open-wc/testing';
 import '../../www/js/plugins/PluginCostV2Component.js';
+import { pluginManager } from '../../www/js/core/PluginManager.js';
 
 describe('PluginCostV2Component', () => {
   
@@ -35,10 +36,12 @@ describe('PluginCostV2Component', () => {
       await el.updateComplete;
       
       const buttons = el.shadowRoot.querySelectorAll('.tab-buttons button');
-      expect(buttons).to.have.length(3);
-      expect(buttons[0].textContent.trim()).to.include('Project');
+      // The component now exposes a fourth "Team Members" tab
+      expect(buttons).to.have.length(4);
+      expect(buttons[0].textContent.trim()).to.include('Plan');
       expect(buttons[1].textContent.trim()).to.include('Task');
-      expect(buttons[2].textContent.trim()).to.include('Team');
+      expect(buttons[2].textContent.trim()).to.include('Team View');
+      expect(buttons[3].textContent.trim()).to.include('Team Members');
     });
 
     it('should highlight active tab', async () => {
@@ -63,8 +66,10 @@ describe('PluginCostV2Component', () => {
     it('should render view mode toggle', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
+      // view-toggle only appears for certain views; ensure we're in Team view
+      el.activeView = 'team';
       await el.updateComplete;
-      
+
       const toggleButtons = el.shadowRoot.querySelectorAll('.view-toggle button');
       expect(toggleButtons).to.have.length(2);
       expect(toggleButtons[0].textContent.trim()).to.include('Cost');
@@ -102,21 +107,25 @@ describe('PluginCostV2Component', () => {
     it('should switch to hours mode when Hours button clicked', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
+      // Ensure view-toggle is visible by switching to Team view
+      el.activeView = 'team';
       await el.updateComplete;
-      
+
       const hoursButton = el.shadowRoot.querySelectorAll('.view-toggle button')[1];
       hoursButton.click();
       await el.updateComplete;
-      
+
       expect(el.viewMode).to.equal('hours');
     });
 
     it('should highlight active view mode', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
+      // Ensure view-toggle is visible by switching to Team view
+      el.activeView = 'team';
       el.viewMode = 'hours';
       await el.updateComplete;
-      
+
       const buttons = el.shadowRoot.querySelectorAll('.view-toggle button');
       expect(buttons[1].classList.contains('active')).to.be.true;
     });
@@ -210,23 +219,31 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+      // Ensure pluginManager.get returns a plugin stub with deactivate()
+      const origGet = pluginManager.get;
+      pluginManager.get = () => ({ deactivate: () => { el.removeAttribute('visible'); } });
+
       el._closeClicked();
       await el.updateComplete;
-      
       expect(el.hasAttribute('visible')).to.be.false;
+
+      pluginManager.get = origGet;
     });
 
     it('should close when close button clicked', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+      // stub pluginManager.get to avoid calling real plugin code
+      const origGet = pluginManager.get;
+      pluginManager.get = () => ({ deactivate: () => { el.removeAttribute('visible'); } });
+
       const closeButton = el.shadowRoot.querySelector('.close-btn');
       closeButton.click();
       await el.updateComplete;
-      
       expect(el.hasAttribute('visible')).to.be.false;
+
+      pluginManager.get = origGet;
     });
   });
 });

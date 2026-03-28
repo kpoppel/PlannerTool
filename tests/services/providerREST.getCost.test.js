@@ -43,7 +43,8 @@ describe('ProviderREST getCost branches', () => {
   it('object payload posts payload and returns parsed json', async () => {
     const payload = { features: [{ id: 'f1' }] };
     window.fetch = (url, opts) => {
-      expect(url).to.equal('/api/cost');
+      // object payload with features is forwarded to /api/cost/features
+      expect(url).to.equal('/api/cost/features');
       expect(opts.method).to.equal('POST');
       const body = JSON.parse(opts.body);
       expect(body.features).to.be.an('array');
