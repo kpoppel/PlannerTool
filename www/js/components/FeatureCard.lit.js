@@ -2,7 +2,7 @@
 // Lit 3.3.1 web component for feature cards
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { FeatureEvents, DragEvents } from '../core/EventRegistry.js';
+import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { startDragMove, startResize } from './dragManager.js';
@@ -80,6 +80,14 @@ export class FeatureCardLit extends LitElement {
       /* Highlight entire card background for modified features (matches legacy look) */
       background: var(--color-dirty-bg, #ffe5c2);
       /* border-right: 4px solid var(--color-dirty-accent, #ffb84d); */
+    }
+
+    /* When a card is selected (clicked), highlight it in the viewport.
+       This rule intentionally comes after the .dirty rule so the selected
+       background overrides the dirty marker visual. */
+    .feature-card.selected {
+      background: var(--color-selected-bg, #dceeff);
+      transition: background 180ms ease;
     }
 
     .feature-card.ghosted {
@@ -502,6 +510,19 @@ export class FeatureCardLit extends LitElement {
     // Mouse handler for drag and resize
     this._onMouseDown = this._handleMouseDown.bind(this);
     this.addEventListener('mousedown', this._onMouseDown);
+    // Keep card deselected when another feature is selected elsewhere
+    this._boundOnFeatureSelected = (f) => {
+      try {
+        const selId = f && f.id ? String(f.id) : null;
+        if (!selId || String(this.feature?.id) !== selId) {
+          if (this.selected) { this.selected = false; this.requestUpdate(); }
+        }
+      } catch (e) {}
+    };
+    try { bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
+    // Also clear highlight when details panel hides
+    this._boundOnDetailsHide = () => { try { if (this.selected) { this.selected = false; this.requestUpdate(); } } catch (e) {} };
+    try { bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide); } catch (e) {}
   }
 
   firstUpdated() {
@@ -529,6 +550,8 @@ export class FeatureCardLit extends LitElement {
     try { this._unsubFeaturesUpdated?.(); } catch (e) {}
     try { this._unsubDragEnd?.(); } catch (e) {}
     this.removeEventListener('mousedown', this._onMouseDown);
+    try { if (this._boundOnFeatureSelected) bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
+    try { if (this._boundOnDetailsHide) bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide); } catch (e) {}
     if (this._boundOnPreMove) {
       window.removeEventListener('mousemove', this._boundOnPreMove);
       window.removeEventListener('pointermove', this._boundOnPreMove);
@@ -619,6 +642,9 @@ export class FeatureCardLit extends LitElement {
     } catch (err) {}
     if (e.detail === 2) return;
     const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
+    // Reflect selection locally immediately so the card highlights in the
+    // viewport right away (this will be reconciled by board-level state).
+    try { this.selected = true; this.requestUpdate(); } catch (err) {}
     this.bus.emit(FeatureEvents.SELECTED, eff);
   }
 

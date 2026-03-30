@@ -612,7 +612,16 @@ export class DetailsPanelLit extends LitElement {
     }
   }
 
-  hide(){ this.open = false; this.requestUpdate(); }
+  hide(){
+    this.open = false;
+    this.requestUpdate();
+    try { bus.emit(UIEvents.DETAILS_HIDE); } catch (e) {}
+  }
+
+  hideAndEmit(){
+    // Close panel and emit a global hide event so other components can respond
+    try { this.open = false; this.requestUpdate(); bus.emit(UIEvents.DETAILS_HIDE); } catch (e) { this.open = false; this.requestUpdate(); }
+  }
 
   _handleCapacityClick(teamId, e) {
     e.stopPropagation();
