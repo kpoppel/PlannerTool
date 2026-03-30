@@ -99,6 +99,57 @@ class FeatureBoard extends LitElement {
     } catch (e) {}
   }
 
+  // Build and maintain connected feature sets (parent/child and relations)
+  _computeConnectedSet(startFeature) {
+    let features = state.getEffectiveFeatures();
+    if (!features) features = [];
+    const idKey = (v) => String(v);
+    const byId = new Map(features.map(f => [idKey(f.id), f]));
+
+    // children map
+    const childrenMap = new Map();
+    for (const f of features) {
+      if (f.parentEpic) {
+        const p = idKey(f.parentEpic);
+        if (!childrenMap.has(p)) childrenMap.set(p, []);
+        childrenMap.get(p).push(f);
+      }
+    }
+
+    const startId = idKey(startFeature.id);
+    const q = [startId];
+    const seen = new Set([startId]);
+
+    while (q.length) {
+      const cur = q.shift();
+      const f = byId.get(cur);
+      if (!f) continue;
+      // parent
+      if (f.parentEpic) {
+        const p = idKey(f.parentEpic);
+        if (!seen.has(p)) { seen.add(p); q.push(p); }
+      }
+      // children
+      const kids = childrenMap.get(cur) || [];
+      for (const c of kids) {
+        const cid = idKey(c.id);
+        if (!seen.has(cid)) { seen.add(cid); q.push(cid); }
+      }
+      // relations (All types except "Related" which is too broad/noisy)
+      if (Array.isArray(f.relations)) {
+        for (const rel of f.relations) {
+          let other = null;
+          if (['Parent', 'Child', 'Successor', 'Predecessor'].includes(rel.type) && rel.id) {
+            other = idKey(rel.id);
+          }
+          if (other && !seen.has(other)) { seen.add(other); q.push(other); }
+        }
+      }
+    }
+
+    return Array.from(seen);
+  }
+
   render() {
     if (!this.features?.length) {
       return html`<slot></slot>`;
@@ -624,6 +675,32 @@ export async function initBoard() {
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
+
+  // Connected-set handling: request, selection within set, and clear on details hide
+  bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {
+    if (!board) return;
+    const set = board._computeConnectedSet(feature);
+    board._connectedSet = set;
+    board._connectedPrimary = String(feature.id);
+    board._connectedCurrent = String(feature.id);
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: set, primary: board._connectedPrimary, current: board._connectedCurrent });
+  });
+
+  bus.on(FeatureEvents.SELECTED_IN_CONNECTED_SET, (feature) => {
+    if (!board || !board._connectedSet || board._connectedSet.length === 0) return;
+    const id = String(feature.id);
+    board._connectedCurrent = id;
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: board._connectedSet, primary: board._connectedPrimary, current: board._connectedCurrent });
+    bus.emit(FeatureEvents.SELECTED, feature);
+  });
+
+  bus.on(UIEvents.DETAILS_HIDE, () => {
+    if (!board) return;
+    board._connectedSet = [];
+    board._connectedPrimary = null;
+    board._connectedCurrent = null;
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: [], primary: null, current: null });
+  });
 
   bus.once(AppEvents.READY, () => {
     _boardReady = true;

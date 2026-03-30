@@ -13,6 +13,19 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.1.0] - unreleased
+
+### Added
+- Add highlight of connected tasks through parent/child or predecessor/successor links. Related type not included.
+  Color can be controlled by --color-connected-bg CSS in main.css
+  Feature is default on but can be turned off in ViewService.js . Needs to be wired up in the sidebar.
+
+### Changed
+### Fixed
+
+### TODO:
+- Wire up _highlightFeatureRelationMode in SideBar in Display section
+
 ## [v3.0.0] - 2026-03-27
 
 After installing this release, restore backups on a clean data directory.

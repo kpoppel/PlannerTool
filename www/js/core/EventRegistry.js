@@ -16,6 +16,9 @@ export const FeatureEvents = {
   DELETED: Symbol('feature:deleted'),
   DATES_CHANGED: Symbol('feature:dates-changed'),
   SELECTED: Symbol('feature:selected'),
+  REQUEST_CONNECTED_SET: Symbol('feature:request-connected-set'),
+  CONNECTED_SET_UPDATED: Symbol('feature:connected-set-updated'),
+  SELECTED_IN_CONNECTED_SET: Symbol('feature:selected-in-connected-set'),
   CAPACITY_UPDATED: Symbol('feature:capacity-updated')
 };
 
@@ -84,7 +87,8 @@ export const ViewEvents = {
   CONDENSED: Symbol('view:condensed'),
   DEPENDENCIES: Symbol('view:dependencies'),
   CAPACITY_MODE: Symbol('view:capacityMode'),
-  SORT_MODE: Symbol('view:sortMode')
+  SORT_MODE: Symbol('view:sortMode'),
+  HIGHLIGHT_RELATIONS: Symbol('view:highlightRelations')
 };
 
 // Saved view management events

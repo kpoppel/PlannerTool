@@ -69,6 +69,8 @@ export class ViewService {
     this._condensedCards = false;
     this._capacityViewMode = 'team'; // 'team' | 'project'
     this._featureSortMode = 'rank'; // 'rank' | 'date'
+    //TODO: Wire this into the sidepanel:
+    this._highlightFeatureRelationMode = true; // If true, highlight features when clicked.
   }
   
   // ========== Timeline Scale ==========
@@ -304,6 +306,17 @@ export class ViewService {
     }
   }
   
+  get highlightFeatureRelationMode() {
+    return this._highlightFeatureRelationMode;
+  }
+
+  setHighlightFeatureRelationMode(val) {
+    this._highlightFeatureRelationMode = !!val;
+    if (!arguments[1]) {
+      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
   // ========== State Capture ==========
   
   /**
@@ -315,6 +328,7 @@ export class ViewService {
       capacityViewMode: this._capacityViewMode,
       condensedCards: this._condensedCards,
       featureSortMode: this._featureSortMode,
+      highlightFeatureRelationMode: this._highlightFeatureRelationMode,
       showUnassignedCards: this._showUnassignedCards,
       showDependencies: this._showDependencies,
       showUnplannedWork: this._showUnplannedWork,
@@ -339,6 +353,7 @@ export class ViewService {
     if (viewState.capacityViewMode) this._capacityViewMode = viewState.capacityViewMode;
     if (typeof viewState.condensedCards !== 'undefined') this._condensedCards = !!viewState.condensedCards;
     if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
+    if (typeof viewState.highlightFeatureRelationMode !== 'undefined') this._highlightFeatureRelationMode = !!viewState.highlightFeatureRelationMode;
     if (typeof viewState.showUnassignedCards !== 'undefined') this._showUnassignedCards = !!viewState.showUnassignedCards;
     if (typeof viewState.showDependencies !== 'undefined') this._showDependencies = !!viewState.showDependencies;
     if (typeof viewState.showUnplannedWork !== 'undefined') this._showUnplannedWork = !!viewState.showUnplannedWork;
@@ -370,6 +385,7 @@ export class ViewService {
       this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
+      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }

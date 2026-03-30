@@ -140,6 +140,7 @@ class State {
   get condensedCards() { return this._viewService.condensedCards; }
   get capacityViewMode() { return this._viewService.capacityViewMode; }
   get featureSortMode() { return this._viewService.featureSortMode; }
+  get highlightFeatureRelationMode() { return this._viewService.highlightFeatureRelationMode; }
   
   // TaskFilterService properties
   get taskFilterService() { return this._taskFilterService; }
@@ -683,12 +684,16 @@ class State {
     this._viewService.setShowDependencies(val);
   }
 
-  setcapacityViewMode(mode) {
+  setCapacityViewMode(mode) {
     this._viewService.setCapacityViewMode(mode);
   }
 
   setFeatureSortMode(mode) {
     this._viewService.setFeatureSortMode(mode);
+  }
+
+  setHighlightFeatureRelationMode(mode) {
+    this._viewService.setHighlightFeatureRelationMode(mode);
   }
 
   // ---------- Scenario State Management ----------

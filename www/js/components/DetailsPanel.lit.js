@@ -496,23 +496,25 @@ export class DetailsPanelLit extends LitElement {
     //TODO: Should the side panel receive update if it is shown and the feature is changed?
     //TODO: Should standardise what is sent on events (full feature vs id only)
 
-    document.body.addEventListener('click', (e) => {
+    // Record mousedown when it starts on <feature-board>, compare on click.
+    this._boardMouseDown = null;
+    this._onBodyMouseDown = (e) => {
+      if (e.originalTarget.tagName.toLowerCase() === 'feature-board') {
+        this._boardMouseDown = { x: e.clientX, y: e.clientY };
+      }
+    };
+
+    this._onBodyClick = (e) => {
+      // Noop if panel not open
       if(!this.open) return;
-      const path = e.composedPath ? e.composedPath() : [];
-      // If click occurred inside this host or inside a feature-card (host or shadow internals), do not hide
-      const clickedInsideHost = path.includes(this);
-      const clickedFeatureCard = path.some(p => {
-        try{
-          if(!p) return false;
-          // shadow internals will have classList; host elements might be custom tags
-          if(p.classList && p.classList.contains && p.classList.contains('feature-card')) return true;
-          if(p.tagName && String(p.tagName).toLowerCase() === 'feature-card-lit') return true;
-          if(p.tagName && String(p.tagName).toLowerCase() === 'feature-card') return true;
-        }catch(e){ }
-        return false;
-      });
-      if(!clickedInsideHost && !clickedFeatureCard){ this.hide(); }
-    });
+      // If the board did not move since mouseDown, close the panel.
+      if(this._boardMouseDown && this._boardMouseDown.x == e.x && this._boardMouseDown.y == e.y) {
+        this.hide();
+      }
+    };
+
+    document.body.addEventListener('mousedown', this._onBodyMouseDown);
+    document.body.addEventListener('click', this._onBodyClick);
   }
 
   async _onCapacityUpdated(data) {
@@ -562,6 +564,8 @@ export class DetailsPanelLit extends LitElement {
     bus.off(FeatureEvents.SELECTED, this._onShow);
     bus.off(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
     bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdated.bind(this));
+    document.body.removeEventListener('mousedown', this._onBodyMouseDown);
+    document.body.removeEventListener('click', this._onBodyClick);
     super.disconnectedCallback();
   }
 

@@ -88,7 +88,7 @@ describe('State (unit)', () => {
     S.setShowFeatures(false); expect(S.showFeatures).to.equal(false);
     S.setCondensedCards(true); expect(S.condensedCards).to.equal(true);
     S.setShowDependencies(true); expect(S.showDependencies).to.equal(true);
-    S.setcapacityViewMode('project'); expect(S.capacityViewMode).to.equal('project');
+    S.setCapacityViewMode('project'); expect(S.capacityViewMode).to.equal('project');
     S.setFeatureSortMode('date'); expect(S.featureSortMode).to.equal('date');
   });
 });

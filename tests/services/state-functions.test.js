@@ -65,12 +65,12 @@ describe('State small function coverage', () => {
     expect(state.condensedCards).to.equal(false);
     state.setShowDependencies(true);
     expect(state.showDependencies).to.equal(true);
-    state.setcapacityViewMode('team');
+    state.setCapacityViewMode('team');
     expect(state.capacityViewMode).to.equal('team');
     state.setFeatureSortMode('rank');
     expect(state.featureSortMode).to.equal('rank');
     // invalid modes should be ignored
-    state.setcapacityViewMode('invalid');
+    state.setCapacityViewMode('invalid');
     expect(['team','project']).to.include(state.capacityViewMode);
     state.setFeatureSortMode('invalid');
     expect(['date','rank']).to.include(state.featureSortMode);

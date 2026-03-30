@@ -56,6 +56,19 @@ export class FeatureCardLit extends LitElement {
       box-shadow: 0 4px 16px rgba(0,0,0,0.18);
     }
 
+    /* Connected-set highlight: change background for stronger visibility.
+       Ensure connected styling overrides dirty styling by matching both
+       the host-level and inner .feature-card selectors and including
+       the dirty combination. */
+    :host(.connected) .feature-card,
+    .feature-card.connected,
+    .feature-card.connected.dirty,
+    :host(.connected) .feature-card.dirty {
+      background: var(--color-connected-bg, #e8f5ff);
+      box-shadow: 0 2px 6px rgba(60,120,220,0.08);
+      transition: background 120ms ease, box-shadow 120ms ease;
+    }
+
     /* Minimal highlight: small inset overlay that fades out */
       :host(.search-highlight) .feature-card::after {
         content: '';
@@ -417,6 +430,7 @@ export class FeatureCardLit extends LitElement {
     this._ghostEl = null;
     this._width = 0;          // cached from ResizeObserver — no DOM read needed
     this._lastTitle = null;    // track title changes for overflow re-check
+    this._connected = false; // whether this card is in current connected set
   }
 
   // ---- Static batched layout scheduler ----
@@ -512,14 +526,30 @@ export class FeatureCardLit extends LitElement {
     this.addEventListener('mousedown', this._onMouseDown);
     // Keep card deselected when another feature is selected elsewhere
     this._boundOnFeatureSelected = (f) => {
-      try {
-        const selId = f && f.id ? String(f.id) : null;
-        if (!selId || String(this.feature?.id) !== selId) {
-          if (this.selected) { this.selected = false; this.requestUpdate(); }
-        }
-      } catch (e) {}
+      const selId = (f && f.id) ? String(f.id) : null;
+      const myId = String(this.feature?.id);
+      if (!selId || myId !== selId) {
+        if (this.selected) { this.selected = false; this.requestUpdate(); }
+      }
     };
     try { bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
+    // Listen for connected-set updates from the board
+    this._boundOnConnectedSet = (payload) => {
+      const ids = (payload && payload.ids) ? payload.ids : null;
+      this._connectedPrimary = (payload && payload.primary) ? String(payload.primary) : null;
+      this._connectedCurrent = (payload && payload.current) ? String(payload.current) : null;
+      const id = String(this.feature.id);
+      const inSet = Array.isArray(ids) ? (ids.indexOf(id) !== -1) : false;
+      if (inSet !== this._connected) {
+        this._connected = inSet;
+        this.classList.toggle('connected', inSet);
+        const root = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
+        if (root) root.classList.toggle('connected', inSet);
+        this.classList.toggle('dirty', !!this.feature?.dirty);
+        this.requestUpdate();
+      }
+    };
+    bus.on(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
     // Also clear highlight when details panel hides
     this._boundOnDetailsHide = () => { try { if (this.selected) { this.selected = false; this.requestUpdate(); } } catch (e) {} };
     try { bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide); } catch (e) {}
@@ -551,7 +581,8 @@ export class FeatureCardLit extends LitElement {
     try { this._unsubDragEnd?.(); } catch (e) {}
     this.removeEventListener('mousedown', this._onMouseDown);
     try { if (this._boundOnFeatureSelected) bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
-    try { if (this._boundOnDetailsHide) bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide); } catch (e) {}
+    if (this._boundOnConnectedSet) bus.off(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
+    if (this._boundOnDetailsHide) bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
     if (this._boundOnPreMove) {
       window.removeEventListener('mousemove', this._boundOnPreMove);
       window.removeEventListener('pointermove', this._boundOnPreMove);
@@ -641,10 +672,23 @@ export class FeatureCardLit extends LitElement {
       if (path.some(p => p?.classList?.contains?.('drag-handle'))) return;
     } catch (err) {}
     if (e.detail === 2) return;
+
     const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    // Reflect selection locally immediately so the card highlights in the
-    // viewport right away (this will be reconciled by board-level state).
-    try { this.selected = true; this.requestUpdate(); } catch (err) {}
+    if(state.highlightFeatureRelationMode) {
+      // If this card is in the current connected set, treat it as selecting
+      // the item within the set (highlight previous selection and new selection)
+      if (this._connected) {
+        this.bus.emit(FeatureEvents.SELECTED_IN_CONNECTED_SET, eff);
+        this.selected = true;
+        this.requestUpdate();
+        return;
+      }
+
+      // Otherwise request the board to build and store a connected map for this feature
+      this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
+    }
+    // Also reflect selection locally
+    this.selected = true; this.requestUpdate();
     this.bus.emit(FeatureEvents.SELECTED, eff);
   }
 
