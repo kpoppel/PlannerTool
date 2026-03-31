@@ -109,17 +109,7 @@ def generate_docker_compose(instances, version):
             "restart": "unless-stopped"
         }
         
-        # Only add the build block for instances tracking the current version or latest
-        if image in ["plannertool:latest", f"plannertool:{version}"]:
-            compose["services"][container_name]["build"] = {
-                "context": "..",
-                "dockerfile": "docker/Dockerfile",
-                "tags": [
-                    "plannertool:latest",
-                    f"plannertool:{version}"
-                ]
-            }
-        
+      
         if vol_type == 'volume':
             compose["volumes"][vol_source] = {}
         
@@ -139,6 +129,16 @@ def main():
         '--start',
         action='store_true',
         help="Start the docker containers after generating the files."
+    )
+    parser.add_argument(
+        '-b', '--build-images',
+        action='store_true',
+        help="Build required Docker images after generating files (uses top-level VERSION)."
+    )
+    parser.add_argument(
+        '--apply',
+        action='store_true',
+        help="Apply changes: write generated files to `deployment/`, optionally build images and start containers. Without this flag the script performs a dry-run and prints the planned files."
     )
     
     args = parser.parse_args()
@@ -163,18 +163,54 @@ def main():
         print(f"No instances found inside {instances_file}")
         sys.exit(1)
     
+    # Generate file contents (always performed) then either print as a dry-run
+    # or write them into `deployment/` when --apply is specified.
+    caddy_contents = generate_caddyfile(instances)
+    compose_obj = generate_docker_compose(instances, version)
+    index_contents = generate_index_html(instances)
+
+    if not args.apply:
+        # Dry-run: print help and show generated files
+        print()
+        parser.print_help()
+        print('\nDry-run (no files written). Generated outputs follow:')
+        print('\n--- Caddyfile ---\n')
+        print(caddy_contents)
+        print('\n--- docker-compose.yml ---\n')
+        print(yaml.dump(compose_obj, sort_keys=False))
+        print('\n--- index.html ---\n')
+        print(index_contents)
+        print('\nTo write files, build images and start the stack run with --apply. Example:')
+        print('  python scripts/deploy.py --apply --start')
+        sys.exit(0)
+
+    # Apply: write files into deployment/ and optionally build/start
     os.makedirs('deployment', exist_ok=True)
-    
+
     with open('deployment/Caddyfile', 'w') as f:
-        f.write(generate_caddyfile(instances))
-        
+        f.write(caddy_contents)
+
     with open('deployment/docker-compose.yml', 'w') as f:
-        yaml.dump(generate_docker_compose(instances, version), f, sort_keys=False)
-        
+        yaml.dump(compose_obj, f, sort_keys=False)
+
     with open('deployment/index.html', 'w') as f:
-        f.write(generate_index_html(instances))
-        
+        f.write(index_contents)
+
     print(f"Generated Caddyfile, docker-compose.yml, and index.html in the 'deployment/' directory for {len(instances)} instance(s).")
+
+    build_images = args.build_images or args.start
+    if build_images:
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        build_script = os.path.join(root_dir, 'scripts', 'build-image.sh')
+        if not os.path.exists(build_script):
+            print(f"WARNING: build script not found at {build_script}; skipping image build.")
+        else:
+            print("Building requested images using scripts/build-image.sh...")
+            try:
+                subprocess.run([build_script], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"ERROR: build script failed with code {e.returncode}")
+                sys.exit(e.returncode)
 
     if args.start:
         print("Deploying instances...")

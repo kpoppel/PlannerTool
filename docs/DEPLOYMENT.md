@@ -65,6 +65,11 @@ To update, run `systemctl restart plannertool` as root.
 First build he containerr and tag it with the version in `VERSION`:
 
 ```
+./scripts/build-image.sh
+```
+
+Or manually:
+```
 docker build -f docker/Dockerfile -t plannertool:latest -t plannertool:v2.1.0 .`
 docker image prune
 ```
@@ -98,10 +103,10 @@ This application can also be deployed using Docker Compose to host multiple isol
        volume_source: ./data/beta
        
      # Explicitly specify a custom Docker named volume and an exact image version
-     - name: esw
+     - name: delta
        image: plannertool:v2.0.0
        volume_type: volume
-       volume_source: custom-esw-data
+       volume_source: custom-delta-data
        
      # Example with an external people database mapped into the container
      - name: gamma
@@ -132,8 +137,10 @@ This application can also be deployed using Docker Compose to host multiple isol
 
 ## How it works
 
-The `scripts/deploy.py` script automatically generates a dynamic `Caddyfile`, `docker-compose.yml`, and `index.html` inside a `deployment/` directory based on your configured instances.
-When run with the `--start` flag, it will also execute `docker compose up -d --remove-orphans` from within that directory. This command will start any new or updated services and cleanly decommission any containers that have been removed from `instances.yml`.
+The `scripts/deploy.py` script generates a dynamic `Caddyfile`, `docker-compose.yml`, and `index.html` for your configured instances.
+By default the script performs a dry-run: it prints usage help and displays the generated files without writing anything to disk. To write the files into the `deployment/` directory and perform actions, pass `--apply`.
+
+When `--apply` is used together with `-b/--build-images` or `--start`, the script will invoke `scripts/build-image.sh` to build `plannertool:<VERSION>` (and tag `plannertool:latest`) before starting the stack. To actually start containers the script will run `docker compose up -d --remove-orphans` from the `deployment/` directory only when `--apply` and `--start` are both provided.
 
 ### Versioning and Staged Rollouts
 By default, instances use an image tagged with the version defined in the `VERSION` file (e.g., `plannertool:v2.1.0`). 
