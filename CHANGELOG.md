@@ -21,6 +21,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
   Feature is default on but can be turned off in ViewService.js . Needs to be wired up in the sidebar.
 
 ### Changed
+- Updated deployment so that image build is separated from compose file. Tagging of images uses VERSION file.
+
 ### Fixed
 
 ### TODO:
