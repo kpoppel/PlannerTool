@@ -15,7 +15,7 @@ export async function waitFor(condition, timeout = 1000) {
     if (Date.now() - startTime > timeout) {
       throw new Error('Timeout waiting for condition');
     }
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 
@@ -31,7 +31,7 @@ export function waitForEvent(eventBus, eventName, timeout = 1000) {
     const timer = setTimeout(() => {
       reject(new Error(`Timeout waiting for event: ${eventName}`));
     }, timeout);
-    
+
     const unsubscribe = eventBus.on(eventName, (payload) => {
       clearTimeout(timer);
       unsubscribe();
@@ -69,16 +69,16 @@ export function createMockElement(tag, props = {}) {
 export function spyOn(obj, method) {
   const original = obj[method];
   const calls = [];
-  
-  obj[method] = function(...args) {
+
+  obj[method] = function (...args) {
     calls.push(args);
     return original.apply(this, args);
   };
-  
+
   obj[method].calls = calls;
   obj[method].restore = () => {
     obj[method] = original;
   };
-  
+
   return obj[method];
 }

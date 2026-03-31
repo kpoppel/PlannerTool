@@ -3,7 +3,7 @@ import { adminProvider } from '../../services/providerREST.js';
 
 /**
  * AdminIterations - Manage iteration root paths configuration
- * 
+ *
  * This component allows admins to:
  * - Browse available iterations for a project
  * - Configure default iteration root paths
@@ -11,16 +11,22 @@ import { adminProvider } from '../../services/providerREST.js';
  */
 export class AdminIterations extends LitElement {
   static styles = css`
-    :host { display: block; height: 100%; }
-    h2 { margin-top: 0; font-size: 1.1rem; }
-    
+    :host {
+      display: block;
+      height: 100%;
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
     .container {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
       height: calc(100vh - 160px);
     }
-    
+
     .panel {
       padding: 12px;
       background: #fff;
@@ -30,27 +36,27 @@ export class AdminIterations extends LitElement {
       flex-direction: column;
       overflow: hidden;
     }
-    
+
     .panel h3 {
       margin: 0 0 12px 0;
       font-size: 1rem;
       border-bottom: 1px solid #e5e7eb;
       padding-bottom: 8px;
     }
-    
+
     .browser {
       display: flex;
       flex-direction: column;
       flex: 1;
       min-height: 0;
     }
-    
+
     .browser-controls {
       display: flex;
       gap: 8px;
       margin-bottom: 12px;
     }
-    
+
     .browser-controls input {
       flex: 1;
       padding: 6px 10px;
@@ -58,7 +64,7 @@ export class AdminIterations extends LitElement {
       border-radius: 4px;
       font-size: 0.9rem;
     }
-    
+
     .browser-controls button {
       padding: 6px 12px;
       border-radius: 4px;
@@ -67,9 +73,11 @@ export class AdminIterations extends LitElement {
       cursor: pointer;
       font-size: 0.9rem;
     }
-    
-    .browser-controls button:hover { background: #e5e7eb; }
-    
+
+    .browser-controls button:hover {
+      background: #e5e7eb;
+    }
+
     .iterations-list {
       flex: 1;
       overflow-y: auto;
@@ -78,7 +86,7 @@ export class AdminIterations extends LitElement {
       padding: 8px;
       background: #fafafa;
     }
-    
+
     .iteration-item {
       padding: 8px;
       margin-bottom: 4px;
@@ -90,40 +98,40 @@ export class AdminIterations extends LitElement {
       justify-content: space-between;
       align-items: center;
     }
-    
+
     .iteration-item .path {
       font-family: monospace;
       font-weight: 500;
     }
-    
+
     .iteration-item .dates {
       font-size: 0.8rem;
       color: #6b7280;
     }
-    
+
     .config-editor {
       flex: 1;
       overflow-y: auto;
     }
-    
+
     .config-section {
       margin-bottom: 16px;
     }
-    
+
     .config-section label {
       display: block;
       font-weight: 500;
       margin-bottom: 4px;
       font-size: 0.9rem;
     }
-    
+
     .roots-list {
       display: flex;
       flex-direction: column;
       gap: 4px;
       margin-bottom: 8px;
     }
-    
+
     .root-item {
       display: flex;
       gap: 8px;
@@ -133,7 +141,7 @@ export class AdminIterations extends LitElement {
       border: 1px solid #e5e7eb;
       border-radius: 4px;
     }
-    
+
     .root-item input {
       flex: 1;
       padding: 4px 8px;
@@ -142,7 +150,7 @@ export class AdminIterations extends LitElement {
       font-size: 0.85rem;
       font-family: monospace;
     }
-    
+
     .root-item button {
       padding: 4px 8px;
       border-radius: 4px;
@@ -151,9 +159,11 @@ export class AdminIterations extends LitElement {
       cursor: pointer;
       font-size: 0.8rem;
     }
-    
-    .root-item button:hover { background: #e5e7eb; }
-    
+
+    .root-item button:hover {
+      background: #e5e7eb;
+    }
+
     .add-root {
       padding: 6px 12px;
       border-radius: 4px;
@@ -164,15 +174,17 @@ export class AdminIterations extends LitElement {
       font-size: 0.85rem;
       margin-bottom: 8px;
     }
-    
-    .add-root:hover { background: #dbeafe; }
-    
+
+    .add-root:hover {
+      background: #dbeafe;
+    }
+
     .project-overrides {
       margin-top: 16px;
       padding-top: 16px;
       border-top: 2px solid #e5e7eb;
     }
-    
+
     .override-item {
       margin-bottom: 12px;
       padding: 12px;
@@ -180,14 +192,14 @@ export class AdminIterations extends LitElement {
       border: 1px solid #e5e7eb;
       border-radius: 4px;
     }
-    
+
     .override-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
     }
-    
+
     .override-header input {
       flex: 1;
       padding: 4px 8px;
@@ -196,7 +208,7 @@ export class AdminIterations extends LitElement {
       font-size: 0.85rem;
       font-weight: 500;
     }
-    
+
     .actions {
       display: flex;
       gap: 8px;
@@ -204,7 +216,7 @@ export class AdminIterations extends LitElement {
       padding-top: 12px;
       border-top: 1px solid #e5e7eb;
     }
-    
+
     button.primary {
       padding: 8px 16px;
       border-radius: 6px;
@@ -214,18 +226,24 @@ export class AdminIterations extends LitElement {
       cursor: pointer;
       font-size: 0.9rem;
     }
-    
-    button.primary:hover { background: #2563eb; }
-    
+
+    button.primary:hover {
+      background: #2563eb;
+    }
+
     .status {
       margin-left: 8px;
       font-size: 0.9rem;
       color: #333;
     }
-    
-    .status.success { color: #10b981; }
-    .status.error { color: #ef4444; }
-    
+
+    .status.success {
+      color: #10b981;
+    }
+    .status.error {
+      color: #ef4444;
+    }
+
     .loading {
       display: flex;
       align-items: center;
@@ -265,12 +283,16 @@ export class AdminIterations extends LitElement {
     statusMsg: { type: String },
     statusType: { type: String },
     useRawMode: { type: Boolean },
-    configuredProjects: { type: Array }
+    configuredProjects: { type: Array },
   };
 
   constructor() {
     super();
-    this.config = { azure_project: '', default_roots: [], project_overrides: {} };
+    this.config = {
+      azure_project: '',
+      default_roots: [],
+      project_overrides: {},
+    };
     this.browsedIterations = [];
     this.browseProject = '';
     this.browseRoot = '';
@@ -291,7 +313,11 @@ export class AdminIterations extends LitElement {
     this.loading = true;
     try {
       const data = await adminProvider.getIterations();
-      this.config = data || { azure_project: '', default_roots: [], project_overrides: {} };
+      this.config = data || {
+        azure_project: '',
+        default_roots: [],
+        project_overrides: {},
+      };
       // Pre-fill browseProject from config if available
       if (this.config.azure_project && !this.browseProject) {
         this.browseProject = this.config.azure_project;
@@ -311,7 +337,7 @@ export class AdminIterations extends LitElement {
       if (data && data.project_map) {
         // Extract unique project names from configured projects
         const names = new Set();
-        data.project_map.forEach(p => {
+        data.project_map.forEach((p) => {
           if (p.name) names.add(p.name);
         });
         this.configuredProjects = Array.from(names).sort();
@@ -331,16 +357,18 @@ export class AdminIterations extends LitElement {
       if (this.browseRoot && this.browseRoot.trim()) {
         fullRootPath = `${this.browseProject}\\Iteration\\${this.browseRoot}`;
       }
-      
+
       const result = await adminProvider.browseIterations({
         project: this.browseProject,
         root_path: fullRootPath,
-        depth: 10
+        depth: 10,
       });
       this.browsedIterations = result.iterations || [];
       this.statusMsg = `Found ${this.browsedIterations.length} iterations`;
       this.statusType = 'success';
-      setTimeout(() => { this.statusMsg = ''; }, 3000);
+      setTimeout(() => {
+        this.statusMsg = '';
+      }, 3000);
     } catch (e) {
       this.statusMsg = 'Error browsing iterations';
       this.statusType = 'error';
@@ -372,7 +400,8 @@ export class AdminIterations extends LitElement {
 
   addProjectOverride() {
     // Use first available configured project as default
-    const defaultProject = this.configuredProjects.length > 0 ? this.configuredProjects[0] : '';
+    const defaultProject =
+      this.configuredProjects.length > 0 ? this.configuredProjects[0] : '';
     if (defaultProject) {
       this.config.project_overrides[defaultProject] = [];
       this.requestUpdate();
@@ -400,13 +429,15 @@ export class AdminIterations extends LitElement {
   addOverrideRoot(projectName) {
     this.config.project_overrides[projectName] = [
       ...this.config.project_overrides[projectName],
-      ''
+      '',
     ];
     this.requestUpdate();
   }
 
   removeOverrideRoot(projectName, index) {
-    this.config.project_overrides[projectName] = this.config.project_overrides[projectName].filter((_, i) => i !== index);
+    this.config.project_overrides[projectName] = this.config.project_overrides[
+      projectName
+    ].filter((_, i) => i !== index);
     this.requestUpdate();
   }
 
@@ -418,7 +449,7 @@ export class AdminIterations extends LitElement {
   async saveConfig() {
     this.statusMsg = 'Saving...';
     this.statusType = '';
-    
+
     try {
       // Parse from raw JSON if in raw mode
       if (this.useRawMode) {
@@ -433,11 +464,13 @@ export class AdminIterations extends LitElement {
           }
         }
       }
-      
+
       await adminProvider.saveIterations(this.config);
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
-      setTimeout(() => { this.statusMsg = ''; }, 3000);
+      setTimeout(() => {
+        this.statusMsg = '';
+      }, 3000);
     } catch (e) {
       this.statusMsg = 'Error saving';
       this.statusType = 'error';
@@ -466,135 +499,199 @@ export class AdminIterations extends LitElement {
                   type="text"
                   placeholder="Azure Project name"
                   .value="${this.browseProject}"
-                  @input="${(e) => { this.browseProject = e.target.value; }}"
+                  @input="${(e) => {
+                    this.browseProject = e.target.value;
+                  }}"
                 />
                 <input
                   type="text"
                   placeholder="Root path (optional)"
                   .value="${this.browseRoot}"
-                  @input="${(e) => { this.browseRoot = e.target.value; }}"
+                  @input="${(e) => {
+                    this.browseRoot = e.target.value;
+                  }}"
                 />
                 <button @click="${this.browseIterations}">Browse</button>
               </div>
-              
+
               <div class="iterations-list">
-                ${this.browsedIterations.length === 0 ? html`
-                  <div style="text-align: center; color: #6b7280; padding: 20px;">
-                    Enter project name and click Browse
-                  </div>
-                ` : this.browsedIterations.map(it => html`
-                  <div class="iteration-item">
-                    <div>
-                      <div class="path">${this.stripIterationPrefix(it.path)}</div>
-                      ${it.startDate || it.finishDate ? html`
-                        <div class="dates">
-                          ${it.startDate ? `Start: ${it.startDate}` : ''} 
-                          ${it.finishDate ? `End: ${it.finishDate}` : ''}
-                        </div>
-                      ` : ''}
+                ${this.browsedIterations.length === 0 ?
+                  html`
+                    <div style="text-align: center; color: #6b7280; padding: 20px;">
+                      Enter project name and click Browse
                     </div>
-                  </div>
-                `)}
+                  `
+                : this.browsedIterations.map(
+                    (it) => html`
+                      <div class="iteration-item">
+                        <div>
+                          <div class="path">${this.stripIterationPrefix(it.path)}</div>
+                          ${it.startDate || it.finishDate ?
+                            html`
+                              <div class="dates">
+                                ${it.startDate ? `Start: ${it.startDate}` : ''}
+                                ${it.finishDate ? `End: ${it.finishDate}` : ''}
+                              </div>
+                            `
+                          : ''}
+                        </div>
+                      </div>
+                    `
+                  )}
               </div>
             </div>
           </div>
 
           <!-- Right panel: Configuration -->
           <div class="panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">
+            <div
+              style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;"
+            >
               <h3 style="margin: 0;">Configuration</h3>
               <button class="toggle-mode" @click="${this.toggleMode}">
                 ${this.useRawMode ? 'Form Mode' : 'Raw JSON'}
               </button>
             </div>
-            ${this.useRawMode ? html`
-              <div class="raw-editor">
-                <textarea
-                  .value="${JSON.stringify(this.config, null, 2)}"
-                  @input="${(e) => { 
-                    try { 
-                      this.config = JSON.parse(e.target.value); 
-                    } catch(err) { 
-                      // Keep typing, don't update until valid
-                    }
-                  }}"
-                ></textarea>
-              </div>
-            ` : html`
-            <div class="config-editor">
-              <div class="config-section">
-                <label>Azure Project Name</label>
-                <div class="root-item">
-                  <input
-                    type="text"
-                    .value="${this.config.azure_project || ''}"
-                    @input="${(e) => { this.config.azure_project = e.target.value; this.requestUpdate(); }}"
-                    placeholder="e.g., my_azure_project"
-                  />
+            ${this.useRawMode ?
+              html`
+                <div class="raw-editor">
+                  <textarea
+                    .value="${JSON.stringify(this.config, null, 2)}"
+                    @input="${(e) => {
+                      try {
+                        this.config = JSON.parse(e.target.value);
+                      } catch (err) {
+                        // Keep typing, don't update until valid
+                      }
+                    }}"
+                  ></textarea>
                 </div>
-              </div>
-
-              <div class="config-section">
-                <label>Default Iteration Roots (without 'Iteration\\' prefix)</label>
-                <div class="roots-list">
-                  ${this.config.default_roots.map((root, index) => html`
+              `
+            : html`
+                <div class="config-editor">
+                  <div class="config-section">
+                    <label>Azure Project Name</label>
                     <div class="root-item">
                       <input
                         type="text"
-                        .value="${root}"
-                        @input="${(e) => this.updateDefaultRoot(index, e.target.value)}"
-                        placeholder="e.g., my_team or my_path\\my_team"
+                        .value="${this.config.azure_project || ''}"
+                        @input="${(e) => {
+                          this.config.azure_project = e.target.value;
+                          this.requestUpdate();
+                        }}"
+                        placeholder="e.g., my_azure_project"
                       />
-                      <button @click="${() => this.removeDefaultRoot(index)}">Remove</button>
-                    </div>
-                  `)}
-                </div>
-                <button class="add-root" @click="${this.addDefaultRoot}">+ Add Default Root</button>
-              </div>
-
-              <div class="project-overrides">
-                <label>Project Overrides</label>
-                ${Object.entries(this.config.project_overrides).map(([projectName, roots]) => html`
-                  <div class="override-item">
-                    <div class="override-header">
-                      <select
-                        .value="${projectName}"
-                        @change="${(e) => this.changeProjectOverrideName(projectName, e.target.value)}"
-                        style="margin-right: 8px; flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.85rem;"
-                      >
-                        ${this.configuredProjects.map(proj => html`
-                          <option value="${proj}" ?selected="${proj === projectName}">${proj}</option>
-                        `)}
-                      </select>
-                      <button @click="${() => this.removeProjectOverride(projectName)}">Remove Project</button>
-                    </div>
-                    <div class="roots-list">
-                      ${roots.map((root, index) => html`
-                        <div class="root-item">
-                          <input
-                            type="text"
-                            .value="${root}"
-                            @input="${(e) => this.updateOverrideRoot(projectName, index, e.target.value)}"
-                            placeholder="e.g., Team1 or Backend\\Team1"
-                          />
-                          <button @click="${() => this.removeOverrideRoot(projectName, index)}">Remove</button>
-                        </div>
-                      `)}
-                      <button class="add-root" @click="${() => this.addOverrideRoot(projectName)}">+ Add Root</button>
                     </div>
                   </div>
-                `)}
-                <button class="add-root" @click="${this.addProjectOverride}">+ Add Project Override</button>
-              </div>
 
-              <div class="actions">
-                <button class="primary" @click="${this.saveConfig}">Save Configuration</button>
-                ${this.statusMsg ? html`
-                  <span class="status ${this.statusType}">${this.statusMsg}</span>
-                ` : ''}
-              </div>
-            </div>
-            `}
+                  <div class="config-section">
+                    <label>Default Iteration Roots (without 'Iteration\\' prefix)</label>
+                    <div class="roots-list">
+                      ${this.config.default_roots.map(
+                        (root, index) => html`
+                          <div class="root-item">
+                            <input
+                              type="text"
+                              .value="${root}"
+                              @input="${(e) =>
+                                this.updateDefaultRoot(index, e.target.value)}"
+                              placeholder="e.g., my_team or my_path\\my_team"
+                            />
+                            <button @click="${() => this.removeDefaultRoot(index)}">
+                              Remove
+                            </button>
+                          </div>
+                        `
+                      )}
+                    </div>
+                    <button class="add-root" @click="${this.addDefaultRoot}">
+                      + Add Default Root
+                    </button>
+                  </div>
+
+                  <div class="project-overrides">
+                    <label>Project Overrides</label>
+                    ${Object.entries(this.config.project_overrides).map(
+                      ([projectName, roots]) => html`
+                        <div class="override-item">
+                          <div class="override-header">
+                            <select
+                              .value="${projectName}"
+                              @change="${(e) =>
+                                this.changeProjectOverrideName(
+                                  projectName,
+                                  e.target.value
+                                )}"
+                              style="margin-right: 8px; flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.85rem;"
+                            >
+                              ${this.configuredProjects.map(
+                                (proj) => html`
+                                  <option
+                                    value="${proj}"
+                                    ?selected="${proj === projectName}"
+                                  >
+                                    ${proj}
+                                  </option>
+                                `
+                              )}
+                            </select>
+                            <button
+                              @click="${() => this.removeProjectOverride(projectName)}"
+                            >
+                              Remove Project
+                            </button>
+                          </div>
+                          <div class="roots-list">
+                            ${roots.map(
+                              (root, index) => html`
+                                <div class="root-item">
+                                  <input
+                                    type="text"
+                                    .value="${root}"
+                                    @input="${(e) =>
+                                      this.updateOverrideRoot(
+                                        projectName,
+                                        index,
+                                        e.target.value
+                                      )}"
+                                    placeholder="e.g., Team1 or Backend\\Team1"
+                                  />
+                                  <button
+                                    @click="${() =>
+                                      this.removeOverrideRoot(projectName, index)}"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              `
+                            )}
+                            <button
+                              class="add-root"
+                              @click="${() => this.addOverrideRoot(projectName)}"
+                            >
+                              + Add Root
+                            </button>
+                          </div>
+                        </div>
+                      `
+                    )}
+                    <button class="add-root" @click="${this.addProjectOverride}">
+                      + Add Project Override
+                    </button>
+                  </div>
+
+                  <div class="actions">
+                    <button class="primary" @click="${this.saveConfig}">
+                      Save Configuration
+                    </button>
+                    ${this.statusMsg ?
+                      html`
+                        <span class="status ${this.statusType}">${this.statusMsg}</span>
+                      `
+                    : ''}
+                  </div>
+                </div>
+              `}
           </div>
         </div>
       </section>

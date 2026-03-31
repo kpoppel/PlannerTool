@@ -2,21 +2,23 @@
 <html lang="en">
   <head>
     <script>
-        // Dynamically compute base URL for API requests to support reverse proxy sub-paths
-        window.APP_BASE_URL = window.location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
-        
-        // Dynamically inject import map for native ES modules
-        const im = document.createElement('script');
-        im.type = 'importmap';
-        im.textContent = JSON.stringify({
-            imports: {
-                '/static/': window.APP_BASE_URL + '/static/',
-                '/admin/static/': window.APP_BASE_URL + '/admin/static/'
-            }
-        });
-        document.currentScript.after(im);
+      // Dynamically compute base URL for API requests to support reverse proxy sub-paths
+      window.APP_BASE_URL = window.location.pathname
+        .replace(/\/admin\/?$/, '')
+        .replace(/\/$/, '');
+
+      // Dynamically inject import map for native ES modules
+      const im = document.createElement('script');
+      im.type = 'importmap';
+      im.textContent = JSON.stringify({
+        imports: {
+          '/static/': window.APP_BASE_URL + '/static/',
+          '/admin/static/': window.APP_BASE_URL + '/admin/static/',
+        },
+      });
+      document.currentScript.after(im);
     </script>
-    
+
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PlannerTool — Admin</title>

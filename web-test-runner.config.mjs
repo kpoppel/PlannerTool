@@ -30,9 +30,9 @@ export default {
     //   'www/js/services/providerLocalStorage.js',
     //   'www/js/services/providerREST.js'
     // ],
-    threshold: { statements: 80, branches: 75, functions: 80, lines: 80 }
+    threshold: { statements: 80, branches: 75, functions: 80, lines: 80 },
   },
   testFramework: { config: { timeout: 5000 } },
   // Time for the browser runner to finish all files CI
-  testsFinishTimeout: 10000
+  testsFinishTimeout: 10000,
 };

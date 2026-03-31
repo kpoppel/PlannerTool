@@ -1,6 +1,10 @@
 import { expect } from '@esm-bundle/chai';
 import { state } from '../../www/js/services/State.js';
-import { FilterEvents, FeatureEvents, TimelineEvents } from '../../www/js/core/EventRegistry.js';
+import {
+  FilterEvents,
+  FeatureEvents,
+  TimelineEvents,
+} from '../../www/js/core/EventRegistry.js';
 
 describe('ViewService additional coverage', () => {
   let emitCalls;
@@ -27,14 +31,14 @@ describe('ViewService additional coverage', () => {
   it('setShowUnallocatedCards and setShowUnplannedWork emit events and update state', () => {
     vs.setShowUnallocatedCards(false);
     expect(vs.showUnassignedCards).to.equal(false);
-    expect(emitCalls.some(c => c.event === FilterEvents.CHANGED)).to.be.true;
-    expect(emitCalls.some(c => c.event === FeatureEvents.UPDATED)).to.be.true;
+    expect(emitCalls.some((c) => c.event === FilterEvents.CHANGED)).to.be.true;
+    expect(emitCalls.some((c) => c.event === FeatureEvents.UPDATED)).to.be.true;
 
     emitCalls = [];
     vs.setShowUnplannedWork(false);
     expect(vs.showUnplannedWork).to.equal(false);
-    expect(emitCalls.some(c => c.event === FilterEvents.CHANGED)).to.be.true;
-    expect(emitCalls.some(c => c.event === FeatureEvents.UPDATED)).to.be.true;
+    expect(emitCalls.some((c) => c.event === FilterEvents.CHANGED)).to.be.true;
+    expect(emitCalls.some((c) => c.event === FeatureEvents.UPDATED)).to.be.true;
   });
 
   it('invalid capacity view mode and sort mode are rejected', () => {
@@ -52,7 +56,7 @@ describe('ViewService additional coverage', () => {
     vs.setTimelineScale('days');
     // production ViewService defaults unknown scales to 'months'
     expect(vs.timelineScale).to.equal('months');
-    const scaleEvt = emitCalls.find(c => c.event === TimelineEvents.SCALE_CHANGED);
+    const scaleEvt = emitCalls.find((c) => c.event === TimelineEvents.SCALE_CHANGED);
     expect(scaleEvt).to.exist;
     expect(scaleEvt.data.scale).to.equal('months');
   });

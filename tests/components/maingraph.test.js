@@ -20,7 +20,9 @@ describe('MainGraph Tests', () => {
     });
 
     it('sets canvas dimensions from properties', async () => {
-      const el = await fixture(html`<maingraph-lit .bus=${mockBus} .width=${800} .height=${120}></maingraph-lit>`);
+      const el = await fixture(
+        html`<maingraph-lit .bus=${mockBus} .width=${800} .height=${120}></maingraph-lit>`
+      );
       const canvas = el.shadowRoot.querySelector('canvas');
       expect(canvas.width).to.equal(800);
       expect(canvas.height).to.equal(120);
@@ -49,34 +51,48 @@ describe('MainGraph Tests', () => {
 
       const calls = { clearRect: 0, fillRect: 0, beginPath: 0, stroke: 0 };
       const mockCtx = {
-        clearRect() { calls.clearRect++; },
-        fillRect() { calls.fillRect++; },
-        beginPath() { calls.beginPath++; },
+        clearRect() {
+          calls.clearRect++;
+        },
+        fillRect() {
+          calls.fillRect++;
+        },
+        beginPath() {
+          calls.beginPath++;
+        },
         moveTo() {},
         lineTo() {},
-        stroke() { calls.stroke++; },
+        stroke() {
+          calls.stroke++;
+        },
         save() {},
         restore() {},
         setLineDash() {},
-        getContext() { return this; }
+        getContext() {
+          return this;
+        },
       };
 
       el._canvasRef = { width: 800, height: 120, getContext: () => mockCtx };
 
-      const months = [new Date(2022,0,1), new Date(2022,1,1), new Date(2022,2,1)];
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1), new Date(2022, 2, 1)];
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#123' }],
         projects: [{ id: 'p1', color: '#456' }],
-        capacityDates: months.map(m=> new Date(m).toISOString().slice(0,10)),
-        teamDailyCapacity: [[10,20,30],[5,15,25],[0,0,0]],
+        capacityDates: months.map((m) => new Date(m).toISOString().slice(0, 10)),
+        teamDailyCapacity: [
+          [10, 20, 30],
+          [5, 15, 25],
+          [0, 0, 0],
+        ],
         teamDailyCapacityMap: null,
         projectDailyCapacity: [],
         projectDailyCapacityMap: null,
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['t1']),
-        selectedProjectIds: new Set(['p1'])
+        selectedProjectIds: new Set(['p1']),
       };
 
       // call internal render to exercise branches
@@ -96,23 +112,38 @@ describe('MainGraph Tests', () => {
       document.body.appendChild(el);
       await el.updateComplete;
       const calls = { fillRect: 0 };
-      const mockCtx = { clearRect() {}, fillRect() { calls.fillRect++; }, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, save() {}, restore() {}, setLineDash() {} };
+      const mockCtx = {
+        clearRect() {},
+        fillRect() {
+          calls.fillRect++;
+        },
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {},
+        save() {},
+        restore() {},
+        setLineDash() {},
+      };
       el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
 
-      const months = [new Date(2022,0,1), new Date(2022,1,1)];
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
       const snapshot = {
         months,
         teams: [{ id: 't1', color: '#111' }],
         projects: [{ id: 'p1', color: '#222' }],
-        capacityDates: months.map(m => m.toISOString().slice(0,10)),
+        capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: null,
-        projectDailyCapacity: [[10,0],[20,0]],
+        projectDailyCapacity: [
+          [10, 0],
+          [20, 0],
+        ],
         projectDailyCapacityMap: null,
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'project',
         selectedTeamIds: new Set(['t1']),
-        selectedProjectIds: new Set(['p1'])
+        selectedProjectIds: new Set(['p1']),
       };
 
       el._fullRender(mockCtx, snapshot);
@@ -129,8 +160,17 @@ describe('MainGraph Tests', () => {
 
       const calls = { stroke: 0 };
       const mockCtx = {
-        clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
-        stroke() { calls.stroke++; }, save() {}, restore() {}, setLineDash() {}
+        clearRect() {},
+        fillRect() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {
+          calls.stroke++;
+        },
+        save() {},
+        restore() {},
+        setLineDash() {},
       };
       el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
 
@@ -140,7 +180,7 @@ describe('MainGraph Tests', () => {
         months,
         teams: [{ id: 't1', color: '#111' }],
         projects: [{ id: 'p1', color: '#222' }],
-        capacityDates: months.map(m => m.toISOString().slice(0, 10)),
+        capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
         teamDailyCapacity: [],
         teamDailyCapacityMap: { 0: { t1: 50 }, 1: { t1: 60 } },
         projectDailyCapacity: [],
@@ -148,7 +188,7 @@ describe('MainGraph Tests', () => {
         totalOrgDailyPerTeamAvg: [],
         capacityViewMode: 'team',
         selectedTeamIds: new Set(['t1']),
-        selectedProjectIds: new Set()  // no plans selected
+        selectedProjectIds: new Set(), // no plans selected
       };
 
       // Should not throw and should draw the team line (stroke called at least once)
@@ -160,22 +200,26 @@ describe('MainGraph Tests', () => {
 
   it('inserts maingraph-lit when feature flag enabled', async () => {
     // ensure flag is enabled for the test
-    if(!isEnabled('USE_LIT_COMPONENTS')) return;
-    const sec = document.createElement('div'); sec.id = 'timelineSection'; sec.style.width='800px'; document.body.appendChild(sec);
-    const canvas = document.createElement('canvas'); canvas.id='mainGraphCanvas'; sec.appendChild(canvas);
+    if (!isEnabled('USE_LIT_COMPONENTS')) return;
+    const sec = document.createElement('div');
+    sec.id = 'timelineSection';
+    sec.style.width = '800px';
+    document.body.appendChild(sec);
+    const canvas = document.createElement('canvas');
+    canvas.id = 'mainGraphCanvas';
+    sec.appendChild(canvas);
     // Emulate app behavior: import the lit module and create a host instance
-    if(!customElements.get('maingraph-lit')){
+    if (!customElements.get('maingraph-lit')) {
       await import('../../www/js/components/MainGraph.lit.js');
     }
     let lit = document.querySelector('maingraph-lit');
-    if(!lit){
+    if (!lit) {
       const canvas = document.getElementById('mainGraphCanvas');
       const el = document.createElement('maingraph-lit');
-      if(canvas && canvas.parentNode) canvas.parentNode.insertBefore(el, canvas);
+      if (canvas && canvas.parentNode) canvas.parentNode.insertBefore(el, canvas);
       else document.body.appendChild(el);
       lit = el;
     }
     expect(lit).to.exist;
   });
-
 });

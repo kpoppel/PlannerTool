@@ -21,9 +21,9 @@ export class ViewMenuLit extends LitElement {
     .menu-popover {
       background: var(--color-sidebar-bg);
       color: var(--color-sidebar-text);
-      border: 1px solid rgba(255,255,255,0.18);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
       min-width: 280px;
       max-width: 400px;
       max-height: 500px;
@@ -34,80 +34,82 @@ export class ViewMenuLit extends LitElement {
       gap: 8px;
     }
 
-    .sidebar-list { 
-      list-style:none; 
-      padding:0; 
-      display:flex; 
-      flex-direction:column; 
-      gap:4px; 
-      margin:0 0 8px 0; 
+    .sidebar-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin: 0 0 8px 0;
     }
-    
-    .sidebar-list-item { display:block; }
-    
-    .view-item { 
-      padding:8px 10px; 
-      border-radius:6px; 
-      width:100%; 
-      display:flex; 
-      align-items:center; 
-      gap:8px; 
-      box-sizing:border-box; 
-      position:relative;
-      cursor:pointer;
+
+    .sidebar-list-item {
+      display: block;
+    }
+
+    .view-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      position: relative;
+      cursor: pointer;
       transition: background 120ms ease;
     }
-    
+
     .view-item:hover {
-      background:rgba(255,255,255,0.10);
+      background: rgba(255, 255, 255, 0.1);
     }
-    
-    .view-item.active { 
-      background:rgba(255,255,255,0.18); 
+
+    .view-item.active {
+      background: rgba(255, 255, 255, 0.18);
     }
-    
+
     .view-item.active:hover {
-      background:rgba(255,255,255,0.22);
+      background: rgba(255, 255, 255, 0.22);
     }
-    
-    .view-name { 
-      flex:1 1 auto; 
-      font-weight:600; 
-      font-size:0.85rem; 
-      overflow:hidden; 
-      text-overflow:ellipsis; 
-      white-space:nowrap; 
-      padding-right:4px;
+
+    .view-name {
+      flex: 1 1 auto;
+      font-weight: 600;
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-right: 4px;
     }
-    
-    .view-actions { 
-      display:inline-flex; 
-      gap:2px; 
-      align-items:center; 
-      opacity:1;
+
+    .view-actions {
+      display: inline-flex;
+      gap: 2px;
+      align-items: center;
+      opacity: 1;
       transition: opacity 120ms ease;
     }
-    
-    .action-btn { 
-      background:transparent;
-      border:none;
-      border-radius:3px; 
-      padding:4px 6px; 
-      cursor:pointer; 
-      font-size:0.8rem; 
-      line-height:1; 
+
+    .action-btn {
+      background: transparent;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      line-height: 1;
       color: var(--color-sidebar-text);
       transition: background 100ms ease;
-      opacity:0.7;
+      opacity: 0.7;
     }
-    
-    .action-btn:hover { 
-      background:rgba(255,255,255,0.15);
-      opacity:1;
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      opacity: 1;
     }
 
     .action-btn:active {
-      background:rgba(255,255,255,0.25);
+      background: rgba(255, 255, 255, 0.25);
     }
 
     .save-view-btn {
@@ -139,14 +141,14 @@ export class ViewMenuLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
+
     // Listen to view changes for real-time updates
     this._onViewsList = (payload) => {
       this.views = payload?.views ? [...payload.views] : [];
       this.activeViewId = payload?.activeId || null;
       this.requestUpdate();
     };
-    
+
     this._onViewActivated = (payload) => {
       this.activeViewId = payload?.id || null;
       this.requestUpdate();
@@ -161,7 +163,8 @@ export class ViewMenuLit extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this._onViewsList) bus.off(ViewManagementEvents.LIST, this._onViewsList);
-    if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onViewActivated)
+      bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
   }
 
   async _onViewClick(e, view) {
@@ -172,11 +175,13 @@ export class ViewMenuLit extends LitElement {
     } catch (err) {
       console.error('[ViewMenu] Failed to load view:', err);
       // Dispatch error event for parent to handle
-      this.dispatchEvent(new CustomEvent('view-error', {
-        detail: { view, error: err },
-        bubbles: true,
-        composed: true
-      }));
+      this.dispatchEvent(
+        new CustomEvent('view-error', {
+          detail: { view, error: err },
+          bubbles: true,
+          composed: true,
+        })
+      );
     }
   }
 
@@ -230,28 +235,48 @@ export class ViewMenuLit extends LitElement {
     return html`
       <div class="menu-popover">
         <ul class="sidebar-list">
-          ${sorted.map(v => html`
-            <li class="sidebar-list-item view-item ${v.id === this.activeViewId ? 'active' : ''}" 
-                @click=${(e) => this._onViewClick(e, v)}>
-              <span class="view-name" title="${v.name}">${v.name}</span>
-              ${!v.readonly ? html`
-                <span class="view-actions">
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Update this view with current settings" 
-                          @click=${(e) => this._onUpdateView(e, v)}>💾</button>
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Rename view" 
-                          @click=${(e) => this._onRenameView(e, v)}>✏️</button>
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Delete view" 
-                          @click=${(e) => this._onDeleteView(e, v)}>🗑️</button>
-                </span>
-              ` : ''}
-            </li>
-          `)}
+          ${sorted.map(
+            (v) => html`
+              <li
+                class="sidebar-list-item view-item ${v.id === this.activeViewId ?
+                  'active'
+                : ''}"
+                @click=${(e) => this._onViewClick(e, v)}
+              >
+                <span class="view-name" title="${v.name}">${v.name}</span>
+                ${!v.readonly ?
+                  html`
+                    <span class="view-actions">
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Update this view with current settings"
+                        @click=${(e) => this._onUpdateView(e, v)}
+                      >
+                        💾
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Rename view"
+                        @click=${(e) => this._onRenameView(e, v)}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Delete view"
+                        @click=${(e) => this._onDeleteView(e, v)}
+                      >
+                        🗑️
+                      </button>
+                    </span>
+                  `
+                : ''}
+              </li>
+            `
+          )}
         </ul>
         <button type="button" class="save-view-btn" @click=${this._onSaveCurrentView}>
           💾 Save Settings as View

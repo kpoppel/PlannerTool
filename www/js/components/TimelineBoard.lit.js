@@ -6,7 +6,7 @@ class TimelineBoard extends LitElement {
     return {
       offsetX: { type: Number },
       offsetY: { type: Number },
-      scale: { type: Number }
+      scale: { type: Number },
     };
   }
 
@@ -18,8 +18,7 @@ class TimelineBoard extends LitElement {
     this._onScroll = this._onScroll.bind(this);
   }
 
-//  createRenderRoot() {
-  
+  //  createRenderRoot() {
 
   connectedCallback() {
     super.connectedCallback();
@@ -34,7 +33,9 @@ class TimelineBoard extends LitElement {
       // so downstream components render with the correct scale.
       try {
         if (state && state._initCompleted) await state._initCompleted;
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
 
       await import('./MainGraph.lit.js');
       const mgSection = this.querySelector('#maingraphSection');
@@ -58,11 +59,13 @@ class TimelineBoard extends LitElement {
     window.requestAnimationFrame(() => {
       this.offsetX = vp.scrollLeft;
       this.offsetY = vp.scrollTop;
-      this.dispatchEvent(new CustomEvent('board-scroll', {
-        detail: { offsetX: this.offsetX, offsetY: this.offsetY },
-        bubbles: true,
-        composed: true
-      }));
+      this.dispatchEvent(
+        new CustomEvent('board-scroll', {
+          detail: { offsetX: this.offsetX, offsetY: this.offsetY },
+          bubbles: true,
+          composed: true,
+        })
+      );
     });
   }
 
@@ -125,7 +128,7 @@ class TimelineBoard extends LitElement {
         margin: 0;
         padding: 0;
         border: 0;
-        background: rgba(0,0,0,0.02);
+        background: rgba(0, 0, 0, 0.02);
       }
       /* For the main graph we don't want the panel padding/margin to push
          the graph away from the top-left. Override the panel spacing here
@@ -155,7 +158,8 @@ class TimelineBoard extends LitElement {
         position: relative;
         z-index: 10;
         /* Alternating month background aligned with card lanes */
-        background: repeating-linear-gradient(to right,
+        background: repeating-linear-gradient(
+          to right,
           var(--color-bg, #f7f7f7) 0,
           var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
           var(--color-month-alt, #ececec) var(--timeline-month-width, 120px),
@@ -163,7 +167,9 @@ class TimelineBoard extends LitElement {
         );
         background-position: 0 0;
       }
-      .timeline-section.panning { cursor: grabbing; }
+      .timeline-section.panning {
+        cursor: grabbing;
+      }
       /* Header (months row) — let the timeline component size itself */
       .timeline-section > timeline-lit {
         flex: 0 0 auto;
@@ -173,7 +179,8 @@ class TimelineBoard extends LitElement {
         box-sizing: border-box;
       }
       /* Remove margins/padding that might come from child content */
-      .timeline-section > timeline-lit, .timeline-section > timeline-lit * {
+      .timeline-section > timeline-lit,
+      .timeline-section > timeline-lit * {
         margin: 0 !important;
         padding: 0 !important;
       }
@@ -188,8 +195,15 @@ class TimelineBoard extends LitElement {
         overflow: auto;
       }
       /* make timeline header fixed height and let feature-board grow */
-      .timeline-section > timeline-lit { flex: 0 0 20px; }
-      .timeline-section > feature-board { display: block; flex: 1 1 auto; min-height: 0; overflow: auto; }
+      .timeline-section > timeline-lit {
+        flex: 0 0 20px;
+      }
+      .timeline-section > feature-board {
+        display: block;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
     `;
   }
 
@@ -219,10 +233,18 @@ class TimelineBoard extends LitElement {
       </style>
       <div class="timeline-board-viewport">
         <div class="timeline-board-inner">
-          <section id="maingraphSection" class="panel maingraph-section" aria-label="Organisational Load Graph">
+          <section
+            id="maingraphSection"
+            class="panel maingraph-section"
+            aria-label="Organisational Load Graph"
+          >
             <maingraph-lit></maingraph-lit>
           </section>
-          <section id="timelineSection" class="panel timeline-section" aria-label="Timeline and Features">
+          <section
+            id="timelineSection"
+            class="panel timeline-section"
+            aria-label="Timeline and Features"
+          >
             <timeline-lit></timeline-lit>
             <feature-board></feature-board>
           </section>

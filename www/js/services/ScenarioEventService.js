@@ -2,7 +2,7 @@ import { ScenarioEvents, DataEvents, FeatureEvents } from '../core/EventRegistry
 
 /**
  * ScenarioEventService
- * 
+ *
  * Manages scenario event emissions and synchronization with backend data.
  * Handles scenario list emissions, activation events, and data synchronization.
  */
@@ -14,7 +14,7 @@ export class ScenarioEventService {
     this._scenarios = []; // Combined scenarios (readonly + managed)
     this._activeScenarioId = null;
     this._captureCurrentFilters = null; // Will be set by initDefaultScenario
-    
+
     // Register data event handlers
     this._registerDataHandlers();
   }
@@ -25,11 +25,11 @@ export class ScenarioEventService {
    */
   _registerDataHandlers() {
     // Load scenarios from backend on startup and keep state in sync
-    this._bus.on(DataEvents.SCENARIOS_CHANGED, async (metas) => {
+    this._bus.on(DataEvents.SCENARIOS_CHANGED, async () => {
       // Only update list UI; full data comes via scenarios:data
       this.emitScenarioList();
     });
-    
+
     this._bus.on(DataEvents.SCENARIOS_DATA, (scenarios) => {
       this._handleScenariosData(scenarios);
     });
@@ -42,37 +42,44 @@ export class ScenarioEventService {
    */
   _handleScenariosData(scenarios) {
     // Merge fetched scenarios into state (preserve readonly scenarios like baseline)
-    const readonly = this._scenarios.filter(s => s.readonly);
+    const readonly = this._scenarios.filter((s) => s.readonly);
     this._scenarios = [];
-    
+
     // Re-add readonly scenarios first
     this._scenarios.push(...readonly);
-    
-    for (const s of (scenarios || [])) {
+
+    for (const s of scenarios || []) {
       // Ensure required fields, preserve readonly flag from server
-      const merged = Object.assign({
-        overrides: {},
-        filters: this._captureCurrentFilters ? this._captureCurrentFilters() : { projects: [], teams: [] },
-        view: this._captureCurrentView(),
-        isChanged: false,
-        readonly: false
-      }, s);
-      
+      const merged = Object.assign(
+        {
+          overrides: {},
+          filters:
+            this._captureCurrentFilters ?
+              this._captureCurrentFilters()
+            : { projects: [], teams: [] },
+          view: this._captureCurrentView(),
+          isChanged: false,
+          readonly: false,
+        },
+        s
+      );
+
       // Skip if already added as readonly scenario
-      if (this._scenarios.some(existing => existing.id === merged.id)) continue;
+      if (this._scenarios.some((existing) => existing.id === merged.id)) continue;
       this._scenarios.push(merged);
     }
-    
+
     // Sync scenarios to ScenarioManager (only non-readonly)
-    this._scenarioManager.scenarios = this._scenarios.filter(s => !s.readonly);
-    
+    this._scenarioManager.scenarios = this._scenarios.filter((s) => !s.readonly);
+
     // Keep active scenario valid - default to first readonly scenario if active is missing
-    if (!this._scenarios.find(x => x.id === this._activeScenarioId)) {
-      const firstReadonly = this._scenarios.find(s => s.readonly);
-      this._activeScenarioId = firstReadonly ? firstReadonly.id : (this._scenarios[0]?.id || 'baseline');
+    if (!this._scenarios.find((x) => x.id === this._activeScenarioId)) {
+      const firstReadonly = this._scenarios.find((s) => s.readonly);
+      this._activeScenarioId =
+        firstReadonly ? firstReadonly.id : this._scenarios[0]?.id || 'baseline';
       this._scenarioManager.activeScenarioId = this._activeScenarioId;
     }
-    
+
     this.emitScenarioList();
     this.emitScenarioActivated();
     this._bus.emit(FeatureEvents.UPDATED);
@@ -84,10 +91,10 @@ export class ScenarioEventService {
    */
   initDefaultScenario(captureFiltersFn) {
     this._captureCurrentFilters = captureFiltersFn;
-    
+
     const DEFAULT_ID = 'baseline';
-    const existing = this._scenarios.find(s => s.id === DEFAULT_ID);
-    
+    const existing = this._scenarios.find((s) => s.id === DEFAULT_ID);
+
     if (existing) {
       existing.overrides = {};
       existing.isChanged = false;
@@ -121,14 +128,14 @@ export class ScenarioEventService {
    */
   emitScenarioList() {
     this._bus.emit(ScenarioEvents.LIST, {
-      scenarios: this._scenarios.map(s => ({
+      scenarios: this._scenarios.map((s) => ({
         id: s.id,
         name: s.name,
         overridesCount: Object.keys(s.overrides || {}).length,
         unsaved: this.isScenarioUnsaved(s),
-        readonly: s.readonly === true
+        readonly: s.readonly === true,
       })),
-      activeScenarioId: this._activeScenarioId
+      activeScenarioId: this._activeScenarioId,
     });
   }
 
@@ -136,7 +143,9 @@ export class ScenarioEventService {
    * Emit scenario activated event
    */
   emitScenarioActivated() {
-    this._bus.emit(ScenarioEvents.ACTIVATED, { scenarioId: this._activeScenarioId });
+    this._bus.emit(ScenarioEvents.ACTIVATED, {
+      scenarioId: this._activeScenarioId,
+    });
   }
 
   /**
@@ -163,11 +172,8 @@ export class ScenarioEventService {
    * Should be called after ScenarioManager operations
    */
   syncScenariosFromManager() {
-    const readonlyScenarios = this._scenarios.filter(s => s.readonly);
-    this._scenarios = [
-      ...readonlyScenarios,
-      ...this._scenarioManager.getAllScenarios()
-    ];
+    const readonlyScenarios = this._scenarios.filter((s) => s.readonly);
+    this._scenarios = [...readonlyScenarios, ...this._scenarioManager.getAllScenarios()];
   }
 
   /**
@@ -201,7 +207,7 @@ export class ScenarioEventService {
    * @returns {Object|undefined}
    */
   getScenarioById(id) {
-    return this._scenarios.find(s => s.id === id);
+    return this._scenarios.find((s) => s.id === id);
   }
 
   /**
@@ -209,7 +215,7 @@ export class ScenarioEventService {
    * @param {string} id - Scenario ID
    */
   markScenarioSaved(id) {
-    const scen = this._scenarios.find(s => s.id === id);
+    const scen = this._scenarios.find((s) => s.id === id);
     if (scen) {
       scen.isChanged = false;
     }

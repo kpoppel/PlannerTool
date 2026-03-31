@@ -14,54 +14,92 @@ import { findInBoard } from '../../components/board-utils.js';
  * @returns {Object} - { x, y, width, height, scrollLeft, scrollTop, totalWidth, totalHeight, mainGraphHeight, fullHeight }
  */
 export function getViewportBounds(options = {}) {
-    const timelineSection = document.getElementById('timelineSection');
-    const featureBoard = findInBoard('feature-board');
-    const mainGraph = document.querySelector('maingraph-lit');
-    
-    if (!timelineSection || !featureBoard) {
-        console.warn('[Export] Missing elements:', { timelineSection: !!timelineSection, featureBoard: !!featureBoard });
-        return { 
-            x: 0, y: 0, width: 0, height: 0, 
-            scrollLeft: 0, scrollTop: 0, 
-            totalWidth: 0, totalHeight: 0,
-            mainGraphHeight: 0, fullHeight: 0
-        };
-    }
-    
-        const rect = timelineSection.getBoundingClientRect();
-        // Prefer LayoutManager-provided board rect for scroll offsets and sizes
-        let boardRect;
-        try {
-            if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
-                const br = featureBoard._layout.getBoardRect();
-                boardRect = { x: 0, y: 0, left: 0, top: 0, width: br.width || featureBoard.clientWidth || 0, height: br.height || featureBoard.clientHeight || 0 };
-            } else {
-                boardRect = featureBoard.getBoundingClientRect();
-            }
-        } catch (e) {
-            try { boardRect = featureBoard.getBoundingClientRect(); } catch (e) { boardRect = { x: 0, y: 0, width: 0, height: 0 }; }
-        }
-        const mainGraphRect = mainGraph ? mainGraph.getBoundingClientRect() : { height: 0 };
-    
-    // IMPORTANT: Horizontal scroll is on timelineSection, vertical scroll is on featureBoard
-    // This matches the panning behavior in Timeline.lit.js
-    const scrollLeft = options.scrollLeft !== undefined ? options.scrollLeft : (timelineSection.scrollLeft || (featureBoard._layout && featureBoard._layout.getBoardRect ? featureBoard._layout.getBoardRect().left : 0) || 0);
-    const scrollTop = options.scrollTop !== undefined ? options.scrollTop : (featureBoard.scrollTop || (featureBoard._layout && featureBoard._layout.getBoardRect ? featureBoard._layout.getBoardRect().top : 0) || 0);
-    const totalWidth = featureBoard.scrollWidth || boardRect.width;
-    const totalHeight = featureBoard.scrollHeight || boardRect.height;
-    
+  const timelineSection = document.getElementById('timelineSection');
+  const featureBoard = findInBoard('feature-board');
+  const mainGraph = document.querySelector('maingraph-lit');
+
+  if (!timelineSection || !featureBoard) {
+    console.warn('[Export] Missing elements:', {
+      timelineSection: !!timelineSection,
+      featureBoard: !!featureBoard,
+    });
     return {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        scrollLeft,
-        scrollTop,
-        totalWidth,
-        totalHeight,
-        mainGraphHeight: mainGraphRect.height,
-        fullHeight: totalHeight
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
+      totalWidth: 0,
+      totalHeight: 0,
+      mainGraphHeight: 0,
+      fullHeight: 0,
     };
+  }
+
+  const rect = timelineSection.getBoundingClientRect();
+  // Prefer LayoutManager-provided board rect for scroll offsets and sizes
+  let boardRect;
+  try {
+    if (
+      featureBoard &&
+      featureBoard._layout &&
+      typeof featureBoard._layout.getBoardRect === 'function'
+    ) {
+      const br = featureBoard._layout.getBoardRect();
+      boardRect = {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        width: br.width || featureBoard.clientWidth || 0,
+        height: br.height || featureBoard.clientHeight || 0,
+      };
+    } else {
+      boardRect = featureBoard.getBoundingClientRect();
+    }
+  } catch (e) {
+    try {
+      boardRect = featureBoard.getBoundingClientRect();
+    } catch (e) {
+      boardRect = { x: 0, y: 0, width: 0, height: 0 };
+    }
+  }
+  const mainGraphRect = mainGraph ? mainGraph.getBoundingClientRect() : { height: 0 };
+
+  // IMPORTANT: Horizontal scroll is on timelineSection, vertical scroll is on featureBoard
+  // This matches the panning behavior in Timeline.lit.js
+  const scrollLeft =
+    options.scrollLeft !== undefined ?
+      options.scrollLeft
+    : timelineSection.scrollLeft ||
+      (featureBoard._layout && featureBoard._layout.getBoardRect ?
+        featureBoard._layout.getBoardRect().left
+      : 0) ||
+      0;
+  const scrollTop =
+    options.scrollTop !== undefined ?
+      options.scrollTop
+    : featureBoard.scrollTop ||
+      (featureBoard._layout && featureBoard._layout.getBoardRect ?
+        featureBoard._layout.getBoardRect().top
+      : 0) ||
+      0;
+  const totalWidth = featureBoard.scrollWidth || boardRect.width;
+  const totalHeight = featureBoard.scrollHeight || boardRect.height;
+
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    scrollLeft,
+    scrollTop,
+    totalWidth,
+    totalHeight,
+    mainGraphHeight: mainGraphRect.height,
+    fullHeight: totalHeight,
+  };
 }
 
 // Use the same font stack as the app so exported SVG text matches in-app text
@@ -74,11 +112,11 @@ const EXPORT_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
  * @returns {SVGElement}
  */
 export function createSvgElement(tag, attrs = {}) {
-    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-    for (const [key, value] of Object.entries(attrs)) {
-        el.setAttribute(key, value);
-    }
-    return el;
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    el.setAttribute(key, value);
+  }
+  return el;
 }
 
 /**
@@ -90,18 +128,21 @@ export function createSvgElement(tag, attrs = {}) {
  * @returns {SVGTextElement}
  */
 export function createSvgText(text, x, y, attrs = {}) {
-    // Ensure a consistent font-family is set when not provided by caller
-    const mergedAttrs = Object.assign({
-        'font-family': EXPORT_FONT_FAMILY
-    }, attrs);
+  // Ensure a consistent font-family is set when not provided by caller
+  const mergedAttrs = Object.assign(
+    {
+      'font-family': EXPORT_FONT_FAMILY,
+    },
+    attrs
+  );
 
-    const el = createSvgElement('text', {
-        x: String(x),
-        y: String(y),
-        ...mergedAttrs
-    });
-    el.textContent = text;
-    return el;
+  const el = createSvgElement('text', {
+    x: String(x),
+    y: String(y),
+    ...mergedAttrs,
+  });
+  el.textContent = text;
+  return el;
 }
 
 /**
@@ -112,30 +153,30 @@ export function createSvgText(text, x, y, attrs = {}) {
  * @returns {string[]} - Array of text lines
  */
 export function wrapText(text, maxWidth, fontSize = 12) {
-    if (!text) return [];
-    
-    // Approximate characters per line based on font size
-    const avgCharWidth = fontSize * 0.6;
-    const charsPerLine = Math.floor(maxWidth / avgCharWidth);
-    
-    if (charsPerLine <= 0) return [text];
-    
-    const words = text.split(' ');
-    const lines = [];
-    let currentLine = '';
-    
-    for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        if (testLine.length <= charsPerLine) {
-            currentLine = testLine;
-        } else {
-            if (currentLine) lines.push(currentLine);
-            currentLine = word;
-        }
+  if (!text) return [];
+
+  // Approximate characters per line based on font size
+  const avgCharWidth = fontSize * 0.6;
+  const charsPerLine = Math.floor(maxWidth / avgCharWidth);
+
+  if (charsPerLine <= 0) return [text];
+
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    if (testLine.length <= charsPerLine) {
+      currentLine = testLine;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
     }
-    
-    if (currentLine) lines.push(currentLine);
-    return lines;
+  }
+
+  if (currentLine) lines.push(currentLine);
+  return lines;
 }
 
 /**
@@ -145,9 +186,9 @@ export function wrapText(text, maxWidth, fontSize = 12) {
  * @returns {string}
  */
 export function generateFilename(prefix = 'timeline', extension = 'png') {
-    const now = new Date();
-    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    return `${prefix}-${timestamp}.${extension}`;
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  return `${prefix}-${timestamp}.${extension}`;
 }
 
 /**
@@ -159,55 +200,66 @@ export function generateFilename(prefix = 'timeline', extension = 'png') {
  * @returns {Promise<Blob>}
  */
 export async function svgToPngBlob(svg, width, height, scale = 2) {
-    return new Promise((resolve, reject) => {
-        const serializer = new XMLSerializer();
-        const svgString = serializer.serializeToString(svg);
-        const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(svgBlob);
-        
-        const img = new Image();
-        img.onload = () => {
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = width * scale;
-                canvas.height = height * scale;
-
-                const ctx = canvas.getContext('2d');
-                ctx.scale(scale, scale);
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Ensure the object URL is revoked even if toBlob is async
-                URL.revokeObjectURL(url);
-
-                canvas.toBlob(blob => {
-                    if (blob) {
-                        resolve(blob);
-                    } else {
-                        reject(new Error('Failed to create PNG blob'));
-                    }
-                }, 'image/png');
-            } catch (err) {
-                // Revoke URL and reject with a helpful message so callers can show an alert
-                try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
-                const msg = 'Canvas operation failed during PNG creation — the export may be too large for your browser. Try showing fewer items and try again.';
-                const wrapped = new Error(msg + (err && err.message ? ` (${err.message})` : ''));
-                wrapped.originalError = err;
-                reject(wrapped);
-            }
-        };
-
-        img.onerror = (ev) => {
-            try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
-            const msg = 'Failed to load SVG as image — export may be too large or malformed.';
-            const err = new Error(msg);
-            err.event = ev;
-            reject(err);
-        };
-        
-        img.src = url;
+  return new Promise((resolve, reject) => {
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svg);
+    const svgBlob = new Blob([svgString], {
+      type: 'image/svg+xml;charset=utf-8',
     });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Ensure the object URL is revoked even if toBlob is async
+        URL.revokeObjectURL(url);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create PNG blob'));
+          }
+        }, 'image/png');
+      } catch (err) {
+        // Revoke URL and reject with a helpful message so callers can show an alert
+        try {
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          /* ignore */
+        }
+        const msg =
+          'Canvas operation failed during PNG creation — the export may be too large for your browser. Try showing fewer items and try again.';
+        const wrapped = new Error(msg + (err && err.message ? ` (${err.message})` : ''));
+        wrapped.originalError = err;
+        reject(wrapped);
+      }
+    };
+
+    img.onerror = (ev) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        /* ignore */
+      }
+      const msg = 'Failed to load SVG as image — export may be too large or malformed.';
+      const err = new Error(msg);
+      err.event = ev;
+      reject(err);
+    };
+
+    img.src = url;
+  });
 }
 
 /**
@@ -216,69 +268,72 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
  * @param {string} filename - The filename to use
  */
 export function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-    /**
-     * Copy SVG element as text to clipboard (fallback for copying SVG markup)
-     * @param {SVGElement} svg
-     * @returns {Promise<void>}
-     */
-    export async function copySvgToClipboard(svg) {
-        const serializer = new XMLSerializer();
-        const svgString = serializer.serializeToString(svg);
+/**
+ * Copy SVG element as text to clipboard (fallback for copying SVG markup)
+ * @param {SVGElement} svg
+ * @returns {Promise<void>}
+ */
+export async function copySvgToClipboard(svg) {
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(svg);
 
-        const hasClipboard = !!(navigator.clipboard);
-        const hasClipboardItem = !!(window.ClipboardItem);
+  const hasClipboard = !!navigator.clipboard;
+  const hasClipboardItem = !!window.ClipboardItem;
 
-        const supportsType = (mime) => {
-            try {
-                if (!hasClipboardItem) return false;
-                if (typeof window.ClipboardItem.supports === 'function') {
-                    return window.ClipboardItem.supports(mime);
-                }
-                // If supports() isn't available, be permissive and return true so we can try
-                return true;
-            } catch (e) {
-                return false;
-            }
-        };
-
-        // 1) Preferred: write as image/svg+xml when supported
-        if (hasClipboard && hasClipboardItem && supportsType('image/svg+xml')) {
-            try {
-                const blob = new Blob([svgString], { type: 'image/svg+xml' });
-                await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                return;
-            } catch (err) {
-                console.warn('[ExportUtils] write image/svg+xml to clipboard unsupported on this browser:', err);
-            }
-        }
-        throw new Error('Clipboard API not available');
+  const supportsType = (mime) => {
+    try {
+      if (!hasClipboardItem) return false;
+      if (typeof window.ClipboardItem.supports === 'function') {
+        return window.ClipboardItem.supports(mime);
+      }
+      // If supports() isn't available, be permissive and return true so we can try
+      return true;
+    } catch (e) {
+      return false;
     }
+  };
 
-    /**
-     * Copy PNG Blob to clipboard (requires ClipboardItem support)
-     * @param {Blob} pngBlob
-     * @returns {Promise<void>}
-     */
-    export async function copyPngBlobToClipboard(pngBlob) {
-        try {
-            if (navigator.clipboard && window.ClipboardItem) {
-                const item = new ClipboardItem({ 'image/png': pngBlob });
-                await navigator.clipboard.write([item]);
-                return;
-            }
-            throw new Error('Clipboard API ClipboardItem not supported');
-        } catch (err) {
-            console.warn('[ExportUtils] copyPngBlobToClipboard failed:', err);
-            throw err;
-        }
+  // 1) Preferred: write as image/svg+xml when supported
+  if (hasClipboard && hasClipboardItem && supportsType('image/svg+xml')) {
+    try {
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      return;
+    } catch (err) {
+      console.warn(
+        '[ExportUtils] write image/svg+xml to clipboard unsupported on this browser:',
+        err
+      );
     }
+  }
+  throw new Error('Clipboard API not available');
+}
+
+/**
+ * Copy PNG Blob to clipboard (requires ClipboardItem support)
+ * @param {Blob} pngBlob
+ * @returns {Promise<void>}
+ */
+export async function copyPngBlobToClipboard(pngBlob) {
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      const item = new ClipboardItem({ 'image/png': pngBlob });
+      await navigator.clipboard.write([item]);
+      return;
+    }
+    throw new Error('Clipboard API ClipboardItem not supported');
+  } catch (err) {
+    console.warn('[ExportUtils] copyPngBlobToClipboard failed:', err);
+    throw err;
+  }
+}

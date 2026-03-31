@@ -3,28 +3,32 @@ import './Modal.lit.js';
 import { state } from '../services/State.js';
 
 export class ViewSaveModal extends LitElement {
-  static properties = { 
+  static properties = {
     name: { type: String },
     previewData: { type: Object },
     _status: { type: String },
-    _saving: { type: Boolean }
+    _saving: { type: Boolean },
   };
 
-  constructor(){ 
-    super(); 
-    this.name=''; 
+  constructor() {
+    super();
+    this.name = '';
     this.previewData = null;
     this._status = '';
     this._saving = false;
   }
-  
-  connectedCallback(){ 
+
+  connectedCallback() {
     super.connectedCallback();
     // Capture current state for preview
-    try { this._capturePreviewData(); } catch(e) { /* ignore preview capture errors */ }
+    try {
+      this._capturePreviewData();
+    } catch (e) {
+      /* ignore preview capture errors */
+    }
   }
 
-  firstUpdated(){
+  firstUpdated() {
     // Open the inner modal-lit after the first render. Using the renderRoot
     // directly avoids the fragile nested querySelector pattern.
     const inner = this.renderRoot.querySelector('modal-lit');
@@ -47,9 +51,11 @@ export class ViewSaveModal extends LitElement {
     this._status = '';
     try {
       await state.viewManagementService.saveCurrentView(val);
-      this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+      this.dispatchEvent(
+        new CustomEvent('modal-close', { bubbles: true, composed: true })
+      );
       this.remove();
-    } catch(err) {
+    } catch (err) {
       this._status = `Failed to save view: ${err.message || err}`;
       this._saving = false;
     }
@@ -76,22 +82,22 @@ export class ViewSaveModal extends LitElement {
       expansionOptions: {
         expandParentChild: false,
         expandRelations: false,
-        expandTeamAllocated: false
-      }
+        expandTeamAllocated: false,
+      },
     };
 
     // Get selected projects
     if (state.projects) {
       this.previewData.selectedProjects = state.projects
-        .filter(p => p.selected)
-        .map(p => p.name || p.id);
+        .filter((p) => p.selected)
+        .map((p) => p.name || p.id);
     }
 
     // Get selected teams
     if (state.teams) {
       this.previewData.selectedTeams = state.teams
-        .filter(t => t.selected)
-        .map(t => t.name || t.id);
+        .filter((t) => t.selected)
+        .map((t) => t.name || t.id);
     }
 
     // Get view options
@@ -101,7 +107,7 @@ export class ViewSaveModal extends LitElement {
         timelineScale: vo.timelineScale || 'months',
         condensedCards: vo.condensedCards ? 'Yes' : 'No',
         sortMode: vo.featureSortMode || 'rank',
-        showDependencies: vo.showDependencies ? 'Yes' : 'No'
+        showDependencies: vo.showDependencies ? 'Yes' : 'No',
       };
     }
 
@@ -110,14 +116,18 @@ export class ViewSaveModal extends LitElement {
     if (sidebarElement && sidebarElement.selectedTaskTypes) {
       try {
         this.previewData.taskTypes = Array.from(sidebarElement.selectedTaskTypes || []);
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
 
     // Get graph type from sidebar
     if (sidebarElement && sidebarElement._graphType) {
       try {
         this.previewData.graphType = sidebarElement._graphType;
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
 
     // Get expansion options from sidebar
@@ -126,15 +136,17 @@ export class ViewSaveModal extends LitElement {
         this.previewData.expansionOptions = {
           expandParentChild: sidebarElement.expandParentChild || false,
           expandRelations: sidebarElement.expandRelations || false,
-          expandTeamAllocated: sidebarElement.expandTeamAllocated || false
+          expandTeamAllocated: sidebarElement.expandTeamAllocated || false,
         };
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
 
     this.requestUpdate();
   }
 
-  render(){
+  render() {
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Save View</h3></div>
@@ -229,66 +241,131 @@ export class ViewSaveModal extends LitElement {
           <div class="modal-content">
             <div class="modal-field">
               <label for="saveViewInput">View Name</label>
-              <input id="saveViewInput" type="text" value="${this.name}" placeholder="Enter view name..."
-                     @keydown=${this._handleKeydown} />
+              <input
+                id="saveViewInput"
+                type="text"
+                value="${this.name}"
+                placeholder="Enter view name..."
+                @keydown=${this._handleKeydown}
+              />
             </div>
 
-            ${this.previewData ? html`
-              <div class="preview-section">
-                <h4>📋 Settings to be saved:</h4>
-                
-                <div class="preview-group">
-                  <div class="preview-label">Selected Plans (${this.previewData.selectedProjects.length}):</div>
-                  <div class="preview-value">
-                    ${this.previewData.selectedProjects.length === 0 ? html`<em>None</em>` : 
-                      this.previewData.selectedProjects.map(name => html`<span class="preview-badge">${name}</span>`)}
+            ${this.previewData ?
+              html`
+                <div class="preview-section">
+                  <h4>📋 Settings to be saved:</h4>
+
+                  <div class="preview-group">
+                    <div class="preview-label">
+                      Selected Plans (${this.previewData.selectedProjects.length}):
+                    </div>
+                    <div class="preview-value">
+                      ${this.previewData.selectedProjects.length === 0 ?
+                        html`<em>None</em>`
+                      : this.previewData.selectedProjects.map(
+                          (name) => html`<span class="preview-badge">${name}</span>`
+                        )}
+                    </div>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">
+                      Selected Teams (${this.previewData.selectedTeams.length}):
+                    </div>
+                    <div class="preview-value">
+                      ${this.previewData.selectedTeams.length === 0 ?
+                        html`<em>None</em>`
+                      : this.previewData.selectedTeams.map(
+                          (name) => html`<span class="preview-badge">${name}</span>`
+                        )}
+                    </div>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">Display Options:</div>
+                    <ul class="preview-list">
+                      <li>
+                        Timeline Scale:
+                        <strong>${this.previewData.viewOptions.timelineScale}</strong>
+                      </li>
+                      <li>
+                        Condensed Cards:
+                        <strong>${this.previewData.viewOptions.condensedCards}</strong>
+                      </li>
+                      <li>
+                        Sort Mode:
+                        <strong>${this.previewData.viewOptions.sortMode}</strong>
+                      </li>
+                      <li>
+                        Show Dependencies:
+                        <strong>${this.previewData.viewOptions.showDependencies}</strong>
+                      </li>
+                      <li>
+                        Graph Type:
+                        <strong>${this.previewData.graphType}</strong>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">
+                      Selected Task Types (${this.previewData.taskTypes.length}):
+                    </div>
+                    <div class="preview-value">
+                      ${this.previewData.taskTypes.length === 0 ?
+                        html`<em>None</em>`
+                      : this.previewData.taskTypes.map(
+                          (type) => html`<span class="preview-badge">${type}</span>`
+                        )}
+                    </div>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">Expansion Options:</div>
+                    <ul class="preview-list">
+                      <li>
+                        Expand Parent/Child:
+                        <strong
+                          >${this.previewData.expansionOptions.expandParentChild ?
+                            'Yes'
+                          : 'No'}</strong
+                        >
+                      </li>
+                      <li>
+                        Expand Relations:
+                        <strong
+                          >${this.previewData.expansionOptions.expandRelations ?
+                            'Yes'
+                          : 'No'}</strong
+                        >
+                      </li>
+                      <li>
+                        Expand Team Allocated:
+                        <strong
+                          >${this.previewData.expansionOptions.expandTeamAllocated ?
+                            'Yes'
+                          : 'No'}</strong
+                        >
+                      </li>
+                    </ul>
                   </div>
                 </div>
-
-                <div class="preview-group">
-                  <div class="preview-label">Selected Teams (${this.previewData.selectedTeams.length}):</div>
-                  <div class="preview-value">
-                    ${this.previewData.selectedTeams.length === 0 ? html`<em>None</em>` : 
-                      this.previewData.selectedTeams.map(name => html`<span class="preview-badge">${name}</span>`)}
-                  </div>
-                </div>
-
-                <div class="preview-group">
-                  <div class="preview-label">Display Options:</div>
-                  <ul class="preview-list">
-                    <li>Timeline Scale: <strong>${this.previewData.viewOptions.timelineScale}</strong></li>
-                    <li>Condensed Cards: <strong>${this.previewData.viewOptions.condensedCards}</strong></li>
-                    <li>Sort Mode: <strong>${this.previewData.viewOptions.sortMode}</strong></li>
-                    <li>Show Dependencies: <strong>${this.previewData.viewOptions.showDependencies}</strong></li>
-                    <li>Graph Type: <strong>${this.previewData.graphType}</strong></li>
-                  </ul>
-                </div>
-
-                <div class="preview-group">
-                  <div class="preview-label">Selected Task Types (${this.previewData.taskTypes.length}):</div>
-                  <div class="preview-value">
-                    ${this.previewData.taskTypes.length === 0 ? html`<em>None</em>` : 
-                      this.previewData.taskTypes.map(type => html`<span class="preview-badge">${type}</span>`)}
-                  </div>
-                </div>
-
-                <div class="preview-group">
-                  <div class="preview-label">Expansion Options:</div>
-                  <ul class="preview-list">
-                    <li>Expand Parent/Child: <strong>${this.previewData.expansionOptions.expandParentChild ? 'Yes' : 'No'}</strong></li>
-                    <li>Expand Relations: <strong>${this.previewData.expansionOptions.expandRelations ? 'Yes' : 'No'}</strong></li>
-                    <li>Expand Team Allocated: <strong>${this.previewData.expansionOptions.expandTeamAllocated ? 'Yes' : 'No'}</strong></li>
-                  </ul>
-                </div>
-              </div>
-            ` : ''}
-
+              `
+            : ''}
             ${this._status ? html`<div class="status">${this._status}</div>` : ''}
           </div>
         </div>
         <div slot="footer" class="modal-footer">
-          <button class="btn primary" ?disabled=${this._saving} @click=${this._handleSave}>Save</button>
-          <button class="btn" ?disabled=${this._saving} @click=${this._handleCancel}>Cancel</button>
+          <button
+            class="btn primary"
+            ?disabled=${this._saving}
+            @click=${this._handleSave}
+          >
+            Save
+          </button>
+          <button class="btn" ?disabled=${this._saving} @click=${this._handleCancel}>
+            Cancel
+          </button>
         </div>
       </modal-lit>
     `;

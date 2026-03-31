@@ -19,12 +19,14 @@ function walk(dir) {
 // only attempts to run Node-targeted test files. We detect `describe(` or
 // `fixture(` usage and skip those files.
 const allFiles = walk(testDir);
-const testFiles = allFiles.filter(f => {
+const testFiles = allFiles.filter((f) => {
   try {
     const src = readFileSync(f, 'utf8');
     if (/\b(describe|fixture|it|before|after)\s*\(/.test(src)) return false;
     return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    return false;
+  }
 });
 
 // List of test files that require DOM mocking (UI tests)
@@ -42,8 +44,8 @@ const uiTestNames = [
   // Add more as needed
 ];
 
-const uiTestFiles = testFiles.filter(f => uiTestNames.includes(basename(f)));
-const nonUiTestFiles = testFiles.filter(f => !uiTestNames.includes(basename(f)));
+const uiTestFiles = testFiles.filter((f) => uiTestNames.includes(basename(f)));
+const nonUiTestFiles = testFiles.filter((f) => !uiTestNames.includes(basename(f)));
 
 function injectDomMocks() {
   if (typeof global !== 'undefined' && typeof document === 'undefined') {
@@ -52,7 +54,10 @@ function injectDomMocks() {
       return {
         style: {},
         setAttribute() {},
-        appendChild(child) { this.children = this.children || []; this.children.push(child); },
+        appendChild(child) {
+          this.children = this.children || [];
+          this.children.push(child);
+        },
         className: '',
         id: '',
         textContent: '',
@@ -64,17 +69,17 @@ function injectDomMocks() {
         },
         removeEventListener(type, fn) {
           if (this.listeners[type]) {
-            this.listeners[type] = this.listeners[type].filter(f => f !== fn);
+            this.listeners[type] = this.listeners[type].filter((f) => f !== fn);
           }
         },
         dispatchEvent(evt) {
           const type = evt.type;
           if (this.listeners[type]) {
-            this.listeners[type].forEach(fn => fn.call(this, evt));
+            this.listeners[type].forEach((fn) => fn.call(this, evt));
           }
         },
         querySelectorAll(sel) {
-          return this.children.filter(c => {
+          return this.children.filter((c) => {
             if (sel.startsWith('.')) return c.className === sel.slice(1);
             if (sel.startsWith('#')) return c.id === sel.slice(1);
             return false;
@@ -84,23 +89,33 @@ function injectDomMocks() {
           if (typeof this.onclick === 'function') this.onclick();
           this.dispatchEvent({ type: 'click' });
         },
-        set onclick(fn) { this._onclick = fn; },
-        get onclick() { return this._onclick; },
+        set onclick(fn) {
+          this._onclick = fn;
+        },
+        get onclick() {
+          return this._onclick;
+        },
         classList: {
           classes: [],
-          add(...cls) { this.classes.push(...cls); },
-          remove(...cls) { this.classes = this.classes.filter(c => !cls.includes(c)); },
-          contains(cls) { return this.classes.includes(cls); }
-        }
+          add(...cls) {
+            this.classes.push(...cls);
+          },
+          remove(...cls) {
+            this.classes = this.classes.filter((c) => !cls.includes(c));
+          },
+          contains(cls) {
+            return this.classes.includes(cls);
+          },
+        },
       };
     }
     global.document = {
       createElement: makeElement,
-      getElementById: function(id){
+      getElementById: function (id) {
         if (!this._elements) this._elements = {};
         return this._elements[id] || null;
       },
-      querySelector: function(sel) {
+      querySelector: function (sel) {
         if (sel.startsWith('#')) {
           const id = sel.slice(1);
           return this.getElementById(id);
@@ -108,31 +123,41 @@ function injectDomMocks() {
         return null;
       },
       body: {
-        appendChild(el){
+        appendChild(el) {
           if (!global.document._elements) global.document._elements = {};
           if (el.id) global.document._elements[el.id] = el;
-        }
+        },
       },
       createTreeWalker(root) {
         let current = root || { childNodes: [] };
         return {
           currentNode: current,
-          nextNode() { return null; },
-          previousNode() { return null; }
+          nextNode() {
+            return null;
+          },
+          previousNode() {
+            return null;
+          },
         };
       },
-      _elements: {}
+      _elements: {},
     };
     // Pre-populate required elements for UI tests
-    const featureBoard = makeElement('div'); featureBoard.id = 'featureBoard';
+    const featureBoard = makeElement('div');
+    featureBoard.id = 'featureBoard';
     global.document.body.appendChild(featureBoard);
-    const sidebar = makeElement('div'); sidebar.id = 'sidebar';
+    const sidebar = makeElement('div');
+    sidebar.id = 'sidebar';
     global.document.body.appendChild(sidebar);
-    const timeline = makeElement('div'); timeline.id = 'timeline';
+    const timeline = makeElement('div');
+    timeline.id = 'timeline';
     global.document.body.appendChild(timeline);
-    const detailsPanel = makeElement('div'); detailsPanel.id = 'detailsPanel';
+    const detailsPanel = makeElement('div');
+    detailsPanel.id = 'detailsPanel';
     global.document.body.appendChild(detailsPanel);
-    const featureCard = makeElement('div'); featureCard.id = 'featureCard'; featureCard.className = 'feature-card';
+    const featureCard = makeElement('div');
+    featureCard.id = 'featureCard';
+    featureCard.className = 'feature-card';
     global.document.body.appendChild(featureCard);
   }
   // Minimal window/navigator mocks so browser-oriented test helpers can import.
@@ -151,10 +176,16 @@ function injectDomMocks() {
   if (typeof global !== 'undefined' && typeof localStorage === 'undefined') {
     let store = {};
     global.localStorage = {
-      getItem: key => key in store ? store[key] : null,
-      setItem: (key, val) => { store[key] = String(val); },
-      removeItem: key => { delete store[key]; },
-      clear: () => { store = {}; }
+      getItem: (key) => (key in store ? store[key] : null),
+      setItem: (key, val) => {
+        store[key] = String(val);
+      },
+      removeItem: (key) => {
+        delete store[key];
+      },
+      clear: () => {
+        store = {};
+      },
     };
   }
 }
@@ -165,9 +196,16 @@ async function runSuite(name, fn) {
     for (const r of results) {
       console.log(JSON.stringify({ suite: name, ...r }));
     }
-    return results.every(r => r.pass);
+    return results.every((r) => r.pass);
   } catch (e) {
-    console.error(JSON.stringify({ suite: name, name: `${name} crashed`, pass: false, info: e.message }));
+    console.error(
+      JSON.stringify({
+        suite: name,
+        name: `${name} crashed`,
+        pass: false,
+        info: e.message,
+      })
+    );
     return false;
   }
 }
@@ -183,7 +221,7 @@ async function main() {
   for (const file of nonUiTestFiles) {
     const mod = await import(file);
     let fn = mod.run || mod.default;
-    if (!fn) fn = Object.values(mod).find(v => typeof v === 'function');
+    if (!fn) fn = Object.values(mod).find((v) => typeof v === 'function');
     const suiteName = basename(file).replace('.js', '');
     if (typeof fn === 'function') {
       const ok = await runSuite(suiteName, fn);
@@ -198,7 +236,7 @@ async function main() {
     for (const file of uiTestFiles) {
       const mod = await import(file);
       let fn = mod.run || mod.default;
-      if (!fn) fn = Object.values(mod).find(v => typeof v === 'function');
+      if (!fn) fn = Object.values(mod).find((v) => typeof v === 'function');
       const suiteName = basename(file).replace('.js', '');
       if (typeof fn === 'function') {
         const ok = await runSuite(suiteName, fn);

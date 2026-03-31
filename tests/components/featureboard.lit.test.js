@@ -10,17 +10,29 @@ describe('feature-board', () => {
   });
 
   afterEach(() => {
-    if(board) board.remove();
+    if (board) board.remove();
     // restore state helpers if changed
-    if(state.getEffectiveFeatures && state.getEffectiveFeatures.__backup) {
+    if (state.getEffectiveFeatures && state.getEffectiveFeatures.__backup) {
       state.getEffectiveFeatures = state.getEffectiveFeatures.__backup;
     }
   });
 
   it('renderFeatures computes features from state.getEffectiveFeatures', async () => {
     const feats = [
-      { id: 'e1', type: 'epic', start: '2025-01-01', end: '2025-02-01', project: 'p1' },
-      { id: 'f1', type: 'feature', start: '2025-01-10', end: '2025-01-20', project: 'p1' }
+      {
+        id: 'e1',
+        type: 'epic',
+        start: '2025-01-01',
+        end: '2025-02-01',
+        project: 'p1',
+      },
+      {
+        id: 'f1',
+        type: 'feature',
+        start: '2025-01-10',
+        end: '2025-01-20',
+        project: 'p1',
+      },
     ];
     // stub state.getEffectiveFeatures
     state.getEffectiveFeatures = () => feats;

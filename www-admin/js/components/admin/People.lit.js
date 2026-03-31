@@ -12,19 +12,22 @@ export class AdminPeople extends LitElement {
     statusType: { type: String },
     inspectData: { type: Object },
     inspectLoading: { type: Boolean },
-    expandedTeams: { type: Object }
+    expandedTeams: { type: Object },
   };
 
   static styles = css`
-    :host { display: block; height: 100%; }
-    
+    :host {
+      display: block;
+      height: 100%;
+    }
+
     .tabs {
       display: flex;
       gap: 4px;
       border-bottom: 2px solid #e5e7eb;
       margin-bottom: 16px;
     }
-    
+
     .tab {
       padding: 8px 16px;
       background: transparent;
@@ -36,64 +39,77 @@ export class AdminPeople extends LitElement {
       transition: all 0.2s;
       margin-bottom: -2px;
     }
-    
-    .tab:hover { color: #374151; }
-    
+
+    .tab:hover {
+      color: #374151;
+    }
+
     .tab.active {
       color: #3b82f6;
       border-bottom-color: #3b82f6;
       font-weight: 600;
     }
-    
-    h2 { margin-top: 0; font-size: 1.1rem; }
-    
-    .panel { 
-      padding: 12px; 
-      background: #fff; 
-      border: 1px solid #e5e7eb; 
-      border-radius: 6px; 
-      height: calc(100vh - 200px); 
+
+    h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
+    .panel {
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      height: calc(100vh - 200px);
       box-sizing: border-box;
       overflow-y: auto;
     }
-    
-    .actions { 
-      margin-top: 12px; 
-      display: flex; 
-      gap: 8px; 
+
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
       align-items: center;
       padding-top: 12px;
       border-top: 1px solid #e5e7eb;
     }
-    
-    button { 
-      padding: 8px 16px; 
-      border-radius: 6px; 
-      border: 1px solid #ccc; 
-      background: #f3f4f6; 
+
+    button {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #f3f4f6;
       cursor: pointer;
       font-size: 0.9rem;
       transition: all 0.2s;
     }
-    
-    button:hover { background: #e5e7eb; }
-    
+
+    button:hover {
+      background: #e5e7eb;
+    }
+
     button.primary {
       background: #3b82f6;
       color: #fff;
       border-color: #3b82f6;
     }
-    
-    button.primary:hover { background: #2563eb; }
-    
-    .status { 
-      margin-left: 8px; 
-      font-size: 0.9rem; 
+
+    button.primary:hover {
+      background: #2563eb;
     }
-    
-    .status.success { color: #10b981; }
-    .status.error { color: #ef4444; }
-    
+
+    .status {
+      margin-left: 8px;
+      font-size: 0.9rem;
+    }
+
+    .status.success {
+      color: #10b981;
+    }
+    .status.error {
+      color: #ef4444;
+    }
+
     .loading {
       display: flex;
       align-items: center;
@@ -101,7 +117,7 @@ export class AdminPeople extends LitElement {
       padding: 40px;
       color: #6b7280;
     }
-    
+
     /* Inspection view styles */
     .summary-cards {
       display: grid;
@@ -109,14 +125,14 @@ export class AdminPeople extends LitElement {
       gap: 12px;
       margin-bottom: 20px;
     }
-    
+
     .card {
       padding: 16px;
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
     }
-    
+
     .card-title {
       font-size: 0.85rem;
       color: #6b7280;
@@ -124,19 +140,19 @@ export class AdminPeople extends LitElement {
       text-transform: uppercase;
       font-weight: 600;
     }
-    
+
     .card-value {
       font-size: 1.5rem;
       font-weight: 700;
       color: #1f2937;
     }
-    
+
     .card-subtitle {
       font-size: 0.85rem;
       color: #6b7280;
       margin-top: 4px;
     }
-    
+
     .info-row {
       padding: 8px 12px;
       background: #eff6ff;
@@ -146,16 +162,16 @@ export class AdminPeople extends LitElement {
       font-size: 0.9rem;
       color: #1e40af;
     }
-    
+
     .info-label {
       font-weight: 600;
       margin-right: 8px;
     }
-    
+
     .section {
       margin-bottom: 24px;
     }
-    
+
     .section-title {
       font-size: 1rem;
       font-weight: 600;
@@ -164,57 +180,77 @@ export class AdminPeople extends LitElement {
       border-bottom: 2px solid #e5e7eb;
       padding-bottom: 8px;
     }
-    
+
     .team-list {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    
+
     .team-card {
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       padding: 16px;
       background: #fff;
     }
-    
-    .team-card.matched { border-left: 4px solid #10b981; }
-    .team-card.unmatched { border-left: 4px solid #ef4444; }
-    .team-card.no-people { border-left: 4px solid #f59e0b; }
-    .team-card.excluded { border-left: 4px solid #6b7280; }
-    
+
+    .team-card.matched {
+      border-left: 4px solid #10b981;
+    }
+    .team-card.unmatched {
+      border-left: 4px solid #ef4444;
+    }
+    .team-card.no-people {
+      border-left: 4px solid #f59e0b;
+    }
+    .team-card.excluded {
+      border-left: 4px solid #6b7280;
+    }
+
     .team-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       margin-bottom: 12px;
     }
-    
+
     .team-name {
       font-weight: 600;
       font-size: 1rem;
       color: #1f2937;
     }
-    
+
     .team-id {
       font-family: monospace;
       font-size: 0.85rem;
       color: #6b7280;
       margin-top: 4px;
     }
-    
+
     .team-badge {
       padding: 4px 8px;
       border-radius: 4px;
       font-size: 0.75rem;
       font-weight: 600;
     }
-    
-    .team-badge.matched { background: #d1fae5; color: #065f46; }
-    .team-badge.unmatched { background: #fee2e2; color: #991b1b; }
-    .team-badge.no-people { background: #fef3c7; color: #92400e; }
-    .team-badge.excluded { background: #f3f4f6; color: #4b5563; }
-    
+
+    .team-badge.matched {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .team-badge.unmatched {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .team-badge.no-people {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .team-badge.excluded {
+      background: #f3f4f6;
+      color: #4b5563;
+    }
+
     .team-stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -224,29 +260,29 @@ export class AdminPeople extends LitElement {
       background: #f9fafb;
       border-radius: 4px;
     }
-    
+
     .stat {
       display: flex;
       flex-direction: column;
     }
-    
+
     .stat-label {
       font-size: 0.75rem;
       color: #6b7280;
       text-transform: uppercase;
       margin-bottom: 4px;
     }
-    
+
     .stat-value {
       font-size: 0.95rem;
       font-weight: 600;
       color: #1f2937;
     }
-    
+
     .members-list {
       margin-top: 12px;
     }
-    
+
     .members-header {
       font-size: 0.85rem;
       font-weight: 600;
@@ -258,7 +294,7 @@ export class AdminPeople extends LitElement {
       gap: 6px;
       user-select: none;
     }
-    
+
     .expandable-icon {
       width: 0;
       height: 0;
@@ -268,11 +304,11 @@ export class AdminPeople extends LitElement {
       transform: rotate(-90deg);
       transition: transform 0.2s;
     }
-    
+
     .expandable-icon.expanded {
       transform: rotate(0deg);
     }
-    
+
     .members-content {
       display: none;
       margin-top: 8px;
@@ -282,11 +318,11 @@ export class AdminPeople extends LitElement {
       max-height: 300px;
       overflow-y: auto;
     }
-    
+
     .members-content.expanded {
       display: block;
     }
-    
+
     .member {
       padding: 6px 0;
       border-bottom: 1px solid #e5e7eb;
@@ -295,11 +331,15 @@ export class AdminPeople extends LitElement {
       gap: 8px;
       font-size: 0.85rem;
     }
-    
-    .member:last-child { border-bottom: none; }
-    
-    .member-name { font-weight: 500; }
-    .member-external { 
+
+    .member:last-child {
+      border-bottom: none;
+    }
+
+    .member-name {
+      font-weight: 500;
+    }
+    .member-external {
       color: #7c3aed;
       font-weight: 600;
     }
@@ -307,20 +347,20 @@ export class AdminPeople extends LitElement {
       color: #059669;
       font-weight: 600;
     }
-    
+
     .alert {
       padding: 12px 16px;
       border-radius: 6px;
       margin-bottom: 16px;
       font-size: 0.9rem;
     }
-    
+
     .alert.warning {
       background: #fef3c7;
       border-left: 4px solid #f59e0b;
       color: #92400e;
     }
-    
+
     .alert.info {
       background: #dbeafe;
       border-left: 4px solid #3b82f6;
@@ -341,16 +381,20 @@ export class AdminPeople extends LitElement {
     this.expandedTeams = new Set();
   }
 
-  get configType() { return 'people'; }
-  get title() { return 'People Configuration'; }
-  get defaultContent() { 
-    return { 
-      schema_version: 1, 
+  get configType() {
+    return 'people';
+  }
+  get title() {
+    return 'People Configuration';
+  }
+  get defaultContent() {
+    return {
+      schema_version: 1,
       database_file: 'config/database.yaml',
-      database: { 
-        people: [] 
-      } 
-    }; 
+      database: {
+        people: [],
+      },
+    };
   }
 
   connectedCallback() {
@@ -374,9 +418,15 @@ export class AdminPeople extends LitElement {
       if (content) {
         this.content = content;
       } else {
-        const schemaDefault = this.schema && this.schema.properties && this.schema.properties.database_file && this.schema.properties.database_file.default;
+        const schemaDefault =
+          this.schema &&
+          this.schema.properties &&
+          this.schema.properties.database_file &&
+          this.schema.properties.database_file.default;
         const dbFile = schemaDefault || this.defaultContent.database_file;
-        this.content = Object.assign({}, this.defaultContent, { database_file: dbFile });
+        this.content = Object.assign({}, this.defaultContent, {
+          database_file: dbFile,
+        });
       }
     } catch (e) {
       this.statusMsg = `Error loading config: ${e.message}`;
@@ -444,20 +494,26 @@ export class AdminPeople extends LitElement {
     return html`
       <div class="panel">
         <h2>${this.title}</h2>
-        ${this.loading ? html`<div class="loading">Loading...</div>` : html`
-          <div class="editor">
-            <schema-form 
-              .schema=${this.schema}
-              .data=${this.content}
-              @change=${(e) => { this.content = e.detail; }}
-            ></schema-form>
-          </div>
-          <div class="actions">
-            <button class="primary" @click=${this.handleSave}>Save Changes</button>
-            <button @click=${this.loadConfig}>Reload</button>
-            ${this.statusMsg ? html`<span class="status ${this.statusType}">${this.statusMsg}</span>` : ''}
-          </div>
-        `}
+        ${this.loading ?
+          html`<div class="loading">Loading...</div>`
+        : html`
+            <div class="editor">
+              <schema-form
+                .schema=${this.schema}
+                .data=${this.content}
+                @change=${(e) => {
+                  this.content = e.detail;
+                }}
+              ></schema-form>
+            </div>
+            <div class="actions">
+              <button class="primary" @click=${this.handleSave}>Save Changes</button>
+              <button @click=${this.loadConfig}>Reload</button>
+              ${this.statusMsg ?
+                html`<span class="status ${this.statusType}">${this.statusMsg}</span>`
+              : ''}
+            </div>
+          `}
       </div>
     `;
   }
@@ -470,42 +526,55 @@ export class AdminPeople extends LitElement {
     if (!this.inspectData) {
       return html`
         <div class="panel">
-          <button class="primary" @click=${this.loadInspectData}>Load Inspection Data</button>
+          <button class="primary" @click=${this.loadInspectData}>
+            Load Inspection Data
+          </button>
         </div>
       `;
     }
 
-    const { summary, matched_teams, unmatched_teams, teams_without_people, 
-            excluded_teams, unassigned_people } = this.inspectData;
+    const {
+      summary,
+      matched_teams,
+      unmatched_teams,
+      teams_without_people,
+      excluded_teams,
+      unassigned_people,
+    } = this.inspectData;
 
     return html`
       <div class="panel">
         <h2>People & Team Inspection</h2>
-        
+
         <div class="info-row">
           <span class="info-label">Database Source:</span>
           <span>${summary.database_path}</span>
         </div>
-        
-        ${unmatched_teams.length > 0 ? html`
-          <div class="alert warning">
-            <strong>⚠️ Warning:</strong> ${unmatched_teams.length} team(s) have people assigned 
-            but are not configured in teams.yml. Add these teams to teams.yml.
-          </div>
-        ` : ''}
-        
-        ${teams_without_people.length > 0 ? html`
-          <div class="alert info">
-            <strong>ℹ️ Info:</strong> ${teams_without_people.length} configured team(s) 
-            have no people assigned in the database.
-          </div>
-        ` : ''}
-        
-        ${unassigned_people.length > 0 ? html`
-          <div class="alert warning">
-            <strong>⚠️ Warning:</strong> ${unassigned_people.length} people have no team assignment.
-          </div>
-        ` : ''}
+
+        ${unmatched_teams.length > 0 ?
+          html`
+            <div class="alert warning">
+              <strong>⚠️ Warning:</strong> ${unmatched_teams.length} team(s) have people
+              assigned but are not configured in teams.yml. Add these teams to teams.yml.
+            </div>
+          `
+        : ''}
+        ${teams_without_people.length > 0 ?
+          html`
+            <div class="alert info">
+              <strong>ℹ️ Info:</strong> ${teams_without_people.length} configured team(s)
+              have no people assigned in the database.
+            </div>
+          `
+        : ''}
+        ${unassigned_people.length > 0 ?
+          html`
+            <div class="alert warning">
+              <strong>⚠️ Warning:</strong> ${unassigned_people.length} people have no team
+              assignment.
+            </div>
+          `
+        : ''}
 
         <div class="summary-cards">
           <div class="card">
@@ -535,54 +604,72 @@ export class AdminPeople extends LitElement {
           </div>
         </div>
 
-        ${unmatched_teams.length > 0 ? html`
-          <div class="section">
-            <div class="section-title">⚠️ Teams with People but NOT in Config (${unmatched_teams.length})</div>
-            <div class="team-list">
-              ${unmatched_teams.map(team => this.renderTeamCard(team, 'unmatched'))}
+        ${unmatched_teams.length > 0 ?
+          html`
+            <div class="section">
+              <div class="section-title">
+                ⚠️ Teams with People but NOT in Config (${unmatched_teams.length})
+              </div>
+              <div class="team-list">
+                ${unmatched_teams.map((team) => this.renderTeamCard(team, 'unmatched'))}
+              </div>
             </div>
-          </div>
-        ` : ''}
-
-        ${matched_teams.length > 0 ? html`
-          <div class="section">
-            <div class="section-title">✓ Matched Teams (${matched_teams.length})</div>
-            <div class="team-list">
-              ${matched_teams.map(team => this.renderTeamCard(team, 'matched'))}
+          `
+        : ''}
+        ${matched_teams.length > 0 ?
+          html`
+            <div class="section">
+              <div class="section-title">✓ Matched Teams (${matched_teams.length})</div>
+              <div class="team-list">
+                ${matched_teams.map((team) => this.renderTeamCard(team, 'matched'))}
+              </div>
             </div>
-          </div>
-        ` : ''}
-
-        ${teams_without_people.length > 0 ? html`
-          <div class="section">
-            <div class="section-title">ℹ️ Configured Teams with No People (${teams_without_people.length})</div>
-            <div class="team-list">
-              ${teams_without_people.map(team => this.renderTeamCard(team, 'no-people'))}
+          `
+        : ''}
+        ${teams_without_people.length > 0 ?
+          html`
+            <div class="section">
+              <div class="section-title">
+                ℹ️ Configured Teams with No People (${teams_without_people.length})
+              </div>
+              <div class="team-list">
+                ${teams_without_people.map((team) =>
+                  this.renderTeamCard(team, 'no-people')
+                )}
+              </div>
             </div>
-          </div>
-        ` : ''}
-
-        ${excluded_teams && excluded_teams.length > 0 ? html`
-          <div class="section">
-            <div class="section-title">🚫 Excluded Teams (${excluded_teams.length})</div>
-            <div class="team-list">
-              ${excluded_teams.map(team => this.renderTeamCard(team, 'excluded'))}
+          `
+        : ''}
+        ${excluded_teams && excluded_teams.length > 0 ?
+          html`
+            <div class="section">
+              <div class="section-title">
+                🚫 Excluded Teams (${excluded_teams.length})
+              </div>
+              <div class="team-list">
+                ${excluded_teams.map((team) => this.renderTeamCard(team, 'excluded'))}
+              </div>
             </div>
-          </div>
-        ` : ''}
-
-        ${unassigned_people.length > 0 ? html`
-          <div class="section">
-            <div class="section-title">⚠️ Unassigned People (${unassigned_people.length})</div>
-            <div class="team-list">
-              ${unassigned_people.map(person => this.renderUnassignedPerson(person))}
+          `
+        : ''}
+        ${unassigned_people.length > 0 ?
+          html`
+            <div class="section">
+              <div class="section-title">
+                ⚠️ Unassigned People (${unassigned_people.length})
+              </div>
+              <div class="team-list">
+                ${unassigned_people.map((person) => this.renderUnassignedPerson(person))}
+              </div>
             </div>
-          </div>
-        ` : ''}
+          `
+        : ''}
 
         <div class="actions">
           <button @click=${this.loadInspectData}>Refresh</button>
-          ${this.statusMsg ? html`<span class="status ${this.statusType}">${this.statusMsg}</span>` : ''}
+          ${this.statusMsg ?
+            html`<span class="status ${this.statusType}">${this.statusMsg}</span>`
+          : ''}
         </div>
       </div>
     `;
@@ -591,7 +678,7 @@ export class AdminPeople extends LitElement {
   renderTeamCard(team, type) {
     const isExpanded = this.expandedTeams.has(team.id);
     const hasMembers = team.members && team.members.length > 0;
-    
+
     return html`
       <div class="team-card ${type}">
         <div class="team-header">
@@ -600,52 +687,61 @@ export class AdminPeople extends LitElement {
             <div class="team-id">${team.id}</div>
           </div>
           <div class="team-badge ${type}">
-            ${type === 'matched' ? '✓ Matched' : 
-              type === 'unmatched' ? '⚠️ Not in Config' : 
-              type === 'excluded' ? '🚫 Excluded' :
-              'ℹ️ No People'}
+            ${type === 'matched' ? '✓ Matched'
+            : type === 'unmatched' ? '⚠️ Not in Config'
+            : type === 'excluded' ? '🚫 Excluded'
+            : 'ℹ️ No People'}
           </div>
         </div>
 
-        ${hasMembers ? html`
-          <div class="team-stats">
-            <div class="stat">
-              <span class="stat-label">Total Members</span>
-              <span class="stat-value">${team.members.length}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Internal</span>
-              <span class="stat-value">${team.internal_count || 0}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">External</span>
-              <span class="stat-value">${team.external_count || 0}</span>
-            </div>
-          </div>
-
-          <div class="members-list">
-            <div class="members-header" @click=${() => this.toggleTeamMembers(team.id)}>
-              <span class="expandable-icon ${isExpanded ? 'expanded' : ''}"></span>
-              <span>Members (${team.members.length})</span>
-            </div>
-            <div class="members-content ${isExpanded ? 'expanded' : ''}">
-              <div class="member" style="font-weight: 600; border-bottom: 2px solid #cbd5e1;">
-                <span>Name</span>
-                <span>Type</span>
-                <span>Site</span>
+        ${hasMembers ?
+          html`
+            <div class="team-stats">
+              <div class="stat">
+                <span class="stat-label">Total Members</span>
+                <span class="stat-value">${team.members.length}</span>
               </div>
-              ${team.members.map(member => html`
-                <div class="member">
-                  <span class="member-name">${member.name}</span>
-                  <span class="${member.external ? 'member-external' : 'member-internal'}">
-                    ${member.external ? 'External' : 'Internal'}
-                  </span>
-                  <span>${member.site || '-'}</span>
-                </div>
-              `)}
+              <div class="stat">
+                <span class="stat-label">Internal</span>
+                <span class="stat-value">${team.internal_count || 0}</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">External</span>
+                <span class="stat-value">${team.external_count || 0}</span>
+              </div>
             </div>
-          </div>
-        ` : ''}
+
+            <div class="members-list">
+              <div class="members-header" @click=${() => this.toggleTeamMembers(team.id)}>
+                <span class="expandable-icon ${isExpanded ? 'expanded' : ''}"></span>
+                <span>Members (${team.members.length})</span>
+              </div>
+              <div class="members-content ${isExpanded ? 'expanded' : ''}">
+                <div
+                  class="member"
+                  style="font-weight: 600; border-bottom: 2px solid #cbd5e1;"
+                >
+                  <span>Name</span>
+                  <span>Type</span>
+                  <span>Site</span>
+                </div>
+                ${team.members.map(
+                  (member) => html`
+                    <div class="member">
+                      <span class="member-name">${member.name}</span>
+                      <span
+                        class="${member.external ? 'member-external' : 'member-internal'}"
+                      >
+                        ${member.external ? 'External' : 'Internal'}
+                      </span>
+                      <span>${member.site || '-'}</span>
+                    </div>
+                  `
+                )}
+              </div>
+            </div>
+          `
+        : ''}
       </div>
     `;
   }
@@ -678,14 +774,14 @@ export class AdminPeople extends LitElement {
     return html`
       <div>
         <div class="tabs">
-          <button 
-            class="tab ${this.activeTab === 'config' ? 'active' : ''}" 
+          <button
+            class="tab ${this.activeTab === 'config' ? 'active' : ''}"
             @click=${() => this.switchTab('config')}
           >
             Configuration
           </button>
-          <button 
-            class="tab ${this.activeTab === 'inspect' ? 'active' : ''}" 
+          <button
+            class="tab ${this.activeTab === 'inspect' ? 'active' : ''}"
             @click=${() => this.switchTab('inspect')}
           >
             Inspect Teams

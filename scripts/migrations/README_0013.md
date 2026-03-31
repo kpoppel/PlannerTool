@@ -15,42 +15,44 @@ Upgrades `data/config/projects.yml` from schema version 2 to version 3 by adding
 ## Example transformation
 
 **Before (schema v2):**
+
 ```yaml
 project_map:
-- name: NN
-  area_path: NN
-  include_states:
-  - new
-  - active
-  - defined
-  - resolved
-  task_types:
-  - feature
-  - epic
-  type: team
+  - name: NN
+    area_path: NN
+    include_states:
+      - new
+      - active
+      - defined
+      - resolved
+    task_types:
+      - feature
+      - epic
+    type: team
 ```
 
 **After (schema v3):**
+
 ```yaml
 schema_version: 3
 project_map:
-- name: NN
-  area_path: NN
-  include_states:
-  - new
-  - active
-  - defined
-  - resolved
-  display_states:    # NEW: States available in UI
-  - new
-  - active
-  - defined
-  - resolved
-  - closed           # NEW: Automatically added
-  task_types:
-  - feature
-  - epic
-  type: team
+  - name: NN
+    area_path: NN
+    include_states:
+      - new
+      - active
+      - defined
+      - resolved
+    display_states: # NEW: States available in UI
+      - new
+      - active
+      - defined
+      - resolved
+      - closed # NEW: Automatically added
+    task_types:
+      - feature
+      - epic
+    type: team
 ```
 
 ## Running the migration
@@ -93,6 +95,7 @@ python3 scripts/migrations/0013_projects_schema_v3_add_display_states.py --downg
 ```
 
 This will:
+
 - Remove `display_states` from all projects
 - Set `schema_version` back to 2
 - Create a backup of the v3 config before downgrading

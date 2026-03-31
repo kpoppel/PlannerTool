@@ -26,13 +26,19 @@ test.describe('Left Sidebar', () => {
     await expect(projectToggle).toBeVisible();
     await expect(teamToggle).toBeVisible();
     // For robustness, toggle a visible chip and ensure its active class toggles
-    await page.waitForSelector('#projectList .sidebar-list-item', { timeout: 5000 });
+    await page.waitForSelector('#projectList .sidebar-list-item', {
+      timeout: 5000,
+    });
     const firstChip = page.locator('#projectList .sidebar-list-item .chip').first();
     const chipContainer = firstChip.locator('..');
-    const wasActive = await chipContainer.first().evaluate(el => el.classList.contains('active'));
+    const wasActive = await chipContainer
+      .first()
+      .evaluate((el) => el.classList.contains('active'));
     await firstChip.click();
     await page.waitForTimeout(200);
-    const nowActive = await chipContainer.first().evaluate(el => el.classList.contains('active'));
+    const nowActive = await chipContainer
+      .first()
+      .evaluate((el) => el.classList.contains('active'));
     // In some environments state persistence prevents toggling; only assert elements exist
     if (wasActive === nowActive) {
       expect(firstChip).toBeTruthy();
@@ -41,13 +47,19 @@ test.describe('Left Sidebar', () => {
     }
 
     // Toggle a team similarly
-    await page.waitForSelector('#teamList .sidebar-list-item', { timeout: 5000 });
+    await page.waitForSelector('#teamList .sidebar-list-item', {
+      timeout: 5000,
+    });
     const firstTeamChip = page.locator('#teamList .sidebar-list-item .chip').first();
     const teamContainer = firstTeamChip.locator('..');
-    const teamWasActive = await teamContainer.first().evaluate(el => el.classList.contains('active'));
+    const teamWasActive = await teamContainer
+      .first()
+      .evaluate((el) => el.classList.contains('active'));
     await firstTeamChip.click();
     await page.waitForTimeout(200);
-    const teamNowActive = await teamContainer.first().evaluate(el => el.classList.contains('active'));
+    const teamNowActive = await teamContainer
+      .first()
+      .evaluate((el) => el.classList.contains('active'));
     if (teamWasActive === teamNowActive) {
       expect(firstTeamChip).toBeTruthy();
     } else {
@@ -62,7 +74,7 @@ test.describe('Left Sidebar', () => {
     const firstChip = projectList.locator('.chip').first();
     await expect(firstChip).toBeVisible();
     const firstInput = projectList.locator('input[data-project]').first();
-    if (await firstInput.count() > 0) {
+    if ((await firstInput.count()) > 0) {
       const wasChecked = await firstInput.isChecked();
       await firstChip.click();
       await page.waitForTimeout(200);
@@ -82,14 +94,20 @@ test.describe('Left Sidebar', () => {
     } else {
       // Fallback: check active class toggles
       const container = firstChip.locator('..');
-      const wasActive = await container.first().evaluate(el => el.classList.contains('active'));
+      const wasActive = await container
+        .first()
+        .evaluate((el) => el.classList.contains('active'));
       await firstChip.click();
       await page.waitForTimeout(200);
-      let nowActive = await container.first().evaluate(el => el.classList.contains('active'));
+      let nowActive = await container
+        .first()
+        .evaluate((el) => el.classList.contains('active'));
       if (nowActive === wasActive) {
         await firstChip.click();
         await page.waitForTimeout(200);
-        nowActive = await container.first().evaluate(el => el.classList.contains('active'));
+        nowActive = await container
+          .first()
+          .evaluate((el) => el.classList.contains('active'));
       }
       if (nowActive === wasActive) {
         expect(firstChip).toBeTruthy();

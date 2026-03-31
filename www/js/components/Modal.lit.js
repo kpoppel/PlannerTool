@@ -16,81 +16,130 @@ export class ModalLit extends LitElement {
   static properties = {
     open: { type: Boolean, reflect: true },
     wide: { type: Boolean, reflect: true },
-    noClose: { type: Boolean, reflect: true }
+    noClose: { type: Boolean, reflect: true },
   };
 
   static styles = css`
-    :host { display: contents; }
+    :host {
+      display: contents;
+    }
     .modal-overlay {
-      position: fixed; inset: 0; display: none;
-      background: rgba(0,0,0,0.5);
-      align-items: center; justify-content: center; z-index: 10000;
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
       padding: 12px;
     }
-    .modal-overlay[open] { display: flex; }
+    .modal-overlay[open] {
+      display: flex;
+    }
     .modal {
       background: var(--modal-bg, #fff);
-      border-radius: 8px; padding: 20px;
-      min-width: 360px; max-width: 90vw; max-height: 90vh; overflow: auto;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+      border-radius: 8px;
+      padding: 20px;
+      min-width: 360px;
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow: auto;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
     }
-    .modal.wide { min-width: 640px; }
-    ::slotted([slot="header"]) { display: block; margin-bottom: 12px; }
-    .default-header { margin: 0 0 12px 0; font-size: 1.25rem; font-weight: 600; }
-    .modal-content { margin-bottom: 12px; }
-    .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
-    ::slotted(.modal-footer) { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
-    
+    .modal.wide {
+      min-width: 640px;
+    }
+    ::slotted([slot='header']) {
+      display: block;
+      margin-bottom: 12px;
+    }
+    .default-header {
+      margin: 0 0 12px 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    .modal-content {
+      margin-bottom: 12px;
+    }
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+    ::slotted(.modal-footer) {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+
     /* Button styling */
     ::slotted(.btn) {
-      padding:6px 10px;
-      background:#e9e9e9;
-      border:1px solid rgba(0,0,0,0.06);
-      border-radius:6px;
-      cursor:pointer;
-      color:#333;
+      padding: 6px 10px;
+      background: #e9e9e9;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 6px;
+      cursor: pointer;
+      color: #333;
     }
-    ::slotted(.btn:hover) { background:#e0e0e0; }
-    ::slotted(.btn:focus) { outline: 2px solid rgba(92,200,255,0.12); outline-offset: 2px; }
+    ::slotted(.btn:hover) {
+      background: #e0e0e0;
+    }
+    ::slotted(.btn:focus) {
+      outline: 2px solid rgba(92, 200, 255, 0.12);
+      outline-offset: 2px;
+    }
     ::slotted(.btn.primary) {
       background: var(--color-accent, #0078d4);
       color: #fff;
       border-color: var(--color-accent, #0078d4);
     }
-    ::slotted(.btn.primary:hover) { background: #2980b9; }
-    button {
-      padding:6px 10px;
-      background:#e9e9e9;
-      border:1px solid rgba(0,0,0,0.06);
-      border-radius:6px;
-      cursor:pointer;
-      color:#333;
+    ::slotted(.btn.primary:hover) {
+      background: #2980b9;
     }
-    button:hover { background:#e0e0e0; }
-    button:focus { outline: 2px solid rgba(92,200,255,0.12); outline-offset: 2px; }
+    button {
+      padding: 6px 10px;
+      background: #e9e9e9;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 6px;
+      cursor: pointer;
+      color: #333;
+    }
+    button:hover {
+      background: #e0e0e0;
+    }
+    button:focus {
+      outline: 2px solid rgba(92, 200, 255, 0.12);
+      outline-offset: 2px;
+    }
     button.primary {
       background: var(--color-accent, #0078d4);
       color: #fff;
       border-color: var(--color-accent, #0078d4);
     }
-    button.primary:hover { background: #2980b9; }
+    button.primary:hover {
+      background: #2980b9;
+    }
   `;
 
-  constructor(){
+  constructor() {
     super();
     this.open = false;
     this.wide = false;
     this.noClose = false;
   }
 
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
   }
 
   // Use class field-style handler so we don't need to bind in ctor
-  _escHandler = (e) => { if (e.key === 'Escape') this.close(); };
+  _escHandler = (e) => {
+    if (e.key === 'Escape') this.close();
+  };
 
-  updated(changed){
+  updated(changed) {
     if (!changed.has('open')) return;
     const ctor = this.constructor;
     ctor._openCount = ctor._openCount || 0;
@@ -107,17 +156,21 @@ export class ModalLit extends LitElement {
 
   // _escHandler implemented as class field above
 
-  _overlayClick(e){ if(e.target.classList.contains('modal-overlay')) this.close(); }
-
-  _stop(e){ e.stopPropagation(); }
-
-  close(){
-    if(!this.open) return;
-    this.open = false;
-    this.dispatchEvent(new CustomEvent('modal-close',{bubbles:true,composed:true}));
+  _overlayClick(e) {
+    if (e.target.classList.contains('modal-overlay')) this.close();
   }
 
-  disconnectedCallback(){
+  _stop(e) {
+    e.stopPropagation();
+  }
+
+  close() {
+    if (!this.open) return;
+    this.open = false;
+    this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+  }
+
+  disconnectedCallback() {
     super.disconnectedCallback();
     const ctor = this.constructor;
     if (this.open) ctor._openCount = Math.max(0, (ctor._openCount || 0) - 1);
@@ -125,17 +178,24 @@ export class ModalLit extends LitElement {
     window.removeEventListener('keydown', this._escHandler);
   }
 
-  render(){
+  render() {
     return html`
       <div class="modal-overlay" ?open=${this.open} @click=${this._overlayClick}>
-        <div class="modal ${this.wide ? 'wide' : ''}" @click=${this._stop} role="dialog" aria-modal="true">
+        <div
+          class="modal ${this.wide ? 'wide' : ''}"
+          @click=${this._stop}
+          role="dialog"
+          aria-modal="true"
+        >
           <slot name="header">
             <div class="default-header"><slot name="title"></slot></div>
           </slot>
           <div class="modal-content"><slot></slot></div>
           <div class="modal-footer">
             <slot name="footer">
-              ${this.noClose ? html`` : html`<button class="btn" @click=${this.close}>Close</button>`}
+              ${this.noClose ?
+                html``
+              : html`<button class="btn" @click=${this.close}>Close</button>`}
             </slot>
           </div>
         </div>

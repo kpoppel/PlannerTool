@@ -34,7 +34,8 @@ describe('PluginManager & Plugin base', () => {
 
   beforeEach(() => {
     manager = new PluginManager();
-    if (bus && bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
+    if (bus && bus.listeners && typeof bus.listeners.clear === 'function')
+      bus.listeners.clear();
   });
 
   it('should throw error if init not implemented', async () => {
@@ -108,7 +109,7 @@ describe('PluginManager & Plugin base', () => {
 
   it('should check dependencies on registration', async () => {
     const plugin = new TestPlugin('test-plugin', {
-      dependencies: ['missing-plugin']
+      dependencies: ['missing-plugin'],
     });
 
     try {
@@ -123,9 +124,24 @@ describe('PluginManager & Plugin base', () => {
   it('Plugin base should throw for unimplemented lifecycle methods', async () => {
     const Base = new Plugin('base');
     // init already tested earlier; ensure other lifecycle methods throw when not overridden
-    try { await Base.activate(); expect.fail('activate should throw'); } catch (e) { expect(e.message).to.include('must implement activate'); }
-    try { await Base.deactivate(); expect.fail('deactivate should throw'); } catch (e) { expect(e.message).to.include('must implement deactivate'); }
-    try { await Base.destroy(); expect.fail('destroy should throw'); } catch (e) { expect(e.message).to.include('must implement destroy'); }
+    try {
+      await Base.activate();
+      expect.fail('activate should throw');
+    } catch (e) {
+      expect(e.message).to.include('must implement activate');
+    }
+    try {
+      await Base.deactivate();
+      expect.fail('deactivate should throw');
+    } catch (e) {
+      expect(e.message).to.include('must implement deactivate');
+    }
+    try {
+      await Base.destroy();
+      expect.fail('destroy should throw');
+    } catch (e) {
+      expect(e.message).to.include('must implement destroy');
+    }
   });
 
   it('should return plugin via get(), isActive() and list()', async () => {
@@ -139,7 +155,7 @@ describe('PluginManager & Plugin base', () => {
     expect(manager.isActive('list-plugin')).to.be.true;
 
     const listing = manager.list();
-    expect(listing.find(p => p.id === 'list-plugin')).to.exist;
+    expect(listing.find((p) => p.id === 'list-plugin')).to.exist;
   });
 
   it('should prevent unregister when dependents exist', async () => {
@@ -164,6 +180,6 @@ describe('PluginManager & Plugin base', () => {
     const m3 = { id: 'c', dependencies: ['b'] };
 
     const sorted = manager._topologicalSort([m3, m1, m2]);
-    expect(sorted.map(m => m.id)).to.deep.equal(['a','b','c']);
+    expect(sorted.map((m) => m.id)).to.deep.equal(['a', 'b', 'c']);
   });
 });

@@ -11,7 +11,7 @@ import { findInBoard } from '../../components/board-utils.js';
  */
 export class LinkEditorOverlay extends LitElement {
   static properties = {
-    active: { type: Boolean, reflect: true }
+    active: { type: Boolean, reflect: true },
   };
 
   constructor() {
@@ -173,7 +173,7 @@ export class LinkEditorOverlay extends LitElement {
     this._styleEl = document.createElement('style');
     this._styleEl.textContent = css;
     document.head.appendChild(this._styleEl);
-    
+
     console.log('[LinkEditorOverlay] Styles injected');
   }
 
@@ -186,7 +186,7 @@ export class LinkEditorOverlay extends LitElement {
       this._styleEl.parentNode.removeChild(this._styleEl);
       this._styleEl = null;
     }
-    
+
     // Remove overlay container
     if (this._overlayContainer && this._overlayContainer.parentNode) {
       this._overlayContainer.parentNode.removeChild(this._overlayContainer);
@@ -208,40 +208,60 @@ export class LinkEditorOverlay extends LitElement {
       console.warn('[LinkEditorOverlay] Board not found');
       return;
     }
-    
+
     const hostRoot = board.shadowRoot || board;
     const cards = hostRoot.querySelectorAll('feature-card-lit[data-feature-id]');
-    
+
     console.log('[LinkEditorOverlay] Found', cards.length, 'cards');
-    
+
     // Create a container for all overlays (append to document.body to avoid shadow DOM encapsulation)
     const overlayContainer = document.createElement('div');
     overlayContainer.id = 'link-editor-overlay-container';
     overlayContainer.style.position = 'absolute';
     overlayContainer.style.pointerEvents = 'none';
     overlayContainer.style.zIndex = '100';
-    
+
     // Get board position for absolute positioning relative to the page.
     // Prefer LayoutManager cached client rect when available.
     let boardRect = null;
     try {
-      if (board && board._layout && typeof board._layout.getBoardClientRect === 'function') {
+      if (
+        board &&
+        board._layout &&
+        typeof board._layout.getBoardClientRect === 'function'
+      ) {
         const br = board._layout.getBoardClientRect();
-        boardRect = { left: br.left || 0, top: br.top || 0, width: br.width || 0, height: br.height || 0, right: (br.left || 0) + (br.width || 0), bottom: (br.top || 0) + (br.height || 0) };
+        boardRect = {
+          left: br.left || 0,
+          top: br.top || 0,
+          width: br.width || 0,
+          height: br.height || 0,
+          right: (br.left || 0) + (br.width || 0),
+          bottom: (br.top || 0) + (br.height || 0),
+        };
       }
-    } catch (e) { boardRect = null; }
+    } catch (e) {
+      boardRect = null;
+    }
     if (!boardRect) {
-      try { boardRect = board.getBoundingClientRect(); } catch (e) { boardRect = { left: 0, top: 0, width: 0, height: 0 }; }
+      try {
+        boardRect = board.getBoundingClientRect();
+      } catch (e) {
+        boardRect = { left: 0, top: 0, width: 0, height: 0 };
+      }
     }
     const pageX = window.scrollX || window.pageXOffset || 0;
     const pageY = window.scrollY || window.pageYOffset || 0;
-    
-    cards.forEach(card => {
+
+    cards.forEach((card) => {
       const featureId = card.getAttribute('data-feature-id');
       if (!featureId) return;
 
       // Try to obtain geometry from board LayoutManager first
-      let left = null, top = null, width = null, height = null;
+      let left = null,
+        top = null,
+        width = null,
+        height = null;
       try {
         if (board && board._layout && typeof board._layout.getGeometry === 'function') {
           const geom = board._layout.getGeometry(featureId);
@@ -252,7 +272,9 @@ export class LinkEditorOverlay extends LitElement {
             height = geom.height;
           }
         }
-      } catch (e) { /* ignore and fallback */ }
+      } catch (e) {
+        /* ignore and fallback */
+      }
 
       // Fallback to DOM measurement for missing geometries
       if (left == null || top == null) {
@@ -278,19 +300,19 @@ export class LinkEditorOverlay extends LitElement {
       quadrants.style.height = `${height}px`;
       quadrants.style.pointerEvents = 'auto';
       quadrants.style.zIndex = '10';
-      
+
       // Create quadrant areas
-      ['Predecessor', 'Successor', 'Parent', 'Related'].forEach(action => {
+      ['Predecessor', 'Successor', 'Parent', 'Related'].forEach((action) => {
         const area = document.createElement('div');
         area.setAttribute('data-link-area', action);
         area.textContent = action;
         area.dataset.featureId = featureId;
         quadrants.appendChild(area);
       });
-      
+
       overlayContainer.appendChild(quadrants);
     });
-    
+
     // Append container to document body (light DOM) and position it over the board
     document.body.appendChild(overlayContainer);
     overlayContainer.style.left = `${Math.round(boardRect.left + pageX)}px`;
@@ -298,11 +320,11 @@ export class LinkEditorOverlay extends LitElement {
     overlayContainer.style.width = `${Math.round(boardRect.width)}px`;
     overlayContainer.style.height = `${Math.round(boardRect.height)}px`;
     this._overlayContainer = overlayContainer;
-    
+
     // Add click handler to board
     board.addEventListener('click', this._boundOnClick, true);
     this._board = board;
-    
+
     console.log('[LinkEditorOverlay] Event handlers attached to', cards.length, 'cards');
   }
 
@@ -314,7 +336,7 @@ export class LinkEditorOverlay extends LitElement {
     if (this._board) {
       this._board.removeEventListener('click', this._boundOnClick, true);
     }
-    
+
     // Remove overlay container
     if (this._overlayContainer && this._overlayContainer.parentNode) {
       this._overlayContainer.parentNode.removeChild(this._overlayContainer);
@@ -332,16 +354,16 @@ export class LinkEditorOverlay extends LitElement {
     if (linkArea) {
       e.stopPropagation();
       e.preventDefault();
-      
+
       const action = linkArea.getAttribute('data-link-area');
       const featureId = linkArea.dataset.featureId;
-      
+
       if (featureId) {
         this._onAreaClick(action, featureId, linkArea);
       }
       return;
     }
-    
+
     // Check if click was on a card (for completing pending action)
     if (this.pendingAction) {
       const card = e.target.closest('feature-card-lit[data-feature-id]');
@@ -362,26 +384,26 @@ export class LinkEditorOverlay extends LitElement {
    */
   _onAreaClick(action, featureId, areaEl) {
     console.log('[LinkEditorOverlay] Area clicked:', action, featureId);
-    
+
     // Clear any previous active areas
-    document.querySelectorAll('[data-link-area].active').forEach(el => {
+    document.querySelectorAll('[data-link-area].active').forEach((el) => {
       el.classList.remove('active');
     });
-    
+
     // Clear source class from all quadrants
-    document.querySelectorAll('.link-editor-quadrants.source').forEach(el => {
+    document.querySelectorAll('.link-editor-quadrants.source').forEach((el) => {
       el.classList.remove('source');
     });
-    
+
     // Mark this area as active
     areaEl.classList.add('active');
-    
+
     // Mark parent quadrants container as source
     const quadrantsContainer = areaEl.closest('.link-editor-quadrants');
     if (quadrantsContainer) {
       quadrantsContainer.classList.add('source');
     }
-    
+
     // Start action in state
     this._state.startAction(action, featureId);
   }
@@ -399,10 +421,10 @@ export class LinkEditorOverlay extends LitElement {
 
     if (success) {
       // Clear active states
-      document.querySelectorAll('[data-link-area].active').forEach(el => {
+      document.querySelectorAll('[data-link-area].active').forEach((el) => {
         el.classList.remove('active');
       });
-      document.querySelectorAll('.link-editor-quadrants.source').forEach(el => {
+      document.querySelectorAll('.link-editor-quadrants.source').forEach((el) => {
         el.classList.remove('source');
       });
     }
@@ -416,12 +438,12 @@ export class LinkEditorOverlay extends LitElement {
     if (e.key === 'Escape' && this.pendingAction) {
       e.preventDefault();
       this._state.cancelAction();
-      
+
       // Clear active states
-      document.querySelectorAll('[data-link-area].active').forEach(el => {
+      document.querySelectorAll('[data-link-area].active').forEach((el) => {
         el.classList.remove('active');
       });
-      document.querySelectorAll('.link-editor-quadrants.source').forEach(el => {
+      document.querySelectorAll('.link-editor-quadrants.source').forEach((el) => {
         el.classList.remove('source');
       });
     }
@@ -431,10 +453,10 @@ export class LinkEditorOverlay extends LitElement {
    * Clear all active states
    */
   clearAll() {
-    document.querySelectorAll('[data-link-area].active').forEach(el => {
+    document.querySelectorAll('[data-link-area].active').forEach((el) => {
       el.classList.remove('active');
     });
-    document.querySelectorAll('.link-editor-quadrants.source').forEach(el => {
+    document.querySelectorAll('.link-editor-quadrants.source').forEach((el) => {
       el.classList.remove('source');
     });
   }

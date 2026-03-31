@@ -46,7 +46,7 @@ import { isEnabled } from '../config.js';
  * @param {string|Date} d
  * @returns {Date|null}
  */
-const toDate = d => {
+const toDate = (d) => {
   if (!d) return null;
   if (d instanceof Date) return d;
   return new Date(`${d}T00:00:00Z`);
@@ -57,7 +57,7 @@ const toDate = d => {
  * @param {Date} dt
  * @returns {Date}
  */
-const firstOfMonth = dt => {
+const firstOfMonth = (dt) => {
   if (!dt) return null;
   return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
 };
@@ -67,7 +67,7 @@ const firstOfMonth = dt => {
  * @param {Date} dt
  * @returns {Date}
  */
-const lastOfMonth = dt => {
+const lastOfMonth = (dt) => {
   if (!dt) return null;
   return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
 };
@@ -79,21 +79,24 @@ const lastOfMonth = dt => {
  * @param {number} n
  * @returns {Date}
  */
-const addMonths = (dt, n) => new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n, 1));
+const addMonths = (dt, n) =>
+  new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n, 1));
 
 /**
  * Create a stable month key in YYYY-MM format using UTC month/year.
  * @param {Date} dt
  * @returns {string}
  */
-const monthKey = dt => `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+const monthKey = (dt) =>
+  `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
 
 /**
  * Human friendly month label used in the table header.
  * @param {Date} dt
  * @returns {string}
  */
-const monthLabel = dt => dt.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+const monthLabel = (dt) =>
+  dt.toLocaleString(undefined, { month: 'short', year: 'numeric' });
 
 /**
  * Build an ordered array of Date objects representing each month between the
@@ -116,14 +119,14 @@ const buildMonths = ({ dataset_start, dataset_end }) => {
  * @param {string[]} keys
  * @returns {Object<string, number>}
  */
-const zerosFor = keys => Object.fromEntries(keys.map(k => [k, 0]));
+const zerosFor = (keys) => Object.fromEntries(keys.map((k) => [k, 0]));
 
 /**
  * Numeric sum helper.
  * @param {number[]} arr
  * @returns {number}
  */
-const sum = arr => arr.reduce((a, b) => a + b, 0);
+const sum = (arr) => arr.reduce((a, b) => a + b, 0);
 
 /**
  * Calculate inclusive number of overlapping days between [start, end] and the
@@ -171,20 +174,20 @@ const buildFeature = (raw, monthKeys, months) => {
     const valuesExternal = zerosFor(monthKeys);
     const hoursInternal = zerosFor(monthKeys);
     const hoursExternal = zerosFor(monthKeys);
-    
+
     const numMonths = monthKeys.length || 1;
     const perMonInt = internalTotal / numMonths;
     const perMonExt = externalTotal / numMonths;
     const perMonIntH = internalHoursTotal / numMonths;
     const perMonExtH = externalHoursTotal / numMonths;
-    
+
     for (const mk of monthKeys) {
       valuesInternal[mk] = perMonInt;
       valuesExternal[mk] = perMonExt;
       hoursInternal[mk] = perMonIntH;
       hoursExternal[mk] = perMonExtH;
     }
-    
+
     // compute per-team allocations when capacity is present
     const teams = {};
     if (Array.isArray(raw.capacity) && raw.capacity.length) {
@@ -211,8 +214,12 @@ const buildFeature = (raw, monthKeys, months) => {
           externalTotal: sum(Object.values(tValuesExternal)),
           internalHoursTotal: sum(Object.values(tHoursInternal)),
           externalHoursTotal: sum(Object.values(tHoursExternal)),
-          total: +(sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))).toFixed(2),
-          totalHours: +(sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))).toFixed(2)
+          total: +(
+            sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))
+          ).toFixed(2),
+          totalHours: +(
+            sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))
+          ).toFixed(2),
         };
       }
     }
@@ -232,16 +239,19 @@ const buildFeature = (raw, monthKeys, months) => {
       internalHoursTotal,
       externalHoursTotal,
       has_project_parent: raw.has_project_parent,
-      teams
+      teams,
     };
   }
 
   const sMonth = firstOfMonth(start);
   const eMonth = firstOfMonth(end);
   const monthsCovered = [];
-  for (let cur = new Date(sMonth); cur <= eMonth; cur = addMonths(cur, 1)) monthsCovered.push(monthKey(cur));
+  for (let cur = new Date(sMonth); cur <= eMonth; cur = addMonths(cur, 1))
+    monthsCovered.push(monthKey(cur));
 
-  const monthStartMap = Object.fromEntries(months.map(m => [monthKey(m), firstOfMonth(m)]));
+  const monthStartMap = Object.fromEntries(
+    months.map((m) => [monthKey(m), firstOfMonth(m)])
+  );
   const daysByMonth = {};
   let totalDays = 0;
   for (const mk of monthsCovered) {
@@ -295,37 +305,44 @@ const buildFeature = (raw, monthKeys, months) => {
     externalHoursTotal,
     has_project_parent: raw.has_project_parent,
     // compute per-team allocations when capacity is present
-    teams: (Array.isArray(raw.capacity) && raw.capacity.length) ? (() => {
-      const t = {};
-      const totalCap = raw.capacity.reduce((a, b) => a + (b.capacity || 0), 0) || 0;
-      for (const entry of raw.capacity) {
-        const tid = String(entry.team || entry.id || entry.name || 'unassigned');
-        const cap = (entry.capacity || 0) / (totalCap || 1);
-        const tValuesInternal = zerosFor(monthKeys);
-        const tValuesExternal = zerosFor(monthKeys);
-        const tHoursInternal = zerosFor(monthKeys);
-        const tHoursExternal = zerosFor(monthKeys);
-        for (const mk of monthKeys) {
-          tValuesInternal[mk] = (valuesInternal[mk] || 0) * cap;
-          tValuesExternal[mk] = (valuesExternal[mk] || 0) * cap;
-          tHoursInternal[mk] = (hoursInternal[mk] || 0) * cap;
-          tHoursExternal[mk] = (hoursExternal[mk] || 0) * cap;
-        }
-        t[tid] = {
-          valuesInternal: tValuesInternal,
-          valuesExternal: tValuesExternal,
-          hoursInternal: tHoursInternal,
-          hoursExternal: tHoursExternal,
-          internalTotal: sum(Object.values(tValuesInternal)),
-          externalTotal: sum(Object.values(tValuesExternal)),
-          internalHoursTotal: sum(Object.values(tHoursInternal)),
-          externalHoursTotal: sum(Object.values(tHoursExternal)),
-          total: +(sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))).toFixed(2),
-          totalHours: +(sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))).toFixed(2)
-        };
-      }
-      return t;
-    })() : {}
+    teams:
+      Array.isArray(raw.capacity) && raw.capacity.length ?
+        (() => {
+          const t = {};
+          const totalCap = raw.capacity.reduce((a, b) => a + (b.capacity || 0), 0) || 0;
+          for (const entry of raw.capacity) {
+            const tid = String(entry.team || entry.id || entry.name || 'unassigned');
+            const cap = (entry.capacity || 0) / (totalCap || 1);
+            const tValuesInternal = zerosFor(monthKeys);
+            const tValuesExternal = zerosFor(monthKeys);
+            const tHoursInternal = zerosFor(monthKeys);
+            const tHoursExternal = zerosFor(monthKeys);
+            for (const mk of monthKeys) {
+              tValuesInternal[mk] = (valuesInternal[mk] || 0) * cap;
+              tValuesExternal[mk] = (valuesExternal[mk] || 0) * cap;
+              tHoursInternal[mk] = (hoursInternal[mk] || 0) * cap;
+              tHoursExternal[mk] = (hoursExternal[mk] || 0) * cap;
+            }
+            t[tid] = {
+              valuesInternal: tValuesInternal,
+              valuesExternal: tValuesExternal,
+              hoursInternal: tHoursInternal,
+              hoursExternal: tHoursExternal,
+              internalTotal: sum(Object.values(tValuesInternal)),
+              externalTotal: sum(Object.values(tValuesExternal)),
+              internalHoursTotal: sum(Object.values(tHoursInternal)),
+              externalHoursTotal: sum(Object.values(tHoursExternal)),
+              total: +(
+                sum(Object.values(tValuesInternal)) + sum(Object.values(tValuesExternal))
+              ).toFixed(2),
+              totalHours: +(
+                sum(Object.values(tHoursInternal)) + sum(Object.values(tHoursExternal))
+              ).toFixed(2),
+            };
+          }
+          return t;
+        })()
+      : {},
   };
 };
 
@@ -343,25 +360,28 @@ const buildProjects = (projects, months, state) => {
   const monthKeys = months.map(monthKey);
   const useEpicGapFills = isEnabled('USE_EPIC_CAPACITY_GAP_FILLS');
 
-  const projectsOut = (projects || []).map(p => {
-    const feats = (p.features || []).map(f => buildFeature(f, monthKeys, months));
-    const featById = new Map(feats.map(f => [f.id, f]));
+  const projectsOut = (projects || []).map((p) => {
+    const feats = (p.features || []).map((f) => buildFeature(f, monthKeys, months));
+    const featById = new Map(feats.map((f) => [f.id, f]));
 
-      const childrenMap = new Map();
-      const featuresList = p.features || [];
-      if (state?.childrenByEpic?.get) {
-        for (const f of featuresList) {
-          const raw = state.childrenByEpic.get(Number(f.id)) || state.childrenByEpic.get(String(f.id)) || [];
-          if (raw.length) childrenMap.set(String(f.id), raw.map(String));
-        }
-      } else {
-        for (const f of featuresList) {
-          if (f.parentEpic || f.parentEpic === 0) {
-            const key = String(f.parentEpic);
-            childrenMap.set(key, (childrenMap.get(key) || []).concat(String(f.id)));
-          }
+    const childrenMap = new Map();
+    const featuresList = p.features || [];
+    if (state?.childrenByEpic?.get) {
+      for (const f of featuresList) {
+        const raw =
+          state.childrenByEpic.get(Number(f.id)) ||
+          state.childrenByEpic.get(String(f.id)) ||
+          [];
+        if (raw.length) childrenMap.set(String(f.id), raw.map(String));
+      }
+    } else {
+      for (const f of featuresList) {
+        if (f.parentEpic || f.parentEpic === 0) {
+          const key = String(f.parentEpic);
+          childrenMap.set(key, (childrenMap.get(key) || []).concat(String(f.id)));
         }
       }
+    }
 
     // IMPORTANT: Preserve original totals for ALL features BEFORE any epic aggregation
     // This ensures deviation detection works correctly on initial load
@@ -371,7 +391,7 @@ const buildProjects = (projects, months, state) => {
     }
 
     for (const [epicId, childIds] of childrenMap.entries()) {
-      const childList = childIds.map(id => featById.get(String(id))).filter(Boolean);
+      const childList = childIds.map((id) => featById.get(String(id))).filter(Boolean);
       if (!childList.length) continue;
       const epic = featById.get(String(epicId));
 
@@ -403,10 +423,16 @@ const buildProjects = (projects, months, state) => {
 
       if (!epic) continue;
       // originalTotal already set above for all features
-      
-      const monthsWithChild = monthKeys.filter(k => (childInt[k] + childExt[k]) > 0);
-      const avgChildInt = monthsWithChild.length ? sum(monthsWithChild.map(k => childInt[k])) / monthsWithChild.length : 0;
-      const avgChildExt = monthsWithChild.length ? sum(monthsWithChild.map(k => childExt[k])) / monthsWithChild.length : 0;
+
+      const monthsWithChild = monthKeys.filter((k) => childInt[k] + childExt[k] > 0);
+      const avgChildInt =
+        monthsWithChild.length ?
+          sum(monthsWithChild.map((k) => childInt[k])) / monthsWithChild.length
+        : 0;
+      const avgChildExt =
+        monthsWithChild.length ?
+          sum(monthsWithChild.map((k) => childExt[k])) / monthsWithChild.length
+        : 0;
 
       const newInt = zerosFor(monthKeys);
       const newExt = zerosFor(monthKeys);
@@ -414,7 +440,10 @@ const buildProjects = (projects, months, state) => {
       const newEH = zerosFor(monthKeys);
       for (const k of monthKeys) {
         if ((childInt[k] || 0) + (childExt[k] || 0) > 0) {
-          newInt[k] = 0; newExt[k] = 0; newIH[k] = 0; newEH[k] = 0;
+          newInt[k] = 0;
+          newExt[k] = 0;
+          newIH[k] = 0;
+          newEH[k] = 0;
         } else {
           newInt[k] = epic.valuesInternal[k] || avgChildInt || 0;
           newExt[k] = epic.valuesExternal[k] || avgChildExt || 0;
@@ -432,13 +461,17 @@ const buildProjects = (projects, months, state) => {
       epic.externalHoursTotal = sum(Object.values(newEH));
     }
 
-    const normalizedFeatures = feats.map(f => {
-      const lastMk = f.monthsCovered.length ? f.monthsCovered[f.monthsCovered.length - 1] : monthKeys[monthKeys.length - 1];
+    const normalizedFeatures = feats.map((f) => {
+      const lastMk =
+        f.monthsCovered.length ?
+          f.monthsCovered[f.monthsCovered.length - 1]
+        : monthKeys[monthKeys.length - 1];
       const roundMap = (src, total) => {
         const out = {};
-        for (const k of monthKeys) out[k] = +((src[k] || 0).toFixed(2));
+        for (const k of monthKeys) out[k] = +(src[k] || 0).toFixed(2);
         const diff = +(total - sum(Object.values(out))).toFixed(2);
-        if (Math.abs(diff) > 0.001 && lastMk) out[lastMk] = +((out[lastMk] || 0) + diff).toFixed(2);
+        if (Math.abs(diff) > 0.001 && lastMk)
+          out[lastMk] = +((out[lastMk] || 0) + diff).toFixed(2);
         return out;
       };
 
@@ -447,8 +480,12 @@ const buildProjects = (projects, months, state) => {
       const hoursI = roundMap(f.hoursInternal || {}, f.internalHoursTotal || 0);
       const hoursE = roundMap(f.hoursExternal || {}, f.externalHoursTotal || 0);
 
-      const total = +(sum(Object.values(internal)) + sum(Object.values(external))).toFixed(2);
-      const totalHours = +(sum(Object.values(hoursI)) + sum(Object.values(hoursE))).toFixed(2);
+      const total = +(
+        sum(Object.values(internal)) + sum(Object.values(external))
+      ).toFixed(2);
+      const totalHours = +(
+        sum(Object.values(hoursI)) + sum(Object.values(hoursE))
+      ).toFixed(2);
       // normalize per-team maps if present
       const teamsMap = {};
       if (f.teams && typeof f.teams === 'object') {
@@ -460,12 +497,16 @@ const buildProjects = (projects, months, state) => {
           teamsMap[tid] = {
             values: { internal: tInternal, external: tExternal },
             hours: { internal: tHoursI, external: tHoursE },
-            internalTotal: +(sum(Object.values(tInternal)).toFixed(2)),
-            externalTotal: +(sum(Object.values(tExternal)).toFixed(2)),
-            total: +(sum(Object.values(tInternal)) + sum(Object.values(tExternal))).toFixed(2),
-            internalHoursTotal: +(sum(Object.values(tHoursI)).toFixed(2)),
-            externalHoursTotal: +(sum(Object.values(tHoursE)).toFixed(2)),
-            totalHours: +(sum(Object.values(tHoursI)) + sum(Object.values(tHoursE))).toFixed(2)
+            internalTotal: +sum(Object.values(tInternal)).toFixed(2),
+            externalTotal: +sum(Object.values(tExternal)).toFixed(2),
+            total: +(
+              sum(Object.values(tInternal)) + sum(Object.values(tExternal))
+            ).toFixed(2),
+            internalHoursTotal: +sum(Object.values(tHoursI)).toFixed(2),
+            externalHoursTotal: +sum(Object.values(tHoursE)).toFixed(2),
+            totalHours: +(
+              sum(Object.values(tHoursI)) + sum(Object.values(tHoursE))
+            ).toFixed(2),
           };
         }
       }
@@ -476,11 +517,11 @@ const buildProjects = (projects, months, state) => {
         state: '',
         values: { internal, external },
         hours: { internal: hoursI, external: hoursE },
-        internalTotal: +(sum(Object.values(internal)).toFixed(2)),
-        externalTotal: +(sum(Object.values(external)).toFixed(2)),
+        internalTotal: +sum(Object.values(internal)).toFixed(2),
+        externalTotal: +sum(Object.values(external)).toFixed(2),
         total,
-        internalHoursTotal: +(sum(Object.values(hoursI)).toFixed(2)),
-        externalHoursTotal: +(sum(Object.values(hoursE)).toFixed(2)),
+        internalHoursTotal: +sum(Object.values(hoursI)).toFixed(2),
+        externalHoursTotal: +sum(Object.values(hoursE)).toFixed(2),
         totalHours,
         start: f.start,
         end: f.end,
@@ -489,41 +530,53 @@ const buildProjects = (projects, months, state) => {
         originalTotal: f.originalTotal,
         originalTotalHours: f.originalTotalHours,
         // Preserve has_project_parent flag for filtering
-        has_project_parent: f.has_project_parent
-        ,teams: teamsMap
+        has_project_parent: f.has_project_parent,
+        teams: teamsMap,
       };
     });
 
-    const allChildIds = new Set([].concat(...Array.from(childrenMap.values()).map(a => a.map(String))));
-    const totals = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) } };
-    let projectTotal = 0, projectTotalHours = 0;
-    
+    const allChildIds = new Set(
+      [].concat(...Array.from(childrenMap.values()).map((a) => a.map(String)))
+    );
+    const totals = {
+      internal: zerosFor(monthKeys),
+      external: zerosFor(monthKeys),
+      hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) },
+    };
+    let projectTotal = 0,
+      projectTotalHours = 0;
+
     // For teams, also calculate totals excluding tasks with project parents
-    const totalsNoProject = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) } };
-    let noProjectTotal = 0, noProjectTotalHours = 0;
-    
+    const totalsNoProject = {
+      internal: zerosFor(monthKeys),
+      external: zerosFor(monthKeys),
+      hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) },
+    };
+    let noProjectTotal = 0,
+      noProjectTotalHours = 0;
+
     for (const f of normalizedFeatures) {
       if (allChildIds.has(String(f.id))) continue;
-      
+
       // Add to main totals (all tasks)
-      for (const k of monthKeys) { 
-        totals.internal[k] += f.values.internal[k] || 0; 
-        totals.external[k] += f.values.external[k] || 0; 
-        totals.hours.internal[k] += f.hours.internal[k] || 0; 
-        totals.hours.external[k] += f.hours.external[k] || 0; 
+      for (const k of monthKeys) {
+        totals.internal[k] += f.values.internal[k] || 0;
+        totals.external[k] += f.values.external[k] || 0;
+        totals.hours.internal[k] += f.hours.internal[k] || 0;
+        totals.hours.external[k] += f.hours.external[k] || 0;
       }
-      projectTotal += f.total; 
+      projectTotal += f.total;
       projectTotalHours += f.totalHours;
-      
+
       // Add to no-project totals only if no project parent
       if (!f.has_project_parent) {
-        for (const k of monthKeys) { 
-          totalsNoProject.internal[k] += f.values.internal[k] || 0; 
-          totalsNoProject.external[k] += f.values.external[k] || 0; 
-          totalsNoProject.hours.internal[k] += f.hours.internal[k] || 0; 
-          totalsNoProject.hours.external[k] += f.hours.external[k] || 0; 
+        for (const k of monthKeys) {
+          totalsNoProject.internal[k] += f.values.internal[k] || 0;
+          totalsNoProject.external[k] += f.values.external[k] || 0;
+          totalsNoProject.hours.internal[k] += f.hours.internal[k] || 0;
+          totalsNoProject.hours.external[k] += f.hours.external[k] || 0;
         }
-        noProjectTotal += f.total; 
+        noProjectTotal += f.total;
         noProjectTotalHours += f.totalHours;
       }
     }
@@ -534,41 +587,77 @@ const buildProjects = (projects, months, state) => {
       if (allChildIds.has(String(f.id))) continue;
       // If feature has explicit team splits, aggregate those, otherwise
       // attribute the feature to an 'unassigned' bucket
-      const teamsForFeature = f.teams && Object.keys(f.teams).length ? f.teams : { unassigned: { values: { internal: f.values.internal, external: f.values.external }, hours: { internal: f.hours.internal, external: f.hours.external }, internalTotal: f.internalTotal, externalTotal: f.externalTotal, total: f.total, internalHoursTotal: f.internalHoursTotal, externalHoursTotal: f.externalHoursTotal, totalHours: f.totalHours } };
+      const teamsForFeature =
+        f.teams && Object.keys(f.teams).length ?
+          f.teams
+        : {
+            unassigned: {
+              values: {
+                internal: f.values.internal,
+                external: f.values.external,
+              },
+              hours: { internal: f.hours.internal, external: f.hours.external },
+              internalTotal: f.internalTotal,
+              externalTotal: f.externalTotal,
+              total: f.total,
+              internalHoursTotal: f.internalHoursTotal,
+              externalHoursTotal: f.externalHoursTotal,
+              totalHours: f.totalHours,
+            },
+          };
       for (const [tid, t] of Object.entries(teamsForFeature)) {
-        if (!teamTotals[tid]) teamTotals[tid] = { internal: zerosFor(monthKeys), external: zerosFor(monthKeys), hours: { internal: zerosFor(monthKeys), external: zerosFor(monthKeys) }, total: 0, totalHours: 0 };
+        if (!teamTotals[tid])
+          teamTotals[tid] = {
+            internal: zerosFor(monthKeys),
+            external: zerosFor(monthKeys),
+            hours: {
+              internal: zerosFor(monthKeys),
+              external: zerosFor(monthKeys),
+            },
+            total: 0,
+            totalHours: 0,
+          };
         for (const k of monthKeys) {
-          teamTotals[tid].internal[k] += (t.values && t.values.internal && (t.values.internal[k] || 0)) || 0;
-          teamTotals[tid].external[k] += (t.values && t.values.external && (t.values.external[k] || 0)) || 0;
-          teamTotals[tid].hours.internal[k] += (t.hours && t.hours.internal && (t.hours.internal[k] || 0)) || 0;
-          teamTotals[tid].hours.external[k] += (t.hours && t.hours.external && (t.hours.external[k] || 0)) || 0;
+          teamTotals[tid].internal[k] +=
+            (t.values && t.values.internal && (t.values.internal[k] || 0)) || 0;
+          teamTotals[tid].external[k] +=
+            (t.values && t.values.external && (t.values.external[k] || 0)) || 0;
+          teamTotals[tid].hours.internal[k] +=
+            (t.hours && t.hours.internal && (t.hours.internal[k] || 0)) || 0;
+          teamTotals[tid].hours.external[k] +=
+            (t.hours && t.hours.external && (t.hours.external[k] || 0)) || 0;
         }
         teamTotals[tid].total += t.total || 0;
         teamTotals[tid].totalHours += t.totalHours || 0;
       }
     }
 
-    return { 
-      id: p.id, 
-      name: p.name, 
-      type: p.type || 'project', 
-      features: normalizedFeatures, 
-      totals, 
-      total: +projectTotal.toFixed(2), 
+    return {
+      id: p.id,
+      name: p.name,
+      type: p.type || 'project',
+      features: normalizedFeatures,
+      totals,
+      total: +projectTotal.toFixed(2),
       totalHours: +projectTotalHours.toFixed(2),
       // Include no-project totals for teams
       totalsNoProject,
       noProjectTotal: +noProjectTotal.toFixed(2),
-      noProjectTotalHours: +noProjectTotalHours.toFixed(2)
-      ,teamTotals
+      noProjectTotalHours: +noProjectTotalHours.toFixed(2),
+      teamTotals,
     };
   });
 
-  const footerHours = { internal: zerosFor(months.map(monthKey)), external: zerosFor(months.map(monthKey)) };
+  const footerHours = {
+    internal: zerosFor(months.map(monthKey)),
+    external: zerosFor(months.map(monthKey)),
+  };
   let footerTotalHours = 0;
   for (const p of projectsOut) {
-    for (const k of Object.keys(p.totals.hours.internal)) footerHours.internal[k] += p.totals.hours.internal[k] || 0;
-    for (const k of Object.keys(p.totals.hours.external)) footerHours.external[k] += p.totals.hours.external[k] || 0;
+    for (const k of Object.keys(p.totals.hours.internal))
+      footerHours.internal[k] += p.totals.hours.internal[k] || 0;
+    for (const k of Object.keys(p.totals.hours.external))
+      footerHours.external[k] += p.totals.hours.external[k] || 0;
     footerTotalHours += +p.totalHours;
   }
 
@@ -579,15 +668,18 @@ const buildProjects = (projects, months, state) => {
     const bId = String(b.id || '');
     const aType = String(a.type || 'project');
     const bType = String(b.type || 'project');
-    
+
     // Map types to sort order: projects=0, teams=1, others=2
-    const typeOrder = (t) => t === 'project' ? 0 : (t === 'team' ? 1 : 2);
+    const typeOrder = (t) =>
+      t === 'project' ? 0
+      : t === 'team' ? 1
+      : 2;
     const aOrder = typeOrder(aType);
     const bOrder = typeOrder(bType);
-    
+
     // If different types, sort by type order
     if (aOrder !== bOrder) return aOrder - bOrder;
-    
+
     // Same type, sort alphabetically by id
     return aId.localeCompare(bId);
   });
@@ -595,4 +687,13 @@ const buildProjects = (projects, months, state) => {
   return { projects: projectsOut, footerHours, footerTotalHours };
 };
 
-export { toDate, firstOfMonth, lastOfMonth, addMonths, monthKey, monthLabel, buildMonths, buildProjects };
+export {
+  toDate,
+  firstOfMonth,
+  lastOfMonth,
+  addMonths,
+  monthKey,
+  monthLabel,
+  buildMonths,
+  buildProjects,
+};

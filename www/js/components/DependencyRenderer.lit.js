@@ -1,28 +1,41 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, ProjectEvents, TeamEvents, DragEvents, ViewEvents, AppEvents, FilterEvents } from '../core/EventRegistry.js';
+import {
+  FeatureEvents,
+  ProjectEvents,
+  TeamEvents,
+  DragEvents,
+  ViewEvents,
+  AppEvents,
+  FilterEvents,
+} from '../core/EventRegistry.js';
 
-function findInBoard(selector){
-  try{
+function findInBoard(selector) {
+  try {
     const boardEl = document.querySelector('timeline-board');
-    if(boardEl){
+    if (boardEl) {
       const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
       const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if(found) return found;
+      if (found) return found;
     }
-  }catch(e){}
-  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+  } catch (e) {}
+  return (
+    document.querySelector(selector) ||
+    document.getElementById(selector.replace(/^#/, '')) ||
+    null
+  );
 }
 
-function findAllInBoard(selector){
-  try{
+function findAllInBoard(selector) {
+  try {
     const boardEl = document.querySelector('timeline-board');
-    if(boardEl){
+    if (boardEl) {
       const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      if(root && root.querySelectorAll) return Array.from(root.querySelectorAll(selector));
+      if (root && root.querySelectorAll)
+        return Array.from(root.querySelectorAll(selector));
     }
-  }catch(e){}
+  } catch (e) {}
   return Array.from(document.querySelectorAll(selector));
 }
 
@@ -33,20 +46,25 @@ class DependencyRenderer extends LitElement {
 
   render() {
     return html`
-      <div id="depRendererRoot" style="position:relative;width:100%;height:100%;pointer-events:none"></div>
+      <div
+        id="depRendererRoot"
+        style="position:relative;width:100%;height:100%;pointer-events:none"
+      ></div>
     `;
   }
 
   firstUpdated() {
-    const root = this.querySelector('#depRendererRoot') || (() => {
-      const d = document.createElement('div');
-      d.id = 'depRendererRoot';
-      d.style.position = 'relative';
-      d.style.width = '100%';
-      d.style.height = '100%';
-      this.appendChild(d);
-      return d;
-    })();
+    const root =
+      this.querySelector('#depRendererRoot') ||
+      (() => {
+        const d = document.createElement('div');
+        d.id = 'depRendererRoot';
+        d.style.position = 'relative';
+        d.style.width = '100%';
+        d.style.height = '100%';
+        this.appendChild(d);
+        return d;
+      })();
 
     let svg = root.querySelector('svg');
     if (!svg) {
@@ -117,49 +135,99 @@ class DependencyRenderer extends LitElement {
       for (const b of boards) {
         try {
           if (b.shadowRoot) {
-            const hostCards = Array.from(b.shadowRoot.querySelectorAll('feature-card-lit'));
+            const hostCards = Array.from(
+              b.shadowRoot.querySelectorAll('feature-card-lit')
+            );
             for (const c of hostCards) {
-              const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+              const id =
+                (c.getAttribute && c.getAttribute('data-feature-id')) ||
+                (c.feature && c.feature.id && String(c.feature.id));
               if (id) cardById.set(String(id), c);
             }
           } else {
-            const hostCards = Array.from(b.querySelectorAll ? b.querySelectorAll('feature-card-lit') : []);
+            const hostCards = Array.from(
+              b.querySelectorAll ? b.querySelectorAll('feature-card-lit') : []
+            );
             for (const c of hostCards) {
-              const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+              const id =
+                (c.getAttribute && c.getAttribute('data-feature-id')) ||
+                (c.feature && c.feature.id && String(c.feature.id));
               if (id) cardById.set(String(id), c);
             }
           }
-        } catch (e) { /* ignore board-level errors */ }
+        } catch (e) {
+          /* ignore board-level errors */
+        }
       }
       // Also include any cards that might be in the document root
       const docCards = Array.from(document.querySelectorAll('feature-card-lit'));
       for (const c of docCards) {
-        const id = (c.getAttribute && c.getAttribute('data-feature-id')) || (c.feature && c.feature.id && String(c.feature.id));
+        const id =
+          (c.getAttribute && c.getAttribute('data-feature-id')) ||
+          (c.feature && c.feature.id && String(c.feature.id));
         if (id) cardById.set(String(id), c);
       }
-    } catch (e) { /* ignore collection errors */ }
+    } catch (e) {
+      /* ignore collection errors */
+    }
 
-    const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
+    const features =
+      state && typeof state.getEffectiveFeatures === 'function' ?
+        state.getEffectiveFeatures()
+      : [];
     // Prefer LayoutManager-provided values to avoid expensive DOM reads
     let bbox = null;
     let scrollLeft = 0;
     let verticalScrollTop = 0;
     try {
       if (board && board._layout) {
-        const brClient = typeof board._layout.getBoardClientRect === 'function' ? board._layout.getBoardClientRect() : null;
-        if (brClient) bbox = { left: brClient.left || 0, top: brClient.top || 0, width: brClient.width || 0, height: brClient.height || 0 };
-        const br = typeof board._layout.getBoardRect === 'function' ? board._layout.getBoardRect() : null;
+        const brClient =
+          typeof board._layout.getBoardClientRect === 'function' ?
+            board._layout.getBoardClientRect()
+          : null;
+        if (brClient)
+          bbox = {
+            left: brClient.left || 0,
+            top: brClient.top || 0,
+            width: brClient.width || 0,
+            height: brClient.height || 0,
+          };
+        const br =
+          typeof board._layout.getBoardRect === 'function' ?
+            board._layout.getBoardRect()
+          : null;
         if (br) scrollLeft = br.left || 0;
-        verticalScrollTop = br && br.top != null ? br.top : (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section') ? board.parentElement.scrollTop : board.scrollTop || 0);
+        verticalScrollTop =
+          br && br.top != null ? br.top
+          : (
+            board.parentElement &&
+            board.parentElement.classList &&
+            board.parentElement.classList.contains('timeline-section')
+          ) ?
+            board.parentElement.scrollTop
+          : board.scrollTop || 0;
       }
-    } catch (e) { bbox = null; }
+    } catch (e) {
+      bbox = null;
+    }
     if (!bbox) {
-      try { bbox = this.getBoundingClientRect(); } catch (e) { bbox = { left: 0, top: 0, width: 0, height: 0 }; }
+      try {
+        bbox = this.getBoundingClientRect();
+      } catch (e) {
+        bbox = { left: 0, top: 0, width: 0, height: 0 };
+      }
       scrollLeft = board.scrollLeft || 0;
-      const verticalContainer = (board.parentElement && board.parentElement.classList && board.parentElement.classList.contains('timeline-section')) ? board.parentElement : board;
+      const verticalContainer =
+        (
+          board.parentElement &&
+          board.parentElement.classList &&
+          board.parentElement.classList.contains('timeline-section')
+        ) ?
+          board.parentElement
+        : board;
       verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
     }
-    const laneHeight = (state && state._viewService.condensedCards) ? 40 : 100;
+    const laneHeight = state && state._viewService.condensedCards ? 40 : 100;
 
     const computeRect = (el) => {
       try {
@@ -172,18 +240,34 @@ class DependencyRenderer extends LitElement {
           const h = parseFloat(el.style.height) || laneHeight;
           return { left: leftStyle, top: topStyle, width: w, height: h };
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
 
       try {
         // Prefer board's LayoutManager geometry when available (fallback)
-        const id = (el.getAttribute && el.getAttribute('data-feature-id')) || (el.feature && el.feature.id && String(el.feature.id));
-        if (id && board && board._layout && typeof board._layout.getGeometry === 'function') {
+        const id =
+          (el.getAttribute && el.getAttribute('data-feature-id')) ||
+          (el.feature && el.feature.id && String(el.feature.id));
+        if (
+          id &&
+          board &&
+          board._layout &&
+          typeof board._layout.getGeometry === 'function'
+        ) {
           const geom = board._layout.getGeometry(id);
           if (geom) {
-            return { left: geom.left, top: geom.top, width: geom.width, height: geom.height };
+            return {
+              left: geom.left,
+              top: geom.top,
+              width: geom.width,
+              height: geom.height,
+            };
           }
         }
-      } catch (e) { /* ignore and fallback */ }
+      } catch (e) {
+        /* ignore and fallback */
+      }
 
       try {
         if (el && el.shadowRoot) {
@@ -194,7 +278,7 @@ class DependencyRenderer extends LitElement {
               left: r.left - bbox.left + scrollLeft,
               top: r.top - bbox.top + verticalScrollTop,
               width: r.width,
-              height: r.height
+              height: r.height,
             };
           }
         }
@@ -208,7 +292,7 @@ class DependencyRenderer extends LitElement {
           left: r.left - bbox.left + scrollLeft,
           top: r.top - bbox.top + verticalScrollTop,
           width: r.width,
-          height: r.height
+          height: r.height,
         };
       } catch (e) {
         // last-resort: approximate from styles
@@ -277,7 +361,7 @@ class DependencyRenderer extends LitElement {
         this.drawLine(from, to, {
           dashed: relType === 'Related',
           stroke: relType === 'Related' ? '#6a6' : '#888',
-          width: relType === 'Related' ? 1.5 : 2
+          width: relType === 'Related' ? 1.5 : 2,
         });
 
         drawn.add(key);
@@ -307,7 +391,9 @@ export async function initDependencyRenderer() {
     try {
       const hostRoot = board.shadowRoot || board;
 
-      let lit = (hostRoot.querySelector && hostRoot.querySelector('dependency-renderer')) || document.querySelector('dependency-renderer');
+      let lit =
+        (hostRoot.querySelector && hostRoot.querySelector('dependency-renderer')) ||
+        document.querySelector('dependency-renderer');
 
       if (!lit) {
         lit = document.createElement('dependency-renderer');
@@ -321,10 +407,11 @@ export async function initDependencyRenderer() {
           if (parent && parent !== hostRoot) {
             hostRoot.appendChild(lit);
           }
-        } catch (e) { /* ignore move failures */ }
+        } catch (e) {
+          /* ignore move failures */
+        }
 
-      
-      lit.style.position = 'absolute';
+        lit.style.position = 'absolute';
         lit.style.top = '0';
         lit.style.left = '0';
 
@@ -348,7 +435,11 @@ export async function initDependencyRenderer() {
           while (p) {
             try {
               const s = window.getComputedStyle(p);
-              if (['auto', 'scroll'].includes(s.overflowY) || ['auto', 'scroll'].includes(s.overflowX)) return p;
+              if (
+                ['auto', 'scroll'].includes(s.overflowY) ||
+                ['auto', 'scroll'].includes(s.overflowX)
+              )
+                return p;
             } catch (e) {
               // ignore
             }
@@ -379,7 +470,8 @@ export async function initDependencyRenderer() {
         };
 
         try {
-          if (scrollParent && scrollParent.addEventListener) scrollParent.addEventListener('scroll', onScroll);
+          if (scrollParent && scrollParent.addEventListener)
+            scrollParent.addEventListener('scroll', onScroll);
         } catch (e) {
           // ignore
         }
@@ -431,23 +523,33 @@ export async function initDependencyRenderer() {
         // Ensure LayoutManager has seeded geometries before rendering.
         try {
           const board = findInBoard('feature-board');
-          const features = (state && typeof state.getEffectiveFeatures === 'function') ? state.getEffectiveFeatures() : [];
+          const features =
+            state && typeof state.getEffectiveFeatures === 'function' ?
+              state.getEffectiveFeatures()
+            : [];
           if (board && board._layout && typeof board._layout.snapshot === 'function') {
             const snap = board._layout.snapshot();
             // If snapshot appears empty while we have features, it's likely
             // the LayoutManager hasn't been seeded yet. Retry shortly.
             if (features.length > 0 && (!snap || snap.size === 0)) {
               // Retry on next animation frame to give FeatureBoard a chance to seed geometries
-              try { requestAnimationFrame(() => scheduleRender()); } catch (e) { setTimeout(() => scheduleRender(), 50); }
+              try {
+                requestAnimationFrame(() => scheduleRender());
+              } catch (e) {
+                setTimeout(() => scheduleRender(), 50);
+              }
               return;
             }
           }
-        } catch (e) { /* ignore and proceed */ }
+        } catch (e) {
+          /* ignore and proceed */
+        }
         try {
           const lits = Array.from(document.querySelectorAll('dependency-renderer'));
           for (const L of lits) L.style.display = '';
 
-          const host = (lit.getRootNode && lit.getRootNode().host) ? lit.getRootNode().host : null;
+          const host =
+            lit.getRootNode && lit.getRootNode().host ? lit.getRootNode().host : null;
           if (host && host.shadowRoot) {
             const s = host.shadowRoot.querySelector('dependency-renderer');
             if (s) s.style.display = '';
@@ -457,7 +559,11 @@ export async function initDependencyRenderer() {
         }
 
         if (lit.updateComplete) {
-          try { await lit.updateComplete; } catch (e) { /* ignore */ }
+          try {
+            await lit.updateComplete;
+          } catch (e) {
+            /* ignore */
+          }
         }
 
         if (typeof lit.renderLayer === 'function') lit.renderLayer();
@@ -467,20 +573,24 @@ export async function initDependencyRenderer() {
     }
   }
 
-    try {
-      bus.on(FeatureEvents.UPDATED, scheduleRender);
-      bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
-      bus.on(ProjectEvents.CHANGED, scheduleRender);
-      bus.on(TeamEvents.CHANGED, scheduleRender);
-      bus.on(FilterEvents.CHANGED, scheduleRender);
-      bus.on(DragEvents.MOVE, scheduleRender);
-      bus.on(DragEvents.END, scheduleRender);
-      // Ensure we attempt a render after app initialization completes so
-      // dependency lines are drawn when the dependency toggle is already active.
-      bus.on(AppEvents.READY, () => { try { setTimeout(scheduleRender, 0); } catch (e) {} });
-    } catch (e) {
-      // ignore wiring failures
-    }
+  try {
+    bus.on(FeatureEvents.UPDATED, scheduleRender);
+    bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
+    bus.on(ProjectEvents.CHANGED, scheduleRender);
+    bus.on(TeamEvents.CHANGED, scheduleRender);
+    bus.on(FilterEvents.CHANGED, scheduleRender);
+    bus.on(DragEvents.MOVE, scheduleRender);
+    bus.on(DragEvents.END, scheduleRender);
+    // Ensure we attempt a render after app initialization completes so
+    // dependency lines are drawn when the dependency toggle is already active.
+    bus.on(AppEvents.READY, () => {
+      try {
+        setTimeout(scheduleRender, 0);
+      } catch (e) {}
+    });
+  } catch (e) {
+    // ignore wiring failures
+  }
 
   window.addEventListener('resize', scheduleRender);
 
@@ -492,9 +602,16 @@ export async function initDependencyRenderer() {
       for (const r of records) {
         for (const n of r.addedNodes) {
           if (!n) continue;
-          const isBoard = (n.tagName && n.tagName.toLowerCase && n.tagName.toLowerCase() === 'feature-board');
+          const isBoard =
+            n.tagName &&
+            n.tagName.toLowerCase &&
+            n.tagName.toLowerCase() === 'feature-board';
           if (isBoard) {
-            try { n.addEventListener('scroll', scheduleRender); } catch (e) { /* ignore */ }
+            try {
+              n.addEventListener('scroll', scheduleRender);
+            } catch (e) {
+              /* ignore */
+            }
             scheduleRender();
             mo.disconnect();
             return;

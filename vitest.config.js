@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -9,7 +9,7 @@ export default defineConfig({
     exclude: ['tests/00-setup.test.js', 'tests/e2e/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov']
-    }
-  }
-})
+      reporter: ['text', 'lcov'],
+    },
+  },
+});

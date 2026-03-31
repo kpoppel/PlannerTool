@@ -7,7 +7,11 @@
  */
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { TOOLS, TOOL_DEFINITIONS, getAnnotationState } from './annotations/AnnotationState.js';
+import {
+  TOOLS,
+  TOOL_DEFINITIONS,
+  getAnnotationState,
+} from './annotations/AnnotationState.js';
 import { ANNOTATION_COLORS } from './annotations/AnnotationColors.js';
 import './annotations/AnnotationOverlay.js';
 import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
@@ -18,7 +22,7 @@ export class PluginAnnotationsComponent extends LitElement {
   static properties = {
     visible: { type: Boolean },
     currentTool: { type: String },
-    annotationCount: { type: Number }
+    annotationCount: { type: Number },
   };
 
   constructor() {
@@ -54,7 +58,7 @@ export class PluginAnnotationsComponent extends LitElement {
       background: white;
       padding: 12px;
       border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       pointer-events: auto;
       z-index: 200;
     }
@@ -98,9 +102,9 @@ export class PluginAnnotationsComponent extends LitElement {
     }
 
     button.active {
-      background: #E3F2FD;
-      border-color: #2196F3;
-      color: #1976D2;
+      background: #e3f2fd;
+      border-color: #2196f3;
+      color: #1976d2;
     }
 
     button.danger {
@@ -139,8 +143,8 @@ export class PluginAnnotationsComponent extends LitElement {
 
     .annotation-count {
       font-size: 11px;
-      background: #E3F2FD;
-      color: #1976D2;
+      background: #e3f2fd;
+      color: #1976d2;
       padding: 2px 6px;
       border-radius: 10px;
       margin-left: 4px;
@@ -197,12 +201,30 @@ export class PluginAnnotationsComponent extends LitElement {
       if (!board || !this._overlay) return;
 
       // Prefer LayoutManager-provided client rect to avoid expensive DOM reads
-      let rect = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
+      let rect = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
       if (board._layout && typeof board._layout.getBoardClientRect === 'function') {
         const br = board._layout.getBoardClientRect() || {};
-        rect = { left: br.left || 0, top: br.top || 0, right: (br.left || 0) + (br.width || 0), bottom: (br.top || 0) + (br.height || 0), width: br.width || 0, height: br.height || 0 };
+        rect = {
+          left: br.left || 0,
+          top: br.top || 0,
+          right: (br.left || 0) + (br.width || 0),
+          bottom: (br.top || 0) + (br.height || 0),
+          width: br.width || 0,
+          height: br.height || 0,
+        };
       } else {
-        try { rect = board.getBoundingClientRect(); } catch (e) { /* ignore */ }
+        try {
+          rect = board.getBoundingClientRect();
+        } catch (e) {
+          /* ignore */
+        }
       }
 
       const left = Math.round(rect.left);
@@ -220,7 +242,9 @@ export class PluginAnnotationsComponent extends LitElement {
       overlay.style.height = `${height}px`;
       overlay.style.pointerEvents = 'none';
       overlay.style.zIndex = '10';
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   render() {
@@ -229,39 +253,61 @@ export class PluginAnnotationsComponent extends LitElement {
         <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
         <div class="toolbar-title">
           Annotations
-          ${this.annotationCount > 0 ? html`<span class="annotation-count">${this.annotationCount}</span>` : ''}
+          ${this.annotationCount > 0 ?
+            html`<span class="annotation-count">${this.annotationCount}</span>`
+          : ''}
         </div>
 
         <div class="row">
-          ${TOOL_DEFINITIONS.map(tool => html`
-            <button 
-              class="tool-btn ${this.currentTool === tool.id ? 'active' : ''}"
-              title="${tool.name}: ${tool.description}"
-              @click="${(e) => { e.stopPropagation(); this._setTool(tool.id); }}"
-            >
-              ${tool.icon}
-            </button>
-          `)}
+          ${TOOL_DEFINITIONS.map(
+            (tool) => html`
+              <button
+                class="tool-btn ${this.currentTool === tool.id ? 'active' : ''}"
+                title="${tool.name}: ${tool.description}"
+                @click="${(e) => {
+                  e.stopPropagation();
+                  this._setTool(tool.id);
+                }}"
+              >
+                ${tool.icon}
+              </button>
+            `
+          )}
         </div>
 
         <div class="row">
-          ${ANNOTATION_COLORS.palette.map(color => html`
-            <div
-              class="color-swatch ${this._isColorSelected(color) ? 'selected' : ''}"
-              style="background: ${color.fill}; border-color: ${this._isColorSelected(color) ? color.stroke : 'transparent'}"
-              title="${color.name}"
-              @click="${(e) => { e.stopPropagation(); this._setColor(color); }}"
-            ></div>
-          `)}
+          ${ANNOTATION_COLORS.palette.map(
+            (color) => html`
+              <div
+                class="color-swatch ${this._isColorSelected(color) ? 'selected' : ''}"
+                style="background: ${color.fill}; border-color: ${(
+                  this._isColorSelected(color)
+                ) ?
+                  color.stroke
+                : 'transparent'}"
+                title="${color.name}"
+                @click="${(e) => {
+                  e.stopPropagation();
+                  this._setColor(color);
+                }}"
+              ></div>
+            `
+          )}
         </div>
 
-        ${this.annotationCount > 0 ? html`
-          <div class="row">
-            <button class="danger" @click="${this._clearAnnotations}" title="Clear all annotations">
-              🗑 Clear All
-            </button>
-          </div>
-        ` : ''}
+        ${this.annotationCount > 0 ?
+          html`
+            <div class="row">
+              <button
+                class="danger"
+                @click="${this._clearAnnotations}"
+                title="Clear all annotations"
+              >
+                🗑 Clear All
+              </button>
+            </div>
+          `
+        : ''}
       </div>
     `;
   }
@@ -280,13 +326,19 @@ export class PluginAnnotationsComponent extends LitElement {
           if (appHost) appHost.appendChild(overlay);
           else document.body.appendChild(overlay);
         } catch (e) {
-          try { document.body.appendChild(overlay); } catch (err) { /* ignore */ }
+          try {
+            document.body.appendChild(overlay);
+          } catch (err) {
+            /* ignore */
+          }
         }
       }
 
       this._overlay = overlay;
       this._updateOverlayRect();
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   updated(changedProps) {
@@ -305,7 +357,12 @@ export class PluginAnnotationsComponent extends LitElement {
     this.visible = true;
     this.setAttribute('visible', '');
     this._annotationState.enable();
-    try { this._annotationState.setTool(TOOLS.SELECT); setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
+    try {
+      this._annotationState.setTool(TOOLS.SELECT);
+      setTimelinePanningAllowed(true);
+    } catch (e) {
+      /* ignore */
+    }
 
     this.updateComplete.then(() => {
       if (this._overlay) {
@@ -328,11 +385,16 @@ export class PluginAnnotationsComponent extends LitElement {
     if (this._overlay) {
       this._overlay.hide();
     }
-    try { setTimelinePanningAllowed(true); } catch (e) { /* ignore */ }
+    try {
+      setTimelinePanningAllowed(true);
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   toggle() {
-    if (this.visible) this.close(); else this.open();
+    if (this.visible) this.close();
+    else this.open();
   }
 
   // --- Internal handlers ---

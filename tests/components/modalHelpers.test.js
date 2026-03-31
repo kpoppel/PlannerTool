@@ -6,7 +6,7 @@ import {
   openAzureDevopsModal,
   openScenarioCloneModal,
   openScenarioRenameModal,
-  openScenarioDeleteModal
+  openScenarioDeleteModal,
 } from '../../www/js/components/modalHelpers.js';
 
 describe('modalHelpers', () => {
@@ -31,8 +31,9 @@ describe('modalHelpers', () => {
     while (true) {
       const el = document.querySelector(selector);
       if (el) return el;
-      if (Date.now() - start > timeout) throw new Error('Timed out waiting for ' + selector);
-      await new Promise(r => setTimeout(r, 10));
+      if (Date.now() - start > timeout)
+        throw new Error('Timed out waiting for ' + selector);
+      await new Promise((r) => setTimeout(r, 10));
     }
   }
 
@@ -57,7 +58,10 @@ describe('modalHelpers', () => {
 
   it('openAzureDevopsModal resolves on save and close appropriately', async () => {
     // Test save path
-    const savePromise = openAzureDevopsModal({ overrides: { a: 1 }, state: null });
+    const savePromise = openAzureDevopsModal({
+      overrides: { a: 1 },
+      state: null,
+    });
     let el = await waitFor('azure-devops-modal');
     el.dispatchEvent(new CustomEvent('azure-save', { detail: [{ id: 'x' }] }));
     const saved = await savePromise;

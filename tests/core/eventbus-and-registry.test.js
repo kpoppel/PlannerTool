@@ -11,7 +11,8 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     bus = module.bus;
     // clear internals
     if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
-    if (bus.eventTypeMap && typeof bus.eventTypeMap.clear === 'function') bus.eventTypeMap.clear();
+    if (bus.eventTypeMap && typeof bus.eventTypeMap.clear === 'function')
+      bus.eventTypeMap.clear();
     bus.history = [];
     if (typeof bus.disableStringWarnings === 'function') bus.disableStringWarnings();
     if (typeof bus.disableHistoryLogging === 'function') bus.disableHistoryLogging();
@@ -96,7 +97,8 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     if (typeof bus.enableHistoryLogging === 'function') bus.enableHistoryLogging(10);
     const EV = Symbol('some:event');
     bus.emit(EV, { a: 1 });
-    const hist = (typeof bus.getEventHistory === 'function') ? bus.getEventHistory() : bus.history;
+    const hist =
+      typeof bus.getEventHistory === 'function' ? bus.getEventHistory() : bus.history;
     expect(hist.length).to.equal(1);
     expect(hist[0].event).to.equal(EV);
     expect(hist[0].payload).to.deep.equal({ a: 1 });
@@ -107,10 +109,9 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     bus.onNamespace('data', (p) => received.push(p));
     bus.emit(Symbol('data:one'), 1);
     bus.emit(Symbol('data:two'), 2);
-    expect(received).to.deep.equal([1,2]);
+    expect(received).to.deep.equal([1, 2]);
   });
 });
-
 
 describe('Enhanced EventBus Features', () => {
   let bus;
@@ -157,7 +158,9 @@ describe('Enhanced EventBus Features', () => {
 
       // ensure symbol mapping works for subscriptions
       let seen = false;
-      bus.on(TypedEvent, (payload) => { seen = payload.value === 42; });
+      bus.on(TypedEvent, (payload) => {
+        seen = payload.value === 42;
+      });
       bus.emit(TypedEvent, { value: 42 });
       expect(seen).to.be.true;
     });
@@ -238,7 +241,9 @@ describe('Enhanced EventBus Features', () => {
       let received = false;
 
       // Listen on the namespace via onNamespace
-      bus.onNamespace('unknown', () => { received = true; });
+      bus.onNamespace('unknown', () => {
+        received = true;
+      });
 
       bus.emit(UnknownEvent, {});
 

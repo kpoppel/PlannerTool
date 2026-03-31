@@ -6,13 +6,13 @@
 
 import { LitElement, html, css } from '../../vendor/lit.js';
 import { ANNOTATION_COLORS } from './AnnotationColors.js';
-import { 
-  TOOLS, 
+import {
+  TOOLS,
   getAnnotationState,
   createNoteAnnotation,
   createRectAnnotation,
   createLineAnnotation,
-  createIconAnnotation
+  createIconAnnotation,
 } from './AnnotationState.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
 import { bus } from '../../core/EventBus.js';
@@ -30,7 +30,7 @@ export class AnnotationOverlay extends LitElement {
     active: { type: Boolean, reflect: true },
     currentTool: { type: String },
     selectedId: { type: String },
-    annotations: { type: Array }
+    annotations: { type: Array },
   };
 
   constructor() {
@@ -39,7 +39,7 @@ export class AnnotationOverlay extends LitElement {
     this.currentTool = TOOLS.SELECT;
     this.selectedId = null;
     this.annotations = [];
-    
+
     this._state = getAnnotationState();
     this._unsubscribe = null;
     this._dragState = null;
@@ -49,8 +49,9 @@ export class AnnotationOverlay extends LitElement {
     this._globalPointerAttached = false;
     this._globalMove = null;
     this._globalUp = null;
-    this._lastMonthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
-    
+    this._lastMonthWidth =
+      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
+
     // Track clicks for double-click detection
     this._lastClickTime = 0;
     this._lastClickId = null;
@@ -85,7 +86,7 @@ export class AnnotationOverlay extends LitElement {
       /* Let scroll events pass through by default */
       pointer-events: none;
     }
-    
+
     .overlay-container.interactive {
       /* Only capture events when in interactive mode */
       pointer-events: auto;
@@ -111,10 +112,13 @@ export class AnnotationOverlay extends LitElement {
       position: absolute;
       border: none;
       background: transparent;
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
       font-size: 12px;
       line-height: 1.3;
-      color: #1A1A1A;
+      color: #1a1a1a;
       resize: none;
       outline: none;
       padding: 6px 6px;
@@ -132,30 +136,47 @@ export class AnnotationOverlay extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
+
     // Subscribe to state changes
     this._unsubscribe = this._state.subscribe(() => {
       this.annotations = this._state.annotations;
       this.currentTool = this._state.currentTool;
       this.selectedId = this._state.selectedId;
-      try { console.debug('[AnnotationOverlay] state.subscribe newTool:', this.currentTool, 'selectedId:', this.selectedId); } catch (err) {}
+      try {
+        console.debug(
+          '[AnnotationOverlay] state.subscribe newTool:',
+          this.currentTool,
+          'selectedId:',
+          this.selectedId
+        );
+      } catch (err) {}
       // Toggle host pointer-events so the overlay only captures events when
       // a drawing tool is active. When not interactive the host should
       // ignore pointer events so scrolling and panning work normally.
-      const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(this.currentTool);
-      try { this.style.pointerEvents = isDrawingTool ? 'auto' : 'none'; } catch (e) { /* ignore */ }
+      const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
+        this.currentTool
+      );
+      try {
+        this.style.pointerEvents = isDrawingTool ? 'auto' : 'none';
+      } catch (e) {
+        /* ignore */
+      }
       this._updateSvg();
     });
-    
+
     // Initialize from state
     this.annotations = this._state.annotations;
     this.currentTool = this._state.currentTool;
     // Set initial host pointer-events according to current tool
     try {
-      const isDrawingToolInit = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(this.currentTool);
+      const isDrawingToolInit = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
+        this.currentTool
+      );
       this.style.pointerEvents = isDrawingToolInit ? 'auto' : 'none';
-    } catch (e) { /* ignore */ }
-    
+    } catch (e) {
+      /* ignore */
+    }
+
     // Listen for scroll events to reposition overlay and re-render annotations
     this._scrollScheduled = false;
     this._scrollHandler = () => {
@@ -165,11 +186,11 @@ export class AnnotationOverlay extends LitElement {
         this._scrollScheduled = false;
         // Reposition overlay to stay aligned with featureBoard
         this._positionOverTimeline();
-        
+
         this._updateSvg();
       });
     };
-    
+
     // Attach scroll listener - may need to wait for DOM
     this._attachScrollListener();
 
@@ -177,7 +198,10 @@ export class AnnotationOverlay extends LitElement {
     // store pixel widths (notes/rects) to match the new timeline scale.
     try {
       this._onScaleChanged = () => {
-        const newMonthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+        const newMonthWidth =
+          TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ?
+            TIMELINE_CONFIG.monthWidth
+          : 120;
         const old = this._lastMonthWidth || newMonthWidth;
         if (newMonthWidth !== old) {
           const scale = newMonthWidth / old;
@@ -191,7 +215,9 @@ export class AnnotationOverlay extends LitElement {
                 const newW = Math.max(1, Math.round((ann.width || 0) * scale));
                 const updates = { width: newW };
                 this._state.update(ann.id, updates);
-              } catch (e) { /* ignore individual update failures */ }
+              } catch (e) {
+                /* ignore individual update failures */
+              }
             }
           }
           this._lastMonthWidth = newMonthWidth;
@@ -199,7 +225,9 @@ export class AnnotationOverlay extends LitElement {
         }
       };
       bus.on(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   _attachGlobalPointerHandlers() {
@@ -215,10 +243,14 @@ export class AnnotationOverlay extends LitElement {
     if (!this._globalPointerAttached) return;
     try {
       window.removeEventListener('mousemove', this._globalMove);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
     try {
       window.removeEventListener('mouseup', this._globalUp);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
     this._globalMove = null;
     this._globalUp = null;
     this._globalPointerAttached = false;
@@ -240,13 +272,18 @@ export class AnnotationOverlay extends LitElement {
     if (!this._drawState && !this._dragState) return;
     const ev = this._getEventCoords(e);
     if (ev.outside) return;
-    const x = ev.x; const y = ev.y; const vx = ev.vx; const vy = ev.vy; const contentX = ev.contentX;
+    const x = ev.x;
+    const y = ev.y;
+    const vx = ev.vx;
+    const vy = ev.vy;
+    const contentX = ev.contentX;
 
     if (this._drawState) {
       this._drawState.currentX = x;
       this._drawState.currentY = y;
-      this._drawState.currentContentX = (typeof contentX !== 'undefined' && contentX !== null)
-        ? contentX
+      this._drawState.currentContentX =
+        typeof contentX !== 'undefined' && contentX !== null ?
+          contentX
         : (this._drawState.currentContentX ?? x);
       this._updateSvg();
     }
@@ -256,47 +293,71 @@ export class AnnotationOverlay extends LitElement {
       const dy = y - this._dragState.lastY;
 
       if (this._dragState.mode === 'move') {
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
-          const pointerContentX = (contentX ?? x);
+          const pointerContentX = contentX ?? x;
           const offset = this._dragState.offsetContent ?? 0;
           const newContentX = pointerContentX - offset;
           const newDate = this._contentXToDateMs(newContentX);
-            if (ann.type === 'line') {
+          if (ann.type === 'line') {
             // Use the original stored endpoints from drag start to compute a
             // stable delta. This avoids feedback where the live-state values
             // move under the pointer and shrink the line.
-            const orig1 = this._dragState.origContentX1 ?? this._dateToContentX(ann.date1 || ann.x1 || newContentX);
-            const orig2 = this._dragState.origContentX2 ?? this._dateToContentX(ann.date2 || ann.x2 || newContentX);
+            const orig1 =
+              this._dragState.origContentX1 ??
+              this._dateToContentX(ann.date1 || ann.x1 || newContentX);
+            const orig2 =
+              this._dragState.origContentX2 ??
+              this._dateToContentX(ann.date2 || ann.x2 || newContentX);
             const origLeft = this._dragState.origLeft ?? Math.min(orig1, orig2);
             const delta = newContentX - origLeft;
             const newDate1 = this._contentXToDateMs(orig1 + delta);
             const newDate2 = this._contentXToDateMs(orig2 + delta);
-            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, x1: orig1 + delta, x2: orig2 + delta, y1: ann.y1 + dy, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, {
+              date1: newDate1,
+              date2: newDate2,
+              x1: orig1 + delta,
+              x2: orig2 + delta,
+              y1: ann.y1 + dy,
+              y2: ann.y2 + dy,
+            });
           } else {
-            this._state.update(this._dragState.id, { date: newDate, x: newContentX, y: ann.y + dy });
+            this._state.update(this._dragState.id, {
+              date: newDate,
+              x: newContentX,
+              y: ann.y + dy,
+            });
           }
         }
       } else if (this._dragState.mode === 'resize') {
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
-          this._state.resize(this._dragState.id,
+          this._state.resize(
+            this._dragState.id,
             Math.max(50, ann.width + dx),
             Math.max(30, ann.height + dy)
           );
         }
       } else if (this._dragState.mode === 'line-endpoint') {
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
           // Determine pointer content X (use contentX when available)
-          const pointerContentX = (contentX ?? x);
+          const pointerContentX = contentX ?? x;
           const offset = this._dragState.offsetContent ?? 0;
           const newContentX = pointerContentX - offset;
           const newDate = this._contentXToDateMs(newContentX);
           if (this._dragState.endpoint === 'start') {
-            this._state.update(this._dragState.id, { date1: newDate, x1: newContentX, y1: ann.y1 + dy });
+            this._state.update(this._dragState.id, {
+              date1: newDate,
+              x1: newContentX,
+              y1: ann.y1 + dy,
+            });
           } else {
-            this._state.update(this._dragState.id, { date2: newDate, x2: newContentX, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, {
+              date2: newDate,
+              x2: newContentX,
+              y2: ann.y2 + dy,
+            });
           }
         }
       }
@@ -320,22 +381,22 @@ export class AnnotationOverlay extends LitElement {
       if (container) container.focus();
     }
   }
-  
+
   _attachScrollListener() {
     const { timelineSection, featureBoard } = this._getScrollContainers();
-    
+
     // Listen to timeline section for horizontal scroll (panning)
     if (timelineSection && !this._scrollTargetV) {
       timelineSection.addEventListener('scroll', this._scrollHandler);
       this._scrollTargetV = timelineSection;
     }
-    
+
     // Listen to feature board for vertical scroll
     if (featureBoard && !this._scrollTargetH) {
       featureBoard.addEventListener('scroll', this._scrollHandler);
       this._scrollTargetH = featureBoard;
     }
-    
+
     // Retry if elements not yet available
     if (!timelineSection || !featureBoard) {
       setTimeout(() => this._attachScrollListener(), 100);
@@ -344,7 +405,9 @@ export class AnnotationOverlay extends LitElement {
     try {
       window.addEventListener('resize', this._scrollHandler);
       this._resizeHandlerAttached = true;
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   disconnectedCallback() {
@@ -353,7 +416,7 @@ export class AnnotationOverlay extends LitElement {
       this._unsubscribe();
       this._unsubscribe = null;
     }
-    
+
     // Remove scroll listeners
     if (this._scrollTargetV && this._scrollHandler) {
       this._scrollTargetV.removeEventListener('scroll', this._scrollHandler);
@@ -364,33 +427,55 @@ export class AnnotationOverlay extends LitElement {
       this._scrollTargetH = null;
     }
     try {
-      if (this._resizeHandlerAttached) window.removeEventListener('resize', this._scrollHandler);
-    } catch (e) { /* ignore */ }
-    try { if (this._onScaleChanged) bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged); } catch (e) { /* ignore */ }
+      if (this._resizeHandlerAttached)
+        window.removeEventListener('resize', this._scrollHandler);
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      if (this._onScaleChanged)
+        bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   render() {
     // Convert note position to viewport coords for the text input
     let textareaStyle = '';
     if (this._editingNote) {
-      const contentX = (typeof this._editingNote.x !== 'undefined' && this._editingNote.x !== null)
-        ? this._editingNote.x
-        : (this._editingNote.date ? this._dateToContentX(this._editingNote.date) : 0);
+      const contentX =
+        typeof this._editingNote.x !== 'undefined' && this._editingNote.x !== null ?
+          this._editingNote.x
+        : this._editingNote.date ? this._dateToContentX(this._editingNote.date)
+        : 0;
       const { x: vx, y: vy } = this._contentToViewport(contentX, this._editingNote.y);
       const fontSize = this._editingNote.fontSize || 12;
       const bgColor = this._editingNote.fill || ANNOTATION_COLORS.defaultFill;
       textareaStyle = `left: ${vx}px; top: ${vy}px; width: ${this._editingNote.width}px; height: ${this._editingNote.height}px; font-size: ${fontSize}px; background: ${bgColor};`;
     }
-    
+
     // Only make the overlay interactive when using a drawing tool
     // This allows scroll events to pass through when in SELECT mode
     // Include ICON so clicks when the Icon tool is active are captured
-    const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(this.currentTool);
-    try { console.debug('[AnnotationOverlay] render() active:', this.active, 'currentTool:', this.currentTool, 'isDrawingTool:', isDrawingTool); } catch (err) {}
-    const containerClass = isDrawingTool ? 'overlay-container interactive' : 'overlay-container';
-    
+    const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
+      this.currentTool
+    );
+    try {
+      console.debug(
+        '[AnnotationOverlay] render() active:',
+        this.active,
+        'currentTool:',
+        this.currentTool,
+        'isDrawingTool:',
+        isDrawingTool
+      );
+    } catch (err) {}
+    const containerClass =
+      isDrawingTool ? 'overlay-container interactive' : 'overlay-container';
+
     return html`
-      <div 
+      <div
         class="${containerClass}"
         @mousedown="${this._onMouseDown}"
         @mousemove="${this._onMouseMove}"
@@ -400,17 +485,19 @@ export class AnnotationOverlay extends LitElement {
         tabindex="0"
       >
         <svg class="annotation-svg" id="annotationSvg"></svg>
-        
-        ${this._editingNote ? html`
-          <textarea
-            class="note-text-input"
-            style="${textareaStyle}"
-            .value="${this._editingNote.text || ''}"
-            @input="${this._onNoteTextInput}"
-            @blur="${this._onNoteTextBlur}"
-            @keydown="${this._onNoteTextKeyDown}"
-          ></textarea>
-        ` : ''}
+
+        ${this._editingNote ?
+          html`
+            <textarea
+              class="note-text-input"
+              style="${textareaStyle}"
+              .value="${this._editingNote.text || ''}"
+              @input="${this._onNoteTextInput}"
+              @blur="${this._onNoteTextBlur}"
+              @keydown="${this._onNoteTextKeyDown}"
+            ></textarea>
+          `
+        : ''}
       </div>
     `;
   }
@@ -422,7 +509,12 @@ export class AnnotationOverlay extends LitElement {
 
   updated(changedProps) {
     if (changedProps.has('annotations') || changedProps.has('selectedId')) {
-      try { console.debug('[AnnotationOverlay] updated changedProps:', Array.from(changedProps.keys())); } catch (err) {}
+      try {
+        console.debug(
+          '[AnnotationOverlay] updated changedProps:',
+          Array.from(changedProps.keys())
+        );
+      } catch (err) {}
       this._updateSvg();
     }
   }
@@ -433,15 +525,15 @@ export class AnnotationOverlay extends LitElement {
 
   _updateSvg() {
     if (!this._svgEl) return;
-    
+
     // Clear existing content
     this._svgEl.innerHTML = '';
-    
+
     // Render all annotations
     for (const ann of this.annotations) {
       this._renderAnnotationToSvg(ann);
     }
-    
+
     // Render draw preview if active
     if (this._drawState) {
       this._renderDrawPreviewToSvg();
@@ -450,7 +542,7 @@ export class AnnotationOverlay extends LitElement {
 
   _renderAnnotationToSvg(ann) {
     const isSelected = ann.id === this.selectedId;
-    
+
     switch (ann.type) {
       case 'note':
         this._renderNoteToSvg(ann, isSelected);
@@ -468,14 +560,15 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _renderIconToSvg(ann, isSelected) {
-    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
-      ? ann.x
-      : (ann.date ? this._dateToContentX(ann.date) : 0);
+    const contentX =
+      typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
+      : ann.date ? this._dateToContentX(ann.date)
+      : 0;
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
     const g = this._createSvgElement('g', {
       class: `annotation annotation-icon ${isSelected ? 'selected' : ''}`,
       'data-id': ann.id,
-      transform: `translate(${vx}, ${vy})`
+      transform: `translate(${vx}, ${vy})`,
     });
     const size = ann.size || 18;
     const text = this._createSvgElement('text', {
@@ -483,7 +576,7 @@ export class AnnotationOverlay extends LitElement {
       y: size / 2,
       'font-size': size,
       'text-anchor': 'middle',
-      'dominant-baseline': 'middle'
+      'dominant-baseline': 'middle',
     });
     text.textContent = ann.icon || '⭐';
     g.appendChild(text);
@@ -502,15 +595,16 @@ export class AnnotationOverlay extends LitElement {
   _renderNoteToSvg(ann, isSelected) {
     // Prefer an explicit stored content X (precise), otherwise convert
     // the logical date to content coordinates for display.
-    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
-      ? ann.x
-      : (ann.date ? this._dateToContentX(ann.date) : 0);
+    const contentX =
+      typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
+      : ann.date ? this._dateToContentX(ann.date)
+      : 0;
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
 
     const g = this._createSvgElement('g', {
       class: `annotation annotation-note ${isSelected ? 'selected' : ''}`,
       'data-id': ann.id,
-      transform: `translate(${vx}, ${vy})`
+      transform: `translate(${vx}, ${vy})`,
     });
 
     // Background rect
@@ -523,7 +617,7 @@ export class AnnotationOverlay extends LitElement {
       ry: 4,
       fill: ann.fill || ANNOTATION_COLORS.defaultFill,
       stroke: ann.stroke || ANNOTATION_COLORS.defaultStroke,
-      'stroke-width': isSelected ? 2 : 1
+      'stroke-width': isSelected ? 2 : 1,
     });
     g.appendChild(rect);
 
@@ -537,12 +631,12 @@ export class AnnotationOverlay extends LitElement {
         y: 14 + i * lineHeight,
         'font-size': ann.fontSize || 12,
         fill: ANNOTATION_COLORS.textColor,
-        'font-family': 'system-ui, -apple-system, sans-serif'
+        'font-family': 'system-ui, -apple-system, sans-serif',
       });
       text.textContent = line;
       g.appendChild(text);
     });
-    
+
     // Selection indicator
     if (isSelected) {
       const selRect = this._createSvgElement('rect', {
@@ -555,33 +649,34 @@ export class AnnotationOverlay extends LitElement {
         'stroke-width': 2,
         'stroke-dasharray': '4,2',
         rx: 6,
-        ry: 6
+        ry: 6,
       });
       g.appendChild(selRect);
-      
+
       // Resize handle
       this._addResizeHandle(g, ann, 0, 0);
     }
-    
+
     // Event listeners
     g.addEventListener('mousedown', (e) => this._onAnnotationMouseDown(e, ann));
     g.addEventListener('dblclick', (e) => this._onAnnotationDblClick(e, ann));
-    
+
     this._svgEl.appendChild(g);
   }
 
   _renderRectToSvg(ann, isSelected) {
     // Prefer an explicit stored content X (precise), otherwise convert
     // the logical date to content coordinates for display.
-    const contentX = (typeof ann.x !== 'undefined' && ann.x !== null)
-      ? ann.x
-      : (ann.date ? this._dateToContentX(ann.date) : 0);
+    const contentX =
+      typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
+      : ann.date ? this._dateToContentX(ann.date)
+      : 0;
     const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
-    
+
     const g = this._createSvgElement('g', {
       class: `annotation annotation-rect ${isSelected ? 'selected' : ''}`,
       'data-id': ann.id,
-      transform: `translate(${vx}, ${vy})`
+      transform: `translate(${vx}, ${vy})`,
     });
 
     const rect = this._createSvgElement('rect', {
@@ -593,10 +688,10 @@ export class AnnotationOverlay extends LitElement {
       stroke: ann.stroke || ANNOTATION_COLORS.lineColor,
       'stroke-width': ann.strokeWidth || 2,
       rx: 2,
-      ry: 2
+      ry: 2,
     });
     g.appendChild(rect);
-    
+
     // Selection indicator
     if (isSelected) {
       const selRect = this._createSvgElement('rect', {
@@ -609,35 +704,37 @@ export class AnnotationOverlay extends LitElement {
         'stroke-width': 2,
         'stroke-dasharray': '4,2',
         rx: 4,
-        ry: 4
+        ry: 4,
       });
       g.appendChild(selRect);
-      
+
       this._addResizeHandle(g, ann, 0, 0);
     }
-    
+
     g.addEventListener('mousedown', (e) => this._onAnnotationMouseDown(e, ann));
-    
+
     this._svgEl.appendChild(g);
   }
 
   _renderLineToSvg(ann, isSelected) {
     // Convert logical dates to content coordinates then to viewport for display
     // Prefer explicit stored endpoint content X values when available.
-    const contentX1 = (typeof ann.x1 !== 'undefined' && ann.x1 !== null)
-      ? ann.x1
-      : (ann.date1 ? this._dateToContentX(ann.date1) : 0);
-    const contentX2 = (typeof ann.x2 !== 'undefined' && ann.x2 !== null)
-      ? ann.x2
-      : (ann.date2 ? this._dateToContentX(ann.date2) : 0);
+    const contentX1 =
+      typeof ann.x1 !== 'undefined' && ann.x1 !== null ? ann.x1
+      : ann.date1 ? this._dateToContentX(ann.date1)
+      : 0;
+    const contentX2 =
+      typeof ann.x2 !== 'undefined' && ann.x2 !== null ? ann.x2
+      : ann.date2 ? this._dateToContentX(ann.date2)
+      : 0;
     const { x: vx1, y: vy1 } = this._contentToViewport(contentX1, ann.y1);
     const { x: vx2, y: vy2 } = this._contentToViewport(contentX2, ann.y2);
-    
+
     const g = this._createSvgElement('g', {
       class: `annotation annotation-line ${isSelected ? 'selected' : ''}`,
-      'data-id': ann.id
+      'data-id': ann.id,
     });
-    
+
     const line = this._createSvgElement('line', {
       x1: vx1,
       y1: vy1,
@@ -645,7 +742,7 @@ export class AnnotationOverlay extends LitElement {
       y2: vy2,
       stroke: ann.stroke || ANNOTATION_COLORS.lineColor,
       'stroke-width': ann.strokeWidth || 2,
-      'stroke-linecap': 'round'
+      'stroke-linecap': 'round',
     });
     // Add a wider invisible hit target so lines are easier to grab.
     const hitLine = this._createSvgElement('line', {
@@ -656,38 +753,41 @@ export class AnnotationOverlay extends LitElement {
       stroke: 'transparent',
       'stroke-width': (ann.strokeWidth || 2) + 12,
       'stroke-linecap': 'round',
-      style: 'pointer-events: stroke; cursor: move;'
+      style: 'pointer-events: stroke; cursor: move;',
     });
     // Make clicking the hit line select/activate the annotation
-    hitLine.addEventListener('mousedown', (e) => { e.stopPropagation(); this._onAnnotationMouseDown(e, ann); });
+    hitLine.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      this._onAnnotationMouseDown(e, ann);
+    });
     g.appendChild(hitLine);
     g.appendChild(line);
-    
+
     // Arrow head
     if (ann.arrow) {
       const angle = Math.atan2(vy2 - vy1, vx2 - vx1);
       const arrowLen = 10;
       const arrowAngle = Math.PI / 6;
-      
+
       const x3 = vx2 - arrowLen * Math.cos(angle - arrowAngle);
       const y3 = vy2 - arrowLen * Math.sin(angle - arrowAngle);
       const x4 = vx2 - arrowLen * Math.cos(angle + arrowAngle);
       const y4 = vy2 - arrowLen * Math.sin(angle + arrowAngle);
-      
+
       const arrowPath = this._createSvgElement('path', {
         d: `M ${vx2} ${vy2} L ${x3} ${y3} M ${vx2} ${vy2} L ${x4} ${y4}`,
         fill: 'none',
         stroke: ann.stroke || ANNOTATION_COLORS.lineColor,
         'stroke-width': ann.strokeWidth || 2,
-        'stroke-linecap': 'round'
+        'stroke-linecap': 'round',
       });
       g.appendChild(arrowPath);
     }
-    
+
     // Selection indicator + endpoint handles
     if (isSelected) {
       const handleRadius = 5;
-      
+
       // Start handle
       const startHandle = this._createSvgElement('circle', {
         cx: vx1,
@@ -696,11 +796,13 @@ export class AnnotationOverlay extends LitElement {
         fill: '#2196F3',
         stroke: 'white',
         'stroke-width': 1,
-        style: 'cursor: move;'
+        style: 'cursor: move;',
       });
-      startHandle.addEventListener('mousedown', (e) => this._onLineEndpointStart(e, ann, 'start'));
+      startHandle.addEventListener('mousedown', (e) =>
+        this._onLineEndpointStart(e, ann, 'start')
+      );
       g.appendChild(startHandle);
-      
+
       // End handle
       const endHandle = this._createSvgElement('circle', {
         cx: vx2,
@@ -709,14 +811,16 @@ export class AnnotationOverlay extends LitElement {
         fill: '#2196F3',
         stroke: 'white',
         'stroke-width': 1,
-        style: 'cursor: move;'
+        style: 'cursor: move;',
       });
-      endHandle.addEventListener('mousedown', (e) => this._onLineEndpointStart(e, ann, 'end'));
+      endHandle.addEventListener('mousedown', (e) =>
+        this._onLineEndpointStart(e, ann, 'end')
+      );
       g.appendChild(endHandle);
     }
-    
+
     g.addEventListener('mousedown', (e) => this._onAnnotationMouseDown(e, ann));
-    
+
     this._svgEl.appendChild(g);
   }
 
@@ -730,37 +834,48 @@ export class AnnotationOverlay extends LitElement {
       fill: '#2196F3',
       stroke: 'white',
       'stroke-width': 1,
-      style: 'cursor: nwse-resize;'
+      style: 'cursor: nwse-resize;',
     });
     handle.addEventListener('mousedown', (e) => this._onResizeStart(e, ann));
     g.appendChild(handle);
   }
 
   _renderDrawPreviewToSvg() {
-    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } = this._drawState;
+    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } =
+      this._drawState;
 
     // Prefer content coordinates if available (startContentX/currentContentX),
     // otherwise fall back to the viewport coordinates stored in startX/currentX.
-    const startContent = (typeof startContentX !== 'undefined' && startContentX !== null) ? startContentX : startX;
-    const currentContent = (typeof currentContentX !== 'undefined' && currentContentX !== null) ? currentContentX : currentX;
+    const startContent =
+      typeof startContentX !== 'undefined' && startContentX !== null ?
+        startContentX
+      : startX;
+    const currentContent =
+      typeof currentContentX !== 'undefined' && currentContentX !== null ?
+        currentContentX
+      : currentX;
 
     // Convert content coordinates to viewport for preview display
     const { x: vs_x, y: vs_y } = this._contentToViewport(startContent, startY);
     const { x: vc_x, y: vc_y } = this._contentToViewport(currentContent, currentY);
-    
+
     if (tool === TOOLS.NOTE || tool === TOOLS.RECT) {
       const x = Math.min(vs_x, vc_x);
       const y = Math.min(vs_y, vc_y);
       const width = Math.abs(vc_x - vs_x);
       const height = Math.abs(vc_y - vs_y);
-      
-      const fill = tool === TOOLS.NOTE 
-        ? (this._state.currentColor?.fill || ANNOTATION_COLORS.defaultFill)
+
+      const fill =
+        tool === TOOLS.NOTE ?
+          this._state.currentColor?.fill || ANNOTATION_COLORS.defaultFill
         : 'rgba(200,200,200,0.2)';
       const stroke = this._state.currentColor?.stroke || ANNOTATION_COLORS.defaultStroke;
-      
+
       const rect = this._createSvgElement('rect', {
-        x, y, width, height,
+        x,
+        y,
+        width,
+        height,
         fill,
         stroke,
         'stroke-width': 2,
@@ -768,11 +883,11 @@ export class AnnotationOverlay extends LitElement {
         rx: 4,
         ry: 4,
         opacity: 0.6,
-        'pointer-events': 'none'
+        'pointer-events': 'none',
       });
       this._svgEl.appendChild(rect);
     }
-    
+
     if (tool === TOOLS.LINE) {
       const line = this._createSvgElement('line', {
         x1: vs_x,
@@ -783,7 +898,7 @@ export class AnnotationOverlay extends LitElement {
         'stroke-width': 2,
         'stroke-dasharray': '4,4',
         opacity: 0.6,
-        'pointer-events': 'none'
+        'pointer-events': 'none',
       });
       this._svgEl.appendChild(line);
     }
@@ -799,11 +914,12 @@ export class AnnotationOverlay extends LitElement {
    */
   _getScrollContainers() {
     // timelineSection may live inside the timeline-board render root (shadow DOM)
-    const timelineSection = findInBoard('#timelineSection') || document.getElementById('timelineSection');
+    const timelineSection =
+      findInBoard('#timelineSection') || document.getElementById('timelineSection');
     const featureBoard = findInBoard('feature-board');
     return { timelineSection, featureBoard };
   }
-  
+
   /**
    * Get current scroll offsets from the appropriate containers.
    * Horizontal scroll is primarily on timelineSection (via panning), featureBoard is fallback.
@@ -822,11 +938,17 @@ export class AnnotationOverlay extends LitElement {
       let fbLeft = featureBoard?.scrollLeft || 0;
       // If a LayoutManager is present, prefer its board rect for scrollLeft
       try {
-        if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
+        if (
+          featureBoard &&
+          featureBoard._layout &&
+          typeof featureBoard._layout.getBoardRect === 'function'
+        ) {
           const br = featureBoard._layout.getBoardRect();
           if (br && typeof br.left === 'number') fbLeft = br.left;
         }
-      } catch (e) { /* ignore layout errors */ }
+      } catch (e) {
+        /* ignore layout errors */
+      }
       // If both containers can scroll, prefer the one with the larger
       // absolute scrollLeft — that is most likely the active panning source.
       if (Math.abs(tlLeft) >= Math.abs(fbLeft) && timelineSection) {
@@ -839,24 +961,29 @@ export class AnnotationOverlay extends LitElement {
     } catch (e) {
       scrollLeft = timelineSection?.scrollLeft ?? featureBoard?.scrollLeft ?? 0;
     }
-    
 
     let scrollTop = featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0;
     try {
-      if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardRect === 'function') {
+      if (
+        featureBoard &&
+        featureBoard._layout &&
+        typeof featureBoard._layout.getBoardRect === 'function'
+      ) {
         const br = featureBoard._layout.getBoardRect();
         if (br && typeof br.top === 'number') scrollTop = br.top;
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
     return { scrollLeft, scrollTop };
   }
 
   /**
    * Get coordinates relative to the overlay/featureBoard content, accounting for scroll.
-   * 
+   *
    * Horizontal: The overlay repositions on scroll, so coordinates relative to the
    * overlay are already correct - no need to add scrollLeft.
-   * 
+   *
    * Vertical: featureBoard scrolls internally, so we add scrollTop to get
    * stable content coordinates.
    */
@@ -867,18 +994,41 @@ export class AnnotationOverlay extends LitElement {
     let rect = null;
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
     try {
-      if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+      if (
+        featureBoard &&
+        featureBoard._layout &&
+        typeof featureBoard._layout.getBoardClientRect === 'function'
+      ) {
         const brClient = featureBoard._layout.getBoardClientRect();
-        if (brClient) rect = { left: brClient.left || 0, top: brClient.top || 0, right: (brClient.left || 0) + (brClient.width || 0), bottom: (brClient.top || 0) + (brClient.height || 0) };
+        if (brClient)
+          rect = {
+            left: brClient.left || 0,
+            top: brClient.top || 0,
+            right: (brClient.left || 0) + (brClient.width || 0),
+            bottom: (brClient.top || 0) + (brClient.height || 0),
+          };
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
     if (!rect) {
-      try { rect = featureBoard ? featureBoard.getBoundingClientRect() : this.getBoundingClientRect(); } catch (e) { rect = this.getBoundingClientRect(); }
+      try {
+        rect =
+          featureBoard ?
+            featureBoard.getBoundingClientRect()
+          : this.getBoundingClientRect();
+      } catch (e) {
+        rect = this.getBoundingClientRect();
+      }
     }
 
     const clientX = e.clientX;
     const clientY = e.clientY;
-    const outside = clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom;
+    const outside =
+      clientX < rect.left ||
+      clientX > rect.right ||
+      clientY < rect.top ||
+      clientY > rect.bottom;
 
     const viewportX = clientX - rect.left;
     const viewportY = clientY - rect.top;
@@ -893,17 +1043,17 @@ export class AnnotationOverlay extends LitElement {
       vx: viewportX,
       vy: viewportY,
       contentX,
-      outside
+      outside,
     };
   }
 
   /**
    * Convert content coordinates back to viewport coordinates for rendering.
-   * 
+   *
    * Horizontal: The overlay repositions on scroll to stay with featureBoard,
    * so we don't need to adjust for horizontal scroll - the overlay already moved.
-   * 
-   * Vertical: featureBoard scrolls internally (scrollTop), so we need to 
+   *
+   * Vertical: featureBoard scrolls internally (scrollTop), so we need to
    * subtract scrollTop to position annotations correctly.
    */
   _contentToViewport(x, y) {
@@ -916,12 +1066,24 @@ export class AnnotationOverlay extends LitElement {
       const featureBoard = findInBoard('feature-board');
       let boardClient = null;
       try {
-        if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+        if (
+          featureBoard &&
+          featureBoard._layout &&
+          typeof featureBoard._layout.getBoardClientRect === 'function'
+        ) {
           boardClient = featureBoard._layout.getBoardClientRect();
         }
-      } catch (e) { boardClient = null; }
-      const boardLeft = boardClient ? (boardClient.left || 0) : (featureBoard ? featureBoard.getBoundingClientRect().left : 0);
-      const boardTop = boardClient ? (boardClient.top || 0) : (featureBoard ? featureBoard.getBoundingClientRect().top : 0);
+      } catch (e) {
+        boardClient = null;
+      }
+      const boardLeft =
+        boardClient ? boardClient.left || 0
+        : featureBoard ? featureBoard.getBoundingClientRect().left
+        : 0;
+      const boardTop =
+        boardClient ? boardClient.top || 0
+        : featureBoard ? featureBoard.getBoundingClientRect().top
+        : 0;
       const overlayRect = this.getBoundingClientRect();
       const clientX = boardLeft + x;
       const clientY = boardTop + (y - scrollTop);
@@ -939,34 +1101,67 @@ export class AnnotationOverlay extends LitElement {
 
   _onMouseDown(e) {
     // Debugging: trace clicks and tool state
-    try { console.debug('[AnnotationOverlay] _onMouseDown target:', e.target, 'currentTool:', this.currentTool); } catch (err) {}
+    try {
+      console.debug(
+        '[AnnotationOverlay] _onMouseDown target:',
+        e.target,
+        'currentTool:',
+        this.currentTool
+      );
+    } catch (err) {}
 
     // Check if click is on an annotation (handled separately)
     if (e.target.closest('.annotation')) {
-      try { console.debug('[AnnotationOverlay] _onMouseDown - click on existing annotation, ignoring'); } catch (err) {}
+      try {
+        console.debug(
+          '[AnnotationOverlay] _onMouseDown - click on existing annotation, ignoring'
+        );
+      } catch (err) {}
       return;
     }
-    
+
     const ev = this._getEventCoords(e);
-    try { console.debug('[AnnotationOverlay] _onMouseDown coords:', ev); } catch (err) {}
+    try {
+      console.debug('[AnnotationOverlay] _onMouseDown coords:', ev);
+    } catch (err) {}
     // If pointer is outside the feature board, ignore the down event
     if (ev.outside) {
-      try { console.debug('[AnnotationOverlay] _onMouseDown - outside board, ignoring'); } catch (err) {}
+      try {
+        console.debug('[AnnotationOverlay] _onMouseDown - outside board, ignoring');
+      } catch (err) {}
       return;
     }
-    const x = ev.x; const y = ev.y; const vx = ev.vx; const vy = ev.vy; const contentX = ev.contentX;
-    
+    const x = ev.x;
+    const y = ev.y;
+    const vx = ev.vx;
+    const vy = ev.vy;
+    const contentX = ev.contentX;
+
     // Deselect on background click in select mode
     if (this.currentTool === TOOLS.SELECT) {
-      try { console.debug('[AnnotationOverlay] _onMouseDown - SELECT background click, deselecting'); } catch (err) {}
+      try {
+        console.debug(
+          '[AnnotationOverlay] _onMouseDown - SELECT background click, deselecting'
+        );
+      } catch (err) {}
       this._state.deselect();
       // continue so focus remains on container but no drawing starts
       return;
     }
-    
+
     // Start drawing (except ICON which uses a contextual picker)
     if ([TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE].includes(this.currentTool)) {
-      try { console.debug('[AnnotationOverlay] _onMouseDown - start drawing', this.currentTool, { x, y, contentX }); } catch (err) {}
+      try {
+        console.debug(
+          '[AnnotationOverlay] _onMouseDown - start drawing',
+          this.currentTool,
+          {
+            x,
+            y,
+            contentX,
+          }
+        );
+      } catch (err) {}
       this._drawState = {
         tool: this.currentTool,
         startX: x,
@@ -974,19 +1169,40 @@ export class AnnotationOverlay extends LitElement {
         currentX: x,
         currentY: y,
         startContentX: contentX ?? x,
-        currentContentX: contentX ?? x
+        currentContentX: contentX ?? x,
       };
       this._updateSvg();
     } else if (this.currentTool === TOOLS.ICON) {
       // Show contextual icon picker at the clicked location (use viewport coords)
-      try { console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', { vx, vy, contentX }); } catch (err) {}
+      try {
+        console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', {
+          vx,
+          vy,
+          contentX,
+        });
+      } catch (err) {}
       // Add a transient visual marker so we can see the click position
       try {
         const featureBoard = findInBoard('feature-board');
         let boardClient = null;
-        try { if (featureBoard && featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') boardClient = featureBoard._layout.getBoardClientRect(); } catch (e) { boardClient = null; }
-        const boardLeft = boardClient ? (boardClient.left || 0) : (featureBoard ? featureBoard.getBoundingClientRect().left : 0);
-        const boardTop = boardClient ? (boardClient.top || 0) : (featureBoard ? featureBoard.getBoundingClientRect().top : 0);
+        try {
+          if (
+            featureBoard &&
+            featureBoard._layout &&
+            typeof featureBoard._layout.getBoardClientRect === 'function'
+          )
+            boardClient = featureBoard._layout.getBoardClientRect();
+        } catch (e) {
+          boardClient = null;
+        }
+        const boardLeft =
+          boardClient ? boardClient.left || 0
+          : featureBoard ? featureBoard.getBoundingClientRect().left
+          : 0;
+        const boardTop =
+          boardClient ? boardClient.top || 0
+          : featureBoard ? featureBoard.getBoundingClientRect().top
+          : 0;
         const pageX = (boardLeft || 0) + vx;
         const pageY = (boardTop || 0) + vy;
         const marker = document.createElement('div');
@@ -999,8 +1215,14 @@ export class AnnotationOverlay extends LitElement {
         marker.style.background = 'rgba(255,0,0,0.9)';
         marker.style.zIndex = 12000;
         document.body.appendChild(marker);
-        setTimeout(() => { try { marker.remove(); } catch (e) {} }, 800);
-      } catch (e) { /* ignore */ }
+        setTimeout(() => {
+          try {
+            marker.remove();
+          } catch (e) {}
+        }, 800);
+      } catch (e) {
+        /* ignore */
+      }
       this._showIconPicker(e.clientX, e.clientY, contentX);
     }
   }
@@ -1008,7 +1230,21 @@ export class AnnotationOverlay extends LitElement {
     this._hideIconPicker();
 
     // Icons ordered by priority (most likely first)
-    const ICONS = ['⭐','✔️','⚠️','❌','🟢','🟠','🔴','🚀','📅','🎯','🐞','🔗','💰',];
+    const ICONS = [
+      '⭐',
+      '✔️',
+      '⚠️',
+      '❌',
+      '🟢',
+      '🟠',
+      '🔴',
+      '🚀',
+      '📅',
+      '🎯',
+      '🐞',
+      '🔗',
+      '💰',
+    ];
     const cols = 6;
     const btnSize = 20; // px (compact per request)
     const gap = 4; // px (gap between buttons)
@@ -1029,10 +1265,14 @@ export class AnnotationOverlay extends LitElement {
 
     // Compute content Y and fallbackContentX for annotation creation
     const featureBoard = findInBoard('feature-board');
-    const boardRect = featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+    const boardRect =
+      featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
     const { scrollTop } = this._getScrollOffsets();
-    const contentY = (clientY - (boardRect.top || 0)) + (scrollTop || 0);
-    const fallbackContentX = (typeof contentX !== 'undefined' && contentX !== null) ? contentX : (clientX - (boardRect.left || 0));
+    const contentY = clientY - (boardRect.top || 0) + (scrollTop || 0);
+    const fallbackContentX =
+      typeof contentX !== 'undefined' && contentX !== null ?
+        contentX
+      : clientX - (boardRect.left || 0);
 
     ICONS.forEach((ic, idx) => {
       const btn = document.createElement('button');
@@ -1050,11 +1290,13 @@ export class AnnotationOverlay extends LitElement {
       btn.style.cursor = 'pointer';
       btn.style.padding = '0';
       btn.dataset.icon = ic;
-        btn.addEventListener('click', (ev) => {
+      btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         this._hideIconPicker();
         const dateMs = this._contentXToDateMs(fallbackContentX);
-        const iconAnn = createIconAnnotation(dateMs, contentY, ic, { size: 18 });
+        const iconAnn = createIconAnnotation(dateMs, contentY, ic, {
+          size: 18,
+        });
         // Preserve precise content coordinate
         iconAnn.x = fallbackContentX;
         this._state.add(iconAnn);
@@ -1085,30 +1327,42 @@ export class AnnotationOverlay extends LitElement {
 
     // Clamp to viewport: if overflow, nudge left/up as needed
     const clampRect = container.getBoundingClientRect();
-    const vw = window.innerWidth; const vh = window.innerHeight;
-    let adjustX = 0; let adjustY = 0;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let adjustX = 0;
+    let adjustY = 0;
     if (clampRect.right > vw - 8) adjustX = vw - 8 - clampRect.right;
     if (clampRect.bottom > vh - 8) adjustY = vh - 8 - clampRect.bottom;
     if (adjustX !== 0 || adjustY !== 0) {
-      container.style.left = `${Math.max(6, (parseInt(container.style.left || '0', 10) + adjustX))}px`;
-      container.style.top = `${Math.max(6, (parseInt(container.style.top || '0', 10) + adjustY))}px`;
+      container.style.left = `${Math.max(6, parseInt(container.style.left || '0', 10) + adjustX)}px`;
+      container.style.top = `${Math.max(6, parseInt(container.style.top || '0', 10) + adjustY)}px`;
     }
 
-    const onDocClick = (ev) => { if (!container.contains(ev.target)) this._hideIconPicker(); };
+    const onDocClick = (ev) => {
+      if (!container.contains(ev.target)) this._hideIconPicker();
+    };
     container._onDocClick = onDocClick;
     setTimeout(() => window.addEventListener('mousedown', onDocClick), 0);
     // Keyboard: Esc closes
-    const onKey = (ev) => { if (ev.key === 'Escape') this._hideIconPicker(); };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') this._hideIconPicker();
+    };
     container._onKey = onKey;
     window.addEventListener('keydown', onKey);
 
     this._iconPickerEl = container;
-    this._iconPickerTarget = { contentX, pageX: container.style.left, pageY: container.style.top };
+    this._iconPickerTarget = {
+      contentX,
+      pageX: container.style.left,
+      pageY: container.style.top,
+    };
   }
 
   _hideIconPicker() {
     if (this._iconPickerEl) {
-      try { window.removeEventListener('mousedown', this._iconPickerEl._onDocClick); } catch (e) {}
+      try {
+        window.removeEventListener('mousedown', this._iconPickerEl._onDocClick);
+      } catch (e) {}
       try {
         const p = this._iconPickerEl.parentNode;
         if (p) p.removeChild(this._iconPickerEl);
@@ -1120,73 +1374,96 @@ export class AnnotationOverlay extends LitElement {
 
   _onMouseMove(e) {
     if (!this._drawState && !this._dragState) return;
-    
+
     const ev = this._getEventCoords(e);
     // If pointer moved outside the board, clamp updates (don't create new drawing extents)
     if (ev.outside) return;
     const x = ev.x;
     const y = ev.y;
     const contentX = ev.contentX;
-    
+
     if (this._drawState) {
       this._drawState.currentX = x;
       this._drawState.currentY = y;
       // Use the contentX computed from _getEventCoords rather than reading it from
       // the native event (which doesn't have contentX). Keep previous value
       // as fallback so startContentX remains available.
-      this._drawState.currentContentX = (typeof contentX !== 'undefined' && contentX !== null)
-        ? contentX
+      this._drawState.currentContentX =
+        typeof contentX !== 'undefined' && contentX !== null ?
+          contentX
         : (this._drawState.currentContentX ?? x);
       this._updateSvg();
     }
-    
+
     if (this._dragState) {
       const dx = x - this._dragState.lastX;
       const dy = y - this._dragState.lastY;
-      
+
       if (this._dragState.mode === 'move') {
         // Move annotation horizontally using the pointer's offset so the
         // clicked point remains stable (avoids snapping when clicking near
         // edges). Convert resulting contentX back to date.
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
-          const pointerContentX = (contentX ?? x);
+          const pointerContentX = contentX ?? x;
           const offset = this._dragState.offsetContent ?? 0;
           const newContentX = pointerContentX - offset;
           const newDate = this._contentXToDateMs(newContentX);
           if (ann.type === 'line') {
             // For lines, compute delta against the stored original endpoints
-            const orig1 = this._dragState.origContentX1 ?? this._dateToContentX(ann.date1 || ann.x1 || newContentX);
-            const orig2 = this._dragState.origContentX2 ?? this._dateToContentX(ann.date2 || ann.x2 || newContentX);
+            const orig1 =
+              this._dragState.origContentX1 ??
+              this._dateToContentX(ann.date1 || ann.x1 || newContentX);
+            const orig2 =
+              this._dragState.origContentX2 ??
+              this._dateToContentX(ann.date2 || ann.x2 || newContentX);
             const origLeft = this._dragState.origLeft ?? Math.min(orig1, orig2);
             const delta = newContentX - origLeft;
             const newDate1 = this._contentXToDateMs(orig1 + delta);
             const newDate2 = this._contentXToDateMs(orig2 + delta);
-            this._state.update(this._dragState.id, { date1: newDate1, date2: newDate2, x1: orig1 + delta, x2: orig2 + delta, y1: ann.y1 + dy, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, {
+              date1: newDate1,
+              date2: newDate2,
+              x1: orig1 + delta,
+              x2: orig2 + delta,
+              y1: ann.y1 + dy,
+              y2: ann.y2 + dy,
+            });
           } else {
-            this._state.update(this._dragState.id, { date: newDate, x: newContentX, y: ann.y + dy });
+            this._state.update(this._dragState.id, {
+              date: newDate,
+              x: newContentX,
+              y: ann.y + dy,
+            });
           }
         }
       } else if (this._dragState.mode === 'resize') {
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
-          this._state.resize(this._dragState.id, 
+          this._state.resize(
+            this._dragState.id,
             Math.max(50, ann.width + dx),
             Math.max(30, ann.height + dy)
           );
         }
       } else if (this._dragState.mode === 'line-endpoint') {
-        const ann = this._state.annotations.find(a => a.id === this._dragState.id);
+        const ann = this._state.annotations.find((a) => a.id === this._dragState.id);
         if (ann) {
           const newDate = this._contentXToDateMs(contentX ?? x);
           if (this._dragState.endpoint === 'start') {
-            this._state.update(this._dragState.id, { date1: newDate, y1: ann.y1 + dy });
+            this._state.update(this._dragState.id, {
+              date1: newDate,
+              y1: ann.y1 + dy,
+            });
           } else {
-            this._state.update(this._dragState.id, { date2: newDate, y2: ann.y2 + dy });
+            this._state.update(this._dragState.id, {
+              date2: newDate,
+              y2: ann.y2 + dy,
+            });
           }
         }
       }
-      
+
       this._dragState.lastX = x;
       this._dragState.lastY = y;
       this._dragState.lastContentX = contentX ?? this._dragState.lastContentX;
@@ -1197,11 +1474,11 @@ export class AnnotationOverlay extends LitElement {
     if (this._drawState) {
       this._finishDrawing();
     }
-    
+
     if (this._dragState) {
       this._dragState = null;
     }
-    
+
     // Ensure container stays focused for keyboard events
     if (this._state.selectedId) {
       const container = this.shadowRoot?.querySelector('.overlay-container');
@@ -1210,16 +1487,17 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _finishDrawing() {
-    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } = this._drawState;
+    const { tool, startX, startY, currentX, currentY, startContentX, currentContentX } =
+      this._drawState;
 
     const contentLeft = Math.min(startContentX ?? startX, currentContentX ?? currentX);
     const y = Math.min(startY, currentY);
     const width = Math.abs((currentContentX ?? currentX) - (startContentX ?? startX));
     const height = Math.abs(currentY - startY);
-    
+
     // Minimum size threshold
     const minSize = 20;
-    
+
     if (tool === TOOLS.NOTE && width > minSize && height > minSize) {
       const color = this._state.currentColor || ANNOTATION_COLORS.palette[0];
       const dateMs = this._contentXToDateMs(contentLeft);
@@ -1227,7 +1505,7 @@ export class AnnotationOverlay extends LitElement {
         width,
         height,
         fill: color.fill,
-        stroke: color.stroke
+        stroke: color.stroke,
       });
       // Persist the precise content X so rendering stays at the exact
       // drawn position rather than relying solely on the date->content
@@ -1239,7 +1517,7 @@ export class AnnotationOverlay extends LitElement {
       const color = this._state.currentColor || ANNOTATION_COLORS.palette[0];
       const dateMs = this._contentXToDateMs(contentLeft);
       const rect = createRectAnnotation(dateMs, y, width, height, {
-        stroke: color.stroke
+        stroke: color.stroke,
       });
       rect.x = contentLeft;
       this._state.add(rect);
@@ -1247,7 +1525,9 @@ export class AnnotationOverlay extends LitElement {
     } else if (tool === TOOLS.LINE) {
       const contentStart = startContentX ?? startX;
       const contentEnd = currentContentX ?? currentX;
-      const length = Math.sqrt((contentEnd - contentStart) * (contentEnd - contentStart) + height * height);
+      const length = Math.sqrt(
+        (contentEnd - contentStart) * (contentEnd - contentStart) + height * height
+      );
       if (length > minSize) {
         const date1 = this._contentXToDateMs(contentStart);
         const date2 = this._contentXToDateMs(contentEnd);
@@ -1263,25 +1543,27 @@ export class AnnotationOverlay extends LitElement {
       const contentPos = startContentX ?? startX;
       const dateMs = this._contentXToDateMs(contentPos);
       const iconChar = this._state.currentIcon || this._currentIcon || '⭐';
-      const iconAnn = createIconAnnotation(dateMs, startY, iconChar, { size: 18 });
+      const iconAnn = createIconAnnotation(dateMs, startY, iconChar, {
+        size: 18,
+      });
       iconAnn.x = contentPos;
       this._state.add(iconAnn);
       this._state.select(iconAnn.id);
     }
-    
+
     this._drawState = null;
     this._updateSvg();
   }
 
   _onAnnotationMouseDown(e, ann) {
     e.stopPropagation();
-    
+
     const ev = this._getEventCoords(e);
     const { x, y, contentX } = ev;
     const now = Date.now();
-    
+
     // Check for double-click (two clicks on same annotation within 400ms)
-    if (this._lastClickId === ann.id && (now - this._lastClickTime) < 400) {
+    if (this._lastClickId === ann.id && now - this._lastClickTime < 400) {
       // Double-click detected - edit note
       if (ann.type === 'note') {
         this._lastClickTime = 0;
@@ -1290,17 +1572,17 @@ export class AnnotationOverlay extends LitElement {
         return;
       }
     }
-    
+
     // Record this click for double-click detection
     this._lastClickTime = now;
     this._lastClickId = ann.id;
-    
+
     this._state.select(ann.id);
-    
+
     // Focus the overlay container so keyboard events work
     const container = this.shadowRoot?.querySelector('.overlay-container');
     if (container) container.focus();
-    
+
     if (this.currentTool === TOOLS.SELECT) {
       // Record the pointer offset within the annotation so the clicked point
       // remains under the cursor during the drag (prevents snapping to edges).
@@ -1312,16 +1594,17 @@ export class AnnotationOverlay extends LitElement {
         const c2 = this._dateToContentX(ann.date2 || ann.x2 || 0);
         annContentX = Math.min(c1, c2);
       } else {
-        annContentX = (ann.date) ? this._dateToContentX(ann.date) : (ann.x ?? 0);
+        annContentX = ann.date ? this._dateToContentX(ann.date) : (ann.x ?? 0);
       }
-      const clickOffset = (typeof contentX !== 'undefined' && contentX !== null) ? (contentX - annContentX) : 0;
+      const clickOffset =
+        typeof contentX !== 'undefined' && contentX !== null ? contentX - annContentX : 0;
       this._dragState = {
         id: ann.id,
         mode: 'move',
         lastX: x,
         lastY: y,
         lastContentX: contentX,
-        offsetContent: clickOffset
+        offsetContent: clickOffset,
       };
       if (ann.type === 'line') {
         const orig1 = this._dateToContentX(ann.date1 || ann.x1 || 0);
@@ -1334,7 +1617,7 @@ export class AnnotationOverlay extends LitElement {
       this._attachGlobalPointerHandlers();
     }
   }
-  
+
   /**
    * Start editing a note's text
    */
@@ -1342,7 +1625,7 @@ export class AnnotationOverlay extends LitElement {
     this._editingNote = ann;
     this._dragState = null; // Cancel any drag
     this.requestUpdate();
-    
+
     // Focus the textarea after render
     this.updateComplete.then(() => {
       const textarea = this.shadowRoot.querySelector('.note-text-input');
@@ -1358,7 +1641,7 @@ export class AnnotationOverlay extends LitElement {
    */
   _onAnnotationDblClick(e, ann) {
     e.stopPropagation();
-    
+
     if (ann.type === 'note') {
       this._startEditingNote(ann);
     }
@@ -1366,30 +1649,34 @@ export class AnnotationOverlay extends LitElement {
 
   _onResizeStart(e, ann) {
     e.stopPropagation();
-    
+
     const ev = this._getEventCoords(e);
-    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
-    
+    const x = ev.x;
+    const y = ev.y;
+    const contentX = ev.contentX;
+
     this._state.select(ann.id);
-    
+
     this._dragState = {
       id: ann.id,
       mode: 'resize',
       lastX: x,
       lastY: y,
-      lastContentX: contentX
+      lastContentX: contentX,
     };
     this._attachGlobalPointerHandlers();
   }
 
   _onLineEndpointStart(e, ann, endpoint) {
     e.stopPropagation();
-    
+
     const ev = this._getEventCoords(e);
-    const x = ev.x; const y = ev.y; const contentX = ev.contentX;
-    
+    const x = ev.x;
+    const y = ev.y;
+    const contentX = ev.contentX;
+
     this._state.select(ann.id);
-    
+
     this._dragState = {
       id: ann.id,
       mode: 'line-endpoint',
@@ -1399,9 +1686,17 @@ export class AnnotationOverlay extends LitElement {
       lastContentX: contentX,
       // Store pointer offset relative to the endpoint's content X so the
       // endpoint stays under the pointer during dragging.
-      offsetContent: (contentX ?? x) - ((typeof (endpoint === 'start' ? ann.x1 : ann.x2) !== 'undefined' && (endpoint === 'start' ? ann.x1 : ann.x2) !== null)
-        ? (endpoint === 'start' ? ann.x1 : ann.x2)
-        : (endpoint === 'start' ? this._dateToContentX(ann.date1 || ann.x1 || 0) : this._dateToContentX(ann.date2 || ann.x2 || 0)))
+      offsetContent:
+        (contentX ?? x) -
+        ((
+          typeof (endpoint === 'start' ? ann.x1 : ann.x2) !== 'undefined' &&
+          (endpoint === 'start' ? ann.x1 : ann.x2) !== null
+        ) ?
+          endpoint === 'start' ?
+            ann.x1
+          : ann.x2
+        : endpoint === 'start' ? this._dateToContentX(ann.date1 || ann.x1 || 0)
+        : this._dateToContentX(ann.date2 || ann.x2 || 0)),
     };
     this._attachGlobalPointerHandlers();
   }
@@ -1410,7 +1705,7 @@ export class AnnotationOverlay extends LitElement {
     // If there's a selected note annotation, start editing it
     // This serves as a backup to the timing-based detection in _onAnnotationMouseDown
     if (this.selectedId) {
-      const ann = this._state.annotations.find(a => a.id === this.selectedId);
+      const ann = this._state.annotations.find((a) => a.id === this.selectedId);
       if (ann && ann.type === 'note') {
         e.stopPropagation();
         this._startEditingNote(ann);
@@ -1421,11 +1716,15 @@ export class AnnotationOverlay extends LitElement {
   _onKeyDown(e) {
     // Delete selected annotation
     const selectedId = this._state.selectedId;
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && !this._editingNote) {
+    if (
+      (e.key === 'Delete' || e.key === 'Backspace') &&
+      selectedId &&
+      !this._editingNote
+    ) {
       this._state.remove(selectedId);
       e.preventDefault();
     }
-    
+
     // Escape to deselect
     if (e.key === 'Escape') {
       this._state.deselect();
@@ -1439,7 +1738,9 @@ export class AnnotationOverlay extends LitElement {
     if (this._editingNote) {
       this._state.update(this._editingNote.id, { text: e.target.value });
       // Update local reference for the textarea position
-      this._editingNote = this._state.annotations.find(a => a.id === this._editingNote.id);
+      this._editingNote = this._state.annotations.find(
+        (a) => a.id === this._editingNote.id
+      );
     }
   }
 
@@ -1463,13 +1764,13 @@ export class AnnotationOverlay extends LitElement {
   _wrapText(text, maxWidth, fontSize = 12) {
     const avgCharWidth = fontSize * 0.6;
     const charsPerLine = Math.floor(maxWidth / avgCharWidth);
-    
+
     if (charsPerLine <= 0) return [text];
-    
+
     const words = text.split(' ');
     const lines = [];
     let currentLine = '';
-    
+
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
       if (testLine.length > charsPerLine && currentLine) {
@@ -1479,11 +1780,11 @@ export class AnnotationOverlay extends LitElement {
         currentLine = testLine;
       }
     }
-    
+
     if (currentLine) {
       lines.push(currentLine);
     }
-    
+
     return lines.length ? lines : [text];
   }
 
@@ -1492,19 +1793,26 @@ export class AnnotationOverlay extends LitElement {
   // ---------------------------
   _dateToContentX(dateMs) {
     const months = getTimelineMonths() || [];
-    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const monthWidth =
+      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
     const boardOffset = getBoardOffset() || 0;
     if (!months.length) return boardOffset;
 
     const d = new Date(dateMs);
     // Find month index by scanning (months array contains month start dates)
-    let idx = months.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
+    let idx = months.findIndex(
+      (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
+    );
     if (idx === -1) {
       // fallback: find nearest earlier month
       idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
     }
     const monthStart = months[idx];
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(
+      monthStart.getFullYear(),
+      monthStart.getMonth() + 1,
+      0
+    ).getDate();
     const day = d.getDate();
     const fraction = Math.max(0, Math.min(1, (day - 1) / daysInMonth));
     const x = boardOffset + (idx + fraction) * monthWidth;
@@ -1513,7 +1821,8 @@ export class AnnotationOverlay extends LitElement {
 
   _contentXToDateMs(contentX) {
     const months = getTimelineMonths() || [];
-    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const monthWidth =
+      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
     const boardOffset = getBoardOffset() || 0;
     if (!months.length) return Date.now();
 
@@ -1522,9 +1831,16 @@ export class AnnotationOverlay extends LitElement {
     if (idx < 0) idx = 0;
     if (idx >= months.length) idx = months.length - 1;
     const monthStart = months[idx];
-    const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+    const daysInMonth = new Date(
+      monthStart.getFullYear(),
+      monthStart.getMonth() + 1,
+      0
+    ).getDate();
     const fraction = rel - idx;
-    const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1));
+    const day = Math.max(
+      1,
+      Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1)
+    );
     const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
     return date.getTime();
   }
@@ -1552,8 +1868,6 @@ export class AnnotationOverlay extends LitElement {
     }
   }
 
-  
-  
   /**
    * Position the overlay to cover the feature board only (not the timeline header)
    */
@@ -1564,13 +1878,25 @@ export class AnnotationOverlay extends LitElement {
     // per-call DOM measurements. Fall back to getBoundingClientRect once.
     let rect = null;
     try {
-      if (featureBoard._layout && typeof featureBoard._layout.getBoardClientRect === 'function') {
+      if (
+        featureBoard._layout &&
+        typeof featureBoard._layout.getBoardClientRect === 'function'
+      ) {
         const br = featureBoard._layout.getBoardClientRect();
         if (br && (br.left || br.left === 0)) {
-          rect = { left: br.left, top: br.top, right: (br.left + (br.width || 0)), bottom: (br.top + (br.height || 0)), width: br.width || 0, height: br.height || 0 };
+          rect = {
+            left: br.left,
+            top: br.top,
+            right: br.left + (br.width || 0),
+            bottom: br.top + (br.height || 0),
+            width: br.width || 0,
+            height: br.height || 0,
+          };
         }
       }
-    } catch (e) { rect = null; }
+    } catch (e) {
+      rect = null;
+    }
 
     if (!rect) {
       try {

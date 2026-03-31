@@ -12,7 +12,7 @@ export function createMockProject(overrides = {}) {
     name: 'Test Project',
     team: 'Alpha Team',
     enabled: true,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -25,7 +25,7 @@ export function createMockTeam(overrides = {}) {
     name: 'Alpha Team',
     members: [],
     capacity: 100,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -42,7 +42,7 @@ export function createMockFeature(overrides = {}) {
     end: '2024-01-31',
     effort: 10,
     dependencies: [],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -55,7 +55,7 @@ export function createMockScenario(overrides = {}) {
     name: 'Test Scenario',
     features: [],
     createdAt: new Date().toISOString(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -70,6 +70,6 @@ export function createMockState() {
     teams: new Map(),
     features: new Map(),
     filters: new Set(),
-    selectedFeatures: new Set()
+    selectedFeatures: new Set(),
   };
 }

@@ -24,9 +24,9 @@ export class PlanMenuLit extends LitElement {
     .menu-popover {
       background: var(--color-sidebar-bg);
       color: var(--color-sidebar-text);
-      border: 1px solid rgba(255,255,255,0.18);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
       min-width: 320px;
       max-width: 400px;
       max-height: 500px;
@@ -37,84 +37,96 @@ export class PlanMenuLit extends LitElement {
       gap: 8px;
     }
 
-    .counts-header { 
-      display:grid;
+    .counts-header {
+      display: grid;
       grid-template-columns: 24px 28px 1fr 58px 31px;
-      align-items:center;
-      gap:8px;
-      color:#ddd;
+      align-items: center;
+      gap: 8px;
+      color: #ddd;
     }
-    
-    .type-icon { display:inline-flex; align-items:center; }
-    .type-icon.epic { color: #ffcf33; margin-left:30px; }
-    .type-icon svg { width: 16px; height: 16px; display: block; }
 
-    .sidebar-list { 
-      list-style:none; 
-      padding:0; 
-      display:flex; 
-      flex-direction:column; 
-      gap:4px; 
-      margin:0; 
+    .type-icon {
+      display: inline-flex;
+      align-items: center;
     }
-    
-    .sidebar-list-item { display:block; }
-    
-    .sidebar-chip { 
-      padding:0 8px 0 0; 
-      border-radius:10px; 
-      background:transparent; 
-      border:1px solid rgba(0,0,0,0.06); 
-      box-sizing:border-box; 
-      min-height:25px; 
-      overflow:hidden; 
-      display:flex; 
-      align-items:stretch; 
+    .type-icon.epic {
+      color: #ffcf33;
+      margin-left: 30px;
     }
-    
-    .sidebar-chip:hover { 
-      background: rgba(255,255,255,0.18); 
-      cursor: pointer; 
+    .type-icon svg {
+      width: 16px;
+      height: 16px;
+      display: block;
     }
-    
-    .sidebar-chip.active { 
-      background: rgb(55, 85, 130); 
-      border-color: transparent; 
+
+    .sidebar-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin: 0;
     }
-    
-    .sidebar-chip.active:hover { 
-      background: rgba(255,255,255,0.18); 
+
+    .sidebar-list-item {
+      display: block;
     }
-    
-    .sidebar-list .color-dot { 
-      width:28px; 
-      border-radius:6px 0 0 6px; 
-      display:inline-block; 
-      flex:0 0 28px; 
-      align-self:stretch; 
-      cursor: pointer; 
+
+    .sidebar-chip {
+      padding: 0 8px 0 0;
+      border-radius: 10px;
+      background: transparent;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-sizing: border-box;
+      min-height: 25px;
+      overflow: hidden;
+      display: flex;
+      align-items: stretch;
     }
-    
-    .sidebar-chip .project-name-col { 
-      padding-left:8px; 
-      font-weight:600; 
-      font-size:0.8rem; 
-      color:var(--color-sidebar-text); 
+
+    .sidebar-chip:hover {
+      background: rgba(255, 255, 255, 0.18);
+      cursor: pointer;
     }
-    
-    .chip-badge { 
-      display:inline-flex; 
-      align-items:center; 
-      justify-content:center; 
-      width:30px; 
-      height:18px; 
-      border-radius:9px; 
-      font-size:0.7rem; 
-      font-weight:700; 
-      background:rgba(0,0,0,0.06); 
-      color:var(--color-sidebar-text); 
+
+    .sidebar-chip.active {
+      background: rgb(55, 85, 130);
+      border-color: transparent;
     }
-    
+
+    .sidebar-chip.active:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .sidebar-list .color-dot {
+      width: 28px;
+      border-radius: 6px 0 0 6px;
+      display: inline-block;
+      flex: 0 0 28px;
+      align-self: stretch;
+      cursor: pointer;
+    }
+
+    .sidebar-chip .project-name-col {
+      padding-left: 8px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--color-sidebar-text);
+    }
+
+    .chip-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 18px;
+      border-radius: 9px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.06);
+      color: var(--color-sidebar-text);
+    }
+
     .list-toggle-btn {
       display: inline-flex;
       align-items: center;
@@ -130,17 +142,17 @@ export class PlanMenuLit extends LitElement {
       background: transparent;
     }
 
-    .divider { 
-      border-top:1px dashed rgba(255,255,255,0.32); 
-      margin:4px 0; 
-      border-radius:2px; 
-      height:0; 
+    .divider {
+      border-top: 1px dashed rgba(255, 255, 255, 0.32);
+      margin: 4px 0;
+      border-radius: 2px;
+      height: 0;
     }
-    
-    .plans-group { 
-      display:flex; 
-      flex-direction:column; 
-      gap:4px; 
+
+    .plans-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
   `;
 
@@ -153,13 +165,13 @@ export class PlanMenuLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
+
     // Listen to project changes for real-time updates
     this._onProjectsChanged = (projects) => {
       this.projects = projects ? [...projects] : [];
       this.requestUpdate();
     };
-    
+
     this._onViewActivated = (payload) => {
       this.activeViewId = payload?.id || null;
       this.activeViewData = payload?.data || null;
@@ -175,26 +187,27 @@ export class PlanMenuLit extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
-    if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onViewActivated)
+      bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
   }
 
   _toggleProject(pid) {
-    const current = (this.projects || []).find(p => p.id === pid);
+    const current = (this.projects || []).find((p) => p.id === pid);
     const newVal = !(current && current.selected);
     state.setProjectSelected(pid, newVal);
   }
 
   _handleProjectToggle() {
     const projects = this.projects || [];
-    const anyUnchecked = projects.some(p => !p.selected);
+    const anyUnchecked = projects.some((p) => !p.selected);
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
-    projects.forEach(p => selections[p.id] = anyUnchecked);
+    projects.forEach((p) => (selections[p.id] = anyUnchecked));
     state.setProjectsSelectedBulk(selections);
   }
 
   _anyUncheckedProjects() {
-    return (this.projects || []).some(p => !p.selected);
+    return (this.projects || []).some((p) => !p.selected);
   }
 
   async _openColorPopover(e, projectId) {
@@ -206,19 +219,29 @@ export class PlanMenuLit extends LitElement {
   }
 
   _renderProjectsList(projects) {
-    return html`${projects.map(project => {
+    return html`${projects.map((project) => {
       const epicsCount = state.countEpicsForProject(project.id);
       const featuresCount = state.countFeaturesForProject(project.id);
-      
+
       return html`
         <li class="sidebar-list-item">
-          <div class="chip sidebar-chip ${project.selected ? 'active' : ''}" 
-               @click=${(e) => { if(!e.target.closest('.color-dot')) this._toggleProject(project.id); }}
-               style="display:flex;align-items:stretch;gap:8px;width:100%;">
-            <span class="color-dot" 
-                  style="background:${project.color}"
-                  @click=${(e) => this._openColorPopover(e, project.id)}></span>
-            <div class="project-name-col" title="${project.name}" style="align-self:center">
+          <div
+            class="chip sidebar-chip ${project.selected ? 'active' : ''}"
+            @click=${(e) => {
+              if (!e.target.closest('.color-dot')) this._toggleProject(project.id);
+            }}
+            style="display:flex;align-items:stretch;gap:8px;width:100%;"
+          >
+            <span
+              class="color-dot"
+              style="background:${project.color}"
+              @click=${(e) => this._openColorPopover(e, project.id)}
+            ></span>
+            <div
+              class="project-name-col"
+              title="${project.name}"
+              style="align-self:center"
+            >
               ${project.name}
             </div>
             <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
@@ -233,39 +256,43 @@ export class PlanMenuLit extends LitElement {
 
   render() {
     const projects = this.projects || [];
-    const delivery = projects.filter(p => (p.type || 'project') === 'project');
-    const teamBacklogs = projects.filter(p => (p.type || 'project') !== 'project');
+    const delivery = projects.filter((p) => (p.type || 'project') === 'project');
+    const teamBacklogs = projects.filter((p) => (p.type || 'project') !== 'project');
 
     return html`
       <div class="menu-popover">
         <div class="counts-header">
           <span></span>
-          <button class="list-toggle-btn" 
-                  @click=${this._handleProjectToggle}
-                  title="Select all / Clear all projects">
+          <button
+            class="list-toggle-btn"
+            @click=${this._handleProjectToggle}
+            title="Select all / Clear all projects"
+          >
             ${this._anyUncheckedProjects() ? 'All' : 'None'}
           </button>
           <span></span>
           <span class="type-icon epic" title="Epics">${epicTemplate}</span>
           <span class="type-icon feature" title="Features">${featureTemplate}</span>
         </div>
-        
+
         <div class="plans-group">
-          ${delivery.length ? html`
-            <ul class="sidebar-list">
-              ${this._renderProjectsList(delivery)}
-            </ul>
-          ` : ''}
-          
-          ${delivery.length && teamBacklogs.length ? html`
-            <div class="divider"></div>
-          ` : ''}
-          
-          ${teamBacklogs.length ? html`
-            <ul class="sidebar-list">
-              ${this._renderProjectsList(teamBacklogs)}
-            </ul>
-          ` : ''}
+          ${delivery.length ?
+            html`
+              <ul class="sidebar-list">
+                ${this._renderProjectsList(delivery)}
+              </ul>
+            `
+          : ''}
+          ${delivery.length && teamBacklogs.length ?
+            html` <div class="divider"></div> `
+          : ''}
+          ${teamBacklogs.length ?
+            html`
+              <ul class="sidebar-list">
+                ${this._renderProjectsList(teamBacklogs)}
+              </ul>
+            `
+          : ''}
         </div>
       </div>
     `;

@@ -19,7 +19,7 @@ export const FeatureEvents = {
   REQUEST_CONNECTED_SET: Symbol('feature:request-connected-set'),
   CONNECTED_SET_UPDATED: Symbol('feature:connected-set-updated'),
   SELECTED_IN_CONNECTED_SET: Symbol('feature:selected-in-connected-set'),
-  CAPACITY_UPDATED: Symbol('feature:capacity-updated')
+  CAPACITY_UPDATED: Symbol('feature:capacity-updated'),
 };
 
 // Scenario-related events
@@ -29,14 +29,14 @@ export const ScenarioEvents = {
   CREATED: Symbol('scenario:created'),
   DELETED: Symbol('scenario:deleted'),
   UPDATED: Symbol('scenario:updated'),
-  LIST: Symbol('scenario:list')
+  LIST: Symbol('scenario:list'),
 };
 
 // Project-related events
 export const ProjectEvents = {
   CHANGED: Symbol('projects:changed'),
   TOGGLED: Symbol('project:toggled'),
-  SELECTED: Symbol('project:selected')
+  SELECTED: Symbol('project:selected'),
 };
 
 // Plugin-related events
@@ -44,34 +44,34 @@ export const PluginEvents = {
   REGISTERED: Symbol('plugin:registered'),
   UNREGISTERED: Symbol('plugin:unregistered'),
   ACTIVATED: Symbol('plugin:activated'),
-  DEACTIVATED: Symbol('plugin:deactivated')
+  DEACTIVATED: Symbol('plugin:deactivated'),
 };
 
 // Team-related events
 export const TeamEvents = {
   CHANGED: Symbol('teams:changed'),
   TOGGLED: Symbol('team:toggled'),
-  SELECTED: Symbol('team:selected')
+  SELECTED: Symbol('team:selected'),
 };
 
 // Capacity-related events
 export const CapacityEvents = {
   UPDATED: Symbol('capacity:updated'),
-  CALCULATED: Symbol('capacity:calculated')
+  CALCULATED: Symbol('capacity:calculated'),
 };
 
 // Filter-related events
 export const FilterEvents = {
   CHANGED: Symbol('filters:changed'),
   APPLIED: Symbol('filter:applied'),
-  CLEARED: Symbol('filter:cleared')
+  CLEARED: Symbol('filter:cleared'),
 };
 
 // Drag-and-drop events
 export const DragEvents = {
   START: Symbol('drag:start'),
   MOVE: Symbol('drag:move'),
-  END: Symbol('drag:end')
+  END: Symbol('drag:end'),
 };
 
 // UI events
@@ -79,7 +79,7 @@ export const UIEvents = {
   DETAILS_SHOW: Symbol('details:show'),
   DETAILS_HIDE: Symbol('details:hide'),
   MODAL_OPEN: Symbol('modal:open'),
-  MODAL_CLOSE: Symbol('modal:close')
+  MODAL_CLOSE: Symbol('modal:close'),
 };
 
 // View-specific UI events (legacy view: namespace)
@@ -88,7 +88,7 @@ export const ViewEvents = {
   DEPENDENCIES: Symbol('view:dependencies'),
   CAPACITY_MODE: Symbol('view:capacityMode'),
   SORT_MODE: Symbol('view:sortMode'),
-  HIGHLIGHT_RELATIONS: Symbol('view:highlightRelations')
+  HIGHLIGHT_RELATIONS: Symbol('view:highlightRelations'),
 };
 
 // Saved view management events
@@ -96,32 +96,32 @@ export const ViewManagementEvents = {
   LIST: Symbol('views:list'),
   ACTIVATED: Symbol('views:activated'),
   SAVED: Symbol('views:saved'),
-  DELETED: Symbol('views:deleted')
+  DELETED: Symbol('views:deleted'),
 };
 
 // App lifecycle events
 export const AppEvents = {
   READY: Symbol('app:ready'),
-  INITIALIZED: Symbol('app:initialized')
+  INITIALIZED: Symbol('app:initialized'),
 };
 
 // Session-related events
 export const SessionEvents = {
   EXPIRED: Symbol('session:expired'),
-  REACQUIRED: Symbol('session:reacquired')
+  REACQUIRED: Symbol('session:reacquired'),
 };
 
 // Config events
 export const ConfigEvents = {
   UPDATED: Symbol('config:updated'),
-  AUTOSAVE: Symbol('config:autosave')
+  AUTOSAVE: Symbol('config:autosave'),
 };
 
 // Timeline events
 export const TimelineEvents = {
   MONTHS: Symbol('timeline:months'),
   SCALE_CHANGED: Symbol('timeline:scale-changed'),
-  SCALE_COMPLETE: Symbol('timeline:scale-complete')
+  SCALE_COMPLETE: Symbol('timeline:scale-complete'),
 };
 
 // Data provider events
@@ -129,15 +129,15 @@ export const DataEvents = {
   SCENARIOS_CHANGED: Symbol('scenarios:changed'),
   SCENARIOS_DATA: Symbol('scenarios:data'),
   LOADED: Symbol('data:loaded'),
-  SAVED: Symbol('data:saved')
+  SAVED: Symbol('data:saved'),
 };
 
 // Color events
 export const ColorEvents = {
-  CHANGED: Symbol('color:changed')
+  CHANGED: Symbol('color:changed'),
 };
 
 // States filter events
 export const StateFilterEvents = {
-  CHANGED: Symbol('states:changed')
+  CHANGED: Symbol('states:changed'),
 };

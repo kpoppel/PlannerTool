@@ -31,7 +31,7 @@ export class PluginLinkEditor extends Plugin {
       version: '1.0.0',
       author: 'PlannerTool',
       dependencies: [],
-      capabilities: ['edit-links', 'scenario-integration']
+      capabilities: ['edit-links', 'scenario-integration'],
     };
   }
 
@@ -41,12 +41,12 @@ export class PluginLinkEditor extends Plugin {
    */
   async init() {
     console.log('[PluginLinkEditor] init');
-    
+
     // Create component if it doesn't exist
     if (!this._component) {
       this._component = document.createElement('plugin-link-editor');
     }
-    
+
     this.initialized = true;
   }
 
@@ -56,7 +56,7 @@ export class PluginLinkEditor extends Plugin {
    */
   async activate() {
     console.log('[PluginLinkEditor] activate');
-    
+
     if (!this._component) {
       await this.init();
     }
@@ -66,11 +66,12 @@ export class PluginLinkEditor extends Plugin {
       const board = findInBoard('feature-board');
       if (board) {
         const hostRoot = board.shadowRoot || board;
-        
+
         // Check if component is already attached
-        const existing = hostRoot.querySelector('plugin-link-editor') || 
-                        document.querySelector('plugin-link-editor');
-        
+        const existing =
+          hostRoot.querySelector('plugin-link-editor') ||
+          document.querySelector('plugin-link-editor');
+
         if (existing) {
           this._component = existing;
         } else {
@@ -146,10 +147,10 @@ export class PluginLinkEditor extends Plugin {
    */
   _onFeatureUpdate(payload) {
     console.log('[PluginLinkEditor] Feature updated:', payload);
-    
+
     // Trigger a re-render of dependency lines if the DependencyRenderer exists
     try {
-      import('../components/DependencyRenderer.lit.js').then(module => {
+      import('../components/DependencyRenderer.lit.js').then((module) => {
         if (module.refreshDependencies) {
           module.refreshDependencies();
         }

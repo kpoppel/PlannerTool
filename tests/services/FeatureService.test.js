@@ -12,14 +12,35 @@ describe('FeatureService public methods', () => {
   beforeEach(() => {
     // baseline store with some features
     const features = [
-      { id: 'f1', title: 'F1', type: 'feature', parentEpic: 'e1', start: '2025-01-01', end: '2025-01-10', capacity: null },
-      { id: 'e1', title: 'E1', type: 'epic', start: '2025-01-01', end: '2025-01-05' },
-      { id: 'f2', title: 'F2', type: 'feature', start: '2025-02-01', end: '2025-02-10', capacity: { foo: 1 } }
+      {
+        id: 'f1',
+        title: 'F1',
+        type: 'feature',
+        parentEpic: 'e1',
+        start: '2025-01-01',
+        end: '2025-01-10',
+        capacity: null,
+      },
+      {
+        id: 'e1',
+        title: 'E1',
+        type: 'epic',
+        start: '2025-01-01',
+        end: '2025-01-05',
+      },
+      {
+        id: 'f2',
+        title: 'F2',
+        type: 'feature',
+        start: '2025-02-01',
+        end: '2025-02-10',
+        capacity: { foo: 1 },
+      },
     ];
 
     baselineStore = {
       getFeatures: () => features.slice(),
-      getFeatureById: () => new Map(features.map(f => [f.id, f]))
+      getFeatureById: () => new Map(features.map((f) => [f.id, f])),
     };
 
     activeScenario = { overrides: {}, isChanged: false };
@@ -30,7 +51,9 @@ describe('FeatureService public methods', () => {
     // stub bus.emit to capture events
     origBusEmit = bus.emit;
     bus.emitted = [];
-    bus.emit = function (ev, payload) { this.emitted.push({ ev, payload }); };
+    bus.emit = function (ev, payload) {
+      this.emitted.push({ ev, payload });
+    };
   });
 
   afterEach(() => {
@@ -40,7 +63,7 @@ describe('FeatureService public methods', () => {
   it('getEffectiveFeatures returns baseline when no scenario', () => {
     const list = fs.getEffectiveFeatures();
     expect(list).to.be.an('array');
-    expect(list.find(x => x.id === 'f1')).to.have.property('title', 'F1');
+    expect(list.find((x) => x.id === 'f1')).to.have.property('title', 'F1');
   });
 
   it('getEffectiveFeatureById merges override and marks changedFields', () => {

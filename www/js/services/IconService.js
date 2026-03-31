@@ -42,7 +42,9 @@ export function epicSvgElement(attrs = {}) {
     if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
     if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
     if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
   return el;
 }
 
@@ -54,7 +56,9 @@ export function featureSvgElement(attrs = {}) {
     if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
     if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
     if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
   return el;
 }
 
@@ -72,5 +76,5 @@ export default {
   epicTemplate,
   featureTemplate,
   featureSvgElement,
-  epicSvgElement
+  epicSvgElement,
 };

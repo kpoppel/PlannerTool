@@ -26,9 +26,11 @@ export class PluginManager {
      * @returns {Promise<void>}
      * @throws {Error} when plugin already registered or missing dependencies
      */
-    if (this.plugins.has(plugin.id)) throw new Error(`Plugin ${plugin.id} is already registered`);
+    if (this.plugins.has(plugin.id))
+      throw new Error(`Plugin ${plugin.id} is already registered`);
     const missing = this._checkDependencies(plugin);
-    if (missing.length) throw new Error(`Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`);
+    if (missing.length)
+      throw new Error(`Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`);
 
     this.plugins.set(plugin.id, plugin);
     await plugin.init();
@@ -50,7 +52,9 @@ export class PluginManager {
 
     const dependents = this._findDependents(pluginId);
     if (dependents.length > 0) {
-      throw new Error(`Cannot unregister plugin ${pluginId} required by: ${dependents.join(', ')}`);
+      throw new Error(
+        `Cannot unregister plugin ${pluginId} required by: ${dependents.join(', ')}`
+      );
     }
 
     // Ensure deactivated and destroyed
@@ -59,10 +63,10 @@ export class PluginManager {
     }
     await plugin.destroy();
     this.plugins.delete(pluginId);
-    this.loadOrder = this.loadOrder.filter(id => id !== pluginId);
+    this.loadOrder = this.loadOrder.filter((id) => id !== pluginId);
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
   }
-  
+
   /**
    * Activate a plugin and its dependencies.
    * @param {string} pluginId - plugin identifier to activate
@@ -74,12 +78,12 @@ export class PluginManager {
     if (!plugin) {
       throw new Error(`Plugin ${pluginId} not found`);
     }
-    
+
     if (!plugin.initialized) {
       await plugin.init();
       plugin.initialized = true;
     }
-    
+
     if (plugin.active) {
       console.warn(`Plugin ${pluginId} is already active`);
       return;
@@ -101,7 +105,10 @@ export class PluginManager {
         }
       }
     };
-    for (const d of deps) { depsSet.add(d); collectDeps(d); }
+    for (const d of deps) {
+      depsSet.add(d);
+      collectDeps(d);
+    }
 
     // Decide shareability: a plugin may declare `config.exclusive = false` to
     // allow co-existence with other shareable plugins. Default is exclusive
@@ -119,7 +126,7 @@ export class PluginManager {
       // If both target and other are explicitly shareable (exclusive === false),
       // allow them to remain active together. Otherwise, deactivate the other
       // so the target may become active alone.
-      const bothShareable = (targetExclusive === false && otherExclusive === false);
+      const bothShareable = targetExclusive === false && otherExclusive === false;
       if (bothShareable) continue;
 
       try {
@@ -138,7 +145,7 @@ export class PluginManager {
     plugin.active = true;
     bus.emit(PluginEvents.ACTIVATED, { plugin: pluginId });
   }
-  
+
   /**
    * Deactivate a plugin and any dependents that require it.
    * @param {string} pluginId - plugin identifier to deactivate
@@ -150,12 +157,12 @@ export class PluginManager {
     if (!plugin) {
       throw new Error(`Plugin ${pluginId} not found`);
     }
-    
+
     if (!plugin.active) {
       console.warn(`Plugin ${pluginId} is already inactive`);
       return;
     }
-    
+
     // Deactivate dependents first
     const dependents = this._findDependents(pluginId);
     for (const depId of dependents) {
@@ -166,7 +173,7 @@ export class PluginManager {
     plugin.active = false;
     bus.emit(PluginEvents.DEACTIVATED, { plugin: pluginId });
   }
-  
+
   /**
    * Get a plugin by ID
    * @param {string} pluginId
@@ -175,7 +182,7 @@ export class PluginManager {
   get(pluginId) {
     return this.plugins.get(pluginId);
   }
-  
+
   /**
    * Check if plugin is registered
    * @param {string} pluginId
@@ -184,7 +191,7 @@ export class PluginManager {
   has(pluginId) {
     return this.plugins.has(pluginId);
   }
-  
+
   /**
    * Check if plugin is active
    * @param {string} pluginId
@@ -194,15 +201,15 @@ export class PluginManager {
     const plugin = this.plugins.get(pluginId);
     return !!(plugin && plugin.active);
   }
-  
+
   /**
    * List all plugins
    * @returns {Array<object>} array of plugin metadata
    */
   list() {
-    return [...this.plugins.values()].map(p => p.getMetadata());
+    return [...this.plugins.values()].map((p) => p.getMetadata());
   }
-  
+
   /**
    * Load plugins from config
    * @param {{modules: Array<object>}} config
@@ -210,7 +217,7 @@ export class PluginManager {
    */
   async loadFromConfig(config) {
     const modules = config.modules || [];
-    
+
     // Sort by dependencies
     const sorted = this._topologicalSort(modules);
 
@@ -240,24 +247,27 @@ export class PluginManager {
       }
     }
   }
-  
+
   // Private helpers
-  
+
   _checkDependencies(plugin) {
-    return (plugin.getMetadata().dependencies || []).filter(id => !this.plugins.has(id));
+    return (plugin.getMetadata().dependencies || []).filter(
+      (id) => !this.plugins.has(id)
+    );
   }
-  
+
   _findDependents(pluginId) {
     const dependents = [];
     for (const plugin of this.plugins.values()) {
-      if ((plugin.getMetadata().dependencies || []).includes(pluginId)) dependents.push(plugin.id);
+      if ((plugin.getMetadata().dependencies || []).includes(pluginId))
+        dependents.push(plugin.id);
     }
     return dependents;
   }
-  
+
   _addToLoadOrder(plugin) {
     const deps = plugin.getMetadata().dependencies || [];
-    
+
     // Find position after all dependencies
     let insertIndex = 0;
     for (const depId of deps) {
@@ -266,25 +276,25 @@ export class PluginManager {
     }
     this.loadOrder.splice(insertIndex, 0, plugin.id);
   }
-  
+
   _topologicalSort(modules) {
     // Simple topological sort by dependencies
     const sorted = [];
     const visited = new Set();
-    
+
     function visit(module) {
       if (visited.has(module.id)) return;
       visited.add(module.id);
-      
+
       const deps = module.dependencies || [];
       for (const depId of deps) {
-        const depModule = modules.find(m => m.id === depId);
+        const depModule = modules.find((m) => m.id === depId);
         if (depModule) visit(depModule);
       }
-      
+
       sorted.push(module);
     }
-    
+
     modules.forEach(visit);
     return sorted;
   }

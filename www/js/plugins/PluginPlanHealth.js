@@ -21,7 +21,7 @@ class PluginPlanHealth {
       description: 'Detect and highlight planning issues and anomalies',
       icon: 'heartbeat',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
     };
   }
 
@@ -35,12 +35,12 @@ class PluginPlanHealth {
 
   async activate() {
     if (!this._componentLoaded) await this.init();
-    
+
     if (!this._el) {
       this._el = document.createElement('plugin-plan-health');
       document.body.appendChild(this._el);
     }
-    
+
     if (this._el?.open) this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });

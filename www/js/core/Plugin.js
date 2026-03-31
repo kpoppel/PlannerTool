@@ -62,7 +62,7 @@ export class Plugin {
       version: this.config.version || '1.0.0',
       description: this.config.description || '',
       author: this.config.author || 'Unknown',
-      dependencies: this.config.dependencies || []
+      dependencies: this.config.dependencies || [],
     };
   }
 }

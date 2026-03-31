@@ -25,17 +25,17 @@ export default {
     headless: true,
     viewport: { width: 1280, height: 800 },
     actionTimeout: 5000,
-    storageState: storageStatePath
+    storageState: storageStatePath,
   },
   globalSetup: globalSetupPath,
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } }
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
   webServer: {
     command: 'python3 -m uvicorn planner:app --reload --port 8000',
     url: 'http://localhost:8000',
     timeout: 120000,
-    reuseExistingServer: true
-  }
+    reuseExistingServer: true,
+  },
 };

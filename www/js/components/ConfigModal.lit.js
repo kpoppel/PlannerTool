@@ -6,41 +6,46 @@ import { dataService } from '../services/dataService.js';
 
 class ConfigModal extends LitElement {
   static properties = {
-    open: { type: Boolean }
+    open: { type: Boolean },
   };
 
-  constructor(){
+  constructor() {
     super();
     this.open = false;
   }
 
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
   }
 
-  disconnectedCallback(){ super.disconnectedCallback(); }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+  }
 
-  _getInner(){
+  _getInner() {
     return this.renderRoot.querySelector('modal-lit');
   }
 
-  _qs(selector){
+  _qs(selector) {
     const inner = this._getInner();
     return inner ? inner.querySelector(selector) : null;
   }
 
-  async _populate(){
+  async _populate() {
     const emailInput = this._qs('#configEmail');
     const autosaveInput = this._qs('#autosaveInterval');
-    try{
+    try {
       const storedEmail = await dataService.getLocalPref('user.email');
-      if(storedEmail) emailInput.value = storedEmail;
+      if (storedEmail) emailInput.value = storedEmail;
       const storedAutosave = await dataService.getLocalPref('autosave.interval');
-      if(storedAutosave !== undefined && autosaveInput) autosaveInput.value = storedAutosave;
-    }catch(e){ /* ignore */ }
+      if (storedAutosave !== undefined && autosaveInput)
+        autosaveInput.value = storedAutosave;
+    } catch (e) {
+      /* ignore */
+    }
   }
 
-  render(){
+  render() {
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Configuration</h3></div>
@@ -91,7 +96,12 @@ class ConfigModal extends LitElement {
           <form id="configForm" class="config-form">
             <div class="form-row">
               <label for="configEmail">Email address</label>
-              <input type="email" id="configEmail" placeholder="you@example.com" required />
+              <input
+                type="email"
+                id="configEmail"
+                placeholder="you@example.com"
+                required
+              />
             </div>
             <div class="form-row">
               <label for="configPat">Personal Access Token (PAT)</label>
@@ -99,7 +109,14 @@ class ConfigModal extends LitElement {
             </div>
             <div class="form-row">
               <label for="autosaveInterval">Autosave interval (minutes, 0=off)</label>
-              <input type="number" id="autosaveInterval" min="0" max="120" step="1" value="0" />
+              <input
+                type="number"
+                id="autosaveInterval"
+                min="0"
+                max="120"
+                step="1"
+                value="0"
+              />
             </div>
             <div id="configStatus" class="status" aria-live="polite"></div>
           </form>
@@ -112,7 +129,7 @@ class ConfigModal extends LitElement {
     `;
   }
 
-  firstUpdated(){
+  firstUpdated() {
     // Populate now that the element has rendered and inputs are present
     this._populate();
 
@@ -125,68 +142,95 @@ class ConfigModal extends LitElement {
 
     // Save handler wired to Save button so the footer button can trigger form submit
     const saveBtn = this._qs('#saveConfigBtn');
-    if (saveBtn) saveBtn.addEventListener('click', async (e)=>{
-      e.preventDefault();
-      const email = emailInput.value.trim();
-      const pat = patInput.value;
-      const autosaveInterval = parseInt(autosaveInput.value, 10) || 0;
-      if (email) await dataService.setLocalPref('user.email', email);
-      await dataService.setLocalPref('autosave.interval', autosaveInterval);
-      let patText = '';
-      if (pat) patText = 'Access token updated.';
-      try{
-        const res = await dataService.saveConfig({ email, pat });
-        if(res && res.ok){ status.textContent = 'Configuration saved. ' + patText; }
-        else { status.textContent = 'Configuration saved locally, but server save failed.'; }
-      }catch(err){ status.textContent = 'Configuration saved locally, but server save failed.'; }
-      bus.emit(ConfigEvents.UPDATED, { email });
-      bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });
-    });
+    if (saveBtn)
+      saveBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const email = emailInput.value.trim();
+        const pat = patInput.value;
+        const autosaveInterval = parseInt(autosaveInput.value, 10) || 0;
+        if (email) await dataService.setLocalPref('user.email', email);
+        await dataService.setLocalPref('autosave.interval', autosaveInterval);
+        let patText = '';
+        if (pat) patText = 'Access token updated.';
+        try {
+          const res = await dataService.saveConfig({ email, pat });
+          if (res && res.ok) {
+            status.textContent = 'Configuration saved. ' + patText;
+          } else {
+            status.textContent = 'Configuration saved locally, but server save failed.';
+          }
+        } catch (err) {
+          status.textContent = 'Configuration saved locally, but server save failed.';
+        }
+        bus.emit(ConfigEvents.UPDATED, { email });
+        bus.emit(ConfigEvents.AUTOSAVE, { autosaveInterval });
+      });
 
-    if (closeBtn) closeBtn.addEventListener('click', ()=>{
-      const innerModal = this._getInner();
-      if(innerModal && typeof innerModal.close === 'function') innerModal.close();
-      else this._close();
-    });
+    if (closeBtn)
+      closeBtn.addEventListener('click', () => {
+        const innerModal = this._getInner();
+        if (innerModal && typeof innerModal.close === 'function') innerModal.close();
+        else this._close();
+      });
 
     // Ensure the inner modal is opened after the <modal-lit> definition is available
-    customElements.whenDefined('modal-lit').then(()=>{
-      const innerModal = this._getInner();
-      if(innerModal){
-        innerModal.addEventListener('modal-close', ()=> this.remove());
-        try{ innerModal.open = true; }catch(e){ /* ignore */ }
-      }
-    }).catch(()=>{
-      // If definition never arrives, still attempt to open any existing inner modal
-      const innerModal = this._getInner();
-      if(innerModal){ try{ innerModal.open = true; }catch(e){} }
-    });
+    customElements
+      .whenDefined('modal-lit')
+      .then(() => {
+        const innerModal = this._getInner();
+        if (innerModal) {
+          innerModal.addEventListener('modal-close', () => this.remove());
+          try {
+            innerModal.open = true;
+          } catch (e) {
+            /* ignore */
+          }
+        }
+      })
+      .catch(() => {
+        // If definition never arrives, still attempt to open any existing inner modal
+        const innerModal = this._getInner();
+        if (innerModal) {
+          try {
+            innerModal.open = true;
+          } catch (e) {}
+        }
+      });
     // Ensure the email input is focused when the inner modal is opened
     const tryFocusEmail = () => {
-      try{
+      try {
         const emailInput = this._qs('#configEmail');
-        if(emailInput && typeof emailInput.focus === 'function'){
+        if (emailInput && typeof emailInput.focus === 'function') {
           // small timeout to allow any modal open animation to complete
-          setTimeout(()=> emailInput.focus(), 60);
+          setTimeout(() => emailInput.focus(), 60);
         }
-      }catch(e){}
+      } catch (e) {}
     };
     // If modal-lit exists now, focus after it's opened
     const existingInner = this._getInner();
-    if(existingInner){
+    if (existingInner) {
       // If modal-lit exposes open property, watch for it or attempt immediate focus
-      try{ if(existingInner.open) tryFocusEmail(); else { existingInner.addEventListener('modal-open', tryFocusEmail, { once: true }); } }catch(e){ tryFocusEmail(); }
+      try {
+        if (existingInner.open) tryFocusEmail();
+        else {
+          existingInner.addEventListener('modal-open', tryFocusEmail, {
+            once: true,
+          });
+        }
+      } catch (e) {
+        tryFocusEmail();
+      }
     }
   }
 
-  _overlayClick(e){
+  _overlayClick(e) {
     const innerModal = this._getInner();
-    if(innerModal && typeof innerModal.close === 'function') innerModal.close();
+    if (innerModal && typeof innerModal.close === 'function') innerModal.close();
   }
 
-  _close(){
+  _close() {
     const innerModal = this._getInner();
-    if(innerModal && typeof innerModal.close === 'function') innerModal.close();
+    if (innerModal && typeof innerModal.close === 'function') innerModal.close();
     this.remove();
   }
 }

@@ -14,6 +14,7 @@ Format: `NNNN_description.py`
 - `description`: Brief description using underscores (e.g., `add_display_states`)
 
 Examples:
+
 - `0000_initial.py`
 - `0013_projects_schema_v3_add_display_states.py`
 
@@ -29,6 +30,7 @@ Each migration file must include:
    - Should be idempotent (safe to run multiple times)
 
 Optional:
+
 - **downgrade()** function: Reverts the migration
 
 ### Example template
@@ -51,7 +53,7 @@ def upgrade(dry_run=False, backup=False):
     cfg_path = root / 'data' / 'config' / 'myconfig.yml'
 
     print(f"Migration {MIGRATION_ID}: doing something")
-    
+
     if not cfg_path.exists():
         print(f"Config file not found; nothing to do.")
         return
@@ -59,32 +61,32 @@ def upgrade(dry_run=False, backup=False):
     # Read config
     text = cfg_path.read_text(encoding='utf8')
     cfg = yaml.safe_load(text) or {}
-    
+
     # Check if migration already applied
     current_version = cfg.get('schema_version', 1)
     if current_version >= 2:
         print(f"Already at version {current_version}; nothing to do.")
         return
-    
+
     # Make changes
     cfg['schema_version'] = 2
     # ... modify config ...
-    
+
     # Dry-run preview
     if dry_run:
         print("\\nDry-run: would update to:")
         print(yaml.safe_dump(cfg, sort_keys=False))
         return
-    
+
     # Backup
     if backup:
         bak = cfg_path.with_suffix('.yml.bak')
         shutil.copy2(cfg_path, bak)
         print(f"Backed up to {bak}")
-    
+
     # Write changes
     cfg_path.write_text(
-        yaml.safe_dump(cfg, sort_keys=False), 
+        yaml.safe_dump(cfg, sort_keys=False),
         encoding='utf8'
     )
     print(f"✓ Migration complete")
@@ -143,6 +145,7 @@ Applied migrations are tracked in `data/migrations.json`:
 ## Best practices
 
 ### 1. Idempotency
+
 Migrations should be safe to run multiple times:
 
 ```python
@@ -153,6 +156,7 @@ if 'new_field' in project:
 ```
 
 ### 2. Schema versioning
+
 Use schema_version to track config file versions:
 
 ```python
@@ -163,6 +167,7 @@ if current_version >= 2:
 ```
 
 ### 3. Backup support
+
 Always support creating backups:
 
 ```python
@@ -173,6 +178,7 @@ if backup:
 ```
 
 ### 4. Dry-run support
+
 Preview changes before applying:
 
 ```python
@@ -183,6 +189,7 @@ if dry_run:
 ```
 
 ### 5. Informative output
+
 Print clear status messages:
 
 ```python
@@ -192,6 +199,7 @@ print(f"✓ Migration complete")
 ```
 
 ### 6. Error handling
+
 Handle missing files gracefully:
 
 ```python
@@ -231,16 +239,19 @@ if not cfg_path.exists():
 ## Troubleshooting
 
 ### Migration not discovered
+
 - Check filename starts with 4-digit number
 - Ensure `MIGRATION_ID` is defined
 - Verify `upgrade()` function exists
 
 ### Migration fails to run
+
 - Check file permissions (`chmod +x` if needed for direct execution)
 - Verify YAML syntax in config files
 - Run with `--dry-run` first to preview changes
 
 ### Need to revert migration
+
 - If downgrade() exists, run it directly
 - Otherwise, restore from backup (.bak file)
 - Manually edit `data/migrations.json` to remove from "applied" list

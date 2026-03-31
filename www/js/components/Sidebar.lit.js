@@ -1,8 +1,19 @@
-
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, PluginEvents, ViewEvents, ViewManagementEvents, FilterEvents, StateFilterEvents, TimelineEvents, FeatureEvents } from '../core/EventRegistry.js';
+import {
+  ProjectEvents,
+  TeamEvents,
+  ScenarioEvents,
+  DataEvents,
+  PluginEvents,
+  ViewEvents,
+  ViewManagementEvents,
+  FilterEvents,
+  StateFilterEvents,
+  TimelineEvents,
+  FeatureEvents,
+} from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -21,30 +32,55 @@ export class SidebarLit extends LitElement {
   };
 
   static styles = css`
-    :host { display:block; }
+    :host {
+      display: block;
+    }
     /* Keep component-specific small tweaks; main styles come from www/css/main.css */
     //  .chip { display:flex; gap:8px; align-items:center; padding:6px; border-radius:6px; cursor:pointer; }
     //  .chip.active { opacity: 0.95; }
     //  .color-dot { width:16px; height:16px; border-radius:4px; flex:0 0 auto; }
     //  .chip-badge { padding:2px 6px; border-radius:10px; font-size:12px; background: rgba(255,255,255,0.06); }
     /* Make the last two columns square so icons can be square boxes and match main.css */
-    .counts-header { 
-       display:grid;
-       grid-template-columns: 24px 28px 1fr 58px 31px;
-       align-items:center;
-       gap:8px;
-       //margin-bottom:4px;
-       color:#ddd;
-       //min-height:32px;
+    .counts-header {
+      display: grid;
+      grid-template-columns: 24px 28px 1fr 58px 31px;
+      align-items: center;
+      gap: 8px;
+      //margin-bottom:4px;
+      color: #ddd;
+      //min-height:32px;
     }
     /* Use a compact 16x16 icon container and center it within the grid cell. */
-    .type-icon { display:inline-flex; align-items:center; }
-    .type-icon.epic { color: #ffcf33; margin-left:30px; }
+    .type-icon {
+      display: inline-flex;
+      align-items: center;
+    }
+    .type-icon.epic {
+      color: #ffcf33;
+      margin-left: 30px;
+    }
     /* Let the svg fill the 16x16 container */
-    .type-icon svg { width: 16px; height: 16px; display: block; }
-    .group-title { font-weight:700; font-size:12px; margin:6px 0 10px; color:#3b3b3b; }
-    .plans-group .sidebar-list { margin-top:4px; margin-bottom:4px; }
-    .divider { border-top:1px dashed rgba(255,255,255,1); margin:10px 0; border-radius:2px; height:0; }
+    .type-icon svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+    .group-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin: 6px 0 10px;
+      color: #3b3b3b;
+    }
+    .plans-group .sidebar-list {
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+    .divider {
+      border-top: 1px dashed rgba(255, 255, 255, 1);
+      margin: 10px 0;
+      border-radius: 2px;
+      height: 0;
+    }
     /* Sidebar container styles (migrated from www/css/main.css) */
     .sidebar {
       width: var(--sidebar-width);
@@ -69,22 +105,41 @@ export class SidebarLit extends LitElement {
       word-wrap: break-word;
       word-break: break-word;
     }
-    
+
     /* Make content area scrollable and fill available space */
-    .sidebar-content { 
+    .sidebar-content {
       flex: 1;
       overflow: hidden auto;
       padding-bottom: 40px;
       min-height: 0;
       width: 100%;
     }
-    
-    .sidebar h2 { margin:0 0 8px; font-size:1.1rem; word-wrap: break-word; }
-    .sidebar-section { overflow: hidden; }
-    .sidebar-section h3 { margin:0 0 6px; font-size:0.93rem; word-wrap: break-word; }
-    .sidebar-list { list-style:none; margin:0; padding:0; }
-    .sidebar-list-item { display:flex; align-items:center; }
-    .sidebar-section-collapsed { display:none; }
+
+    .sidebar h2 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+      word-wrap: break-word;
+    }
+    .sidebar-section {
+      overflow: hidden;
+    }
+    .sidebar-section h3 {
+      margin: 0 0 6px;
+      font-size: 0.93rem;
+      word-wrap: break-word;
+    }
+    .sidebar-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .sidebar-list-item {
+      display: flex;
+      align-items: center;
+    }
+    .sidebar-section-collapsed {
+      display: none;
+    }
     .sidebar-section-header-collapsible {
       cursor: pointer;
       display: flex;
@@ -104,85 +159,224 @@ export class SidebarLit extends LitElement {
       margin-bottom: 4px;
       font-size: 1rem;
     }
-    .sidebar-chevron { font-size: 1.1em; margin-right: 4px; cursor: pointer; transition: transform 0.15s; }
-    .sidebar-title { flex: 1; }
+    .sidebar-chevron {
+      font-size: 1.1em;
+      margin-right: 4px;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .sidebar-title {
+      flex: 1;
+    }
     /* Chips, list and control styles (migrated from main.css) */
-    .chip-group { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
-    .chip-group .group-label { width:100%; font-weight:600; font-size:0.85rem; opacity:0.9; }
-    .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:16px; border:1px solid rgba(255,255,255,0.25); color:var(--color-sidebar-text); background:rgba(255,255,255,0.08); cursor:pointer; font-size:0.8rem; line-height:1; user-select:none; transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease; }
-    .chip:hover { background:rgba(255,255,255,0.14); }
+    .chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0;
+    }
+    .chip-group .group-label {
+      width: 100%;
+      font-weight: 600;
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: var(--color-sidebar-text);
+      background: rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      font-size: 0.8rem;
+      line-height: 1;
+      user-select: none;
+      transition:
+        background 120ms ease,
+        color 120ms ease,
+        box-shadow 120ms ease;
+    }
+    .chip:hover {
+      background: rgba(255, 255, 255, 0.14);
+    }
     /* Active state: match when class is present or when ARIA attributes indicate pressed/checked */
-    .chip.active, .chip[aria-pressed="true"], .chip[aria-checked="true"] {
-      background:#fff;
-      color:#23344d;
-      border-color:#fff;
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset, 0 1px 3px rgba(0,0,0,0.06);
+    .chip.active,
+    .chip[aria-pressed='true'],
+    .chip[aria-checked='true'] {
+      background: #fff;
+      color: #23344d;
+      border-color: #fff;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.06) inset,
+        0 1px 3px rgba(0, 0, 0, 0.06);
       //font-weight:600;
     }
     /* Make inactive chips slightly muted so active state stands out */
-    .chip:not(.active):not([aria-pressed="true"]):not([aria-checked="true"]) { opacity:0.95; }
-    .chip-badge { display:inline-flex; align-items:center; justify-content:center; width:30px; height:18px; border-radius:9px; font-size:0.7rem; font-weight:700; background:rgba(0,0,0,0.12); color:#fff; }
-    .chip.active .chip-badge { background:#23344d; color:#fff; }
-    .chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
+    .chip:not(.active):not([aria-pressed='true']):not([aria-checked='true']) {
+      opacity: 0.95;
+    }
+    .chip-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 18px;
+      border-radius: 9px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.12);
+      color: #fff;
+    }
+    .chip.active .chip-badge {
+      background: #23344d;
+      color: #fff;
+    }
+    .chip:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 2px;
+    }
 
     /* Data Funnel (dataset status) */
     .dataset-status {
-      background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.06) 0%,
+        rgba(255, 255, 255, 0.02) 100%
+      );
+      border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 8px;
       padding: 10px 12px;
       margin-bottom: 12px;
     }
-    .status-title { font-size: 11px; text-transform:uppercase; opacity:0.8; margin-bottom:8px; }
-    .status-flow { display:flex; align-items:center; gap:8px; }
-    .status-item { display:flex; flex-direction:column; align-items:center; flex:1; }
-    .status-number { font-size:16px; font-weight:800; color:var(--color-sidebar-text); }
-    .status-label { font-size:11px; opacity:0.85; }
-    .status-arrow { font-size:14px; opacity:0.6; }
+    .status-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+    .status-flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+    }
+    .status-number {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--color-sidebar-text);
+    }
+    .status-label {
+      font-size: 11px;
+      opacity: 0.85;
+    }
+    .status-arrow {
+      font-size: 14px;
+      opacity: 0.6;
+    }
 
     /* Expand Dataset section */
     .expansion-section {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(102, 126, 234, 0.03) 100%);
+      background: linear-gradient(
+        135deg,
+        rgba(102, 126, 234, 0.12) 0%,
+        rgba(102, 126, 234, 0.03) 100%
+      );
       border: 1px solid rgba(102, 126, 234, 0.2);
       border-radius: 8px;
       padding: 10px 12px;
       margin-bottom: 12px;
     }
-    .section-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; opacity: 0.95; }
-    .section-description { font-size: 11px; opacity: 0.75; margin-bottom: 10px; line-height: 1.4; }
-    .option-group { display: flex; flex-direction: column; gap: 8px; }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      opacity: 0.95;
+    }
+    .section-description {
+      font-size: 11px;
+      opacity: 0.75;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .option-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 6px 8px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .option-row:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
-    .option-row.active { background: rgba(102, 126, 234, 0.25); border-color: rgba(102, 126, 234, 0.4); }
-    .option-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .option-row:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+    .option-row.active {
+      background: rgba(102, 126, 234, 0.25);
+      border-color: rgba(102, 126, 234, 0.4);
+    }
+    .option-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
     .option-checkbox {
       width: 16px;
       height: 16px;
-      border: 2px solid rgba(255,255,255,0.4);
+      border: 2px solid rgba(255, 255, 255, 0.4);
       border-radius: 3px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0,0,0,0.2);
+      background: rgba(0, 0, 0, 0.2);
       flex-shrink: 0;
     }
-    .option-row.active .option-checkbox { background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1); }
-    .option-checkbox::after { content: '✓'; color: white; font-size: 11px; font-weight: bold; opacity: 0; }
-    .option-row.active .option-checkbox::after { opacity: 1; }
-    .option-count { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.12); border-radius: 10px; font-weight: 600; }
-    .option-row.active .option-count { background: rgba(102, 126, 234, 0.4); }
+    .option-row.active .option-checkbox {
+      background: rgba(102, 126, 234, 0.8);
+      border-color: rgba(102, 126, 234, 1);
+    }
+    .option-checkbox::after {
+      content: '✓';
+      color: white;
+      font-size: 11px;
+      font-weight: bold;
+      opacity: 0;
+    }
+    .option-row.active .option-checkbox::after {
+      opacity: 1;
+    }
+    .option-count {
+      font-size: 11px;
+      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .option-row.active .option-count {
+      background: rgba(102, 126, 234, 0.4);
+    }
 
-    .option-row.disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+    .option-row.disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
 
     /* Task Filters section */
     .filter-dimension {
@@ -206,32 +400,52 @@ export class SidebarLit extends LitElement {
       align-items: center;
       gap: 6px;
       padding: 4px 6px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 3px;
       cursor: pointer;
       transition: all 0.15s;
       font-size: 12px;
     }
-    .filter-option:hover { background: rgba(255,255,255,0.1); }
-    .filter-option.active { background: rgba(102, 126, 234, 0.25); border-color: rgba(102, 126, 234, 0.4); }
+    .filter-option:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .filter-option.active {
+      background: rgba(102, 126, 234, 0.25);
+      border-color: rgba(102, 126, 234, 0.4);
+    }
     .filter-checkbox {
       width: 14px;
       height: 14px;
-      border: 2px solid rgba(255,255,255,0.4);
+      border: 2px solid rgba(255, 255, 255, 0.4);
       border-radius: 2px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0,0,0,0.2);
+      background: rgba(0, 0, 0, 0.2);
       flex-shrink: 0;
     }
-    .filter-option.active .filter-checkbox { background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1); }
-    .filter-checkbox::after { content: '✓'; color: white; font-size: 9px; font-weight: bold; opacity: 0; }
-    .filter-option.active .filter-checkbox::after { opacity: 1; }
+    .filter-option.active .filter-checkbox {
+      background: rgba(102, 126, 234, 0.8);
+      border-color: rgba(102, 126, 234, 1);
+    }
+    .filter-checkbox::after {
+      content: '✓';
+      color: white;
+      font-size: 9px;
+      font-weight: bold;
+      opacity: 0;
+    }
+    .filter-option.active .filter-checkbox::after {
+      opacity: 1;
+    }
 
     /* Disabled visuals applied when external plugins set disabled maps */
-    .filter-option.disabled { opacity: 0.2; cursor: not-allowed; pointer-events: none; }
+    .filter-option.disabled {
+      opacity: 0.2;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
 
     /* Segmented button groups for radio-style options */
     .segmented-group {
@@ -244,8 +458,8 @@ export class SidebarLit extends LitElement {
     .segment-btn {
       flex: 1;
       padding: 5px 8px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 3px;
       color: var(--color-sidebar-text);
       font-size: 12px;
@@ -257,7 +471,7 @@ export class SidebarLit extends LitElement {
     }
     .segment-btn:hover:not(.active) {
       background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255,255,255,0.15);
+      border-color: rgba(255, 255, 255, 0.15);
     }
     .segment-btn.active {
       background: rgba(102, 126, 234, 0.35);
@@ -272,19 +486,71 @@ export class SidebarLit extends LitElement {
     }
 
     /* Sidebar-specific chips and lists */
-    .sidebar-chip { padding:0 8px 0 0; border-radius:10px; background:transparent; border:1px solid rgba(0,0,0,0.06); box-sizing:border-box; min-height:25px; overflow:hidden; display:flex; align-items:stretch; }
-    .sidebar-chip:hover, .sidebar-chip.chip-hover { background: rgba(255,255,255,0.18); cursor: pointer; }
-    .sidebar-chip.active { background: transparent; border-color: transparent; background: rgb(55, 85, 130); }
-    .sidebar-chip.active:hover { background: rgba(255,255,255,0.18); }
-    .sidebar-list { list-style:none; padding:0; display:flex; flex-direction:column; gap:4px; }
-    .sidebar-list-item { display:block; }
-    .sidebar-list .color-dot { width:28px; border-radius:6px 0 0 6px; display:inline-block; flex:0 0 28px; align-self:stretch; cursor: pointer; }
-    .sidebar-chip .project-name-col, .sidebar-chip .team-name-col { padding-left:8px; font-weight:600; font-size:0.8rem; color:var(--color-sidebar-text); }
-    .chip-badge.small { font-size:0.75rem; min-width:20px; padding:0 6px; }
-    .sidebar-chip .chip-badge { background: rgba(0,0,0,0.06); color: var(--color-sidebar-text); }
+    .sidebar-chip {
+      padding: 0 8px 0 0;
+      border-radius: 10px;
+      background: transparent;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-sizing: border-box;
+      min-height: 25px;
+      overflow: hidden;
+      display: flex;
+      align-items: stretch;
+    }
+    .sidebar-chip:hover,
+    .sidebar-chip.chip-hover {
+      background: rgba(255, 255, 255, 0.18);
+      cursor: pointer;
+    }
+    .sidebar-chip.active {
+      background: transparent;
+      border-color: transparent;
+      background: rgb(55, 85, 130);
+    }
+    .sidebar-chip.active:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .sidebar-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sidebar-list-item {
+      display: block;
+    }
+    .sidebar-list .color-dot {
+      width: 28px;
+      border-radius: 6px 0 0 6px;
+      display: inline-block;
+      flex: 0 0 28px;
+      align-self: stretch;
+      cursor: pointer;
+    }
+    .sidebar-chip .project-name-col,
+    .sidebar-chip .team-name-col {
+      padding-left: 8px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: var(--color-sidebar-text);
+    }
+    .chip-badge.small {
+      font-size: 0.75rem;
+      min-width: 20px;
+      padding: 0 6px;
+    }
+    .sidebar-chip .chip-badge {
+      background: rgba(0, 0, 0, 0.06);
+      color: var(--color-sidebar-text);
+    }
 
     /* Toggle and list controls */
-    .list-toggle { display:flex; align-items:center; justify-content:center; }
+    .list-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
     .list-toggle-btn {
       display: inline-flex;
       align-items: center;
@@ -303,19 +569,23 @@ export class SidebarLit extends LitElement {
     /* Footer stays at bottom */
     .sidebar-config {
       flex-shrink: 0;
-      position:fixed;
-      bottom:0;
-      left:0;
+      position: fixed;
+      bottom: 0;
+      left: 0;
       width: var(--sidebar-width);
-      padding:0 6px;
+      padding: 0 6px;
       background: var(--color-sidebar-bg);
       box-sizing: border-box;
       z-index: 1000;
       overflow: hidden;
     }
     .sidebar-config .sidebar-footer-box {
-      background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-      border: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.03) 0%,
+        rgba(255, 255, 255, 0.01) 100%
+      );
+      border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 6px;
       padding: 6px 8px; /* give a bit more breathing room */
       display: block;
@@ -334,15 +604,41 @@ export class SidebarLit extends LitElement {
     }
     .sidebar-config .footer-line.author {
       font-size: 11px;
-      color: rgba(255,255,255,0.85);
+      color: rgba(255, 255, 255, 0.85);
     }
-    #openConfigBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; }
-    #openConfigBtn:hover { background:#eee; }
-    #openHelpBtn { background:#f7f7f7; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; cursor:pointer; color:#333; margin-left:8px; }
-    #openHelpBtn:hover { background:#eee; }
+    #openConfigBtn {
+      background: #f7f7f7;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      color: #333;
+    }
+    #openConfigBtn:hover {
+      background: #eee;
+    }
+    #openHelpBtn {
+      background: #f7f7f7;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      color: #333;
+      margin-left: 8px;
+    }
+    #openHelpBtn:hover {
+      background: #eee;
+    }
     /* View options and segmented control (migrated from main.css -> viewOptions.js) */
-    .view-option-section { margin: 12px 0; }
-    .group-label { font-weight: 600; font-size: 0.85rem; opacity: 0.9; margin-bottom: 6px; }
+    .view-option-section {
+      margin: 12px 0;
+    }
+    .group-label {
+      font-weight: 600;
+      font-size: 0.85rem;
+      opacity: 0.9;
+      margin-bottom: 6px;
+    }
 
     .segmented-control {
       display: flex;
@@ -356,76 +652,266 @@ export class SidebarLit extends LitElement {
 
     .segment {
       /* Match .chip styles exactly for consistency */
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 10px;
-      border-radius:16px;
-      border:1px solid rgba(255,255,255,0.25);
-      color:var(--color-sidebar-text);
-      background:rgba(255,255,255,0.08);
-      cursor:pointer;
-      font-size:0.8rem;
-      font-weight:600;
-      line-height:1;
-      user-select:none;
-      transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: var(--color-sidebar-text);
+      background: rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      line-height: 1;
+      user-select: none;
+      transition:
+        background 120ms ease,
+        color 120ms ease,
+        box-shadow 120ms ease,
+        border-color 120ms ease;
     }
 
-    .segment:hover:not(.active) { background: rgba(255,255,255,0.14); }
-    .segment.active, .segment[aria-pressed="true"], .segment[aria-checked="true"] {
-      background:#fff;
-      color:#23344d;
-      border-color:#fff;
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset, 0 1px 3px rgba(0,0,0,0.06);
+    .segment:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.14);
     }
-    .segment.first { border-top-left-radius:16px; border-bottom-left-radius:16px; }
-    .segment.last { border-top-right-radius:16px; border-bottom-right-radius:16px; }
-    .segment:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; z-index:2; }
+    .segment.active,
+    .segment[aria-pressed='true'],
+    .segment[aria-checked='true'] {
+      background: #fff;
+      color: #23344d;
+      border-color: #fff;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.06) inset,
+        0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .segment.first {
+      border-top-left-radius: 16px;
+      border-bottom-left-radius: 16px;
+    }
+    .segment.last {
+      border-top-right-radius: 16px;
+      border-bottom-right-radius: 16px;
+    }
+    .segment:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 2px;
+      z-index: 2;
+    }
 
     /* Accent-enabled chip variant */
-    .chip-with-accent.active { background: #fff; color: #23344d; border-left-color: var(--chip-accent); border-right-color: var(--chip-accent); border-left-style: solid; border-right-style: solid; border-left-width: 8px; border-right-width: 8px; }
-    .chip-with-accent.active .chip-badge { background: #23344d; color: #fff; }
-    .chip-with-accent:focus-visible { outline-offset: 2px; }
-    .chip-with-accent::before, .chip-with-accent::after { box-shadow: 0 0 0 1px rgba(0,0,0,0.06) inset; }
+    .chip-with-accent.active {
+      background: #fff;
+      color: #23344d;
+      border-left-color: var(--chip-accent);
+      border-right-color: var(--chip-accent);
+      border-left-style: solid;
+      border-right-style: solid;
+      border-left-width: 8px;
+      border-right-width: 8px;
+    }
+    .chip-with-accent.active .chip-badge {
+      background: #23344d;
+      color: #fff;
+    }
+    .chip-with-accent:focus-visible {
+      outline-offset: 2px;
+    }
+    .chip-with-accent::before,
+    .chip-with-accent::after {
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06) inset;
+    }
     /* Scenario list styling */
-    .scenario-item { padding:4px 6px; border-radius:6px; width:100%; display:flex; align-items:center; gap:8px; box-sizing:border-box; position:relative; }
-    .scenario-item.active { background:rgba(255,255,255,0.18); }
-    .scenario-name { cursor:pointer; flex:1 1 auto; font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .scenario-controls { display:inline-flex; gap:4px; align-items:center; position:absolute; right:6px; top:50%; transform:translateY(-50%); }
-    .scenario-name { padding-right:56px; }
-    .scenario-btn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.75rem; line-height:1; }
-    .scenario-btn:hover { background:#ececec; }
-    .scenario-lock { font-size:0.9rem; margin-right:4px; }
-    .scenario-menu-popover { position:absolute; background:#fff; color:#222; border:1px solid var(--color-border); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.18); padding:6px 0; display:flex; flex-direction:column; min-width:160px; z-index:1200; }
-    .scenario-menu-item { padding:6px 12px; font-size:0.8rem; cursor:pointer; display:flex; align-items:center; gap:6px; }
-    .scenario-menu-item:hover { background:#f3f5f7; }
-    .scenario-menu-item.disabled { color:#999; cursor:default; }
-    .scenario-annotate-table { width:100%; border-collapse:collapse; margin-top:8px; }
-    .scenario-annotate-table th, .scenario-annotate-table td { border:1px solid var(--color-border); padding:6px 8px; font-size:0.85rem; }
-    .scenario-annotate-table th { background:#f7f7f7; text-align:left; }
+    .scenario-item {
+      padding: 4px 6px;
+      border-radius: 6px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      position: relative;
+    }
+    .scenario-item.active {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .scenario-name {
+      cursor: pointer;
+      flex: 1 1 auto;
+      font-weight: 600;
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .scenario-controls {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .scenario-name {
+      padding-right: 56px;
+    }
+    .scenario-btn {
+      background: #f7f7f7;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+    .scenario-btn:hover {
+      background: #ececec;
+    }
+    .scenario-lock {
+      font-size: 0.9rem;
+      margin-right: 4px;
+    }
+    .scenario-menu-popover {
+      position: absolute;
+      background: #fff;
+      color: #222;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      padding: 6px 0;
+      display: flex;
+      flex-direction: column;
+      min-width: 160px;
+      z-index: 1200;
+    }
+    .scenario-menu-item {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .scenario-menu-item:hover {
+      background: #f3f5f7;
+    }
+    .scenario-menu-item.disabled {
+      color: #999;
+      cursor: default;
+    }
+    .scenario-annotate-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .scenario-annotate-table th,
+    .scenario-annotate-table td {
+      border: 1px solid var(--color-border);
+      padding: 6px 8px;
+      font-size: 0.85rem;
+    }
+    .scenario-annotate-table th {
+      background: #f7f7f7;
+      text-align: left;
+    }
 
     /* View list styling - matching scenario styling */
-    .view-item { padding:4px 6px; border-radius:6px; width:100%; display:flex; align-items:center; gap:8px; box-sizing:border-box; position:relative; }
-    .view-item.active { background:rgba(255,255,255,0.18); }
-    .view-name { cursor:pointer; flex:1 1 auto; font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:56px; }
-    .view-controls { display:inline-flex; gap:4px; align-items:center; position:absolute; right:6px; top:50%; transform:translateY(-50%); }
-    .view-btn { background:#f7f7f7; border:1px solid var(--color-border); border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.75rem; line-height:1; }
-    .view-btn:hover { background:#ececec; }
+    .view-item {
+      padding: 4px 6px;
+      border-radius: 6px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      position: relative;
+    }
+    .view-item.active {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .view-name {
+      cursor: pointer;
+      flex: 1 1 auto;
+      font-weight: 600;
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-right: 56px;
+    }
+    .view-controls {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .view-btn {
+      background: #f7f7f7;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      line-height: 1;
+    }
+    .view-btn:hover {
+      background: #ececec;
+    }
     /* Tools list styling (migrated from www/css/main.css) */
     /* Plugin/tool buttons render as .chip.sidebar-chip inside #toolsList */
-    #toolsList { margin-top:6px; display:flex; flex-direction:column; gap:2px; }
-    #toolsList .sidebar-list-item { display:block; }
-    #toolsList .sidebar-chip { padding:6px 8px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,0.14); color:var(--color-sidebar-text); font-weight:600; font-size:0.85rem; }
-    #toolsList .sidebar-chip:hover { background: rgba(255,255,255,0.06); cursor:pointer; }
-    #toolsList .sidebar-chip:focus-visible { outline:2px solid #5cc8ff; outline-offset:2px; }
-    #toolsList .chip-icon { width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; margin-right:8px; flex:0 0 18px; }
-    #toolsList .plugin-meta { color: rgba(255,255,255,0.85); font-size:0.8rem; margin-left:auto; }
+    #toolsList {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    #toolsList .sidebar-list-item {
+      display: block;
+    }
+    #toolsList .sidebar-chip {
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--color-sidebar-text);
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    #toolsList .sidebar-chip:hover {
+      background: rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+    }
+    #toolsList .sidebar-chip:focus-visible {
+      outline: 2px solid #5cc8ff;
+      outline-offset: 2px;
+    }
+    #toolsList .chip-icon {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 8px;
+      flex: 0 0 18px;
+    }
+    #toolsList .plugin-meta {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 0.8rem;
+      margin-left: auto;
+    }
     /* Match active style to scenario items for consistency */
-    #toolsList .sidebar-chip.active { background: rgba(255,255,255,0.18); color: var(--color-sidebar-text); border-color: transparent; }
+    #toolsList .sidebar-chip.active {
+      background: rgba(255, 255, 255, 0.18);
+      color: var(--color-sidebar-text);
+      border-color: transparent;
+    }
   `;
 
-  constructor(){
+  constructor() {
     super();
     this.open = true;
     this.serverStatus = 'loading';
@@ -458,7 +944,7 @@ export class SidebarLit extends LitElement {
       schedule: { planned: true, unplanned: true },
       allocation: { allocated: true, unallocated: true },
       hierarchy: { hasParent: true, noParent: true },
-      relations: { hasLinks: true, noLinks: true }
+      relations: { hasLinks: true, noLinks: true },
     };
     // Dynamic state & type filters (populated from baseline/features)
     this.availableFeatureStates = state.availableFeatureStates || [];
@@ -467,13 +953,9 @@ export class SidebarLit extends LitElement {
     this._taskTypesInitialized = false;
     // Controls disabled by external components (plugins)
     this._disabledSidebar = {};
-    
   }
 
-  
-
-
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
     // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
@@ -499,10 +981,14 @@ export class SidebarLit extends LitElement {
         this.scenarios = Array.isArray(list) ? [...list] : [];
       }
       // Prefer explicit activeScenarioId from payload if present, otherwise use state
-      if (payload && payload.activeScenarioId) this.activeScenarioId = payload.activeScenarioId;
+      if (payload && payload.activeScenarioId)
+        this.activeScenarioId = payload.activeScenarioId;
       else this.activeScenarioId = state.activeScenarioId;
     };
-    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId; };
+    this._onScenarioActivated = (payload) => {
+      this.activeScenarioId =
+        payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId;
+    };
     this._onScenariosUpdated = () => {
       const sc = state.scenarios || [];
       this.scenarios = [...sc];
@@ -512,13 +998,15 @@ export class SidebarLit extends LitElement {
       console.log('[Sidebar] Received views list event:', payload);
       this.views = payload && payload.views ? [...payload.views] : [];
       this.activeViewId = payload && payload.activeViewId ? payload.activeViewId : null;
-      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
+      this.activeViewData =
+        payload && payload.activeViewData ? payload.activeViewData : null;
       this.requestUpdate();
     };
     this._onViewActivated = (payload) => {
       console.log('[Sidebar] Received view activated event:', payload);
       this.activeViewId = payload && payload.viewId ? payload.viewId : null;
-      this.activeViewData = payload && payload.activeViewData ? payload.activeViewData : null;
+      this.activeViewData =
+        payload && payload.activeViewData ? payload.activeViewData : null;
       this.requestUpdate();
     };
 
@@ -533,54 +1021,77 @@ export class SidebarLit extends LitElement {
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnel = () => {
       try {
-        const feats = (state.featureService && state.featureService.getEffectiveFeatures && state.featureService.getEffectiveFeatures()) || [];
-        const selectedProjectIds = (this.projects || []).filter(p => p && p.selected).map(p => p.id);
-        
+        const feats =
+          (state.featureService &&
+            state.featureService.getEffectiveFeatures &&
+            state.featureService.getEffectiveFeatures()) ||
+          [];
+        const selectedProjectIds = (this.projects || [])
+          .filter((p) => p && p.selected)
+          .map((p) => p.id);
+
         // Selected tasks: features whose project is selected
-        const selectedFeatureIds = new Set(feats.filter(f => selectedProjectIds.includes(f.project)).map(f => f.id));
+        const selectedFeatureIds = new Set(
+          feats.filter((f) => selectedProjectIds.includes(f.project)).map((f) => f.id)
+        );
         this.selectedTasksCount = selectedFeatureIds.size;
-        
+
         // Expanded tasks: apply expansion filters
-        const selectedTeamIds = (this.teams || []).filter(t => t && t.selected).map(t => t.id);
-        const expansionResult = state.featureService && state.featureService.computeExpandedFeatureSet 
-          ? state.featureService.computeExpandedFeatureSet(selectedFeatureIds, {
+        const selectedTeamIds = (this.teams || [])
+          .filter((t) => t && t.selected)
+          .map((t) => t.id);
+        const expansionResult =
+          state.featureService && state.featureService.computeExpandedFeatureSet ?
+            state.featureService.computeExpandedFeatureSet(selectedFeatureIds, {
               expandParentChild: this.expandParentChild,
               expandRelations: this.expandRelations,
               expandTeamAllocated: this.expandTeamAllocated,
-              selectedTeamIds: selectedTeamIds
+              selectedTeamIds: selectedTeamIds,
             })
-          : { expandedIds: selectedFeatureIds, counts: { parentChild: 0, relations: 0, teamAllocated: 0 } };
-        
+          : {
+              expandedIds: selectedFeatureIds,
+              counts: { parentChild: 0, relations: 0, teamAllocated: 0 },
+            };
+
         const expandedFeatureIds = expansionResult.expandedIds;
         this.expandedTasksCount = expandedFeatureIds.size - this.selectedTasksCount;
         this.expandParentChildCount = expansionResult.counts.parentChild;
         this.expandRelationsCount = expansionResult.counts.relations;
         this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
-        
+
         // Displayed tasks: apply state filter and view filters to expanded set
         const stateFilter = state.selectedFeatureStateFilter || new Set();
         // Build a lowercase version of the selected state set for case-insensitive checks
-        const stateFilterLower = (stateFilter && typeof stateFilter.size !== 'undefined')
-          ? new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()))
+        const stateFilterLower =
+          stateFilter && typeof stateFilter.size !== 'undefined' ?
+            new Set(Array.from(stateFilter).map((s) => String(s).toLowerCase()))
           : new Set();
 
-        let displayedFeatures = feats.filter(f => expandedFeatureIds.has(f.id));
+        let displayedFeatures = feats.filter((f) => expandedFeatureIds.has(f.id));
 
         // Apply state filter (case-insensitive using original configured state casing)
         if (stateFilterLower && stateFilterLower.size > 0) {
-          displayedFeatures = displayedFeatures.filter(f => stateFilterLower.has((f.state || '').toLowerCase()));
+          displayedFeatures = displayedFeatures.filter((f) =>
+            stateFilterLower.has((f.state || '').toLowerCase())
+          );
         }
-        
+
         // Apply task filters
         if (state.taskFilterService) {
-          displayedFeatures = displayedFeatures.filter(f => state.taskFilterService.featurePassesFilters(f));
+          displayedFeatures = displayedFeatures.filter((f) =>
+            state.taskFilterService.featurePassesFilters(f)
+          );
         }
-        
+
         this.displayedTasksCount = displayedFeatures.length;
       } catch (e) {
         console.warn('[Sidebar] _recomputeDataFunnel error:', e);
-        this.selectedTasksCount = 0; this.expandedTasksCount = 0; this.displayedTasksCount = 0;
-        this.expandParentChildCount = 0; this.expandRelationsCount = 0; this.expandTeamAllocatedCount = 0;
+        this.selectedTasksCount = 0;
+        this.expandedTasksCount = 0;
+        this.displayedTasksCount = 0;
+        this.expandParentChildCount = 0;
+        this.expandRelationsCount = 0;
+        this.expandTeamAllocatedCount = 0;
       }
       this.requestUpdate();
     };
@@ -588,7 +1099,11 @@ export class SidebarLit extends LitElement {
     bus.on(FilterEvents.CHANGED, this._recomputeDataFunnel);
     bus.on(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
     // Keep local copies of dynamic state/type lists in sync
-    this._onAvailableStatesChanged = (states) => { this.availableFeatureStates = Array.isArray(states) ? [...states] : (state.availableFeatureStates || []); this.requestUpdate(); };
+    this._onAvailableStatesChanged = (states) => {
+      this.availableFeatureStates =
+        Array.isArray(states) ? [...states] : state.availableFeatureStates || [];
+      this.requestUpdate();
+    };
     bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
 
     // Listen for task filter updates from TaskFilterService
@@ -610,23 +1125,35 @@ export class SidebarLit extends LitElement {
         // Allow external callers (plugins) to programmatically set which
         // task types are selected in the sidebar via FilterEvents.CHANGED
         // with `selectedTaskTypes: [ ... ]`.
-        if (payload && Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')) {
+        if (
+          payload &&
+          Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')
+        ) {
           try {
-            const arr = Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
+            const arr =
+              Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
             this.selectedTaskTypes = new Set(arr);
             // Mark types initialized so default-selection logic does not override
             this._taskTypesInitialized = true;
             this.requestUpdate();
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     };
     bus.on(FilterEvents.CHANGED, this._onSidebarFilterChanged);
 
-    this._onFeaturesForTypes = () => { this._computeAvailableTaskTypes(); };
+    this._onFeaturesForTypes = () => {
+      this._computeAvailableTaskTypes();
+    };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Listen for view option changes to trigger sidebar state save
-    const onViewOptionChange = () => { /* auto-save removed - use View feature instead */ };
+    const onViewOptionChange = () => {
+      /* auto-save removed - use View feature instead */
+    };
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
     bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
@@ -647,9 +1174,15 @@ export class SidebarLit extends LitElement {
     try {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
-      this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
+      this._onScenariosList({
+        scenarios: state.scenarios,
+        activeScenarioId: state.activeScenarioId,
+      });
       console.log('[Sidebar] Initializing views from state:', state.savedViews);
-      this._onViewsList({ views: state.savedViews, activeViewId: state.activeViewId });
+      this._onViewsList({
+        views: state.savedViews,
+        activeViewId: state.activeViewId,
+      });
       // Initialize task filters from service
       if (state.taskFilterService) {
         this.taskFilters = state.taskFilterService.getFilters();
@@ -669,49 +1202,57 @@ export class SidebarLit extends LitElement {
     // Keyboard shortcut handlers were removed; shortcuts now limited to global search (Ctrl+Shift+F).
   }
 
-  firstUpdated(){
-    const headers = this.shadowRoot.querySelectorAll('.sidebar-section-header-collapsible');
-    this._collapsibleHandlers = Array.from(headers).flatMap(header => {
+  firstUpdated() {
+    const headers = this.shadowRoot.querySelectorAll(
+      '.sidebar-section-header-collapsible'
+    );
+    this._collapsibleHandlers = Array.from(headers).flatMap((header) => {
       const section = header.parentElement;
       const contentWrapper = section.children[1];
       const chevron = header.querySelector('.sidebar-chevron');
-      
+
       const toggleSection = () => {
         const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
-        if(chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
+        if (chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
         // Save sidebar state when section is toggled
         // Auto-save removed - use View feature instead
       };
 
       const onHeaderClick = () => toggleSection();
       header.addEventListener('click', onHeaderClick);
-      
+
       const handlers = [{ el: header, fn: onHeaderClick }];
       if (chevron) {
-        const onChevronClick = (e) => { e.stopPropagation(); toggleSection(); };
+        const onChevronClick = (e) => {
+          e.stopPropagation();
+          toggleSection();
+        };
         chevron.addEventListener('click', onChevronClick);
         handlers.push({ el: chevron, fn: onChevronClick });
       }
       return handlers;
     });
 
-
-
     const onPluginsChanged = () => this.requestUpdate();
     this._onPluginsChanged = onPluginsChanged;
-    [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
-      .forEach(evt => bus.on(evt, onPluginsChanged));
+    [
+      PluginEvents.REGISTERED,
+      PluginEvents.UNREGISTERED,
+      PluginEvents.ACTIVATED,
+      PluginEvents.DEACTIVATED,
+    ].forEach((evt) => bus.on(evt, onPluginsChanged));
 
     // Sidebar state restore removed - views are now the primary persistence mechanism
     // Last active view will be restored via ViewManagementService on app init
   }
 
-  disconnectedCallback(){
+  disconnectedCallback() {
     // Remove reactive property handlers
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
-    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    if (this._onScenarioActivated)
+      bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     if (this._onScenariosUpdated) {
       bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
@@ -719,7 +1260,7 @@ export class SidebarLit extends LitElement {
 
     // Clean up view option change listeners
     const viewHandler = this._viewOptionChangeHandler;
-    if(viewHandler){
+    if (viewHandler) {
       bus.off(ViewEvents.CONDENSED, viewHandler);
       bus.off(ViewEvents.DEPENDENCIES, viewHandler);
       bus.off(ViewEvents.CAPACITY_MODE, viewHandler);
@@ -734,22 +1275,30 @@ export class SidebarLit extends LitElement {
       bus.off(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
       this._recomputeDataFunnel = null;
     }
-    if (this._onAvailableStatesChanged) bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
-    if (this._onTaskFiltersChanged) bus.off(FilterEvents.CHANGED, this._onTaskFiltersChanged);
-    if (this._onSidebarFilterChanged) bus.off(FilterEvents.CHANGED, this._onSidebarFilterChanged);
-    if (this._onFeaturesForTypes) bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
-    
-    this._collapsibleHandlers?.forEach(h => h.el.removeEventListener('click', h.fn));
+    if (this._onAvailableStatesChanged)
+      bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
+    if (this._onTaskFiltersChanged)
+      bus.off(FilterEvents.CHANGED, this._onTaskFiltersChanged);
+    if (this._onSidebarFilterChanged)
+      bus.off(FilterEvents.CHANGED, this._onSidebarFilterChanged);
+    if (this._onFeaturesForTypes)
+      bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
+
+    this._collapsibleHandlers?.forEach((h) => h.el.removeEventListener('click', h.fn));
     this._collapsibleHandlers = null;
 
     if (this._onKeyDown) {
       document.removeEventListener('keydown', this._onKeyDown);
       this._onKeyDown = null;
     }
-    
-    if(this._onPluginsChanged){
-      [PluginEvents.REGISTERED, PluginEvents.UNREGISTERED, PluginEvents.ACTIVATED, PluginEvents.DEACTIVATED]
-        .forEach(evt => bus.off(evt, this._onPluginsChanged));
+
+    if (this._onPluginsChanged) {
+      [
+        PluginEvents.REGISTERED,
+        PluginEvents.UNREGISTERED,
+        PluginEvents.ACTIVATED,
+        PluginEvents.DEACTIVATED,
+      ].forEach((evt) => bus.off(evt, this._onPluginsChanged));
     }
   }
 
@@ -765,17 +1314,17 @@ export class SidebarLit extends LitElement {
     state.setExpansionState({
       expandParentChild: this.expandParentChild,
       expandRelations: this.expandRelations,
-      expandTeamAllocated: this.expandTeamAllocated
+      expandTeamAllocated: this.expandTeamAllocated,
     });
     // Trigger data funnel recomputation
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     // Emit filter change event so the board updates
-    bus.emit(FilterEvents.CHANGED, { 
-      expansion: { 
-        parentChild: this.expandParentChild, 
-        relations: this.expandRelations, 
-        teamAllocated: this.expandTeamAllocated 
-      } 
+    bus.emit(FilterEvents.CHANGED, {
+      expansion: {
+        parentChild: this.expandParentChild,
+        relations: this.expandRelations,
+        teamAllocated: this.expandTeamAllocated,
+      },
     });
     // Auto-save removed - use View feature instead
   }
@@ -789,33 +1338,42 @@ export class SidebarLit extends LitElement {
   }
 
   // Compute available task types from baseline/features (no hardcoded fallback)
-  _computeAvailableTaskTypes(){
-    try{
+  _computeAvailableTaskTypes() {
+    try {
       const baseline = state.baselineFeatures || [];
       const types = new Set();
-      baseline.forEach(f => {
+      baseline.forEach((f) => {
         const t = f.type || f.workItemType || f.work_item_type || null;
         if (t) types.add(String(t));
       });
       this.availableTaskTypes = Array.from(types).sort();
       // Default selection only on first initialization: select all if no prior selection exists
       if (!this._taskTypesInitialized) {
-        if (this.availableTaskTypes.length > 0 && (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0)) {
+        if (
+          this.availableTaskTypes.length > 0 &&
+          (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0)
+        ) {
           this.selectedTaskTypes = new Set(this.availableTaskTypes);
           // emit initial filter so other parts can respond
-          bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+          bus.emit(FilterEvents.CHANGED, {
+            selectedTaskTypes: Array.from(this.selectedTaskTypes),
+          });
         }
         this._taskTypesInitialized = true;
       }
       this.requestUpdate();
-    }catch(e){ console.warn('[Sidebar] _computeAvailableTaskTypes error', e); }
+    } catch (e) {
+      console.warn('[Sidebar] _computeAvailableTaskTypes error', e);
+    }
   }
 
-  _applySavedTaskTypes(arr){
+  _applySavedTaskTypes(arr) {
     if (!Array.isArray(arr)) return;
-    const valid = (this.availableTaskTypes || []).filter(t => arr.includes(t));
+    const valid = (this.availableTaskTypes || []).filter((t) => arr.includes(t));
     this.selectedTaskTypes = new Set(valid);
-    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+    bus.emit(FilterEvents.CHANGED, {
+      selectedTaskTypes: Array.from(this.selectedTaskTypes),
+    });
     this.requestUpdate();
     this._taskTypesInitialized = true;
   }
@@ -841,19 +1399,27 @@ export class SidebarLit extends LitElement {
         return Array.isArray(s) && s.includes(key);
       }
       return false;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   // Programmatic API: set a task filter option checked/unchecked
   setTaskFilterChecked(dimension, option, checked) {
     try {
-      if (state && state.taskFilterService && typeof state.taskFilterService.setFilter === 'function') {
+      if (
+        state &&
+        state.taskFilterService &&
+        typeof state.taskFilterService.setFilter === 'function'
+      ) {
         state.taskFilterService.setFilter(dimension, option, !!checked);
         this.taskFilters = state.taskFilterService.getFilters();
         this._recomputeDataFunnel && this._recomputeDataFunnel();
         this.requestUpdate();
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   // Programmatic API: set a task type checked/unchecked
@@ -862,152 +1428,217 @@ export class SidebarLit extends LitElement {
       if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
       if (checked) this.selectedTaskTypes.add(type);
       else this.selectedTaskTypes.delete(type);
-      bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+      bus.emit(FilterEvents.CHANGED, {
+        selectedTaskTypes: Array.from(this.selectedTaskTypes),
+      });
       this.requestUpdate();
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   // Programmatic API: disable/enable sidebar controls via State service
-  disableSidebarElements(map) { try { state.setSidebarDisabledElements(map || {}); } catch (e) {} }
-  clearSidebarDisabledElements() { try { state.clearSidebarDisabledElements(); } catch (e) {} }
+  disableSidebarElements(map) {
+    try {
+      state.setSidebarDisabledElements(map || {});
+    } catch (e) {}
+  }
+  clearSidebarDisabledElements() {
+    try {
+      state.clearSidebarDisabledElements();
+    } catch (e) {}
+  }
 
-
-  _toggleTaskType(type){
+  _toggleTaskType(type) {
     if (!type) return;
     if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
     if (this.selectedTaskTypes.has(type)) this.selectedTaskTypes.delete(type);
     else this.selectedTaskTypes.add(type);
     // Mirror legacy visibility toggles for epics/features when applicable
-    try{
+    try {
       const lowered = (type || '').toString().toLowerCase();
-      const hasEpic = Array.from(this.selectedTaskTypes).some(t => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics');
-      const hasFeature = Array.from(this.selectedTaskTypes).some(t => String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features');
+      const hasEpic = Array.from(this.selectedTaskTypes).some(
+        (t) => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics'
+      );
+      const hasFeature = Array.from(this.selectedTaskTypes).some(
+        (t) =>
+          String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features'
+      );
       if (state && state._viewService) {
         state._viewService.setShowEpics(!!hasEpic);
         state._viewService.setShowFeatures(!!hasFeature);
       }
-    }catch(e){/* ignore */}
-    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: Array.from(this.selectedTaskTypes) });
+    } catch (e) {
+      /* ignore */
+    }
+    bus.emit(FilterEvents.CHANGED, {
+      selectedTaskTypes: Array.from(this.selectedTaskTypes),
+    });
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
-
   _renderTaskFilterDimensions() {
     const filterDimensions = [
-      { 
-        key: 'schedule', 
+      {
+        key: 'schedule',
         title: 'Schedule',
         options: [
           { key: 'planned', label: 'Planned' },
-          { key: 'unplanned', label: 'Unplanned' }
-        ]
+          { key: 'unplanned', label: 'Unplanned' },
+        ],
       },
-      { 
-        key: 'allocation', 
+      {
+        key: 'allocation',
         title: 'Allocation',
         options: [
           { key: 'allocated', label: 'Allocated' },
-          { key: 'unallocated', label: 'Unallocated' }
-        ]
+          { key: 'unallocated', label: 'Unallocated' },
+        ],
       },
-      { 
-        key: 'hierarchy', 
+      {
+        key: 'hierarchy',
         title: 'Hierarchy',
         options: [
           { key: 'hasParent', label: 'Has Parent' },
-          { key: 'noParent', label: 'No Parent' }
-        ]
+          { key: 'noParent', label: 'No Parent' },
+        ],
       },
-      { 
-        key: 'relations', 
+      {
+        key: 'relations',
         title: 'Relations',
         options: [
           { key: 'hasLinks', label: 'Has Links' },
-          { key: 'noLinks', label: 'No Links' }
-        ]
-      }
+          { key: 'noLinks', label: 'No Links' },
+        ],
+      },
     ];
 
     return html`
-      <div class="filter-dimensions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        ${filterDimensions.map(dim => html`
-          <div class="filter-dimension">
-            <div class="filter-dimension-title">${dim.title}</div>
-            <div class="filter-options" style="display:flex;flex-direction:column;gap:6px;">
-              ${dim.options.map(opt => {
-                const isActive = this.taskFilters[dim.key][opt.key];
-                const isDisabled = this._isControlDisabled('taskFilter', dim.key, opt.key);
-                return html`
-                  <div
-                    class="filter-option ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}"
-                    aria-disabled="${isDisabled ? 'true' : 'false'}"
-                    @click=${() => { if (!isDisabled) this._toggleTaskFilter(dim.key, opt.key); }}
-                    title=${isDisabled ? 'Not relevant in current tool context' : ''}
-                  >
-                    <div class="filter-checkbox"></div>
-                    <span>${opt.label}</span>
-                  </div>
-                `;
-              })}
+      <div
+        class="filter-dimensions"
+        style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"
+      >
+        ${filterDimensions.map(
+          (dim) => html`
+            <div class="filter-dimension">
+              <div class="filter-dimension-title">${dim.title}</div>
+              <div
+                class="filter-options"
+                style="display:flex;flex-direction:column;gap:6px;"
+              >
+                ${dim.options.map((opt) => {
+                  const isActive = this.taskFilters[dim.key][opt.key];
+                  const isDisabled = this._isControlDisabled(
+                    'taskFilter',
+                    dim.key,
+                    opt.key
+                  );
+                  return html`
+                    <div
+                      class="filter-option ${isActive ? 'active' : ''} ${isDisabled ?
+                        'disabled'
+                      : ''}"
+                      aria-disabled="${isDisabled ? 'true' : 'false'}"
+                      @click=${() => {
+                        if (!isDisabled) this._toggleTaskFilter(dim.key, opt.key);
+                      }}
+                      title=${isDisabled ? 'Not relevant in current tool context' : ''}
+                    >
+                      <div class="filter-checkbox"></div>
+                      <span>${opt.label}</span>
+                    </div>
+                  `;
+                })}
+              </div>
             </div>
-          </div>
-        `)}
+          `
+        )}
       </div>
     `;
   }
 
-  _renderTaskFilters(){
+  _renderTaskFilters() {
     // Render dynamic 'Task Filters' box with States and Types
     const states = this.availableFeatureStates || [];
     const types = this.availableTaskTypes || [];
-    return html`${states.length === 0 && types.length === 0 ? html`<div class="section-description"><span class="small">No filters available</span></div>` : html``}
-      ${states.length > 0 ? html`
-        <div class="filter-dimension">
-          <div class="filter-dimension-title">State</div>
-          <div class="filter-options">
-            ${(() => {
-              const colors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
-                return states.map(s => {
-                const meta = colors && colors[s] ? colors[s] : null;
-                const bg = meta ? meta.background : (state.getFeatureStateColor ? state.getFeatureStateColor(s) : '#999');
-                const text = meta ? meta.text : '#fff';
-                const isActive = (state.selectedFeatureStateFilter && state.selectedFeatureStateFilter.has(s));
-                const isDisabled = this._isControlDisabled('state', s);
-                return html`
-                  <div
-                    class="filter-option ${ isActive ? 'active' : '' } ${isDisabled ? 'disabled' : ''}"
-                    aria-disabled="${isDisabled ? 'true' : 'false'}"
-                    @click=${() => { if (!isDisabled) { state.toggleStateSelected(s); this._recomputeDataFunnel && this._recomputeDataFunnel(); } }}
-                    title=${isDisabled ? 'Not relevant in current tool context' : ''}
-                  >
-                    <div style="display:inline-flex;align-items:center;gap:8px;flex:1;">
-                      <span class="filter-state-dot" style="width:14px;height:14px;border-radius:3px;display:inline-block;background:${bg};border:1px solid rgba(0,0,0,0.06);box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);"></span>
-                      <div style="flex:1;color:#fff;">${s}</div>
-                    </div>
-                    <div class="filter-checkbox" style="margin-left:8px;${isActive? 'background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1);' : ''}"></div>
-                  </div>`;
-              });
-            })()}
-          </div>
-        </div>` : html``}
-
-      ${types.length > 0 ? html`
-        <div class="filter-dimension">
-          <div class="filter-dimension-title">Task Types</div>
-          <div class="filter-options">
-            ${types.map(t => html`
-              <div class="filter-option ${ this.selectedTaskTypes && this.selectedTaskTypes.has(t) ? 'active' : '' }" @click=${()=>this._toggleTaskType(t)}>
+    return html`${states.length === 0 && types.length === 0 ?
+      html`<div class="section-description">
+        <span class="small">No filters available</span>
+      </div>`
+    : html``}
+    ${states.length > 0 ?
+      html` <div class="filter-dimension">
+        <div class="filter-dimension-title">State</div>
+        <div class="filter-options">
+          ${(() => {
+            const colors =
+              state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+            return states.map((s) => {
+              const meta = colors && colors[s] ? colors[s] : null;
+              const bg =
+                meta ? meta.background
+                : state.getFeatureStateColor ? state.getFeatureStateColor(s)
+                : '#999';
+              const text = meta ? meta.text : '#fff';
+              const isActive =
+                state.selectedFeatureStateFilter &&
+                state.selectedFeatureStateFilter.has(s);
+              const isDisabled = this._isControlDisabled('state', s);
+              return html` <div
+                class="filter-option ${isActive ? 'active' : ''} ${isDisabled ? 'disabled'
+                : ''}"
+                aria-disabled="${isDisabled ? 'true' : 'false'}"
+                @click=${() => {
+                  if (!isDisabled) {
+                    state.toggleStateSelected(s);
+                    this._recomputeDataFunnel && this._recomputeDataFunnel();
+                  }
+                }}
+                title=${isDisabled ? 'Not relevant in current tool context' : ''}
+              >
+                <div style="display:inline-flex;align-items:center;gap:8px;flex:1;">
+                  <span
+                    class="filter-state-dot"
+                    style="width:14px;height:14px;border-radius:3px;display:inline-block;background:${bg};border:1px solid rgba(0,0,0,0.06);box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);"
+                  ></span>
+                  <div style="flex:1;color:#fff;">${s}</div>
+                </div>
+                <div
+                  class="filter-checkbox"
+                  style="margin-left:8px;${isActive ?
+                    'background: rgba(102, 126, 234, 0.8); border-color: rgba(102, 126, 234, 1);'
+                  : ''}"
+                ></div>
+              </div>`;
+            });
+          })()}
+        </div>
+      </div>`
+    : html``}
+    ${types.length > 0 ?
+      html` <div class="filter-dimension">
+        <div class="filter-dimension-title">Task Types</div>
+        <div class="filter-options">
+          ${types.map(
+            (t) => html`
+              <div
+                class="filter-option ${(
+                  this.selectedTaskTypes && this.selectedTaskTypes.has(t)
+                ) ?
+                  'active'
+                : ''}"
+                @click=${() => this._toggleTaskType(t)}
+              >
                 <div class="filter-checkbox"></div>
                 <div style="flex:1;">${t}</div>
               </div>
-            `)}
-          </div>
-        </div>` : html``}
-    `;
+            `
+          )}
+        </div>
+      </div>`
+    : html``} `;
   }
-
-  
 
   // Project/team/view rendering and menu actions moved to TopMenu and small menu components;
   // keep sidebar focused on dataset, expansions, filters and view options container.
@@ -1021,27 +1652,43 @@ export class SidebarLit extends LitElement {
   }
 
   // Handlers for Taskboard Options
-  _setTimelineScale(scale){
-    try{ state._viewService.setTimelineScale(scale); }catch(e){ console.warn('[Sidebar] setTimelineScale failed', e); }
+  _setTimelineScale(scale) {
+    try {
+      state._viewService.setTimelineScale(scale);
+    } catch (e) {
+      console.warn('[Sidebar] setTimelineScale failed', e);
+    }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
-  _toggleCondensed(){
-    try{ state._viewService.setCondensedCards(!state._viewService.condensedCards); }catch(e){ console.warn('[Sidebar] toggleCondensed failed', e); }
+  _toggleCondensed() {
+    try {
+      state._viewService.setCondensedCards(!state._viewService.condensedCards);
+    } catch (e) {
+      console.warn('[Sidebar] toggleCondensed failed', e);
+    }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
-  _setFeatureSortMode(mode){
-    try{ state._viewService.setFeatureSortMode(mode); }catch(e){ console.warn('[Sidebar] setFeatureSortMode failed', e); }
+  _setFeatureSortMode(mode) {
+    try {
+      state._viewService.setFeatureSortMode(mode);
+    } catch (e) {
+      console.warn('[Sidebar] setFeatureSortMode failed', e);
+    }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 
-  _setGraphType(type){
+  _setGraphType(type) {
     this._graphType = type;
-    try{ state._viewService.setCapacityViewMode(type); }catch(e){ console.warn('[Sidebar] setCapacityViewMode failed', e); }
+    try {
+      state._viewService.setCapacityViewMode(type);
+    } catch (e) {
+      console.warn('[Sidebar] setCapacityViewMode failed', e);
+    }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
@@ -1054,9 +1701,9 @@ export class SidebarLit extends LitElement {
     // No-op: This method is deprecated - views restored automatically
   }
 
-  async refreshServerStatus(){
-    try{
-      if(!dataService || typeof dataService.checkHealth !== 'function'){
+  async refreshServerStatus() {
+    try {
+      if (!dataService || typeof dataService.checkHealth !== 'function') {
         this.serverStatus = 'unknown';
         this.requestUpdate();
         return;
@@ -1065,14 +1712,17 @@ export class SidebarLit extends LitElement {
       const status = (h && (h.status || (h.ok ? 'ok' : null))) || 'error';
       this.serverName = (h && (h.server_name || h.server)) || this.serverName;
       const ups = Number(h && h.uptime_seconds);
-      const uptimeStr = Number.isNaN(ups) ? '' : (() => {
-        const totalMinutes = Math.floor(ups / 60);
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        return ` - Uptime: ${hours}h ${minutes}m`;
-      })();
+      const uptimeStr =
+        Number.isNaN(ups) ? '' : (
+          (() => {
+            const totalMinutes = Math.floor(ups / 60);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            return ` - Uptime: ${hours}h ${minutes}m`;
+          })()
+        );
       this.serverStatus = `${h.version} | Server: ${status}${uptimeStr}`;
-    }catch(e){
+    } catch (e) {
       this.serverStatus = 'Server: error';
     }
     this.requestUpdate();
@@ -1080,142 +1730,276 @@ export class SidebarLit extends LitElement {
 
   // Scenario activation handled by TopMenu / Scenario components.
 
-  render(){
+  render() {
     return html`
-      <aside class="sidebar ${this.open? '' : 'closed'}">
+      <aside class="sidebar ${this.open ? '' : 'closed'}">
         <div class="sidebar-content">
+          <!-- Taskboard Options (new) -->
+          <section class="sidebar-section">
+            <div class="expansion-section">
+              <div class="section-title">🧭 Taskboard Options</div>
+              <div class="section-description">
+                Timeline and taskboard display settings
+              </div>
 
-        <!-- Taskboard Options (new) -->
-        <section class="sidebar-section">
-          <div class="expansion-section">
-            <div class="section-title">🧭 Taskboard Options</div>
-            <div class="section-description">Timeline and taskboard display settings</div>
+              <div class="filter-dimension">
+                <div class="filter-dimension-title">Timeline Scale</div>
+                <div class="segmented-group">
+                  <button
+                    type="button"
+                    class="segment-btn ${state.timelineScale === 'threeMonths' ?
+                      'active'
+                    : ''}"
+                    @click=${() => this._setTimelineScale('threeMonths')}
+                  >
+                    3mo
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.timelineScale === 'weeks' ? 'active' : ''}"
+                    @click=${() => this._setTimelineScale('weeks')}
+                  >
+                    Weeks
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.timelineScale === 'months' ?
+                      'active'
+                    : ''}"
+                    @click=${() => this._setTimelineScale('months')}
+                  >
+                    Months
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.timelineScale === 'quarters' ?
+                      'active'
+                    : ''}"
+                    @click=${() => this._setTimelineScale('quarters')}
+                  >
+                    Quarters
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.timelineScale === 'years' ? 'active' : ''}"
+                    @click=${() => this._setTimelineScale('years')}
+                  >
+                    Years
+                  </button>
+                </div>
+              </div>
 
-            <div class="filter-dimension">
-              <div class="filter-dimension-title">Timeline Scale</div>
-              <div class="segmented-group">
-                <button type="button" class="segment-btn ${state.timelineScale === 'threeMonths' ? 'active' : ''}" @click=${()=>this._setTimelineScale('threeMonths')}>3mo</button>
-                <button type="button" class="segment-btn ${state.timelineScale === 'weeks' ? 'active' : ''}" @click=${()=>this._setTimelineScale('weeks')}>Weeks</button>
-                <button type="button" class="segment-btn ${state.timelineScale === 'months' ? 'active' : ''}" @click=${()=>this._setTimelineScale('months')}>Months</button>
-                <button type="button" class="segment-btn ${state.timelineScale === 'quarters' ? 'active' : ''}" @click=${()=>this._setTimelineScale('quarters')}>Quarters</button>
-                <button type="button" class="segment-btn ${state.timelineScale === 'years' ? 'active' : ''}" @click=${()=>this._setTimelineScale('years')}>Years</button>
+              <div class="filter-dimension">
+                <div class="filter-dimension-title">Display</div>
+                <div class="segmented-group">
+                  <button
+                    type="button"
+                    class="segment-btn ${!state.condensedCards ? 'active' : ''}"
+                    @click=${() => state._viewService.setCondensedCards(false)}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.condensedCards ? 'active' : ''}"
+                    @click=${() => state._viewService.setCondensedCards(true)}
+                  >
+                    Compact
+                  </button>
+                </div>
+              </div>
+
+              <div class="filter-dimension">
+                <div class="filter-dimension-title">Task Sort</div>
+                <div class="segmented-group">
+                  <button
+                    type="button"
+                    class="segment-btn ${state.featureSortMode === 'rank' ?
+                      'active'
+                    : ''}"
+                    @click=${() => this._setFeatureSortMode('rank')}
+                  >
+                    Rank
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state.featureSortMode === 'date' ?
+                      'active'
+                    : ''}"
+                    @click=${() => this._setFeatureSortMode('date')}
+                  >
+                    Date
+                  </button>
+                </div>
+              </div>
+
+              <div class="filter-dimension">
+                <div class="filter-dimension-title">Graph Type</div>
+                <div class="segmented-group">
+                  <button
+                    type="button"
+                    class="segment-btn ${this._graphType === 'team' ? 'active' : ''}"
+                    @click=${() => this._setGraphType('team')}
+                  >
+                    Team
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${this._graphType === 'project' ? 'active' : ''}"
+                    @click=${() => this._setGraphType('project')}
+                  >
+                    Project
+                  </button>
+                </div>
               </div>
             </div>
+          </section>
 
-            <div class="filter-dimension">
-              <div class="filter-dimension-title">Display</div>
-              <div class="segmented-group">
-                <button type="button" class="segment-btn ${!state.condensedCards ? 'active' : ''}" @click=${()=>state._viewService.setCondensedCards(false)}>Normal</button>
-                <button type="button" class="segment-btn ${state.condensedCards ? 'active' : ''}" @click=${()=>state._viewService.setCondensedCards(true)}>Compact</button>
+          <section class="sidebar-section">
+            <div class="dataset-status">
+              <div class="status-title">Data Funnel</div>
+              <div class="status-flow">
+                <div class="status-item">
+                  <div class="status-number">${this.selectedTasksCount}</div>
+                  <div class="status-label">Selected</div>
+                </div>
+                <div class="status-arrow">→</div>
+                <div class="status-item">
+                  <div class="status-number">
+                    ${this.expandedTasksCount > 0 ?
+                      '+' + this.expandedTasksCount
+                    : this.expandedTasksCount}
+                  </div>
+                  <div class="status-label">Expanded</div>
+                </div>
+                <div class="status-arrow">→</div>
+                <div class="status-item">
+                  <div class="status-number">${this.displayedTasksCount}</div>
+                  <div class="status-label">Displayed</div>
+                </div>
               </div>
             </div>
+          </section>
 
-            <div class="filter-dimension">
-              <div class="filter-dimension-title">Task Sort</div>
-              <div class="segmented-group">
-                <button type="button" class="segment-btn ${state.featureSortMode === 'rank' ? 'active' : ''}" @click=${()=>this._setFeatureSortMode('rank')}>Rank</button>
-                <button type="button" class="segment-btn ${state.featureSortMode === 'date' ? 'active' : ''}" @click=${()=>this._setFeatureSortMode('date')}>Date</button>
+          <!-- Expand Dataset Section -->
+          <section class="sidebar-section">
+            <div class="expansion-section">
+              <div class="section-title">🔗 Expand Dataset</div>
+              <div class="section-description">
+                Add related tasks to your working dataset
               </div>
-            </div>
 
-            <div class="filter-dimension">
-              <div class="filter-dimension-title">Graph Type</div>
-              <div class="segmented-group">
-                <button type="button" class="segment-btn ${this._graphType === 'team' ? 'active' : ''}" @click=${()=>this._setGraphType('team')}>Team</button>
-                <button type="button" class="segment-btn ${this._graphType === 'project' ? 'active' : ''}" @click=${()=>this._setGraphType('project')}>Project</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="sidebar-section">
-          <div class="dataset-status">
-            <div class="status-title">Data Funnel</div>
-            <div class="status-flow">
-              <div class="status-item">
-                <div class="status-number">${this.selectedTasksCount}</div>
-                <div class="status-label">Selected</div>
-              </div>
-              <div class="status-arrow">→</div>
-              <div class="status-item">
-                <div class="status-number">${this.expandedTasksCount > 0 ? '+' + this.expandedTasksCount : this.expandedTasksCount}</div>
-                <div class="status-label">Expanded</div>
-              </div>
-              <div class="status-arrow">→</div>
-              <div class="status-item">
-                <div class="status-number">${this.displayedTasksCount}</div>
-                <div class="status-label">Displayed</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Expand Dataset Section -->
-        <section class="sidebar-section">
-          <div class="expansion-section">
-            <div class="section-title">🔗 Expand Dataset</div>
-            <div class="section-description">
-              Add related tasks to your working dataset
-            </div>
-            
-            <div class="option-group">
-              ${(() => {
-                const disabledParentChild = this._isControlDisabled('expansion', 'parentChild');
-                return html`
-                  <div class="option-row ${this.expandParentChild ? 'active' : ''} ${disabledParentChild ? 'disabled' : ''}" aria-disabled="${disabledParentChild? 'true' : 'false'}" @click=${() => { if (!disabledParentChild) this._toggleExpansion('parentChild'); }} title=${disabledParentChild? 'Not relevant in current tool context' : ''}>
+              <div class="option-group">
+                ${(() => {
+                  const disabledParentChild = this._isControlDisabled(
+                    'expansion',
+                    'parentChild'
+                  );
+                  return html` <div
+                    class="option-row ${this.expandParentChild ? 'active' : ''} ${(
+                      disabledParentChild
+                    ) ?
+                      'disabled'
+                    : ''}"
+                    aria-disabled="${disabledParentChild ? 'true' : 'false'}"
+                    @click=${() => {
+                      if (!disabledParentChild) this._toggleExpansion('parentChild');
+                    }}
+                    title=${disabledParentChild ?
+                      'Not relevant in current tool context'
+                    : ''}
+                  >
                     <div class="option-label">
                       <div class="option-checkbox"></div>
                       <span>Parent/Child Links</span>
                     </div>
-                    <span class="option-count">${this.expandParentChildCount > 0 ? '+' + this.expandParentChildCount : this.expandParentChildCount}</span>
+                    <span class="option-count"
+                      >${this.expandParentChildCount > 0 ?
+                        '+' + this.expandParentChildCount
+                      : this.expandParentChildCount}</span
+                    >
                   </div>`;
-              })()}
-              ${(() => {
-                const disabledRelations = this._isControlDisabled('expansion', 'relations');
-                return html`
-                  <div class="option-row ${this.expandRelations ? 'active' : ''} ${disabledRelations ? 'disabled' : ''}" aria-disabled="${disabledRelations? 'true' : 'false'}" @click=${() => { if (!disabledRelations) this._toggleExpansion('relations'); }} title=${disabledRelations ? 'Not relevant in current tool context' : ''}>
+                })()}
+                ${(() => {
+                  const disabledRelations = this._isControlDisabled(
+                    'expansion',
+                    'relations'
+                  );
+                  return html` <div
+                    class="option-row ${this.expandRelations ? 'active' : ''} ${(
+                      disabledRelations
+                    ) ?
+                      'disabled'
+                    : ''}"
+                    aria-disabled="${disabledRelations ? 'true' : 'false'}"
+                    @click=${() => {
+                      if (!disabledRelations) this._toggleExpansion('relations');
+                    }}
+                    title=${disabledRelations ?
+                      'Not relevant in current tool context'
+                    : ''}
+                  >
                     <div class="option-label">
                       <div class="option-checkbox"></div>
                       <span>Dependencies</span>
                     </div>
-                    <span class="option-count">${this.expandRelationsCount > 0 ? '+' + this.expandRelationsCount : this.expandRelationsCount}</span>
+                    <span class="option-count"
+                      >${this.expandRelationsCount > 0 ?
+                        '+' + this.expandRelationsCount
+                      : this.expandRelationsCount}</span
+                    >
                   </div>`;
-              })()}
-              
-              
-              ${(() => {
-                const disabledTeamAllocated = this._isControlDisabled('expansion', 'teamAllocated');
-                return html`
-                  <div class="option-row ${this.expandTeamAllocated ? 'active' : ''} ${disabledTeamAllocated ? 'disabled' : ''}" aria-disabled="${disabledTeamAllocated? 'true' : 'false'}" @click=${() => { if (!disabledTeamAllocated) this._toggleExpansion('teamAllocated'); }} title=${disabledTeamAllocated ? 'Not relevant in current tool context' : ''}>
+                })()}
+                ${(() => {
+                  const disabledTeamAllocated = this._isControlDisabled(
+                    'expansion',
+                    'teamAllocated'
+                  );
+                  return html` <div
+                    class="option-row ${this.expandTeamAllocated ? 'active' : ''} ${(
+                      disabledTeamAllocated
+                    ) ?
+                      'disabled'
+                    : ''}"
+                    aria-disabled="${disabledTeamAllocated ? 'true' : 'false'}"
+                    @click=${() => {
+                      if (!disabledTeamAllocated) this._toggleExpansion('teamAllocated');
+                    }}
+                    title=${disabledTeamAllocated ?
+                      'Not relevant in current tool context'
+                    : ''}
+                  >
                     <div class="option-label">
                       <div class="option-checkbox"></div>
                       <span>Team Allocated</span>
                     </div>
-                    <span class="option-count">${this.expandTeamAllocatedCount > 0 ? '+' + this.expandTeamAllocatedCount : this.expandTeamAllocatedCount}</span>
+                    <span class="option-count"
+                      >${this.expandTeamAllocatedCount > 0 ?
+                        '+' + this.expandTeamAllocatedCount
+                      : this.expandTeamAllocatedCount}</span
+                    >
                   </div>`;
-              })()}
+                })()}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- Task Filters Section -->
-        <section class="sidebar-section">
-          <div class="expansion-section">
-            <div class="section-title">👁️ Task Filters</div>
-            <div class="section-description">
-              Filter displayed tasks by attributes
-            </div>
-            
-            ${this._renderTaskFilterDimensions()}
+          <!-- Task Filters Section -->
+          <section class="sidebar-section">
+            <div class="expansion-section">
+              <div class="section-title">👁️ Task Filters</div>
+              <div class="section-description">Filter displayed tasks by attributes</div>
 
+              ${this._renderTaskFilterDimensions()}
               ${this._renderTaskFilters ? this._renderTaskFilters() : ''}
-          </div>
-        </section>
-
+            </div>
+          </section>
         </div>
         <div class="sidebar-config">
           <div class="sidebar-footer-box">
-            <div class="footer-line status">${this.serverName ? this.serverName + ' | ' : ''}${this.serverStatus}</div>
+            <div class="footer-line status">
+              ${this.serverName ? this.serverName + ' | ' : ''}${this.serverStatus}
+            </div>
             <div class="footer-line author">PlannerTool (C) 2025-2026 Kim Poulsen</div>
           </div>
         </div>
@@ -1226,8 +2010,8 @@ export class SidebarLit extends LitElement {
 
 customElements.define('app-sidebar', SidebarLit);
 
-export async function initSidebar(){
-  if (!document.querySelector('app-sidebar')){
+export async function initSidebar() {
+  if (!document.querySelector('app-sidebar')) {
     const el = document.createElement('app-sidebar');
     document.body.appendChild(el);
   }

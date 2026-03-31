@@ -1,30 +1,32 @@
 /**
  * PluginCostV2Component
  * LitElement component providing three-view cost analysis.
- * 
+ *
  * Views:
  * - Project: Per-project team-month breakdown tables
  * - Task: Parent/child task tree with budget deviation indicators
  * - Team: Per-team feature allocation tables
- * 
+ *
  * All views show monthly Int/Ext cost/hours breakdowns with date range
  * and cost/hours toggle controls.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
-import {
-  buildMonths,
-  monthKey,
-  monthLabel
-} from './PluginCostV2Calculator.js';
+import { buildMonths, monthKey, monthLabel } from './PluginCostV2Calculator.js';
 
 import { renderProjectView } from './PluginCostV2ProjectView.js';
 import { renderTaskView } from './PluginCostV2TaskView.js';
 import { renderTeamView } from './PluginCostV2TeamView.js';
 import { renderTeamMembersView } from './PluginCostV2TeamMembersView.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, ProjectEvents, TeamEvents, ScenarioEvents, FilterEvents } from '../core/EventRegistry.js';
+import {
+  FeatureEvents,
+  ProjectEvents,
+  TeamEvents,
+  ScenarioEvents,
+  FilterEvents,
+} from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginCostV2Component extends LitElement {
@@ -37,8 +39,8 @@ export class PluginCostV2Component extends LitElement {
     loading: { type: Boolean },
     error: { type: String },
     expandedProjects: { type: Object },
-      expandedTasks: { type: Object },
-      projectViewSelection: { type: Object }
+    expandedTasks: { type: Object },
+    projectViewSelection: { type: Object },
   };
 
   constructor() {
@@ -52,13 +54,13 @@ export class PluginCostV2Component extends LitElement {
     this.expandedTasks = new Set();
     this.expandedTeams = new Set();
     this.projectViewSelection = {}; // per-project: 'teams' | 'features'
-    
+
     // Default date range: current year
     const now = new Date();
     const year = now.getFullYear();
     this.startDate = `${year}-01-01`;
     this.endDate = `${year}-12-31`;
-    
+
     this.months = [];
     this._unsubscribes = [];
     this._reloadTimer = null;
@@ -118,9 +120,9 @@ export class PluginCostV2Component extends LitElement {
     }
 
     .tab-buttons button.active {
-      background: #2196F3;
+      background: #2196f3;
       color: white;
-      border-color: #2196F3;
+      border-color: #2196f3;
     }
 
     .view-toggle {
@@ -145,9 +147,9 @@ export class PluginCostV2Component extends LitElement {
     }
 
     .view-toggle button.active {
-      background: #4CAF50;
+      background: #4caf50;
       color: white;
-      border-color: #4CAF50;
+      border-color: #4caf50;
     }
 
     .date-controls {
@@ -161,7 +163,7 @@ export class PluginCostV2Component extends LitElement {
       color: #666;
     }
 
-    .date-controls input[type="date"] {
+    .date-controls input[type='date'] {
       padding: 4px 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
@@ -236,7 +238,8 @@ export class PluginCostV2Component extends LitElement {
       margin-bottom: 24px;
     }
 
-    th, td {
+    th,
+    td {
       padding: 8px;
       text-align: left;
       border: 1px solid #ddd;
@@ -303,13 +306,13 @@ export class PluginCostV2Component extends LitElement {
     .project-header {
       font-weight: 600;
       font-size: 14px;
-      color: #1976D2;
+      color: #1976d2;
     }
 
     .team-header {
       font-weight: 600;
       font-size: 14px;
-      color: #4CAF50;
+      color: #4caf50;
     }
 
     .totals-row {
@@ -334,10 +337,10 @@ export class PluginCostV2Component extends LitElement {
       border-color: #cfcfcf;
     }
     .project-toggle-btn.active {
-      background: linear-gradient(180deg,#1976D2,#1565C0);
+      background: linear-gradient(180deg, #1976d2, #1565c0);
       color: white;
-      border-color: #1565C0;
-      box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+      border-color: #1565c0;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
     }
     /* Summary table improvements for readability */
     .summary-table {
@@ -357,16 +360,23 @@ export class PluginCostV2Component extends LitElement {
       background: white;
     }
     /* Use explicit 'alt' class for consistent banding across paired rows */
-    .summary-table tr.alt td { background: #efefef; }
-    .summary-table td.metric { width: 280px; white-space: nowrap; }
-    .summary-table td.sum-column, .summary-table th.sum-column {
+    .summary-table tr.alt td {
+      background: #efefef;
+    }
+    .summary-table td.metric {
+      width: 280px;
+      white-space: nowrap;
+    }
+    .summary-table td.sum-column,
+    .summary-table th.sum-column {
       background: #e8f2ff;
       font-weight: 700;
       border-left: 2px solid #dfe9f6;
       color: #123b5a;
     }
     /* Apply consistent Sum styling across all tables */
-    table td.sum-column, table th.sum-column {
+    table td.sum-column,
+    table th.sum-column {
       background: #e8f2ff;
       font-weight: 700;
       color: #123b5a;
@@ -392,47 +402,63 @@ export class PluginCostV2Component extends LitElement {
       background: #e8f2ff;
     }
     /* Per-site paired rows (Hours + Cost) with alternating banding */
-    .summary-table tr.site-pair td { background: white; }
-    .summary-table tr.site-pair.alt td { background: #efefef; }
-    .summary-table tr.group-row.alt td { background: #efefef; }
-    .summary-table tr.site-pair td:first-child { padding-left: 12px; }
-    
-      /* Icon sizing for type icons used in lists/tables */
-      .type-icon { display: inline-flex; align-items: center; vertical-align: middle; }
-      .type-icon svg { width: 16px; height: 16px; display: block; }
-      /* Team Members summary grid for consistent alignment */
-      .team-summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 8px;
-        cursor: pointer;
-      }
-      .team-name {
-        min-width: 260px;
-        flex: 1 1 auto;
-        font-weight: 600;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .team-metrics {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        color: #333;
-        font-size: 13px;
-        flex: 0 0 auto;
-      }
-      .team-metric {
-        min-width: 120px;
-        text-align: right;
-        color: #333;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
+    .summary-table tr.site-pair td {
+      background: white;
+    }
+    .summary-table tr.site-pair.alt td {
+      background: #efefef;
+    }
+    .summary-table tr.group-row.alt td {
+      background: #efefef;
+    }
+    .summary-table tr.site-pair td:first-child {
+      padding-left: 12px;
+    }
+
+    /* Icon sizing for type icons used in lists/tables */
+    .type-icon {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+    }
+    .type-icon svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+    /* Team Members summary grid for consistent alignment */
+    .team-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .team-name {
+      min-width: 260px;
+      flex: 1 1 auto;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .team-metrics {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: #333;
+      font-size: 13px;
+      flex: 0 0 auto;
+    }
+    .team-metric {
+      min-width: 120px;
+      text-align: right;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   `;
 
   open() {
@@ -473,30 +499,47 @@ export class PluginCostV2Component extends LitElement {
     const disabled = {
       taskFilters: {
         schedule: ['planned'],
-        allocation: ['allocated','unallocated'],
-        hierarchy: ['hasParent','noParent'],
-        relations: ['hasLinks','noLinks']
+        allocation: ['allocated', 'unallocated'],
+        hierarchy: ['hasParent', 'noParent'],
+        relations: ['hasLinks', 'noLinks'],
       },
       taskTypes: [],
-      states: Array.isArray(state.availableFeatureStates) ? Array.from(state.availableFeatureStates) : [],
-      expansion: ['parentChild','relations','teamAllocated']
+      states:
+        Array.isArray(state.availableFeatureStates) ?
+          Array.from(state.availableFeatureStates)
+        : [],
+      expansion: ['parentChild', 'relations', 'teamAllocated'],
     };
     state.setSidebarDisabledElements(disabled);
     // Ensure Parent/Child expansion is enabled while plugin is active so
     // children from selected plans are included in calculations and the
     // Sidebar shows Parent/Child Links as checked.
-    try { state.setExpansionState({ expandParentChild: true, expandRelations: true, expandTeamAllocated: true }); } catch (e) {}
+    try {
+      state.setExpansionState({
+        expandParentChild: true,
+        expandRelations: true,
+        expandTeamAllocated: true,
+      });
+    } catch (e) {}
   }
 
   connectedCallback() {
     super.connectedCallback();
     // Subscribe to global state events that should trigger a recalculation
     try {
-      this._unsubscribes.push(bus.on(FeatureEvents.UPDATED, () => this._scheduleReload()));
-      this._unsubscribes.push(bus.on(ProjectEvents.CHANGED, () => this._scheduleReload()));
+      this._unsubscribes.push(
+        bus.on(FeatureEvents.UPDATED, () => this._scheduleReload())
+      );
+      this._unsubscribes.push(
+        bus.on(ProjectEvents.CHANGED, () => this._scheduleReload())
+      );
       this._unsubscribes.push(bus.on(TeamEvents.CHANGED, () => this._scheduleReload()));
-      this._unsubscribes.push(bus.on(ScenarioEvents.ACTIVATED, () => this._scheduleReload()));
-      this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
+      this._unsubscribes.push(
+        bus.on(ScenarioEvents.ACTIVATED, () => this._scheduleReload())
+      );
+      this._unsubscribes.push(
+        bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload())
+      );
       this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
     } catch (e) {
       console.warn('[PluginCostV2] failed to subscribe to state events', e);
@@ -508,15 +551,28 @@ export class PluginCostV2Component extends LitElement {
   disconnectedCallback() {
     // Unsubscribe all listeners
     try {
-      for (const u of this._unsubscribes) { if (typeof u === 'function') u(); }
+      for (const u of this._unsubscribes) {
+        if (typeof u === 'function') u();
+      }
       this._unsubscribes = [];
     } catch (e) {}
-    if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null; }
-    try { 
-      state.clearSidebarDisabledElements(); 
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = null;
+    }
+    try {
+      state.clearSidebarDisabledElements();
       // restore expansion defaults when plugin unloads
-      state.setExpansionState({ expandParentChild: false, expandRelations: false, expandTeamAllocated: false });
-    } catch (e) { try { bus.emit(FilterEvents.CHANGED, { disabledSidebar: null }); } catch (err) {} }
+      state.setExpansionState({
+        expandParentChild: false,
+        expandRelations: false,
+        expandTeamAllocated: false,
+      });
+    } catch (e) {
+      try {
+        bus.emit(FilterEvents.CHANGED, { disabledSidebar: null });
+      } catch (err) {}
+    }
     super.disconnectedCallback();
   }
 
@@ -526,8 +582,13 @@ export class PluginCostV2Component extends LitElement {
       // If the UI is not visible (plugin closed) avoid reloading data.
       if (!this.hasAttribute('visible')) return;
       if (this._reloadTimer) clearTimeout(this._reloadTimer);
-      this._reloadTimer = setTimeout(() => { this._reloadTimer = null; this.loadData(); }, 200);
-    } catch (e) { this.loadData(); }
+      this._reloadTimer = setTimeout(() => {
+        this._reloadTimer = null;
+        this.loadData();
+      }, 200);
+    } catch (e) {
+      this.loadData();
+    }
   }
 
   _closeClicked() {
@@ -543,16 +604,19 @@ export class PluginCostV2Component extends LitElement {
       // Build months list
       this.months = buildMonths({
         dataset_start: this.startDate,
-        dataset_end: this.endDate
+        dataset_end: this.endDate,
       });
 
       // Get effective features from state
-      const effectiveFeatures = state && typeof state.getEffectiveFeatures === 'function' 
-        ? state.getEffectiveFeatures() 
+      const effectiveFeatures =
+        state && typeof state.getEffectiveFeatures === 'function' ?
+          state.getEffectiveFeatures()
         : [];
 
       if (effectiveFeatures.length === 0) {
-        throw new Error('No features available. Please ensure projects and teams are selected.');
+        throw new Error(
+          'No features available. Please ensure projects and teams are selected.'
+        );
       }
 
       // Build features payload for cost API
@@ -563,10 +627,18 @@ export class PluginCostV2Component extends LitElement {
       let selectedTypes = null;
       try {
         const sidebar = document.querySelector('app-sidebar');
-        if (sidebar && sidebar.selectedTaskTypes && typeof sidebar.selectedTaskTypes.values === 'function') {
-          selectedTypes = new Set(Array.from(sidebar.selectedTaskTypes).map(s => String(s).toLowerCase()));
+        if (
+          sidebar &&
+          sidebar.selectedTaskTypes &&
+          typeof sidebar.selectedTaskTypes.values === 'function'
+        ) {
+          selectedTypes = new Set(
+            Array.from(sidebar.selectedTaskTypes).map((s) => String(s).toLowerCase())
+          );
         }
-      } catch (e) { selectedTypes = null; }
+      } catch (e) {
+        selectedTypes = null;
+      }
 
       // Helper: determine if a feature has children according to state.childrenByEpic
       const hasChildren = (fid) => {
@@ -574,10 +646,12 @@ export class PluginCostV2Component extends LitElement {
           const map = state.childrenByEpic || new Map();
           const list = map.get(Number(fid)) || map.get(String(fid)) || [];
           return Array.isArray(list) && list.length > 0;
-        } catch (e) { return false; }
+        } catch (e) {
+          return false;
+        }
       };
 
-      let filteredFeatures = (effectiveFeatures || []).filter(f => {
+      let filteredFeatures = (effectiveFeatures || []).filter((f) => {
         if (!f) return false;
         if (!selectedTypes || selectedTypes.size === 0) return true;
         const ftype = String(f.type || f.feature_type || '').toLowerCase();
@@ -598,24 +672,41 @@ export class PluginCostV2Component extends LitElement {
           // set placeholder dates (today) for unplanned items which would
           // otherwise appear as "planned"; treat those as unplanned too.
           let taskFilters = null;
-          try { if (typeof tfs.getFilters === 'function') taskFilters = tfs.getFilters(); } catch (e) { taskFilters = null; }
-          if (taskFilters && taskFilters.schedule && taskFilters.schedule.unplanned === false) {
-            const today = (new Date()).toISOString().slice(0,10);
-            filteredFeatures = filteredFeatures.filter(f => {
+          try {
+            if (typeof tfs.getFilters === 'function') taskFilters = tfs.getFilters();
+          } catch (e) {
+            taskFilters = null;
+          }
+          if (
+            taskFilters &&
+            taskFilters.schedule &&
+            taskFilters.schedule.unplanned === false
+          ) {
+            const today = new Date().toISOString().slice(0, 10);
+            filteredFeatures = filteredFeatures.filter((f) => {
               try {
                 const hasStart = !!(f && f.start);
                 const hasEnd = !!(f && f.end);
                 // No dates => unplanned
                 if (!hasStart && !hasEnd) return false;
                 // Placeholder: start===end===today => treat as unplanned
-                if (hasStart && hasEnd && String(f.start).startsWith(today) && String(f.end).startsWith(today) && String(f.start) === String(f.end)) return false;
+                if (
+                  hasStart &&
+                  hasEnd &&
+                  String(f.start).startsWith(today) &&
+                  String(f.end).startsWith(today) &&
+                  String(f.start) === String(f.end)
+                )
+                  return false;
                 return true;
-              } catch (e) { return true; }
+              } catch (e) {
+                return true;
+              }
             });
           }
 
           if (typeof tfs.featurePassesFilters === 'function') {
-            const ff = filteredFeatures.filter(f => tfs.featurePassesFilters(f));
+            const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
             filteredFeatures.length = 0;
             Array.prototype.push.apply(filteredFeatures, ff);
           }
@@ -630,9 +721,11 @@ export class PluginCostV2Component extends LitElement {
         if (typeof state.getExpandedFeatureIds === 'function') {
           const expandedIds = state.getExpandedFeatureIds() || new Set();
           if (expandedIds.size > 0) {
-            const present = new Set((filteredFeatures || []).map(f => String(f && f.id)));
+            const present = new Set(
+              (filteredFeatures || []).map((f) => String(f && f.id))
+            );
             const allEffective = state.getEffectiveFeatures() || [];
-            const byId = new Map(allEffective.map(f => [String(f.id), f]));
+            const byId = new Map(allEffective.map((f) => [String(f.id), f]));
             for (const id of expandedIds) {
               const sid = String(id);
               if (!present.has(sid) && byId.has(sid)) {
@@ -644,7 +737,7 @@ export class PluginCostV2Component extends LitElement {
         }
       } catch (e) {}
 
-      const featuresPayload = filteredFeatures.map(f => ({
+      const featuresPayload = filteredFeatures.map((f) => ({
         id: f.id,
         project: f.project,
         start: f.start,
@@ -653,7 +746,7 @@ export class PluginCostV2Component extends LitElement {
         title: f.title || f.name || '',
         type: f.type || f.feature_type || '',
         state: f.state || '',
-        relations: f.relations || []
+        relations: f.relations || [],
       }));
 
       // Fetch cost data
@@ -664,7 +757,10 @@ export class PluginCostV2Component extends LitElement {
       // an array into a lookup so subsequent code can index by project id.
       // Also enrich each feature object with `capacity` (from the payload)
       // and `project` so downstream allocation and filtering works.
-      const payloadById = (featuresPayload || []).reduce((acc, f) => { if(f && f.id != null) acc[String(f.id)] = f; return acc; }, {});
+      const payloadById = (featuresPayload || []).reduce((acc, f) => {
+        if (f && f.id != null) acc[String(f.id)] = f;
+        return acc;
+      }, {});
 
       if (json && Array.isArray(json.projects)) {
         const projectsById = {};
@@ -674,11 +770,15 @@ export class PluginCostV2Component extends LitElement {
           p.features = Array.isArray(p.features) ? p.features : [];
 
           // Enrich each feature with capacity (from the payload) and project id
-          p.features = p.features.map(feat => {
+          p.features = p.features.map((feat) => {
             const fid = String(feat.id);
             const src = payloadById[fid];
-            const capacity = src && Array.isArray(src.capacity) ? src.capacity : (feat.capacity || []);
-            return Object.assign({}, feat, { capacity: capacity, project: p.id });
+            const capacity =
+              src && Array.isArray(src.capacity) ? src.capacity : feat.capacity || [];
+            return Object.assign({}, feat, {
+              capacity: capacity,
+              project: p.id,
+            });
           });
 
           projectsById[String(p.id)] = p;
@@ -698,7 +798,9 @@ export class PluginCostV2Component extends LitElement {
 
       // Start with project sections expanded for all selected projects
       try {
-        const selectedProjects = (state.projects || []).filter(p => p.selected).map(p => p.id);
+        const selectedProjects = (state.projects || [])
+          .filter((p) => p.selected)
+          .map((p) => p.id);
         this.expandedProjects = new Set(selectedProjects);
       } catch (e) {
         this.expandedProjects = new Set();
@@ -763,7 +865,9 @@ export class PluginCostV2Component extends LitElement {
       delete copy[projectId];
       this.projectViewSelection = copy;
     } else {
-      this.projectViewSelection = Object.assign({}, this.projectViewSelection, { [projectId]: view });
+      this.projectViewSelection = Object.assign({}, this.projectViewSelection, {
+        [projectId]: view,
+      });
     }
     this.requestUpdate();
   }
@@ -772,60 +876,75 @@ export class PluginCostV2Component extends LitElement {
     return html`
       <div class="toolbar">
         <div class="toolbar-title">Cost Analysis (v2)</div>
-        
+
         <div class="tab-buttons">
-          <button 
+          <button
             class="${this.activeView === 'project' ? 'active' : ''}"
-            @click="${() => this.handleViewChange('project')}">
+            @click="${() => this.handleViewChange('project')}"
+          >
             Plan View
           </button>
-          <button 
+          <button
             class="${this.activeView === 'task' ? 'active' : ''}"
-            @click="${() => this.handleViewChange('task')}">
+            @click="${() => this.handleViewChange('task')}"
+          >
             Task View
           </button>
-          <button 
+          <button
             class="${this.activeView === 'team' ? 'active' : ''}"
-            @click="${() => this.handleViewChange('team')}">
+            @click="${() => this.handleViewChange('team')}"
+          >
             Team View
           </button>
           <button
             class="${this.activeView === 'team-members' ? 'active' : ''}"
-            @click="${() => this.handleViewChange('team-members')}">
+            @click="${() => this.handleViewChange('team-members')}"
+          >
             Team Members
           </button>
         </div>
 
-        ${this.activeView !== 'team-members' ? html`
-        <div class="date-controls">
-          <label for="start-date">From:</label>
-          <input 
-            type="date" 
-            id="start-date" 
-            .value="${this.startDate}"
-            @change="${(e) => { this.startDate = e.target.value; this.handleDateChange(); }}" />
-          <label for="end-date">To:</label>
-          <input 
-            type="date" 
-            id="end-date" 
-            .value="${this.endDate}"
-            @change="${(e) => { this.endDate = e.target.value; this.handleDateChange(); }}" />
-        </div>
-        ` : ''}
-
+        ${this.activeView !== 'team-members' ?
+          html`
+            <div class="date-controls">
+              <label for="start-date">From:</label>
+              <input
+                type="date"
+                id="start-date"
+                .value="${this.startDate}"
+                @change="${(e) => {
+                  this.startDate = e.target.value;
+                  this.handleDateChange();
+                }}"
+              />
+              <label for="end-date">To:</label>
+              <input
+                type="date"
+                id="end-date"
+                .value="${this.endDate}"
+                @change="${(e) => {
+                  this.endDate = e.target.value;
+                  this.handleDateChange();
+                }}"
+              />
+            </div>
+          `
+        : ''}
         ${(() => {
           // For Team view always show the global Cost/Hours toggle.
           if (this.activeView === 'team') {
             return html`
               <div class="view-toggle">
-                <button 
+                <button
                   class="${this.viewMode === 'cost' ? 'active' : ''}"
-                  @click="${() => this.handleViewModeChange('cost')}">
+                  @click="${() => this.handleViewModeChange('cost')}"
+                >
                   Cost
                 </button>
-                <button 
+                <button
                   class="${this.viewMode === 'hours' ? 'active' : ''}"
-                  @click="${() => this.handleViewModeChange('hours')}">
+                  @click="${() => this.handleViewModeChange('hours')}"
+                >
                   Hours
                 </button>
               </div>
@@ -835,18 +954,22 @@ export class PluginCostV2Component extends LitElement {
           // has a selected sub-view (teams or features) so the sub-tables are visible.
           if (this.activeView === 'project') {
             const expanded = Array.from(this.expandedProjects || []);
-            const show = expanded.some(pid => this.projectViewSelection && this.projectViewSelection[pid]);
+            const show = expanded.some(
+              (pid) => this.projectViewSelection && this.projectViewSelection[pid]
+            );
             if (show) {
               return html`
                 <div class="view-toggle">
-                  <button 
+                  <button
                     class="${this.viewMode === 'cost' ? 'active' : ''}"
-                    @click="${() => this.handleViewModeChange('cost')}">
+                    @click="${() => this.handleViewModeChange('cost')}"
+                  >
                     Cost
                   </button>
-                  <button 
+                  <button
                     class="${this.viewMode === 'hours' ? 'active' : ''}"
-                    @click="${() => this.handleViewModeChange('hours')}">
+                    @click="${() => this.handleViewModeChange('hours')}"
+                  >
                     Hours
                   </button>
                 </div>
@@ -866,9 +989,13 @@ export class PluginCostV2Component extends LitElement {
     return renderProjectView(this);
   }
 
-  renderProjectTable() { return null; }
+  renderProjectTable() {
+    return null;
+  }
 
-  buildTeamMonthAllocations() { return null; }
+  buildTeamMonthAllocations() {
+    return null;
+  }
 
   renderProjectSummaryTable(teams, teamAllocations, monthKeys) {
     return null;
@@ -909,25 +1036,25 @@ export class PluginCostV2Component extends LitElement {
   render() {
     return html`
       ${this.renderToolbar()}
-      
+
       <div class="content">
-        ${this.loading ? html`
-          <div class="loading">Loading cost data...</div>
-        ` : ''}
-        
-        ${this.error ? html`
-          <div class="error">
-            <div class="error-title">Error</div>
-            <div>${this.error}</div>
-          </div>
-        ` : ''}
-        
-        ${!this.loading && !this.error ? html`
-          ${this.activeView === 'project' ? this.renderProjectView() : ''}
-          ${this.activeView === 'task' ? this.renderTaskView() : ''}
-          ${this.activeView === 'team' ? this.renderTeamView() : ''}
-          ${this.activeView === 'team-members' ? this.renderTeamMembersView() : ''}
-        ` : ''}
+        ${this.loading ? html` <div class="loading">Loading cost data...</div> ` : ''}
+        ${this.error ?
+          html`
+            <div class="error">
+              <div class="error-title">Error</div>
+              <div>${this.error}</div>
+            </div>
+          `
+        : ''}
+        ${!this.loading && !this.error ?
+          html`
+            ${this.activeView === 'project' ? this.renderProjectView() : ''}
+            ${this.activeView === 'task' ? this.renderTaskView() : ''}
+            ${this.activeView === 'team' ? this.renderTeamView() : ''}
+            ${this.activeView === 'team-members' ? this.renderTeamMembersView() : ''}
+          `
+        : ''}
       </div>
     `;
   }

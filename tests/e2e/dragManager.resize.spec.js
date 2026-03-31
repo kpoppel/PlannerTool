@@ -14,7 +14,10 @@ test.describe('DragManager resize (e2e)', () => {
     const startY = box.y + box.height / 2;
 
     // capture initial width
-    const initialWidth = await page.evaluate(el => parseInt(getComputedStyle(el).width, 10), card);
+    const initialWidth = await page.evaluate(
+      (el) => parseInt(getComputedStyle(el).width, 10),
+      card
+    );
 
     await page.mouse.move(startX, startY);
     await page.mouse.down();
@@ -25,7 +28,10 @@ test.describe('DragManager resize (e2e)', () => {
     // small wait for UI updates
     await page.waitForTimeout(300);
 
-    const finalWidth = await page.evaluate(el => parseInt(getComputedStyle(el).width, 10), card);
+    const finalWidth = await page.evaluate(
+      (el) => parseInt(getComputedStyle(el).width, 10),
+      card
+    );
     expect(finalWidth).toBeGreaterThanOrEqual(initialWidth);
   });
 });

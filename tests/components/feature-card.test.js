@@ -2,7 +2,12 @@ import { expect, fixture, html } from '@open-wc/testing';
 import { stub } from 'sinon';
 import '../../www/js/components/FeatureCard.lit.js';
 import * as boardHelpers from '../../www/js/components/FeatureBoard.lit.js';
-import { computePosition, laneHeight, getBoardOffset, _test_resetCache } from '../../www/js/components/board-utils.js';
+import {
+  computePosition,
+  laneHeight,
+  getBoardOffset,
+  _test_resetCache,
+} from '../../www/js/components/board-utils.js';
 import { featureFlags } from '../../www/js/config.js';
 import { state } from '../../www/js/services/State.js';
 
@@ -16,7 +21,10 @@ describe('FeatureCard Consolidated Tests', () => {
 
   describe('helpers and computePosition', () => {
     before(() => {
-      state._projectTeamService.initFromBaseline([{ id: 'p1', color: '#123' }], [{ id: 't1', color: '#abc' }]);
+      state._projectTeamService.initFromBaseline(
+        [{ id: 'p1', color: '#123' }],
+        [{ id: 't1', color: '#abc' }]
+      );
       state.setProjectSelected('p1', true);
       state.setTeamSelected('t1', true);
       state._scenarioEventService._scenarios = [{ id: 'baseline' }];
@@ -36,9 +44,15 @@ describe('FeatureCard Consolidated Tests', () => {
 
     it('computePosition returns left and width for valid ranges', async () => {
       // prepare minimal timeline DOM and init
-      const header = document.createElement('div'); header.id = 'timelineHeader'; document.body.appendChild(header);
-      const section = document.createElement('div'); section.id = 'timelineSection'; section.style.width = '600px'; document.body.appendChild(section);
-      const tl = document.createElement('timeline-lit'); header.appendChild(tl);
+      const header = document.createElement('div');
+      header.id = 'timelineHeader';
+      document.body.appendChild(header);
+      const section = document.createElement('div');
+      section.id = 'timelineSection';
+      section.style.width = '600px';
+      document.body.appendChild(section);
+      const tl = document.createElement('timeline-lit');
+      header.appendChild(tl);
       const feat = { start: '2021-01-05', end: '2021-02-10' };
       // init timeline via import to ensure months computed
       const timeline = await import('../../www/js/components/Timeline.lit.js');
@@ -47,18 +61,20 @@ describe('FeatureCard Consolidated Tests', () => {
       expect(pos).to.be.an('object');
       expect(pos.left).to.be.a('number');
       expect(pos.width).to.be.a('number');
-      header.remove(); section.remove();
+      header.remove();
+      section.remove();
     });
 
     it('laneHeight respects condensed flag and featureFlags branch', () => {
       const original = featureFlags ? featureFlags.USE_LIT_COMPONENTS : undefined;
-      try{
-        if(featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
+      try {
+        if (featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
         state._viewService.setCondensedCards(true);
         const h = laneHeight();
         expect(typeof h).to.equal('number');
       } finally {
-        if(featureFlags && original !== undefined) featureFlags.USE_LIT_COMPONENTS = original;
+        if (featureFlags && original !== undefined)
+          featureFlags.USE_LIT_COMPONENTS = original;
         state._viewService.setCondensedCards(false);
       }
     });
@@ -66,52 +82,90 @@ describe('FeatureCard Consolidated Tests', () => {
     it('updateCardsById applies visuals to existing feature-card-lit elements', async () => {
       // ensure a board element exists
       let board = document.getElementById('featureBoard');
-      if(!board){ board = document.createElement('feature-board'); board.id = 'featureBoard'; document.body.appendChild(board); }
-      if (typeof customElements.whenDefined === 'function') await customElements.whenDefined('feature-board');
-      const feat = { id: 'fx1', start: '2021-01-05', end: '2021-02-10', project: 'p1', capacity: [{team:'t1', capacity:10}], type: 'feature' };
+      if (!board) {
+        board = document.createElement('feature-board');
+        board.id = 'featureBoard';
+        document.body.appendChild(board);
+      }
+      if (typeof customElements.whenDefined === 'function')
+        await customElements.whenDefined('feature-board');
+      const feat = {
+        id: 'fx1',
+        start: '2021-01-05',
+        end: '2021-02-10',
+        project: 'p1',
+        capacity: [{ team: 't1', capacity: 10 }],
+        type: 'feature',
+      };
       const source = [feat];
       // create a fake feature-card-lit element with applyVisuals spy using fixture
       const el = await fixture(html`<feature-card-lit></feature-card-lit>`);
       let called = false;
-      el.applyVisuals = function(opts){ called = true; this._last = opts; };
-      try{ el.feature = feat; }catch(e){}
+      el.applyVisuals = function (opts) {
+        called = true;
+        this._last = opts;
+      };
+      try {
+        el.feature = feat;
+      } catch (e) {}
       // Ensure the element is attached to the board and register it in the board's card map
       if (!board.contains(el)) board.appendChild(el);
-      try { if (!board._cardMap) board._cardMap = new Map(); board._cardMap.set('fx1', el); } catch (e) {}
+      try {
+        if (!board._cardMap) board._cardMap = new Map();
+        board._cardMap.set('fx1', el);
+      } catch (e) {}
 
       // Ensure state feature lookup returns our source
       const st = await import('../../www/js/services/State.js');
-      st.state._featureService = { 
-        getEffectiveFeatureById: (id) => source.find(f => f.id === id),
-        getEffectiveFeatures: () => source
+      st.state._featureService = {
+        getEffectiveFeatureById: (id) => source.find((f) => f.id === id),
+        getEffectiveFeatures: () => source,
       };
       const mod = await import('../../www/js/components/FeatureBoard.lit.js');
-      const update = board.updateCardsById || boardHelpers.updateCardsById || mod.updateCardsById;
+      const update =
+        board.updateCardsById || boardHelpers.updateCardsById || mod.updateCardsById;
       if (typeof board.updateCardsById === 'function') {
         await board.updateCardsById(['fx1'], source);
       } else if (typeof update === 'function') {
         await update.call(board, ['fx1'], source);
       } else {
         // Fallback test-only implementation to emulate updateCardsById behavior
-        board.updateCardsById = async function(ids = []) {
+        board.updateCardsById = async function (ids = []) {
           for (const id of ids) {
             const feature = state._featureService.getEffectiveFeatureById(id);
             if (!feature) continue;
             const geom = computePosition(feature) || {};
-            const left = geom.left !== undefined ? (typeof geom.left === 'number' ? `${geom.left}px` : geom.left) : '';
-            const width = geom.width !== undefined ? (typeof geom.width === 'number' ? `${geom.width}px` : geom.width) : '';
-            const existing = this._cardMap && this._cardMap.get ? this._cardMap.get(id) : null;
+            const left =
+              geom.left !== undefined ?
+                typeof geom.left === 'number' ?
+                  `${geom.left}px`
+                : geom.left
+              : '';
+            const width =
+              geom.width !== undefined ?
+                typeof geom.width === 'number' ?
+                  `${geom.width}px`
+                : geom.width
+              : '';
+            const existing =
+              this._cardMap && this._cardMap.get ? this._cardMap.get(id) : null;
             if (existing && typeof existing.applyVisuals === 'function') {
               existing.feature = { ...feature };
               existing.selected = !!feature.selected;
-              existing.project = state.projects.find(p => p.id === feature.project);
-              existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project: existing.project });
+              existing.project = state.projects.find((p) => p.id === feature.project);
+              existing.applyVisuals({
+                left,
+                width,
+                selected: !!feature.selected,
+                dirty: !!feature.dirty,
+                project: existing.project,
+              });
             }
           }
         };
         await board.updateCardsById(['fx1'], source);
       }
-      await new Promise(r => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
       expect(called).to.equal(true);
       board.removeChild(el);
     });
@@ -122,13 +176,24 @@ describe('FeatureCard Consolidated Tests', () => {
 
     beforeEach(async () => {
       mockBus = { emit: stub(), on: stub(), off: stub() };
+      // Ensure tests run with relation highlighting disabled to avoid
+      // emitting both REQUEST_CONNECTED_SET and SELECTED events.
+      state.setHighlightFeatureRelationMode(false);
       await customElements.whenDefined('feature-card-lit');
     });
 
     it('renders title and exposes feature id', async () => {
       const el = await fixture(html`
         <feature-card-lit
-          .feature=${{ id: 'F1', title: 'Test Feature', type: 'feature', start: '2025-01-01', end: '2025-01-15', project: 'P1', capacity: [] }}
+          .feature=${{
+            id: 'F1',
+            title: 'Test Feature',
+            type: 'feature',
+            start: '2025-01-01',
+            end: '2025-01-15',
+            project: 'P1',
+            capacity: [],
+          }}
           .bus=${mockBus}
         ></feature-card-lit>
       `);
@@ -156,8 +221,18 @@ describe('FeatureCard Consolidated Tests', () => {
     });
 
     it('emits details event on click', async () => {
-      const feature = { id: 'F3', title: 'Clickable Feature', type: 'feature', start: '2025-01-01', end: '2025-01-15', project: 'P1', capacity: [] };
-      const el = await fixture(html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`);
+      const feature = {
+        id: 'F3',
+        title: 'Clickable Feature',
+        type: 'feature',
+        start: '2025-01-01',
+        end: '2025-01-15',
+        project: 'P1',
+        capacity: [],
+      };
+      const el = await fixture(
+        html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`
+      );
       const card = el.shadowRoot.querySelector('.feature-card');
       card.click();
       expect(mockBus.emit).to.have.been.calledOnce;
@@ -172,13 +247,22 @@ describe('FeatureCard Consolidated Tests', () => {
       const el = await fixture(html`
         <feature-card-lit
           .feature=${{
-            id: 'F4', title: 'Team Feature', type: 'feature', start: '2025-01-01', end: '2025-01-15', project: 'P1', orgLoad: '50%',
-            capacity: [ { team: 'T1', capacity: '30%' }, { team: 'T2', capacity: '20%' } ]
+            id: 'F4',
+            title: 'Team Feature',
+            type: 'feature',
+            start: '2025-01-01',
+            end: '2025-01-15',
+            project: 'P1',
+            orgLoad: '50%',
+            capacity: [
+              { team: 'T1', capacity: '30%' },
+              { team: 'T2', capacity: '20%' },
+            ],
           }}
           .bus=${mockBus}
           .teams=${[
             { id: 'T1', name: 'Team 1', color: '#ff0000', selected: true },
-            { id: 'T2', name: 'Team 2', color: '#00ff00', selected: true }
+            { id: 'T2', name: 'Team 2', color: '#00ff00', selected: true },
           ]}
           .condensed=${false}
         ></feature-card-lit>
@@ -186,21 +270,49 @@ describe('FeatureCard Consolidated Tests', () => {
       const teamBoxes = el.shadowRoot.querySelectorAll('.team-load-box');
       expect(teamBoxes.length).to.be.at.least(1);
       // epic and feature icons
-      const epic = await fixture(html`<feature-card-lit .feature=${{ id: 'E1', type: 'epic', title: 'Epic' }} .bus=${mockBus}></feature-card-lit>`);
+      const epic = await fixture(
+        html`<feature-card-lit
+          .feature=${{ id: 'E1', type: 'epic', title: 'Epic' }}
+          .bus=${mockBus}
+        ></feature-card-lit>`
+      );
       expect(epic.shadowRoot.querySelector('.feature-card-icon.epic')).to.exist;
-      const feat = await fixture(html`<feature-card-lit .feature=${{ id: 'F7', type: 'feature', title: 'Feat' }} .bus=${mockBus}></feature-card-lit>`);
-      expect(feat.shadowRoot.querySelector('.feature-card-icon.feature').querySelector('svg')).to.exist;
+      const feat = await fixture(
+        html`<feature-card-lit
+          .feature=${{ id: 'F7', type: 'feature', title: 'Feat' }}
+          .bus=${mockBus}
+        ></feature-card-lit>`
+      );
+      expect(
+        feat.shadowRoot.querySelector('.feature-card-icon.feature').querySelector('svg')
+      ).to.exist;
     });
 
     it('dims capacity and shows info when feature has children', async () => {
       // Prepare a feature and mark it as having children in state
-      const parentFeature = { id: 'PARENT1', title: 'Parent', type: 'epic', start: '2025-01-01', end: '2025-01-15', project: 'P1', capacity: [], orgLoad: '0%' };
+      const parentFeature = {
+        id: 'PARENT1',
+        title: 'Parent',
+        type: 'epic',
+        start: '2025-01-01',
+        end: '2025-01-15',
+        project: 'P1',
+        capacity: [],
+        orgLoad: '0%',
+      };
       // ensure dataInitService exposes a children map the way the component expects
       if (!state._dataInitService) state._dataInitService = {};
-      if (!state._dataInitService.childrenByEpic) state._dataInitService.childrenByEpic = new Map();
+      if (!state._dataInitService.childrenByEpic)
+        state._dataInitService.childrenByEpic = new Map();
       state._dataInitService.childrenByEpic.set(parentFeature.id, [{ id: 'CHILD1' }]);
 
-      const el = await fixture(html`<feature-card-lit .feature=${parentFeature} .bus=${mockBus} .teams=${[]}></feature-card-lit>`);
+      const el = await fixture(
+        html`<feature-card-lit
+          .feature=${parentFeature}
+          .bus=${mockBus}
+          .teams=${[]}
+        ></feature-card-lit>`
+      );
       await el.updateComplete;
       const teamRow = el.shadowRoot.querySelector('.team-load-row');
       expect(teamRow).to.exist;
@@ -209,6 +321,60 @@ describe('FeatureCard Consolidated Tests', () => {
       expect(info).to.exist;
       // cleanup
       state._dataInitService.childrenByEpic.delete(parentFeature.id);
+    });
+
+    it('when highlightRelationMode is enabled emits request then selected when not connected', async () => {
+      const feature = {
+        id: 'HR1',
+        title: 'Highlight Test',
+        type: 'feature',
+        start: '2025-01-01',
+        end: '2025-01-15',
+        project: 'P1',
+        capacity: [],
+      };
+      // enable highlight mode
+      state.setHighlightFeatureRelationMode(true);
+      const el = await fixture(
+        html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`
+      );
+      const card = el.shadowRoot.querySelector('.feature-card');
+      card.click();
+      const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
+      // Should emit REQUEST_CONNECTED_SET first, then SELECTED
+      expect(mockBus.emit.callCount).to.be.at.least(2);
+      expect(mockBus.emit.firstCall.args[0]).to.equal(
+        FeatureEvents.REQUEST_CONNECTED_SET
+      );
+      expect(mockBus.emit.secondCall.args[0]).to.equal(FeatureEvents.SELECTED);
+      // cleanup
+      state.setHighlightFeatureRelationMode(false);
+    });
+
+    it('when connected and highlightRelationMode enabled emits selected-in-connected only', async () => {
+      const feature = {
+        id: 'HR2',
+        title: 'Highlight Connected',
+        type: 'feature',
+        start: '2025-01-01',
+        end: '2025-01-15',
+        project: 'P1',
+        capacity: [],
+      };
+      state.setHighlightFeatureRelationMode(true);
+      const el = await fixture(
+        html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`
+      );
+      // mark as already in connected set
+      el._connected = true;
+      const card = el.shadowRoot.querySelector('.feature-card');
+      card.click();
+      const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
+      expect(mockBus.emit).to.have.been.calledOnce;
+      expect(mockBus.emit.firstCall.args[0]).to.equal(
+        FeatureEvents.SELECTED_IN_CONNECTED_SET
+      );
+      state.setHighlightFeatureRelationMode(false);
     });
   });
 });

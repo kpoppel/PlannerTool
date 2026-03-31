@@ -23,10 +23,11 @@ class PluginAnnotations {
     return {
       id: this.id,
       name: this.config.name || 'Annotations',
-      description: this.config.description || 'Add notes, shapes and lines to the timeline',
+      description:
+        this.config.description || 'Add notes, shapes and lines to the timeline',
       icon: this.config.icon || 'edit_note',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
     };
   }
 
@@ -55,12 +56,16 @@ class PluginAnnotations {
       // live in the app container so it's on top of the feature board UI.
       const selector = this.config.mountPoint || 'feature-board';
       const board = findInBoard('feature-board');
-      const appRoot = document.querySelector('.app-container') || document.getElementById('app') || document.body;
+      const appRoot =
+        document.querySelector('.app-container') ||
+        document.getElementById('app') ||
+        document.body;
 
       // If the config explicitly requests mounting somewhere other than the
       // app container, honor it. Otherwise, put the toolbox into the app root.
-      const mountToBoard = (selector && selector === 'feature-board' && this.config.forceMountInBoard);
-      const mountTarget = mountToBoard ? (board || document.body) : appRoot;
+      const mountToBoard =
+        selector && selector === 'feature-board' && this.config.forceMountInBoard;
+      const mountTarget = mountToBoard ? board || document.body : appRoot;
 
       // Only apply board-specific inset positioning when the plugin element
       // itself will be a child of the board. Normally we append the element
@@ -77,10 +82,20 @@ class PluginAnnotations {
           this._el.style.height = 'auto';
           this._el.style.pointerEvents = 'auto';
           this._el.style.zIndex = '10';
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
       }
 
-      try { mountTarget.appendChild(this._el); } catch (e) { try { document.body.appendChild(this._el); } catch (err) { /* ignore */ } }
+      try {
+        mountTarget.appendChild(this._el);
+      } catch (e) {
+        try {
+          document.body.appendChild(this._el);
+        } catch (err) {
+          /* ignore */
+        }
+      }
 
       // Keep sizing in sync with the board so it doesn't float over sidebars
       try {
@@ -95,8 +110,16 @@ class PluginAnnotations {
             try {
               // toggle a CSS property to force repaint on window resize
               this._el.style.transform = 'translateZ(0)';
-              setTimeout(() => { try { this._el.style.transform = ''; } catch (e) { /* ignore */ } }, 0);
-            } catch (e) { /* ignore */ }
+              setTimeout(() => {
+                try {
+                  this._el.style.transform = '';
+                } catch (e) {
+                  /* ignore */
+                }
+              }, 0);
+            } catch (e) {
+              /* ignore */
+            }
           };
 
           // Only keep a window resize handler. Do NOT attach a board scroll
@@ -135,11 +158,17 @@ class PluginAnnotations {
     try {
       if (this._annotationBoardHandlers) {
         const { resizeFn, board } = this._annotationBoardHandlers;
-        try { window.removeEventListener('resize', resizeFn); } catch (e) { /* ignore */ }
+        try {
+          window.removeEventListener('resize', resizeFn);
+        } catch (e) {
+          /* ignore */
+        }
         // We intentionally do NOT remove a board scroll listener because
         // we no longer attach one — scrolling should not trigger toolbox repaint.
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
     this._annotationBoardHandlers = null;
     this.initialized = false;
     this.active = false;
@@ -148,7 +177,7 @@ class PluginAnnotations {
   toggle() {
     this.active ? this.deactivate() : this.activate();
   }
-  
+
   /**
    * Check if annotations plugin is currently active
    * @returns {boolean}
@@ -156,14 +185,16 @@ class PluginAnnotations {
   isActive() {
     return this.active;
   }
-  
+
   /**
    * Get the annotation state for use by other plugins (e.g., Export)
    * @returns {AnnotationState|null}
    */
   getAnnotationState() {
     // Lazy import to avoid circular dependencies
-    return import('./annotations/AnnotationState.js').then(mod => mod.getAnnotationState());
+    return import('./annotations/AnnotationState.js').then((mod) =>
+      mod.getAnnotationState()
+    );
   }
 }
 

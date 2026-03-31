@@ -22,9 +22,9 @@ export class ScenarioMenuLit extends LitElement {
     .menu-popover {
       background: var(--color-sidebar-bg);
       color: var(--color-sidebar-text);
-      border: 1px solid rgba(255,255,255,0.18);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 6px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
       min-width: 280px;
       max-width: 400px;
       max-height: 500px;
@@ -35,86 +35,88 @@ export class ScenarioMenuLit extends LitElement {
       gap: 8px;
     }
 
-    .sidebar-list { 
-      list-style:none; 
-      padding:0; 
-      display:flex; 
-      flex-direction:column; 
-      gap:4px; 
-      margin:0 0 8px 0; 
+    .sidebar-list {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin: 0 0 8px 0;
     }
-    
-    .sidebar-list-item { display:block; }
-    
-    .scenario-item { 
-      padding:8px 10px; 
-      border-radius:6px; 
-      width:100%; 
-      display:flex; 
-      align-items:center; 
-      gap:8px; 
-      box-sizing:border-box; 
-      position:relative;
-      cursor:pointer;
+
+    .sidebar-list-item {
+      display: block;
+    }
+
+    .scenario-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-sizing: border-box;
+      position: relative;
+      cursor: pointer;
       transition: background 120ms ease;
     }
-    
+
     .scenario-item:hover {
-      background:rgba(255,255,255,0.10);
+      background: rgba(255, 255, 255, 0.1);
     }
-    
-    .scenario-item.active { 
-      background:rgba(255,255,255,0.18); 
+
+    .scenario-item.active {
+      background: rgba(255, 255, 255, 0.18);
     }
-    
+
     .scenario-item.active:hover {
-      background:rgba(255,255,255,0.22);
+      background: rgba(255, 255, 255, 0.22);
     }
-    
-    .scenario-name { 
-      flex:1 1 auto; 
-      font-weight:600; 
-      font-size:0.85rem; 
-      overflow:hidden; 
-      text-overflow:ellipsis; 
-      white-space:nowrap; 
-      padding-right:4px;
+
+    .scenario-name {
+      flex: 1 1 auto;
+      font-weight: 600;
+      font-size: 0.85rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding-right: 4px;
     }
-    
+
     .scenario-warning {
       font-size: 0.9rem;
       margin-right: 4px;
       opacity: 0.85;
     }
-    
-    .scenario-actions { 
-      display:inline-flex; 
-      gap:2px; 
-      align-items:center; 
-      opacity:1;
+
+    .scenario-actions {
+      display: inline-flex;
+      gap: 2px;
+      align-items: center;
+      opacity: 1;
       transition: opacity 120ms ease;
     }
-    
-    .action-btn { 
-      background:transparent;
-      border:none;
-      border-radius:3px; 
-      padding:4px 6px; 
-      cursor:pointer; 
-      font-size:0.8rem; 
-      line-height:1; 
+
+    .action-btn {
+      background: transparent;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      line-height: 1;
       color: var(--color-sidebar-text);
       transition: background 100ms ease;
-      opacity:0.7;
+      opacity: 0.7;
     }
-    
-    .action-btn:hover { 
-      background:rgba(255,255,255,0.15);
-      opacity:1;
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      opacity: 1;
     }
 
     .action-btn:active {
-      background:rgba(255,255,255,0.25);
+      background: rgba(255, 255, 255, 0.25);
     }
 
     .copy-scenario-btn {
@@ -146,7 +148,7 @@ export class ScenarioMenuLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
+
     // Listen to scenario changes for real-time updates
     this._onScenariosList = (payload) => {
       // Use full scenarios from state to get overrides data
@@ -161,18 +163,20 @@ export class ScenarioMenuLit extends LitElement {
       this.activeScenarioId = payload?.activeScenarioId || null;
       this.requestUpdate();
     };
-    
+
     this._onScenarioActivated = (payload) => {
       this.activeScenarioId = payload?.scenarioId || null;
       this.requestUpdate();
     };
-    
+
     this._onScenariosUpdated = () => {
       try {
         const scenarios = state.getScenarios?.() || [];
         this.scenarios = scenarios ? [...scenarios] : [];
         this.requestUpdate();
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     };
 
     bus.on(ScenarioEvents.LIST, this._onScenariosList);
@@ -186,7 +190,8 @@ export class ScenarioMenuLit extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
-    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    if (this._onScenarioActivated)
+      bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     if (this._onScenariosUpdated) {
       bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
@@ -216,10 +221,13 @@ export class ScenarioMenuLit extends LitElement {
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
       const scenarios = state.getScenarios?.() || [];
-      const maxN = Math.max(0, ...scenarios
-        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
+      const maxN = Math.max(
+        0,
+        ...scenarios
+          .map((sc) => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
+          .filter(Boolean)
+          .map((n) => parseInt(n, 10))
+      );
       const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
 
       const { openScenarioCloneModal } = await import('./modalHelpers.js');
@@ -263,7 +271,7 @@ export class ScenarioMenuLit extends LitElement {
     e.stopPropagation();
     try {
       // Copy the active scenario
-      const activeScenario = this.scenarios?.find(s => s.id === this.activeScenarioId);
+      const activeScenario = this.scenarios?.find((s) => s.id === this.activeScenarioId);
       if (!activeScenario) {
         console.warn('[ScenarioMenu] No active scenario to copy');
         return;
@@ -273,14 +281,20 @@ export class ScenarioMenuLit extends LitElement {
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
       const scenarios = state.getScenarios?.() || [];
-      const maxN = Math.max(0, ...scenarios
-        .map(sc => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-        .filter(Boolean)
-        .map(n => parseInt(n, 10)));
+      const maxN = Math.max(
+        0,
+        ...scenarios
+          .map((sc) => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
+          .filter(Boolean)
+          .map((n) => parseInt(n, 10))
+      );
       const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
 
       const { openScenarioCloneModal } = await import('./modalHelpers.js');
-      await openScenarioCloneModal({ id: activeScenario.id, name: defaultCloneName });
+      await openScenarioCloneModal({
+        id: activeScenario.id,
+        name: defaultCloneName,
+      });
     } catch (err) {
       console.error('[ScenarioMenu] Failed to copy scenario:', err);
     }
@@ -291,15 +305,15 @@ export class ScenarioMenuLit extends LitElement {
     try {
       // Get full scenario data from state to ensure we have the complete overrides object
       const fullScenarios = state.getScenarios?.() || state.scenarios || [];
-      const fullScenario = fullScenarios.find(s => s.id === scenario.id) || scenario;
-      
+      const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
+
       const overrides = fullScenario.overrides || {};
       const overrideEntries = Object.entries(overrides);
       if (overrideEntries.length === 0) {
         console.log('[ScenarioMenu] No changes to save to Azure');
         return;
       }
-      
+
       const { openAzureDevopsModal } = await import('./modalHelpers.js');
       const selected = await openAzureDevopsModal({ overrides, state });
       if (selected?.length) {
@@ -321,44 +335,77 @@ export class ScenarioMenuLit extends LitElement {
     return html`
       <div class="menu-popover">
         <ul class="sidebar-list">
-          ${sorted.map(s => html`
-            <li class="sidebar-list-item scenario-item ${s.id === this.activeScenarioId ? 'active' : ''}" 
-                @click=${(e) => this._onScenarioClick(e, s)}>
-              <span class="scenario-name" title="${s.name}">${s.name}</span>
-              ${state.isScenarioUnsaved?.(s) ? html`
-                <span class="scenario-warning" title="Unsaved changes">⚠️</span>
-              ` : ''}
-              ${s.readonly ? html`
-                <span class="scenario-actions">
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Refresh baseline data" 
-                          @click=${(e) => this._onRefreshBaseline(e, s)}>🔄</button>
-                </span>
-              ` : html`
-                <span class="scenario-actions">
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Save scenario changes" 
-                          @click=${(e) => this._onSaveScenario(e, s)}>💾</button>
-                  ${((s.overrides && Object.keys(s.overrides).length > 0) || s.overridesCount > 0) ? html`
-                    <button type="button" 
-                            class="action-btn" 
-                            title="Save to Azure DevOps" 
-                            @click=${(e) => this._onSaveToAzure(e, s)}>☁️</button>
-                  ` : ''}
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Rename scenario" 
-                          @click=${(e) => this._onRenameScenario(e, s)}>✏️</button>
-                  <button type="button" 
-                          class="action-btn" 
-                          title="Delete scenario" 
-                          @click=${(e) => this._onDeleteScenario(e, s)}>🗑️</button>
-                </span>
-              `}
-            </li>
-          `)}
+          ${sorted.map(
+            (s) => html`
+              <li
+                class="sidebar-list-item scenario-item ${s.id === this.activeScenarioId ?
+                  'active'
+                : ''}"
+                @click=${(e) => this._onScenarioClick(e, s)}
+              >
+                <span class="scenario-name" title="${s.name}">${s.name}</span>
+                ${state.isScenarioUnsaved?.(s) ?
+                  html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
+                : ''}
+                ${s.readonly ?
+                  html`
+                    <span class="scenario-actions">
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Refresh baseline data"
+                        @click=${(e) => this._onRefreshBaseline(e, s)}
+                      >
+                        🔄
+                      </button>
+                    </span>
+                  `
+                : html`
+                    <span class="scenario-actions">
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Save scenario changes"
+                        @click=${(e) => this._onSaveScenario(e, s)}
+                      >
+                        💾
+                      </button>
+                      ${(
+                        (s.overrides && Object.keys(s.overrides).length > 0) ||
+                        s.overridesCount > 0
+                      ) ?
+                        html`
+                          <button
+                            type="button"
+                            class="action-btn"
+                            title="Save to Azure DevOps"
+                            @click=${(e) => this._onSaveToAzure(e, s)}
+                          >
+                            ☁️
+                          </button>
+                        `
+                      : ''}
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Rename scenario"
+                        @click=${(e) => this._onRenameScenario(e, s)}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn"
+                        title="Delete scenario"
+                        @click=${(e) => this._onDeleteScenario(e, s)}
+                      >
+                        🗑️
+                      </button>
+                    </span>
+                  `}
+              </li>
+            `
+          )}
         </ul>
         <button type="button" class="copy-scenario-btn" @click=${this._onCopyScenario}>
           📋 Copy Scenario

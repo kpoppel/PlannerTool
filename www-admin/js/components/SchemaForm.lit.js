@@ -2,60 +2,71 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 
 /**
  * SchemaForm - A generic form generator from JSON Schema
- * 
+ *
  * Takes a JSON Schema and data, generates an intuitive form UI with validation.
  * Supports nested objects, arrays, enums, and various primitive types.
  */
 export class SchemaForm extends LitElement {
   static styles = css`
-    :host { display: block; }
-    .form-container { 
+    :host {
+      display: block;
+    }
+    .form-container {
       display: grid;
       grid-template-columns: 1fr;
       gap: 16px;
     }
-    
+
     /* 2-column layout for medium screens */
     @media (min-width: 768px) {
       .form-container {
         grid-template-columns: repeat(2, 1fr);
       }
     }
-    
+
     /* 3-column layout for large screens */
     @media (min-width: 1200px) {
       .form-container {
         grid-template-columns: repeat(3, 1fr);
       }
     }
-    
-    .field-group { display: flex; flex-direction: column; gap: 8px; }
-    .field-group.nested { padding-left: 20px; border-left: 3px solid #e5e7eb; }
-    
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .field-group.nested {
+      padding-left: 20px;
+      border-left: 3px solid #e5e7eb;
+    }
+
     /* Full width for object and array fields */
     .field-group.full-width {
       grid-column: 1 / -1;
     }
-    
-    label { 
-      font-weight: 600; 
-      font-size: 0.9rem; 
+
+    label {
+      font-weight: 600;
+      font-size: 0.9rem;
       color: #374151;
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    label .required { color: #ef4444; }
-    
-    .field-description { 
-      font-size: 0.85rem; 
-      color: #6b7280; 
-      margin-top: -4px; 
+    label .required {
+      color: #ef4444;
+    }
+
+    .field-description {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-top: -4px;
       margin-bottom: 4px;
     }
-    
-    input[type="text"],
-    input[type="number"],
+
+    input[type='text'],
+    input[type='number'],
     select,
     textarea {
       padding: 8px 12px;
@@ -66,7 +77,7 @@ export class SchemaForm extends LitElement {
       transition: border-color 0.2s;
       background: #fff;
     }
-    
+
     input[readonly],
     select[disabled],
     textarea[readonly] {
@@ -74,16 +85,16 @@ export class SchemaForm extends LitElement {
       color: #6b7280;
       cursor: not-allowed;
     }
-    
-    input[type="text"]:focus,
-    input[type="number"]:focus,
+
+    input[type='text']:focus,
+    input[type='number']:focus,
     select:focus,
     textarea:focus {
       outline: none;
       border-color: #3b82f6;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
-    
+
     .object-section {
       border: 1px solid #e5e7eb;
       border-radius: 6px;
@@ -91,31 +102,31 @@ export class SchemaForm extends LitElement {
       background: #f9fafb;
       grid-column: 1 / -1;
     }
-    input[type="checkbox"] {
+    input[type='checkbox'] {
       width: 18px;
       height: 18px;
       cursor: pointer;
     }
-    
+
     .checkbox-wrapper {
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    
+
     .error-message {
       color: #ef4444;
       font-size: 0.85rem;
       margin-top: 4px;
     }
-    
+
     .object-section {
       border: 1px solid #e5e7eb;
       border-radius: 6px;
       padding: 16px;
       background: #f9fafb;
     }
-    
+
     .object-title {
       font-size: 1rem;
       font-weight: 600;
@@ -124,13 +135,13 @@ export class SchemaForm extends LitElement {
       padding-bottom: 8px;
       border-bottom: 2px solid #e5e7eb;
     }
-    
+
     .array-container {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    
+
     .array-item {
       display: flex;
       gap: 8px;
@@ -140,17 +151,17 @@ export class SchemaForm extends LitElement {
       border: 1px solid #e5e7eb;
       border-radius: 6px;
     }
-    
+
     .array-item-content {
       flex: 1;
     }
-    
+
     .array-controls {
       display: flex;
       gap: 4px;
       margin-top: 8px;
     }
-    
+
     .btn {
       padding: 6px 12px;
       border: 1px solid #d1d5db;
@@ -160,44 +171,44 @@ export class SchemaForm extends LitElement {
       font-size: 0.85rem;
       transition: all 0.2s;
     }
-    
+
     .btn:hover {
       background: #f3f4f6;
       border-color: #9ca3af;
     }
-    
+
     .btn-danger {
       color: #ef4444;
       border-color: #fecaca;
     }
-    
+
     .btn-danger:hover {
       background: #fef2f2;
       border-color: #ef4444;
     }
-    
+
     .btn-primary {
       background: #3b82f6;
       color: #fff;
       border-color: #3b82f6;
     }
-    
+
     .btn-primary:hover {
       background: #2563eb;
       border-color: #2563eb;
     }
-    
+
     .btn-small {
       padding: 4px 8px;
       font-size: 0.8rem;
     }
-    
+
     .pattern-properties-container {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    
+
     .pattern-property-item {
       display: flex;
       gap: 8px;
@@ -207,7 +218,7 @@ export class SchemaForm extends LitElement {
       border: 1px solid #e5e7eb;
       border-radius: 6px;
     }
-    
+
     .pattern-property-key {
       min-width: 150px;
       font-weight: 600;
@@ -217,7 +228,7 @@ export class SchemaForm extends LitElement {
   static properties = {
     schema: { type: Object },
     data: { type: Object },
-    errors: { type: Object }
+    errors: { type: Object },
   };
 
   constructor() {
@@ -233,17 +244,18 @@ export class SchemaForm extends LitElement {
   validate() {
     this.errors = {};
     if (!this.schema) return true;
-    
+
     const validateValue = (schema, value, path) => {
       // Check required
       if (schema.required && schema.required.length) {
         for (const req of schema.required) {
           if (value == null || value[req] == null || value[req] === '') {
-            this.errors[`${path}.${req}`] = `${schema.properties?.[req]?.title || req} is required`;
+            this.errors[`${path}.${req}`] =
+              `${schema.properties?.[req]?.title || req} is required`;
           }
         }
       }
-      
+
       // Type validation
       if (schema.type) {
         if (schema.type === 'string' && typeof value === 'string') {
@@ -265,7 +277,7 @@ export class SchemaForm extends LitElement {
           }
         } else if (schema.type === 'object' && typeof value === 'object') {
           if (schema.properties) {
-            Object.keys(schema.properties).forEach(key => {
+            Object.keys(schema.properties).forEach((key) => {
               if (value[key] != null) {
                 validateValue(schema.properties[key], value[key], `${path}.${key}`);
               }
@@ -274,7 +286,7 @@ export class SchemaForm extends LitElement {
         }
       }
     };
-    
+
     validateValue(this.schema, this.data, 'root');
     this.requestUpdate();
     return Object.keys(this.errors).length === 0;
@@ -296,7 +308,7 @@ export class SchemaForm extends LitElement {
     const pathStr = path;
     let current = '';
     let i = 0;
-    
+
     while (i < pathStr.length) {
       const char = pathStr[i];
       if (char === '[') {
@@ -329,9 +341,9 @@ export class SchemaForm extends LitElement {
     if (current) {
       parts.push({ type: 'property', value: current });
     }
-    
+
     let obj = this.data;
-    
+
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (part.type === 'property') {
@@ -351,24 +363,26 @@ export class SchemaForm extends LitElement {
         obj = obj[part.value];
       }
     }
-    
+
     const lastPart = parts[parts.length - 1];
     if (lastPart.type === 'property') {
       obj[lastPart.value] = value;
     } else if (lastPart.type === 'index') {
       obj[lastPart.value] = value;
     }
-    
+
     this.requestUpdate();
     this._dispatchChange();
   }
 
   _dispatchChange() {
-    this.dispatchEvent(new CustomEvent('change', {
-      detail: this.data,
-      bubbles: true,
-      composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('change', {
+        detail: this.data,
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
   /**
@@ -379,28 +393,26 @@ export class SchemaForm extends LitElement {
     const error = this.errors[fullPath];
     const isReadOnly = schema.readOnly === true;
     const isRequired = this.schema?.required?.includes(key);
-    
+
     const label = html`
       <label>
-        ${schema.title || key}
-        ${isRequired ? html`<span class="required">*</span>` : ''}
+        ${schema.title || key} ${isRequired ? html`<span class="required">*</span>` : ''}
       </label>
     `;
-    
-    const description = schema.description 
-      ? html`<div class="field-description">${schema.description}</div>`
+
+    const description =
+      schema.description ?
+        html`<div class="field-description">${schema.description}</div>`
       : '';
-    
-    const errorMsg = error 
-      ? html`<div class="error-message">${error}</div>`
-      : '';
+
+    const errorMsg = error ? html`<div class="error-message">${error}</div>` : '';
     // Boolean checkbox
     if (schema.type === 'boolean') {
       return html`
         <div class="field-group">
           <div class="checkbox-wrapper">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               .checked=${!!value}
               @change=${(e) => this._updateValue(fullPath, e.target.checked)}
             />
@@ -415,17 +427,18 @@ export class SchemaForm extends LitElement {
     if (schema.enum) {
       return html`
         <div class="field-group">
-          ${label}
-          ${description}
-          <select 
+          ${label} ${description}
+          <select
             .value=${value || schema.default || ''}
             @change=${(e) => this._updateValue(fullPath, e.target.value)}
             class=${error ? 'error' : ''}
           >
             <option value="">-- Select --</option>
-            ${schema.enum.map(opt => html`
-              <option value=${opt} ?selected=${value === opt}>${opt}</option>
-            `)}
+            ${schema.enum.map(
+              (opt) => html`
+                <option value=${opt} ?selected=${value === opt}>${opt}</option>
+              `
+            )}
           </select>
           ${errorMsg}
         </div>
@@ -436,16 +449,16 @@ export class SchemaForm extends LitElement {
     if (schema.type === 'number' || schema.type === 'integer') {
       return html`
         <div class="field-group">
-          ${label}
-          ${description}
-          <input 
+          ${label} ${description}
+          <input
             type="number"
             .value=${value != null ? String(value) : ''}
             ?readonly=${isReadOnly}
             @input=${(e) => {
               if (isReadOnly) return;
-              const val = schema.type === 'integer' 
-                ? parseInt(e.target.value, 10) 
+              const val =
+                schema.type === 'integer' ?
+                  parseInt(e.target.value, 10)
                 : parseFloat(e.target.value);
               this._updateValue(fullPath, isNaN(val) ? null : val);
             }}
@@ -460,9 +473,8 @@ export class SchemaForm extends LitElement {
     if (schema.type === 'string') {
       return html`
         <div class="field-group">
-          ${label}
-          ${description}
-          <input 
+          ${label} ${description}
+          <input
             type="text"
             .value=${value || ''}
             ?readonly=${isReadOnly}
@@ -506,11 +518,15 @@ export class SchemaForm extends LitElement {
     return html`
       <div class="object-section">
         <div class="object-title">${schema.title || key}</div>
-        ${schema.description ? html`<div class="field-description">${schema.description}</div>` : ''}
+        ${schema.description ?
+          html`<div class="field-description">${schema.description}</div>`
+        : ''}
         <div class="form-container">
-          ${schema.properties ? Object.keys(schema.properties).map(propKey => 
-            this._renderField(propKey, schema.properties[propKey], value[propKey], path)
-          ) : ''}
+          ${schema.properties ?
+            Object.keys(schema.properties).map((propKey) =>
+              this._renderField(propKey, schema.properties[propKey], value[propKey], path)
+            )
+          : ''}
         </div>
       </div>
     `;
@@ -545,25 +561,31 @@ export class SchemaForm extends LitElement {
       <div class="field-group full-width">
         <div class="object-section">
           <div class="object-title">${schema.title || key}</div>
-          ${schema.description ? html`<div class="field-description">${schema.description}</div>` : ''}
+          ${schema.description ?
+            html`<div class="field-description">${schema.description}</div>`
+          : ''}
           <div class="pattern-properties-container">
-            ${existingKeys.map(itemKey => html`
-              <div class="pattern-property-item">
-                <div class="pattern-property-key">
-                  ${itemKey}
+            ${existingKeys.map(
+              (itemKey) => html`
+                <div class="pattern-property-item">
+                  <div class="pattern-property-key">${itemKey}</div>
+                  <div style="flex: 1;">
+                    ${this._renderPatternPropertyValue(
+                      itemSchema,
+                      value[itemKey],
+                      `${path}.${itemKey}`
+                    )}
+                  </div>
+                  <button
+                    class="btn btn-danger btn-small"
+                    @click=${() => removeItem(itemKey)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
                 </div>
-                <div style="flex: 1;">
-                  ${this._renderPatternPropertyValue(itemSchema, value[itemKey], `${path}.${itemKey}`)}
-                </div>
-                <button 
-                  class="btn btn-danger btn-small" 
-                  @click=${() => removeItem(itemKey)}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-            `)}
+              `
+            )}
           </div>
           <div class="array-controls">
             <button class="btn btn-primary btn-small" @click=${addItem} type="button">
@@ -583,7 +605,7 @@ export class SchemaForm extends LitElement {
     if (schema.type === 'object' && schema.properties) {
       return html`
         <div class="form-container">
-          ${Object.keys(schema.properties).map(propKey => 
+          ${Object.keys(schema.properties).map((propKey) =>
             this._renderField(propKey, schema.properties[propKey], value?.[propKey], path)
           )}
         </div>
@@ -593,12 +615,13 @@ export class SchemaForm extends LitElement {
     // For primitive types, render inline input
     if (schema.type === 'number' || schema.type === 'integer') {
       return html`
-        <input 
+        <input
           type="number"
           .value=${value != null ? String(value) : ''}
           @input=${(e) => {
-            const val = schema.type === 'integer' 
-              ? parseInt(e.target.value, 10) 
+            const val =
+              schema.type === 'integer' ?
+                parseInt(e.target.value, 10)
               : parseFloat(e.target.value);
             this._updateValue(path, isNaN(val) ? null : val);
           }}
@@ -609,7 +632,7 @@ export class SchemaForm extends LitElement {
 
     if (schema.type === 'string') {
       return html`
-        <input 
+        <input
           type="text"
           .value=${value || ''}
           @input=${(e) => this._updateValue(path, e.target.value)}
@@ -643,22 +666,26 @@ export class SchemaForm extends LitElement {
     return html`
       <div class="field-group full-width">
         <label>${schema.title || key}</label>
-        ${schema.description ? html`<div class="field-description">${schema.description}</div>` : ''}
+        ${schema.description ?
+          html`<div class="field-description">${schema.description}</div>`
+        : ''}
         <div class="array-container">
-          ${value.map((item, idx) => html`
-            <div class="array-item">
-              <div class="array-item-content">
-                ${this._renderArrayItem(schema.items, item, `${path}[${idx}]`, idx)}
+          ${value.map(
+            (item, idx) => html`
+              <div class="array-item">
+                <div class="array-item-content">
+                  ${this._renderArrayItem(schema.items, item, `${path}[${idx}]`, idx)}
+                </div>
+                <button
+                  class="btn btn-danger btn-small"
+                  @click=${() => removeItem(idx)}
+                  type="button"
+                >
+                  Remove
+                </button>
               </div>
-              <button 
-                class="btn btn-danger btn-small" 
-                @click=${() => removeItem(idx)}
-                type="button"
-              >
-                Remove
-              </button>
-            </div>
-          `)}
+            `
+          )}
         </div>
         <div class="array-controls">
           <button class="btn btn-primary btn-small" @click=${addItem} type="button">
@@ -679,7 +706,7 @@ export class SchemaForm extends LitElement {
     if (itemSchema.type === 'string') {
       if (itemSchema.enum) {
         return html`
-          <select 
+          <select
             .value=${value || ''}
             @change=${(e) => {
               const pathParts = path.match(/([^\[]+)(?:\[(\d+)\])?/g);
@@ -690,14 +717,16 @@ export class SchemaForm extends LitElement {
             }}
           >
             <option value="">-- Select --</option>
-            ${itemSchema.enum.map(opt => html`
-              <option value=${opt} ?selected=${value === opt}>${opt}</option>
-            `)}
+            ${itemSchema.enum.map(
+              (opt) => html`
+                <option value=${opt} ?selected=${value === opt}>${opt}</option>
+              `
+            )}
           </select>
         `;
       }
       return html`
-        <input 
+        <input
           type="text"
           .value=${value || ''}
           @input=${(e) => {
@@ -715,9 +744,14 @@ export class SchemaForm extends LitElement {
     if (itemSchema.type === 'object' && itemSchema.properties) {
       return html`
         <div class="form-container">
-          ${Object.keys(itemSchema.properties).map(propKey => {
+          ${Object.keys(itemSchema.properties).map((propKey) => {
             const propValue = value?.[propKey];
-            return this._renderField(propKey, itemSchema.properties[propKey], propValue, path);
+            return this._renderField(
+              propKey,
+              itemSchema.properties[propKey],
+              propValue,
+              path
+            );
           })}
         </div>
       `;
@@ -745,23 +779,28 @@ export class SchemaForm extends LitElement {
   _getDefaultValue(schema) {
     if (!schema) return null;
     if (schema.default !== undefined) return schema.default;
-    
+
     switch (schema.type) {
-      case 'string': return '';
+      case 'string':
+        return '';
       case 'number':
-      case 'integer': return 0;
-      case 'boolean': return false;
-      case 'array': return [];
+      case 'integer':
+        return 0;
+      case 'boolean':
+        return false;
+      case 'array':
+        return [];
       case 'object': {
         const obj = {};
         if (schema.properties) {
-          Object.keys(schema.properties).forEach(key => {
+          Object.keys(schema.properties).forEach((key) => {
             obj[key] = this._getDefaultValue(schema.properties[key]);
           });
         }
         return obj;
       }
-      default: return null;
+      default:
+        return null;
     }
   }
 
@@ -773,9 +812,11 @@ export class SchemaForm extends LitElement {
     // Render root level properties
     return html`
       <div class="form-container">
-        ${this.schema.properties ? Object.keys(this.schema.properties).map(key => 
-          this._renderField(key, this.schema.properties[key], this.data[key])
-        ) : html`<div>No properties defined in schema</div>`}
+        ${this.schema.properties ?
+          Object.keys(this.schema.properties).map((key) =>
+            this._renderField(key, this.schema.properties[key], this.data[key])
+          )
+        : html`<div>No properties defined in schema</div>`}
       </div>
     `;
   }

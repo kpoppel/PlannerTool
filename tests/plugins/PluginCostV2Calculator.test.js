@@ -9,50 +9,57 @@ import {
   buildTaskTree,
   calculateBudgetDeviation,
   hasSignificantDeviation,
-  allocateToMonths
+  allocateToMonths,
 } from '../../www/js/plugins/PluginCostV2Calculator.js';
 
 describe('PluginCostV2Calculator', () => {
-  
   describe('expandDataset', () => {
     it('should include initial features', () => {
       const features = [{ id: '1', title: 'Feature 1' }];
       const childrenByEpic = new Map();
       const allFeatures = features;
-      
+
       const result = expandDataset(features, childrenByEpic, allFeatures);
-      
+
       expect(result).to.have.length(1);
       expect(result[0].id).to.equal('1');
     });
 
     it('should recursively include children', () => {
       const features = [{ id: '1', title: 'Parent' }];
-      const childrenByEpic = new Map([[1, ['2']], [2, ['3']]]);
+      const childrenByEpic = new Map([
+        [1, ['2']],
+        [2, ['3']],
+      ]);
       const allFeatures = [
         { id: '1', title: 'Parent' },
         { id: '2', title: 'Child' },
-        { id: '3', title: 'Grandchild' }
+        { id: '3', title: 'Grandchild' },
       ];
-      
+
       const result = expandDataset(features, childrenByEpic, allFeatures);
-      
+
       expect(result).to.have.length(3);
-      expect(result.map(f => f.id)).to.include.members(['1', '2', '3']);
+      expect(result.map((f) => f.id)).to.include.members(['1', '2', '3']);
     });
 
     it('should prevent duplicates', () => {
-      const features = [{ id: '1', title: 'Feature 1' }, { id: '1', title: 'Feature 1' }];
+      const features = [
+        { id: '1', title: 'Feature 1' },
+        { id: '1', title: 'Feature 1' },
+      ];
       const childrenByEpic = new Map();
       const allFeatures = features;
-      
+
       const result = expandDataset(features, childrenByEpic, allFeatures);
-      
+
       expect(result).to.have.length(1);
     });
 
     it('should throw if features is not an array', () => {
-      expect(() => expandDataset(null, new Map(), [])).to.throw('features must be an array');
+      expect(() => expandDataset(null, new Map(), [])).to.throw(
+        'features must be an array'
+      );
     });
 
     it('should throw if childrenByEpic is not a Map', () => {
@@ -64,9 +71,9 @@ describe('PluginCostV2Calculator', () => {
     it('should identify orphan features', () => {
       const features = [{ id: '1', title: 'Orphan' }];
       const childrenByEpic = new Map();
-      
+
       const result = buildTaskTree(features, childrenByEpic);
-      
+
       expect(result.roots).to.include('1');
       expect(result.childrenMap.size).to.equal(0);
       expect(result.parentMap.size).to.equal(0);
@@ -75,12 +82,12 @@ describe('PluginCostV2Calculator', () => {
     it('should build parent-child relationships', () => {
       const features = [
         { id: '1', title: 'Parent' },
-        { id: '2', title: 'Child' }
+        { id: '2', title: 'Child' },
       ];
       const childrenByEpic = new Map([[1, ['2']]]);
-      
+
       const result = buildTaskTree(features, childrenByEpic);
-      
+
       expect(result.roots).to.include('1');
       expect(result.roots).to.not.include('2');
       expect(result.childrenMap.get('1')).to.include('2');
@@ -90,12 +97,12 @@ describe('PluginCostV2Calculator', () => {
     it('should handle multiple orphans', () => {
       const features = [
         { id: '1', title: 'Orphan 1' },
-        { id: '2', title: 'Orphan 2' }
+        { id: '2', title: 'Orphan 2' },
       ];
       const childrenByEpic = new Map();
-      
+
       const result = buildTaskTree(features, childrenByEpic);
-      
+
       expect(result.roots).to.have.length(2);
       expect(result.roots).to.include.members(['1', '2']);
     });
@@ -106,20 +113,20 @@ describe('PluginCostV2Calculator', () => {
       const parent = {
         metrics: {
           internal: { cost: 1000, hours: 100 },
-          external: { cost: 500, hours: 50 }
-        }
+          external: { cost: 500, hours: 50 },
+        },
       };
       const children = [
         {
           metrics: {
             internal: { cost: 600, hours: 60 },
-            external: { cost: 300, hours: 30 }
-          }
-        }
+            external: { cost: 300, hours: 30 },
+          },
+        },
       ];
-      
+
       const result = calculateBudgetDeviation(parent, children);
-      
+
       // Parent has 1500 total cost, children sum is 900 = +66.67% deviation
       expect(result.deviation.totalCost).to.be.closeTo(66.67, 0.1);
       expect(result.parentOwn.totalCost).to.equal(1500);
@@ -130,19 +137,21 @@ describe('PluginCostV2Calculator', () => {
       const parent = {
         metrics: {
           internal: { cost: 1000, hours: 100 },
-          external: { cost: 0, hours: 0 }
-        }
+          external: { cost: 0, hours: 0 },
+        },
       };
       const children = [];
-      
+
       const result = calculateBudgetDeviation(parent, children);
-      
+
       expect(result.deviation.totalCost).to.equal(100); // 100% deviation
       expect(result.childrenSum.totalCost).to.equal(0);
     });
 
     it('should throw if parent is invalid', () => {
-      expect(() => calculateBudgetDeviation(null, [])).to.throw('parent must be an object');
+      expect(() => calculateBudgetDeviation(null, [])).to.throw(
+        'parent must be an object'
+      );
     });
   });
 
@@ -154,9 +163,9 @@ describe('PluginCostV2Calculator', () => {
         internalCost: 10,
         internalHours: 0,
         externalCost: 0,
-        externalHours: 0
+        externalHours: 0,
       };
-      
+
       expect(hasSignificantDeviation(deviation, 10)).to.be.true;
     });
 
@@ -167,9 +176,9 @@ describe('PluginCostV2Calculator', () => {
         internalCost: 2,
         internalHours: 0,
         externalCost: 0,
-        externalHours: 0
+        externalHours: 0,
       };
-      
+
       expect(hasSignificantDeviation(deviation, 10)).to.be.false;
     });
 
@@ -180,9 +189,9 @@ describe('PluginCostV2Calculator', () => {
         internalCost: 0,
         internalHours: 0,
         externalCost: 0,
-        externalHours: 0
+        externalHours: 0,
       };
-      
+
       expect(hasSignificantDeviation(deviation, 10)).to.be.true;
     });
   });
@@ -194,13 +203,13 @@ describe('PluginCostV2Calculator', () => {
         end: '2026-01-31',
         metrics: {
           internal: { cost: 1000, hours: 100 },
-          external: { cost: 500, hours: 50 }
-        }
+          external: { cost: 500, hours: 50 },
+        },
       };
       const months = [new Date('2026-01-01T00:00:00Z')];
-      
+
       const result = allocateToMonths(feature, months);
-      
+
       expect(result.cost.internal.get('2026-01')).to.equal(1000);
       expect(result.cost.external.get('2026-01')).to.equal(500);
       expect(result.hours.internal.get('2026-01')).to.equal(100);
@@ -213,20 +222,17 @@ describe('PluginCostV2Calculator', () => {
         end: '2026-02-15',
         metrics: {
           internal: { cost: 3100, hours: 310 },
-          external: { cost: 0, hours: 0 }
-        }
+          external: { cost: 0, hours: 0 },
+        },
       };
-      const months = [
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-02-01T00:00:00Z')
-      ];
-      
+      const months = [new Date('2026-01-01T00:00:00Z'), new Date('2026-02-01T00:00:00Z')];
+
       const result = allocateToMonths(feature, months);
-      
+
       // 32 days total: 17 in Jan, 15 in Feb
       const janCost = result.cost.internal.get('2026-01');
       const febCost = result.cost.internal.get('2026-02');
-      
+
       expect(janCost + febCost).to.be.closeTo(3100, 0.1);
       expect(janCost).to.be.greaterThan(febCost); // More days in Jan
     });
@@ -237,13 +243,13 @@ describe('PluginCostV2Calculator', () => {
         end: null,
         metrics: {
           internal: { cost: 1000, hours: 100 },
-          external: { cost: 0, hours: 0 }
-        }
+          external: { cost: 0, hours: 0 },
+        },
       };
       const months = [new Date('2026-01-01T00:00:00Z')];
-      
+
       const result = allocateToMonths(feature, months);
-      
+
       expect(result.cost.internal.size).to.equal(0);
       expect(result.cost.external.size).to.equal(0);
     });

@@ -16,9 +16,11 @@ describe('viewOptions', () => {
     state._viewService.setFeatureSortMode('rank');
     state._viewService.setShowEpics(true);
     state._viewService.setShowFeatures(true);
-    state._stateFilterService.setAvailableStates(['New','In Progress','Done']);
-    state._stateFilterService._selectedStates = ['New','In Progress','Done'];
-    state.getFeatureStateColor = (s) => ({ background: s==='Done' ? '#0f0' : '#ccc' });
+    state._stateFilterService.setAvailableStates(['New', 'In Progress', 'Done']);
+    state._stateFilterService._selectedStates = ['New', 'In Progress', 'Done'];
+    state.getFeatureStateColor = (s) => ({
+      background: s === 'Done' ? '#0f0' : '#ccc',
+    });
   });
 
   afterEach(() => {

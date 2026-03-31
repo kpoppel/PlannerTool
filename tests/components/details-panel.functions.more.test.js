@@ -4,7 +4,9 @@ import '../../www/js/components/DetailsPanel.lit.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('DetailsPanel additional function coverage', () => {
-  beforeEach(async () => { await customElements.whenDefined('details-panel'); });
+  beforeEach(async () => {
+    await customElements.whenDefined('details-panel');
+  });
 
   it('_onShow opens and sets feature', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
@@ -21,7 +23,7 @@ describe('DetailsPanel additional function coverage', () => {
     await el.updateComplete;
 
     const childrenMap = new Map();
-    childrenMap.set('e1', ['c1','c2']);
+    childrenMap.set('e1', ['c1', 'c2']);
     // childrenByEpic is a getter on state; stub the getter to return our map
     const childrenStub = sinon.stub(state, 'childrenByEpic').get(() => childrenMap);
 
@@ -46,8 +48,10 @@ describe('DetailsPanel additional function coverage', () => {
   it('_handleCapacityClick focuses and selects input', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     // create DOM structure inside shadowRoot
-    const row = document.createElement('div'); row.className = 'capacity-bar-row';
-    const input = document.createElement('input'); input.className = 'capacity-bar-input';
+    const row = document.createElement('div');
+    row.className = 'capacity-bar-row';
+    const input = document.createElement('input');
+    input.className = 'capacity-bar-input';
     // stub focus/select
     input.focus = sinon.stub();
     input.select = sinon.stub();
@@ -98,7 +102,13 @@ describe('DetailsPanel additional function coverage', () => {
 
   it('_handleDeleteCapacity removes team and calls updateFeatureField', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    el.feature = { id: 'f3', capacity: [{ team: 't1', capacity: 20 }, { team: 't2', capacity: 30 }] };
+    el.feature = {
+      id: 'f3',
+      capacity: [
+        { team: 't1', capacity: 20 },
+        { team: 't2', capacity: 30 },
+      ],
+    };
     await el.updateComplete;
     const stub = sinon.stub(state, 'updateFeatureField');
     el._handleDeleteCapacity('t2', { stopPropagation: () => {} });
@@ -137,7 +147,13 @@ describe('DetailsPanel additional function coverage', () => {
     el.feature = { id: 'f10' };
     // Provide iterations via state so _loadIterationsForFeature picks them up
     // stub the state's iterations getter so _loadIterationsForFeature picks them up
-    const itersStub = sinon.stub(state, 'iterations').get(() => [{ path: 'Proj\\Iteration\\It1', startDate: '2025-02-01', finishDate: '2025-02-10' }]);
+    const itersStub = sinon.stub(state, 'iterations').get(() => [
+      {
+        path: 'Proj\\Iteration\\It1',
+        startDate: '2025-02-01',
+        finishDate: '2025-02-10',
+      },
+    ]);
     // trigger the load that runs in updated lifecycle
     await el._loadIterationsForFeature();
 

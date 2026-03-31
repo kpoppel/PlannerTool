@@ -14,7 +14,9 @@ describe('admin-projects', () => {
 
   it('syncs display_states when include_states are added and removed', async () => {
     // initialize content with one project with empty states
-    comp.content = { project_map: [{ name: 'P1', include_states: [], display_states: [] }] };
+    comp.content = {
+      project_map: [{ name: 'P1', include_states: [], display_states: [] }],
+    };
     await comp.requestUpdate();
 
     // add an include_state and expect it to appear in display_states

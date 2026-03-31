@@ -3,7 +3,9 @@ import '../../www/js/components/FeatureBoard.lit.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('FeatureBoard helper coverage', () => {
-  beforeEach(async () => { await customElements.whenDefined('feature-board'); });
+  beforeEach(async () => {
+    await customElements.whenDefined('feature-board');
+  });
 
   it('_sortByRank sorts features by originalRank', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
@@ -23,7 +25,12 @@ describe('FeatureBoard helper coverage', () => {
   it('_buildChildrenMap and _orderFeaturesHierarchically produce hierarchical order', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
     const epic = { id: 'e1', type: 'epic', originalRank: 1 };
-    const child = { id: 'f1', type: 'feature', parentEpic: 'e1', originalRank: 2 };
+    const child = {
+      id: 'f1',
+      type: 'feature',
+      parentEpic: 'e1',
+      originalRank: 2,
+    };
     const standalone = { id: 'f2', type: 'feature', originalRank: 3 };
     const childrenMap = el._buildChildrenMap([epic, child, standalone]);
     expect(childrenMap.get('e1')).to.exist;
@@ -62,7 +69,13 @@ describe('FeatureBoard helper coverage', () => {
     // State filter service selected states
     state._stateFilterService.setSelectedStates(['New']);
 
-    const feature = { id: 'f1', project: 'p1', type: 'feature', state: 'New', capacity: [{ team: 't1' }] };
+    const feature = {
+      id: 'f1',
+      project: 'p1',
+      type: 'feature',
+      state: 'New',
+      capacity: [{ team: 't1' }],
+    };
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.be.true;
   });

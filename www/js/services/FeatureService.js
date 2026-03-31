@@ -12,7 +12,10 @@ export class FeatureService {
     // getActiveScenarioFn can be either a function or a ScenarioManager instance
     if (typeof getActiveScenarioFn === 'function') {
       this._getActiveScenario = getActiveScenarioFn;
-    } else if (getActiveScenarioFn && typeof getActiveScenarioFn.getActiveScenario === 'function') {
+    } else if (
+      getActiveScenarioFn &&
+      typeof getActiveScenarioFn.getActiveScenario === 'function'
+    ) {
       this._scenarioManager = getActiveScenarioFn;
       this._getActiveScenario = () => this._scenarioManager.getActiveScenario();
     } else {
@@ -23,48 +26,48 @@ export class FeatureService {
     this._countsCache = null;
 
     // Invalidate cached counts when features change elsewhere
-    try{
-      bus.on(FeatureEvents.UPDATED, () => this.invalidateCounts());
-    }catch(e){}
+    bus.on(FeatureEvents.UPDATED, () => this.invalidateCounts());
   }
 
   /**
    * Invalidate cached aggregated counts
    */
-  invalidateCounts(){ this._countsCache = null; }
+  invalidateCounts() {
+    this._countsCache = null;
+  }
 
   /**
    * Compute aggregated counts for projects and teams in a single pass.
    * Returns an object { projectCounts: { [projectId]: { epics, features } },
    *                      teamCounts: { [teamId]: { epics, features } } }
    */
-  _ensureCounts(){
-    if(this._countsCache) return this._countsCache;
+  _ensureCounts() {
+    if (this._countsCache) return this._countsCache;
     const projectCounts = Object.create(null);
     const teamCounts = Object.create(null);
 
     const feats = this.getEffectiveFeatures() || [];
-    for(const f of feats){
+    for (const f of feats) {
       const projId = f.project || '__unknown__';
-      if(!projectCounts[projId]) projectCounts[projId] = { epics: 0, features: 0 };
-      if(f.type === 'epic') projectCounts[projId].epics++;
-      else if(f.type === 'feature') projectCounts[projId].features++;
+      if (!projectCounts[projId]) projectCounts[projId] = { epics: 0, features: 0 };
+      if (f.type === 'epic') projectCounts[projId].epics++;
+      else if (f.type === 'feature') projectCounts[projId].features++;
 
       // For team-level counts, count a feature/epic once per team if it has
       // any non-zero allocation for that team (avoid double-counting multiple
       // capacity entries for same team).
-      if(Array.isArray(f.capacity)){
+      if (Array.isArray(f.capacity)) {
         const seen = new Set();
-        for(const tl of f.capacity){
-          if(!tl || !tl.team) continue;
+        for (const tl of f.capacity) {
+          if (!tl || !tl.team) continue;
           const cap = Number(tl.capacity) || 0;
-          if(cap <= 0) continue;
+          if (cap <= 0) continue;
           const teamId = tl.team;
-          if(seen.has(teamId)) continue;
+          if (seen.has(teamId)) continue;
           seen.add(teamId);
-          if(!teamCounts[teamId]) teamCounts[teamId] = { epics: 0, features: 0 };
-          if(f.type === 'epic') teamCounts[teamId].epics++;
-          else if(f.type === 'feature') teamCounts[teamId].features++;
+          if (!teamCounts[teamId]) teamCounts[teamId] = { epics: 0, features: 0 };
+          if (f.type === 'epic') teamCounts[teamId].epics++;
+          else if (f.type === 'feature') teamCounts[teamId].features++;
         }
       }
     }
@@ -95,29 +98,29 @@ export class FeatureService {
     const activeScenario = this._getActiveScenario();
 
     let baselineFeatures = this._baselineStore.getFeatures();
-    
+
     // Apply date defaulting for features without dates when feature flag is OFF
     if (!featureFlags.SHOW_UNPLANNED_WORK) {
       baselineFeatures = this._applyDefaultDates(baselineFeatures);
     }
-    
+
     if (!activeScenario) {
       return baselineFeatures; //.map(f => ({ ...f }));
     }
 
     // Merge baseline features with scenario overrides
-    return baselineFeatures.map(base => {
+    return baselineFeatures.map((base) => {
       const ov = activeScenario.overrides ? activeScenario.overrides[base.id] : undefined;
       const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
       const derived = this._recomputeDerived(base, ov);
       effective.changedFields = derived.changedFields;
       effective.dirty = derived.dirty;
-      
+
       // Always recalculate orgLoad based on effective capacity to ensure it's current
       if (this._projectTeamService && effective.capacity) {
         effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
       }
-      
+
       return effective;
     });
   }
@@ -140,27 +143,40 @@ export class FeatureService {
     const derived = this._recomputeDerived(base, ov);
     effective.changedFields = derived.changedFields;
     effective.dirty = derived.dirty;
-    
-    console.log('[FeatureService] getEffectiveFeatureById', id, 'override:', ov, 'changedFields:', derived.changedFields, 'dirty:', derived.dirty);
-    
+
+    console.log(
+      '[FeatureService] getEffectiveFeatureById',
+      id,
+      'override:',
+      ov,
+      'changedFields:',
+      derived.changedFields,
+      'dirty:',
+      derived.dirty
+    );
+
     // Always recalculate orgLoad based on effective capacity to ensure it's current
     if (this._projectTeamService && effective.capacity) {
       effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
     }
-    
+
     return effective;
   }
 
-  
   /**
    * Compute derived metadata for a feature (changed fields, dirty flag)
    */
   _recomputeDerived(featureBase, override) {
     const changedFields = [];
     if (override) {
-      if (override.start && override.start !== featureBase.start) changedFields.push('start');
+      if (override.start && override.start !== featureBase.start)
+        changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
-      if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)) changedFields.push('capacity');
+      if (
+        override.capacity &&
+        JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)
+      )
+        changedFields.push('capacity');
       // Support state override detection
       const baseState = featureBase.state || '';
       if (override.state && override.state !== baseState) changedFields.push('state');
@@ -173,14 +189,13 @@ export class FeatureService {
    * Returns updated count
    */
   updateFeatureDates(updates, capacityCallback) {
-    const prof_start = Date.now();
     const activeScenario = this._getActiveScenario();
-    
+
     if (!activeScenario) return 0;
     if (!Array.isArray(updates) || updates.length === 0) return 0;
 
     const baselineFeatureById = this._baselineStore.getFeatureById();
-    
+
     // Work on a copy of overrides to compute effective child ends
     const newOverrides = Object.assign({}, activeScenario.overrides || {});
     for (const u of updates) {
@@ -218,7 +233,10 @@ export class FeatureService {
 
       // Apply override - merge with any existing override so we don't drop other
       // fields (like capacity) when updating dates.
-      const existing = activeScenario.overrides[id] || { start: base.start, end: base.end };
+      const existing = activeScenario.overrides[id] || {
+        start: base.start,
+        end: base.end,
+      };
       if (existing.start === start && existing.end === end) continue;
       existing.start = start;
       existing.end = end;
@@ -230,28 +248,43 @@ export class FeatureService {
       // If this is an epic move, shift children that do NOT have explicit overrides
       if (base.type === 'epic') {
         try {
-          const priorEpic = activeScenario.overrides[id] || { start: base.start, end: base.end };
+          const priorEpic = activeScenario.overrides[id] || {
+            start: base.start,
+            end: base.end,
+          };
           const priorStart = priorEpic.start || base.start;
           const newStart = start || priorStart;
           const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
           const childIds = this._childrenByEpic.get(base.id) || [];
-            if (!isNaN(deltaMs) && deltaMs !== 0) {
+          if (!isNaN(deltaMs) && deltaMs !== 0) {
             for (const cid of childIds) {
               const chBase = baselineFeatureById.get(cid);
               if (!chBase) continue;
               const childExistingOv = activeScenario.overrides[cid];
-              const hasExplicit = childExistingOv && (childExistingOv.start !== chBase.start || childExistingOv.end !== chBase.end);
+              const hasExplicit =
+                childExistingOv &&
+                (childExistingOv.start !== chBase.start ||
+                  childExistingOv.end !== chBase.end);
               if (hasExplicit) {
                 // Do not change explicit child override, but still mark the child for refresh
                 changedIdsCollector.push(cid);
                 continue; // respect explicit child override
               }
               // shift child's baseline dates by delta
-              const shiftIsoByMs = (iso, ms) => { try { return new Date(Date.parse(iso) + ms).toISOString().slice(0,10); } catch (e) { return iso; } };
+              const shiftIsoByMs = (iso, ms) => {
+                try {
+                  return new Date(Date.parse(iso) + ms).toISOString().slice(0, 10);
+                } catch (e) {
+                  return iso;
+                }
+              };
               const shiftedStart = shiftIsoByMs(chBase.start, deltaMs);
               const shiftedEnd = shiftIsoByMs(chBase.end, deltaMs);
               // Merge with any existing override to preserve other fields (e.g., capacity)
-              const childOv = activeScenario.overrides[cid] || { start: chBase.start, end: chBase.end };
+              const childOv = activeScenario.overrides[cid] || {
+                start: chBase.start,
+                end: chBase.end,
+              };
               childOv.start = shiftedStart;
               childOv.end = shiftedEnd;
               activeScenario.overrides[cid] = childOv;
@@ -261,7 +294,9 @@ export class FeatureService {
             // No shift, but still ensure children are refreshed so UI reflects parent change
             for (const cid of childIds) changedIdsCollector.push(cid);
           }
-        } catch (e) { /* noop */ }
+        } catch (e) {
+          /* noop */
+        }
       }
 
       // If feature extends parent epic, adjust epic override
@@ -269,7 +304,10 @@ export class FeatureService {
         const epicId = base.parentEpic;
         const epicBase = baselineFeatureById.get(epicId);
         if (epicBase) {
-          const epicOv = activeScenario.overrides[epicId] || { start: epicBase.start, end: epicBase.end };
+          const epicOv = activeScenario.overrides[epicId] || {
+            start: epicBase.start,
+            end: epicBase.end,
+          };
           let changed = false;
           if (end > (epicOv.end || epicBase.end)) {
             epicOv.end = end;
@@ -327,12 +365,15 @@ export class FeatureService {
     if (!activeScenario) return false;
 
     const baselineFeatures = this._baselineStore.getFeatures();
-    const base = baselineFeatures.find(f => f.id === id);
+    const base = baselineFeatures.find((f) => f.id === id);
     if (!base) return false;
 
     // Support date and capacity fields for overrides
     if (field === 'start' || field === 'end') {
-      const ov = activeScenario.overrides[id] || { start: base.start, end: base.end };
+      const ov = activeScenario.overrides[id] || {
+        start: base.start,
+        end: base.end,
+      };
       ov[field] = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
@@ -355,7 +396,7 @@ export class FeatureService {
 
       return true;
     }
-    
+
     if (field === 'capacity') {
       const ov = activeScenario.overrides[id] || {};
       ov.capacity = value;
@@ -409,7 +450,10 @@ export class FeatureService {
       const base = this._baselineStore.getFeatureById().get(id);
       if (base) {
         if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
-        if (base.type === 'epic') { const childIds = this._childrenByEpic.get(base.id) || []; for (const cid of childIds) idsToEmit.add(cid); }
+        if (base.type === 'epic') {
+          const childIds = this._childrenByEpic.get(base.id) || [];
+          for (const cid of childIds) idsToEmit.add(cid);
+        }
       }
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
@@ -429,7 +473,7 @@ export class FeatureService {
    */
   getFeatureTitleById(id) {
     const baselineFeatures = this._baselineStore.getFeatures();
-    const f = baselineFeatures.find(x => x.id === id);
+    const f = baselineFeatures.find((x) => x.id === id);
     return f ? f.title : id;
   }
 
@@ -445,18 +489,18 @@ export class FeatureService {
     todayMinus120.setDate(today.getDate() - 120);
     const todayMinus90 = new Date(today);
     todayMinus90.setDate(today.getDate() - 90);
-    
+
     const defaultStart = todayMinus120.toISOString().split('T')[0];
     const defaultEnd = todayMinus90.toISOString().split('T')[0];
-    
-    return features.map(f => {
+
+    return features.map((f) => {
       // Only add default dates if both start and end are missing
       if (!f.start || !f.end) {
         return {
           ...f,
           start: f.start || defaultStart,
           end: f.end || defaultEnd,
-          hasDefaultDates: true // Mark for potential future use
+          hasDefaultDates: true, // Mark for potential future use
         };
       }
       return f;
@@ -508,7 +552,7 @@ export class FeatureService {
    */
   expandParentChildClosure(baseIds) {
     const allFeatures = this.getEffectiveFeatures();
-    const featureById = new Map(allFeatures.map(f => [f.id, f]));
+    const featureById = new Map(allFeatures.map((f) => [f.id, f]));
     const expanded = new Set(baseIds);
     const toProcess = [...baseIds];
 
@@ -549,7 +593,7 @@ export class FeatureService {
    */
   expandRelationLinks(baseIds) {
     const allFeatures = this.getEffectiveFeatures();
-    const featureById = new Map(allFeatures.map(f => [f.id, f]));
+    const featureById = new Map(allFeatures.map((f) => [f.id, f]));
     const expanded = new Set(baseIds);
     const toProcess = [...baseIds];
 
@@ -589,7 +633,7 @@ export class FeatureService {
       if (!feature.capacity || !Array.isArray(feature.capacity)) continue;
 
       // Check if feature has any capacity allocated to selected teams
-      const hasAllocation = feature.capacity.some(cap => {
+      const hasAllocation = feature.capacity.some((cap) => {
         if (!cap || !cap.team) return false;
         const capacity = Number(cap.capacity) || 0;
         return capacity > 0 && teamIdSet.has(cap.team);
@@ -620,7 +664,7 @@ export class FeatureService {
     const counts = {
       parentChild: 0,
       relations: 0,
-      teamAllocated: 0
+      teamAllocated: 0,
     };
 
     // Apply parent/child expansion FROM ORIGINAL SELECTED SET
@@ -644,7 +688,11 @@ export class FeatureService {
     }
 
     // Apply team allocation expansion (independent of selected set)
-    if (expansionOptions.expandTeamAllocated && expansionOptions.selectedTeamIds && expansionOptions.selectedTeamIds.length > 0) {
+    if (
+      expansionOptions.expandTeamAllocated &&
+      expansionOptions.selectedTeamIds &&
+      expansionOptions.selectedTeamIds.length > 0
+    ) {
       const teamAllocated = this.expandTeamAllocated(expansionOptions.selectedTeamIds);
       const beforeCount = expandedIds.size;
       for (const id of teamAllocated) {
@@ -656,4 +704,3 @@ export class FeatureService {
     return { expandedIds, counts };
   }
 }
-

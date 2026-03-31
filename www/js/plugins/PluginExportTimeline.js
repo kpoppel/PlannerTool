@@ -8,7 +8,7 @@ import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 
 class PluginExportTimeline {
-  constructor(id = 'plugin-export-timeline', config = {}){
+  constructor(id = 'plugin-export-timeline', config = {}) {
     this.id = id;
     this.config = config;
     this._el = null;
@@ -18,20 +18,20 @@ class PluginExportTimeline {
     this.active = false;
   }
 
-  getMetadata(){
+  getMetadata() {
     return {
       id: this.id,
       name: this.config.name || 'Export Timeline',
       description: this.config.description || 'Export timeline data to JSON or CSV',
       icon: this.config.icon || 'file_download',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
     };
   }
 
-  async init(){
-    if(!isEnabled('USE_PLUGIN_SYSTEM')) return;
-    if(!this._componentLoaded){
+  async init() {
+    if (!isEnabled('USE_PLUGIN_SYSTEM')) return;
+    if (!this._componentLoaded) {
       await import('./PluginExportTimelineComponent.js');
       this._componentLoaded = true;
     }
@@ -40,25 +40,50 @@ class PluginExportTimeline {
     this.initialized = true;
   }
 
-  async activate(){
-    if(!this._componentLoaded) await this.init();
-    if(!this._host){ const selector = this.config.mountPoint || 'main'; this._host = document.querySelector(selector) || document.body; }
+  async activate() {
+    if (!this._componentLoaded) await this.init();
+    if (!this._host) {
+      const selector = this.config.mountPoint || 'main';
+      this._host = document.querySelector(selector) || document.body;
+    }
     // If element was previously created but removed from DOM, re-append it.
     if (!this._el) {
       this._el = document.createElement('plugin-export-timeline');
     }
     if (this._el && !this._el.parentNode) {
-      const appRoot = document.querySelector('.app-container') || document.getElementById('app') || document.body;
+      const appRoot =
+        document.querySelector('.app-container') ||
+        document.getElementById('app') ||
+        document.body;
       const mountToBoard = !!this.config.forceMountInBoard;
       if (mountToBoard) {
         try {
-          const hostRoot = (this._host && (this._host.shadowRoot || this._host.renderRoot)) ? (this._host.shadowRoot || this._host.renderRoot) : this._host;
+          const hostRoot =
+            this._host && (this._host.shadowRoot || this._host.renderRoot) ?
+              this._host.shadowRoot || this._host.renderRoot
+            : this._host;
           hostRoot.appendChild(this._el);
         } catch (e) {
-          try { appRoot.appendChild(this._el); } catch (err) { try { document.body.appendChild(this._el); } catch (err2) { /* ignore */ } }
+          try {
+            appRoot.appendChild(this._el);
+          } catch (err) {
+            try {
+              document.body.appendChild(this._el);
+            } catch (err2) {
+              /* ignore */
+            }
+          }
         }
       } else {
-        try { appRoot.appendChild(this._el); } catch (e) { try { document.body.appendChild(this._el); } catch (err) { /* ignore */ } }
+        try {
+          appRoot.appendChild(this._el);
+        } catch (e) {
+          try {
+            document.body.appendChild(this._el);
+          } catch (err) {
+            /* ignore */
+          }
+        }
       }
     }
     if (this._el && typeof this._el.open === 'function') {
@@ -68,20 +93,20 @@ class PluginExportTimeline {
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
-  async deactivate(){
-    if(this._el && typeof this._el.close === 'function') this._el.close();
+  async deactivate() {
+    if (this._el && typeof this._el.close === 'function') this._el.close();
     this.active = false;
     bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
 
-  async destroy(){
-    if(this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
+  async destroy() {
+    if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
     this._el = null;
     this.initialized = false;
     this.active = false;
   }
 
-  toggle(){
+  toggle() {
     this.active ? this.deactivate() : this.activate();
   }
 }

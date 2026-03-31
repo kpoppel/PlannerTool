@@ -1,8 +1,6 @@
-import { ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
-
 /**
  * ProjectTeamService
- * 
+ *
  * Manages working copies of projects and teams, including selection state
  * and color assignments. Provides methods to manipulate selection state
  * and emits events when projects or teams change.
@@ -21,8 +19,8 @@ export class ProjectTeamService {
    */
   initFromBaseline(baselineProjects, baselineTeams) {
     // Create working copies (do not mutate baseline)
-    this.projects = baselineProjects.map(p => ({ ...p }));
-    this.teams = baselineTeams.map(t => ({ ...t }));
+    this.projects = baselineProjects.map((p) => ({ ...p }));
+    this.teams = baselineTeams.map((t) => ({ ...t }));
   }
 
   /**
@@ -33,17 +31,19 @@ export class ProjectTeamService {
    */
   refreshFromBaseline(baselineProjects, baselineTeams) {
     // Preserve selection state
-    const selectedProjects = new Set(this.projects.filter(p => p.selected).map(p => p.id));
-    const selectedTeams = new Set(this.teams.filter(t => t.selected).map(t => t.id));
-    
+    const selectedProjects = new Set(
+      this.projects.filter((p) => p.selected).map((p) => p.id)
+    );
+    const selectedTeams = new Set(this.teams.filter((t) => t.selected).map((t) => t.id));
+
     // Create new working copies with preserved selection
-    this.projects = baselineProjects.map(p => ({
+    this.projects = baselineProjects.map((p) => ({
       ...p,
-      selected: selectedProjects.has(p.id)
+      selected: selectedProjects.has(p.id),
     }));
-    this.teams = baselineTeams.map(t => ({
+    this.teams = baselineTeams.map((t) => ({
       ...t,
-      selected: selectedTeams.has(t.id)
+      selected: selectedTeams.has(t.id),
     }));
   }
 
@@ -54,7 +54,7 @@ export class ProjectTeamService {
    * @returns {boolean} - True if project was found and updated
    */
   setProjectSelected(id, selected) {
-    const p = this.projects.find(x => x.id === id);
+    const p = this.projects.find((x) => x.id === id);
     if (!p) return false;
     p.selected = selected;
     return true;
@@ -67,7 +67,7 @@ export class ProjectTeamService {
    * @returns {boolean} - True if team was found and updated
    */
   setTeamSelected(id, selected) {
-    const t = this.teams.find(x => x.id === id);
+    const t = this.teams.find((x) => x.id === id);
     if (!t) return false;
     t.selected = selected;
     return true;
@@ -82,7 +82,7 @@ export class ProjectTeamService {
     if (!selections || typeof selections !== 'object') return 0;
     let changed = 0;
     for (const [id, selected] of Object.entries(selections)) {
-      const p = this.projects.find(x => x.id === id);
+      const p = this.projects.find((x) => x.id === id);
       if (!p) continue;
       if (p.selected !== !!selected) {
         p.selected = !!selected;
@@ -102,7 +102,7 @@ export class ProjectTeamService {
     if (!selections || typeof selections !== 'object') return 0;
     let changed = 0;
     for (const [id, selected] of Object.entries(selections)) {
-      const t = this.teams.find(x => x.id === id);
+      const t = this.teams.find((x) => x.id === id);
       if (!t) continue;
       if (t.selected !== !!selected) {
         t.selected = !!selected;
@@ -118,7 +118,7 @@ export class ProjectTeamService {
    * @returns {Array<string>} - Array of selected project IDs
    */
   getSelectedProjectIds() {
-    return this.projects.filter(p => p.selected).map(p => p.id);
+    return this.projects.filter((p) => p.selected).map((p) => p.id);
   }
 
   /**
@@ -126,7 +126,7 @@ export class ProjectTeamService {
    * @returns {Array<string>} - Array of selected team IDs
    */
   getSelectedTeamIds() {
-    return this.teams.filter(t => t.selected).map(t => t.id);
+    return this.teams.filter((t) => t.selected).map((t) => t.id);
   }
 
   /**
@@ -152,7 +152,7 @@ export class ProjectTeamService {
   captureCurrentFilters() {
     return {
       projects: this.getSelectedProjectIds(),
-      teams: this.getSelectedTeamIds()
+      teams: this.getSelectedTeamIds(),
     };
   }
 
@@ -166,7 +166,7 @@ export class ProjectTeamService {
     const numTeamsGlobal = this.teams.length === 0 ? 1 : this.teams.length;
     let sum = 0;
     for (const tl of feature.capacity || []) {
-      const t = this.teams.find(x => x.id === tl.team && x.selected);
+      const t = this.teams.find((x) => x.id === tl.team && x.selected);
       if (!t) continue;
       sum += tl.capacity;
     }

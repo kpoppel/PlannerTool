@@ -7,7 +7,7 @@ export class AdminProjects extends BaseConfigComponent {
     editingIndex: { type: Number },
     localProjects: { type: Array },
     availableTaskTypes: { type: Array },
-    availableStates: { type: Array }
+    availableStates: { type: Array },
   };
 
   static styles = [
@@ -203,7 +203,7 @@ export class AdminProjects extends BaseConfigComponent {
         border-radius: 4px;
         font-size: 14px;
       }
-    `
+    `,
   ];
 
   constructor() {
@@ -214,9 +214,15 @@ export class AdminProjects extends BaseConfigComponent {
     this.availableStates = [];
   }
 
-  get configType() { return 'projects'; }
-  get title() { return 'Projects Configuration'; }
-  get defaultContent() { return { project_map: [] }; }
+  get configType() {
+    return 'projects';
+  }
+  get title() {
+    return 'Projects Configuration';
+  }
+  get defaultContent() {
+    return { project_map: [] };
+  }
 
   updated(changedProperties) {
     super.updated(changedProperties);
@@ -230,14 +236,14 @@ export class AdminProjects extends BaseConfigComponent {
 
   extractSchemaEnums() {
     if (!this.schema?.properties?.project_map?.items?.properties) return;
-    
+
     const props = this.schema.properties.project_map.items.properties;
-    
+
     // Extract task_types enum
     if (props.task_types?.items?.enum) {
       this.availableTaskTypes = props.task_types.items.enum;
     }
-    
+
     // Extract default states as suggestions
     if (props.include_states?.default) {
       this.availableStates = props.include_states.default;
@@ -255,7 +261,7 @@ export class AdminProjects extends BaseConfigComponent {
       area_path: '',
       task_types: [],
       include_states: [],
-      display_states: []
+      display_states: [],
     };
     this.localProjects = [...this.localProjects, newProject];
     this.editingIndex = this.localProjects.length - 1;
@@ -289,7 +295,7 @@ export class AdminProjects extends BaseConfigComponent {
   updateProjectField(index, field, value) {
     this.localProjects[index] = {
       ...this.localProjects[index],
-      [field]: value
+      [field]: value,
     };
     this.requestUpdate();
   }
@@ -311,12 +317,20 @@ export class AdminProjects extends BaseConfigComponent {
 
   removeChip(index, field, chipValue) {
     const current = this.localProjects[index][field] || [];
-    this.updateProjectField(index, field, current.filter(v => v !== chipValue));
+    this.updateProjectField(
+      index,
+      field,
+      current.filter((v) => v !== chipValue)
+    );
     // If removing from include_states, also remove from display_states
     if (field === 'include_states') {
       const disp = this.localProjects[index]['display_states'] || [];
       if (disp.includes(chipValue)) {
-        this.updateProjectField(index, 'display_states', disp.filter(v => v !== chipValue));
+        this.updateProjectField(
+          index,
+          'display_states',
+          disp.filter((v) => v !== chipValue)
+        );
       }
     }
   }
@@ -331,28 +345,40 @@ export class AdminProjects extends BaseConfigComponent {
         </td>
         <td class="nowrap" title="${project.area_path}">${project.area_path || '—'}</td>
         <td>
-          ${(project.task_types || []).map(type => html`
-            <span class="chip">${type}</span>
-          `)}
-          ${(project.task_types || []).length === 0 ? html`<span class="small">—</span>` : ''}
+          ${(project.task_types || []).map(
+            (type) => html` <span class="chip">${type}</span> `
+          )}
+          ${(project.task_types || []).length === 0 ?
+            html`<span class="small">—</span>`
+          : ''}
         </td>
         <td>
           <div class="small" style="margin-bottom:4px">Fetch:</div>
-          ${(project.include_states || []).map(state => html`
-            <span class="chip">${state}</span>
-          `)}
-          ${(project.include_states || []).length === 0 ? html`<span class="small">—</span>` : ''}
-          ${(project.display_states || []).length > 0 ? html`
-            <div class="small" style="margin-top:8px;margin-bottom:4px">Display:</div>
-            ${(project.display_states || []).map(state => html`
-              <span class="chip" style="background:#e0f2fe">${state}</span>
-            `)}
-          ` : ''}
+          ${(project.include_states || []).map(
+            (state) => html` <span class="chip">${state}</span> `
+          )}
+          ${(project.include_states || []).length === 0 ?
+            html`<span class="small">—</span>`
+          : ''}
+          ${(project.display_states || []).length > 0 ?
+            html`
+              <div class="small" style="margin-top:8px;margin-bottom:4px">Display:</div>
+              ${(project.display_states || []).map(
+                (state) => html`
+                  <span class="chip" style="background:#e0f2fe">${state}</span>
+                `
+              )}
+            `
+          : ''}
         </td>
         <td>
           <div class="actions">
-            <button class="action-btn" @click="${() => this.editProject(index)}">Edit</button>
-            <button class="action-btn" @click="${() => this.deleteProject(index)}">🗑</button>
+            <button class="action-btn" @click="${() => this.editProject(index)}">
+              Edit
+            </button>
+            <button class="action-btn" @click="${() => this.deleteProject(index)}">
+              🗑
+            </button>
           </div>
         </td>
       </tr>
@@ -366,20 +392,26 @@ export class AdminProjects extends BaseConfigComponent {
         <td colspan="5">
           <div class="edit-form">
             <div class="form-group">
-              <label style="display:flex;flex-direction:column;min-width:250px;margin-right:16px">
+              <label
+                style="display:flex;flex-direction:column;min-width:250px;margin-right:16px"
+              >
                 Project Name
-                <input 
+                <input
                   style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px"
-                  .value="${project.name || ''}" 
-                  @input="${(e) => this.updateProjectField(index, 'name', e.target.value)}"
+                  .value="${project.name || ''}"
+                  @input="${(e) =>
+                    this.updateProjectField(index, 'name', e.target.value)}"
                 />
               </label>
-              <label style="display:flex;flex-direction:column;min-width:140px;margin-right:16px">
+              <label
+                style="display:flex;flex-direction:column;min-width:140px;margin-right:16px"
+              >
                 Type
-                <select 
+                <select
                   style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px"
                   .value="${project.type || 'project'}"
-                  @change="${(e) => this.updateProjectField(index, 'type', e.target.value)}"
+                  @change="${(e) =>
+                    this.updateProjectField(index, 'type', e.target.value)}"
                 >
                   <option value="project">project</option>
                   <option value="team">team</option>
@@ -387,10 +419,11 @@ export class AdminProjects extends BaseConfigComponent {
               </label>
               <label style="display:flex;flex-direction:column;flex:1">
                 Area Path
-                <input 
+                <input
                   style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px"
-                  .value="${project.area_path || ''}" 
-                  @input="${(e) => this.updateProjectField(index, 'area_path', e.target.value)}"
+                  .value="${project.area_path || ''}"
+                  @input="${(e) =>
+                    this.updateProjectField(index, 'area_path', e.target.value)}"
                 />
               </label>
             </div>
@@ -399,67 +432,83 @@ export class AdminProjects extends BaseConfigComponent {
               <div class="form-section">
                 <div class="form-section-title">Work Item Types</div>
                 <div class="chip-editor">
-                  ${(project.task_types || []).map(type => html`
-                    <span class="chip removable" @click="${() => this.removeChip(index, 'task_types', type)}">
-                      ${type}<span class="chip-remove">×</span>
-                    </span>
-                  `)}
+                  ${(project.task_types || []).map(
+                    (type) => html`
+                      <span
+                        class="chip removable"
+                        @click="${() => this.removeChip(index, 'task_types', type)}"
+                      >
+                        ${type}<span class="chip-remove">×</span>
+                      </span>
+                    `
+                  )}
                 </div>
-                ${this.availableTaskTypes.length > 0 ? html`
-                  <select 
-                    class="add-chip-select"
-                    @change="${(e) => {
-                      if (e.target.value) {
-                        this.addChip(index, 'task_types', e.target.value);
-                        e.target.value = '';
-                      }
-                    }}"
-                  >
-                    <option value="">+ Add work item type</option>
-                    ${this.availableTaskTypes.filter(t => !(project.task_types || []).includes(t)).map(type => html`
-                      <option value="${type}">${type}</option>
-                    `)}
-                  </select>
-                ` : html`
-                  <input 
-                    class="add-chip-input"
-                    placeholder="Add type and press Enter"
-                    @keydown="${(e) => {
-                      if (e.key === 'Enter') {
-                        this.addChip(index, 'task_types', e.target.value);
-                        e.target.value = '';
-                      }
-                    }}"
-                  />
-                `}
+                ${this.availableTaskTypes.length > 0 ?
+                  html`
+                    <select
+                      class="add-chip-select"
+                      @change="${(e) => {
+                        if (e.target.value) {
+                          this.addChip(index, 'task_types', e.target.value);
+                          e.target.value = '';
+                        }
+                      }}"
+                    >
+                      <option value="">+ Add work item type</option>
+                      ${this.availableTaskTypes
+                        .filter((t) => !(project.task_types || []).includes(t))
+                        .map((type) => html` <option value="${type}">${type}</option> `)}
+                    </select>
+                  `
+                : html`
+                    <input
+                      class="add-chip-input"
+                      placeholder="Add type and press Enter"
+                      @keydown="${(e) => {
+                        if (e.key === 'Enter') {
+                          this.addChip(index, 'task_types', e.target.value);
+                          e.target.value = '';
+                        }
+                      }}"
+                    />
+                  `}
               </div>
 
               <div class="form-section">
                 <div class="form-section-title">States to Fetch</div>
                 <div class="chip-editor">
-                  ${(project.include_states || []).map(state => html`
-                    <span class="chip removable" @click="${() => this.removeChip(index, 'include_states', state)}">
-                      ${state}<span class="chip-remove">×</span>
-                    </span>
-                  `)}
+                  ${(project.include_states || []).map(
+                    (state) => html`
+                      <span
+                        class="chip removable"
+                        @click="${() => this.removeChip(index, 'include_states', state)}"
+                      >
+                        ${state}<span class="chip-remove">×</span>
+                      </span>
+                    `
+                  )}
                 </div>
-                ${this.availableStates.length > 0 ? html`
-                  <select 
-                    class="add-chip-select"
-                    @change="${(e) => {
-                      if (e.target.value) {
-                        this.addChip(index, 'include_states', e.target.value);
-                        e.target.value = '';
-                      }
-                    }}"
-                  >
-                    <option value="">+ Add state to fetch</option>
-                    ${this.availableStates.filter(s => !(project.include_states || []).includes(s)).map(state => html`
-                      <option value="${state}">${state}</option>
-                    `)}
-                  </select>
-                ` : ''}
-                <input 
+                ${this.availableStates.length > 0 ?
+                  html`
+                    <select
+                      class="add-chip-select"
+                      @change="${(e) => {
+                        if (e.target.value) {
+                          this.addChip(index, 'include_states', e.target.value);
+                          e.target.value = '';
+                        }
+                      }}"
+                    >
+                      <option value="">+ Add state to fetch</option>
+                      ${this.availableStates
+                        .filter((s) => !(project.include_states || []).includes(s))
+                        .map(
+                          (state) => html` <option value="${state}">${state}</option> `
+                        )}
+                    </select>
+                  `
+                : ''}
+                <input
                   class="add-chip-input"
                   placeholder="Add custom state and press Enter"
                   @keydown="${(e) => {
@@ -474,29 +523,39 @@ export class AdminProjects extends BaseConfigComponent {
               <div class="form-section">
                 <div class="form-section-title">States for UI Display</div>
                 <div class="chip-editor">
-                  ${(project.display_states || []).map(state => html`
-                    <span class="chip removable" style="background:#e0f2fe" @click="${() => this.removeChip(index, 'display_states', state)}">
-                      ${state}<span class="chip-remove">×</span>
-                    </span>
-                  `)}
+                  ${(project.display_states || []).map(
+                    (state) => html`
+                      <span
+                        class="chip removable"
+                        style="background:#e0f2fe"
+                        @click="${() => this.removeChip(index, 'display_states', state)}"
+                      >
+                        ${state}<span class="chip-remove">×</span>
+                      </span>
+                    `
+                  )}
                 </div>
-                ${this.availableStates.length > 0 ? html`
-                  <select 
-                    class="add-chip-select"
-                    @change="${(e) => {
-                      if (e.target.value) {
-                        this.addChip(index, 'display_states', e.target.value);
-                        e.target.value = '';
-                      }
-                    }}"
-                  >
-                    <option value="">+ Add display state</option>
-                    ${this.availableStates.filter(s => !(project.display_states || []).includes(s)).map(state => html`
-                      <option value="${state}">${state}</option>
-                    `)}
-                  </select>
-                ` : ''}
-                <input 
+                ${this.availableStates.length > 0 ?
+                  html`
+                    <select
+                      class="add-chip-select"
+                      @change="${(e) => {
+                        if (e.target.value) {
+                          this.addChip(index, 'display_states', e.target.value);
+                          e.target.value = '';
+                        }
+                      }}"
+                    >
+                      <option value="">+ Add display state</option>
+                      ${this.availableStates
+                        .filter((s) => !(project.display_states || []).includes(s))
+                        .map(
+                          (state) => html` <option value="${state}">${state}</option> `
+                        )}
+                    </select>
+                  `
+                : ''}
+                <input
                   class="add-chip-input"
                   placeholder="Add custom state and press Enter"
                   @keydown="${(e) => {
@@ -509,8 +568,16 @@ export class AdminProjects extends BaseConfigComponent {
               </div>
 
               <div class="edit-actions">
-                <button class="action-btn" style="background:#10b981;color:#fff" @click="${() => this.saveEdit(index)}">Save</button>
-                <button class="action-btn" @click="${() => this.cancelEdit()}">Cancel</button>
+                <button
+                  class="action-btn"
+                  style="background:#10b981;color:#fff"
+                  @click="${() => this.saveEdit(index)}"
+                >
+                  Save
+                </button>
+                <button class="action-btn" @click="${() => this.cancelEdit()}">
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
@@ -533,7 +600,9 @@ export class AdminProjects extends BaseConfigComponent {
           <div class="editor">
             <div class="compact-table-view">
               <div class="toolbar">
-                <button class="btn primary" @click="${this.addNewProject}">+ Add Project</button>
+                <button class="btn primary" @click="${this.addNewProject}">
+                  + Add Project
+                </button>
                 <button class="btn" @click="${this.saveConfig}">💾 Save All</button>
                 <button class="btn" @click="${this.loadConfig}">🔄 Reload</button>
                 <div style="margin-left:auto;color:#6b7280;font-size:0.9rem">
@@ -544,51 +613,66 @@ export class AdminProjects extends BaseConfigComponent {
                 </button>
               </div>
 
-              ${this.useRawMode ? html`
-                <textarea 
-                  style="width: 100%; height: 100%; font-family: monospace; padding: 8px; flex: 1;"
-                  .value="${JSON.stringify(this.content, null, 2)}"
-                  @input="${(e) => { 
-                    try { 
-                      this.content = JSON.parse(e.target.value);
-                      this.localProjects = JSON.parse(JSON.stringify(this.content.project_map || []));
-                    } catch(err) { /* ignore parse errors while typing */ }
-                  }}"
-                ></textarea>
-              ` : html`
-                <div class="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th style="width:36px"><input type="checkbox" /></th>
-                        <th style="width:200px">Project</th>
-                        <th>Area Path</th>
-                        <th style="width:220px">Work Item Types</th>
-                        <th style="width:220px">States</th>
-                        <th style="width:120px">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${projects.length === 0 ? html`
+              ${this.useRawMode ?
+                html`
+                  <textarea
+                    style="width: 100%; height: 100%; font-family: monospace; padding: 8px; flex: 1;"
+                    .value="${JSON.stringify(this.content, null, 2)}"
+                    @input="${(e) => {
+                      try {
+                        this.content = JSON.parse(e.target.value);
+                        this.localProjects = JSON.parse(
+                          JSON.stringify(this.content.project_map || [])
+                        );
+                      } catch (err) {
+                        /* ignore parse errors while typing */
+                      }
+                    }}"
+                  ></textarea>
+                `
+              : html`
+                  <div class="table-container">
+                    <table>
+                      <thead>
                         <tr>
-                          <td colspan="6" style="text-align:center;padding:40px;color:#6b7280">
-                            No projects configured. Click "Add Project" to create one.
-                          </td>
+                          <th style="width:36px"><input type="checkbox" /></th>
+                          <th style="width:200px">Project</th>
+                          <th>Area Path</th>
+                          <th style="width:220px">Work Item Types</th>
+                          <th style="width:220px">States</th>
+                          <th style="width:120px">Actions</th>
                         </tr>
-                      ` : projects.map((project, index) => html`
-                        ${this.renderDisplayRow(project, index)}
-                        ${this.editingIndex === index ? this.renderEditRow(project, index) : ''}
-                      `)}
-                    </tbody>
-                  </table>
-                </div>
-              `}
+                      </thead>
+                      <tbody>
+                        ${projects.length === 0 ?
+                          html`
+                            <tr>
+                              <td
+                                colspan="6"
+                                style="text-align:center;padding:40px;color:#6b7280"
+                              >
+                                No projects configured. Click "Add Project" to create one.
+                              </td>
+                            </tr>
+                          `
+                        : projects.map(
+                            (project, index) => html`
+                              ${this.renderDisplayRow(project, index)}
+                              ${this.editingIndex === index ?
+                                this.renderEditRow(project, index)
+                              : ''}
+                            `
+                          )}
+                      </tbody>
+                    </table>
+                  </div>
+                `}
             </div>
           </div>
           <div class="actions">
-            ${this.statusMsg ? html`
-              <span class="status ${this.statusType}">${this.statusMsg}</span>
-            ` : ''}
+            ${this.statusMsg ?
+              html` <span class="status ${this.statusType}">${this.statusMsg}</span> `
+            : ''}
           </div>
         </div>
       </section>

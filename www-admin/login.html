@@ -2,39 +2,105 @@
 <html lang="en">
   <head>
     <script>
-        // Dynamically compute base URL for API requests to support reverse proxy sub-paths
-        window.APP_BASE_URL = window.location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
+      // Dynamically compute base URL for API requests to support reverse proxy sub-paths
+      window.APP_BASE_URL = window.location.pathname
+        .replace(/\/admin\/?$/, '')
+        .replace(/\/$/, '');
     </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PlannerTool — Admin Login</title>
     <base href="./static/" />
     <style>
-      body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5; }
-      .login-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-      h1 { margin-top: 0; font-size: 1.5rem; color: #333; }
-      .form-group { margin-bottom: 1rem; }
-      label { display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem; }
-      input { width: 100%; padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1rem; }
-      button { width: 100%; padding: 0.75rem; background: #0066cc; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
-      button:hover { background: #0052a3; }
-      .error { color: #d32f2f; font-size: 0.9rem; margin-bottom: 1rem; display: none; }
-      .setup-notice { background: #e3f2fd; color: #0d47a1; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; font-size: 0.9rem; display: none; }
+      body {
+        font-family: system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+        background: #f5f5f5;
+      }
+      .login-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 400px;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 1.5rem;
+        color: #333;
+      }
+      .form-group {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #666;
+        font-size: 0.9rem;
+      }
+      input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+        font-size: 1rem;
+      }
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        background: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0052a3;
+      }
+      .error {
+        color: #d32f2f;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        display: none;
+      }
+      .setup-notice {
+        background: #e3f2fd;
+        color: #0d47a1;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+        display: none;
+      }
     </style>
   </head>
   <body>
     <div class="login-card">
       <h1 id="form-title">Admin Login</h1>
       <div id="setup-notice" class="setup-notice">
-        <strong>First-time setup:</strong> No admin accounts exist yet. Register your email below to become the first administrator.
+        <strong>First-time setup:</strong> No admin accounts exist yet. Register your
+        email below to become the first administrator.
       </div>
       <div id="error-message" class="error"></div>
       <form id="login-form">
         <div class="form-group">
           <label for="email">Email Address</label>
-          <input type="email" id="email" required autofocus placeholder="admin@example.com" />
+          <input
+            type="email"
+            id="email"
+            required
+            autofocus
+            placeholder="admin@example.com"
+          />
         </div>
-        <div class="form-group" id="pat-group" style="display: none;">
+        <div class="form-group" id="pat-group" style="display: none">
           <label for="pat">Personal Access Token (PAT)</label>
           <input type="password" id="pat" placeholder="Azure DevOps PAT" />
         </div>
@@ -47,8 +113,8 @@
 
       // Check if setup is needed
       fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')
-        .then(r => r.json())
-        .then(data => {
+        .then((r) => r.json())
+        .then((data) => {
           if (data && data.needs_setup) {
             isSetupMode = true;
             document.getElementById('form-title').innerText = 'Admin Setup';
@@ -60,7 +126,7 @@
         })
         .catch(console.error);
 
-      document.getElementById('login-form').addEventListener('submit', function(e) {
+      document.getElementById('login-form').addEventListener('submit', function (e) {
         e.preventDefault();
         const email = document.getElementById('email').value;
         const pat = document.getElementById('pat').value;
@@ -80,37 +146,42 @@
         fetch((window.APP_BASE_URL || '') + endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         })
-        .then(async r => {
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            throw new Error((err.detail && err.detail.message) || 'An error occurred during authentication');
-          }
-          return r.json();
-        })
-        .then(() => {
-          // Persist the entered email into localStorage so the admin
-          // frontend (which may auto-acquire a session) uses the same
-          // email when it initializes. This prevents a null/absent
-          // localStorage state from causing a mismatched session.
-          try {
-            const prefsRaw = localStorage.getItem('az_planner:user_prefs:v1');
-            const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
-            prefs['user.email'] = email;
-            localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(prefs));
-          } catch (e) { /* ignore localStorage errors */ }
+          .then(async (r) => {
+            if (!r.ok) {
+              const err = await r.json().catch(() => ({}));
+              throw new Error(
+                (err.detail && err.detail.message) ||
+                  'An error occurred during authentication'
+              );
+            }
+            return r.json();
+          })
+          .then(() => {
+            // Persist the entered email into localStorage so the admin
+            // frontend (which may auto-acquire a session) uses the same
+            // email when it initializes. This prevents a null/absent
+            // localStorage state from causing a mismatched session.
+            try {
+              const prefsRaw = localStorage.getItem('az_planner:user_prefs:v1');
+              const prefs = prefsRaw ? JSON.parse(prefsRaw) : {};
+              prefs['user.email'] = email;
+              localStorage.setItem('az_planner:user_prefs:v1', JSON.stringify(prefs));
+            } catch (e) {
+              /* ignore localStorage errors */
+            }
 
-          // Redirect into the protected admin root on success
-          window.location.href = (window.APP_BASE_URL || '') + '/admin/';
-        })
-        .catch(err => {
-          errorEl.innerText = err.message;
-          errorEl.style.display = 'block';
-        })
-        .finally(() => {
-          btn.disabled = false;
-        });
+            // Redirect into the protected admin root on success
+            window.location.href = (window.APP_BASE_URL || '') + '/admin/';
+          })
+          .catch((err) => {
+            errorEl.innerText = err.message;
+            errorEl.style.display = 'block';
+          })
+          .finally(() => {
+            btn.disabled = false;
+          });
       });
     </script>
   </body>

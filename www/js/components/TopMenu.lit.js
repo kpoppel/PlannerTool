@@ -1,7 +1,13 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ScenarioEvents, DataEvents, ViewManagementEvents } from '../core/EventRegistry.js';
+import {
+  ProjectEvents,
+  TeamEvents,
+  ScenarioEvents,
+  DataEvents,
+  ViewManagementEvents,
+} from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
 import './TeamMenu.lit.js';
@@ -24,7 +30,9 @@ export class TopMenuBarLit extends LitElement {
   };
 
   static styles = css`
-    :host { display: block; }
+    :host {
+      display: block;
+    }
     .menu-bar {
       position: fixed;
       top: 0;
@@ -39,20 +47,46 @@ export class TopMenuBarLit extends LitElement {
       overflow: visible;
       gap: 10px;
       z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
       font-size: 13px;
       user-select: none;
     }
 
-    .menu-left { display:flex; gap:12px; align-items:center; padding-left:12px; }
-    .title-only { margin-left:6px; font-weight:700; }
+    .menu-left {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding-left: 12px;
+    }
+    .title-only {
+      margin-left: 6px;
+      font-weight: 700;
+    }
     /* menu items positioned above timeline left edge (right edge of sidebar) */
-    .menu-items { position: absolute; left: var(--sidebar-width); top: 4px; display:flex; gap:12px; align-items:center; white-space:nowrap; z-index: 1100; }
-    .menu-right { position: absolute; right: 8px; top: 4px; display:flex; gap:12px; align-items:center; white-space:nowrap; z-index: 1100; }
+    .menu-items {
+      position: absolute;
+      left: var(--sidebar-width);
+      top: 4px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      white-space: nowrap;
+      z-index: 1100;
+    }
+    .menu-right {
+      position: absolute;
+      right: 8px;
+      top: 4px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      white-space: nowrap;
+      z-index: 1100;
+    }
 
     .menu-item {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 4px;
       padding: 6px 10px;
       color: white;
@@ -60,18 +94,27 @@ export class TopMenuBarLit extends LitElement {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      transition: background 160ms ease, transform 120ms ease;
+      transition:
+        background 160ms ease,
+        transform 120ms ease;
       flex-shrink: 0;
     }
 
-    .menu-item:hover { background: rgba(255,255,255,0.12); }
-    .menu-item.active { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.22); }
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .menu-item.active {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
 
-    .icon { font-size: 14px; }
+    .icon {
+      font-size: 14px;
+    }
 
     .small-btn {
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
       padding: 6px 12px;
       border-radius: 6px;
       color: white;
@@ -82,17 +125,32 @@ export class TopMenuBarLit extends LitElement {
     }
 
     /* ensure buttons remain fully visible at the edge */
-    .small-btn { box-shadow: 0 1px 0 rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.02); }
+    .small-btn {
+      box-shadow:
+        0 1px 0 rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
 
     /* extra safe spacing to avoid accidental overlap with other UI */
-    .small-btn + .small-btn { margin-left: 4px; }
+    .small-btn + .small-btn {
+      margin-left: 4px;
+    }
 
-    .small-btn:hover { background: rgba(255,255,255,0.16); }
+    .small-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
 
     /* Ensure main content is pushed under the menu bar visually */
-    :host([offset]) ~ .main, :host ~ .main { padding-top: 40px; }
+    :host([offset]) ~ .main,
+    :host ~ .main {
+      padding-top: 40px;
+    }
 
-    .app-title { font-weight:700; font-size:14px; margin-right:6px; }
+    .app-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-right: 6px;
+    }
 
     /* Menu popover positioning */
     .menu-popover-container {
@@ -101,7 +159,7 @@ export class TopMenuBarLit extends LitElement {
     }
 
     .menu-count-badge {
-      background: rgba(255,255,255,0.12);
+      background: rgba(255, 255, 255, 0.12);
       color: white;
       padding: 2px 8px;
       border-radius: 999px;
@@ -194,19 +252,23 @@ export class TopMenuBarLit extends LitElement {
     this._onProjectsChanged = (projects) => {
       const arr = projects ? [...projects] : [];
       this.projects = arr;
-      this.selectedProjectsCount = arr.filter(p => p && p.selected).length;
+      this.selectedProjectsCount = arr.filter((p) => p && p.selected).length;
     };
     this._onTeamsChanged = (teams) => {
       const arr = teams ? [...teams] : [];
       this.teams = arr;
-      this.selectedTeamsCount = arr.filter(t => t && t.selected).length;
+      this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
     };
     this._onScenariosList = (payload) => {
       this.scenarios = payload?.scenarios || [];
       this.activeScenarioId = payload?.activeScenarioId || null;
     };
-    this._onScenarioActivated = (payload) => { this.activeScenarioId = payload?.scenarioId || null; };
-    this._onScenariosUpdated = () => { this.scenarios = state.getScenarios?.() || []; };
+    this._onScenarioActivated = (payload) => {
+      this.activeScenarioId = payload?.scenarioId || null;
+    };
+    this._onScenariosUpdated = () => {
+      this.scenarios = state.getScenarios?.() || [];
+    };
     this._onViewsList = (payload) => {
       this.views = payload?.views || [];
       this.activeViewId = payload?.activeId || null;
@@ -231,8 +293,14 @@ export class TopMenuBarLit extends LitElement {
     try {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
-      this._onScenariosList({ scenarios: state.scenarios, activeScenarioId: state.activeScenarioId });
-      this._onViewsList({ views: state.savedViews, activeId: state.activeViewId });
+      this._onScenariosList({
+        scenarios: state.scenarios,
+        activeScenarioId: state.activeScenarioId,
+      });
+      this._onViewsList({
+        views: state.savedViews,
+        activeId: state.activeViewId,
+      });
       // Also get current view data
       const currentView = state.getActiveView?.();
       if (currentView) {
@@ -253,19 +321,21 @@ export class TopMenuBarLit extends LitElement {
     if (this._onProjectsChanged) bus.off(ProjectEvents.CHANGED, this._onProjectsChanged);
     if (this._onTeamsChanged) bus.off(TeamEvents.CHANGED, this._onTeamsChanged);
     if (this._onScenariosList) bus.off(ScenarioEvents.LIST, this._onScenariosList);
-    if (this._onScenarioActivated) bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+    if (this._onScenarioActivated)
+      bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     if (this._onScenariosUpdated) {
       bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
     if (this._onViewsList) bus.off(ViewManagementEvents.LIST, this._onViewsList);
-    if (this._onViewActivated) bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    if (this._onViewActivated)
+      bus.off(ViewManagementEvents.ACTIVATED, this._onViewActivated);
   }
 
   _toggleMenu(menuName, e) {
     e.stopPropagation();
     this.openMenu = this.openMenu === menuName ? null : menuName;
-    
+
     if (this.openMenu) {
       // Store button position for menu positioning
       this._menuButtonRect = e.currentTarget.getBoundingClientRect();
@@ -275,32 +345,32 @@ export class TopMenuBarLit extends LitElement {
 
   _getViewName() {
     if (!this.activeViewId) return '';
-    
+
     // Try to find view name from views list
-    const view = this.views?.find(v => v.id === this.activeViewId);
+    const view = this.views?.find((v) => v.id === this.activeViewId);
     if (view) return view.name;
-    
+
     // Fallback to activeViewData
     if (this.activeViewData?.name) return this.activeViewData.name;
-    
+
     // If still no name, return the ID (shouldn't happen)
     return this.activeViewId;
   }
 
   _getScenarioName() {
     if (!this.activeScenarioId) return '';
-    
+
     // Try to find scenario name from scenarios list
-    const scenario = this.scenarios?.find(s => s.id === this.activeScenarioId);
+    const scenario = this.scenarios?.find((s) => s.id === this.activeScenarioId);
     if (scenario) return scenario.name || scenario.id;
-    
+
     // Fallback: try state if available
     if (state.activeScenarioId === this.activeScenarioId) {
       const scenarios = state.getScenarios?.() || [];
-      const stateScenario = scenarios.find(s => s.id === this.activeScenarioId);
+      const stateScenario = scenarios.find((s) => s.id === this.activeScenarioId);
       if (stateScenario) return stateScenario.name || stateScenario.id;
     }
-    
+
     // If still no name, return the ID
     return this.activeScenarioId;
   }
@@ -313,49 +383,69 @@ export class TopMenuBarLit extends LitElement {
         </div>
 
         <div class="menu-items" role="menubar" aria-label="Main menus">
-          <div class="menu-item ${this.openMenu === 'view' ? 'active' : ''}" 
-               id="viewMenuBtn"
-               role="button" 
-               tabindex="0"
-               @click=${(e) => this._toggleMenu('view', e)}>
+          <div
+            class="menu-item ${this.openMenu === 'view' ? 'active' : ''}"
+            id="viewMenuBtn"
+            role="button"
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('view', e)}
+          >
             View
-            ${this.activeViewId ? html`<span class="menu-count-badge">${this._getViewName()}</span>` : ''}
+            ${this.activeViewId ?
+              html`<span class="menu-count-badge">${this._getViewName()}</span>`
+            : ''}
           </div>
-          <div class="menu-item ${this.openMenu === 'scenario' ? 'active' : ''}" 
-               id="scenarioMenuBtn"
-               role="button" 
-               tabindex="0"
-               @click=${(e) => this._toggleMenu('scenario', e)}>
+          <div
+            class="menu-item ${this.openMenu === 'scenario' ? 'active' : ''}"
+            id="scenarioMenuBtn"
+            role="button"
+            tabindex="0"
+            @click=${(e) => this._toggleMenu('scenario', e)}
+          >
             Scenario
-            ${this.activeScenarioId ? html`<span class="menu-count-badge">${this._getScenarioName()}</span>` : ''}
+            ${this.activeScenarioId ?
+              html`<span class="menu-count-badge">${this._getScenarioName()}</span>`
+            : ''}
           </div>
-          <div class="menu-item ${this.openMenu === 'plan' ? 'active' : ''}" 
+          <div
+            class="menu-item ${this.openMenu === 'plan' ? 'active' : ''}"
             id="planMenuBtn"
-            role="button" 
+            role="button"
             tabindex="0"
-            @click=${(e) => this._toggleMenu('plan', e)}>
+            @click=${(e) => this._toggleMenu('plan', e)}
+          >
             Plan
-            ${this.selectedProjectsCount ? html`<span class="menu-count-badge">${this.selectedProjectsCount}</span>` : ''}
+            ${this.selectedProjectsCount ?
+              html`<span class="menu-count-badge">${this.selectedProjectsCount}</span>`
+            : ''}
           </div>
-          <div class="menu-item ${this.openMenu === 'team' ? 'active' : ''}" 
+          <div
+            class="menu-item ${this.openMenu === 'team' ? 'active' : ''}"
             id="teamMenuBtn"
-            role="button" 
+            role="button"
             tabindex="0"
-            @click=${(e) => this._toggleMenu('team', e)}>
+            @click=${(e) => this._toggleMenu('team', e)}
+          >
             Team
-            ${this.selectedTeamsCount ? html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>` : ''}
+            ${this.selectedTeamsCount ?
+              html`<span class="menu-count-badge">${this.selectedTeamsCount}</span>`
+            : ''}
           </div>
-          <div class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
+          <div
+            class="menu-item ${this.openMenu === 'tools' ? 'active' : ''}"
             id="toolsMenuBtn"
             role="button"
             tabindex="0"
-            @click=${(e) => this._toggleMenu('tools', e)}>
+            @click=${(e) => this._toggleMenu('tools', e)}
+          >
             Tools
           </div>
         </div>
 
         <div class="menu-right">
-          <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>⚙️</button>
+          <button class="small-btn" id="openConfigBtn" @click=${this._onConfig}>
+            ⚙️
+          </button>
           <button class="small-btn" id="openHelpBtn" @click=${this._onHelp}>❓</button>
         </div>
       </nav>
@@ -376,13 +466,31 @@ export class TopMenuBarLit extends LitElement {
 
     switch (this.openMenu) {
       case 'view':
-        return html`<view-menu style="${style}" .views=${this.views} .activeViewId=${this.activeViewId}></view-menu>`;
+        return html`<view-menu
+          style="${style}"
+          .views=${this.views}
+          .activeViewId=${this.activeViewId}
+        ></view-menu>`;
       case 'scenario':
-        return html`<scenario-menu style="${style}" .scenarios=${this.scenarios} .activeScenarioId=${this.activeScenarioId}></scenario-menu>`;
+        return html`<scenario-menu
+          style="${style}"
+          .scenarios=${this.scenarios}
+          .activeScenarioId=${this.activeScenarioId}
+        ></scenario-menu>`;
       case 'plan':
-        return html`<plan-menu style="${style}" .projects=${this.projects} .activeViewId=${this.activeViewId} .activeViewData=${this.activeViewData}></plan-menu>`;
+        return html`<plan-menu
+          style="${style}"
+          .projects=${this.projects}
+          .activeViewId=${this.activeViewId}
+          .activeViewData=${this.activeViewData}
+        ></plan-menu>`;
       case 'team':
-        return html`<team-menu style="${style}" .teams=${this.teams} .activeViewId=${this.activeViewId} .activeViewData=${this.activeViewData}></team-menu>`;
+        return html`<team-menu
+          style="${style}"
+          .teams=${this.teams}
+          .activeViewId=${this.activeViewId}
+          .activeViewData=${this.activeViewData}
+        ></team-menu>`;
       case 'tools':
         return html`<tools-menu style="${style}"></tools-menu>`;
       default:
@@ -399,8 +507,6 @@ export class TopMenuBarLit extends LitElement {
     const { openHelpModal } = await import('./modalHelpers.js');
     await openHelpModal();
   }
-
-
 }
 
 customElements.define('top-menu-bar', TopMenuBarLit);

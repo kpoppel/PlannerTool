@@ -8,31 +8,39 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## Template:
 
 ## [v] - unreleased
+
 ### Added
+
 ### Changed
+
 ### Fixed
 
 ---
+
 ## [v3.1.0] - unreleased
 
 ### Added
+
 - Add highlight of connected tasks through parent/child or predecessor/successor links. Related type not included.
   Color can be controlled by --color-connected-bg CSS in main.css
   Feature is default on but can be turned off in ViewService.js . Needs to be wired up in the sidebar.
 
 ### Changed
+
 - Updated deployment so that image build is separated from compose file. Tagging of images uses VERSION file.
 
 ### Fixed
 
 ### TODO:
-- Wire up _highlightFeatureRelationMode in SideBar in Display section
+
+- Wire up \_highlightFeatureRelationMode in SideBar in Display section
 
 ## [v3.0.0] - 2026-03-27
 
 After installing this release, restore backups on a clean data directory.
 
 ### Added
+
 - SQLite backend storage introduced.
 - Storage migration from file-based pickle to diskcache for accounts, admin accounts, views, scenarios
   and all cached task data.
@@ -44,6 +52,7 @@ After installing this release, restore backups on a clean data directory.
 - Admin UI support added for memory cache configuration (enable_memory_cache flag, max_size_mb, staleness_seconds)
 
 ### Changed
+
 - All pickle storage now uses diskcache backend
 - AzureCachingClient now supports on-demand refresh using user PAT
 - Cache freshness tracked per-area with configurable staleness threshold
@@ -63,6 +72,7 @@ After installing this release, restore backups on a clean data directory.
 - Session logging drops an INFO when sessions are initiated to help with debugging
 
 ### Fixed
+
 - enable_brotli_middleware feature flag was newer actually used due to wrong flag check.
 
 ## [v2.2.0] - 2026-03-27
@@ -75,7 +85,9 @@ Migrating to v3.x involves updating to this release, making a backup, then upgra
 restoring the backup.
 
 ## [v2.2.0] - 2026-03-27
+
 ### Added
+
 - Added backup/restore to the admin interface. This will dump a JSON file with all data.
   Note account data is also stored in the file, so don't send it around as tokens are in there.
 - Docker compose setup with caddy to serve multiple instances on the same machine on port 80
@@ -83,10 +95,12 @@ restoring the backup.
 - On first start, the application will redirect to the admin interface for first account creation
 
 ### Changed
+
 - Project service will return {} if no projects are defined - as is the case on a fresh install.
 - Application will use window.APP_BASE_URL to determine its real path.
 
 ### Fixed
+
 - Login screen on first account setup would not redirect to admin interface
 - Login screen on first account setup would not authenticate because localstorage is used to store
   current user email.
@@ -94,6 +108,7 @@ restoring the backup.
 ## [v2.1.0] - 2026-03-23
 
 ### Added
+
 - PluginCostV2: New cost analysis plugin with Project/Task/Team views, monthly cost/hours breakdowns, task tree with budget deviation indicators
   It upgrades the old plugin by having a simpler, less colorful interface, and supporting three views of cost data for plans, team and task level.
   It also reacts to filter changes and selections which the old plugin did not so.
@@ -103,10 +118,12 @@ restoring the backup.
   This should ensure the users don't have to manually clear the browser cache any longer.
 
 ### Removed:
+
 - The new cost plugin does not have the ability to hint budget deviations in this release.
 - The Original Cost plugin is disabled as the server side calculation engine is no longer compatible.
 
 ### Fixed
+
 - Admin interface cost config was never loaded, just used defaults.
 - Feature card display for plan tasks was dependent of team selection. Now team selection is only a visual thing t o show allocation number on tasks.
   Team selections matter when using the expand filter for team allocation.
@@ -116,46 +133,55 @@ restoring the backup.
 ## [v2.0.8] - 2026-03-19
 
 ### Fixed
+
 - Cache hit would return empty list of tasks if no tasks were changed since last cache hit.
 
 ## [v2.0.7] - 2026-03-18
 
 ### Added
+
 - Dockerfile for deployment using docker.
 
 ### Fixed
+
 - Work items are now returned in proper StackRank order (Azure backlog order) when using cached data. The fix ensures WIQL rank order is preserved when returning items from cache. Since Azure DevOps increments System.Rev when items are reordered, revision-based change detection automatically catches rank changes, and the system refetches affected items. Minimizes Azure API calls by only running lightweight WIQL queries for rank order and fetching full item details only for changed items.
 
 ## [v2.0.6] - 2026-03-17
 
 ### Fixed
+
 - Details panel capacity input now properly updates when switching between feature cards. Fixed by using property binding (.value) instead of attribute binding (value) in the input element.
 
 ## [v2.0.5] - 2026-03-16
 
 ### Fixed
+
 - Dependency overlay now updates immediately when the "Dependencies" expand toggle is changed in the sidebar. Added FilterEvents.CHANGED listener to DependencyRenderer.
 - Expand filters (Parent/Child Links, Dependencies, Team Allocated) are now properly applied when loading a view. Previously, the checkboxes would show as checked but the filtering wouldn't be applied until the user clicked one of the filters. Fixed by syncing expansion state to State service, triggering data funnel recomputation, and emitting filter:changed event when restoring view options.
 
 ## [v2.0.4] - 2026-03-16
 
 ### Fixed
+
 - View menu did not show save modal when saving a view. Refactored ViewSaveModal to use declarative Lit @click handlers instead of imperative querySelector + addEventListener pattern.
 - Project and Team menus now always show all available options regardless of active view, allowing users to update views with new selections.
 
 ## [v2.0.3] - 2026-03-16
 
 ### Fixed
+
 - MainGraph stayed blank when all plans were deselected but teams were selected with "Expand by Team Allocation" active. Fixed by introducing `State.getEffectiveSelectedProjectIds()` which derives the capacity-relevant project set from team-allocated features; both `recomputeCapacityMetrics` (State) and `buildSnapshot` (MainGraph) now use this method. `setExpansionState` also triggers a capacity recomputation when `expandTeamAllocated` changes. The `_fullRender` early-exit in MainGraph is now view-mode-aware (team mode checks team IDs; project mode checks project IDs) to avoid blanking in mixed-selection scenarios.
 
 ## [v2.0.2] - 2026-03-16
 
 ### Fixed
+
 - Onboarding modal was not displaying. Fixed.
 
 ## [v2.0.1] - 2026-03-15
 
 ### Changed
+
 - Removed redundant files from www/js/vendor . Lit bundle is built using Rollup and includes all dependencies.
 - Admin interface for projects now adds included states to display states automatically.
 - Retooling to use vite for testing instead of c8 and web-test-runner
@@ -176,13 +202,14 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
   - Automatic migration from v2 configs (display_states defaults to include_states)
 - Migration scripts to upgrade to new project scheme. Run with: `python3 scripts/migrate.py --apply`
 - Added feedback in the history plugin to let the user know what is being processed
-- Created completely new sidebar and top menu layout.  This eases the clutter and creates a whole new look and feel.
+- Created completely new sidebar and top menu layout. This eases the clutter and creates a whole new look and feel.
   - The filtering is much more powerful and intitive: A base set of tasks are selected with Plans.
   - Task pool is extended through simple buttons to include relations to the task pool
   - The application displays the total pool and currently displayed tasks.
 - Added completely new help system. Documentation much improved and work in progress. No one is going to read it anyway.
 
 ### Changed
+
 - Harmonised task state case handling. State case as returned from Azure Devops is now used throughout
   the application. This removes a lot of logic with upper/lower case handling
 - State discovery inthe frontend is removed. Now it uses configured `display_states` from server.
@@ -193,6 +220,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
   that appear on hover over each item
 
 ### Fixed
+
 - Fixed main area layout to respect sidebar width - added left margin so timeline-board and plugins render next to sidebar instead of underneath it
 - Fixed sidebar scrolling: moved scroll behavior to content wrapper
 - Fixed Sidepanel Top edge so it does not overlap then menubar
@@ -208,7 +236,6 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 ### Fixed
 
 - HistoryPlugin did not use the improved session re-acquisition logic.
-
 
 ## [v1.15.0] - 2026-03-13
 
@@ -276,7 +303,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 
 - If the user session has expired (by server restart, or opening another browser session), the application will
   attempt to re-acquire a new session so the user can retry an action without loosing unsaved work.
-  
+
 ### Changed
 
 - Removed mix of light DOM and shadow DOM use and now only use shadow DOM. This paves the way to component independence.
@@ -310,8 +337,8 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
   Fixes [#1](https://github.com/kpoppel/PlannerTool/issues/1)
 - In the details panel the user can change the state of a task. Use a scenario to persist a state change in Azure.
   Fixes [#4](https://github.com/kpoppel/PlannerTool/issues/4)
-- Plan health check checks for orphaned tasks.  This is an opinionated check.  Tasks in a plan of type "project"
-  are considered hierarchically higher than "team" plans.  All team plan tasks must have a project as parent.
+- Plan health check checks for orphaned tasks. This is an opinionated check. Tasks in a plan of type "project"
+  are considered hierarchically higher than "team" plans. All team plan tasks must have a project as parent.
   Otherwise it is considered an orphan. This might not be a problem, but it could be a sign it is not funded.
   Fixes [#12](https://github.com/kpoppel/PlannerTool/issues/12)
 - Added vertical scrollbar. It appears on screen when moving the mouse close to the edge. Two buttons control
@@ -343,7 +370,6 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 ## [v1.12.0] - 2026-03-03
 
 - skipped
-
 
 ## [v1.11.0] - 2026-02-22
 
@@ -410,8 +436,8 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 - Admin project configuration schema now dynamically retrieves work item types and states from Azure DevOps instead of
   using hardcoded values. The available options in the UI are now based on the actual work item types and states
   configured in your Azure DevOps project.
-- Added views feature: Users can now save and restore UI configurations (views) including selected projects, teams, 
-  and view options. Views are persisted to the backend similar to scenarios. 
+- Added views feature: Users can now save and restore UI configurations (views) including selected projects, teams,
+  and view options. Views are persisted to the backend similar to scenarios.
   - Backend infrastructure: new `planner_lib/views/` module with view storage and REST API endpoints
   - Frontend: new "Views" section in sidebar with save/load/delete functionality
   - Views capture: selected projects, selected teams, timeline scale, capacity mode, filters, and display options
@@ -422,6 +448,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
   a displayed project.
 
 ### Changed
+
 ### Fixed
 
 ## [v1.8.0] - 2026-02-18
@@ -442,6 +469,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 ## [v1.7.0] - 2026-02-17
 
 ### Added
+
 ### Changed
 
 - Admin UI project setup page made better and more compact
@@ -449,7 +477,6 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 ### Fixed
 
 - Features without included parent Epic were silently dropped
-
 
 ## [v1.6.0] - 2026-02-06
 
@@ -476,7 +503,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 
 - Fix area to plan mapping did not work with caching client.
 
-## [1.5.0]  - 2026-02-02
+## [1.5.0] - 2026-02-02
 
 ### Added
 
@@ -497,12 +524,11 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 
 ### Fixed
 
-## [1.4.1]  - 2026-01-27
+## [1.4.1] - 2026-01-27
 
 ### Fixed
 
 - Fixed systemd runner script to use uvicorn factory runner
-
 
 ## [1.4.0] - 2026-01-27
 
@@ -567,7 +593,7 @@ The big two.oh.oh! This release brings a complete overhaul of the application us
 ## [v1.1.1] - 2025-01-19
 
 ### Fixed
- 
+
 - Crash. The Azure Client code now reacts nicely when configured area paths cannot be found due to deletion or rename in Azure Devops.
 
 ## [v1.1.0] - 2026-01-18

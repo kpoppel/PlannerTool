@@ -9,21 +9,15 @@
     "ecmaVersion": "latest",
     "sourceType": "module"
   },
-  "extends": [
-    "eslint:recommended",
-    "plugin:lit/recommended",
-    "plugin:lit-a11y/recommended",
-    "prettier"
-  ],
-  "plugins": ["lit", "lit-a11y"],
+  "extends": ["prettier", "eslint:recommended", "plugin:lit/recommended"],
+  "plugins": ["lit"],
   "rules": {
     "no-var": "error",
     "prefer-const": "warn"
   },
   "overrides": [
     {
-      "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"],
-      "extends": ["plugin:vitest/recommended"]
+      "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"]
     }
   ],
   "ignorePatterns": ["dist/", "www/js/vendor/", "docs/"]

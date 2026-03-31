@@ -17,14 +17,21 @@ describe('State (unit)', () => {
       condensedCards: S.condensedCards,
       capacityViewMode: S.capacityViewMode,
       featureSortMode: S.featureSortMode,
-      showDependencies: S.showDependencies
+      showDependencies: S.showDependencies,
     };
   });
   afterEach(() => {
-    S._projectTeamService.initFromBaseline(JSON.parse(JSON.stringify(backup.projects)), JSON.parse(JSON.stringify(backup.teams)));
-    S._stateFilterService.setAvailableStates(JSON.parse(JSON.stringify(backup.availableFeatureStates)));
+    S._projectTeamService.initFromBaseline(
+      JSON.parse(JSON.stringify(backup.projects)),
+      JSON.parse(JSON.stringify(backup.teams))
+    );
+    S._stateFilterService.setAvailableStates(
+      JSON.parse(JSON.stringify(backup.availableFeatureStates))
+    );
     // Restore selected states
-    S._stateFilterService._selectedStates = new Set(Array.from(backup.selectedFeatureStateFilter || []));
+    S._stateFilterService._selectedStates = new Set(
+      Array.from(backup.selectedFeatureStateFilter || [])
+    );
     S._viewService._timelineScale = backup.timelineScale;
     S._viewService._showEpics = backup.showEpics;
     S._viewService._showFeatures = backup.showFeatures;
@@ -35,9 +42,14 @@ describe('State (unit)', () => {
   });
 
   it('computeFeatureOrgLoad calculates percent correctly', () => {
-    S._projectTeamService.initFromBaseline([], [ { id:'t1' }, { id:'t2' } ]);
+    S._projectTeamService.initFromBaseline([], [{ id: 't1' }, { id: 't2' }]);
     S.setTeamSelected('t1', true);
-    const f = { capacity: [ { team:'t1', capacity: 50 }, { team:'t2', capacity: 20 } ] };
+    const f = {
+      capacity: [
+        { team: 't1', capacity: 50 },
+        { team: 't2', capacity: 20 },
+      ],
+    };
     const load = S.computeFeatureOrgLoad(f);
     // Only t1 selected -> sum=50, numTeams=2 -> 25.0%
     expect(load).to.equal('25.0%');
@@ -52,7 +64,7 @@ describe('State (unit)', () => {
   });
 
   it('captureCurrentFilters and captureCurrentView return expected shapes', () => {
-    S._projectTeamService.initFromBaseline([ { id:'p1' }, { id:'p2' } ], [ { id:'t1' } ]);
+    S._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
     S.setProjectSelected('p1', true);
     S.setTeamSelected('t1', true);
     const filters = S.captureCurrentFilters();
@@ -63,7 +75,7 @@ describe('State (unit)', () => {
 
   it('setStateFilter toggles selection and emits events (no throw)', () => {
     // Ensure available states present
-    S._stateFilterService.setAvailableStates(['A','B']);
+    S._stateFilterService.setAvailableStates(['A', 'B']);
     S.setStateFilter(null);
     expect(S.selectedFeatureStateFilter.size).to.be.greaterThan(0);
     S.setStateFilter('A');
@@ -71,24 +83,36 @@ describe('State (unit)', () => {
   });
 
   it('toggleStateSelected handles add/remove safely', () => {
-    S._stateFilterService.setAvailableStates(['A','B']); S._stateFilterService._selectedStates = ['A'];
-    S.toggleStateSelected('A'); expect(S.selectedFeatureStateFilter.has('A')).to.equal(false);
-    S.toggleStateSelected('B'); expect(S.selectedFeatureStateFilter.has('B')).to.equal(true);
+    S._stateFilterService.setAvailableStates(['A', 'B']);
+    S._stateFilterService._selectedStates = ['A'];
+    S.toggleStateSelected('A');
+    expect(S.selectedFeatureStateFilter.has('A')).to.equal(false);
+    S.toggleStateSelected('B');
+    expect(S.selectedFeatureStateFilter.has('B')).to.equal(true);
   });
 
   it('setAllStatesSelected sets/clears all', () => {
-    S._stateFilterService.setAvailableStates(['A','B']);
-    S.setAllStatesSelected(true); expect(S.selectedFeatureStateFilter.size).to.equal(2);
-    S.setAllStatesSelected(false); expect(S.selectedFeatureStateFilter.size).to.equal(0);
+    S._stateFilterService.setAvailableStates(['A', 'B']);
+    S.setAllStatesSelected(true);
+    expect(S.selectedFeatureStateFilter.size).to.equal(2);
+    S.setAllStatesSelected(false);
+    expect(S.selectedFeatureStateFilter.size).to.equal(0);
   });
 
   it('view toggles set values and do not throw', () => {
-    S.setTimelineScale('days'); expect(S.timelineScale).to.equal('months');
-    S.setShowEpics(false); expect(S.showEpics).to.equal(false);
-    S.setShowFeatures(false); expect(S.showFeatures).to.equal(false);
-    S.setCondensedCards(true); expect(S.condensedCards).to.equal(true);
-    S.setShowDependencies(true); expect(S.showDependencies).to.equal(true);
-    S.setCapacityViewMode('project'); expect(S.capacityViewMode).to.equal('project');
-    S.setFeatureSortMode('date'); expect(S.featureSortMode).to.equal('date');
+    S.setTimelineScale('days');
+    expect(S.timelineScale).to.equal('months');
+    S.setShowEpics(false);
+    expect(S.showEpics).to.equal(false);
+    S.setShowFeatures(false);
+    expect(S.showFeatures).to.equal(false);
+    S.setCondensedCards(true);
+    expect(S.condensedCards).to.equal(true);
+    S.setShowDependencies(true);
+    expect(S.showDependencies).to.equal(true);
+    S.setCapacityViewMode('project');
+    expect(S.capacityViewMode).to.equal('project');
+    S.setFeatureSortMode('date');
+    expect(S.featureSortMode).to.equal('date');
   });
 });

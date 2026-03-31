@@ -5,39 +5,48 @@ import { state } from '../services/State.js';
 export class ViewDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
-  constructor(){ super(); this.id=''; this.name=''; }
-  
-  connectedCallback(){ super.connectedCallback(); }
+  constructor() {
+    super();
+    this.id = '';
+    this.name = '';
+  }
 
-  _getInner(){
+  connectedCallback() {
+    super.connectedCallback();
+  }
+
+  _getInner() {
     return this.renderRoot.querySelector('modal-lit');
   }
-  
-  _qs(selector){
+
+  _qs(selector) {
     const inner = this._getInner();
     return inner ? inner.querySelector(selector) : null;
   }
 
-  firstUpdated(){
-    const inner = this._getInner(); if(inner) inner.open = true;
+  firstUpdated() {
+    const inner = this._getInner();
+    if (inner) inner.open = true;
     const delBtn = this._qs('#deleteViewBtn');
     const cancelBtn = this._qs('#cancelDeleteViewBtn');
     const status = this._qs('#deleteViewStatus');
-    if (delBtn) delBtn.addEventListener('click', async ()=>{
-      delBtn.disabled = true; if (cancelBtn) cancelBtn.disabled = true;
-      try{
-        await state.viewManagementService.deleteView(this.id);
-        this.remove();
-      }catch(err){
-        if (status) status.textContent = `Failed to delete view: ${err.message || err}`;
-        delBtn.disabled = false; 
-        if (cancelBtn) cancelBtn.disabled = false;
-      }
-    });
-    if (cancelBtn) cancelBtn.addEventListener('click', ()=> this.remove());
+    if (delBtn)
+      delBtn.addEventListener('click', async () => {
+        delBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+        try {
+          await state.viewManagementService.deleteView(this.id);
+          this.remove();
+        } catch (err) {
+          if (status) status.textContent = `Failed to delete view: ${err.message || err}`;
+          delBtn.disabled = false;
+          if (cancelBtn) cancelBtn.disabled = false;
+        }
+      });
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.remove());
   }
 
-  render(){
+  render() {
     return html`
       <modal-lit>
         <div slot="header"><h3>Delete View</h3></div>

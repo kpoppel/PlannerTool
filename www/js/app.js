@@ -6,7 +6,7 @@ import { pluginManager } from './core/PluginManager.js';
 import { registerCoreServices } from './core/ServiceRegistry.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 
-async function init(){
+async function init() {
   registerCoreServices();
   // Phase 1: Register typed events and optional runtime behaviors
   try {
@@ -16,18 +16,24 @@ async function init(){
     if (featureFlags.LOG_EVENT_HISTORY) {
       bus.enableHistoryLogging(1000);
     }
-  } catch (e) { console.warn('[App] Failed to initialize EventRegistry or EventBus flags', e); }
+  } catch (e) {
+    console.warn('[App] Failed to initialize EventRegistry or EventBus flags', e);
+  }
   // Show a Spinner during init
-  try { await import('./components/SpinnerModal.js'); } catch (e) { /* ignore */ }
+  try {
+    await import('./components/SpinnerModal.js');
+  } catch (e) {
+    /* ignore */
+  }
   const spinner = document.getElementById('appSpinner');
   const showModal = () => {
-    if(spinner){
+    if (spinner) {
       spinner.message = 'Loading';
       spinner.open = true;
     }
   };
   const hideModal = () => {
-    if(spinner){
+    if (spinner) {
       spinner.open = false;
     }
   };
@@ -36,16 +42,26 @@ async function init(){
   try {
     // TODO/DEBUG: For Debugging: Expose internals for automated tests and debugging
     // try{ window.state = state; window.bus = bus; }catch(e){}
-    try{
+    try {
       const mod = await import('./components/Sidebar.lit.js');
-      if(mod && mod.initSidebar) await mod.initSidebar();
-    }catch(e){ console.warn('Failed to mount Lit sidebar', e); }
+      if (mod && mod.initSidebar) await mod.initSidebar();
+    } catch (e) {
+      console.warn('Failed to mount Lit sidebar', e);
+    }
 
     // Load top menu bar component so the <top-menu-bar> element in index.html upgrades
-    try{ await import('./components/TopMenu.lit.js'); }catch(e){ console.warn('Failed to load top-menu-bar', e); }
+    try {
+      await import('./components/TopMenu.lit.js');
+    } catch (e) {
+      console.warn('Failed to load top-menu-bar', e);
+    }
 
     // Ensure TimelineBoard is registered so the element in index.html is upgraded
-    try{ await import('./components/TimelineBoard.lit.js'); }catch(e){ console.warn('Failed to load timeline-board', e); }
+    try {
+      await import('./components/TimelineBoard.lit.js');
+    } catch (e) {
+      console.warn('Failed to load timeline-board', e);
+    }
 
     // FeatureBoard is mounted and initialized by TimelineBoard; ensure module available
     //try{ await import('./components/FeatureBoard.lit.js'); }catch(e){ /* ignore */ }
@@ -55,25 +71,37 @@ async function init(){
 
     // Ensure card component is registered (no board init here anymore)
     // TODO: The featureboard must import this component itself
-    try{ await import('./components/FeatureCard.lit.js'); }catch(e){ console.warn('Failed to load feature-card', e); }
+    try {
+      await import('./components/FeatureCard.lit.js');
+    } catch (e) {
+      console.warn('Failed to load feature-card', e);
+    }
 
     // Initialize the details panel by importing the Lit component and ensuring a host exists.
     const modDetailsPanel = await import('./components/DetailsPanel.lit.js');
-    if(modDetailsPanel){
+    if (modDetailsPanel) {
       // The module defines the custom element; ensure a single host exists in document body
       let host = document.querySelector('details-panel');
-      if(!host){ host = document.createElement('details-panel'); document.body.appendChild(host); }
+      if (!host) {
+        host = document.createElement('details-panel');
+        document.body.appendChild(host);
+      }
     }
     // Preload Lit-based color popover to avoid runtime race in tests
-    try{ await import('./components/ColorPopover.lit.js'); }catch(e){}
+    try {
+      await import('./components/ColorPopover.lit.js');
+    } catch (e) {}
     // MainGraph is initialized by TimelineBoard; ensure the module is available for other consumers
     //try{ await import('./components/MainGraph.lit.js'); }catch(e){ /* ignore if not available */ }
     //initDependencyRenderer();
     // Prefetch lightweight modal helpers during idle to improve perceived performance
-    try{
-      if ('requestIdleCallback' in window) requestIdleCallback(()=> import('./components/modalHelpers.js'));
-      else setTimeout(()=> import('./components/modalHelpers.js'), 3000);
-    }catch(e){ /* ignore prefetch failures */ }
+    try {
+      if ('requestIdleCallback' in window)
+        requestIdleCallback(() => import('./components/modalHelpers.js'));
+      else setTimeout(() => import('./components/modalHelpers.js'), 3000);
+    } catch (e) {
+      /* ignore prefetch failures */
+    }
     //Populate the app state from backend
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
@@ -109,29 +137,41 @@ async function init(){
     hideModal();
     bus.emit(AppEvents.READY);
     // Auto-show onboarding modal on first run when user hasn't dismissed it
-    try{
+    try {
       const seen = localStorage.getItem('az_planner:onboarding_seen');
-      if(!seen){
-        try{
+      if (!seen) {
+        try {
           await import('./components/OnboardingModal.lit.js');
           const em = document.createElement('onboarding-modal');
           document.body.appendChild(em);
-        }catch(err){ console.warn('[App] failed to load/show onboarding modal', err); }
+        } catch (err) {
+          console.warn('[App] failed to load/show onboarding modal', err);
+        }
       }
-    }catch(e){}
+    } catch (e) {}
     // Session expiry handling: notify user and indicate when reacquired
-    try{
+    try {
       const showSpinnerMessage = (msg) => {
-        try{
+        try {
           const sp = document.getElementById('appSpinner');
-          if(sp){ sp.message = msg || 'Loading'; sp.open = true; }
-        }catch(e){ console.warn('Failed to show spinner', e); }
+          if (sp) {
+            sp.message = msg || 'Loading';
+            sp.open = true;
+          }
+        } catch (e) {
+          console.warn('Failed to show spinner', e);
+        }
       };
       const hideSpinner = (delay = 0) => {
-        try{
+        try {
           const sp = document.getElementById('appSpinner');
-          if(sp){ if(delay) setTimeout(()=> sp.open = false, delay); else sp.open = false; }
-        }catch(e){ console.warn('Failed to hide spinner', e); }
+          if (sp) {
+            if (delay) setTimeout(() => (sp.open = false), delay);
+            else sp.open = false;
+          }
+        } catch (e) {
+          console.warn('Failed to hide spinner', e);
+        }
       };
 
       bus.on(SessionEvents.EXPIRED, (p) => {
@@ -140,21 +180,22 @@ async function init(){
       });
 
       bus.on(SessionEvents.REACQUIRED, (p) => {
-        if(p && p.ok === false){
+        if (p && p.ok === false) {
           const msg = 'Session re-acquire failed: ' + (p.error || 'unknown');
           showSpinnerMessage(msg);
           // hide after a short delay so user can read the failure
           hideSpinner(4000);
         } else {
-          const msg = (p && p.message) || 'Session re-acquired — Please retry the action.';
+          const msg =
+            (p && p.message) || 'Session re-acquired — Please retry the action.';
           showSpinnerMessage(msg);
           // keep the spinner visible longer so user sees the retry instruction
           hideSpinner(6000);
         }
       });
-    }catch(e){}
+    } catch (e) {}
     // Register global shortcut for in-app search: Ctrl+Shift+F
-    try{
+    try {
       // Prevent browser default on keydown so the find UI doesn't steal focus
       document.addEventListener('keydown', (e) => {
         const isCtrlShiftF = (e.key === 'F' || e.key === 'f') && e.ctrlKey && e.shiftKey;
@@ -164,19 +205,23 @@ async function init(){
         // Prevent triggering browser find only when our app is focused
         e.preventDefault();
         let st = document.querySelector('search-tool');
-          if (!st) {
-            import('./components/SearchTool.lit.js').then(() => {
+        if (!st) {
+          import('./components/SearchTool.lit.js')
+            .then(() => {
               st = document.createElement('search-tool');
               document.body.appendChild(st);
               // schedule open so rendering/focus is not impacted by the key event
-              setTimeout(()=> st.open(), 0);
-            }).catch(console.warn);
-          } else {
-            st.open();
-          }
+              setTimeout(() => st.open(), 0);
+            })
+            .catch(console.warn);
+        } else {
+          st.open();
+        }
       });
-    }catch(e){ /* noop */ }
-  } catch(e) {
+    } catch (e) {
+      /* noop */
+    }
+  } catch (e) {
     hideModal();
     throw e;
   }

@@ -31,9 +31,11 @@ be cleared after all updates of the Javascript code, so disable browser cache in
 development mode.
 
 Run the server:
+
 ```bash
 uvicorn planner:make_app --factory --reload --port 8000 2>&1 |tee logfile.log
 ```
+
 **Tip:** you can leave out the pipe to the logfile if you don not want a file log.
 **Tip:** Leave out --port and --reload and the tee to logfile if you don't need this.
 
@@ -42,9 +44,10 @@ Use the application by browsing to `http://localhost:8000`
 ### Production (bundled)
 
 The server can be run bundled too. This ensures the browser cache is invalidated because filenames
-change with updated content.  The price is the extra step building the bundle.
+change with updated content. The price is the extra step building the bundle.
 
 Run the server:
+
 ```bash
 # If the Lit bundle needs to updated (should not be the case)
 npm run build:vendor
@@ -55,6 +58,7 @@ npm run build
 # Run production server
 uvicorn planner:make_dist_app --factory --port 8000 --reload 2>&1 |tee logfile.log
 ```
+
 **Tip:** you can leave out the pipe to the logfile if you don not want a file log.
 **Tip:** Leave out --port and --reload and the tee to logfile if you don't need this.
 
@@ -63,15 +67,16 @@ Use the application by browsing to `http://localhost:8000`
 # Getting started - deployment
 
 **Tip:**
+
 - Shortcut setting up the first account:
   ```
   curl -i -X POST http://localhost:8001/admin/v1/setup -H "Content-Type: application/json" -d '{"email":"user@example.com","pat":"SOME_PAT"}'
   ```
 
-
 Checkout the `docs/DEPLOYMENT.md` file.
 
 # First time use
+
 Look at the example configuration files in `docs/example-*`. You can use these for a terminal only setup process.
 You can also use the user interface for this:
 
@@ -86,10 +91,10 @@ You can also use the user interface for this:
 Then go break something. Nothing is written back to Azure unless a user decides to explicitly do so.
 
 # Advanced configuration
+
 If you are also using the SuccessFactors chrome addon and server backend, this tool can use data from that tool for calculating cost.
 
-Configuring `database.yaml` location
------------------------------------
+## Configuring `database.yaml` location
 
 You can override where the server loads the `database.yaml` file by adding
 one of the following keys to `data/config/server_config.yml`:
@@ -99,11 +104,13 @@ one of the following keys to `data/config/server_config.yml`:
 Examples:
 
 Absolute path:
+
 ```
 database_path: /etc/plannertool/teamdb/database.yaml
 ```
 
 Relative to `data/config`:
+
 ```
 database_path: ../shared-configs/database.yaml
 ```

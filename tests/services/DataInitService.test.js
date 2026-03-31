@@ -28,14 +28,17 @@ describe('DataInitService helpers', () => {
       { id: 'f1', parentEpic: 'e1' },
       { id: 'f2', parentEpic: 'e1' },
       { id: 'f3', parentEpic: 'e2' },
-      { id: 'f4' }
+      { id: 'f4' },
     ];
 
     // call the internal builder
     svc._buildLookupMaps(features);
 
     // baselineFeatureById should map ids
-    expect(svc.getBaselineFeatureById('f1')).to.deep.equal({ id: 'f1', parentEpic: 'e1' });
+    expect(svc.getBaselineFeatureById('f1')).to.deep.equal({
+      id: 'f1',
+      parentEpic: 'e1',
+    });
     expect(svc.getBaselineFeatureById('f4')).to.deep.equal({ id: 'f4' });
     expect(svc.getBaselineFeatureById('missing')).to.equal(undefined);
 
@@ -60,42 +63,87 @@ describe('DataInitService helpers', () => {
     const teams = [{ id: 't1' }];
     const features = [{ id: 'f1', state: 'Done' }];
 
-    const bus = { emitted: [], emit(kind, payload) { this.emitted.push({ kind, payload }); } };
+    const bus = {
+      emitted: [],
+      emit(kind, payload) {
+        this.emitted.push({ kind, payload });
+      },
+    };
 
     const baselineStore = {
-      loadBaseline(obj) { this._projects = obj.projects; this._teams = obj.teams; this._features = obj.features; },
-      getProjects() { return this._projects; },
-      getTeams() { return this._teams; },
-      getFeatures() { return this._features; },
-      setFeatures(f) { this._features = f; }
+      loadBaseline(obj) {
+        this._projects = obj.projects;
+        this._teams = obj.teams;
+        this._features = obj.features;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      getFeatures() {
+        return this._features;
+      },
+      setFeatures(f) {
+        this._features = f;
+      },
     };
 
     const projectTeamService = {
-      initFromBaseline(p, t) { this._projects = p; this._teams = t; },
-      getProjects() { return this._projects; },
-      getTeams() { return this._teams; },
-      computeFeatureOrgLoad(f) { return 123; }
+      initFromBaseline(p, t) {
+        this._projects = p;
+        this._teams = t;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      computeFeatureOrgLoad(f) {
+        return 123;
+      },
     };
 
-    const stateFilterService = { setAvailableStates(s) { this.availableFeatureStates = s; }, availableFeatureStates: [] };
+    const stateFilterService = {
+      setAvailableStates(s) {
+        this.availableFeatureStates = s;
+      },
+      availableFeatureStates: [],
+    };
 
-    const colorService = { initColors() { return Promise.resolve(); } };
+    const colorService = {
+      initColors() {
+        return Promise.resolve();
+      },
+    };
 
     const dataService = {
       getProjects: async () => projects,
       getTeams: async () => teams,
       getFeatures: async () => features,
       getIterations: async () => [],
-      loadAllScenarios: async () => []
+      loadAllScenarios: async () => [],
     };
 
-    svc = new DataInitService(bus, dataService, baselineStore, projectTeamService, stateFilterService, colorService);
+    svc = new DataInitService(
+      bus,
+      dataService,
+      baselineStore,
+      projectTeamService,
+      stateFilterService,
+      colorService
+    );
 
     const result = await svc.initState();
 
     expect(result.baselineProjects).to.equal(projects);
     expect(result.baselineTeams).to.equal(teams);
-    expect(result.baselineFeatures[0]).to.include({ id: 'f1', originalRank: 0 });
+    expect(result.baselineFeatures[0]).to.include({
+      id: 'f1',
+      originalRank: 0,
+    });
     // orgLoad should have been added
     expect(result.baselineFeatures[0]).to.have.property('orgLoad', 123);
 
@@ -108,42 +156,87 @@ describe('DataInitService helpers', () => {
     const teams = [{ id: 't2' }];
     const features = [{ id: 'f2', state: 'Open' }];
 
-    const bus = { emitted: [], emit(kind, payload) { this.emitted.push({ kind, payload }); } };
+    const bus = {
+      emitted: [],
+      emit(kind, payload) {
+        this.emitted.push({ kind, payload });
+      },
+    };
 
     const baselineStore = {
-      loadBaseline(obj) { this._projects = obj.projects; this._teams = obj.teams; this._features = obj.features; },
-      getProjects() { return this._projects; },
-      getTeams() { return this._teams; },
-      getFeatures() { return this._features; },
-      setFeatures(f) { this._features = f; }
+      loadBaseline(obj) {
+        this._projects = obj.projects;
+        this._teams = obj.teams;
+        this._features = obj.features;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      getFeatures() {
+        return this._features;
+      },
+      setFeatures(f) {
+        this._features = f;
+      },
     };
 
     const projectTeamService = {
-      refreshFromBaseline(p, t) { this._projects = p; this._teams = t; },
-      getProjects() { return this._projects; },
-      getTeams() { return this._teams; },
-      computeFeatureOrgLoad(f) { return 7; }
+      refreshFromBaseline(p, t) {
+        this._projects = p;
+        this._teams = t;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      computeFeatureOrgLoad(f) {
+        return 7;
+      },
     };
 
-    const stateFilterService = { setAvailableStates(s) { this.availableFeatureStates = s; }, availableFeatureStates: [] };
+    const stateFilterService = {
+      setAvailableStates(s) {
+        this.availableFeatureStates = s;
+      },
+      availableFeatureStates: [],
+    };
 
-    const colorService = { initColors() { return Promise.resolve(); } };
+    const colorService = {
+      initColors() {
+        return Promise.resolve();
+      },
+    };
 
     const dataService = {
       getProjects: async () => projects,
       getTeams: async () => teams,
       getFeatures: async () => features,
       getIterations: async () => [],
-      loadAllScenarios: async () => []
+      loadAllScenarios: async () => [],
     };
 
-    svc = new DataInitService(bus, dataService, baselineStore, projectTeamService, stateFilterService, colorService);
+    svc = new DataInitService(
+      bus,
+      dataService,
+      baselineStore,
+      projectTeamService,
+      stateFilterService,
+      colorService
+    );
 
     const result = await svc.refreshBaseline();
 
     expect(result.baselineProjects).to.equal(projects);
     expect(result.baselineTeams).to.equal(teams);
-    expect(result.baselineFeatures[0]).to.include({ id: 'f2', originalRank: 0 });
+    expect(result.baselineFeatures[0]).to.include({
+      id: 'f2',
+      originalRank: 0,
+    });
     expect(result.baselineFeatures[0]).to.have.property('orgLoad', 7);
 
     // Freeze should have been applied (object is frozen)

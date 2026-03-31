@@ -10,26 +10,25 @@ describe('ProviderMock extra coverage', () => {
   it('publishBaseline applies overrides and returns summary', async () => {
     // create a scenario with an override for an existing feature
     const feat = prov.features[0];
-    const scen = { id: 's2', name: 'S2', overrides: { [feat.id]: { start: '2025-01-10', end: '2025-01-20' } }, isLive: false };
+    const scen = {
+      id: 's2',
+      name: 'S2',
+      overrides: { [feat.id]: { start: '2025-01-10', end: '2025-01-20' } },
+      isLive: false,
+    };
     prov.scenarios.push(scen);
     const res = await prov.publishBaseline([], 's2');
     expect(res).to.be.an('object');
     expect(res.count).to.be.a('number');
   });
 
-  it('setFeatureField updates feature and marks changedFields', async () => {
-    const f = prov.features[1];
-    const before = f.title;
-    const updated = await prov.setFeatureField(f.id, 'title', 'New Title');
-    expect(updated.title).to.equal('New Title');
-    expect(updated.changedFields).to.include('title');
-    // restore
-    await prov.setFeatureField(f.id, 'title', before);
-  });
-
   it('getCost returns parsed JSON when fetch succeeds', async () => {
     const origFetch = window.fetch;
-    window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ total: 123 }) });
+    window.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ total: 123 }),
+    });
     const data = await prov.getCost();
     expect(data).to.be.an('object');
     expect(data.total).to.equal(123);

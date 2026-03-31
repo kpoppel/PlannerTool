@@ -7,7 +7,9 @@ test.describe('Left Sidebar - Extra coverage', () => {
     await page.waitForSelector('app-sidebar');
     await clearOverlays(page);
     // ensure lists rendered
-    await page.waitForSelector('#projectList .sidebar-list-item', { timeout: 7000 }).catch(()=>{});
+    await page
+      .waitForSelector('#projectList .sidebar-list-item', { timeout: 7000 })
+      .catch(() => {});
   });
 
   test('project and team select-all toggles flip selection', async ({ page }) => {
@@ -17,15 +19,21 @@ test.describe('Left Sidebar - Extra coverage', () => {
     const pCount = await projectChips.count();
     expect(pCount).toBeGreaterThan(0);
 
-    const anyUncheckedBefore = await projectChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+    const anyUncheckedBefore = await projectChips.evaluateAll((els) =>
+      els.some((el) => !el.classList.contains('active'))
+    );
     await projectToggle.click();
     await page.waitForTimeout(400);
-    let anyUncheckedAfter = await projectChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+    let anyUncheckedAfter = await projectChips.evaluateAll((els) =>
+      els.some((el) => !el.classList.contains('active'))
+    );
     if (anyUncheckedAfter === anyUncheckedBefore) {
       // retry once
       await projectToggle.click();
       await page.waitForTimeout(400);
-      anyUncheckedAfter = await projectChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+      anyUncheckedAfter = await projectChips.evaluateAll((els) =>
+        els.some((el) => !el.classList.contains('active'))
+      );
     }
     expect(anyUncheckedAfter).not.toBe(anyUncheckedBefore);
 
@@ -35,32 +43,44 @@ test.describe('Left Sidebar - Extra coverage', () => {
     const tCount = await teamChips.count();
     expect(tCount).toBeGreaterThan(0);
 
-    const anyTeamUncheckedBefore = await teamChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+    const anyTeamUncheckedBefore = await teamChips.evaluateAll((els) =>
+      els.some((el) => !el.classList.contains('active'))
+    );
     await teamToggle.click();
     await page.waitForTimeout(400);
-    let anyTeamUncheckedAfter = await teamChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+    let anyTeamUncheckedAfter = await teamChips.evaluateAll((els) =>
+      els.some((el) => !el.classList.contains('active'))
+    );
     if (anyTeamUncheckedAfter === anyTeamUncheckedBefore) {
       await teamToggle.click();
       await page.waitForTimeout(400);
-      anyTeamUncheckedAfter = await teamChips.evaluateAll(els => els.some(el => !el.classList.contains('active')));
+      anyTeamUncheckedAfter = await teamChips.evaluateAll((els) =>
+        els.some((el) => !el.classList.contains('active'))
+      );
     }
     expect(anyTeamUncheckedAfter).not.toBe(anyTeamUncheckedBefore);
   });
 
-  test('collapsible headers toggle collapsed class and chevron text', async ({ page }) => {
+  test('collapsible headers toggle collapsed class and chevron text', async ({
+    page,
+  }) => {
     const header = page.locator('#projectsSection .sidebar-section-header-collapsible');
     // the content wrapper is the second div inside the section
     const content = page.locator('#projectsSection').locator('div').nth(1);
     await expect(header).toBeVisible();
     const chevron = header.locator('.sidebar-chevron');
 
-    const beforeCollapsed = await content.evaluate(el => el.classList.contains('sidebar-section-collapsed'));
+    const beforeCollapsed = await content.evaluate((el) =>
+      el.classList.contains('sidebar-section-collapsed')
+    );
     const beforeChevron = await chevron.textContent();
 
     await header.click();
     await page.waitForTimeout(200);
 
-    const afterCollapsed = await content.evaluate(el => el.classList.contains('sidebar-section-collapsed'));
+    const afterCollapsed = await content.evaluate((el) =>
+      el.classList.contains('sidebar-section-collapsed')
+    );
     const afterChevron = await chevron.textContent();
     expect(afterCollapsed).toBe(!beforeCollapsed);
     expect(afterChevron).not.toBe(beforeChevron);
@@ -85,13 +105,19 @@ test.describe('Left Sidebar - Extra coverage', () => {
     await page.waitForTimeout(400);
 
     // Compare computed color equality (handles hex vs rgb differences) in page context
-    const applied = await page.evaluate(([id, color]) => {
-      const dot = document.querySelector(`.color-dot[data-color-id="${id}"]`);
-      if(!dot) return false;
-      const tmp = document.createElement('div'); tmp.style.color = color; document.body.appendChild(tmp);
-      const expected = getComputedStyle(tmp).color; tmp.remove();
-      return getComputedStyle(dot).backgroundColor === expected;
-    }, [dataId, colorVal]);
+    const applied = await page.evaluate(
+      ([id, color]) => {
+        const dot = document.querySelector(`.color-dot[data-color-id="${id}"]`);
+        if (!dot) return false;
+        const tmp = document.createElement('div');
+        tmp.style.color = color;
+        document.body.appendChild(tmp);
+        const expected = getComputedStyle(tmp).color;
+        tmp.remove();
+        return getComputedStyle(dot).backgroundColor === expected;
+      },
+      [dataId, colorVal]
+    );
     expect(applied).toBe(true);
   });
 
@@ -102,7 +128,7 @@ test.describe('Left Sidebar - Extra coverage', () => {
     // Activate scenario
     await scenario.click();
     await page.waitForTimeout(200);
-    const isActive = await scenario.evaluate(el => el.classList.contains('active'));
+    const isActive = await scenario.evaluate((el) => el.classList.contains('active'));
     expect(isActive).toBe(true);
 
     // Open scenario menu and click Clone Scenario, expect clone modal
@@ -113,23 +139,27 @@ test.describe('Left Sidebar - Extra coverage', () => {
     await expect(pop).toBeVisible();
 
     const cloneItem = pop.locator('text=Clone Scenario');
-    if (await cloneItem.count() > 0) {
+    if ((await cloneItem.count()) > 0) {
       await cloneItem.first().click();
       // modal-lit sets open=true on the inner modal; wait for visible modal-lit
-      await page.waitForSelector('scenario-clone-modal modal-lit[open]', { timeout: 4000 });
+      await page.waitForSelector('scenario-clone-modal modal-lit[open]', {
+        timeout: 4000,
+      });
       await expect(page.locator('scenario-clone-modal modal-lit[open]')).toBeVisible();
-      await page.keyboard.press('Escape').catch(()=>{});
+      await page.keyboard.press('Escape').catch(() => {});
     }
 
     // Open menu again and try Rename
     await menuBtn.click();
     await expect(pop).toBeVisible();
     const renameItem = pop.locator('text=Rename');
-    if (await renameItem.count() > 0) {
+    if ((await renameItem.count()) > 0) {
       await renameItem.first().click();
-      await page.waitForSelector('scenario-rename-modal modal-lit[open]', { timeout: 4000 });
+      await page.waitForSelector('scenario-rename-modal modal-lit[open]', {
+        timeout: 4000,
+      });
       await expect(page.locator('scenario-rename-modal modal-lit[open]')).toBeVisible();
-      await page.keyboard.press('Escape').catch(()=>{});
+      await page.keyboard.press('Escape').catch(() => {});
     }
   });
 

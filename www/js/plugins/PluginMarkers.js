@@ -21,7 +21,7 @@ class PluginMarkers {
       description: 'Display delivery plan markers on timeline',
       icon: 'flag',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
     };
   }
 
@@ -35,12 +35,12 @@ class PluginMarkers {
 
   async activate() {
     if (!this._componentLoaded) await this.init();
-    
+
     if (!this._el) {
       this._el = document.createElement('plugin-markers');
       document.body.appendChild(this._el);
     }
-    
+
     if (this._el?.open) this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });

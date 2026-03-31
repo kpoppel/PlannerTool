@@ -3,7 +3,7 @@
  * Re-exports all export-related functionality
  */
 
-export { 
+export {
   getViewportBounds,
   createSvgElement,
   createSvgText,
@@ -12,11 +12,11 @@ export {
   svgToPngBlob,
   downloadBlob,
   copySvgToClipboard,
-  copyPngBlobToClipboard
+  copyPngBlobToClipboard,
 } from './ExportUtils.js';
 
 export {
   TimelineExportRenderer,
   getExportRenderer,
-  exportTimelineToPng
+  exportTimelineToPng,
 } from './TimelineExportRenderer.js';

@@ -14,7 +14,7 @@ describe('MainGraph Geometry', () => {
   function indexToDate(months, idx) {
     const start = months[0];
     const msPerDay = 24 * 60 * 60 * 1000;
-    return new Date(start.getTime() + (idx * msPerDay));
+    return new Date(start.getTime() + idx * msPerDay);
   }
 
   function clamp(v, min, max) {
@@ -27,8 +27,12 @@ describe('MainGraph Geometry', () => {
 
   function hexToRgba(hex, alpha) {
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!m) { return `rgba(231,76,60,${alpha})`; }
-    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    if (!m) {
+      return `rgba(231,76,60,${alpha})`;
+    }
+    const r = parseInt(m[1], 16),
+      g = parseInt(m[2], 16),
+      b = parseInt(m[3], 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 

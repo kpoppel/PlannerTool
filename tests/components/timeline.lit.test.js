@@ -1,5 +1,9 @@
 import { expect } from '@esm-bundle/chai';
-import { getTimelineMonths, initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
+import {
+  getTimelineMonths,
+  initTimeline,
+  _resetTimelineState,
+} from '../../www/js/components/Timeline.lit.js';
 import { TIMELINE_CONFIG } from '../../www/js/components/Timeline.lit.js';
 
 describe('Timeline adapter', () => {
@@ -13,7 +17,7 @@ describe('Timeline adapter', () => {
 
   afterEach(() => {
     const t = document.querySelector('timeline-lit');
-    if(t) t.remove();
+    if (t) t.remove();
     _resetTimelineState();
   });
 

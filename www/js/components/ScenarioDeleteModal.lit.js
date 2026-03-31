@@ -6,37 +6,51 @@ import { dataService } from '../services/dataService.js';
 export class ScenarioDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
-  constructor(){ super(); this.id=''; this.name=''; }
-  
-  connectedCallback(){ super.connectedCallback(); }
+  constructor() {
+    super();
+    this.id = '';
+    this.name = '';
+  }
 
-  _getInner(){
+  connectedCallback() {
+    super.connectedCallback();
+  }
+
+  _getInner() {
     return this.renderRoot.querySelector('modal-lit');
   }
-  
-  _qs(selector){
+
+  _qs(selector) {
     const inner = this._getInner();
     return inner ? inner.querySelector(selector) : null;
   }
 
-  firstUpdated(){
-    const inner = this._getInner(); if(inner) inner.open = true;
+  firstUpdated() {
+    const inner = this._getInner();
+    if (inner) inner.open = true;
     const delBtn = this._qs('#deleteBtn');
     const cancelBtn = this._qs('#cancelDeleteBtn');
     const status = this._qs('#deleteStatus');
-    if (delBtn) delBtn.addEventListener('click', async ()=>{
-      delBtn.disabled = true; if(cancelBtn) cancelBtn.disabled = true;
-      try{
-        try{ state.deleteScenario(this.id); }catch(e){}
-        await dataService.deleteScenario(this.id).catch(()=>{});
-        this.remove();
-      }catch(err){ if (status) status.textContent = 'Delete failed.'; }
-      delBtn.disabled = false; if(cancelBtn) cancelBtn.disabled = false;
-    });
-    if (cancelBtn) cancelBtn.addEventListener('click', ()=> this.remove());
+    if (delBtn)
+      delBtn.addEventListener('click', async () => {
+        delBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+        try {
+          try {
+            state.deleteScenario(this.id);
+          } catch (e) {}
+          await dataService.deleteScenario(this.id).catch(() => {});
+          this.remove();
+        } catch (err) {
+          if (status) status.textContent = 'Delete failed.';
+        }
+        delBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+      });
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.remove());
   }
 
-  render(){
+  render() {
     return html`
       <modal-lit>
         <div slot="header"><h3>Delete Scenario</h3></div>

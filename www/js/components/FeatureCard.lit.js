@@ -48,12 +48,12 @@ export class FeatureCardLit extends LitElement {
     }
 
     .feature-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
 
     .feature-card.selected {
       /* match original shadow for selected cards */
-      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
     }
 
     /* Connected-set highlight: change background for stronger visibility.
@@ -65,29 +65,39 @@ export class FeatureCardLit extends LitElement {
     .feature-card.connected.dirty,
     :host(.connected) .feature-card.dirty {
       background: var(--color-connected-bg, #e8f5ff);
-      box-shadow: 0 2px 6px rgba(60,120,220,0.08);
-      transition: background 120ms ease, box-shadow 120ms ease;
+      box-shadow: 0 2px 6px rgba(60, 120, 220, 0.08);
+      transition:
+        background 120ms ease,
+        box-shadow 120ms ease;
     }
 
     /* Minimal highlight: small inset overlay that fades out */
-      :host(.search-highlight) .feature-card::after {
-        content: '';
-        position: absolute;
-        inset: 0px;
-        border-radius: 6px;
-        pointer-events: none;
-        background: rgba(4, 63, 158, 0.9);
-        opacity: 0; /* start invisible */
-        z-index: 10;
-        animation: search-bg-fade 900ms ease-out forwards;
-      }
+    :host(.search-highlight) .feature-card::after {
+      content: '';
+      position: absolute;
+      inset: 0px;
+      border-radius: 6px;
+      pointer-events: none;
+      background: rgba(4, 63, 158, 0.9);
+      opacity: 0; /* start invisible */
+      z-index: 10;
+      animation: search-bg-fade 900ms ease-out forwards;
+    }
 
-      @keyframes search-bg-fade {
-        0% { opacity: 0; }
-        20% { opacity: 0.85; }
-        60% { opacity: 0.45; }
-        100% { opacity: 0; }
+    @keyframes search-bg-fade {
+      0% {
+        opacity: 0;
       }
+      20% {
+        opacity: 0.85;
+      }
+      60% {
+        opacity: 0.45;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
 
     .feature-card.dirty {
       /* Highlight entire card background for modified features (matches legacy look) */
@@ -123,7 +133,7 @@ export class FeatureCardLit extends LitElement {
 
     .feature-card.ghosted:hover {
       opacity: 0.8;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
 
     .feature-card.condensed {
@@ -164,7 +174,7 @@ export class FeatureCardLit extends LitElement {
       margin-left: 6px;
     }
     */
-   
+
     /* lightweight dates styling (keeps vertical gaps small) */
     .feature-dates {
       margin-top: 4px;
@@ -197,7 +207,9 @@ export class FeatureCardLit extends LitElement {
     .team-load-row.dimmed .team-load-box {
       opacity: 0.45;
       filter: grayscale(60%);
-      transition: opacity 160ms ease, filter 160ms ease;
+      transition:
+        opacity 160ms ease,
+        filter 160ms ease;
     }
 
     .dim-info {
@@ -206,11 +218,13 @@ export class FeatureCardLit extends LitElement {
       justify-content: center;
       margin-left: 6px;
       font-size: 0.85em;
-      color: rgba(0,0,0,0.6);
+      color: rgba(0, 0, 0, 0.6);
       cursor: default;
       user-select: none;
     }
-    .dim-info:hover { color: rgba(0,0,0,0.85); }
+    .dim-info:hover {
+      color: rgba(0, 0, 0, 0.85);
+    }
 
     .team-load-box {
       padding: 2px 4px;
@@ -274,7 +288,7 @@ export class FeatureCardLit extends LitElement {
       justify-content: center;
       min-height: 24px;
     }
-    
+
     .feature-card.small-feature .small-feature-indicator {
       display: flex; /* Only show for small features */
     }
@@ -296,7 +310,7 @@ export class FeatureCardLit extends LitElement {
 
     .feature-card-icon {
       flex-shrink: 0;
-      font-size: 1.0em;
+      font-size: 1em;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -339,9 +353,12 @@ export class FeatureCardLit extends LitElement {
       width: 2.4em;
       height: 100%;
       pointer-events: none;
-      background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,1));
+      background: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0),
+        rgba(255, 255, 255, 1)
+      );
     }
-
 
     .drag-handle {
       position: absolute;
@@ -350,7 +367,7 @@ export class FeatureCardLit extends LitElement {
       bottom: 0;
       width: 10px;
       cursor: ew-resize;
-      background: rgba(0,0,0,0.06);
+      background: rgba(0, 0, 0, 0.06);
       opacity: 0;
       transition: opacity 0.2s;
     }
@@ -368,11 +385,11 @@ export class FeatureCardLit extends LitElement {
       top: 50%;
       transform: translateY(-50%);
       background: transparent;
-      border: 1px dashed rgba(0,0,0,0.25);
+      border: 1px dashed rgba(0, 0, 0, 0.25);
       padding: 2px 6px;
       border-radius: 4px;
       font-size: 0.9em;
-      color: rgba(0,0,0,0.75);
+      color: rgba(0, 0, 0, 0.75);
       z-index: 120;
       pointer-events: none;
       line-height: 1.1;
@@ -412,7 +429,7 @@ export class FeatureCardLit extends LitElement {
       height: 0;
       border-top: 10px solid transparent;
       border-bottom: 10px solid transparent;
-      border-left: 10px solid rgba(0,0,0,0.1);
+      border-left: 10px solid rgba(0, 0, 0, 0.1);
     }
   `;
 
@@ -428,8 +445,8 @@ export class FeatureCardLit extends LitElement {
     this._rootCard = null;
     this._titleEl = null;
     this._ghostEl = null;
-    this._width = 0;          // cached from ResizeObserver — no DOM read needed
-    this._lastTitle = null;    // track title changes for overflow re-check
+    this._width = 0; // cached from ResizeObserver — no DOM read needed
+    this._lastTitle = null; // track title changes for overflow re-check
     this._connected = false; // whether this card is in current connected set
   }
 
@@ -462,7 +479,14 @@ export class FeatureCardLit extends LitElement {
             titleOverflows = titleEl.scrollWidth > titleEl.clientWidth + 2;
           }
         }
-        results.push({ card, rootCard, w, isSmall, isCulled: w < 70, titleOverflows });
+        results.push({
+          card,
+          rootCard,
+          w,
+          isSmall,
+          isCulled: w < 70,
+          titleOverflows,
+        });
       }
 
       // --- Write phase (no reads after this point) ---
@@ -474,13 +498,17 @@ export class FeatureCardLit extends LitElement {
         r.card.classList.toggle('title-overflow', r.titleOverflows);
 
         if (r.titleOverflows) {
-          if (!r.card._ghostEl) r.card._ghostEl = r.card.shadowRoot?.querySelector('.ghost-title');
+          if (!r.card._ghostEl)
+            r.card._ghostEl = r.card.shadowRoot?.querySelector('.ghost-title');
           const g = r.card._ghostEl;
           if (g) {
             const textNode = g.querySelector('.ghost-title-text');
             if (textNode) {
-              try { textNode.innerHTML = r.card._splitTitleAtMiddle(r.card.feature?.title); }
-              catch (e) { textNode.textContent = r.card.feature?.title || ''; }
+              try {
+                textNode.innerHTML = r.card._splitTitleAtMiddle(r.card.feature?.title);
+              } catch (e) {
+                textNode.textContent = r.card.feature?.title || '';
+              }
             }
             // Use style.left (set by board) instead of offsetLeft to avoid forced reflow
             g.classList.toggle('right', (parseFloat(r.card.style.left) || 0) < 200);
@@ -513,7 +541,9 @@ export class FeatureCardLit extends LitElement {
     this._ro.observe(this);
     // Re-render when feature data updates
     this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, () => {
-      try { this.requestUpdate(); } catch (e) {}
+      try {
+        this.requestUpdate();
+      } catch (e) {}
     });
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
@@ -526,20 +556,27 @@ export class FeatureCardLit extends LitElement {
     this.addEventListener('mousedown', this._onMouseDown);
     // Keep card deselected when another feature is selected elsewhere
     this._boundOnFeatureSelected = (f) => {
-      const selId = (f && f.id) ? String(f.id) : null;
+      const selId = f && f.id ? String(f.id) : null;
       const myId = String(this.feature?.id);
       if (!selId || myId !== selId) {
-        if (this.selected) { this.selected = false; this.requestUpdate(); }
+        if (this.selected) {
+          this.selected = false;
+          this.requestUpdate();
+        }
       }
     };
-    try { bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
+    try {
+      bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
+    } catch (e) {}
     // Listen for connected-set updates from the board
     this._boundOnConnectedSet = (payload) => {
-      const ids = (payload && payload.ids) ? payload.ids : null;
-      this._connectedPrimary = (payload && payload.primary) ? String(payload.primary) : null;
-      this._connectedCurrent = (payload && payload.current) ? String(payload.current) : null;
+      const ids = payload && payload.ids ? payload.ids : null;
+      this._connectedPrimary =
+        payload && payload.primary ? String(payload.primary) : null;
+      this._connectedCurrent =
+        payload && payload.current ? String(payload.current) : null;
       const id = String(this.feature.id);
-      const inSet = Array.isArray(ids) ? (ids.indexOf(id) !== -1) : false;
+      const inSet = Array.isArray(ids) ? ids.indexOf(id) !== -1 : false;
       if (inSet !== this._connected) {
         this._connected = inSet;
         this.classList.toggle('connected', inSet);
@@ -551,8 +588,17 @@ export class FeatureCardLit extends LitElement {
     };
     bus.on(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
     // Also clear highlight when details panel hides
-    this._boundOnDetailsHide = () => { try { if (this.selected) { this.selected = false; this.requestUpdate(); } } catch (e) {} };
-    try { bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide); } catch (e) {}
+    this._boundOnDetailsHide = () => {
+      try {
+        if (this.selected) {
+          this.selected = false;
+          this.requestUpdate();
+        }
+      } catch (e) {}
+    };
+    try {
+      bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
+    } catch (e) {}
   }
 
   firstUpdated() {
@@ -577,12 +623,21 @@ export class FeatureCardLit extends LitElement {
   disconnectedCallback() {
     FeatureCardLit._pendingCards.delete(this);
     this._ro?.disconnect();
-    try { this._unsubFeaturesUpdated?.(); } catch (e) {}
-    try { this._unsubDragEnd?.(); } catch (e) {}
+    try {
+      this._unsubFeaturesUpdated?.();
+    } catch (e) {}
+    try {
+      this._unsubDragEnd?.();
+    } catch (e) {}
     this.removeEventListener('mousedown', this._onMouseDown);
-    try { if (this._boundOnFeatureSelected) bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected); } catch (e) {}
-    if (this._boundOnConnectedSet) bus.off(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
-    if (this._boundOnDetailsHide) bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
+    try {
+      if (this._boundOnFeatureSelected)
+        bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
+    } catch (e) {}
+    if (this._boundOnConnectedSet)
+      bus.off(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
+    if (this._boundOnDetailsHide)
+      bus.off(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
     if (this._boundOnPreMove) {
       window.removeEventListener('mousemove', this._boundOnPreMove);
       window.removeEventListener('pointermove', this._boundOnPreMove);
@@ -599,8 +654,10 @@ export class FeatureCardLit extends LitElement {
    * Called by FeatureBoard.updateCardsById() for incremental updates.
    */
   applyVisuals({ left, width, selected, dirty, project } = {}) {
-    if (left !== undefined) this.style.left = typeof left === 'number' ? `${left}px` : left;
-    if (width !== undefined) this.style.width = typeof width === 'number' ? `${width}px` : width;
+    if (left !== undefined)
+      this.style.left = typeof left === 'number' ? `${left}px` : left;
+    if (width !== undefined)
+      this.style.width = typeof width === 'number' ? `${width}px` : width;
     if (selected !== undefined) this.selected = selected;
     if (dirty !== undefined && this.feature) this.feature.dirty = dirty;
     if (project !== undefined) this.project = project;
@@ -615,8 +672,13 @@ export class FeatureCardLit extends LitElement {
       if (!container) return;
       const live = container.querySelector('.dates-live');
       const def = container.querySelector('.dates-default');
-      if (live) { live.textContent = text ?? ''; live.style.display = text ? '' : 'none'; }
-      if (def) { def.style.display = text ? 'none' : ''; }
+      if (live) {
+        live.textContent = text ?? '';
+        live.style.display = text ? '' : 'none';
+      }
+      if (def) {
+        def.style.display = text ? 'none' : '';
+      }
     } catch (e) {}
   }
 
@@ -633,7 +695,14 @@ export class FeatureCardLit extends LitElement {
     if (path.includes(rh)) {
       e.stopPropagation();
       const datesEl = this.shadowRoot?.querySelector('.feature-dates');
-      startResize(e, this.feature, this, datesEl, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
+      startResize(
+        e,
+        this.feature,
+        this,
+        datesEl,
+        (updates) => state.updateFeatureDates(updates),
+        state.getEffectiveFeatures()
+      );
       return;
     }
 
@@ -644,7 +713,13 @@ export class FeatureCardLit extends LitElement {
     const onPreMove = (ev) => {
       if (Math.abs(ev.clientX - startX) > 5) {
         cleanup();
-        startDragMove(e, self.feature, self, (updates) => state.updateFeatureDates(updates), state.getEffectiveFeatures());
+        startDragMove(
+          e,
+          self.feature,
+          self,
+          (updates) => state.updateFeatureDates(updates),
+          state.getEffectiveFeatures()
+        );
       }
     };
     const onPreUp = () => cleanup();
@@ -669,12 +744,12 @@ export class FeatureCardLit extends LitElement {
     if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
     try {
       const path = (e.composedPath && e.composedPath()) || [];
-      if (path.some(p => p?.classList?.contains?.('drag-handle'))) return;
+      if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
     } catch (err) {}
     if (e.detail === 2) return;
 
     const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    if(state.highlightFeatureRelationMode) {
+    if (state.highlightFeatureRelationMode) {
       // If this card is in the current connected set, treat it as selecting
       // the item within the set (highlight previous selection and new selection)
       if (this._connected) {
@@ -688,14 +763,15 @@ export class FeatureCardLit extends LitElement {
       this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
     }
     // Also reflect selection locally
-    this.selected = true; this.requestUpdate();
+    this.selected = true;
+    this.requestUpdate();
     this.bus.emit(FeatureEvents.SELECTED, eff);
   }
 
   _handleDoubleClick(e) {
     try {
       const path = (e.composedPath && e.composedPath()) || [];
-      if (path.some(p => p?.classList?.contains?.('drag-handle'))) return;
+      if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
     } catch (err) {}
     try {
       if (this.feature?.id) state.revertFeature(this.feature.id);
@@ -706,10 +782,13 @@ export class FeatureCardLit extends LitElement {
     if (this.condensed) return '';
     const hasChildren = (() => {
       try {
-        const map = state._dataInitService?.getChildrenByEpicMap?.() || state.childrenByEpic;
+        const map =
+          state._dataInitService?.getChildrenByEpicMap?.() || state.childrenByEpic;
         const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
-      } catch (e) { return false; }
+      } catch (e) {
+        return false;
+      }
     })();
 
     const orgBox = html`
@@ -718,21 +797,34 @@ export class FeatureCardLit extends LitElement {
       </span>
     `;
 
-    const teamBoxes = this.feature.capacity?.map(tl => {
-      const team = this.teams?.find(t => t.id === tl.team && t.selected);
-      if (!team) return null;
-      return html`
-        <span class="team-load-box" style="background: ${team.color};" title="${team.name}: ${tl.capacity}">
-          ${tl.capacity}
-        </span>
-      `;
-    }).filter(Boolean) || [];
+    const teamBoxes =
+      this.feature.capacity
+        ?.map((tl) => {
+          const team = this.teams?.find((t) => t.id === tl.team && t.selected);
+          if (!team) return null;
+          return html`
+            <span
+              class="team-load-box"
+              style="background: ${team.color};"
+              title="${team.name}: ${tl.capacity}"
+            >
+              ${tl.capacity}
+            </span>
+          `;
+        })
+        .filter(Boolean) || [];
 
     return html`
-      <div class="team-load-row ${hasChildren ? 'dimmed' : ''}" title=${hasChildren ? 'This feature has child items; using allocations from children in calculations' : ''}>
-        ${hasChildren ? html`<span class="dim-info" role="img" style="font-size: 16px">\u2139\uFE0F</span>` : ''}
-        ${orgBox}
-        ${teamBoxes}
+      <div
+        class="team-load-row ${hasChildren ? 'dimmed' : ''}"
+        title=${hasChildren ?
+          'This feature has child items; using allocations from children in calculations'
+        : ''}
+      >
+        ${hasChildren ?
+          html`<span class="dim-info" role="img" style="font-size: 16px">ℹ️</span>`
+        : ''}
+        ${orgBox} ${teamBoxes}
       </div>
     `;
   }
@@ -755,24 +847,31 @@ export class FeatureCardLit extends LitElement {
   }
 
   _escapeHtml(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   render() {
-    const isUnplanned = featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
+    const isUnplanned =
+      featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     const projectColor = this.project?.color || '#ccc';
 
     const cardClasses = {
       'feature-card': true,
-      'selected': this.selected,
-      'dirty': this.feature.dirty,
-      'condensed': this.condensed,
-      'ghosted': isUnplanned
+      selected: this.selected,
+      dirty: this.feature.dirty,
+      condensed: this.condensed,
+      ghosted: isUnplanned,
     };
 
     return html`
       <div
-        class=${Object.keys(cardClasses).filter(k => cardClasses[k]).join(' ')}
+        class=${Object.keys(cardClasses)
+          .filter((k) => cardClasses[k])
+          .join(' ')}
         data-id=${this.feature.id}
         role="listitem"
         draggable="false"
@@ -791,18 +890,22 @@ export class FeatureCardLit extends LitElement {
             ${this.feature.title}
           </div>
         </div>
-        ${!this.condensed ? html`
-          <div class="feature-dates">
-            <span class="dates-default">${this.feature.start} \u2192 ${this.feature.end}</span>
-            <span class="dates-live" aria-hidden="true" style="display:none"></span>
-          </div>
-        ` : ''}
+        ${!this.condensed ?
+          html`
+            <div class="feature-dates">
+              <span class="dates-default"
+                >${this.feature.start} → ${this.feature.end}</span
+              >
+              <span class="dates-live" aria-hidden="true" style="display:none"></span>
+            </div>
+          `
+        : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
-        </div>
-        <div class="ghost-title" aria-hidden="true">
-          <span class="ghost-title-text"></span>
-          <div class="ghost-title-arrow"></div>
-        </div>
+      </div>
+      <div class="ghost-title" aria-hidden="true">
+        <span class="ghost-title-text"></span>
+        <div class="ghost-title-arrow"></div>
+      </div>
     `;
   }
 }

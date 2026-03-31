@@ -8,7 +8,9 @@ describe('Coverage helpers', () => {
     // register, on/off, emit, once
     const sym = Symbol('test:event');
     let called = false;
-    const h = (p)=> { called = true; };
+    const h = (p) => {
+      called = true;
+    };
     const unsub = bus.on(sym, h);
     bus.emit(sym, { ok: true });
     expect(called).to.equal(true);
@@ -18,13 +20,13 @@ describe('Coverage helpers', () => {
     expect(called).to.equal(false);
 
     let onceCalled = 0;
-    bus.once(sym, ()=> onceCalled++);
+    bus.once(sym, () => onceCalled++);
     bus.emit(sym);
     bus.emit(sym);
     expect(onceCalled).to.equal(1);
 
     bus.enableHistoryLogging(10);
-    bus.emit(sym, { x:1 });
+    bus.emit(sym, { x: 1 });
     const hst = bus.getEventHistory();
     expect(Array.isArray(hst)).to.equal(true);
     bus.disableHistoryLogging();
@@ -39,7 +41,11 @@ describe('Coverage helpers', () => {
     // call other read methods which delegate to providers
     // Ensure providerREST returns arrays (global fetch stub returns object by default)
     const origFetch = window.fetch;
-    window.fetch = async () => ({ ok: true, status: 200, json: async () => [] });
+    window.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    });
     const projects = await dataService.getProjects();
     const teams = await dataService.getTeams();
     const features = await dataService.getFeatures();
@@ -54,7 +60,7 @@ describe('Coverage helpers', () => {
 
   it('exercise some state helpers', () => {
     // shallow calls that do not hit network
-    state._stateFilterService.setAvailableStates(['Open','Done']);
+    state._stateFilterService.setAvailableStates(['Open', 'Done']);
     state._stateFilterService.toggleStateSelected('Open');
     expect(state.selectedFeatureStateFilter instanceof Set).to.equal(true);
     state.setAllStatesSelected(true);

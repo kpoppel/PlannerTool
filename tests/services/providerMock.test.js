@@ -4,7 +4,9 @@ import { ProviderMock } from '../../www/js/services/providerMock.js';
 
 describe('ProviderMock', () => {
   let pm;
-  beforeEach(() => { pm = new ProviderMock(); });
+  beforeEach(() => {
+    pm = new ProviderMock();
+  });
 
   it('getCapabilities returns expected shape', async () => {
     const c = await pm.getCapabilities();
@@ -14,7 +16,8 @@ describe('ProviderMock', () => {
 
   it('listScenarios returns array with expected fields', async () => {
     const list = await pm.listScenarios();
-    expect(list).to.be.an('array'); expect(list[0]).to.have.property('id');
+    expect(list).to.be.an('array');
+    expect(list[0]).to.have.property('id');
   });
 
   it('saveScenario creates and updates scenarios', async () => {
@@ -34,7 +37,11 @@ describe('ProviderMock', () => {
 
   it('renameScenario throws for missing scenario and renames valid', async () => {
     let threw = false;
-    try{ await pm.renameScenario('missing','x'); }catch(e){ threw = true; }
+    try {
+      await pm.renameScenario('missing', 'x');
+    } catch (e) {
+      threw = true;
+    }
     expect(threw).to.equal(true);
     const s = await pm.saveScenario({ name: 'ForRename' });
     const r = await pm.renameScenario(s.id, 'Renamed');
@@ -43,7 +50,10 @@ describe('ProviderMock', () => {
 
   it('publishBaseline updates features when overrides exist', async () => {
     // create scenario with overrides
-    const s = await pm.saveScenario({ name: 'WithOverrides', overrides: { 'feat-alpha-A': { start: '2025-01-02', end: '2025-02-01' } } });
+    const s = await pm.saveScenario({
+      name: 'WithOverrides',
+      overrides: { 'feat-alpha-A': { start: '2025-01-02', end: '2025-02-01' } },
+    });
     const res = await pm.publishBaseline([], s);
     expect(res.ok).to.equal(true);
   });
@@ -51,14 +61,21 @@ describe('ProviderMock', () => {
   // removed: feature field/date helpers are deprecated
 
   it('getConfig/getFeatures/getTeams/getProjects return data', async () => {
-    const cfg = await pm.getConfig(); expect(cfg).to.have.property('developmentMode');
-    const feats = await pm.getFeatures(); expect(Array.isArray(feats)).to.equal(true);
-    const teams = await pm.getTeams(); expect(Array.isArray(teams)).to.equal(true);
-    const projs = await pm.getProjects(); expect(Array.isArray(projs)).to.equal(true);
+    const cfg = await pm.getConfig();
+    expect(cfg).to.have.property('developmentMode');
+    const feats = await pm.getFeatures();
+    expect(Array.isArray(feats)).to.equal(true);
+    const teams = await pm.getTeams();
+    expect(Array.isArray(teams)).to.equal(true);
+    const projs = await pm.getProjects();
+    expect(Array.isArray(projs)).to.equal(true);
   });
 
   it('checkHealth and saveConfig behave', async () => {
-    const h = await pm.checkHealth(); expect(h.ok).to.equal(true);
-    const s = await pm.saveConfig({ email: 'x@y.z' }); expect(s.ok).to.equal(true); expect(s.email).to.equal('x@y.z');
+    const h = await pm.checkHealth();
+    expect(h.ok).to.equal(true);
+    const s = await pm.saveConfig({ email: 'x@y.z' });
+    expect(s.ok).to.equal(true);
+    expect(s.email).to.equal('x@y.z');
   });
 });

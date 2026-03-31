@@ -14,11 +14,13 @@ describe('viewOptions extra', () => {
     state._viewService.setFeatureSortMode('rank');
     state._viewService.setShowEpics(true);
     state._viewService.setShowFeatures(true);
-    state._stateFilterService.setAvailableStates(['New','Done']);
-    state._stateFilterService._selectedStates = ['New','Done'];
+    state._stateFilterService.setAvailableStates(['New', 'Done']);
+    state._stateFilterService._selectedStates = ['New', 'Done'];
     state.getFeatureStateColor = (s) => ({ background: '#ccc' });
   });
-  afterEach(() => { container.remove(); });
+  afterEach(() => {
+    container.remove();
+  });
 
   it('basic container and viewService state are present', () => {
     const containerEl = document.getElementById('viewOptionsContainer');

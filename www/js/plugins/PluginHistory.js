@@ -21,7 +21,7 @@ class PluginHistory {
       description: 'Display task date change history on timeline',
       icon: 'history',
       section: 'tools',
-      autoActivate: false
+      autoActivate: false,
     };
   }
 
@@ -35,12 +35,12 @@ class PluginHistory {
 
   async activate() {
     if (!this._componentLoaded) await this.init();
-    
+
     if (!this._el) {
       this._el = document.createElement('plugin-history');
       document.body.appendChild(this._el);
     }
-    
+
     if (this._el?.open) this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });

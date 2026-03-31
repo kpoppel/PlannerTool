@@ -12,14 +12,14 @@ import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginLinkEditorComponent extends LitElement {
-  static properties = { 
+  static properties = {
     visible: { type: Boolean },
     enabled: { type: Boolean },
-    pendingAction: { type: Object }
+    pendingAction: { type: Object },
   };
-  
-  constructor() { 
-    super(); 
+
+  constructor() {
+    super();
     this.visible = false;
     this.enabled = false;
     this.pendingAction = null;
@@ -29,7 +29,7 @@ export class PluginLinkEditorComponent extends LitElement {
   }
 
   static styles = css`
-    :host { 
+    :host {
       display: block;
       position: fixed;
       top: 0;
@@ -39,7 +39,7 @@ export class PluginLinkEditorComponent extends LitElement {
       z-index: 100;
       pointer-events: none;
     }
-    
+
     :host(:not([visible])) {
       display: none;
     }
@@ -52,12 +52,12 @@ export class PluginLinkEditorComponent extends LitElement {
       background: white;
       padding: 16px;
       border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       pointer-events: auto;
       z-index: 200;
       min-width: 260px;
     }
-    
+
     .toolbar-title {
       font-size: 12px;
       font-weight: 600;
@@ -66,7 +66,7 @@ export class PluginLinkEditorComponent extends LitElement {
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    
+
     .instructions {
       font-size: 13px;
       color: #555;
@@ -75,7 +75,7 @@ export class PluginLinkEditorComponent extends LitElement {
       padding: 10px;
       background: #f8f9fa;
       border-radius: 4px;
-      border-left: 3px solid #2196F3;
+      border-left: 3px solid #2196f3;
     }
 
     .instructions ul {
@@ -103,7 +103,7 @@ export class PluginLinkEditorComponent extends LitElement {
       width: 24px;
       height: 24px;
       border-radius: 4px;
-      border: 1px solid rgba(0,0,0,0.1);
+      border: 1px solid rgba(0, 0, 0, 0.1);
     }
 
     .legend-label {
@@ -114,19 +114,19 @@ export class PluginLinkEditorComponent extends LitElement {
 
     .status-message {
       padding: 10px;
-      background: #E3F2FD;
-      color: #1976D2;
+      background: #e3f2fd;
+      color: #1976d2;
       border-radius: 4px;
       font-size: 13px;
       margin-bottom: 12px;
       font-weight: 500;
-      border: 1px solid #2196F3;
+      border: 1px solid #2196f3;
     }
 
     .status-message.pending {
-      background: #FFF3E0;
-      color: #E65100;
-      border-color: #FF9800;
+      background: #fff3e0;
+      color: #e65100;
+      border-color: #ff9800;
     }
 
     .button-row {
@@ -146,21 +146,21 @@ export class PluginLinkEditorComponent extends LitElement {
       transition: all 0.15s ease;
       flex: 1;
     }
-    
+
     button:hover {
       background: #f5f5f5;
       border-color: #ccc;
     }
 
     button.primary {
-      background: #2196F3;
+      background: #2196f3;
       color: white;
-      border-color: #2196F3;
+      border-color: #2196f3;
     }
 
     button.primary:hover {
-      background: #1976D2;
-      border-color: #1976D2;
+      background: #1976d2;
+      border-color: #1976d2;
     }
 
     button.secondary {
@@ -202,7 +202,7 @@ export class PluginLinkEditorComponent extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    
+
     // Subscribe to link editor state changes
     this._unsubscribe = this._linkEditorState.subscribe(() => {
       this.enabled = this._linkEditorState.enabled;
@@ -210,7 +210,7 @@ export class PluginLinkEditorComponent extends LitElement {
       this.requestUpdate();
     });
   }
-  
+
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this._unsubscribe) {
@@ -223,56 +223,67 @@ export class PluginLinkEditorComponent extends LitElement {
     return html`
       <div class="floating-toolbar">
         <button class="close-btn" @click="${this._handleClose}" title="Close">×</button>
-        <div class="toolbar-title">
-          Link Editor
-        </div>
+        <div class="toolbar-title">Link Editor</div>
 
-        ${this.pendingAction ? html`
-          <div class="status-message pending">
-            Action: ${this.pendingAction.action}<br>
-            Click a target card or press ESC to cancel
-          </div>
-        ` : html`
-          <div class="status-message">
-            Link editing active<br>
-            Hover over cards to see link areas
-          </div>
-        `}
-        
-        ${!this.pendingAction ? html`
-          <div class="instructions">
-            <strong>How to use:</strong>
-            <ul>
-              <li>Hover a card to see colored link areas</li>
-              <li>Click an area, then click target card</li>
-              <li>Scroll normally to find cards</li>
-              <li>Changes save to active scenario</li>
-            </ul>
-          </div>
+        ${this.pendingAction ?
+          html`
+            <div class="status-message pending">
+              Action: ${this.pendingAction.action}<br />
+              Click a target card or press ESC to cancel
+            </div>
+          `
+        : html`
+            <div class="status-message">
+              Link editing active<br />
+              Hover over cards to see link areas
+            </div>
+          `}
+        ${!this.pendingAction ?
+          html`
+            <div class="instructions">
+              <strong>How to use:</strong>
+              <ul>
+                <li>Hover a card to see colored link areas</li>
+                <li>Click an area, then click target card</li>
+                <li>Scroll normally to find cards</li>
+                <li>Changes save to active scenario</li>
+              </ul>
+            </div>
 
-          <div class="legend">
-            <div class="legend-item">
-              <div class="legend-color" style="background: linear-gradient(135deg, #2ad0d6, #1fb8be);"></div>
-              <div class="legend-label">Predecessor (left)</div>
+            <div class="legend">
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background: linear-gradient(135deg, #2ad0d6, #1fb8be);"
+                ></div>
+                <div class="legend-label">Predecessor (left)</div>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background: linear-gradient(135deg, #0ca58a, #0a8972);"
+                ></div>
+                <div class="legend-label">Successor (right)</div>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background: linear-gradient(180deg, #ffd34f, #f5c43a);"
+                ></div>
+                <div class="legend-label">Parent (top)</div>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background: linear-gradient(180deg, #2fbf4f, #26a041);"
+                ></div>
+                <div class="legend-label">Related (bottom)</div>
+              </div>
             </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background: linear-gradient(135deg, #0ca58a, #0a8972);"></div>
-              <div class="legend-label">Successor (right)</div>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background: linear-gradient(180deg, #ffd34f, #f5c43a);"></div>
-              <div class="legend-label">Parent (top)</div>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background: linear-gradient(180deg, #2fbf4f, #26a041);"></div>
-              <div class="legend-label">Related (bottom)</div>
-            </div>
-          </div>
-        ` : ''}
+          `
+        : ''}
 
-        <div class="hint">
-          💡 Use the Details Panel to view and delete existing links
-        </div>
+        <div class="hint">💡 Use the Details Panel to view and delete existing links</div>
       </div>
     `;
   }
@@ -285,18 +296,19 @@ export class PluginLinkEditorComponent extends LitElement {
       const hostRoot = board.shadowRoot || board;
 
       // Reuse existing overlay if present
-      let overlay = (hostRoot.querySelector && hostRoot.querySelector('link-editor-overlay')) || 
-                    document.querySelector('link-editor-overlay');
-      
+      let overlay =
+        (hostRoot.querySelector && hostRoot.querySelector('link-editor-overlay')) ||
+        document.querySelector('link-editor-overlay');
+
       if (!overlay) {
         overlay = document.createElement('link-editor-overlay');
         try {
           hostRoot.appendChild(overlay);
         } catch (e) {
           // Fallback to document body
-          try { 
-            document.body.appendChild(overlay); 
-          } catch (err) { 
+          try {
+            document.body.appendChild(overlay);
+          } catch (err) {
             console.error('[PluginLinkEditor] Failed to append overlay:', err);
           }
         }
@@ -332,27 +344,27 @@ export class PluginLinkEditorComponent extends LitElement {
   }
 
   // --- Public API ---
-  
+
   _handleClose() {
     // Call plugin.deactivate() which will call this.close()
     const plugin = pluginManager.get('plugin-link-editor');
     if (plugin) plugin.deactivate();
   }
-  
-  open() { 
+
+  open() {
     console.log('[PluginLinkEditor] Opening plugin');
     this.visible = true;
     this.setAttribute('visible', '');
     this._linkEditorState.enable();
-    
+
     // Only disable drag-panning, but allow viewport scrolling
     // The overlay will handle this more elegantly
-    try { 
-      setTimelinePanningAllowed(false); 
-    } catch (e) { 
+    try {
+      setTimelinePanningAllowed(false);
+    } catch (e) {
       console.warn('[PluginLinkEditor] Failed to disable panning:', e);
     }
-    
+
     // Ensure overlay is shown
     this.updateComplete.then(() => {
       console.log('[PluginLinkEditor] Update complete, enabling overlay');
@@ -361,24 +373,24 @@ export class PluginLinkEditorComponent extends LitElement {
       }
     });
   }
-  
-  close() { 
+
+  close() {
     this.visible = false;
     this.removeAttribute('visible');
     this._linkEditorState.disable();
-    
+
     if (this._overlay) {
       this._overlay.disable();
     }
-    
+
     // Re-enable timeline panning
-    try { 
-      setTimelinePanningAllowed(true); 
-    } catch (e) { 
+    try {
+      setTimelinePanningAllowed(true);
+    } catch (e) {
       console.warn('[PluginLinkEditor] Failed to re-enable panning:', e);
     }
   }
-  
+
   toggle() {
     if (this.visible) {
       this.close();

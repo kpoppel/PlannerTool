@@ -8,11 +8,10 @@ import '../../www/js/plugins/PluginCostV2Component.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 
 describe('PluginCostV2Component', () => {
-  
   describe('initialization', () => {
     it('should render with default properties', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
-      
+
       expect(el.activeView).to.equal('project');
       expect(el.viewMode).to.equal('cost');
       expect(el.loading).to.be.false;
@@ -23,7 +22,7 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       const now = new Date();
       const year = now.getFullYear();
-      
+
       expect(el.startDate).to.equal(`${year}-01-01`);
       expect(el.endDate).to.equal(`${year}-12-31`);
     });
@@ -34,7 +33,7 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+
       const buttons = el.shadowRoot.querySelectorAll('.tab-buttons button');
       // The component now exposes a fourth "Team Members" tab
       expect(buttons).to.have.length(4);
@@ -49,7 +48,7 @@ describe('PluginCostV2Component', () => {
       el.setAttribute('visible', '');
       el.activeView = 'task';
       await el.updateComplete;
-      
+
       const buttons = el.shadowRoot.querySelectorAll('.tab-buttons button');
       expect(buttons[1].classList.contains('active')).to.be.true;
     });
@@ -58,7 +57,7 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+
       const dateInputs = el.shadowRoot.querySelectorAll('input[type="date"]');
       expect(dateInputs).to.have.length(2);
     });
@@ -82,11 +81,11 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+
       const taskButton = el.shadowRoot.querySelectorAll('.tab-buttons button')[1];
       taskButton.click();
       await el.updateComplete;
-      
+
       expect(el.activeView).to.equal('task');
     });
 
@@ -94,11 +93,11 @@ describe('PluginCostV2Component', () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
-      
+
       const teamButton = el.shadowRoot.querySelectorAll('.tab-buttons button')[2];
       teamButton.click();
       await el.updateComplete;
-      
+
       expect(el.activeView).to.equal('team');
     });
   });
@@ -137,7 +136,7 @@ describe('PluginCostV2Component', () => {
       el.setAttribute('visible', '');
       el.data = null;
       await el.updateComplete;
-      
+
       const emptyState = el.shadowRoot.querySelector('.empty-state');
       expect(emptyState).to.exist;
     });
@@ -147,7 +146,7 @@ describe('PluginCostV2Component', () => {
       el.setAttribute('visible', '');
       el.loading = true;
       await el.updateComplete;
-      
+
       const loadingState = el.shadowRoot.querySelector('.loading');
       expect(loadingState).to.exist;
       expect(loadingState.textContent).to.include('Loading');
@@ -158,7 +157,7 @@ describe('PluginCostV2Component', () => {
       el.setAttribute('visible', '');
       el.error = 'Test error message';
       await el.updateComplete;
-      
+
       const errorState = el.shadowRoot.querySelector('.error');
       expect(errorState).to.exist;
       expect(errorState.textContent).to.include('Test error message');
@@ -169,20 +168,20 @@ describe('PluginCostV2Component', () => {
     it('should render project tables when data available', async () => {
       const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
       el.setAttribute('visible', '');
-      
+
       // Mock data
       el.data = {
         projects: {
           'proj-1': {
             id: 'proj-1',
             name: 'Test Project',
-            features: []
-          }
-        }
+            features: [],
+          },
+        },
       };
       el.activeView = 'project';
       await el.updateComplete;
-      
+
       // Note: This test requires mocking state.projects for full functionality
       // Actual rendering tests should be done with proper test fixtures
     });
@@ -195,7 +194,7 @@ describe('PluginCostV2Component', () => {
       el.data = { projects: {} };
       el.activeView = 'task';
       await el.updateComplete;
-      
+
       const emptyState = el.shadowRoot.querySelector('.empty-state');
       expect(emptyState).to.exist;
     });
@@ -208,7 +207,7 @@ describe('PluginCostV2Component', () => {
       el.data = { projects: {} };
       el.activeView = 'team';
       await el.updateComplete;
-      
+
       const emptyState = el.shadowRoot.querySelector('.empty-state');
       expect(emptyState).to.exist;
     });
@@ -221,7 +220,11 @@ describe('PluginCostV2Component', () => {
       await el.updateComplete;
       // Ensure pluginManager.get returns a plugin stub with deactivate()
       const origGet = pluginManager.get;
-      pluginManager.get = () => ({ deactivate: () => { el.removeAttribute('visible'); } });
+      pluginManager.get = () => ({
+        deactivate: () => {
+          el.removeAttribute('visible');
+        },
+      });
 
       el._closeClicked();
       await el.updateComplete;
@@ -236,7 +239,11 @@ describe('PluginCostV2Component', () => {
       await el.updateComplete;
       // stub pluginManager.get to avoid calling real plugin code
       const origGet = pluginManager.get;
-      pluginManager.get = () => ({ deactivate: () => { el.removeAttribute('visible'); } });
+      pluginManager.get = () => ({
+        deactivate: () => {
+          el.removeAttribute('visible');
+        },
+      });
 
       const closeButton = el.shadowRoot.querySelector('.close-btn');
       closeButton.click();

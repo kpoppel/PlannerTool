@@ -5,29 +5,35 @@ import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
 
-export function findInBoard(selector){
-  try{
+export function findInBoard(selector) {
+  try {
     const boardEl = document.querySelector('timeline-board');
-    if(boardEl){
+    if (boardEl) {
       const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
       const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if(found) return found;
+      if (found) return found;
     }
-  }catch(e){}
-  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+  } catch (e) {}
+  return (
+    document.querySelector(selector) ||
+    document.getElementById(selector.replace(/^#/, '')) ||
+    null
+  );
 }
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
 let _cachedMonthsRef = null;
 let _cachedMonthStarts = null;
-let _cachedMonthEnds = null;  // Use actual next month start times to handle DST correctly
+let _cachedMonthEnds = null; // Use actual next month start times to handle DST correctly
 let _cachedMonthDays = null;
 
 const _buildMonthCache = (months) => {
   _cachedMonthsRef = months;
-  _cachedMonthStarts = months.map(m => m.getTime());
-  _cachedMonthDays = months.map(m => new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate());
+  _cachedMonthStarts = months.map((m) => m.getTime());
+  _cachedMonthDays = months.map((m) =>
+    new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate()
+  );
   // Cache the actual end time for each month (start of next month)
   // This correctly handles DST transitions where days != 24 hours
   _cachedMonthEnds = months.map((m, i) => {
@@ -48,7 +54,8 @@ const _buildMonthCache = (months) => {
 const findMonthIndexFor = (msVal) => {
   const arr = _cachedMonthStarts;
   if (!arr || arr.length === 0) return -1;
-  let lo = 0, hi = arr.length - 1;
+  let lo = 0,
+    hi = arr.length - 1;
   if (msVal < arr[0]) return -1;
   if (msVal >= arr[hi]) return hi;
   while (lo <= hi) {
@@ -58,12 +65,13 @@ const findMonthIndexFor = (msVal) => {
     // This correctly handles DST transitions
     const midEnd = _cachedMonthEnds[mid];
     if (msVal >= midStart && msVal < midEnd) return mid;
-    if (msVal < midStart) hi = mid - 1; else lo = mid + 1;
+    if (msVal < midStart) hi = mid - 1;
+    else lo = mid + 1;
   }
   return -1;
 };
 
-export const laneHeight = () => state._viewService.condensedCards ? 40 : 64;
+export const laneHeight = () => (state._viewService.condensedCards ? 40 : 64);
 
 export const getBoardOffset = () => {
   const board = findInBoard('feature-board');
@@ -75,43 +83,58 @@ export const getBoardOffset = () => {
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();
   const monthWidth = getMonthWidth();
-  if (!_cachedMonthsRef || _cachedMonthsRef.length !== months.length || _cachedMonthsRef[0].getTime() !== months[0].getTime()) _buildMonthCache(months);
-  
+  if (
+    !_cachedMonthsRef ||
+    _cachedMonthsRef.length !== months.length ||
+    _cachedMonthsRef[0].getTime() !== months[0].getTime()
+  )
+    _buildMonthCache(months);
+
   // Handle unplanned features (when feature flag is ON)
   if (featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end)) {
     // Position at today's date with 1-month default duration
     const today = new Date();
     const oneMonthLater = new Date(today);
     oneMonthLater.setMonth(today.getMonth() + 1);
-    
+
     const startDate = today;
     const endDate = oneMonthLater;
-    
+
     const ms = startDate.getTime();
     const ems = endDate.getTime();
-    
+
     let startIdx = findMonthIndexFor(ms);
-    startIdx = startIdx < 0 ? (ms < _cachedMonthStarts[0] ? 0 : months.length - 1) : startIdx;
+    startIdx =
+      startIdx < 0 ?
+        ms < _cachedMonthStarts[0] ?
+          0
+        : months.length - 1
+      : startIdx;
     let endIdx = findMonthIndexFor(ems);
-    endIdx = endIdx < 0 ? (ems < _cachedMonthStarts[0] ? 0 : months.length - 1) : endIdx;
+    endIdx =
+      endIdx < 0 ?
+        ems < _cachedMonthStarts[0] ?
+          0
+        : months.length - 1
+      : endIdx;
 
     const startDays = _cachedMonthDays[startIdx];
     const endDays = _cachedMonthDays[endIdx];
     const startFraction = (startDate.getDate() - 1) / startDays;
-    const endFraction = (endDate.getDate()) / endDays;
+    const endFraction = endDate.getDate() / endDays;
 
     const boardOffset = getBoardOffset();
     const left = boardOffset + (startIdx + startFraction) * monthWidth;
-    const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
+    const spanContinuous = endIdx + endFraction - (startIdx + startFraction);
     let width = spanContinuous * monthWidth;
-    
+
     // Dynamic minimum width based on zoom level
     const minVisualWidth = Math.max(5, monthWidth / 6);
     if (width < minVisualWidth) width = minVisualWidth;
 
     return { left, width };
   }
-  
+
   // Normal processing for planned features
   let startDate = parseDate(feature.start) || new Date('2025-01-01');
   let endDate = parseDate(feature.end) || new Date('2025-01-15');
@@ -119,20 +142,30 @@ export const computePosition = (feature, monthsArg) => {
   const ms = startDate.getTime();
   const ems = endDate.getTime();
   let startIdx = findMonthIndexFor(ms);
-  startIdx = startIdx < 0 ? (ms < _cachedMonthStarts[0] ? 0 : months.length - 1) : startIdx;
+  startIdx =
+    startIdx < 0 ?
+      ms < _cachedMonthStarts[0] ?
+        0
+      : months.length - 1
+    : startIdx;
   let endIdx = findMonthIndexFor(ems);
-  endIdx = endIdx < 0 ? (ems < _cachedMonthStarts[0] ? 0 : months.length - 1) : endIdx;
+  endIdx =
+    endIdx < 0 ?
+      ems < _cachedMonthStarts[0] ?
+        0
+      : months.length - 1
+    : endIdx;
 
   const startDays = _cachedMonthDays[startIdx];
   const endDays = _cachedMonthDays[endIdx];
   const startFraction = (startDate.getDate() - 1) / startDays;
-  const endFraction = (endDate.getDate()) / endDays;
+  const endFraction = endDate.getDate() / endDays;
 
   const boardOffset = getBoardOffset();
   const left = boardOffset + (startIdx + startFraction) * monthWidth;
-  const spanContinuous = (endIdx + endFraction) - (startIdx + startFraction);
+  const spanContinuous = endIdx + endFraction - (startIdx + startFraction);
   let width = spanContinuous * monthWidth;
-  
+
   // Dynamic minimum width based on zoom level
   // At weeks (240px/month): min 40px (keeps large features usable)
   // At months (120px/month): min 20px (scales down)
@@ -144,7 +177,12 @@ export const computePosition = (feature, monthsArg) => {
   return { left, width };
 };
 
-export const _test_resetCache = () => { _cachedMonthsRef = null; _cachedMonthStarts = null; _cachedMonthEnds = null; _cachedMonthDays = null; };
+export const _test_resetCache = () => {
+  _cachedMonthsRef = null;
+  _cachedMonthStarts = null;
+  _cachedMonthEnds = null;
+  _cachedMonthDays = null;
+};
 
 // Listen for scale changes and reset cache
 bus.on(TimelineEvents.SCALE_CHANGED, () => {

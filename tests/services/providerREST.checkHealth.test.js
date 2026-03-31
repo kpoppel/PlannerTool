@@ -9,10 +9,13 @@ describe('ProviderREST checkHealth', () => {
     restoreFetch = window.fetch;
     pr._networkRetryCount = 0;
   });
-  afterEach(() => { window.fetch = restoreFetch; });
+  afterEach(() => {
+    window.fetch = restoreFetch;
+  });
 
   it('returns parsed json on OK', async () => {
-    window.fetch = () => Promise.resolve({ ok: true, json: async () => ({ status: 'ok' }) });
+    window.fetch = () =>
+      Promise.resolve({ ok: true, json: async () => ({ status: 'ok' }) });
     const r = await pr.checkHealth();
     expect(r.status).to.equal('ok');
   });

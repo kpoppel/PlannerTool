@@ -9,7 +9,9 @@ describe('ProviderREST publishBaseline variants', () => {
     restoreFetch = window.fetch;
     pr._networkRetryCount = 0;
   });
-  afterEach(() => { window.fetch = restoreFetch; });
+  afterEach(() => {
+    window.fetch = restoreFetch;
+  });
 
   it('sends POST body and returns parsed json on success', async () => {
     window.fetch = (url, opts) => {
@@ -17,10 +19,14 @@ describe('ProviderREST publishBaseline variants', () => {
       expect(opts.method).to.equal('POST');
       const body = JSON.parse(opts.body);
       expect(Array.isArray(body)).to.equal(true);
-      return Promise.resolve({ ok: true, json: async () => ({ ok: true, posted: body.length }) });
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ ok: true, posted: body.length }),
+      });
     };
     const res = await pr.publishBaseline([{ id: 'f1' }]);
-    expect(res).to.be.an('object'); expect(res.ok).to.equal(true);
+    expect(res).to.be.an('object');
+    expect(res.ok).to.equal(true);
     expect(res.posted).to.equal(1);
   });
 
@@ -33,7 +39,11 @@ describe('ProviderREST publishBaseline variants', () => {
 
   it('returns session_expired when reacquire fails after 401 invalid_session', async () => {
     // simulate initial 401 invalid_session and failed reacquire
-    window.fetch = async () => ({ status: 401, ok: false, json: async () => ({ error: 'invalid_session' }) });
+    window.fetch = async () => ({
+      status: 401,
+      ok: false,
+      json: async () => ({ error: 'invalid_session' }),
+    });
     // ensure _handleSessionExpiry returns false
     pr._handleSessionExpiry = async () => false;
     const res = await pr.publishBaseline([{ id: 'f1' }]);

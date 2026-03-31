@@ -9,7 +9,9 @@ describe('app-sidebar extra', () => {
     sidebar = document.createElement('app-sidebar');
     document.body.appendChild(sidebar);
   });
-  afterEach(() => { if(sidebar) sidebar.remove(); });
+  afterEach(() => {
+    if (sidebar) sidebar.remove();
+  });
 
   it('renders plugin buttons when plugin system enabled', async () => {
     // Ensure sidebar renders without calling internal plugin helpers
@@ -32,11 +34,13 @@ describe('app-sidebar extra', () => {
     const mod = await import('../../www/js/services/dataService.js');
     const ds = mod.dataService;
     const origCheck = ds.checkHealth;
-    try{
-      ds.checkHealth = async () => { throw new Error('fail'); };
+    try {
+      ds.checkHealth = async () => {
+        throw new Error('fail');
+      };
       await sidebar.refreshServerStatus();
       expect(sidebar.serverStatus).to.include('error');
-    }finally{
+    } finally {
       ds.checkHealth = origCheck;
     }
   });

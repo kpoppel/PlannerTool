@@ -13,7 +13,10 @@ describe('State small function coverage', () => {
   });
 
   it('captureCurrentFilters and captureCurrentView return current selections', () => {
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }, { id: 't2' }]);
+    state._projectTeamService.initFromBaseline(
+      [{ id: 'p1' }, { id: 'p2' }],
+      [{ id: 't1' }, { id: 't2' }]
+    );
     state.setProjectSelected('p1', true);
     state.setTeamSelected('t2', true);
     const filters = state.captureCurrentFilters();
@@ -33,7 +36,10 @@ describe('State small function coverage', () => {
     state._stateFilterService.setAvailableStates(['Open', 'Done']);
     state._stateFilterService.toggleStateSelected('Open'); // Start with Open selected
     state.setStateFilter(null);
-    expect(Array.from(state.selectedFeatureStateFilter)).to.include.members(['Open', 'Done']);
+    expect(Array.from(state.selectedFeatureStateFilter)).to.include.members([
+      'Open',
+      'Done',
+    ]);
     state.setStateFilter('Done');
     expect(Array.from(state.selectedFeatureStateFilter)).to.deep.equal(['Done']);
 
@@ -48,7 +54,12 @@ describe('State small function coverage', () => {
   it('computeFeatureOrgLoad computes percentage based on selected teams', () => {
     state._projectTeamService.initFromBaseline([], [{ id: 't1' }, { id: 't2' }]);
     state.setTeamSelected('t1', true);
-    const feature = { capacity: [{ team: 't1', capacity: 50 }, { team: 't2', capacity: 50 }] };
+    const feature = {
+      capacity: [
+        { team: 't1', capacity: 50 },
+        { team: 't2', capacity: 50 },
+      ],
+    };
     const pct = state.computeFeatureOrgLoad(feature);
     expect(pct).to.be.a('string');
     expect(pct.endsWith('%')).to.equal(true);
@@ -71,17 +82,23 @@ describe('State small function coverage', () => {
     expect(state.featureSortMode).to.equal('rank');
     // invalid modes should be ignored
     state.setCapacityViewMode('invalid');
-    expect(['team','project']).to.include(state.capacityViewMode);
+    expect(['team', 'project']).to.include(state.capacityViewMode);
     state.setFeatureSortMode('invalid');
-    expect(['date','rank']).to.include(state.featureSortMode);
+    expect(['date', 'rank']).to.include(state.featureSortMode);
   });
 
   it('initColors assigns palette colors when provider returns empty mappings', async () => {
     // Temporarily stub dataService.getColorMappings
     const orig = dataService.getColorMappings;
-    dataService.getColorMappings = async () => ({ projectColors: {}, teamColors: {} });
+    dataService.getColorMappings = async () => ({
+      projectColors: {},
+      teamColors: {},
+    });
     // seed projects/teams
-    state._projectTeamService.initFromBaseline([{ id: 'pp1' }, { id: 'pp2' }], [{ id: 'tt1' }, { id: 'tt2' }, { id: 'tt3' }]);
+    state._projectTeamService.initFromBaseline(
+      [{ id: 'pp1' }, { id: 'pp2' }],
+      [{ id: 'tt1' }, { id: 'tt2' }, { id: 'tt3' }]
+    );
     await state.initColors();
     expect(state.projects[0].color).to.match(/^#/);
     expect(state.teams[2].color).to.match(/^#/);
@@ -99,7 +116,10 @@ describe('State small function coverage', () => {
 
   describe('getEffectiveSelectedProjectIds', () => {
     it('returns raw selected project IDs when expandTeamAllocated is off', () => {
-      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state._projectTeamService.initFromBaseline(
+        [{ id: 'p1' }, { id: 'p2' }],
+        [{ id: 't1' }]
+      );
       state.setProjectSelected('p1', true);
       state.setProjectSelected('p2', false);
       state.setExpansionState({ expandTeamAllocated: false });
@@ -110,7 +130,10 @@ describe('State small function coverage', () => {
     it('includes projects from team-allocated features when expandTeamAllocated is on', () => {
       // Setup: p1 selected, p2 not selected; t1 selected
       // Feature f2 belongs to p2 but is allocated to t1
-      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state._projectTeamService.initFromBaseline(
+        [{ id: 'p1' }, { id: 'p2' }],
+        [{ id: 't1' }]
+      );
       state.setProjectSelected('p1', true);
       state.setProjectSelected('p2', false);
       state.setTeamSelected('t1', true);
@@ -121,8 +144,8 @@ describe('State small function coverage', () => {
         expandTeamAllocated: (teamIds) => new Set(['f2']),
         getEffectiveFeatures: () => [
           { id: 'f1', project: 'p1', capacity: [] },
-          { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] }
-        ]
+          { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
+        ],
       };
 
       state._expansionState.expandTeamAllocated = true;
@@ -134,7 +157,10 @@ describe('State small function coverage', () => {
     });
 
     it('returns only raw selected IDs when no teams are selected', () => {
-      state._projectTeamService.initFromBaseline([{ id: 'p1' }, { id: 'p2' }], [{ id: 't1' }]);
+      state._projectTeamService.initFromBaseline(
+        [{ id: 'p1' }, { id: 'p2' }],
+        [{ id: 't1' }]
+      );
       state.setProjectSelected('p1', true);
       state.setTeamSelected('t1', false);
       state.setExpansionState({ expandTeamAllocated: true });

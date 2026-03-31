@@ -3,7 +3,7 @@
   site: siteA
   external: false
 
-- name: "Ext Contractor"
+- name: 'Ext Contractor'
   team_name: Alpha
   site: siteA
   external: true

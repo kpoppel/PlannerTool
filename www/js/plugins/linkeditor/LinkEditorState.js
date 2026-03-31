@@ -9,7 +9,7 @@ export const LINK_TYPES = {
   PREDECESSOR: 'Predecessor',
   SUCCESSOR: 'Successor',
   RELATED: 'Related',
-  PARENT: 'Parent'
+  PARENT: 'Parent',
 };
 
 // Action states
@@ -18,7 +18,7 @@ export const ACTIONS = {
   PREDECESSOR: 'Predecessor',
   SUCCESSOR: 'Successor',
   RELATED: 'Related',
-  PARENT: 'Parent'
+  PARENT: 'Parent',
 };
 
 /**
@@ -30,7 +30,7 @@ class LinkEditorState {
     this.pendingAction = null; // { action: string, fromId: string }
     this.listeners = new Set();
     this.hoveredCardId = null;
-    
+
     // Track edited relations per feature (stored as scenario overrides)
     // This is not persisted here but rather synced with the active scenario
     this.relationEdits = new Map();
@@ -50,7 +50,7 @@ class LinkEditorState {
    * Notify all listeners of state changes
    */
   notify() {
-    this.listeners.forEach(fn => {
+    this.listeners.forEach((fn) => {
       try {
         fn(this);
       } catch (e) {
@@ -105,18 +105,18 @@ class LinkEditorState {
    */
   completeAction(targetId) {
     if (!this.pendingAction) return false;
-    
+
     const { action, fromId } = this.pendingAction;
-    
+
     // Prevent self-linking
     if (fromId === targetId) {
       this.cancelAction();
       return false;
     }
-    
+
     // Create or update the relation
     this._applyRelationChange(action, fromId, targetId);
-    
+
     this.cancelAction();
     return true;
   }
@@ -154,7 +154,11 @@ class LinkEditorState {
 
         // Get current effective relations (baseline + override)
         let relations = [];
-        if (scenario.overrides && scenario.overrides[fromId] && scenario.overrides[fromId].relations) {
+        if (
+          scenario.overrides &&
+          scenario.overrides[fromId] &&
+          scenario.overrides[fromId].relations
+        ) {
           relations = [...scenario.overrides[fromId].relations];
         } else if (baselineFeature.relations) {
           relations = [...baselineFeature.relations];
@@ -163,19 +167,19 @@ class LinkEditorState {
         // Apply the change based on action type
         if (action === ACTIONS.PARENT) {
           // Parent is special - replace any existing Parent relation
-          relations = relations.filter(r => {
+          relations = relations.filter((r) => {
             const relType = r.type || r.relationType || 'Related';
             return relType !== 'Parent';
           });
           relations.push({ type: 'Parent', id: targetId });
         } else {
           // For Predecessor, Successor, Related - add if not exists
-          const existingIndex = relations.findIndex(r => {
+          const existingIndex = relations.findIndex((r) => {
             const relType = r.type || r.relationType || 'Related';
             const relId = String(r.id || r);
             return relType === action && relId === String(targetId);
           });
-          
+
           if (existingIndex === -1) {
             relations.push({ type: action, id: targetId });
           }
@@ -192,7 +196,13 @@ class LinkEditorState {
         import('../../core/EventBus.js').then(({ bus }) => {
           import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
             bus.emit(FeatureEvents.UPDATED, { id: fromId });
-            console.log('[LinkEditorState] Created link:', action, fromId, '->', targetId);
+            console.log(
+              '[LinkEditorState] Created link:',
+              action,
+              fromId,
+              '->',
+              targetId
+            );
           });
         });
 
@@ -220,14 +230,18 @@ class LinkEditorState {
 
         // Get current effective relations
         let relations = [];
-        if (scenario.overrides && scenario.overrides[fromId] && scenario.overrides[fromId].relations) {
+        if (
+          scenario.overrides &&
+          scenario.overrides[fromId] &&
+          scenario.overrides[fromId].relations
+        ) {
           relations = [...scenario.overrides[fromId].relations];
         } else if (baselineFeature.relations) {
           relations = [...baselineFeature.relations];
         }
 
         // Remove the matching relation
-        const filtered = relations.filter(r => {
+        const filtered = relations.filter((r) => {
           const relType = r.type || r.relationType || 'Related';
           const relId = String(r.id || r);
           return !(relType === relationType && relId === String(targetId));
@@ -244,7 +258,13 @@ class LinkEditorState {
         import('../../core/EventBus.js').then(({ bus }) => {
           import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
             bus.emit(FeatureEvents.UPDATED, { id: fromId });
-            console.log('[LinkEditorState] Removed link:', relationType, fromId, '->', targetId);
+            console.log(
+              '[LinkEditorState] Removed link:',
+              relationType,
+              fromId,
+              '->',
+              targetId
+            );
           });
         });
 

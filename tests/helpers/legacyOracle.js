@@ -14,13 +14,13 @@ export function captureScenarioCreation(state, name) {
   const beforeSize = state.scenarios.size;
   const scenario = state.createScenario(name);
   const afterSize = state.scenarios.size;
-  
+
   return {
     scenario,
     wasAdded: afterSize > beforeSize,
     hasId: !!scenario.id,
     hasName: scenario.name === name,
-    isInMap: state.scenarios.has(scenario.id)
+    isInMap: state.scenarios.has(scenario.id),
   };
 }
 
@@ -34,12 +34,12 @@ export function captureScenarioActivation(state, scenarioId) {
   const beforeCurrent = state.currentScenario;
   state.activateScenario(scenarioId);
   const afterCurrent = state.currentScenario;
-  
+
   return {
     beforeId: beforeCurrent?.id,
     afterId: afterCurrent?.id,
     changed: beforeCurrent !== afterCurrent,
-    matchesRequested: afterCurrent?.id === scenarioId
+    matchesRequested: afterCurrent?.id === scenarioId,
   };
 }
 
@@ -51,19 +51,19 @@ export function captureScenarioActivation(state, scenarioId) {
  */
 export function captureEventEmission(eventBus, eventName) {
   const emissions = [];
-  
+
   const unsubscribe = eventBus.on(eventName, (payload) => {
     emissions.push({
       timestamp: Date.now(),
-      payload: JSON.parse(JSON.stringify(payload))
+      payload: JSON.parse(JSON.stringify(payload)),
     });
   });
-  
+
   return {
     emissions,
     stop: unsubscribe,
     count: () => emissions.length,
-    lastPayload: () => emissions[emissions.length - 1]?.payload
+    lastPayload: () => emissions[emissions.length - 1]?.payload,
   };
 }
 
@@ -77,7 +77,7 @@ export function captureCapacityCalculation(state) {
   return {
     totalCapacity: 0,
     allocated: 0,
-    available: 0
+    available: 0,
   };
 }
 
@@ -92,16 +92,16 @@ export function captureProjectToggle(state, projectId) {
   if (!project) {
     return { found: false };
   }
-  
+
   const beforeEnabled = project.enabled;
   // Simulate toggle (actual implementation may differ)
   project.enabled = !project.enabled;
   const afterEnabled = project.enabled;
-  
+
   return {
     found: true,
     beforeEnabled,
     afterEnabled,
-    toggled: beforeEnabled !== afterEnabled
+    toggled: beforeEnabled !== afterEnabled,
   };
 }

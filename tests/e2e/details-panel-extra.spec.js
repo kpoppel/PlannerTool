@@ -7,19 +7,28 @@ test.describe('Details Panel - Extra coverage', () => {
     await page.waitForLoadState('networkidle');
     await clearOverlays(page);
     // Wait for at least one feature card
-    await page.waitForSelector('feature-card-lit, .feature-card', { timeout: 10000 });
+    await page.waitForSelector('feature-card-lit, .feature-card', {
+      timeout: 10000,
+    });
   });
 
   test('capacity input can be edited and saved', async ({ page }) => {
-    const card = await page.$('feature-card-lit') || await page.$('.feature-card');
+    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
     await card.click();
-    await page.waitForFunction(() => !!(document.querySelector('details-panel') && document.querySelector('details-panel').open), { timeout: 2000 });
+    await page.waitForFunction(
+      () =>
+        !!(
+          document.querySelector('details-panel') &&
+          document.querySelector('details-panel').open
+        ),
+      { timeout: 2000 }
+    );
 
     // Find first capacity input if present
     const input = await page.$('details-panel .capacity-bar-input');
     test.skip(!input, 'No capacity inputs present for this feature');
     const oldVal = await input.getAttribute('value');
-    const newVal = String(Math.min(100, (parseInt(oldVal||'0') || 0) + 10));
+    const newVal = String(Math.min(100, (parseInt(oldVal || '0') || 0) + 10));
 
     await input.click();
     await input.fill(newVal);
@@ -32,29 +41,51 @@ test.describe('Details Panel - Extra coverage', () => {
   });
 
   test('capacity bar delete removes a team', async ({ page }) => {
-    const card = await page.$('feature-card-lit') || await page.$('.feature-card');
+    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
     await card.click();
-    await page.waitForFunction(() => !!(document.querySelector('details-panel') && document.querySelector('details-panel').open), { timeout: 2000 });
+    await page.waitForFunction(
+      () =>
+        !!(
+          document.querySelector('details-panel') &&
+          document.querySelector('details-panel').open
+        ),
+      { timeout: 2000 }
+    );
 
     const deleteBtns = await page.$$('details-panel .capacity-bar-delete');
     test.skip(deleteBtns.length === 0, 'No capacity delete buttons present');
-    const beforeCount = await page.$$eval('details-panel .capacity-bar-row', els => els.length);
+    const beforeCount = await page.$$eval(
+      'details-panel .capacity-bar-row',
+      (els) => els.length
+    );
     await deleteBtns[0].click();
     await page.waitForTimeout(300);
-    const afterCount = await page.$$eval('details-panel .capacity-bar-row', els => els.length);
+    const afterCount = await page.$$eval(
+      'details-panel .capacity-bar-row',
+      (els) => els.length
+    );
     expect(afterCount).toBeLessThan(beforeCount);
   });
 
   test('add team flow adds a team', async ({ page }) => {
-    const card = await page.$('feature-card-lit') || await page.$('.feature-card');
+    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
     await card.click();
-    await page.waitForFunction(() => !!(document.querySelector('details-panel') && document.querySelector('details-panel').open), { timeout: 2000 });
+    await page.waitForFunction(
+      () =>
+        !!(
+          document.querySelector('details-panel') &&
+          document.querySelector('details-panel').open
+        ),
+      { timeout: 2000 }
+    );
 
     // Click add team
     const addBtn = await page.$('details-panel .add-team-btn');
     test.skip(!addBtn, 'Add team not present for this feature');
     await addBtn.click();
-    await page.waitForSelector('details-panel .add-team-form', { timeout: 2000 });
+    await page.waitForSelector('details-panel .add-team-form', {
+      timeout: 2000,
+    });
 
     // Choose first available team and add
     const select = page.locator('details-panel .add-team-form select');
@@ -67,18 +98,34 @@ test.describe('Details Panel - Extra coverage', () => {
     await page.locator('details-panel .add-team-form button[type=submit]').click();
     await page.waitForTimeout(400);
 
-    const newCount = await page.$$eval('details-panel .capacity-bar-row', els => els.length);
+    const newCount = await page.$$eval(
+      'details-panel .capacity-bar-row',
+      (els) => els.length
+    );
     expect(newCount).toBeGreaterThanOrEqual(1);
   });
 
-  test('shrinkwrap epic button exists for epics and triggers date update', async ({ page }) => {
+  test('shrinkwrap epic button exists for epics and triggers date update', async ({
+    page,
+  }) => {
     // Find an epic card if present
-    const epicCard = await page.$('feature-card-lit[type="epic"], feature-card-lit[feature-type="epic"], .feature-card.epic');
+    const epicCard = await page.$(
+      'feature-card-lit[type="epic"], feature-card-lit[feature-type="epic"], .feature-card.epic'
+    );
     test.skip(!epicCard, 'No epic feature card present in test data');
     await epicCard.click();
-    await page.waitForFunction(() => !!(document.querySelector('details-panel') && document.querySelector('details-panel').open), { timeout: 2000 });
+    await page.waitForFunction(
+      () =>
+        !!(
+          document.querySelector('details-panel') &&
+          document.querySelector('details-panel').open
+        ),
+      { timeout: 2000 }
+    );
 
-    const shrinkBtn = await page.$('details-panel button[data-test="shrinkwrap-chip"], details-panel button[aria-label*="Shrinkwrap"]');
+    const shrinkBtn = await page.$(
+      'details-panel button[data-test="shrinkwrap-chip"], details-panel button[aria-label*="Shrinkwrap"]'
+    );
     test.skip(!shrinkBtn, 'Shrinkwrap button not present for epic');
     // Click and then ensure the dates in the panel update (start/end values change or present)
     await shrinkBtn.click();

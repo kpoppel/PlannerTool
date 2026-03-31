@@ -11,14 +11,34 @@ describe('QueuedFeatureService basic behavior', () => {
 
   beforeEach(() => {
     const features = [
-      { id: 'f1', title: 'F1', type: 'feature', parentEpic: 'e1', start: '2025-01-01', end: '2025-01-10' },
-      { id: 'e1', title: 'E1', type: 'epic', start: '2025-01-01', end: '2025-01-05' },
-      { id: 'f2', title: 'F2', type: 'feature', start: '2025-02-01', end: '2025-02-10', capacity: { a: 1 } }
+      {
+        id: 'f1',
+        title: 'F1',
+        type: 'feature',
+        parentEpic: 'e1',
+        start: '2025-01-01',
+        end: '2025-01-10',
+      },
+      {
+        id: 'e1',
+        title: 'E1',
+        type: 'epic',
+        start: '2025-01-01',
+        end: '2025-01-05',
+      },
+      {
+        id: 'f2',
+        title: 'F2',
+        type: 'feature',
+        start: '2025-02-01',
+        end: '2025-02-10',
+        capacity: { a: 1 },
+      },
     ];
 
     baselineStore = {
       getFeatures: () => features.slice(),
-      getFeatureById: () => new Map(features.map(f => [f.id, f]))
+      getFeatureById: () => new Map(features.map((f) => [f.id, f])),
     };
 
     // start with no active scenario to assert false path
@@ -30,11 +50,15 @@ describe('QueuedFeatureService basic behavior', () => {
     // stub bus.emit to capture
     origBusEmit = bus.emit;
     bus.emitted = [];
-    bus.emit = function (ev, payload) { this.emitted.push({ ev, payload }); };
+    bus.emit = function (ev, payload) {
+      this.emitted.push({ ev, payload });
+    };
 
     // force requestIdleCallback to run synchronously for tests
     origRequestIdle = globalThis.requestIdleCallback;
-    globalThis.requestIdleCallback = (cb) => { cb(); };
+    globalThis.requestIdleCallback = (cb) => {
+      cb();
+    };
   });
 
   afterEach(() => {
@@ -45,11 +69,16 @@ describe('QueuedFeatureService basic behavior', () => {
   it('getEffectiveFeatures mirrors baseline when no scenario', () => {
     const list = qfs.getEffectiveFeatures();
     expect(list).to.be.an('array');
-    expect(list.find(x => x.id === 'f1')).to.have.property('title', 'F1');
+    expect(list.find((x) => x.id === 'f1')).to.have.property('title', 'F1');
   });
 
   it('_recomputeDerived detects changed fields', () => {
-    const base = { id: 'x', start: '2025-01-01', end: '2025-01-10', capacity: { a: 1 } };
+    const base = {
+      id: 'x',
+      start: '2025-01-01',
+      end: '2025-01-10',
+      capacity: { a: 1 },
+    };
     const override = { start: '2025-01-02', capacity: { a: 2 } };
     const res = qfs._recomputeDerived(base, override);
     expect(res.changedFields).to.include.members(['start', 'capacity']);
@@ -70,7 +99,7 @@ describe('QueuedFeatureService basic behavior', () => {
   });
 
   it('revertFeature removes overrides and emits', () => {
-    activeScenario = { overrides: { 'f1': { start: 'x', end: 'y' } } };
+    activeScenario = { overrides: { f1: { start: 'x', end: 'y' } } };
     const ok = qfs.revertFeature('f1');
     expect(ok).to.equal(true);
     expect(activeScenario.overrides['f1']).to.equal(undefined);
@@ -79,14 +108,18 @@ describe('QueuedFeatureService basic behavior', () => {
   it('updateFeatureDates queues and processes updates', (done) => {
     activeScenario = { overrides: {} };
     // schedule an update for f1 (epic child handling)
-    const updates = [{ id: 'e1', start: '2025-01-05', end: '2025-01-20', fromEpicMove: true }];
+    const updates = [
+      { id: 'e1', start: '2025-01-05', end: '2025-01-20', fromEpicMove: true },
+    ];
     const count = qfs.updateFeatureDates(updates, () => {
       // capacity callback invoked asynchronously; ensure overrides applied
       try {
         expect(activeScenario.overrides['e1']).to.exist;
         expect(bus.emitted.length).to.be.greaterThan(0);
         done();
-      } catch (e) { done(e); }
+      } catch (e) {
+        done(e);
+      }
     });
     expect(count).to.equal(1);
   });

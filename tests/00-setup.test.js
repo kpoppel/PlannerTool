@@ -14,10 +14,16 @@ for (const id of ids) {
 if (typeof window.localStorage === 'undefined') {
   let store = {};
   window.localStorage = {
-    getItem: key => (key in store ? store[key] : null),
-    setItem: (key, val) => { store[key] = String(val); },
-    removeItem: key => { delete store[key]; },
-    clear: () => { store = {}; }
+    getItem: (key) => (key in store ? store[key] : null),
+    setItem: (key, val) => {
+      store[key] = String(val);
+    },
+    removeItem: (key) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 }
 
@@ -27,13 +33,15 @@ if (!window.ProviderMock) {
     getLocalPref(key) {
       const defaults = { 'autosave.interval': null, 'sidebar.state': null };
       return defaults[key] ?? null;
-    }
+    },
   };
 }
 
 if (!window.ConfigService) {
   window.ConfigService = {
-    getPref(key) { return window.ProviderMock.getLocalPref(key); }
+    getPref(key) {
+      return window.ProviderMock.getLocalPref(key);
+    },
   };
 }
 
@@ -64,15 +72,15 @@ window._TEST_SETUP = true;
 console.log('Global test setup applied');
 
 // Provide a no-op .timeout chaining for tests that use Mocha-style
-['it', 'test'].forEach(name => {
+['it', 'test'].forEach((name) => {
   const orig = globalThis[name];
   if (typeof orig === 'function') {
-    const wrapper = function(...args) {
+    const wrapper = function (...args) {
       orig.apply(this, args);
       return { timeout: () => {} };
     };
     // preserve common static helpers if present (skip/only/todo)
-    ['skip', 'only', 'todo'].forEach(k => {
+    ['skip', 'only', 'todo'].forEach((k) => {
       if (orig[k]) wrapper[k] = orig[k].bind(orig);
       else wrapper[k] = (...a) => {};
     });
@@ -81,17 +89,25 @@ console.log('Global test setup applied');
 });
 
 // Provide Mocha-style lifecycle aliases if tests use them
-if (typeof globalThis.before === 'undefined' && typeof globalThis.beforeAll === 'function') {
+if (
+  typeof globalThis.before === 'undefined' &&
+  typeof globalThis.beforeAll === 'function'
+) {
   globalThis.before = globalThis.beforeAll.bind(globalThis);
 }
-if (typeof globalThis.after === 'undefined' && typeof globalThis.afterAll === 'function') {
+if (
+  typeof globalThis.after === 'undefined' &&
+  typeof globalThis.afterAll === 'function'
+) {
   globalThis.after = globalThis.afterAll.bind(globalThis);
 }
 
 // Basic ResizeObserver shim for jsdom environment where it's not available.
 if (typeof window.ResizeObserver === 'undefined') {
   class ResizeObserverStub {
-    constructor(callback) { this._cb = callback; }
+    constructor(callback) {
+      this._cb = callback;
+    }
     observe() {}
     unobserve() {}
     disconnect() {}

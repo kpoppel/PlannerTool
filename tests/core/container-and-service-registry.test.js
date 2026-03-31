@@ -51,7 +51,9 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
       registerCoreServices();
 
       // Expect the ServiceRegistry prefix used in production
-      const containerLog = logs.find(log => log.includes('[ServiceRegistry] Core services registered'));
+      const containerLog = logs.find((log) =>
+        log.includes('[ServiceRegistry] Core services registered')
+      );
       expect(containerLog).to.exist;
       expect(containerLog).to.include('EventBus');
     } finally {
@@ -73,7 +75,9 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
       registerService('TestService', () => ({ name: 'test2' }));
 
       // Match the exact warning prefix emitted by ServiceRegistry
-      const warning = warnings.find(w => w.includes('[ServiceRegistry] Service already registered: TestService'));
+      const warning = warnings.find((w) =>
+        w.includes('[ServiceRegistry] Service already registered: TestService')
+      );
       expect(warning).to.exist;
     } finally {
       console.warn = originalWarn;
@@ -83,8 +87,9 @@ describe('Container & ServiceRegistry: Consolidated Tests', () => {
   it('should throw error when resolving non-existent service', () => {
     registerCoreServices();
 
-    expect(() => getService('NonExistentService'))
-      .to.throw('Service not registered: NonExistentService');
+    expect(() => getService('NonExistentService')).to.throw(
+      'Service not registered: NonExistentService'
+    );
   });
 
   it('should allow EventBus to emit events after container initialization', () => {

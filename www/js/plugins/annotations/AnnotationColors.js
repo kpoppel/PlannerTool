@@ -16,12 +16,12 @@ export const ANNOTATION_COLORS = {
     { name: 'Sky', fill: '#9BF6FF', stroke: '#00BCD4' },
     { name: 'Lavender', fill: '#BDB2FF', stroke: '#7C4DFF' },
     { name: 'Pink', fill: '#FFC6FF', stroke: '#E040FB' },
-    { name: 'Cloud', fill: '#F0F0F0', stroke: '#9E9E9E' }
+    { name: 'Cloud', fill: '#F0F0F0', stroke: '#9E9E9E' },
   ],
   defaultFill: '#FDFFB6',
   defaultStroke: '#D4C600',
   textColor: '#1A1A1A',
-  lineColor: '#333333'
+  lineColor: '#333333',
 };
 
 /**

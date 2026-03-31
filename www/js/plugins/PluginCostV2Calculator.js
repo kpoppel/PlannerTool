@@ -20,7 +20,7 @@ import {
   addMonths,
   monthKey,
   monthLabel,
-  buildMonths
+  buildMonths,
 } from './PluginCostCalculator.js';
 
 // Re-export for external use
@@ -31,16 +31,16 @@ export {
   addMonths,
   monthKey,
   monthLabel,
-  buildMonths
+  buildMonths,
 };
 
 /**
  * Expand a feature dataset to include all descendants via parent/child relations.
- * 
+ *
  * Given a set of features and a childrenByEpic map, returns a new array
  * containing the input features plus all their children (recursively).
  * Prevents duplicates by tracking visited IDs.
- * 
+ *
  * @param {Array<Object>} features - Initial feature set
  * @param {Map<string|number, Array<string|number>>} childrenByEpic - Parent->children mapping
  * @param {Array<Object>} allFeatures - Complete feature list to lookup children
@@ -60,7 +60,7 @@ export function expandDataset(features, childrenByEpic, allFeatures) {
 
   const visited = new Set();
   const result = [];
-  const featureMap = new Map(allFeatures.map(f => [String(f.id), f]));
+  const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
   function addWithChildren(featureId) {
     const fid = String(featureId);
@@ -88,12 +88,12 @@ export function expandDataset(features, childrenByEpic, allFeatures) {
 
 /**
  * Build a task tree structure identifying orphans and parent-child relationships.
- * 
+ *
  * Returns:
  * - roots: array of feature IDs that have no parent (orphans) or are top-level parents
  * - childrenMap: Map of parentId -> [childIds...]
  * - parentMap: Map of childId -> parentId
- * 
+ *
  * @param {Array<Object>} features - Feature list
  * @param {Map<string|number, Array<string|number>>} childrenByEpic - Parent->children mapping
  * @returns {{roots: Array<string>, childrenMap: Map<string, Array<string>>, parentMap: Map<string, string>}}
@@ -109,16 +109,16 @@ export function buildTaskTree(features, childrenByEpic) {
 
   const childrenMap = new Map();
   const parentMap = new Map();
-  const allIds = new Set(features.map(f => String(f.id)));
+  const allIds = new Set(features.map((f) => String(f.id)));
 
   // Build childrenMap and parentMap from childrenByEpic
   for (const f of features) {
     const fid = String(f.id);
     const children = childrenByEpic.get(Number(f.id)) || childrenByEpic.get(fid) || [];
-    
+
     // Filter to only include children that exist in our feature set
-    const validChildren = children.filter(cid => allIds.has(String(cid)));
-    
+    const validChildren = children.filter((cid) => allIds.has(String(cid)));
+
     if (validChildren.length > 0) {
       childrenMap.set(fid, validChildren.map(String));
       for (const childId of validChildren) {
@@ -129,21 +129,21 @@ export function buildTaskTree(features, childrenByEpic) {
 
   // Identify roots: features without parents or not in parentMap
   const roots = features
-    .filter(f => !parentMap.has(String(f.id)))
-    .map(f => String(f.id));
+    .filter((f) => !parentMap.has(String(f.id)))
+    .map((f) => String(f.id));
 
   return { roots, childrenMap, parentMap };
 }
 
 /**
  * Calculate budget deviation between parent's own cost/hours and sum of children.
- * 
+ *
  * Budget deviation helps identify planning discrepancies where a parent task's
  * own allocated capacity differs from the sum of its children's capacity.
- * 
+ *
  * @param {Object} parent - Parent feature with metrics
  * @param {Array<Object>} children - Child features with metrics
- * @returns {{parentOwn: Object, childrenSum: Object, deviation: Object}} 
+ * @returns {{parentOwn: Object, childrenSum: Object, deviation: Object}}
  *   Deviation object contains percentages for internal/external cost/hours
  * @throws {Error} If parent or children have invalid structure
  */
@@ -175,7 +175,7 @@ export function calculateBudgetDeviation(parent, children) {
     externalCost: getMetric(parent, 'metrics.external.cost'),
     externalHours: getMetric(parent, 'metrics.external.hours'),
     totalCost: 0,
-    totalHours: 0
+    totalHours: 0,
   };
   parentOwn.totalCost = parentOwn.internalCost + parentOwn.externalCost;
   parentOwn.totalHours = parentOwn.internalHours + parentOwn.externalHours;
@@ -186,7 +186,7 @@ export function calculateBudgetDeviation(parent, children) {
     externalCost: 0,
     externalHours: 0,
     totalCost: 0,
-    totalHours: 0
+    totalHours: 0,
   };
 
   for (const child of children) {
@@ -212,7 +212,7 @@ export function calculateBudgetDeviation(parent, children) {
     externalCost: calcDeviation(parentOwn.externalCost, childrenSum.externalCost),
     externalHours: calcDeviation(parentOwn.externalHours, childrenSum.externalHours),
     totalCost: calcDeviation(parentOwn.totalCost, childrenSum.totalCost),
-    totalHours: calcDeviation(parentOwn.totalHours, childrenSum.totalHours)
+    totalHours: calcDeviation(parentOwn.totalHours, childrenSum.totalHours),
   };
 
   return { parentOwn, childrenSum, deviation };
@@ -220,24 +220,31 @@ export function calculateBudgetDeviation(parent, children) {
 
 /**
  * Check if deviation exceeds threshold (default 10%).
- * 
+ *
  * @param {Object} deviation - Deviation object from calculateBudgetDeviation
  * @param {number} threshold - Percentage threshold (default 10)
  * @returns {boolean} True if any deviation metric exceeds threshold
  */
 export function hasSignificantDeviation(deviation, threshold = 10) {
   if (!deviation || typeof deviation !== 'object') return false;
-  
-  const metrics = ['totalCost', 'totalHours', 'internalCost', 'internalHours', 'externalCost', 'externalHours'];
-  return metrics.some(m => Math.abs(deviation[m] || 0) > threshold);
+
+  const metrics = [
+    'totalCost',
+    'totalHours',
+    'internalCost',
+    'internalHours',
+    'externalCost',
+    'externalHours',
+  ];
+  return metrics.some((m) => Math.abs(deviation[m] || 0) > threshold);
 }
 
 /**
  * Allocate feature cost/hours to months based on date overlap.
- * 
+ *
  * Uses same logic as PluginCostCalculator: distributes values proportionally
  * across months based on overlapping days.
- * 
+ *
  * @param {Object} feature - Feature with start, end, metrics
  * @param {Array<Date>} months - Array of month start dates (UTC)
  * @returns {{cost: {internal: Map, external: Map}, hours: {internal: Map, external: Map}}}
@@ -254,10 +261,10 @@ export function allocateToMonths(feature, months) {
 
   const start = toDate(feature.start);
   const end = toDate(feature.end);
-  
+
   const result = {
     cost: { internal: new Map(), external: new Map() },
-    hours: { internal: new Map(), external: new Map() }
+    hours: { internal: new Map(), external: new Map() },
   };
 
   if (!start || !end) {
@@ -266,7 +273,10 @@ export function allocateToMonths(feature, months) {
   }
 
   // Calculate total days
-  const totalDays = Math.max(1, Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const totalDays = Math.max(
+    1,
+    Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+  );
 
   // Safe metric extraction
   const getMetric = (path) => {
@@ -291,14 +301,17 @@ export function allocateToMonths(feature, months) {
   for (const month of months) {
     const mKey = monthKey(month);
     const mEnd = lastOfMonth(month);
-    
+
     // Calculate overlapping days
     const overlapStart = start > month ? start : month;
     const overlapEnd = end < mEnd ? end : mEnd;
-    
+
     if (overlapEnd < overlapStart) continue; // No overlap
-    
-    const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+
+    const overlapDays =
+      Math.floor(
+        (overlapEnd.getTime() - overlapStart.getTime()) / (24 * 60 * 60 * 1000)
+      ) + 1;
     const fraction = overlapDays / totalDays;
 
     result.cost.internal.set(mKey, internalCost * fraction);

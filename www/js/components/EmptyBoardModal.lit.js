@@ -1,6 +1,13 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, ProjectEvents, TeamEvents, FilterEvents, ViewEvents, TimelineEvents } from '../core/EventRegistry.js';
+import {
+  FeatureEvents,
+  ProjectEvents,
+  TeamEvents,
+  FilterEvents,
+  ViewEvents,
+  TimelineEvents,
+} from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 import { featureFlags } from '../config.js';
 
@@ -8,15 +15,17 @@ export class EmptyBoardModal extends LitElement {
   static properties = { reasons: { type: Array }, open: { type: Boolean } };
 
   static styles = css`
-    :host { display: contents; }
+    :host {
+      display: contents;
+    }
     .info-box {
       position: fixed;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      background: rgba(255,255,255,0.98);
-      border: 1px solid rgba(0,0,0,0.06);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
       padding: 16px 18px;
       border-radius: 10px;
       max-width: 560px;
@@ -26,7 +35,9 @@ export class EmptyBoardModal extends LitElement {
       z-index: 200;
       pointer-events: auto;
       opacity: 0;
-      transition: opacity 220ms ease-in-out, transform 220ms ease-in-out;
+      transition:
+        opacity 220ms ease-in-out,
+        transform 220ms ease-in-out;
       display: none;
     }
     .info-box[open] {
@@ -34,12 +45,20 @@ export class EmptyBoardModal extends LitElement {
       opacity: 1;
       transform: translate(-50%, -50%) scale(1);
     }
-    .info-box h4 { margin:0 0 6px 0; font-size:14px; }
-    .info-box ul { margin:6px 0 0 18px; padding:0; }
-    .info-box li { margin:4px 0; }
+    .info-box h4 {
+      margin: 0 0 6px 0;
+      font-size: 14px;
+    }
+    .info-box ul {
+      margin: 6px 0 0 18px;
+      padding: 0;
+    }
+    .info-box li {
+      margin: 4px 0;
+    }
   `;
 
-  constructor(){
+  constructor() {
     super();
     this.reasons = [];
     this.open = false;
@@ -47,7 +66,7 @@ export class EmptyBoardModal extends LitElement {
     this._recomputeAndMaybeClose = this._recomputeAndMaybeClose.bind(this);
   }
 
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
     // Listen for state changes that might make the board non-empty
     bus.on(FeatureEvents.UPDATED, this._recomputeAndMaybeClose);
@@ -57,10 +76,10 @@ export class EmptyBoardModal extends LitElement {
     bus.on(ViewEvents.SORT_MODE, this._recomputeAndMaybeClose);
     bus.on(TimelineEvents.MONTHS, this._recomputeAndMaybeClose);
     // initial compute
-    setTimeout(()=>this._recomputeAndMaybeClose(), 50);
+    setTimeout(() => this._recomputeAndMaybeClose(), 50);
   }
 
-  disconnectedCallback(){
+  disconnectedCallback() {
     super.disconnectedCallback();
     bus.off(FeatureEvents.UPDATED, this._recomputeAndMaybeClose);
     bus.off(ProjectEvents.CHANGED, this._recomputeAndMaybeClose);
@@ -74,15 +93,20 @@ export class EmptyBoardModal extends LitElement {
     const reasons = [];
 
     // Projects / plans selection
-    const selectedProjects = state.projects.filter(p => p.selected);
+    const selectedProjects = state.projects.filter((p) => p.selected);
     if (!selectedProjects.length) {
-      reasons.push('No projects/plans selected. Select one or more projects to display tasks.');
+      reasons.push(
+        'No projects/plans selected. Select one or more projects to display tasks.'
+      );
     }
 
     // Feature state filter
-    const stateFilter = state.selectedFeatureStateFilter instanceof Set 
-      ? state.selectedFeatureStateFilter 
-      : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
+    const stateFilter =
+      state.selectedFeatureStateFilter instanceof Set ?
+        state.selectedFeatureStateFilter
+      : new Set(
+          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
+        );
     if (stateFilter.size === 0) {
       reasons.push('Feature state filter excludes all states (no state selected).');
     }
@@ -102,34 +126,52 @@ export class EmptyBoardModal extends LitElement {
     }
 
     // Team selection + capacity filtering
-    const selectedTeams = state.teams.filter(t => t.selected);
+    const selectedTeams = state.teams.filter((t) => t.selected);
     if (state.teams && state.teams.length && !selectedTeams.length) {
       reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
     }
 
     // If only teams are selected (no projects) and team-allocation expansion is disabled,
     // explain that team-only selection won't surface tasks unless expansion is enabled.
-    if (selectedTeams.length > 0 && (!selectedProjects || selectedProjects.length === 0) && !state.expansionState.expandTeamAllocated) {
-      reasons.push("Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks.");
+    if (
+      selectedTeams.length > 0 &&
+      (!selectedProjects || selectedProjects.length === 0) &&
+      !state.expansionState.expandTeamAllocated
+    ) {
+      reasons.push(
+        "Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks."
+      );
     }
 
     // Dimensional task filters (schedule, allocation, hierarchy, relations)
     try {
-      const taskFilters = state.taskFilterService && typeof state.taskFilterService.getFilters === 'function' ? state.taskFilterService.getFilters() : null;
+      const taskFilters =
+        (
+          state.taskFilterService &&
+          typeof state.taskFilterService.getFilters === 'function'
+        ) ?
+          state.taskFilterService.getFilters()
+        : null;
       if (taskFilters) {
-        Object.keys(taskFilters).forEach(dim => {
+        Object.keys(taskFilters).forEach((dim) => {
           const opts = taskFilters[dim];
-          const allFalse = Object.keys(opts).every(k => !opts[k]);
+          const allFalse = Object.keys(opts).every((k) => !opts[k]);
           if (allFalse) {
-            reasons.push(`${dim.charAt(0).toUpperCase() + dim.slice(1)} filter excludes all options.`);
+            reasons.push(
+              `${dim.charAt(0).toUpperCase() + dim.slice(1)} filter excludes all options.`
+            );
           }
         });
       }
-    } catch (e) { /* ignore filter read errors */ }
+    } catch (e) {
+      /* ignore filter read errors */
+    }
 
     // Hierarchical/project-hierarchy filter
     if (state._viewService.showOnlyProjectHierarchy) {
-      reasons.push('Hierarchy filter enabled — only epics from selected project-type plans are shown.');
+      reasons.push(
+        'Hierarchy filter enabled — only epics from selected project-type plans are shown.'
+      );
     }
 
     // Fallback generic hint
@@ -151,10 +193,15 @@ export class EmptyBoardModal extends LitElement {
       if (!expandedIds || expandedIds.size === 0) return false;
 
       // State filter (preserve configured casing; compare case-insensitively)
-      const stateFilter = state.selectedFeatureStateFilter instanceof Set 
-        ? state.selectedFeatureStateFilter 
-        : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
-      const stateFilterLower = new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()));
+      const stateFilter =
+        state.selectedFeatureStateFilter instanceof Set ?
+          state.selectedFeatureStateFilter
+        : new Set(
+            state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
+          );
+      const stateFilterLower = new Set(
+        Array.from(stateFilter).map((s) => String(s).toLowerCase())
+      );
 
       // Task/dimensional filters
       const taskFilterSvc = state.taskFilterService;
@@ -182,29 +229,38 @@ export class EmptyBoardModal extends LitElement {
           if (taskFilterSvc && typeof taskFilterSvc.featurePassesFilters === 'function') {
             if (!taskFilterSvc.featurePassesFilters(feature)) continue;
           }
-        } catch (e) { /* ignore filter errors */ }
+        } catch (e) {
+          /* ignore filter errors */
+        }
 
         // If we reached here, feature would be visible
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
-  _recomputeAndMaybeClose(){
+  _recomputeAndMaybeClose() {
     try {
       // If no baseline features have been loaded yet (likely missing credentials),
       // do not show the empty-board modal — wait until data finishes loading.
-      const baselineLoaded = Array.isArray(state.baselineFeatures) && state.baselineFeatures.length > 0;
+      const baselineLoaded =
+        Array.isArray(state.baselineFeatures) && state.baselineFeatures.length > 0;
       if (!baselineLoaded) {
         if (this.open) {
           this.open = false;
-          try { this.requestUpdate(); } catch(e){}
+          try {
+            this.requestUpdate();
+          } catch (e) {}
         }
         return;
       }
       if (this._hasVisibleFeatures()) {
-        this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
+        this.dispatchEvent(
+          new CustomEvent('modal-close', { bubbles: true, composed: true })
+        );
         return;
       }
       // still empty — recompute reasons and update UI
@@ -212,24 +268,32 @@ export class EmptyBoardModal extends LitElement {
       this.reasons = reasons;
       // show modal only after reasons are computed to avoid flashing
       if (!this.open) this.open = true;
-      try { this.requestUpdate(); } catch(e){}
-    } catch (e) { /* ignore */ }
+      try {
+        this.requestUpdate();
+      } catch (e) {}
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   // Allow external callers to programmatically close
-  _boundClose(){
+  _boundClose() {
     this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
   }
 
-  render(){
+  render() {
     return html`
       <div class="info-box" ?open=${this.open} role="status" aria-live="polite">
         <h4>No tasks to display</h4>
         <div>Possible reasons:</div>
         <ul>
-          ${this.reasons && this.reasons.length ? this.reasons.map(r => html`<li>${r}</li>`) : html`<li>No matching tasks.</li>`}
+          ${this.reasons && this.reasons.length ?
+            this.reasons.map((r) => html`<li>${r}</li>`)
+          : html`<li>No matching tasks.</li>`}
         </ul>
-        <div style="margin-top:8px;color:#444;font-size:12px;">Adjust view options or select different plans/teams.</div>
+        <div style="margin-top:8px;color:#444;font-size:12px;">
+          Adjust view options or select different plans/teams.
+        </div>
       </div>
     `;
   }

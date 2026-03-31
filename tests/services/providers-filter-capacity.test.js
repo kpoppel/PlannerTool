@@ -16,7 +16,7 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
     it('renameScenario updates entry', async () => {
       const mod = await import('../../www/js/services/providerLocalStorage.js');
       const provider = new mod.ProviderLocalStorage();
-      localStorage.setItem('scenarios', JSON.stringify([{ id:'s2', name:'Old' }]));
+      localStorage.setItem('scenarios', JSON.stringify([{ id: 's2', name: 'Old' }]));
       const res = await provider.renameScenario('s2', 'New');
       expect(res.name).to.equal('New');
     });
@@ -38,7 +38,10 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const metas = [{ id: 's1' }, { id: 'baseline' }];
       globalThis.fetch = async (url, opts) => {
         if (url.includes('/api/scenario?id=')) {
-          return { ok: true, json: async () => ({ id: 's1', name: 'S1', overrides: {} }) };
+          return {
+            ok: true,
+            json: async () => ({ id: 's1', name: 'S1', overrides: {} }),
+          };
         }
         if (url.startsWith('/api/scenario') && (!opts || opts.method !== 'POST')) {
           return { ok: true, json: async () => metas };
@@ -47,7 +50,8 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       };
       const busMod = await import('../../www/js/core/EventBus.js');
       const bus = busMod.bus;
-      if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
+      if (bus.listeners && typeof bus.listeners.clear === 'function')
+        bus.listeners.clear();
       const events = [];
       const { DataEvents } = await import('../../www/js/core/EventRegistry.js');
       bus.on(DataEvents.SCENARIOS_CHANGED, (p) => events.push({ type: 'changed', p }));
@@ -62,8 +66,8 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
 
       const loadedAll = await provider.loadAllScenarios();
       expect(Array.isArray(loadedAll)).to.equal(true);
-      expect(events.some(e=>e.type==='changed')).to.equal(true);
-      expect(events.some(e=>e.type==='data')).to.equal(true);
+      expect(events.some((e) => e.type === 'changed')).to.equal(true);
+      expect(events.some((e) => e.type === 'data')).to.equal(true);
     });
 
     it('getFeatures maps parent relation to parentEpic', async () => {
@@ -71,7 +75,10 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const provider = new mod.ProviderREST();
       globalThis.fetch = async (url, opts) => {
         if (url.startsWith('/api/tasks')) {
-          return { ok: true, json: async () => [ { id: 'f1', relations: [{ type: 'Parent', id: 'e1' }] } ] };
+          return {
+            ok: true,
+            json: async () => [{ id: 'f1', relations: [{ type: 'Parent', id: 'e1' }] }],
+          };
         }
         return { ok: false };
       };
@@ -83,8 +90,10 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const mod = await import('/www/js/services/providerREST.js');
       const provider = new mod.ProviderREST();
       globalThis.fetch = async (url, opts) => {
-        if (url.startsWith('/api/teams')) return { ok: true, json: async () => [{ id: 't1' }] };
-        if (url.startsWith('/api/projects')) return { ok: true, json: async () => [{ id: 'p1' }] };
+        if (url.startsWith('/api/teams'))
+          return { ok: true, json: async () => [{ id: 't1' }] };
+        if (url.startsWith('/api/projects'))
+          return { ok: true, json: async () => [{ id: 'p1' }] };
         return { ok: false };
       };
       const teams = await provider.getTeams();
@@ -100,17 +109,24 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const { FilterManager } = mod;
       const busModule = await import('../../www/js/core/EventBus.js');
       const bus = busModule.bus;
-      if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
+      if (bus.listeners && typeof bus.listeners.clear === 'function')
+        bus.listeners.clear();
 
-      const projects = [ { id: 'p1', name: 'P1', selected: true }, { id: 'p2', name: 'P2', selected: false } ];
-      const teams = [ { id: 't1', name: 'T1', selected: true }, { id: 't2', name: 'T2', selected: false } ];
+      const projects = [
+        { id: 'p1', name: 'P1', selected: true },
+        { id: 'p2', name: 'P2', selected: false },
+      ];
+      const teams = [
+        { id: 't1', name: 'T1', selected: true },
+        { id: 't2', name: 'T2', selected: false },
+      ];
       const manager = new FilterManager(bus, projects, teams);
 
       manager.toggleProject('p1');
       expect(projects[0].selected).to.equal(false);
 
       manager.selectAllTeams();
-      expect(teams.every(t => t.selected)).to.be.true;
+      expect(teams.every((t) => t.selected)).to.be.true;
     });
 
     it('CapacityCalculator calculates capacities', async () => {
@@ -120,10 +136,26 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       const bus = busModule.bus;
       bus.listeners.clear();
 
-      const teams = [ { id: 't1' }, { id: 't2' } ];
-      const projects = [ { id: 'p1' } ];
-      const features = [ { id: 'f1', project: 'p1', state: 'In Progress', start: '2024-01-01', end: '2024-01-10', capacity: [ { team: 't1', capacity: 5 }, { team: 't2', capacity: 3 } ] } ];
-      const filters = { selectedProjects: ['p1'], selectedTeams: ['t1', 't2'], selectedStates: ['In Progress'] };
+      const teams = [{ id: 't1' }, { id: 't2' }];
+      const projects = [{ id: 'p1' }];
+      const features = [
+        {
+          id: 'f1',
+          project: 'p1',
+          state: 'In Progress',
+          start: '2024-01-01',
+          end: '2024-01-10',
+          capacity: [
+            { team: 't1', capacity: 5 },
+            { team: 't2', capacity: 3 },
+          ],
+        },
+      ];
+      const filters = {
+        selectedProjects: ['p1'],
+        selectedTeams: ['t1', 't2'],
+        selectedStates: ['In Progress'],
+      };
 
       const calculator = new CapacityCalculator(bus);
       const result = calculator.calculate(features, filters, teams, projects);

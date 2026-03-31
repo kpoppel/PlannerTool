@@ -22,9 +22,10 @@ export class EventBus {
    * @private
    */
   _getNamespaceFromSymbol(event) {
-    return event && typeof event.description === 'string' ? event.description.split(':')[0] : null;
+    return event && typeof event.description === 'string' ?
+        event.description.split(':')[0]
+      : null;
   }
-
 
   /**
    * Subscribe to all events within a namespace (e.g., 'feature').
@@ -49,39 +50,44 @@ export class EventBus {
    * @param {Function} handler - callback(payload)
    * @returns {Function} unsubscribe
    */
-  on(event, handler) { 
+  on(event, handler) {
     const set = this.listeners.get(event) || new Set();
     set.add(handler);
     this.listeners.set(event, set);
     return () => this.off(event, handler);
   }
-  
+
   /**
    * Unsubscribe from an event
    * @param {Symbol|string} event - Event identifier
    * @param {Function} handler - Event handler function
    * @returns {void}
    */
-  off(event, handler) { 
+  off(event, handler) {
     this.listeners.get(event)?.delete(handler);
   }
-  
+
   /**
    * Emit an event
    * @param {Symbol|string} event - Event identifier
    * @param {any} payload - Event payload
    * @returns {void}
    */
-  emit(event, payload) { 
+  emit(event, payload) {
     if (this.historyEnabled) {
       this.history.push({ ts: Date.now(), event, payload });
-      if (this.history.length > this.historyLimit) this.history = this.history.slice(-this.historyLimit);
+      if (this.history.length > this.historyLimit)
+        this.history = this.history.slice(-this.historyLimit);
     }
 
     const exact = this.listeners.get(event);
     if (exact) {
       for (const h of exact) {
-        try { h(payload); } catch (e) { console.error('Event handler error', event, e); }
+        try {
+          h(payload);
+        } catch (e) {
+          console.error('Event handler error', event, e);
+        }
       }
     }
 
@@ -89,7 +95,11 @@ export class EventBus {
     const nset = ns && this.namespaceListeners.get(ns);
     if (nset) {
       for (const h of nset) {
-        try { h(payload); } catch (e) { console.error('Namespace handler error', ns, e); }
+        try {
+          h(payload);
+        } catch (e) {
+          console.error('Namespace handler error', ns, e);
+        }
       }
     }
   }
@@ -102,7 +112,13 @@ export class EventBus {
    */
   once(event, handler) {
     let unsub;
-    unsub = this.on(event, (...args) => { try { handler(...args); } finally { unsub(); } });
+    unsub = this.on(event, (...args) => {
+      try {
+        handler(...args);
+      } finally {
+        unsub();
+      }
+    });
     return unsub;
   }
 
@@ -119,7 +135,9 @@ export class EventBus {
    * Disable string event warnings
    * @returns {void}
    */
-  disableStringWarnings() { this.warnOnStringEvents = false; }
+  disableStringWarnings() {
+    this.warnOnStringEvents = false;
+  }
 
   /**
    * Enable in-memory event history logging (keeps recent N events)
@@ -136,16 +154,21 @@ export class EventBus {
    * Disable history logging
    * @returns {void}
    */
-  disableHistoryLogging() { this.historyEnabled = false; }
+  disableHistoryLogging() {
+    this.historyEnabled = false;
+  }
 
   /**
    * Return a shallow copy of the current event history
    * @returns {Array<{ts:number,event:any,payload:any}>}
    */
-  getEventHistory() { return Array.from(this.history); }
+  getEventHistory() {
+    return Array.from(this.history);
+  }
 }
 
 // Export a single shared bus instance on the global scope so tests and
 // module-cache-busted imports still operate on the same EventBus.
 const GLOBAL_BUS_KEY = '__PlannerTool_EventBus__';
-export const bus = globalThis[GLOBAL_BUS_KEY] ?? (globalThis[GLOBAL_BUS_KEY] = new EventBus());
+export const bus =
+  globalThis[GLOBAL_BUS_KEY] ?? (globalThis[GLOBAL_BUS_KEY] = new EventBus());

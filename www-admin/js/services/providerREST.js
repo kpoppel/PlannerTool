@@ -1,250 +1,436 @@
 // Admin-side providerREST for admin UI. Mirrors user `providerREST` helpers
 // but keeps admin API calls separate and scoped to the admin frontend.
 export class AdminProviderREST {
-  constructor(){
+  constructor() {
     // Admin UI uses same-origin credentials (cookie/session managed by server)
   }
 
-  _headers(extra){
+  _headers(extra) {
     return Object.assign({}, extra || {});
   }
 
   async _fetch(url, options) {
     if (url.startsWith('/')) {
-        url = (window.APP_BASE_URL || '') + url;
+      url = (window.APP_BASE_URL || '') + url;
     }
     return fetch(url, options);
   }
 
-  async getAreaMappings(){
-    try{
-      const res = await this._fetch('/admin/v1/area-mappings', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return {};
+  async getAreaMappings() {
+    try {
+      const res = await this._fetch('/admin/v1/area-mappings', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return {};
       const j = await res.json();
       return j.content || {};
-    }catch(err){ console.error('AdminProviderREST:getAreaMappings', err); return {}; }
+    } catch (err) {
+      console.error('AdminProviderREST:getAreaMappings', err);
+      return {};
+    }
   }
 
-  async saveAreaMappings(mappings){
-    try{
+  async saveAreaMappings(mappings) {
+    try {
       const body = JSON.stringify({ content: mappings });
-      const res = await this._fetch('/admin/v1/area-mappings', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/area-mappings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveAreaMappings', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveAreaMappings', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
   // --- Projects/System/Teams/Users helpers ---
-  async getProjects(){
-    try{
-      const res = await this._fetch('/admin/v1/projects', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getProjects() {
+    try {
+      const res = await this._fetch('/admin/v1/projects', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getProjects', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getProjects', err);
+      return null;
+    }
   }
 
-  async saveProjects(content){
-    try{
+  async saveProjects(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/projects', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/projects', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveProjects', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveProjects', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getSystem(){
-    try{
-      const res = await this._fetch('/admin/v1/system', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getSystem() {
+    try {
+      const res = await this._fetch('/admin/v1/system', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getSystem', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getSystem', err);
+      return null;
+    }
   }
 
-  async saveSystem(content){
-    try{
+  async saveSystem(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/system', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/system', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveSystem', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveSystem', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getTeams(){
-    try{
-      const res = await this._fetch('/admin/v1/teams', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getTeams() {
+    try {
+      const res = await this._fetch('/admin/v1/teams', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getTeams', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getTeams', err);
+      return null;
+    }
   }
 
-  async saveTeams(content){
-    try{
+  async saveTeams(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/teams', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/teams', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveTeams', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveTeams', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getPeople(){
-    try{
-      const res = await this._fetch('/admin/v1/people', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getPeople() {
+    try {
+      const res = await this._fetch('/admin/v1/people', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getPeople', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getPeople', err);
+      return null;
+    }
   }
 
-  async savePeople(content){
-    try{
+  async savePeople(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/people', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/people', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:savePeople', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:savePeople', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getPeopleInspect(){
-    try{
-      const res = await this._fetch('/admin/v1/people/inspect', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getPeopleInspect() {
+    try {
+      const res = await this._fetch('/admin/v1/people/inspect', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:getPeopleInspect', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getPeopleInspect', err);
+      return null;
+    }
   }
 
-  async getCostInspect(){
-    try{
-      const res = await this._fetch('/admin/v1/cost/inspect', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getCostInspect() {
+    try {
+      const res = await this._fetch('/admin/v1/cost/inspect', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:getCostInspect', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getCostInspect', err);
+      return null;
+    }
   }
 
-  async getCost(){
-    try{
-      const res = await this._fetch('/admin/v1/cost', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getCost() {
+    try {
+      const res = await this._fetch('/admin/v1/cost', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getCost', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getCost', err);
+      return null;
+    }
   }
 
-  async saveCost(content){
-    try{
+  async saveCost(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/cost', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/cost', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveCost', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveCost', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getUsers(){
-    try{
-      const res = await this._fetch('/admin/v1/users', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getUsers() {
+    try {
+      const res = await this._fetch('/admin/v1/users', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:getUsers', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getUsers', err);
+      return null;
+    }
   }
 
-  async saveUsers(payload){
-    try{
-      const res = await this._fetch('/admin/v1/users', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body: JSON.stringify(payload) });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async saveUsers(payload) {
+    try {
+      const res = await this._fetch('/admin/v1/users', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveUsers', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveUsers', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async refreshAreaMapping(areaPath){
-    try{
+  async refreshAreaMapping(areaPath) {
+    try {
       const body = JSON.stringify({ area_path: areaPath });
-      const res = await this._fetch('/admin/v1/area-mapping/refresh', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/area-mapping/refresh', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:refreshAreaMapping', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:refreshAreaMapping', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async refreshAllAreaMappings(){
-    try{
-      const res = await this._fetch('/admin/v1/area-mapping/refresh-all', { method: 'POST', credentials: 'same-origin' });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async refreshAllAreaMappings() {
+    try {
+      const res = await this._fetch('/admin/v1/area-mapping/refresh-all', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:refreshAllAreaMappings', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:refreshAllAreaMappings', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async togglePlanEnabled(projectId, areaPath, planId, enabled){
-    try{
-      const body = JSON.stringify({ project_id: projectId, area_path: areaPath, plan_id: planId, enabled: enabled });
-      const res = await this._fetch('/admin/v1/area-mapping/toggle-plan', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async togglePlanEnabled(projectId, areaPath, planId, enabled) {
+    try {
+      const body = JSON.stringify({
+        project_id: projectId,
+        area_path: areaPath,
+        plan_id: planId,
+        enabled: enabled,
+      });
+      const res = await this._fetch('/admin/v1/area-mapping/toggle-plan', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:togglePlanEnabled', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:togglePlanEnabled', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async getSchema(configType){
-    try{
-      const res = await this._fetch(`/admin/v1/schema/${configType}`, { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getSchema(configType) {
+    try {
+      const res = await this._fetch(`/admin/v1/schema/${configType}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:getSchema', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getSchema', err);
+      return null;
+    }
   }
 
-  async getIterations(){
-    try{
-      const res = await this._fetch('/admin/v1/iterations', { method: 'GET', credentials: 'same-origin' });
-      if(!res.ok) return null;
+  async getIterations() {
+    try {
+      const res = await this._fetch('/admin/v1/iterations', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
       const j = await res.json();
       return j.content || null;
-    }catch(err){ console.error('AdminProviderREST:getIterations', err); return null; }
+    } catch (err) {
+      console.error('AdminProviderREST:getIterations', err);
+      return null;
+    }
   }
 
-  async saveIterations(content){
-    try{
+  async saveIterations(content) {
+    try {
       const body = JSON.stringify({ content: content });
-      const res = await this._fetch('/admin/v1/iterations', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+      const res = await this._fetch('/admin/v1/iterations', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:saveIterations', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:saveIterations', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async browseIterations(payload){
-    try{
+  async browseIterations(payload) {
+    try {
       const body = JSON.stringify(payload);
-      const res = await this._fetch('/admin/v1/iterations/browse', { method: 'POST', credentials: 'same-origin', headers: this._headers({ 'Content-Type':'application/json' }), body });
-      if(!res.ok) return { iterations: [] };
+      const res = await this._fetch('/admin/v1/iterations/browse', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { iterations: [] };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:browseIterations', err); return { iterations: [] }; }
+    } catch (err) {
+      console.error('AdminProviderREST:browseIterations', err);
+      return { iterations: [] };
+    }
   }
 
-  async cleanupCache(){
-    try{
-      const res = await this._fetch('/admin/v1/cache/cleanup', { method: 'POST', credentials: 'same-origin' });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async cleanupCache() {
+    try {
+      const res = await this._fetch('/admin/v1/cache/cleanup', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:cleanupCache', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:cleanupCache', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async invalidateCache(){
-    try{
-      const res = await this._fetch('/admin/v1/cache/invalidate', { method: 'POST', credentials: 'same-origin' });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async invalidateCache() {
+    try {
+      const res = await this._fetch('/admin/v1/cache/invalidate', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:invalidateCache', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:invalidateCache', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
-  async reloadConfig(){
-    try{
-      const res = await this._fetch('/admin/v1/reload-config', { method: 'POST', credentials: 'same-origin' });
-      if(!res.ok) return { ok:false, error: `HTTP ${res.status}` };
+  async reloadConfig() {
+    try {
+      const res = await this._fetch('/admin/v1/reload-config', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       return await res.json();
-    }catch(err){ console.error('AdminProviderREST:reloadConfig', err); return { ok:false, error: String(err) }; }
+    } catch (err) {
+      console.error('AdminProviderREST:reloadConfig', err);
+      return { ok: false, error: String(err) };
+    }
   }
 
   async getBackup() {
     try {
-      const res = await this._fetch('/admin/v1/backup', { method: 'GET', credentials: 'same-origin' });
+      const res = await this._fetch('/admin/v1/backup', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
       if (!res.ok) return null;
       return await res.json();
     } catch (err) {

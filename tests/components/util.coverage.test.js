@@ -1,6 +1,15 @@
 import { expect } from '@esm-bundle/chai';
-import { parseDate, formatDate, addMonths, dateRangeInclusiveMonths, addDays } from '../../www/js/components/util.js';
-import { computePosition, _test_resetCache } from '../../www/js/components/board-utils.js';
+import {
+  parseDate,
+  formatDate,
+  addMonths,
+  dateRangeInclusiveMonths,
+  addDays,
+} from '../../www/js/components/util.js';
+import {
+  computePosition,
+  _test_resetCache,
+} from '../../www/js/components/board-utils.js';
 
 describe('Utility helpers coverage', () => {
   it('parseDate handles null, Date, and string', () => {
@@ -35,7 +44,7 @@ describe('Utility helpers coverage', () => {
 
   it('computePosition returns left and width for planned and unplanned features', () => {
     // Build simple months array (first of month)
-    const months = [new Date(2025,0,1), new Date(2025,1,1), new Date(2025,2,1)];
+    const months = [new Date(2025, 0, 1), new Date(2025, 1, 1), new Date(2025, 2, 1)];
     _test_resetCache();
     const featurePlanned = { start: '2025-01-02', end: '2025-01-10' };
     const res = computePosition(featurePlanned, months);

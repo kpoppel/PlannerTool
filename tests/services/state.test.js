@@ -8,8 +8,13 @@ describe('State core behaviors', () => {
     state._projectTeamService.initFromBaseline([], teams);
     state.setTeamSelected('t1', true);
     state.setTeamSelected('t2', false);
-    
-    const feature = { capacity: [ { team: 't1', capacity: 3 }, { team: 't2', capacity: 2 } ] };
+
+    const feature = {
+      capacity: [
+        { team: 't1', capacity: 3 },
+        { team: 't2', capacity: 2 },
+      ],
+    };
     const pct = state.computeFeatureOrgLoad(feature);
     expect(pct).to.be.a('string');
     // Only t1 selected => load = 3 / 2 teams = 1.5% -> '1.5%'
@@ -21,7 +26,16 @@ describe('State core behaviors', () => {
     // Minimal baseline data: one team, one project, one feature spanning 3 days
     state.baselineTeams = [{ id: 't1' }];
     state.baselineProjects = [{ id: 'p1' }];
-    state.baselineFeatures = [{ id: 'f1', start: '2024-01-01', end: '2024-01-03', project: 'p1', state: 'New', capacity: [{ team: 't1', capacity: 2 }] }];
+    state.baselineFeatures = [
+      {
+        id: 'f1',
+        start: '2024-01-01',
+        end: '2024-01-03',
+        project: 'p1',
+        state: 'New',
+        capacity: [{ team: 't1', capacity: 2 }],
+      },
+    ];
     // Working copies (no selection filtering) - use ProjectTeamService
     state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
     state.setProjectSelected('p1', true);
@@ -30,7 +44,14 @@ describe('State core behaviors', () => {
     state._stateFilterService.setAvailableStates(['New']);
     state._stateFilterService._selectedStates = new Set(['New']);
     // Setup scenarios using ScenarioEventService
-    state._scenarioEventService._scenarios = [{ id: 'baseline', overrides: {}, filters: { projects: [], teams: [] }, view: {} }];
+    state._scenarioEventService._scenarios = [
+      {
+        id: 'baseline',
+        overrides: {},
+        filters: { projects: [], teams: [] },
+        view: {},
+      },
+    ];
     state._scenarioEventService.setActiveScenarioId('baseline');
     // Ensure getEffectiveFeatures returns the baseline features for this test
     state.getEffectiveFeatures = () => state.baselineFeatures;
@@ -46,16 +67,16 @@ describe('State core behaviors', () => {
   });
 
   it('setStateFilter toggles selection and emits updates', async () => {
-    state._stateFilterService.setAvailableStates(['New','Done']);
+    state._stateFilterService.setAvailableStates(['New', 'Done']);
     // Track events
     const events = [];
     const { bus } = await import('../../www/js/core/EventBus.js');
     const { FilterEvents } = await import('../../www/js/core/EventRegistry.js');
     const unsub = bus.on(FilterEvents.CHANGED, (p) => events.push(p));
-    
+
     state.setStateFilter('New');
     expect(events.length).to.be.greaterThan(0);
-    
+
     // Cleanup
     unsub();
   });

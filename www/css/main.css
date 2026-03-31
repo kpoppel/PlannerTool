@@ -5,7 +5,7 @@
   --color-border: #ccc;
   --color-accent: #3498db;
   --color-panel-bg: #f9f9f9;
-  --color-shadow: rgba(0,0,0,0.08);
+  --color-shadow: rgba(0, 0, 0, 0.08);
   --sidebar-width: 320px;
   --details-width: 340px;
   --timeline-month-width: 120px;
@@ -20,11 +20,38 @@
 }
 
 /* Global resets and base styles */
-* { box-sizing: border-box; }
-.html, html, body { margin:0; padding:0; font-family: Arial, sans-serif; background: var(--color-bg); height:100%; }
+* {
+  box-sizing: border-box;
+}
+.html,
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  background: var(--color-bg);
+  height: 100%;
+}
 /* Ensure app root and main fill the viewport so children can flex to available space */
-.app-container { display:flex; height:100vh; overflow:hidden; min-height:0; }
+.app-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  min-height: 0;
+}
 /* Important main content area styling */
-.main { flex:1 1 auto; display:flex; flex-direction:column; background:#fff; position:relative; overflow:hidden; min-height:0; padding-top: 40px; margin-left: var(--sidebar-width); }
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  padding-top: 40px;
+  margin-left: var(--sidebar-width);
+}
 /* Ensure direct children that are flex containers can shrink/grow properly inside .main */
-.main > * { min-height:0; }
+.main > * {
+  min-height: 0;
+}

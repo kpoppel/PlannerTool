@@ -56,18 +56,22 @@ describe('ProviderLocalStorage coverage', () => {
     const colors = await dataService.getColorMappings();
     expect(colors).to.be.an('object');
     // read endpoints use providerREST which may return arrays; just call them to exercise functions
-      // providerREST uses fetch; default global fetch returns an object - force an array response for these calls
-      const origFetch = window.fetch;
-      window.fetch = async () => ({ ok: true, status: 200, json: async () => [] });
-      const projects = await dataService.getProjects();
-      const pIsArrayOrObject = Array.isArray(projects) || typeof projects === 'object';
-      expect(pIsArrayOrObject).to.equal(true);
-      const teams = await dataService.getTeams();
-      const tIsArrayOrObject = Array.isArray(teams) || typeof teams === 'object';
-      expect(tIsArrayOrObject).to.equal(true);
-      const features = await dataService.getFeatures();
-      const fIsArrayOrObject = Array.isArray(features) || typeof features === 'object';
-      expect(fIsArrayOrObject).to.equal(true);
-      window.fetch = origFetch;
+    // providerREST uses fetch; default global fetch returns an object - force an array response for these calls
+    const origFetch = window.fetch;
+    window.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [],
+    });
+    const projects = await dataService.getProjects();
+    const pIsArrayOrObject = Array.isArray(projects) || typeof projects === 'object';
+    expect(pIsArrayOrObject).to.equal(true);
+    const teams = await dataService.getTeams();
+    const tIsArrayOrObject = Array.isArray(teams) || typeof teams === 'object';
+    expect(tIsArrayOrObject).to.equal(true);
+    const features = await dataService.getFeatures();
+    const fIsArrayOrObject = Array.isArray(features) || typeof features === 'object';
+    expect(fIsArrayOrObject).to.equal(true);
+    window.fetch = origFetch;
   }).timeout(2000);
 });

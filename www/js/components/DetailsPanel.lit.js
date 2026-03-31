@@ -11,11 +11,13 @@ export class DetailsPanelLit extends LitElement {
     open: { type: Boolean },
     iterations: { type: Array },
     editingCapacityTeam: { type: String },
-    showAddTeamPopover: { type: Boolean }
+    showAddTeamPopover: { type: Boolean },
   };
 
   static styles = css`
-    :host { display:block; }
+    :host {
+      display: block;
+    }
     .panel {
       position: fixed;
       right: 0;
@@ -24,13 +26,15 @@ export class DetailsPanelLit extends LitElement {
       width: var(--details-width, 340px);
       background: var(--color-panel-bg, #f9f9f9);
       border-left: 1px solid var(--color-border, #ccc);
-      box-shadow: -2px 0 8px var(--color-shadow, rgba(0,0,0,0.08));
+      box-shadow: -2px 0 8px var(--color-shadow, rgba(0, 0, 0, 0.08));
       z-index: var(--z-details, 1000);
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
-    .panel.closed { display: none; }
+    .panel.closed {
+      display: none;
+    }
     .details-header {
       position: relative;
       padding: 22px 18px 8px 18px;
@@ -43,25 +47,97 @@ export class DetailsPanelLit extends LitElement {
       flex: 1 1 auto;
     }
     /* match app font sizing and rhythm */
-    :host { font-size: 14px; }
-    .details-label { font-weight: bold; margin-top: 6px; font-size: 14px; }
-    .title-icon { display:inline-flex; width:20px; height:20px; vertical-align:middle; margin-right:8px; }
-    .details-value { margin-bottom: 8px; font-size: 14px; }
-    .details-changed { background: #fadd92ff; }
+    :host {
+      font-size: 14px;
+    }
+    .details-label {
+      font-weight: bold;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    .title-icon {
+      display: inline-flex;
+      width: 20px;
+      height: 20px;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    .details-value {
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .details-changed {
+      background: #fadd92ff;
+    }
     /* Status color variants (migrated from global CSS into details panel) */
-    .status-new { color: #27ae60; }
-    .status-inprogress { color: #f1c40f; }
-    .status-done { color: #888; }
-    .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
-    .details-revert { background: transparent; border: 1px solid #ccc; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-    .original-date { color: #666; font-size: 12px; margin-left: 6px; }
-    .details-close { position: absolute; right: 18px; top: 18px; cursor: pointer; border: none; background: transparent; font-size: 18px; }
-    .team-load-box { padding: 4px 8px; border-radius: 6px; color: white; font-weight: 600; margin-right: 6px; font-size: 12px; }
-    .azure-relations-list { list-style: none; padding: 0; margin: 0; }
-    .relations-group { margin-bottom: 10px; }
+    .status-new {
+      color: #27ae60;
+    }
+    .status-inprogress {
+      color: #f1c40f;
+    }
+    .status-done {
+      color: #888;
+    }
+    .details-change-banner {
+      background: #fff8e6;
+      border: 1px solid #f0d7a6;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .details-revert {
+      background: transparent;
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .original-date {
+      color: #666;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    .details-close {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-size: 18px;
+    }
+    .team-load-box {
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: white;
+      font-weight: 600;
+      margin-right: 6px;
+      font-size: 12px;
+    }
+    .azure-relations-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .relations-group {
+      margin-bottom: 10px;
+    }
     /* Capacity Progress Bars */
-    .capacity-section { margin-top: 12px; }
-    .capacity-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .capacity-section {
+      margin-top: 12px;
+    }
+    .capacity-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
     .capacity-bar-row {
       display: flex;
       flex-direction: column;
@@ -136,7 +212,7 @@ export class DetailsPanelLit extends LitElement {
       font-size: 11px;
       font-weight: bold;
       color: white;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
     .capacity-bar-input-container {
       flex: 0 0 auto;
@@ -148,7 +224,7 @@ export class DetailsPanelLit extends LitElement {
       padding: 2px 4px;
       border: 1px solid #ccc;
       border-radius: 3px;
-      background: rgba(255,255,255,0.9);
+      background: rgba(255, 255, 255, 0.9);
       font-family: monospace;
       font-size: 10px;
       text-align: center;
@@ -214,18 +290,67 @@ export class DetailsPanelLit extends LitElement {
       border-radius: 4px;
       font-size: 13px;
       background: white;
-      margin-top:6px;
+      margin-top: 6px;
     }
-    .details-changed { background: #fadd92ff; }
-    .details-change-banner { background: #fff8e6; border: 1px solid #f0d7a6; padding: 8px 10px; border-radius: 6px; margin-top: 8px; font-size: 13px; display:flex; gap:8px; align-items:center; }
-    .details-revert { background: transparent; border: 1px solid #ccc; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-    .original-date { color: #666; font-size: 12px; margin-left: 6px; }
-    .details-close { position: absolute; right: 18px; top: 18px; cursor: pointer; border: none; background: transparent; font-size: 18px; }
-    .team-load-box { padding: 4px 8px; border-radius: 6px; color: white; font-weight: 600; margin-right: 6px; font-size: 12px; }
-    .azure-relations-list { list-style: none; padding: 0; margin: 0; }
+    .details-changed {
+      background: #fadd92ff;
+    }
+    .details-change-banner {
+      background: #fff8e6;
+      border: 1px solid #f0d7a6;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .details-revert {
+      background: transparent;
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .original-date {
+      color: #666;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    .details-close {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      font-size: 18px;
+    }
+    .team-load-box {
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: white;
+      font-weight: 600;
+      margin-right: 6px;
+      font-size: 12px;
+    }
+    .azure-relations-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
     /* Capacity Progress Bars */
-    .capacity-section { margin-top: 12px; }
-    .capacity-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+    .capacity-section {
+      margin-top: 12px;
+    }
+    .capacity-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
     .capacity-bar-row {
       display: flex;
       flex-direction: column;
@@ -300,7 +425,7 @@ export class DetailsPanelLit extends LitElement {
       font-size: 11px;
       font-weight: bold;
       color: white;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
     .capacity-bar-input-container {
       flex: 0 0 auto;
@@ -312,7 +437,7 @@ export class DetailsPanelLit extends LitElement {
       padding: 2px 4px;
       border: 1px solid #ccc;
       border-radius: 3px;
-      background: rgba(255,255,255,0.9);
+      background: rgba(255, 255, 255, 0.9);
       font-family: monospace;
       font-size: 10px;
       text-align: center;
@@ -442,23 +567,101 @@ export class DetailsPanelLit extends LitElement {
       transition: width 0.3s ease;
     }
     /* align icon with text baseline for pixel-accurate centering */
-    .azure-relation-item { display: flex; gap: 8px; align-items: center; padding: 0; background: transparent; border-radius: 4px; margin: 6px 0; }
-    .relation-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 10px; background: rgba(0,0,0,0.06); flex: 0 0 20px; }
-    .relation-content { display: flex; flex-direction: row; gap: 8px; align-items: center; }
-    .relation-title, .relation-title a.details-link { line-height: 18px; display: inline-block; vertical-align: middle; margin: 0; }
-    .relation-title { font-weight: 700; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; line-height: 1.1; }
-    .relation-title a.details-link { color: var(--color-accent, #3498db); text-decoration: underline; }
-    .state-chip { display:inline-block; padding:4px 8px; border-radius:12px; font-weight:600; font-size:13px; vertical-align:middle; }
-    .state-select { padding:6px 8px; border-radius:6px; border:1px solid #ccc; font-size:13px; }
-    .state-choices button.state-chip { padding:6px 8px; border-radius:12px; font-weight:600; font-size:13px; }
-    .state-edit-row { display:flex; gap:10px; align-items:flex-start; }
-    .state-current-wrapper { flex: 0 0 auto; display:flex; align-items:center; }
-    .state-choices-box { flex: 1 1 auto; border: 1px solid #e0e0e0; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    .state-choices { display:flex; flex-wrap:wrap; gap:8px; }
-    .state-choices button.state-chip.selected { box-shadow: 0 0 0 3px rgba(52,152,219,0.12); }
+    .azure-relation-item {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 0;
+      background: transparent;
+      border-radius: 4px;
+      margin: 6px 0;
+    }
+    .relation-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.06);
+      flex: 0 0 20px;
+    }
+    .relation-content {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      align-items: center;
+    }
+    .relation-title,
+    .relation-title a.details-link {
+      line-height: 18px;
+      display: inline-block;
+      vertical-align: middle;
+      margin: 0;
+    }
+    .relation-title {
+      font-weight: 700;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+      line-height: 1.1;
+    }
+    .relation-title a.details-link {
+      color: var(--color-accent, #3498db);
+      text-decoration: underline;
+    }
+    .state-chip {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+    .state-select {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 13px;
+    }
+    .state-choices button.state-chip {
+      padding: 6px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .state-edit-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .state-current-wrapper {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+    }
+    .state-choices-box {
+      flex: 1 1 auto;
+      border: 1px solid #e0e0e0;
+      background: #fff;
+      padding: 8px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    }
+    .state-choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .state-choices button.state-chip.selected {
+      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.12);
+    }
   `;
 
-  constructor(){
+  constructor() {
     super();
     this.feature = null;
     this.open = false;
@@ -487,7 +690,7 @@ export class DetailsPanelLit extends LitElement {
     return cleaned;
   }
 
-  connectedCallback(){
+  connectedCallback() {
     super.connectedCallback();
     bus.on(UIEvents.DETAILS_SHOW, this._onShow);
     bus.on(FeatureEvents.SELECTED, this._onShow);
@@ -506,9 +709,13 @@ export class DetailsPanelLit extends LitElement {
 
     this._onBodyClick = (e) => {
       // Noop if panel not open
-      if(!this.open) return;
+      if (!this.open) return;
       // If the board did not move since mouseDown, close the panel.
-      if(this._boardMouseDown && this._boardMouseDown.x == e.x && this._boardMouseDown.y == e.y) {
+      if (
+        this._boardMouseDown &&
+        this._boardMouseDown.x == e.x &&
+        this._boardMouseDown.y == e.y
+      ) {
         this.hide();
       }
     };
@@ -520,18 +727,18 @@ export class DetailsPanelLit extends LitElement {
   async _onCapacityUpdated(data) {
     const { featureId, capacity } = data;
     if (!featureId || !capacity) return;
-    
+
     try {
       // Extract the numeric work item ID from the feature ID
       // Feature IDs are typically in format like "J_688051" or just the number
       const workItemId = String(featureId).replace(/^[A-Za-z_]+/, '');
-      
+
       // Import dataService dynamically to avoid circular dependencies
       const { dataService } = await import('../services/dataService.js');
-      
+
       // Call the API to update capacity in Azure DevOps
       const result = await dataService.updateWorkItemCapacity(workItemId, capacity);
-      
+
       if (!result.ok) {
         console.error('Failed to update capacity:', result.error);
         // TODO: Show user-facing error notification
@@ -547,7 +754,7 @@ export class DetailsPanelLit extends LitElement {
   _onFeatureUpdated(payload) {
     // Refresh feature data if the currently displayed feature was updated
     if (!this.open || !this.feature) return;
-    
+
     const ids = payload?.ids || [];
     if (ids.includes(this.feature.id)) {
       // Get fresh feature data from state
@@ -559,7 +766,7 @@ export class DetailsPanelLit extends LitElement {
     }
   }
 
-  disconnectedCallback(){
+  disconnectedCallback() {
     bus.off(UIEvents.DETAILS_SHOW, this._onShow);
     bus.off(FeatureEvents.SELECTED, this._onShow);
     bus.off(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
@@ -569,62 +776,75 @@ export class DetailsPanelLit extends LitElement {
     super.disconnectedCallback();
   }
 
-  _onShow(feature){
+  _onShow(feature) {
     this.feature = feature;
     this.open = true;
     this.requestUpdate();
   }
 
-  async _shrinkwrapEpic(e){
+  async _shrinkwrapEpic(e) {
     e && e.stopPropagation();
-    if(!this.feature) return;
+    if (!this.feature) return;
     const f = this.feature;
-    if(f.type !== 'epic') return;
+    if (f.type !== 'epic') return;
 
-    try{
+    try {
       // childrenByEpic uses baseline ids as keys; try both string/number
-      const childIds = state.childrenByEpic.get(f.id) || state.childrenByEpic.get(String(f.id)) || state.childrenByEpic.get(Number(f.id)) || [];
-      if(!childIds || !childIds.length) return;
+      const childIds =
+        state.childrenByEpic.get(f.id) ||
+        state.childrenByEpic.get(String(f.id)) ||
+        state.childrenByEpic.get(Number(f.id)) ||
+        [];
+      if (!childIds || !childIds.length) return;
 
       // Use effective feature dates (respecting active scenario overrides)
       let minStartMs = null;
       let maxEndMs = null;
-      for(const cid of childIds){
+      for (const cid of childIds) {
         const eff = state.getEffectiveFeatureById(cid);
-        if(!eff) continue;
+        if (!eff) continue;
         const s = eff.start;
         const e = eff.end;
-        if(s){
+        if (s) {
           const sMs = Date.parse(s);
-          if(!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
+          if (!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
         }
-        if(e){
+        if (e) {
           const eMs = Date.parse(e);
-          if(!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
+          if (!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
         }
       }
-      if(minStartMs === null || maxEndMs === null) return;
+      if (minStartMs === null || maxEndMs === null) return;
 
-      const toIsoDate = (ms) => new Date(ms).toISOString().slice(0,10);
+      const toIsoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
       const newStart = toIsoDate(minStartMs);
       const newEnd = toIsoDate(maxEndMs);
 
       // Use state.updateFeatureDates to update both start and end together
       state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
-    }catch(err){
+    } catch (err) {
       console.error('Shrinkwrap epic failed', err);
     }
   }
 
-  hide(){
+  hide() {
     this.open = false;
     this.requestUpdate();
-    try { bus.emit(UIEvents.DETAILS_HIDE); } catch (e) {}
+    try {
+      bus.emit(UIEvents.DETAILS_HIDE);
+    } catch (e) {}
   }
 
-  hideAndEmit(){
+  hideAndEmit() {
     // Close panel and emit a global hide event so other components can respond
-    try { this.open = false; this.requestUpdate(); bus.emit(UIEvents.DETAILS_HIDE); } catch (e) { this.open = false; this.requestUpdate(); }
+    try {
+      this.open = false;
+      this.requestUpdate();
+      bus.emit(UIEvents.DETAILS_HIDE);
+    } catch (e) {
+      this.open = false;
+      this.requestUpdate();
+    }
   }
 
   _handleCapacityClick(teamId, e) {
@@ -656,16 +876,16 @@ export class DetailsPanelLit extends LitElement {
   _saveCapacityEdit(teamId, newValue) {
     const capacity = parseInt(newValue) || 0;
     const clampedCapacity = Math.max(0, Math.min(100, capacity));
-    
+
     // Create a new capacity array to avoid mutating the baseline
     if (this.feature && this.feature.capacity) {
-      const newCapacity = this.feature.capacity.map(c => 
+      const newCapacity = this.feature.capacity.map((c) =>
         c.team === teamId ? { ...c, capacity: clampedCapacity } : { ...c }
       );
       // Store as override in the scenario
       state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
     }
-    
+
     this.editingCapacityTeam = null;
     this.requestUpdate();
   }
@@ -674,7 +894,7 @@ export class DetailsPanelLit extends LitElement {
     e.stopPropagation();
     if (this.feature && this.feature.capacity) {
       // Create a new capacity array without the deleted team
-      const newCapacity = this.feature.capacity.filter(c => c.team !== teamId);
+      const newCapacity = this.feature.capacity.filter((c) => c.team !== teamId);
       // Store as override in the scenario
       state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
       this.requestUpdate();
@@ -692,23 +912,26 @@ export class DetailsPanelLit extends LitElement {
     const form = e.target;
     const teamSelect = form.querySelector('select');
     const capacityInput = form.querySelector('input');
-    
+
     const teamId = teamSelect.value;
     const capacity = parseInt(capacityInput.value) || 0;
     const clampedCapacity = Math.max(0, Math.min(100, capacity));
-    
+
     if (teamId && this.feature) {
       // Check if team already exists
       const currentCapacity = this.feature.capacity || [];
-      const existing = currentCapacity.find(c => c.team === teamId);
+      const existing = currentCapacity.find((c) => c.team === teamId);
       if (!existing) {
         // Create new array instead of mutating baseline
-        const newCapacity = [...currentCapacity, { team: teamId, capacity: clampedCapacity }];
+        const newCapacity = [
+          ...currentCapacity,
+          { team: teamId, capacity: clampedCapacity },
+        ];
         // Store as override in the scenario
         state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
       }
     }
-    
+
     this.showAddTeamPopover = false;
     this.requestUpdate();
   }
@@ -718,36 +941,49 @@ export class DetailsPanelLit extends LitElement {
     this.requestUpdate();
   }
 
-  _onStateClick(e){
+  _onStateClick(e) {
     e && e.stopPropagation();
-    if(!this.feature) return;
+    if (!this.feature) return;
     this.editingState = true;
     this._stateEditValue = this.feature.state || '';
     this.requestUpdate();
     // focus select after render
-    setTimeout(()=>{
-      const sel = this.shadowRoot && this.shadowRoot.querySelector('.state-select'); if(sel){ sel.focus(); }
+    setTimeout(() => {
+      const sel = this.shadowRoot && this.shadowRoot.querySelector('.state-select');
+      if (sel) {
+        sel.focus();
+      }
     }, 10);
   }
 
-  _onStateChange(e){
+  _onStateChange(e) {
     this._stateEditValue = e.target.value;
   }
 
-  _onStateKeydown(e){
-    if(e.key === 'Enter') { this._saveStateEdit(); }
-    else if(e.key === 'Escape') { this.editingState = false; this.requestUpdate(); }
+  _onStateKeydown(e) {
+    if (e.key === 'Enter') {
+      this._saveStateEdit();
+    } else if (e.key === 'Escape') {
+      this.editingState = false;
+      this.requestUpdate();
+    }
   }
 
-  _onStateBlur(e){
+  _onStateBlur(e) {
     // small timeout to allow click to register
-    setTimeout(()=>{ if(this.editingState) this._saveStateEdit(); }, 150);
+    setTimeout(() => {
+      if (this.editingState) this._saveStateEdit();
+    }, 150);
   }
 
-  _saveStateEdit(){
-    if(!this.feature) { this.editingState = false; this.requestUpdate(); return; }
+  _saveStateEdit() {
+    if (!this.feature) {
+      this.editingState = false;
+      this.requestUpdate();
+      return;
+    }
     const val = this._stateEditValue;
-    if(val && val !== this.feature.state){
+    if (val && val !== this.feature.state) {
       state.updateFeatureField(this.feature.id, 'state', val);
     }
     this.editingState = false;
@@ -755,9 +991,9 @@ export class DetailsPanelLit extends LitElement {
     this.requestUpdate();
   }
 
-  _onStateChipSelect(s){
-    if(!this.feature) return;
-    if(s && s !== this.feature.state){
+  _onStateChipSelect(s) {
+    if (!this.feature) return;
+    if (s && s !== this.feature.state) {
       state.updateFeatureField(this.feature.id, 'state', s);
     }
     this.editingState = false;
@@ -765,34 +1001,36 @@ export class DetailsPanelLit extends LitElement {
     this.requestUpdate();
   }
 
-  updated(changedProps){
-    if(changedProps.has && changedProps.has('feature')){
+  updated(changedProps) {
+    if (changedProps.has && changedProps.has('feature')) {
       // load iterations when feature changes / panel opens
       this._loadIterationsForFeature();
     }
   }
 
-  async _loadIterationsForFeature(){
-    try{
+  async _loadIterationsForFeature() {
+    try {
       // Use iterations from state instead of fetching from server
       // Filter iterations by project if feature has a project assigned
       const f = this.feature;
-      if(!f) {
+      if (!f) {
         this.iterations = [];
         return;
       }
-      
+
       // Get all iterations from state
       let iters = state.iterations || [];
-      
+
       // If feature has a project, optionally filter iterations by project
       // (depends on whether iterations have project info)
       // For now, we'll use all iterations since server-side filtering
       // by project may not be needed if iterations are already scoped
-      
+
       this.iterations = Array.isArray(iters) ? iters : [];
       this.requestUpdate();
-    }catch(e){ console.warn('Failed to load iterations from state', e); }
+    } catch (e) {
+      console.warn('Failed to load iterations from state', e);
+    }
   }
 
   _formatIterationLabel(it) {
@@ -800,7 +1038,7 @@ export class DetailsPanelLit extends LitElement {
     const name = it.name || this._stripIterationPrefix(it.path);
     const start = it.startDate ? it.startDate.slice(0, 10) : null;
     const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
-    
+
     if (start && end) {
       return `${name} (${start} to ${end})`;
     } else if (start) {
@@ -811,195 +1049,270 @@ export class DetailsPanelLit extends LitElement {
     return name;
   }
 
-  _stripIterationPrefix(path){
-    if(!path || typeof path !== 'string') return path;
+  _stripIterationPrefix(path) {
+    if (!path || typeof path !== 'string') return path;
     const m = path.match(/^(.+?)\\Iteration\\(.+)$/);
-    if(m) return m[2];
+    if (m) return m[2];
     return path;
   }
 
-  async _onIterationChange(e){
+  async _onIterationChange(e) {
     const sel = e.target && e.target.value ? e.target.value : null;
-    if(!sel) return;
-    const it = (this.iterations || []).find(i => (i.path === sel) || (i.path && i.path.endsWith(sel)) );
-    if(!it) return;
-    const start = it.startDate ? it.startDate.slice(0,10) : null;
-    const end = it.finishDate ? it.finishDate.slice(0,10) : null;
-    if(start && end && this.feature){
-      try{
+    if (!sel) return;
+    const it = (this.iterations || []).find(
+      (i) => i.path === sel || (i.path && i.path.endsWith(sel))
+    );
+    if (!it) return;
+    const start = it.startDate ? it.startDate.slice(0, 10) : null;
+    const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
+    if (start && end && this.feature) {
+      try {
         state.updateFeatureDates([{ id: this.feature.id, start, end }]);
-      }catch(err){ console.warn('Failed to update feature dates', err); }
+      } catch (err) {
+        console.warn('Failed to update feature dates', err);
+      }
     }
   }
 
-  _renderField(label, field, value){
-    const original = this.feature && this.feature.original ? this.feature.original[field] : undefined;
+  _renderField(label, field, value) {
+    const original =
+      this.feature && this.feature.original ? this.feature.original[field] : undefined;
     const changed = original !== undefined && value !== original;
     const cls = changed ? 'details-value details-changed' : 'details-value';
-    const originalSpan = changed ? html` <span class="original-date" title="Original">(was ${original})</span>` : '';
-    return html`<div class="details-label">${label}:</div><div class="${cls}">${value||'—'}${originalSpan}</div>`;
+    const originalSpan =
+      changed ?
+        html` <span class="original-date" title="Original">(was ${original})</span>`
+      : '';
+    return html`<div class="details-label">${label}:</div>
+      <div class="${cls}">${value || '—'}${originalSpan}</div>`;
   }
 
-  render(){
-    if(!this.open || !this.feature) return html`<div class="panel closed"></div>`;
+  render() {
+    if (!this.open || !this.feature) return html`<div class="panel closed"></div>`;
     const feature = this.feature;
-    const statusClass = feature.state==='In Progress'? 'status-inprogress' : feature.state==='Done'? 'status-done' : 'status-new';
+    const statusClass =
+      feature.state === 'In Progress' ? 'status-inprogress'
+      : feature.state === 'Done' ? 'status-done'
+      : 'status-new';
     // Build a state color chip using state service helper
     // Use ColorService directly
-    const stateColors = state._colorService ? state._colorService.getFeatureStateColors(state.availableFeatureStates) : {};
-    const stateColor = (feature && feature.state && stateColors[feature.state]) ? stateColors[feature.state] : null;
+    const stateColors =
+      state._colorService ?
+        state._colorService.getFeatureStateColors(state.availableFeatureStates)
+      : {};
+    const stateColor =
+      feature && feature.state && stateColors[feature.state] ?
+        stateColors[feature.state]
+      : null;
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
     const stateCls = stateChanged ? 'details-value details-changed' : 'details-value';
-    const originalStateSpan = stateChanged ? html` <span class="original-date">(was ${stateOrig})</span>` : '';
+    const originalStateSpan =
+      stateChanged ? html` <span class="original-date">(was ${stateOrig})</span>` : '';
     // Derive plan (project) name from feature.project -> state.projects
-    const planObj = (state.projects || []).find(p => p.id === feature.project);
+    const planObj = (state.projects || []).find((p) => p.id === feature.project);
     const planName = planObj ? planObj.name : null;
-    
+
     // Use orgLoad for total allocation (organizational capacity allocated to this feature)
     const orgLoad = feature.orgLoad || '0%';
     const orgLoadValue = String(orgLoad).replace('%', '');
-    
+
     // Render capacity bars
-    const capacityBars = (feature.capacity || []).map(tl => {
-      const t = state.teams.find(x => x.id === tl.team);
+    const capacityBars = (feature.capacity || []).map((tl) => {
+      const t = state.teams.find((x) => x.id === tl.team);
       if (!t) return null;
-      
+
       const cap = tl.capacity || 0;
       const barWidth = `${Math.min(cap, 100)}%`;
-      
+
       return html`
         <div class="capacity-bar-row">
           <div class="capacity-bar-header">
             <span class="capacity-bar-name">${t.name}</span>
-            <span class="capacity-bar-delete" 
-                  @click=${(e) => this._handleDeleteCapacity(tl.team, e)}>✕</span>
+            <span
+              class="capacity-bar-delete"
+              @click=${(e) => this._handleDeleteCapacity(tl.team, e)}
+              >✕</span
+            >
           </div>
           <div class="capacity-bar-container">
-            <div class="capacity-bar-bg" @click=${(e) => this._handleCapacityClick(tl.team, e)}>
-              <div class="capacity-bar-fill" style="width: ${barWidth}; background: ${t.color};">
+            <div
+              class="capacity-bar-bg"
+              @click=${(e) => this._handleCapacityClick(tl.team, e)}
+            >
+              <div
+                class="capacity-bar-fill"
+                style="width: ${barWidth}; background: ${t.color};"
+              >
                 <span class="capacity-bar-label">${cap}%</span>
               </div>
             </div>
             <div class="capacity-bar-input-container">
-              <input type="number" 
-                     class="capacity-bar-input"
-                     min="0" 
-                     max="100" 
-                     .value="${cap}"
-                     @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
-                     @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}
-                     @focus=${(e) => { e.target.select(); }}
-                     @wheel=${(e) => {
-                       e.preventDefault();
-                       const currentValue = parseInt(e.target.value) || 0;
-                       const delta = e.deltaY < 0 ? 10 : -10;
-                       const newValue = Math.max(0, Math.min(100, currentValue + delta));
-                       const roundedValue = Math.round(newValue / 10) * 10;
-                       e.target.value = roundedValue;
-                       this._saveCapacityEdit(tl.team, roundedValue);
-                     }}/>
+              <input
+                type="number"
+                class="capacity-bar-input"
+                min="0"
+                max="100"
+                .value="${cap}"
+                @keydown=${(e) => this._handleCapacityInputKeydown(tl.team, e)}
+                @blur=${(e) => this._handleCapacityInputBlur(tl.team, e)}
+                @focus=${(e) => {
+                  e.target.select();
+                }}
+                @wheel=${(e) => {
+                  e.preventDefault();
+                  const currentValue = parseInt(e.target.value) || 0;
+                  const delta = e.deltaY < 0 ? 10 : -10;
+                  const newValue = Math.max(0, Math.min(100, currentValue + delta));
+                  const roundedValue = Math.round(newValue / 10) * 10;
+                  e.target.value = roundedValue;
+                  this._saveCapacityEdit(tl.team, roundedValue);
+                }}
+              />
             </div>
           </div>
         </div>
       `;
     });
-    
+
     // Get available teams for the add team dropdown (exclude already allocated teams)
-    const allocatedTeamIds = new Set((feature.capacity || []).map(c => c.team));
-    const availableTeams = state.teams.filter(t => !allocatedTeamIds.has(t.id));
-    
+    const allocatedTeamIds = new Set((feature.capacity || []).map((c) => c.team));
+    const availableTeams = state.teams.filter((t) => !allocatedTeamIds.has(t.id));
+
     // Add team button with inline form
     const addTeamButton = html`
       <div class="add-team-row">
-        ${this.showAddTeamPopover ? html`
-          <form class="add-team-form" @submit=${(e) => this._handleAddTeamSubmit(e)}>
-            <select required>
-              <option value="">Select Team...</option>
-              ${availableTeams.map(t => html`<option value="${t.id}">${t.name}</option>`)}
-            </select>
-            <div class="add-team-form-input-row">
-              <input type="number" min="0" max="100" placeholder="Capacity %" required 
-                     @wheel=${(e) => {
-                       e.preventDefault();
-                       const currentValue = parseInt(e.target.value) || 0;
-                       const delta = e.deltaY < 0 ? 10 : -10;
-                       const newValue = Math.max(0, Math.min(100, currentValue + delta));
-                       const roundedValue = Math.round(newValue / 10) * 10;
-                       e.target.value = roundedValue;
-                     }}/>
+        ${this.showAddTeamPopover ?
+          html`
+            <form class="add-team-form" @submit=${(e) => this._handleAddTeamSubmit(e)}>
+              <select required>
+                <option value="">Select Team...</option>
+                ${availableTeams.map(
+                  (t) => html`<option value="${t.id}">${t.name}</option>`
+                )}
+              </select>
+              <div class="add-team-form-input-row">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="Capacity %"
+                  required
+                  @wheel=${(e) => {
+                    e.preventDefault();
+                    const currentValue = parseInt(e.target.value) || 0;
+                    const delta = e.deltaY < 0 ? 10 : -10;
+                    const newValue = Math.max(0, Math.min(100, currentValue + delta));
+                    const roundedValue = Math.round(newValue / 10) * 10;
+                    e.target.value = roundedValue;
+                  }}
+                />
+              </div>
+              <div class="add-team-form-buttons">
+                <button type="submit">Add</button>
+                <button
+                  type="button"
+                  class="cancel"
+                  @click=${() => this._handleAddTeamCancel()}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          `
+        : html`
+            <div class="add-team-btn" @click=${(e) => this._handleAddTeamClick(e)}>
+              + Add Team
             </div>
-            <div class="add-team-form-buttons">
-              <button type="submit">Add</button>
-              <button type="button" class="cancel" @click=${() => this._handleAddTeamCancel()}>Cancel</button>
-            </div>
-          </form>
-        ` : html`
-          <div class="add-team-btn" @click=${(e) => this._handleAddTeamClick(e)}>
-            + Add Team
-          </div>
-        `}
+          `}
       </div>
     `;
-    
+
     // Total allocation box - displays organizational capacity with visual summary
     let totalAllocationBox = '';
     if (orgLoadValue && parseFloat(orgLoadValue) > 0) {
-      const totalCapacity = (feature.capacity || []).reduce((sum, c) => sum + (c.capacity || 0), 0);
+      const totalCapacity = (feature.capacity || []).reduce(
+        (sum, c) => sum + (c.capacity || 0),
+        0
+      );
       const teamCount = (feature.capacity || []).length;
-      
+
       // Build segments for visual bar
-      const segments = (feature.capacity || []).map(tl => {
-        const t = state.teams.find(x => x.id === tl.team);
-        if (!t) return null;
-        const cap = tl.capacity || 0;
-        // Calculate width as percentage of total available width (scale to max 100% visual width)
-        const widthPercent = totalCapacity > 0 ? (cap / Math.max(totalCapacity, 100)) * 100 : 0;
-        return html`<div class="total-allocation-segment" style="width: ${widthPercent}%; background: ${t.color};"></div>`;
-      }).filter(s => s);
-      
+      const segments = (feature.capacity || [])
+        .map((tl) => {
+          const t = state.teams.find((x) => x.id === tl.team);
+          if (!t) return null;
+          const cap = tl.capacity || 0;
+          // Calculate width as percentage of total available width (scale to max 100% visual width)
+          const widthPercent =
+            totalCapacity > 0 ? (cap / Math.max(totalCapacity, 100)) * 100 : 0;
+          return html`<div
+            class="total-allocation-segment"
+            style="width: ${widthPercent}%; background: ${t.color};"
+          ></div>`;
+        })
+        .filter((s) => s);
+
       totalAllocationBox = html`
         <div class="total-allocation-box">
           <div class="total-allocation-header">
-            Total Capacity Overview: <span style="color: #e67e22;">${orgLoad} across ${teamCount} team${teamCount !== 1 ? 's' : ''}</span>
+            Total Capacity Overview:
+            <span style="color: #e67e22;"
+              >${orgLoad} across ${teamCount} team${teamCount !== 1 ? 's' : ''}</span
+            >
           </div>
-          <div class="total-allocation-summary-bar">
-            ${segments}
-          </div>
+          <div class="total-allocation-summary-bar">${segments}</div>
         </div>
       `;
     }
-    
+
     // Strip capacity section from description
     const cleanDescription = this._stripCapacityFromDescription(feature.description);
 
     const changedSet = new Set(feature.changedFields || []);
-    const changedBanner = changedSet.size ? html`<div class="details-change-banner">${html`<button class="details-revert" title="Revert changes" @click=${(ev)=>{ ev.stopPropagation(); state.revertFeature(feature.id); }}>↺</button>`} Modified locally (${[...changedSet].join(', ')})</div>` : '';
+    const changedBanner =
+      changedSet.size ?
+        html`<div class="details-change-banner">
+          ${html`<button
+            class="details-revert"
+            title="Revert changes"
+            @click=${(ev) => {
+              ev.stopPropagation();
+              state.revertFeature(feature.id);
+            }}
+          >
+            ↺
+          </button>`}
+          Modified locally (${[...changedSet].join(', ')})
+        </div>`
+      : '';
 
     // Build relations HTML similarly to legacy renderer
     let relationsTemplate = html`<div class="details-value">—</div>`;
-    try{
+    try {
       const rels = Array.isArray(feature.relations) ? feature.relations.slice() : [];
-      if(rels.length){
+      if (rels.length) {
         // Sort and group like legacy
-        rels.sort((a,b) => {
-          const ta = (a.type || a.relationType || 'Related');
-          const tb = (b.type || b.relationType || 'Related');
-          if(ta === 'Parent' && tb !== 'Parent') return -1;
-          if(tb === 'Parent' && ta !== 'Parent') return 1;
+        rels.sort((a, b) => {
+          const ta = a.type || a.relationType || 'Related';
+          const tb = b.type || b.relationType || 'Related';
+          if (ta === 'Parent' && tb !== 'Parent') return -1;
+          if (tb === 'Parent' && ta !== 'Parent') return 1;
           return 0;
         });
         const groups = new Map();
-        for(const r of rels){
-          const type = (r.type || r.relationType || 'Related');
-          if(!groups.has(type)) groups.set(type, []);
+        for (const r of rels) {
+          const type = r.type || r.relationType || 'Related';
+          if (!groups.has(type)) groups.set(type, []);
           groups.get(type).push(r);
         }
         const orderedKeys = [];
-        if(groups.has('Parent')) orderedKeys.push('Parent');
-        for(const k of groups.keys()){ if(k !== 'Parent') orderedKeys.push(k); }
+        if (groups.has('Parent')) orderedKeys.push('Parent');
+        for (const k of groups.keys()) {
+          if (k !== 'Parent') orderedKeys.push(k);
+        }
 
-        const groupsArr = orderedKeys.map(type => {
+        const groupsArr = orderedKeys.map((type) => {
           const groupItems = groups.get(type) || [];
           let groupTitle = type;
           if (type === 'Parent') {
@@ -1008,43 +1321,84 @@ export class DetailsPanelLit extends LitElement {
               for (const r of groupItems) {
                 const otherId = r.id ? String(r.id) : null;
                 try {
-                  const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId);
-                  if (linked && linked.project && String(linked.project) !== String(feature.project)) {
-                    const proj = (state.projects || []).find(p => p.id === linked.project);
+                  const linked =
+                    state &&
+                    state.baselineFeatureById &&
+                    state.baselineFeatureById.get(otherId);
+                  if (
+                    linked &&
+                    linked.project &&
+                    String(linked.project) !== String(feature.project)
+                  ) {
+                    const proj = (state.projects || []).find(
+                      (p) => p.id === linked.project
+                    );
                     if (proj && proj.name) otherPlanNames.add(proj.name);
                   }
-                } catch (e) { }
+                } catch (e) {}
               }
               if (otherPlanNames.size === 1) {
                 groupTitle = `Parent (in ${[...otherPlanNames][0]})`;
               } else if (otherPlanNames.size > 1) {
                 groupTitle = 'Parent (in multiple plans)';
               }
-            } catch (e) { /* ignore plan name lookup failures */ }
+            } catch (e) {
+              /* ignore plan name lookup failures */
+            }
           }
 
-          const items = groupItems.map(r => {
+          const items = groupItems.map((r) => {
             const otherId = r.id ? String(r.id) : null;
             let url = r.url || '';
-            if(!url && feature.url && otherId){ url = feature.url.replace(/(\d+)(?!.*\d)/, otherId); }
+            if (!url && feature.url && otherId) {
+              url = feature.url.replace(/(\d+)(?!.*\d)/, otherId);
+            }
             const href = url ? url : '';
             let title = '';
-            try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.title) title = linked.title; }catch(e){}
+            try {
+              const linked =
+                state &&
+                state.baselineFeatureById &&
+                state.baselineFeatureById.get(otherId);
+              if (linked && linked.title) title = linked.title;
+            } catch (e) {}
             let metaParts = [];
-            try{ const linked = state && state.baselineFeatureById && state.baselineFeatureById.get(otherId); if(linked && linked.state) metaParts.push(linked.state); }catch(e){}
+            try {
+              const linked =
+                state &&
+                state.baselineFeatureById &&
+                state.baselineFeatureById.get(otherId);
+              if (linked && linked.state) metaParts.push(linked.state);
+            } catch (e) {}
             const meta = metaParts.join(' • ');
             let iconTemplate = '';
             if (type === 'Parent') iconTemplate = epicTemplate;
             else if (type === 'Successor') iconTemplate = '➡️';
             else if (type === 'Predecessor') iconTemplate = '⬅️';
             else iconTemplate = '🔗';
-            return html`<li class="azure-relation-item"><div class="relation-icon">${iconTemplate}</div><div class="relation-content"><div class="relation-title"><a class="details-link" href="${href}" target="_blank">${otherId? otherId : ''}${title? ' ' + title : ''}</a></div></div></li>`;
+            return html`<li class="azure-relation-item">
+              <div class="relation-icon">${iconTemplate}</div>
+              <div class="relation-content">
+                <div class="relation-title">
+                  <a class="details-link" href="${href}" target="_blank"
+                    >${otherId ? otherId : ''}${title ? ' ' + title : ''}</a
+                  >
+                </div>
+              </div>
+            </li>`;
           });
-          return html`<div class="relations-group"><div class="group-title">${groupTitle}</div><ul class="azure-relations-list">${items}</ul></div>`;
+          return html`<div class="relations-group">
+            <div class="group-title">${groupTitle}</div>
+            <ul class="azure-relations-list">
+              ${items}
+            </ul>
+          </div>`;
         });
         relationsTemplate = html`${groupsArr}`;
       }
-    } catch(e){ relationsTemplate = html`<div class="details-value">—</div>`; }
+    } catch (e) {
+      relationsTemplate = html`<div class="details-value">—</div>`;
+    }
 
     if (feature && feature.type && String(feature.type).toLowerCase() === 'epic') {
       console.debug('[DetailsPanel] rendering shrinkwrap button for epic', feature.id);
@@ -1053,41 +1407,101 @@ export class DetailsPanelLit extends LitElement {
     return html`
       <div class="panel">
         <div class="details-header">
-          <button class="details-close" @click=${()=>this.hide()} aria-label="Close details">✕</button>
+          <button
+            class="details-close"
+            @click=${() => this.hide()}
+            aria-label="Close details"
+          >
+            ✕
+          </button>
           <div class="details-label">
-            <span class="title-icon" >${feature.type === 'epic' ? epicTemplate : featureTemplate}</span>
+            <span class="title-icon"
+              >${feature.type === 'epic' ? epicTemplate : featureTemplate}</span
+            >
             <span>${feature.title}</span>
           </div>
-          <div class="details-label">ID: <a class="details-link" href="${feature.url||'#'}" target="_blank">⤴ ${feature.id}</a></div>
-          <div class="details-label">Status:
-            ${this.editingState ? html`
-              <div class="state-edit-row">
-                <div class="state-current-wrapper ${stateCls}">
-                  ${stateColor ? html`<button class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:default;">${feature.state}</button>` : html`<button class="state-chip" style="cursor:default;">${feature.state}</button>`}
-                  ${originalStateSpan}
-                </div>
-                <div class="state-choices-box ${stateCls}" @blur=${(e)=>this._onStateBlur(e)} tabindex="-1">
-                  <div class="state-choices">
-                    ${(state.availableFeatureStates || []).map(s => {
-                      const sc = stateColors && stateColors[s] ? stateColors[s] : null;
-                      const isSelected = s === (this._stateEditValue || feature.state);
-                      const selClass = isSelected ? 'selected' : '';
-                      return html`<button class="state-chip ${selClass}" style="background:${sc?sc.background:'#efefef'}; color:${sc?sc.text:'#222'}; border:${isSelected? '2px solid rgba(0,0,0,0.14)': '1px solid rgba(0,0,0,0.08)'}; cursor:pointer;" @click=${()=>this._onStateChipSelect(s)}>${s}</button>`;
-                    })}
+          <div class="details-label">
+            ID:
+            <a class="details-link" href="${feature.url || '#'}" target="_blank"
+              >⤴ ${feature.id}</a
+            >
+          </div>
+          <div class="details-label">
+            Status:
+            ${this.editingState ?
+              html`
+                <div class="state-edit-row">
+                  <div class="state-current-wrapper ${stateCls}">
+                    ${stateColor ?
+                      html`<button
+                        class="state-chip"
+                        style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:default;"
+                      >
+                        ${feature.state}
+                      </button>`
+                    : html`<button class="state-chip" style="cursor:default;">
+                        ${feature.state}
+                      </button>`}
+                    ${originalStateSpan}
+                  </div>
+                  <div
+                    class="state-choices-box ${stateCls}"
+                    @blur=${(e) => this._onStateBlur(e)}
+                    tabindex="-1"
+                  >
+                    <div class="state-choices">
+                      ${(state.availableFeatureStates || []).map((s) => {
+                        const sc = stateColors && stateColors[s] ? stateColors[s] : null;
+                        const isSelected = s === (this._stateEditValue || feature.state);
+                        const selClass = isSelected ? 'selected' : '';
+                        return html`<button
+                          class="state-chip ${selClass}"
+                          style="background:${sc ? sc.background : '#efefef'}; color:${(
+                            sc
+                          ) ?
+                            sc.text
+                          : '#222'}; border:${isSelected ?
+                            '2px solid rgba(0,0,0,0.14)'
+                          : '1px solid rgba(0,0,0,0.08)'}; cursor:pointer;"
+                          @click=${() => this._onStateChipSelect(s)}
+                        >
+                          ${s}
+                        </button>`;
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ` : html`
-              <span class="${stateCls}" style="display:inline-flex;gap:8px;align-items:center;">
-                ${stateColor ? html`<button class="state-chip" style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:pointer;" @click=${(e)=>this._onStateClick(e)}>${feature.state}</button>` : html`<button class="state-chip" @click=${(e)=>this._onStateClick(e)} style="border:none;cursor:pointer;">${feature.state}</button>`}
-                ${originalStateSpan}
-              </span>
-            `}
+              `
+            : html`
+                <span
+                  class="${stateCls}"
+                  style="display:inline-flex;gap:8px;align-items:center;"
+                >
+                  ${stateColor ?
+                    html`<button
+                      class="state-chip"
+                      style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:pointer;"
+                      @click=${(e) => this._onStateClick(e)}
+                    >
+                      ${feature.state}
+                    </button>`
+                  : html`<button
+                      class="state-chip"
+                      @click=${(e) => this._onStateClick(e)}
+                      style="border:none;cursor:pointer;"
+                    >
+                      ${feature.state}
+                    </button>`}
+                  ${originalStateSpan}
+                </span>
+              `}
           </div>
-          <div class="details-label">Plan: <span class="details-value">${planName || '—'}</span></div>
+          <div class="details-label">
+            Plan: <span class="details-value">${planName || '—'}</span>
+          </div>
         </div>
         <div class="details-content">
-          ${this._renderField('Assignee','assignee', feature.assignee)}
+          ${this._renderField('Assignee', 'assignee', feature.assignee)}
           ${(() => {
             // stacked dates section
             const orig = feature.original || {};
@@ -1095,48 +1509,96 @@ export class DetailsPanelLit extends LitElement {
             const endOrig = orig.end;
             const startChanged = startOrig !== undefined && feature.start !== startOrig;
             const endChanged = endOrig !== undefined && feature.end !== endOrig;
-              return html`
-                <div class="details-label">Dates</div>
-                <div style="display:flex;flex-direction:row;gap:12px;align-items:flex-start;">
-                  <div style="flex:1;min-width:0;">
-                    <div class="details-label">Start</div>
-                    <div class="details-value ${startChanged ? 'details-changed' : ''}">${feature.start || '—'}</div>
-                    ${startChanged ? html`<div class="original-date">(was ${startOrig})</div>` : ''}
+            return html`
+              <div class="details-label">Dates</div>
+              <div
+                style="display:flex;flex-direction:row;gap:12px;align-items:flex-start;"
+              >
+                <div style="flex:1;min-width:0;">
+                  <div class="details-label">Start</div>
+                  <div class="details-value ${startChanged ? 'details-changed' : ''}">
+                    ${feature.start || '—'}
                   </div>
-                  <div style="flex:1;min-width:0;">
-                    <div class="details-label">End</div>
-                    <div class="details-value ${endChanged ? 'details-changed' : ''}">${feature.end || '—'}</div>
-                    ${endChanged ? html`<div class="original-date">(was ${endOrig})</div>` : ''}
-                  </div>
+                  ${startChanged ?
+                    html`<div class="original-date">(was ${startOrig})</div>`
+                  : ''}
                 </div>
+                <div style="flex:1;min-width:0;">
+                  <div class="details-label">End</div>
+                  <div class="details-value ${endChanged ? 'details-changed' : ''}">
+                    ${feature.end || '—'}
+                  </div>
+                  ${endChanged ?
+                    html`<div class="original-date">(was ${endOrig})</div>`
+                  : ''}
+                </div>
+              </div>
               <div style="margin-top:8px;">
                 <div class="details-label">Iteration</div>
                 <div class="details-value">
-                  <select class="iteration-select" @change=${(e)=>this._onIterationChange(e)}>
+                  <select
+                    class="iteration-select"
+                    @change=${(e) => this._onIterationChange(e)}
+                  >
                     <option value="">—</option>
-                    ${this.iterations && this.iterations.length ? this.iterations.map(it => html`<option value="${it.path}" ?selected=${(feature && ((feature.iterationPath||'') === it.path))}>${this._formatIterationLabel(it)}</option>`) : html`<option disabled>Loading...</option>`}
+                    ${this.iterations && this.iterations.length ?
+                      this.iterations.map(
+                        (it) =>
+                          html`<option
+                            value="${it.path}"
+                            ?selected=${feature &&
+                            (feature.iterationPath || '') === it.path}
+                          >
+                            ${this._formatIterationLabel(it)}
+                          </option>`
+                      )
+                    : html`<option disabled>Loading...</option>`}
                   </select>
                 </div>
               </div>
-              ${feature && feature.type && String(feature.type).toLowerCase() === 'epic' ? html`<div style="margin-top:8px;"><button data-test="shrinkwrap-chip" class="chip" @click=${(e)=>this._shrinkwrapEpic(e)} title="Shrinkwrap epic to children" aria-label="Shrinkwrap epic to children" style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"><svg width="20" height="16" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" style="flex:0 0 auto;">
-                        <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor" />
-                        <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor" />
-                        <polygon points="6.5,4 10,8 6.5,12" fill="currentColor" />
-                        <polygon points="13.5,4 10,8 13.5,12" fill="currentColor" />
-                        <rect x="9" y="7.2" width="2" height="1.6" fill="currentColor" />
-                    </svg><span style="display:inline-block;line-height:1;">Shink Epic</span></button></div>` : ''}
-              `;
+              ${feature && feature.type && String(feature.type).toLowerCase() === 'epic' ?
+                html`<div style="margin-top:8px;">
+                  <button
+                    data-test="shrinkwrap-chip"
+                    class="chip"
+                    @click=${(e) => this._shrinkwrapEpic(e)}
+                    title="Shrinkwrap epic to children"
+                    aria-label="Shrinkwrap epic to children"
+                    style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"
+                  >
+                    <svg
+                      width="20"
+                      height="16"
+                      viewBox="0 0 20 16"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true"
+                      focusable="false"
+                      style="flex:0 0 auto;"
+                    >
+                      <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor" />
+                      <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor" />
+                      <polygon points="6.5,4 10,8 6.5,12" fill="currentColor" />
+                      <polygon points="13.5,4 10,8 13.5,12" fill="currentColor" />
+                      <rect
+                        x="9"
+                        y="7.2"
+                        width="2"
+                        height="1.6"
+                        fill="currentColor"
+                      /></svg
+                    ><span style="display:inline-block;line-height:1;">Shink Epic</span>
+                  </button>
+                </div>`
+              : ''}
+            `;
           })()}
-          
+
           <div class="capacity-section">
             <div class="details-label">Allocated Capacity:</div>
-            <div class="capacity-bars">
-              ${capacityBars}
-            </div>
-            ${addTeamButton}
-            ${totalAllocationBox}
+            <div class="capacity-bars">${capacityBars}</div>
+            ${addTeamButton} ${totalAllocationBox}
           </div>
-          
+
           <div class="details-label">Description</div>
           <div class="details-value" .innerHTML=${cleanDescription || '—'}></div>
           <div class="details-label">Links:</div>
@@ -1149,4 +1611,3 @@ export class DetailsPanelLit extends LitElement {
 }
 
 customElements.define('details-panel', DetailsPanelLit);
-

@@ -11,17 +11,23 @@ export class AreaMappingsNew extends LitElement {
     success: { type: String },
     expandedProjects: { type: Object, state: true },
     showRawJson: { type: Boolean },
-    rawJsonContent: { type: String }
+    rawJsonContent: { type: String },
   };
 
   static styles = css`
-    :host { display: block; height: 100%; }
-    h2 { margin-top: 0; font-size: 1.1rem; }
-    
-    .panel { 
-      padding: 12px; 
-      background: #fff; 
-      border: 1px solid #e5e7eb; 
+    :host {
+      display: block;
+      height: 100%;
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
+    .panel {
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
       border-radius: 6px;
       display: flex;
       flex-direction: column;
@@ -53,7 +59,9 @@ export class AreaMappingsNew extends LitElement {
       transition: all 0.2s;
     }
 
-    button:hover { background: #e5e7eb; }
+    button:hover {
+      background: #e5e7eb;
+    }
 
     button:disabled {
       opacity: 0.5;
@@ -66,7 +74,9 @@ export class AreaMappingsNew extends LitElement {
       border-color: #3b82f6;
     }
 
-    button.primary:hover { background: #2563eb; }
+    button.primary:hover {
+      background: #2563eb;
+    }
 
     .message {
       padding: 12px;
@@ -120,7 +130,7 @@ export class AreaMappingsNew extends LitElement {
         grid-template-columns: 1fr;
       }
     }
-    
+
     .content {
       flex: 1;
       overflow-y: auto;
@@ -269,53 +279,55 @@ export class AreaMappingsNew extends LitElement {
     }
 
     .plans-list {
-    .plan-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 4px;
-      transition: all 0.15s;
-    }
+      .plan-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        transition: all 0.15s;
+      }
 
-    .plan-item:hover {
-      background: #f3f4f6;
-      border-color: #3b82f6;
-    }
+      .plan-item:hover {
+        background: #f3f4f6;
+        border-color: #3b82f6;
+      }
 
-    .plan-item.disabled {
-      opacity: 0.5;
-    }
+      .plan-item.disabled {
+        opacity: 0.5;
+      }
 
-    .plan-item.disabled:hover {
-      background: #fff;
-    }plan-item:hover {
-      background: #f3f4f6;
-    }
+      .plan-item.disabled:hover {
+        background: #fff;
+      }
+      plan-item:hover {
+        background: #f3f4f6;
+      }
 
-    .plan-item.disabled {
-      opacity: 0.6;
-    }
+      .plan-item.disabled {
+        opacity: 0.6;
+      }
 
-    .plan-checkbox {
-      flex-shrink: 0;
-    }
+      .plan-checkbox {
+        flex-shrink: 0;
+      }
 
-    .plan-name {
-      font-size: 14px;
-      color: #1f2937;
+      .plan-name {
+        font-size: 14px;
+        color: #1f2937;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      .plan-id {
+        font-size: 11px;
+        color: #6b7280;
+        font-family: 'Consolas', 'Monaco', monospace;
+        word-break: break-all;
+      }
       font-weight: 500;
-      margin-bottom: 4px;
-    }
-
-    .plan-id {
-      font-size: 11px;
-      color: #6b7280;
-      font-family: 'Consolas', 'Monaco', monospace;
-      word-break: break-all;
-    } font-weight: 500;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -356,7 +368,9 @@ export class AreaMappingsNew extends LitElement {
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .spinner {
@@ -369,7 +383,7 @@ export class AreaMappingsNew extends LitElement {
       animation: spin 0.8s linear infinite;
       margin-bottom: 16px;
     }
-    
+
     .raw-json-editor {
       flex: 1;
       display: flex;
@@ -389,13 +403,13 @@ export class AreaMappingsNew extends LitElement {
       color: #1f2937;
       resize: none;
     }
-    
+
     .raw-json-editor textarea:focus {
       outline: none;
       border-color: #3b82f6;
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
-    
+
     .json-actions {
       display: flex;
       gap: 8px;
@@ -426,7 +440,7 @@ export class AreaMappingsNew extends LitElement {
     try {
       const [mappings, projects] = await Promise.all([
         adminProvider.getAreaMappings(),
-        adminProvider.getProjects()
+        adminProvider.getProjects(),
       ]);
       this.mappings = mappings;
       this.projects = projects?.project_map || [];
@@ -445,7 +459,9 @@ export class AreaMappingsNew extends LitElement {
       await adminProvider.refreshAllAreaMappings();
       this.success = 'Successfully refreshed all area mappings';
       await this.loadData();
-      setTimeout(() => { this.success = null; }, 3000);
+      setTimeout(() => {
+        this.success = null;
+      }, 3000);
     } catch (err) {
       this.error = `Failed to refresh mappings: ${err.message}`;
     } finally {
@@ -468,7 +484,9 @@ export class AreaMappingsNew extends LitElement {
       this.success = 'Mappings saved successfully';
       this.showRawJson = false;
       await this.loadData();
-      setTimeout(() => { this.success = null; }, 3000);
+      setTimeout(() => {
+        this.success = null;
+      }, 3000);
     } catch (err) {
       this.error = `Error saving mappings: ${err.message}`;
     }
@@ -481,7 +499,9 @@ export class AreaMappingsNew extends LitElement {
       await adminProvider.refreshAreaMapping(areaPath);
       this.success = `Refreshed ${areaPath}`;
       await this.loadData();
-      setTimeout(() => { this.success = null; }, 3000);
+      setTimeout(() => {
+        this.success = null;
+      }, 3000);
     } catch (err) {
       this.error = `Failed to refresh ${areaPath}: ${err.message}`;
     }
@@ -507,7 +527,7 @@ export class AreaMappingsNew extends LitElement {
   toggleProject(projectId) {
     this.expandedProjects = {
       ...this.expandedProjects,
-      [projectId]: !this.expandedProjects[projectId]
+      [projectId]: !this.expandedProjects[projectId],
     };
     this.requestUpdate();
   }
@@ -519,36 +539,36 @@ export class AreaMappingsNew extends LitElement {
   getAllAreaMappings() {
     // Flatten all areas from all projects into a single list
     const allAreas = [];
-    
+
     if (!this.mappings) {
       console.log('No mappings data');
       return allAreas;
     }
-    
+
     console.log('Mappings keys:', Object.keys(this.mappings));
     console.log('Projects:', this.projects);
-    
+
     // Iterate through all keys in mappings (excluding last_update)
     for (const [projectId, projectData] of Object.entries(this.mappings)) {
       if (projectId === 'last_update') continue;
-      
+
       // Find project name from projects list
-      const project = this.projects.find(p => p.id === projectId);
+      const project = this.projects.find((p) => p.id === projectId);
       const projectName = project?.name || projectId;
-      
+
       const areas = projectData?.areas || {};
       console.log(`Project ${projectId}:`, Object.keys(areas).length, 'areas');
-      
+
       for (const [areaPath, areaData] of Object.entries(areas)) {
         allAreas.push({
           projectId,
           projectName,
           areaPath,
-          plans: areaData?.plans || {}
+          plans: areaData?.plans || {},
         });
       }
     }
-    
+
     console.log('Total areas:', allAreas.length);
     return allAreas;
   }
@@ -556,7 +576,7 @@ export class AreaMappingsNew extends LitElement {
   renderAreaCard(areaMapping) {
     const { projectId, projectName, areaPath, plans } = areaMapping;
     const planCount = Object.keys(plans).length;
-    const enabledCount = Object.values(plans).filter(p => p.enabled).length;
+    const enabledCount = Object.values(plans).filter((p) => p.enabled).length;
 
     return html`
       <div class="area-card">
@@ -565,36 +585,43 @@ export class AreaMappingsNew extends LitElement {
             <div class="project-badge">${projectName}</div>
             <div class="area-path">${areaPath}</div>
           </div>
-          <button @click="${() => this.refreshArea(projectId, areaPath)}" class="refresh-btn" ?disabled="${this.refreshing}">
+          <button
+            @click="${() => this.refreshArea(projectId, areaPath)}"
+            class="refresh-btn"
+            ?disabled="${this.refreshing}"
+          >
             🔄
           </button>
         </div>
-        
+
         <div class="area-stats">
           ${planCount} plan${planCount !== 1 ? 's' : ''} • ${enabledCount} enabled
         </div>
-        
-        ${planCount === 0 ? html`
-          <div class="no-plans">No plans found for this area</div>
-        ` : html`
-          <div class="plans-list">
-            ${Object.entries(plans).map(([planId, planInfo]) => html`
-              <div class="plan-item ${planInfo.enabled ? '' : 'disabled'}">
-                <div class="plan-checkbox">
-                  <input
-                    type="checkbox"
-                    .checked="${planInfo.enabled}"
-                    @change="${() => this.togglePlan(projectId, areaPath, planId, planInfo.enabled)}"
-                  />
-                </div>
-                <div class="plan-info">
-                  <div class="plan-name">${planInfo.name || planId}</div>
-                  <div class="plan-id">${planId}</div>
-                </div>
-              </div>
-            `)}
-          </div>
-        `}
+
+        ${planCount === 0 ?
+          html` <div class="no-plans">No plans found for this area</div> `
+        : html`
+            <div class="plans-list">
+              ${Object.entries(plans).map(
+                ([planId, planInfo]) => html`
+                  <div class="plan-item ${planInfo.enabled ? '' : 'disabled'}">
+                    <div class="plan-checkbox">
+                      <input
+                        type="checkbox"
+                        .checked="${planInfo.enabled}"
+                        @change="${() =>
+                          this.togglePlan(projectId, areaPath, planId, planInfo.enabled)}"
+                      />
+                    </div>
+                    <div class="plan-info">
+                      <div class="plan-name">${planInfo.name || planId}</div>
+                      <div class="plan-id">${planId}</div>
+                    </div>
+                  </div>
+                `
+              )}
+            </div>
+          `}
       </div>
     `;
   }
@@ -614,7 +641,8 @@ export class AreaMappingsNew extends LitElement {
       `;
     }
 
-    const hasData = this.mappings && Object.keys(this.mappings).some(k => k !== 'last_update');
+    const hasData =
+      this.mappings && Object.keys(this.mappings).some((k) => k !== 'last_update');
     const lastUpdate = this.mappings?.last_update;
 
     return html`
@@ -623,14 +651,19 @@ export class AreaMappingsNew extends LitElement {
         <div class="panel">
           <div class="header">
             <div class="info-box" style="margin: 0; flex: 1;">
-              Area mappings connect Azure DevOps area paths to delivery plan IDs. 
-              Plans are automatically discovered from Azure. Use the checkboxes to enable/disable plans for the overlay plugin.
+              Area mappings connect Azure DevOps area paths to delivery plan IDs. Plans
+              are automatically discovered from Azure. Use the checkboxes to
+              enable/disable plans for the overlay plugin.
             </div>
             <div class="actions">
               <button @click="${this.toggleRawJson}">
                 ${this.showRawJson ? '📋 Card View' : '📝 Raw JSON'}
               </button>
-              <button @click="${this.refreshAll}" ?disabled="${this.refreshing}" class="primary">
+              <button
+                @click="${this.refreshAll}"
+                ?disabled="${this.refreshing}"
+                class="primary"
+              >
                 ${this.refreshing ? '⏳ Refreshing...' : '🔄 Refresh All'}
               </button>
             </div>
@@ -638,41 +671,56 @@ export class AreaMappingsNew extends LitElement {
 
           ${this.error ? html`<div class="message error">${this.error}</div>` : ''}
           ${this.success ? html`<div class="message success">${this.success}</div>` : ''}
-
-          ${this.showRawJson ? html`
-            <div class="raw-json-editor">
-              <textarea 
-                .value="${this.rawJsonContent}"
-                @input="${(e) => { this.rawJsonContent = e.target.value; }}"
-              ></textarea>
-              <div class="json-actions">
-                <button @click="${this.saveRawJson}" class="primary">💾 Save</button>
-                <button @click="${this.loadData}">🔄 Reload</button>
-              </div>
-            </div>
-          ` : html`
-            <div class="content">
-              ${lastUpdate ? html`
-                <div class="last-update">
-                  Last updated: ${new Date(lastUpdate).toLocaleString()}
+          ${this.showRawJson ?
+            html`
+              <div class="raw-json-editor">
+                <textarea
+                  .value="${this.rawJsonContent}"
+                  @input="${(e) => {
+                    this.rawJsonContent = e.target.value;
+                  }}"
+                ></textarea>
+                <div class="json-actions">
+                  <button @click="${this.saveRawJson}" class="primary">💾 Save</button>
+                  <button @click="${this.loadData}">🔄 Reload</button>
                 </div>
-              ` : ''}
-
-              ${!hasData ? html`
-              <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-                </svg>
-                <div>No area mappings found</div>
-                <div>Click "Refresh All" to fetch mappings from Azure DevOps</div>
               </div>
-            ` : html`
-              <div class="cards-grid">
-                ${this.getAllAreaMappings().map(area => this.renderAreaCard(area))}
+            `
+          : html`
+              <div class="content">
+                ${lastUpdate ?
+                  html`
+                    <div class="last-update">
+                      Last updated: ${new Date(lastUpdate).toLocaleString()}
+                    </div>
+                  `
+                : ''}
+                ${!hasData ?
+                  html`
+                    <div class="empty-state">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
+                        ></path>
+                      </svg>
+                      <div>No area mappings found</div>
+                      <div>Click "Refresh All" to fetch mappings from Azure DevOps</div>
+                    </div>
+                  `
+                : html`
+                    <div class="cards-grid">
+                      ${this.getAllAreaMappings().map((area) =>
+                        this.renderAreaCard(area)
+                      )}
+                    </div>
+                  `}
               </div>
             `}
-            </div>
-          `}
         </div>
       </section>
     `;

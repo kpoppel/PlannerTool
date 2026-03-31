@@ -5,44 +5,63 @@ import { state } from '../services/State.js';
 export class ScenarioCloneModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
-  constructor(){ super(); this.id=''; this.name=''; }
-  
-  connectedCallback(){ super.connectedCallback(); }
+  constructor() {
+    super();
+    this.id = '';
+    this.name = '';
+  }
 
-  _getInner(){
+  connectedCallback() {
+    super.connectedCallback();
+  }
+
+  _getInner() {
     return this.renderRoot.querySelector('modal-lit');
   }
-  
-  _qs(selector){
+
+  _qs(selector) {
     const inner = this._getInner();
     return inner ? inner.querySelector(selector) : null;
   }
 
-  firstUpdated(){
+  firstUpdated() {
     // open after render
-    const inner = this._getInner(); if(inner) inner.open = true;
+    const inner = this._getInner();
+    if (inner) inner.open = true;
     const saveBtn = this._qs('#cloneBtn');
     const closeBtn = this._qs('#cancelCloneBtn');
     const input = this._qs('#cloneInput');
     const status = this._qs('#cloneStatus');
-    if (saveBtn) saveBtn.addEventListener('click', async ()=>{
-      const val = input.value.trim();
-      this._disableButtons(true);
-      try{
-        const newScen = state.cloneScenario(this.id, val);
-        if(newScen) state.activateScenario(newScen.id);
-        this.remove();
-      }catch(err){ if (status) status.textContent = 'Clone failed.'; }
-      this._disableButtons(false);
-    });
-    if (closeBtn) closeBtn.addEventListener('click', ()=> this.remove());
-    if (input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
-    if (input) setTimeout(()=> input.focus(), 10);
+    if (saveBtn)
+      saveBtn.addEventListener('click', async () => {
+        const val = input.value.trim();
+        this._disableButtons(true);
+        try {
+          const newScen = state.cloneScenario(this.id, val);
+          if (newScen) state.activateScenario(newScen.id);
+          this.remove();
+        } catch (err) {
+          if (status) status.textContent = 'Clone failed.';
+        }
+        this._disableButtons(false);
+      });
+    if (closeBtn) closeBtn.addEventListener('click', () => this.remove());
+    if (input)
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveBtn.click();
+        if (e.key === 'Escape') closeBtn.click();
+      });
+    if (input) setTimeout(() => input.focus(), 10);
   }
 
-  _disableButtons(dis){ const saveBtn = this._qs('#cloneBtn'); const closeBtn = this._qs('#cancelCloneBtn'); if(saveBtn) saveBtn.disabled = dis; if(closeBtn) closeBtn.disabled = dis; }
+  _disableButtons(dis) {
+    const saveBtn = this._qs('#cloneBtn');
+    const closeBtn = this._qs('#cancelCloneBtn');
+    if (saveBtn) saveBtn.disabled = dis;
+    if (closeBtn) closeBtn.disabled = dis;
+  }
 
-  render(){
+  render() {
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Clone Scenario</h3></div>

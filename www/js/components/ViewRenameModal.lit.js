@@ -5,54 +5,65 @@ import { state } from '../services/State.js';
 export class ViewRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
 
-  constructor(){ super(); this.id=''; this.name=''; }
-  
-  connectedCallback(){ super.connectedCallback(); }
+  constructor() {
+    super();
+    this.id = '';
+    this.name = '';
+  }
 
-  _getInner(){
+  connectedCallback() {
+    super.connectedCallback();
+  }
+
+  _getInner() {
     return this.renderRoot.querySelector('modal-lit');
   }
-  
-  _qs(selector){
+
+  _qs(selector) {
     const inner = this._getInner();
     return inner ? inner.querySelector(selector) : null;
   }
 
-  firstUpdated(){
+  firstUpdated() {
     // open after render
-    const inner = this._getInner(); if(inner) inner.open = true;
+    const inner = this._getInner();
+    if (inner) inner.open = true;
     const saveBtn = this._qs('#renameViewBtn');
     const closeBtn = this._qs('#cancelRenameViewBtn');
     const input = this._qs('#renameViewInput');
     const status = this._qs('#renameViewStatus');
-    saveBtn.addEventListener('click', async ()=>{
+    saveBtn.addEventListener('click', async () => {
       const val = input.value.trim();
       if (!val) {
         status.textContent = 'Please enter a view name.';
         return;
       }
       this._disableButtons(true);
-      try{
+      try {
         await state.viewManagementService.renameView(this.id, val);
         this.remove();
-      }catch(err){
+      } catch (err) {
         status.textContent = `Failed to rename view: ${err.message || err}`;
         this._disableButtons(false);
       }
     });
-    if (closeBtn) closeBtn.addEventListener('click', ()=> this.remove());
-    if (input) input.addEventListener('keydown', e=>{ if(e.key==='Enter') saveBtn.click(); if(e.key==='Escape') closeBtn.click(); });
-    if (input) setTimeout(()=> input.focus(), 10);
+    if (closeBtn) closeBtn.addEventListener('click', () => this.remove());
+    if (input)
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveBtn.click();
+        if (e.key === 'Escape') closeBtn.click();
+      });
+    if (input) setTimeout(() => input.focus(), 10);
   }
 
-  _disableButtons(dis){ 
-    const saveBtn = this._qs('#renameViewBtn'); 
-    const closeBtn = this._qs('#cancelRenameViewBtn'); 
-    if(saveBtn) saveBtn.disabled = dis; 
-    if(closeBtn) closeBtn.disabled = dis; 
+  _disableButtons(dis) {
+    const saveBtn = this._qs('#renameViewBtn');
+    const closeBtn = this._qs('#cancelRenameViewBtn');
+    if (saveBtn) saveBtn.disabled = dis;
+    if (closeBtn) closeBtn.disabled = dis;
   }
 
-  render(){
+  render() {
     return html`
       <modal-lit wide>
         <div slot="header"><h3>Rename View</h3></div>

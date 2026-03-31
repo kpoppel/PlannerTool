@@ -12,7 +12,7 @@ describe('ProjectTeamService', () => {
       emit: (event, data) => {
         emitCalls.push({ event, data });
       },
-      on: () => {}
+      on: () => {},
     };
     service = new ProjectTeamService(mockBus);
   });
@@ -21,11 +21,11 @@ describe('ProjectTeamService', () => {
     it('should initialize projects and teams from baseline', () => {
       const baselineProjects = [
         { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' }
+        { id: 'p2', name: 'Project 2' },
       ];
       const baselineTeams = [
         { id: 't1', name: 'Team 1' },
-        { id: 't2', name: 'Team 2' }
+        { id: 't2', name: 'Team 2' },
       ];
 
       service.initFromBaseline(baselineProjects, baselineTeams);
@@ -48,15 +48,15 @@ describe('ProjectTeamService', () => {
     it('should preserve selection state when refreshing', () => {
       const baselineProjects = [
         { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' }
+        { id: 'p2', name: 'Project 2' },
       ];
-      
+
       service.initFromBaseline(baselineProjects, []);
       service.setProjectSelected('p1', true);
 
       const newBaselineProjects = [
         { id: 'p1', name: 'Project 1 Updated' },
-        { id: 'p2', name: 'Project 2' }
+        { id: 'p2', name: 'Project 2' },
       ];
 
       service.refreshFromBaseline(newBaselineProjects, []);
@@ -68,10 +68,13 @@ describe('ProjectTeamService', () => {
 
     it('should handle new projects added in refresh', () => {
       service.initFromBaseline([{ id: 'p1', name: 'Project 1' }], []);
-      service.refreshFromBaseline([
-        { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' }
-      ], []);
+      service.refreshFromBaseline(
+        [
+          { id: 'p1', name: 'Project 1' },
+          { id: 'p2', name: 'Project 2' },
+        ],
+        []
+      );
 
       expect(service.projects).to.have.lengthOf(2);
     });
@@ -79,10 +82,13 @@ describe('ProjectTeamService', () => {
 
   describe('setProjectSelected', () => {
     beforeEach(() => {
-      service.initFromBaseline([
-        { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' }
-      ], []);
+      service.initFromBaseline(
+        [
+          { id: 'p1', name: 'Project 1' },
+          { id: 'p2', name: 'Project 2' },
+        ],
+        []
+      );
     });
 
     it('should set project selection and emit event', () => {
@@ -113,10 +119,13 @@ describe('ProjectTeamService', () => {
 
   describe('setTeamSelected', () => {
     beforeEach(() => {
-      service.initFromBaseline([], [
-        { id: 't1', name: 'Team 1' },
-        { id: 't2', name: 'Team 2' }
-      ]);
+      service.initFromBaseline(
+        [],
+        [
+          { id: 't1', name: 'Team 1' },
+          { id: 't2', name: 'Team 2' },
+        ]
+      );
     });
 
     it('should set team selection and emit event', () => {
@@ -137,11 +146,14 @@ describe('ProjectTeamService', () => {
 
   describe('getSelectedProjectIds', () => {
     it('should return selected project IDs', () => {
-      service.initFromBaseline([
-        { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' },
-        { id: 'p3', name: 'Project 3' }
-      ], []);
+      service.initFromBaseline(
+        [
+          { id: 'p1', name: 'Project 1' },
+          { id: 'p2', name: 'Project 2' },
+          { id: 'p3', name: 'Project 3' },
+        ],
+        []
+      );
 
       service.setProjectSelected('p1', true);
       service.setProjectSelected('p3', true);
@@ -161,10 +173,13 @@ describe('ProjectTeamService', () => {
 
   describe('getSelectedTeamIds', () => {
     it('should return selected team IDs', () => {
-      service.initFromBaseline([], [
-        { id: 't1', name: 'Team 1' },
-        { id: 't2', name: 'Team 2' }
-      ]);
+      service.initFromBaseline(
+        [],
+        [
+          { id: 't1', name: 'Team 1' },
+          { id: 't2', name: 'Team 2' },
+        ]
+      );
 
       service.setTeamSelected('t1', true);
 
@@ -176,12 +191,13 @@ describe('ProjectTeamService', () => {
 
   describe('captureCurrentFilters', () => {
     it('should capture current filter state', () => {
-      service.initFromBaseline([
-        { id: 'p1', name: 'Project 1' },
-        { id: 'p2', name: 'Project 2' }
-      ], [
-        { id: 't1', name: 'Team 1' }
-      ]);
+      service.initFromBaseline(
+        [
+          { id: 'p1', name: 'Project 1' },
+          { id: 'p2', name: 'Project 2' },
+        ],
+        [{ id: 't1', name: 'Team 1' }]
+      );
 
       service.setProjectSelected('p1', true);
       service.setTeamSelected('t1', true);
@@ -194,9 +210,9 @@ describe('ProjectTeamService', () => {
 
     it('should return empty arrays when nothing selected', () => {
       service.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
-      
+
       const filters = service.captureCurrentFilters();
-      
+
       expect(filters.projects).to.have.lengthOf(0);
       expect(filters.teams).to.have.lengthOf(0);
     });
@@ -204,11 +220,14 @@ describe('ProjectTeamService', () => {
 
   describe('computeFeatureOrgLoad', () => {
     beforeEach(() => {
-      service.initFromBaseline([], [
-        { id: 't1', name: 'Team 1' },
-        { id: 't2', name: 'Team 2' },
-        { id: 't3', name: 'Team 3' }
-      ]);
+      service.initFromBaseline(
+        [],
+        [
+          { id: 't1', name: 'Team 1' },
+          { id: 't2', name: 'Team 2' },
+          { id: 't3', name: 'Team 3' },
+        ]
+      );
       service.setTeamSelected('t1', true);
       service.setTeamSelected('t2', true);
     });
@@ -218,12 +237,12 @@ describe('ProjectTeamService', () => {
         capacity: [
           { team: 't1', capacity: 50 },
           { team: 't2', capacity: 30 },
-          { team: 't3', capacity: 20 }
-        ]
+          { team: 't3', capacity: 20 },
+        ],
       };
 
       const orgLoad = service.computeFeatureOrgLoad(feature);
-      
+
       // (50 + 30) / 3 = 26.7%
       expect(orgLoad).to.equal('26.7%');
     });
@@ -237,10 +256,10 @@ describe('ProjectTeamService', () => {
     it('should handle case with no teams', () => {
       const serviceNoTeams = new ProjectTeamService(mockBus);
       serviceNoTeams.initFromBaseline([], []);
-      
+
       const feature = { capacity: [{ team: 't1', capacity: 100 }] };
       const orgLoad = serviceNoTeams.computeFeatureOrgLoad(feature);
-      
+
       // 0 / 1 = 0% (no matching teams)
       expect(orgLoad).to.equal('0.0%');
     });
@@ -250,13 +269,13 @@ describe('ProjectTeamService', () => {
         capacity: [
           { team: 't1', capacity: 60 },
           { team: 't2', capacity: 30 },
-          { team: 't3', capacity: 90 }
-        ]
+          { team: 't3', capacity: 90 },
+        ],
       };
 
       // Only t1 and t2 are selected
       const orgLoad = service.computeFeatureOrgLoad(feature);
-      
+
       // (60 + 30) / 3 = 30%
       expect(orgLoad).to.equal('30.0%');
     });
@@ -266,14 +285,14 @@ describe('ProjectTeamService', () => {
     it('should return projects array', () => {
       const projects = [{ id: 'p1' }];
       service.initFromBaseline(projects, []);
-      
+
       expect(service.getProjects()).to.deep.equal([{ id: 'p1' }]);
     });
 
     it('should return teams array', () => {
       const teams = [{ id: 't1' }];
       service.initFromBaseline([], teams);
-      
+
       expect(service.getTeams()).to.deep.equal([{ id: 't1' }]);
     });
   });

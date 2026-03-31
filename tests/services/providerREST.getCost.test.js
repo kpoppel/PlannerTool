@@ -9,7 +9,9 @@ describe('ProviderREST getCost branches', () => {
     restoreFetch = window.fetch;
     pr._networkRetryCount = 0;
   });
-  afterEach(() => { window.fetch = restoreFetch; });
+  afterEach(() => {
+    window.fetch = restoreFetch;
+  });
 
   it('GET no payload returns parsed json', async () => {
     window.fetch = () => Promise.resolve({ ok: true, json: async () => ({ total: 42 }) });
@@ -19,10 +21,10 @@ describe('ProviderREST getCost branches', () => {
 
   it('GET no payload throws on non-ok', async () => {
     window.fetch = () => Promise.resolve({ ok: false, status: 500 });
-    try{
+    try {
       await pr.getCost();
       throw new Error('expected throw');
-    }catch(e){
+    } catch (e) {
       expect(e.message).to.contain('HTTP 500');
     }
   });
@@ -33,7 +35,10 @@ describe('ProviderREST getCost branches', () => {
       expect(opts.method).to.equal('POST');
       const body = JSON.parse(opts.body);
       expect(body.overrides).to.be.an('array');
-      return Promise.resolve({ ok: true, json: async () => ({ ok: true, count: body.overrides.length }) });
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ ok: true, count: body.overrides.length }),
+      });
     };
     const out = await pr.getCost([{ id: 'f1' }]);
     expect(out.ok).to.equal(true);
@@ -56,10 +61,10 @@ describe('ProviderREST getCost branches', () => {
 
   it('throws session_expired when _fetch signals sessionExpired', async () => {
     pr._fetch = async () => ({ sessionExpired: true });
-    try{
+    try {
       await pr.getCost();
       throw new Error('expected');
-    }catch(e){
+    } catch (e) {
       expect(e.message).to.equal('session_expired');
       expect(e.sessionExpired).to.equal(true);
     }
@@ -67,6 +72,11 @@ describe('ProviderREST getCost branches', () => {
 
   it('rethrows network errors', async () => {
     window.fetch = () => Promise.reject(new Error('no-network'));
-    try{ await pr.getCost(); throw new Error('expected'); }catch(e){ expect(e.message).to.contain('no-network'); }
+    try {
+      await pr.getCost();
+      throw new Error('expected');
+    } catch (e) {
+      expect(e.message).to.contain('no-network');
+    }
   });
 });

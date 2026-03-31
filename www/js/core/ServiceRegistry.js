@@ -24,7 +24,10 @@ export function registerCoreServices() {
   // DataService / State registration placeholders remain until those
   // modules are converted to the DI pattern.
 
-  console.log('[ServiceRegistry] Core services registered:', container.getRegisteredNames());
+  console.log(
+    '[ServiceRegistry] Core services registered:',
+    container.getRegisteredNames()
+  );
 }
 
 /**

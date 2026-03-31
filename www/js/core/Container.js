@@ -23,7 +23,7 @@ export class Container {
     this.singletons = new Map();
     this.resolving = new Set();
   }
-  
+
   /**
    * Register a service with its dependencies.
    * Purpose: declare how to construct a named service when requested.
@@ -37,7 +37,7 @@ export class Container {
   register(name, factory, deps = [], singleton = false) {
     this.services.set(name, { factory, deps, singleton });
   }
-  
+
   /**
    * Resolve a service by name.
    * Purpose: construct (or return cached) instance for `name` by
@@ -51,11 +51,12 @@ export class Container {
 
     const config = this.services.get(name);
     if (!config) throw new Error(`Service not registered: ${name}`);
-    if (this.resolving.has(name)) throw new Error(`Circular dependency detected: ${name}`);
+    if (this.resolving.has(name))
+      throw new Error(`Circular dependency detected: ${name}`);
 
     this.resolving.add(name);
     try {
-      const depInstances = config.deps.map(d => this.resolve(d));
+      const depInstances = config.deps.map((d) => this.resolve(d));
       const instance = config.factory(...depInstances);
       if (config.singleton) this.singletons.set(name, instance);
       return instance;
@@ -63,7 +64,7 @@ export class Container {
       this.resolving.delete(name);
     }
   }
-  
+
   /**
    * Check if service is registered
    * @param {string} name - Service name
@@ -72,7 +73,7 @@ export class Container {
   has(name) {
     return this.services.has(name);
   }
-  
+
   /**
    * Reset container (for testing)
    */
@@ -81,7 +82,7 @@ export class Container {
     this.singletons.clear();
     this.resolving.clear();
   }
-  
+
   /**
    * Get all registered service names
    * @returns {Array<string>}

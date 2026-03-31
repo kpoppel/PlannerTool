@@ -17,7 +17,7 @@ export const TOOLS = {
   NOTE: 'note',
   RECT: 'rect',
   LINE: 'line',
-  ICON: 'icon'
+  ICON: 'icon',
 };
 
 export const TOOL_DEFINITIONS = [
@@ -26,36 +26,36 @@ export const TOOL_DEFINITIONS = [
     name: 'Select',
     icon: '↖',
     cursor: 'default',
-    description: 'Select and move annotations'
+    description: 'Select and move annotations',
   },
   {
     id: TOOLS.NOTE,
     name: 'Note',
     icon: '📝',
     cursor: 'text',
-    description: 'Add a text note'
+    description: 'Add a text note',
   },
   {
     id: TOOLS.RECT,
     name: 'Rectangle',
     icon: '▢',
     cursor: 'crosshair',
-    description: 'Draw a rectangle'
+    description: 'Draw a rectangle',
   },
   {
     id: TOOLS.LINE,
     name: 'Line',
     icon: '↗',
     cursor: 'crosshair',
-    description: 'Draw a line or arrow'
-  }
-  ,{
+    description: 'Draw a line or arrow',
+  },
+  {
     id: TOOLS.ICON,
     name: 'Icon',
     icon: '⭐',
     cursor: 'pointer',
-    description: 'Place a small icon marker'
-  }
+    description: 'Place a small icon marker',
+  },
 ];
 
 // ============================================================================
@@ -83,7 +83,7 @@ export function createNoteAnnotation(dateMs, y, text = 'Note', options = {}) {
     text,
     fill: options.fill || color.fill,
     stroke: options.stroke || color.stroke,
-    fontSize: options.fontSize || 12
+    fontSize: options.fontSize || 12,
   };
 }
 
@@ -108,7 +108,7 @@ export function createRectAnnotation(dateMs, y, width, height, options = {}) {
     height,
     fill: options.fill || 'transparent',
     stroke: options.stroke || color.stroke,
-    strokeWidth: options.strokeWidth || 2
+    strokeWidth: options.strokeWidth || 2,
   };
 }
 
@@ -131,7 +131,7 @@ export function createLineAnnotation(date1, y1, date2, y2, options = {}) {
     y2,
     stroke: options.stroke || ANNOTATION_COLORS.lineColor,
     strokeWidth: options.strokeWidth || 2,
-    arrow: options.arrow !== undefined ? options.arrow : true
+    arrow: options.arrow !== undefined ? options.arrow : true,
   };
 }
 
@@ -149,7 +149,7 @@ export function createIconAnnotation(dateMs, y, icon = '⭐', options = {}) {
     date: dateMs,
     y,
     icon: icon,
-    size: options.size || 18
+    size: options.size || 18,
   };
 }
 
@@ -166,31 +166,31 @@ export class AnnotationState {
     this._currentIcon = '⭐';
     this._listeners = new Set();
     this._enabled = false;
-    
+
     // Load persisted annotations
     this._annotations = loadAnnotations();
   }
-  
+
   // ---------------------------
   // Getters
   // ---------------------------
-  
+
   get annotations() {
     return [...this._annotations];
   }
-  
+
   get selectedId() {
     return this._selectedId;
   }
-  
+
   get selectedAnnotation() {
-    return this._annotations.find(a => a.id === this._selectedId) || null;
+    return this._annotations.find((a) => a.id === this._selectedId) || null;
   }
-  
+
   get currentTool() {
     return this._currentTool;
   }
-  
+
   get currentColor() {
     return this._currentColor;
   }
@@ -198,30 +198,30 @@ export class AnnotationState {
   get currentIcon() {
     return this._currentIcon;
   }
-  
+
   get enabled() {
     return this._enabled;
   }
-  
+
   get count() {
     return this._annotations.length;
   }
-  
+
   // ---------------------------
   // Enable/Disable
   // ---------------------------
-  
+
   enable() {
     this._enabled = true;
     this._notify();
   }
-  
+
   disable() {
     this._enabled = false;
     this._selectedId = null;
     this._notify();
   }
-  
+
   toggle() {
     if (this._enabled) {
       this.disable();
@@ -229,18 +229,18 @@ export class AnnotationState {
       this.enable();
     }
   }
-  
+
   // ---------------------------
   // Setters / Mutators
   // ---------------------------
-  
+
   setTool(tool) {
     if (Object.values(TOOLS).includes(tool)) {
       this._currentTool = tool;
       this._notify();
     }
   }
-  
+
   setColor(color) {
     this._currentColor = color;
     this._notify();
@@ -250,30 +250,30 @@ export class AnnotationState {
     this._currentIcon = icon;
     this._notify();
   }
-  
+
   select(id) {
     this._selectedId = id;
     this._notify();
   }
-  
+
   deselect() {
     this._selectedId = null;
     this._notify();
   }
-  
+
   // ---------------------------
   // CRUD Operations
   // ---------------------------
-  
+
   add(annotation) {
     this._annotations.push(annotation);
     this._persist();
     this._notify();
     return annotation;
   }
-  
+
   update(id, updates) {
-    const idx = this._annotations.findIndex(a => a.id === id);
+    const idx = this._annotations.findIndex((a) => a.id === id);
     if (idx !== -1) {
       this._annotations[idx] = { ...this._annotations[idx], ...updates };
       this._persist();
@@ -282,9 +282,9 @@ export class AnnotationState {
     }
     return null;
   }
-  
+
   remove(id) {
-    const idx = this._annotations.findIndex(a => a.id === id);
+    const idx = this._annotations.findIndex((a) => a.id === id);
     if (idx !== -1) {
       const removed = this._annotations.splice(idx, 1)[0];
       if (this._selectedId === id) {
@@ -296,34 +296,42 @@ export class AnnotationState {
     }
     return null;
   }
-  
+
   clear() {
     this._annotations = [];
     this._selectedId = null;
     this._persist();
     this._notify();
   }
-  
+
   // ---------------------------
   // Move / Resize helpers
   // ---------------------------
-  
+
   move(id, dx, dy) {
-    const ann = this._annotations.find(a => a.id === id);
+    const ann = this._annotations.find((a) => a.id === id);
     if (!ann) return null;
-    
+
     // If annotation uses date-based X, convert dx (pixels) to date shift
-    const monthWidth = (TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth) ? TIMELINE_CONFIG.monthWidth : 120;
+    const monthWidth =
+      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
     const months = getTimelineMonths() || [];
     const boardOffset = getBoardOffset() || 0;
 
     const contentXForDate = (dateMs) => {
       if (!months.length) return boardOffset;
       const d = new Date(dateMs);
-      let idx = months.findIndex(m => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
-      if (idx === -1) idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
+      let idx = months.findIndex(
+        (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
+      );
+      if (idx === -1)
+        idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
       const monthStart = months[idx];
-      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      const daysInMonth = new Date(
+        monthStart.getFullYear(),
+        monthStart.getMonth() + 1,
+        0
+      ).getDate();
       const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
       return Math.round(boardOffset + (idx + fraction) * monthWidth);
     };
@@ -335,61 +343,68 @@ export class AnnotationState {
       if (idx < 0) idx = 0;
       if (idx >= months.length) idx = months.length - 1;
       const monthStart = months[idx];
-      const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      const daysInMonth = new Date(
+        monthStart.getFullYear(),
+        monthStart.getMonth() + 1,
+        0
+      ).getDate();
       const fraction = rel - idx;
-      const day = Math.max(1, Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1));
+      const day = Math.max(
+        1,
+        Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1)
+      );
       const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
       return date.getTime();
     };
 
     if (ann.type === 'line') {
       // Move both endpoints horizontally by dx -> convert to date shift
-      const x1 = ann.date1 ? contentXForDate(ann.date1) : (ann.x1 || 0);
-      const x2 = ann.date2 ? contentXForDate(ann.date2) : (ann.x2 || 0);
+      const x1 = ann.date1 ? contentXForDate(ann.date1) : ann.x1 || 0;
+      const x2 = ann.date2 ? contentXForDate(ann.date2) : ann.x2 || 0;
       const newDate1 = contentXToDateMs(x1 + dx);
       const newDate2 = contentXToDateMs(x2 + dx);
       return this.update(id, {
         date1: newDate1,
         y1: ann.y1 + dy,
         date2: newDate2,
-        y2: ann.y2 + dy
+        y2: ann.y2 + dy,
       });
     } else {
-      const x = ann.date ? contentXForDate(ann.date) : (ann.x || 0);
+      const x = ann.date ? contentXForDate(ann.date) : ann.x || 0;
       const newDate = contentXToDateMs(x + dx);
       return this.update(id, {
         date: newDate,
-        y: ann.y + dy
+        y: ann.y + dy,
       });
     }
   }
-  
+
   resize(id, width, height) {
     return this.update(id, { width, height });
   }
-  
+
   // ---------------------------
   // Persistence
   // ---------------------------
-  
+
   _persist() {
     saveAnnotations(this._annotations);
   }
-  
+
   reload() {
     this._annotations = loadAnnotations();
     this._notify();
   }
-  
+
   // ---------------------------
   // Change notification
   // ---------------------------
-  
+
   subscribe(callback) {
     this._listeners.add(callback);
     return () => this._listeners.delete(callback);
   }
-  
+
   _notify() {
     for (const listener of this._listeners) {
       try {

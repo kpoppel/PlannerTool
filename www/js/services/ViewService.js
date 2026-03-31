@@ -2,13 +2,13 @@
  * Module: ViewService
  * Intent: Manage all view-related state (timeline scale, visibility toggles, view modes, sort modes)
  * Purpose: Extract view state management from State.js to reduce coupling and improve testability
- * 
+ *
  * Responsibilities:
  * - Maintain view state properties (timelineScale, showEpics, showFeatures, condensedCards, etc.)
  * - Emit appropriate events when view state changes
  * - Provide getters/setters for view properties
  * - Capture current view state for scenario persistence
- * 
+ *
  * Events emitted:
  * - TimelineEvents.SCALE_CHANGED: when timeline scale changes
  * - FilterEvents.CHANGED: when showEpics/showFeatures changes
@@ -19,11 +19,11 @@
  * - FeatureEvents.UPDATED: trigger feature re-render when view affects display
  */
 
-import { 
-  TimelineEvents, 
-  FilterEvents, 
-  ViewEvents, 
-  FeatureEvents 
+import {
+  TimelineEvents,
+  FilterEvents,
+  ViewEvents,
+  FeatureEvents,
 } from '../core/EventRegistry.js';
 // Local monthWidth mapping to avoid circular import with Timeline component
 function getMonthWidthForScale(scale) {
@@ -32,15 +32,20 @@ function getMonthWidthForScale(scale) {
     months: 120,
     threeMonths: null,
     quarters: 60,
-    years: 30
+    years: 30,
   };
-  if (scale === 'threeMonths'){
-    try{
-      const section = typeof document !== 'undefined' ? document.getElementById('timelineSection') : null;
-      if(section && section.clientWidth){
+  if (scale === 'threeMonths') {
+    try {
+      const section =
+        typeof document !== 'undefined' ?
+          document.getElementById('timelineSection')
+        : null;
+      if (section && section.clientWidth) {
         return Math.max(30, Math.floor(section.clientWidth / 3));
       }
-    }catch(e){/* ignore */}
+    } catch (e) {
+      /* ignore */
+    }
     return 120;
   }
   return ZOOM_LEVELS[scale] ?? 120;
@@ -53,10 +58,10 @@ export class ViewService {
    */
   constructor(bus) {
     this.bus = bus;
-    
+
     // Timeline properties
     this._timelineScale = 'months';
-    
+
     // Visibility toggles
     this._showEpics = true;
     this._showFeatures = true;
@@ -64,7 +69,7 @@ export class ViewService {
     this._showUnassignedCards = true; // Show features without capacity by default
     this._showUnplannedWork = true; // Show features without dates by default (when feature flag is ON)
     this._showOnlyProjectHierarchy = false; // Show only features hierarchically linked to selected projects
-    
+
     // Display modes
     this._condensedCards = false;
     this._capacityViewMode = 'team'; // 'team' | 'project'
@@ -72,9 +77,9 @@ export class ViewService {
     //TODO: Wire this into the sidepanel:
     this._highlightFeatureRelationMode = true; // If true, highlight features when clicked.
   }
-  
+
   // ========== Timeline Scale ==========
-  
+
   /**
    * Get current timeline scale
    * @returns {string} 'weeks' | 'months' | 'quarters' | 'years'
@@ -82,7 +87,7 @@ export class ViewService {
   get timelineScale() {
     return this._timelineScale;
   }
-  
+
   /**
    * Set timeline scale and emit change event
    * @param {string} scale - Timeline scale ('weeks', 'months', 'quarters', 'years')
@@ -99,12 +104,16 @@ export class ViewService {
     const monthWidth = getMonthWidthForScale(scale);
     // emit unless suppressed
     if (!arguments[1]) {
-      this.bus.emit(TimelineEvents.SCALE_CHANGED, { scale, monthWidth, oldScale });
+      this.bus.emit(TimelineEvents.SCALE_CHANGED, {
+        scale,
+        monthWidth,
+        oldScale,
+      });
     }
   }
-  
+
   // ========== Visibility Toggles ==========
-  
+
   /**
    * Get whether epics are visible
    * @returns {boolean}
@@ -112,7 +121,7 @@ export class ViewService {
   get showEpics() {
     return this._showEpics;
   }
-  
+
   /**
    * Set epic visibility and emit change events
    * @param {boolean} val - Whether to show epics
@@ -120,14 +129,14 @@ export class ViewService {
   setShowEpics(val) {
     this._showEpics = !!val;
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, { 
-        showEpics: this._showEpics, 
-        showFeatures: this._showFeatures 
+      this.bus.emit(FilterEvents.CHANGED, {
+        showEpics: this._showEpics,
+        showFeatures: this._showFeatures,
       });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get whether features are visible
    * @returns {boolean}
@@ -135,7 +144,7 @@ export class ViewService {
   get showFeatures() {
     return this._showFeatures;
   }
-  
+
   /**
    * Set feature visibility and emit change events
    * @param {boolean} val - Whether to show features
@@ -143,14 +152,14 @@ export class ViewService {
   setShowFeatures(val) {
     this._showFeatures = !!val;
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, { 
-        showEpics: this._showEpics, 
-        showFeatures: this._showFeatures 
+      this.bus.emit(FilterEvents.CHANGED, {
+        showEpics: this._showEpics,
+        showFeatures: this._showFeatures,
       });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get whether dependencies are visible
    * @returns {boolean}
@@ -158,7 +167,7 @@ export class ViewService {
   get showDependencies() {
     return this._showDependencies;
   }
-  
+
   /**
    * Set dependency visibility and emit change events
    * @param {boolean} val - Whether to show dependencies
@@ -171,7 +180,7 @@ export class ViewService {
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get whether unassigned cards (features without capacity) are visible
    * @returns {boolean}
@@ -179,7 +188,7 @@ export class ViewService {
   get showUnassignedCards() {
     return this._showUnassignedCards;
   }
-  
+
   /**
    * Set unassigned cards visibility and emit change events
    * @param {boolean} val - Whether to show features without capacity
@@ -188,13 +197,13 @@ export class ViewService {
     this._showUnassignedCards = !!val;
     console.debug('[ViewService] setShowUnallocatedCards ->', this._showUnassignedCards);
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, { 
-        showUnassignedCards: this._showUnassignedCards 
+      this.bus.emit(FilterEvents.CHANGED, {
+        showUnassignedCards: this._showUnassignedCards,
       });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get whether unplanned work (features without dates) is visible
    * @returns {boolean}
@@ -202,7 +211,7 @@ export class ViewService {
   get showUnplannedWork() {
     return this._showUnplannedWork;
   }
-  
+
   /**
    * Set unplanned work visibility and emit change events
    * @param {boolean} val - Whether to show features without dates
@@ -211,13 +220,13 @@ export class ViewService {
     this._showUnplannedWork = !!val;
     console.debug('[ViewService] setShowUnplannedWork ->', this._showUnplannedWork);
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, { 
-        showUnplannedWork: this._showUnplannedWork 
+      this.bus.emit(FilterEvents.CHANGED, {
+        showUnplannedWork: this._showUnplannedWork,
       });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get whether to show only features hierarchically linked to selected projects
    * @returns {boolean}
@@ -233,15 +242,15 @@ export class ViewService {
   setShowOnlyProjectHierarchy(val) {
     this._showOnlyProjectHierarchy = !!val;
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, { 
-        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy 
+      this.bus.emit(FilterEvents.CHANGED, {
+        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
       });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
 
   // ========== Display Modes ==========
-  
+
   /**
    * Get whether condensed card mode is enabled
    * @returns {boolean}
@@ -249,7 +258,7 @@ export class ViewService {
   get condensedCards() {
     return this._condensedCards;
   }
-  
+
   /**
    * Set condensed card mode and emit change events
    * @param {boolean} val - Whether to use condensed cards
@@ -261,7 +270,7 @@ export class ViewService {
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get capacity view mode
    * @returns {string} 'team' | 'project'
@@ -269,7 +278,7 @@ export class ViewService {
   get capacityViewMode() {
     return this._capacityViewMode;
   }
-  
+
   /**
    * Set capacity view mode and emit change events
    * @param {string} mode - View mode ('team' | 'project')
@@ -283,7 +292,7 @@ export class ViewService {
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   /**
    * Get feature sort mode
    * @returns {string} 'rank' | 'date'
@@ -291,7 +300,7 @@ export class ViewService {
   get featureSortMode() {
     return this._featureSortMode;
   }
-  
+
   /**
    * Set feature sort mode and emit change events
    * @param {string} mode - Sort mode ('rank' | 'date')
@@ -305,7 +314,7 @@ export class ViewService {
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
-  
+
   get highlightFeatureRelationMode() {
     return this._highlightFeatureRelationMode;
   }
@@ -318,7 +327,7 @@ export class ViewService {
     }
   }
   // ========== State Capture ==========
-  
+
   /**
    * Capture current view state for scenario persistence
    * @returns {Object} View state snapshot
@@ -335,10 +344,10 @@ export class ViewService {
       timelineScale: this._timelineScale,
       showEpics: this._showEpics,
       showFeatures: this._showFeatures,
-      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
+      showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
     };
   }
-  
+
   /**
    * Restore view state from snapshot (e.g., when activating a scenario)
    * @param {Object} viewState - View state snapshot
@@ -351,16 +360,24 @@ export class ViewService {
   applyViewStateSilently(viewState) {
     if (!viewState) return;
     if (viewState.capacityViewMode) this._capacityViewMode = viewState.capacityViewMode;
-    if (typeof viewState.condensedCards !== 'undefined') this._condensedCards = !!viewState.condensedCards;
+    if (typeof viewState.condensedCards !== 'undefined')
+      this._condensedCards = !!viewState.condensedCards;
     if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
-    if (typeof viewState.highlightFeatureRelationMode !== 'undefined') this._highlightFeatureRelationMode = !!viewState.highlightFeatureRelationMode;
-    if (typeof viewState.showUnassignedCards !== 'undefined') this._showUnassignedCards = !!viewState.showUnassignedCards;
-    if (typeof viewState.showDependencies !== 'undefined') this._showDependencies = !!viewState.showDependencies;
-    if (typeof viewState.showUnplannedWork !== 'undefined') this._showUnplannedWork = !!viewState.showUnplannedWork;
+    if (typeof viewState.highlightFeatureRelationMode !== 'undefined')
+      this._highlightFeatureRelationMode = !!viewState.highlightFeatureRelationMode;
+    if (typeof viewState.showUnassignedCards !== 'undefined')
+      this._showUnassignedCards = !!viewState.showUnassignedCards;
+    if (typeof viewState.showDependencies !== 'undefined')
+      this._showDependencies = !!viewState.showDependencies;
+    if (typeof viewState.showUnplannedWork !== 'undefined')
+      this._showUnplannedWork = !!viewState.showUnplannedWork;
     if (viewState.timelineScale) this._timelineScale = viewState.timelineScale;
-    if (typeof viewState.showEpics !== 'undefined') this._showEpics = !!viewState.showEpics;
-    if (typeof viewState.showFeatures !== 'undefined') this._showFeatures = !!viewState.showFeatures;
-    if (typeof viewState.showOnlyProjectHierarchy !== 'undefined') this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
+    if (typeof viewState.showEpics !== 'undefined')
+      this._showEpics = !!viewState.showEpics;
+    if (typeof viewState.showFeatures !== 'undefined')
+      this._showFeatures = !!viewState.showFeatures;
+    if (typeof viewState.showOnlyProjectHierarchy !== 'undefined')
+      this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
   }
 
   /**
@@ -379,7 +396,7 @@ export class ViewService {
         showFeatures: this._showFeatures,
         showUnassignedCards: this._showUnassignedCards,
         showUnplannedWork: this._showUnplannedWork,
-        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy
+        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
       });
       this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
       this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);

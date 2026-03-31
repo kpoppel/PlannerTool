@@ -9,7 +9,9 @@ describe('Color manager utilities', () => {
 
   it('emits ColorEvents.CHANGED when color change occurs', async () => {
     const busMod = await import('../../www/js/core/EventBus.js?b=' + Math.random());
-    const { ColorEvents } = await import('../../www/js/core/EventRegistry.js?b=' + Math.random());
+    const { ColorEvents } = await import(
+      '../../www/js/core/EventRegistry.js?b=' + Math.random()
+    );
     const bus = busMod.bus;
 
     if (bus.listeners && typeof bus.listeners.clear === 'function') bus.listeners.clear();
@@ -17,7 +19,11 @@ describe('Color manager utilities', () => {
     bus.on(ColorEvents.CHANGED, (p) => events.push(p));
 
     // simulate a color change notification
-    bus.emit(ColorEvents.CHANGED, { entityType: 'project', id: 'p1', color: '#111111' });
+    bus.emit(ColorEvents.CHANGED, {
+      entityType: 'project',
+      id: 'p1',
+      color: '#111111',
+    });
     expect(events.length).to.equal(1);
   });
 });

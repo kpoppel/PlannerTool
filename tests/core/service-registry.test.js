@@ -20,7 +20,11 @@ describe('ServiceRegistry integration', () => {
 
     // attempt to get non-existent service should throw
     let threw = false;
-    try { getService('NonExistentService'); } catch (e) { threw = true; }
+    try {
+      getService('NonExistentService');
+    } catch (e) {
+      threw = true;
+    }
     expect(threw).to.equal(true);
   });
 });

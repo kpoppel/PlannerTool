@@ -22,10 +22,18 @@ describe('details-panel', () => {
   });
 
   it('opens when bus emits DETAILS_SHOW', async () => {
-    const feature = { id: 'f1', title: 'F1', start: '2025-01-01', end: '2025-02-01', state: 'New', capacity: [{ team: 't1', capacity: 50 }], orgLoad: '10%' };
+    const feature = {
+      id: 'f1',
+      title: 'F1',
+      start: '2025-01-01',
+      end: '2025-02-01',
+      state: 'New',
+      capacity: [{ team: 't1', capacity: 50 }],
+      orgLoad: '10%',
+    };
     bus.emit(UIEvents.DETAILS_SHOW, feature);
     // allow event loop
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
     expect(panel.open).to.be.true;
     expect(panel.feature).to.equal(feature);
   });
@@ -33,7 +41,7 @@ describe('details-panel', () => {
   it('_renderField shows original when changed', () => {
     panel.feature = { original: { start: '2025-01-01' } };
     // Render the template result into a container using lit render
-    const tpl = panel._renderField('Start Date','start','2025-02-01');
+    const tpl = panel._renderField('Start Date', 'start', '2025-02-01');
     const container = document.createElement('div');
     render(tpl, container);
     expect(container.innerHTML).to.include('was');

@@ -1,28 +1,42 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { ProjectEvents, TeamEvents, TimelineEvents, FeatureEvents, FilterEvents, ScenarioEvents, ViewEvents, AppEvents, UIEvents } from '../core/EventRegistry.js';
+import {
+  ProjectEvents,
+  TeamEvents,
+  TimelineEvents,
+  FeatureEvents,
+  FilterEvents,
+  ScenarioEvents,
+  ViewEvents,
+  AppEvents,
+  UIEvents,
+} from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
- 
+
 // Helper to locate elements inside timeline-board's render root when TimelineBoard
 // uses shadow DOM. Falls back to document queries for older behavior.
-function findInBoard(selector){
-  try{
+function findInBoard(selector) {
+  try {
     const boardEl = document.querySelector('timeline-board');
-    if(boardEl){
+    if (boardEl) {
       const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
       const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if(found) return found;
+      if (found) return found;
     }
-  }catch(e){}
-  return document.querySelector(selector) || document.getElementById(selector.replace(/^#/,'')) || null;
+  } catch (e) {}
+  return (
+    document.querySelector(selector) ||
+    document.getElementById(selector.replace(/^#/, '')) ||
+    null
+  );
 }
 
 class FeatureBoard extends LitElement {
   static properties = {
-    features: { type: Array }
+    features: { type: Array },
   };
 
   constructor() {
@@ -40,50 +54,67 @@ class FeatureBoard extends LitElement {
       overflow: auto;
       padding: 0;
       /* Alternating month background aligned with card lanes */
-      background:
-        repeating-linear-gradient(to right,
-          var(--color-bg, #f7f7f7) 0,
-          var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
-          var(--color-month-alt, #ececec) var(--timeline-month-width, 120px),
-          var(--color-month-alt, #ececec) calc(var(--timeline-month-width, 120px) * 2)
-        );
+      background: repeating-linear-gradient(
+        to right,
+        var(--color-bg, #f7f7f7) 0,
+        var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
+        var(--color-month-alt, #ececec) var(--timeline-month-width, 120px),
+        var(--color-month-alt, #ececec) calc(var(--timeline-month-width, 120px) * 2)
+      );
       background-position: 0 0; /* align stripes with card origin */
     }
 
     /* Keep native vertical scrollbar sizing unchanged (restore previous styling) */
-    :host::-webkit-scrollbar { width: 12px; height: 12px; }
-    :host { scrollbar-width: auto; }
+    :host::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+    :host {
+      scrollbar-width: auto;
+    }
 
     /* Placeholder styles for internal controls (we render fixed controls in body) */
-    .scroll-controls { display: none; }
+    .scroll-controls {
+      display: none;
+    }
 
     .scroll-button {
       width: 36px;
       height: 36px;
       border-radius: 18px;
-      background: rgba(255,255,255,0.9);
-      border: 1px solid rgba(0,0,0,0.08);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       color: #333;
-      transition: transform 120ms ease, background 120ms ease;
+      transition:
+        transform 120ms ease,
+        background 120ms ease;
     }
 
-    .scroll-button:hover { transform: translateY(-2px); }
-    .scroll-button:active { transform: translateY(0); }
+    .scroll-button:hover {
+      transform: translateY(-2px);
+    }
+    .scroll-button:active {
+      transform: translateY(0);
+    }
 
-    .scroll-button[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+    .scroll-button[aria-disabled='true'] {
+      opacity: 0.5;
+      pointer-events: none;
+    }
     :host(.scenario-mode) {
-      background:
-        repeating-linear-gradient(to right,
-          var(--color-bg, #f7f7f7) 0,
-          var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
-          var(--color-month-alt-scenario, #e2e2e2) var(--timeline-month-width, 120px),
-          var(--color-month-alt-scenario, #e2e2e2) calc(var(--timeline-month-width, 120px) * 2)
-        );
+      background: repeating-linear-gradient(
+        to right,
+        var(--color-bg, #f7f7f7) 0,
+        var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
+        var(--color-month-alt-scenario, #e2e2e2) var(--timeline-month-width, 120px),
+        var(--color-month-alt-scenario, #e2e2e2)
+          calc(var(--timeline-month-width, 120px) * 2)
+      );
       background-position: 0 0;
     }
   `;
@@ -95,7 +126,11 @@ class FeatureBoard extends LitElement {
     }
     // Defer creating the fixed scrollbar so document.body exists
     try {
-      requestAnimationFrame(() => { try { this._ensureFixedScrollbar(); } catch (e) {} });
+      requestAnimationFrame(() => {
+        try {
+          this._ensureFixedScrollbar();
+        } catch (e) {}
+      });
     } catch (e) {}
   }
 
@@ -104,7 +139,7 @@ class FeatureBoard extends LitElement {
     let features = state.getEffectiveFeatures();
     if (!features) features = [];
     const idKey = (v) => String(v);
-    const byId = new Map(features.map(f => [idKey(f.id), f]));
+    const byId = new Map(features.map((f) => [idKey(f.id), f]));
 
     // children map
     const childrenMap = new Map();
@@ -127,22 +162,34 @@ class FeatureBoard extends LitElement {
       // parent
       if (f.parentEpic) {
         const p = idKey(f.parentEpic);
-        if (!seen.has(p)) { seen.add(p); q.push(p); }
+        if (!seen.has(p)) {
+          seen.add(p);
+          q.push(p);
+        }
       }
       // children
       const kids = childrenMap.get(cur) || [];
       for (const c of kids) {
         const cid = idKey(c.id);
-        if (!seen.has(cid)) { seen.add(cid); q.push(cid); }
+        if (!seen.has(cid)) {
+          seen.add(cid);
+          q.push(cid);
+        }
       }
       // relations (All types except "Related" which is too broad/noisy)
       if (Array.isArray(f.relations)) {
         for (const rel of f.relations) {
           let other = null;
-          if (['Parent', 'Child', 'Successor', 'Predecessor'].includes(rel.type) && rel.id) {
+          if (
+            ['Parent', 'Child', 'Successor', 'Predecessor'].includes(rel.type) &&
+            rel.id
+          ) {
             other = idKey(rel.id);
           }
-          if (other && !seen.has(other)) { seen.add(other); q.push(other); }
+          if (other && !seen.has(other)) {
+            seen.add(other);
+            q.push(other);
+          }
         }
       }
     }
@@ -154,25 +201,33 @@ class FeatureBoard extends LitElement {
     if (!this.features?.length) {
       return html`<slot></slot>`;
     }
-    return html`${this.features.map(featureObj => html`<feature-card-lit
-        .feature=${featureObj.feature}
-        .bus=${bus}
-        .teams=${featureObj.teams}
-        .condensed=${featureObj.condensed}
-        .project=${featureObj.project}
-        style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
-      ></feature-card-lit>`)}
-    `;
+    return html`${this.features.map(
+      (featureObj) =>
+        html`<feature-card-lit
+          .feature=${featureObj.feature}
+          .bus=${bus}
+          .teams=${featureObj.teams}
+          .condensed=${featureObj.condensed}
+          .project=${featureObj.project}
+          style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
+        ></feature-card-lit>`
+    )} `;
   }
 
   _scrollToTop() {
-    try { this.scrollTo({ top: 0, behavior: 'smooth' }); }
-    catch (e) { this.scrollTop = 0; }
+    try {
+      this.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      this.scrollTop = 0;
+    }
   }
 
   _scrollToBottom() {
-    try { this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' }); }
-    catch (e) { this.scrollTop = this.scrollHeight || 0; }
+    try {
+      this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
+    } catch (e) {
+      this.scrollTop = this.scrollHeight || 0;
+    }
   }
 
   disconnectedCallback() {
@@ -181,7 +236,9 @@ class FeatureBoard extends LitElement {
       bus.off(event, handler);
     });
     this._boundHandlers.clear();
-    try { this._destroyFixedScrollbar?.(); } catch (e) {}
+    try {
+      this._destroyFixedScrollbar?.();
+    } catch (e) {}
   }
 
   // ---- Fixed scrollbar ----
@@ -193,23 +250,38 @@ class FeatureBoard extends LitElement {
     rail.className = 'fb-fixed-rail';
     rail.setAttribute('aria-hidden', 'false');
     Object.assign(rail.style, {
-      position: 'fixed', right: '4px', top: '72px', bottom: '20px',
-      width: '12px', zIndex: 29, pointerEvents: 'auto'
+      position: 'fixed',
+      right: '4px',
+      top: '72px',
+      bottom: '20px',
+      width: '12px',
+      zIndex: 29,
+      pointerEvents: 'auto',
     });
 
     const thumb = document.createElement('div');
     thumb.className = 'fb-fixed-thumb';
     Object.assign(thumb.style, {
-      position: 'absolute', left: '0px', width: '100%',
-      borderRadius: '6px', background: 'rgba(0,0,0,0.12)', cursor: 'pointer'
+      position: 'absolute',
+      left: '0px',
+      width: '100%',
+      borderRadius: '6px',
+      background: 'rgba(0,0,0,0.12)',
+      cursor: 'pointer',
     });
     rail.appendChild(thumb);
 
     const controls = document.createElement('div');
     controls.className = 'fb-fixed-controls';
     Object.assign(controls.style, {
-      position: 'fixed', right: '16px', top: '50%', transform: 'translateY(-50%)',
-      display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 29
+      position: 'fixed',
+      right: '16px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: 29,
     });
 
     const btnTop = document.createElement('button');
@@ -217,8 +289,12 @@ class FeatureBoard extends LitElement {
     btnTop.title = 'Scroll to top';
     btnTop.innerText = '\u25B2';
     Object.assign(btnTop.style, {
-      width: '36px', height: '36px', borderRadius: '18px',
-      border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+      width: '36px',
+      height: '36px',
+      borderRadius: '18px',
+      border: '1px solid rgba(0,0,0,0.08)',
+      background: 'white',
+      cursor: 'pointer',
     });
 
     const btnBottom = document.createElement('button');
@@ -226,8 +302,12 @@ class FeatureBoard extends LitElement {
     btnBottom.title = 'Scroll to bottom';
     btnBottom.innerText = '\u25BC';
     Object.assign(btnBottom.style, {
-      width: '36px', height: '36px', borderRadius: '18px',
-      border: '1px solid rgba(0,0,0,0.08)', background: 'white', cursor: 'pointer'
+      width: '36px',
+      height: '36px',
+      borderRadius: '18px',
+      border: '1px solid rgba(0,0,0,0.08)',
+      background: 'white',
+      cursor: 'pointer',
     });
 
     controls.appendChild(btnTop);
@@ -244,24 +324,42 @@ class FeatureBoard extends LitElement {
     controls.style.pointerEvents = 'none';
 
     const onScroll = () => this._updateFixedThumb();
-    const onResize = () => { this._updateRailPosition(); this._updateFixedThumb(); };
-    const onDetailsShow = () => { try { hideRail(); this._detailsOpen = true; } catch (e) {} };
-    const onDetailsHide = () => { try { showRail(); this._detailsOpen = false; this._updateFixedThumb(); } catch (e) {} };
+    const onResize = () => {
+      this._updateRailPosition();
+      this._updateFixedThumb();
+    };
+    const onDetailsShow = () => {
+      try {
+        hideRail();
+        this._detailsOpen = true;
+      } catch (e) {}
+    };
+    const onDetailsHide = () => {
+      try {
+        showRail();
+        this._detailsOpen = false;
+        this._updateFixedThumb();
+      } catch (e) {}
+    };
 
     let hideTimer = null;
     const proximityPx = 50;
     const showRail = () => {
       try {
         if (this._dragging) return;
-        rail.style.opacity = '1'; rail.style.pointerEvents = 'auto';
-        controls.style.opacity = '1'; controls.style.pointerEvents = 'auto';
+        rail.style.opacity = '1';
+        rail.style.pointerEvents = 'auto';
+        controls.style.opacity = '1';
+        controls.style.pointerEvents = 'auto';
       } catch (e) {}
     };
     const hideRail = () => {
       try {
         if (this._dragging) return;
-        rail.style.opacity = '0'; rail.style.pointerEvents = 'none';
-        controls.style.opacity = '0'; controls.style.pointerEvents = 'none';
+        rail.style.opacity = '0';
+        rail.style.pointerEvents = 'none';
+        controls.style.opacity = '0';
+        controls.style.pointerEvents = 'none';
       } catch (e) {}
     };
     const onMouseMove = (ev) => {
@@ -269,15 +367,33 @@ class FeatureBoard extends LitElement {
         const vw = window.innerWidth || document.documentElement.clientWidth;
         if (vw - ev.clientX <= proximityPx) {
           showRail();
-          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+          if (hideTimer) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+          }
         } else {
           if (hideTimer) clearTimeout(hideTimer);
-          hideTimer = setTimeout(() => { hideRail(); hideTimer = null; }, 10);
+          hideTimer = setTimeout(() => {
+            hideRail();
+            hideTimer = null;
+          }, 10);
         }
       } catch (e) {}
     };
-    const onRailEnter = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } showRail(); };
-    const onRailLeave = () => { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(() => { hideRail(); hideTimer = null; }, 10); };
+    const onRailEnter = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      showRail();
+    };
+    const onRailLeave = () => {
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        hideRail();
+        hideTimer = null;
+      }, 10);
+    };
 
     thumb.addEventListener('pointerdown', (e) => this._startThumbDrag(e));
     btnTop.addEventListener('click', () => this._scrollToTop());
@@ -287,12 +403,23 @@ class FeatureBoard extends LitElement {
     document.addEventListener('mousemove', onMouseMove);
     rail.addEventListener('pointerenter', onRailEnter);
     rail.addEventListener('pointerleave', onRailLeave);
-    try { bus.on(UIEvents.DETAILS_SHOW, onDetailsShow); bus.on(UIEvents.DETAILS_HIDE, onDetailsHide); } catch (e) {}
+    try {
+      bus.on(UIEvents.DETAILS_SHOW, onDetailsShow);
+      bus.on(UIEvents.DETAILS_HIDE, onDetailsHide);
+    } catch (e) {}
 
     this._fixedRail = rail;
     this._fixedThumb = thumb;
     this._fixedControls = controls;
-    this._fixedHandlers = { onScroll, onResize, onMouseMove, onRailEnter, onRailLeave, onDetailsShow, onDetailsHide };
+    this._fixedHandlers = {
+      onScroll,
+      onResize,
+      onMouseMove,
+      onRailEnter,
+      onRailLeave,
+      onDetailsShow,
+      onDetailsHide,
+    };
     this._updateRailPosition();
     this._updateFixedThumb();
   }
@@ -311,15 +438,31 @@ class FeatureBoard extends LitElement {
   }
 
   _destroyFixedScrollbar() {
-    try { this._fixedRail?.remove(); } catch (e) {} this._fixedRail = null;
-    try { this._fixedControls?.remove(); } catch (e) {} this._fixedControls = null;
+    try {
+      this._fixedRail?.remove();
+    } catch (e) {}
+    this._fixedRail = null;
+    try {
+      this._fixedControls?.remove();
+    } catch (e) {}
+    this._fixedControls = null;
     this._fixedThumb = null;
     if (this._fixedHandlers) {
-      try { this.removeEventListener('scroll', this._fixedHandlers.onScroll); } catch (e) {}
-      try { window.removeEventListener('resize', this._fixedHandlers.onResize); } catch (e) {}
-      try { document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove); } catch (e) {}
-      try { bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow); } catch (e) {}
-      try { bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide); } catch (e) {}
+      try {
+        this.removeEventListener('scroll', this._fixedHandlers.onScroll);
+      } catch (e) {}
+      try {
+        window.removeEventListener('resize', this._fixedHandlers.onResize);
+      } catch (e) {}
+      try {
+        document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
+      } catch (e) {}
+      try {
+        bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow);
+      } catch (e) {}
+      try {
+        bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide);
+      } catch (e) {}
       this._fixedHandlers = null;
     }
   }
@@ -330,7 +473,10 @@ class FeatureBoard extends LitElement {
       const railRect = this._fixedRail.getBoundingClientRect();
       const clientH = this.clientHeight || 0;
       const scrollH = this.scrollHeight || 0;
-      if (scrollH <= clientH) { this._fixedThumb.style.display = 'none'; return; }
+      if (scrollH <= clientH) {
+        this._fixedThumb.style.display = 'none';
+        return;
+      }
       this._fixedThumb.style.display = '';
       const railHeight = Math.max(20, railRect.height);
       const thumbH = Math.max(20, Math.round(railHeight * (clientH / scrollH)));
@@ -346,10 +492,16 @@ class FeatureBoard extends LitElement {
       e.preventDefault();
       this._dragging = true;
       const onMove = (ev) => this._onThumbMove(ev);
-      const onUp = () => { this._dragging = false; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+      const onUp = () => {
+        this._dragging = false;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
-    } catch (e) { this._dragging = false; }
+    } catch (e) {
+      this._dragging = false;
+    }
   }
 
   _onThumbMove(ev) {
@@ -357,7 +509,7 @@ class FeatureBoard extends LitElement {
       if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
       const railRect = this._fixedRail.getBoundingClientRect();
       const thumbH = this._fixedThumb.getBoundingClientRect().height;
-      const y = ev.clientY - railRect.top - (thumbH / 2);
+      const y = ev.clientY - railRect.top - thumbH / 2;
       const maxY = Math.max(0, railRect.height - thumbH);
       const frac = Math.max(0, Math.min(maxY, y)) / (railRect.height - thumbH || 1);
       this.scrollTop = Math.round(frac * (this.scrollHeight - this.clientHeight));
@@ -382,7 +534,7 @@ class FeatureBoard extends LitElement {
 
   _buildChildrenMap(features) {
     const childrenMap = new Map();
-    features.forEach(f => {
+    features.forEach((f) => {
       if (f.type === 'feature' && f.parentEpic) {
         if (!childrenMap.has(f.parentEpic)) childrenMap.set(f.parentEpic, []);
         childrenMap.get(f.parentEpic).push(f);
@@ -392,11 +544,14 @@ class FeatureBoard extends LitElement {
   }
 
   _orderFeaturesHierarchically(sourceFeatures, sortMode) {
-    const sortFn = sortMode === 'rank' ? this._sortByRank.bind(this) : this._sortByDate.bind(this);
-    const epics = sortFn(sourceFeatures.filter(f => f.type === 'epic'));
+    const sortFn =
+      sortMode === 'rank' ? this._sortByRank.bind(this) : this._sortByDate.bind(this);
+    const epics = sortFn(sourceFeatures.filter((f) => f.type === 'epic'));
     const childrenMap = this._buildChildrenMap(sourceFeatures);
-    childrenMap.forEach(children => sortFn(children));
-    const standalone = sortFn(sourceFeatures.filter(f => f.type === 'feature' && !f.parentEpic));
+    childrenMap.forEach((children) => sortFn(children));
+    const standalone = sortFn(
+      sourceFeatures.filter((f) => f.type === 'feature' && !f.parentEpic)
+    );
 
     const ordered = [];
     for (const epic of epics) {
@@ -405,8 +560,8 @@ class FeatureBoard extends LitElement {
     }
     ordered.push(...standalone);
 
-    const included = new Set(ordered.map(f => f.id));
-    const remaining = sortFn(sourceFeatures.filter(f => !included.has(f.id)));
+    const included = new Set(ordered.map((f) => f.id));
+    const remaining = sortFn(sourceFeatures.filter((f) => !included.has(f.id)));
     if (remaining.length) ordered.push(...remaining);
     return ordered;
   }
@@ -415,20 +570,37 @@ class FeatureBoard extends LitElement {
     return !feature.start || !feature.end;
   }
 
-  _isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, selectedProjectEpicIds, visited = new Set()) {
+  _isHierarchicallyLinkedToSelectedProjectEpics(
+    feature,
+    allFeatures,
+    selectedProjectEpicIds,
+    visited = new Set()
+  ) {
     if (!feature) return false;
     if (visited.has(feature.id)) return false;
     visited.add(feature.id);
     if (selectedProjectEpicIds.has(feature.id)) return true;
     if (feature.parentEpic) {
-      const parent = allFeatures.find(f => f.id === feature.parentEpic);
-      if (parent) return this._isHierarchicallyLinkedToSelectedProjectEpics(parent, allFeatures, selectedProjectEpicIds, visited);
+      const parent = allFeatures.find((f) => f.id === feature.parentEpic);
+      if (parent)
+        return this._isHierarchicallyLinkedToSelectedProjectEpics(
+          parent,
+          allFeatures,
+          selectedProjectEpicIds,
+          visited
+        );
     }
     if (Array.isArray(feature.relations)) {
-      const parentRel = feature.relations.find(r => r.type === 'Parent');
+      const parentRel = feature.relations.find((r) => r.type === 'Parent');
       if (parentRel?.id) {
-        const parent = allFeatures.find(f => f.id === parentRel.id);
-        if (parent) return this._isHierarchicallyLinkedToSelectedProjectEpics(parent, allFeatures, selectedProjectEpicIds, visited);
+        const parent = allFeatures.find((f) => f.id === parentRel.id);
+        if (parent)
+          return this._isHierarchicallyLinkedToSelectedProjectEpics(
+            parent,
+            allFeatures,
+            selectedProjectEpicIds,
+            visited
+          );
       }
     }
     return false;
@@ -437,10 +609,11 @@ class FeatureBoard extends LitElement {
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
     // Check if feature is in expanded set (when expansion filters are active)
     const expansionState = state.expansionState || {};
-    const hasExpansion = expansionState.expandParentChild || 
-                         expansionState.expandRelations || 
-                         expansionState.expandTeamAllocated;
-    
+    const hasExpansion =
+      expansionState.expandParentChild ||
+      expansionState.expandRelations ||
+      expansionState.expandTeamAllocated;
+
     if (hasExpansion) {
       const expandedIds = state.getExpandedFeatureIds();
       // If expansion is active, only show features in expanded set
@@ -448,34 +621,51 @@ class FeatureBoard extends LitElement {
       if (!expandedIds.has(feature.id)) return false;
     } else {
       // No expansion active - use standard project filter
-      const project = state.projects.find(p => p.id === feature.project && p.selected);
+      const project = state.projects.find((p) => p.id === feature.project && p.selected);
       if (!project) return false;
     }
 
     if (state._viewService.showOnlyProjectHierarchy) {
-      const projectTypePlans = state.projects.filter(p => {
+      const projectTypePlans = state.projects.filter((p) => {
         const planType = p.type ? String(p.type) : 'project';
         return p.selected && planType === 'project';
       });
-      const projectTypePlanIds = new Set(projectTypePlans.map(p => p.id));
+      const projectTypePlanIds = new Set(projectTypePlans.map((p) => p.id));
       const projectTypeEpicIds = new Set(
-        allFeatures.filter(f => f.type === 'epic' && projectTypePlanIds.has(f.project)).map(f => f.id)
+        allFeatures
+          .filter((f) => f.type === 'epic' && projectTypePlanIds.has(f.project))
+          .map((f) => f.id)
       );
-      if (!this._isHierarchicallyLinkedToSelectedProjectEpics(feature, allFeatures, projectTypeEpicIds)) return false;
+      if (
+        !this._isHierarchicallyLinkedToSelectedProjectEpics(
+          feature,
+          allFeatures,
+          projectTypeEpicIds
+        )
+      )
+        return false;
     }
 
-    const stateFilter = state.selectedFeatureStateFilter instanceof Set
-      ? state.selectedFeatureStateFilter
-      : new Set(state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []);
+    const stateFilter =
+      state.selectedFeatureStateFilter instanceof Set ?
+        state.selectedFeatureStateFilter
+      : new Set(
+          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
+        );
     if (stateFilter.size === 0) return false;
 
     // Build lowercase version of selected states for case-insensitive comparison
-    const stateFilterLower = new Set(Array.from(stateFilter).map(s => String(s).toLowerCase()));
+    const stateFilterLower = new Set(
+      Array.from(stateFilter).map((s) => String(s).toLowerCase())
+    );
     const featureStateLower = (feature.state || '').toLowerCase();
     if (!stateFilterLower.has(featureStateLower)) return false;
 
     // Apply task filters (schedule, allocation, hierarchy, relations)
-    if (state.taskFilterService && !state.taskFilterService.featurePassesFilters(feature)) {
+    if (
+      state.taskFilterService &&
+      !state.taskFilterService.featurePassesFilters(feature)
+    ) {
       return false;
     }
 
@@ -483,27 +673,43 @@ class FeatureBoard extends LitElement {
     if (feature.type === 'feature' && !state._viewService.showFeatures) return false;
 
     if (featureFlags.SHOW_UNPLANNED_WORK) {
-      if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork) return false;
+      if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork)
+        return false;
     }
 
     // If a project/plan is selected, show tasks from that project regardless of team selection.
-    const selectedProjectIds = new Set(state.projects.filter(p => p.selected).map(p => String(p.id)));
+    const selectedProjectIds = new Set(
+      state.projects.filter((p) => p.selected).map((p) => String(p.id))
+    );
 
     if (feature.type === 'epic') {
       const children = childrenMap.get(feature.id) || [];
-      const anyChildVisible = children.some(child => {
-        const childProject = state.projects.find(p => p.id === child.project && p.selected);
+      const anyChildVisible = children.some((child) => {
+        const childProject = state.projects.find(
+          (p) => p.id === child.project && p.selected
+        );
         if (!childProject) return false;
-        if (featureFlags.SHOW_UNPLANNED_WORK && this._isUnplanned(child) && !state._viewService.showUnplannedWork) return false;
+        if (
+          featureFlags.SHOW_UNPLANNED_WORK &&
+          this._isUnplanned(child) &&
+          !state._viewService.showUnplannedWork
+        )
+          return false;
         const hasCapacity = child.capacity?.length > 0;
         if (!hasCapacity) return state._viewService.showUnassignedCards;
         // If the child's project is among selected projects, ignore team-selection and show it.
         if (selectedProjectIds.has(String(child.project))) return true;
-        return child.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected));
+        return child.capacity.some((tl) =>
+          state.teams.find((t) => t.id === tl.team && t.selected)
+        );
       });
       const hasCapacity = feature.capacity?.length > 0;
-      const epicVisible = hasCapacity
-        ? (selectedProjectIds.has(String(feature.project)) || feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)))
+      const epicVisible =
+        hasCapacity ?
+          selectedProjectIds.has(String(feature.project)) ||
+          feature.capacity.some((tl) =>
+            state.teams.find((t) => t.id === tl.team && t.selected)
+          )
         : state._viewService.showUnassignedCards;
       if (!epicVisible && !anyChildVisible) return false;
     } else {
@@ -512,7 +718,15 @@ class FeatureBoard extends LitElement {
         if (!state._viewService.showUnassignedCards) return false;
       } else {
         // If this feature belongs to a selected project, ignore team-selection and show it.
-        if (!(selectedProjectIds.has(String(feature.project)) || feature.capacity.some(tl => state.teams.find(t => t.id === tl.team && t.selected)))) return false;
+        if (
+          !(
+            selectedProjectIds.has(String(feature.project)) ||
+            feature.capacity.some((tl) =>
+              state.teams.find((t) => t.id === tl.team && t.selected)
+            )
+          )
+        )
+          return false;
       }
     }
     return true;
@@ -522,7 +736,10 @@ class FeatureBoard extends LitElement {
 
   async renderFeatures() {
     const sourceFeatures = state.getEffectiveFeatures();
-    const ordered = this._orderFeaturesHierarchically(sourceFeatures, state._viewService.featureSortMode);
+    const ordered = this._orderFeaturesHierarchically(
+      sourceFeatures,
+      state._viewService.featureSortMode
+    );
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
 
@@ -542,7 +759,7 @@ class FeatureBoard extends LitElement {
         top: laneIndex * laneHeight(),
         teams: state.teams,
         condensed: state._viewService.condensedCards,
-        project: state.projects.find(p => p.id === feature.project)
+        project: state.projects.find((p) => p.id === feature.project),
       });
       laneIndex++;
     }
@@ -574,14 +791,30 @@ class FeatureBoard extends LitElement {
       }
 
       const geom = computePosition(feature, months) || {};
-      const left = geom.left !== undefined ? (typeof geom.left === 'number' ? `${geom.left}px` : geom.left) : '';
-      const width = geom.width !== undefined ? (typeof geom.width === 'number' ? `${geom.width}px` : geom.width) : '';
-      const project = state.projects.find(p => p.id === feature.project);
+      const left =
+        geom.left !== undefined ?
+          typeof geom.left === 'number' ?
+            `${geom.left}px`
+          : geom.left
+        : '';
+      const width =
+        geom.width !== undefined ?
+          typeof geom.width === 'number' ?
+            `${geom.width}px`
+          : geom.width
+        : '';
+      const project = state.projects.find((p) => p.id === feature.project);
 
       existing.feature = { ...feature };
       existing.selected = !!feature.selected;
       existing.project = project;
-      existing.applyVisuals({ left, width, selected: !!feature.selected, dirty: !!feature.dirty, project });
+      existing.applyVisuals({
+        left,
+        width,
+        selected: !!feature.selected,
+        dirty: !!feature.dirty,
+        project,
+      });
     }
   }
 
@@ -590,35 +823,57 @@ class FeatureBoard extends LitElement {
     if (!this.shadowRoot) return;
     const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
     this._cardMap.clear();
-    cards.forEach(node => {
+    cards.forEach((node) => {
       if (node.feature?.id) this._cardMap.set(node.feature.id, node);
     });
-    try { this._ensureFixedScrollbar(); this._updateFixedThumb(); } catch (e) {}
+    try {
+      this._ensureFixedScrollbar();
+      this._updateFixedThumb();
+    } catch (e) {}
   }
 
   _selectFeature(feature) {
-    this.dispatchEvent(new CustomEvent('feature-selected', {
-      detail: { feature }, bubbles: true, composed: true
-    }));
+    this.dispatchEvent(
+      new CustomEvent('feature-selected', {
+        detail: { feature },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
   centerFeatureById(featureId) {
     try {
-      const card = this._cardMap.get(String(featureId))
-        || this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
+      const card =
+        this._cardMap.get(String(featureId)) ||
+        this.shadowRoot?.querySelector(
+          `feature-card-lit[data-feature-id="${featureId}"]`
+        );
       const timeline = findInBoard('#timelineSection');
       if (!card || !timeline) return;
 
       const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
       const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
-      timeline.scrollTo({ left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)), behavior: 'smooth' });
-      this.scrollTo({ top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)), behavior: 'smooth' });
+      timeline.scrollTo({
+        left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)),
+        behavior: 'smooth',
+      });
+      this.scrollTo({
+        top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)),
+        behavior: 'smooth',
+      });
 
       try {
         card.classList.add('search-highlight');
-        setTimeout(() => { try { card.classList.remove('search-highlight'); } catch (e) {} }, 950);
+        setTimeout(() => {
+          try {
+            card.classList.remove('search-highlight');
+          } catch (e) {}
+        }, 950);
       } catch (e) {}
-    } catch (e) { console.warn('centerFeatureById failed', e); }
+    } catch (e) {
+      console.warn('centerFeatureById failed', e);
+    }
   }
 
   addFeature(nodeOrFeature) {
@@ -639,7 +894,10 @@ customElements.define('feature-board', FeatureBoard);
 
 export async function initBoard() {
   const board = findInBoard('feature-board');
-  if (!board) { console.warn('feature-board element not found'); return; }
+  if (!board) {
+    console.warn('feature-board element not found');
+    return;
+  }
 
   let _boardReady = false;
   const renderFeatures = () => {
@@ -659,7 +917,7 @@ export async function initBoard() {
 
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
-    const activeScenario = state.scenarios.find(s => s.id === scenarioId);
+    const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
     if (activeScenario && !activeScenario.readonly) {
       board.classList.add('scenario-mode');
     } else {
@@ -683,14 +941,22 @@ export async function initBoard() {
     board._connectedSet = set;
     board._connectedPrimary = String(feature.id);
     board._connectedCurrent = String(feature.id);
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: set, primary: board._connectedPrimary, current: board._connectedCurrent });
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
+      ids: set,
+      primary: board._connectedPrimary,
+      current: board._connectedCurrent,
+    });
   });
 
   bus.on(FeatureEvents.SELECTED_IN_CONNECTED_SET, (feature) => {
     if (!board || !board._connectedSet || board._connectedSet.length === 0) return;
     const id = String(feature.id);
     board._connectedCurrent = id;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: board._connectedSet, primary: board._connectedPrimary, current: board._connectedCurrent });
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
+      ids: board._connectedSet,
+      primary: board._connectedPrimary,
+      current: board._connectedCurrent,
+    });
     bus.emit(FeatureEvents.SELECTED, feature);
   });
 
@@ -699,7 +965,11 @@ export async function initBoard() {
     board._connectedSet = [];
     board._connectedPrimary = null;
     board._connectedCurrent = null;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, { ids: [], primary: null, current: null });
+    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
+      ids: [],
+      primary: null,
+      current: null,
+    });
   });
 
   bus.once(AppEvents.READY, () => {

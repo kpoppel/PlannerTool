@@ -10,16 +10,19 @@ describe('config-modal', () => {
   });
 
   afterEach(() => {
-    if(modal) modal.remove();
+    if (modal) modal.remove();
   });
 
   it('_populate reads prefs and fills inputs (mocked)', async () => {
     const origGet = dataService.getLocalPref;
-    dataService.getLocalPref = async (k) => k === 'user.email' ? 'a@b.c' : 5;
+    dataService.getLocalPref = async (k) => (k === 'user.email' ? 'a@b.c' : 5);
     // wait for Lit render/update lifecycle to complete and populate inputs
     if (modal.updateComplete) await modal.updateComplete;
     if (typeof modal._populate === 'function') await modal._populate();
-    const inner = modal.renderRoot ? modal.renderRoot.querySelector('modal-lit') : modal.querySelector('modal-lit');
+    const inner =
+      modal.renderRoot ?
+        modal.renderRoot.querySelector('modal-lit')
+      : modal.querySelector('modal-lit');
     const emailInput = inner ? inner.querySelector('#configEmail') : null;
     expect(emailInput).to.exist;
     expect(emailInput.value).to.equal('a@b.c');
@@ -30,11 +33,16 @@ describe('config-modal', () => {
     const origSet = dataService.setLocalPref;
     const origSave = dataService.saveConfig;
     let saved = {};
-    dataService.setLocalPref = async (k,v)=> { saved[k]=v; };
+    dataService.setLocalPref = async (k, v) => {
+      saved[k] = v;
+    };
     dataService.saveConfig = async (cfg) => ({ ok: true });
     // wait for Lit render/update lifecycle to complete and find inner modal elements
     if (modal.updateComplete) await modal.updateComplete;
-    const inner2 = modal.renderRoot ? modal.renderRoot.querySelector('modal-lit') : modal.querySelector('modal-lit');
+    const inner2 =
+      modal.renderRoot ?
+        modal.renderRoot.querySelector('modal-lit')
+      : modal.querySelector('modal-lit');
     const emailInput = inner2 ? inner2.querySelector('#configEmail') : null;
     const autosaveInput = inner2 ? inner2.querySelector('#autosaveInterval') : null;
     emailInput.value = 'z@y.z';
@@ -44,7 +52,7 @@ describe('config-modal', () => {
     // click save
     saveBtn.click();
     // allow async handlers
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
     expect(saved['user.email']).to.equal('z@y.z');
     dataService.setLocalPref = origSet;
     dataService.saveConfig = origSave;
