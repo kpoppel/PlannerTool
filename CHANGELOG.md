@@ -8,16 +8,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## Template:
 
 ## [v] - unreleased
-
 ### Added
-
 ### Changed
-
 ### Fixed
 
 ---
 
-## [v3.1.0] - unreleased
+## [v3.1.0] - 2026-04-01
 
 ### Added
 
