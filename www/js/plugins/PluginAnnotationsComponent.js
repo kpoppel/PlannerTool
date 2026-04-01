@@ -14,7 +14,7 @@ import {
 } from './annotations/AnnotationState.js';
 import { ANNOTATION_COLORS } from './annotations/AnnotationColors.js';
 import './annotations/AnnotationOverlay.js';
-import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -42,7 +42,9 @@ export class PluginAnnotationsComponent extends LitElement {
          to be positioned relative to the board so child overlays are
          clipped by the board. Use absolute positioning instead of fixed. */
       position: absolute;
-      z-index: 100;
+      /* Must exceed timeline-lit z-index (130) so the fixed toolbar renders
+         above the sticky timeline header. */
+      z-index: 140;
       pointer-events: none;
     }
 
@@ -180,41 +182,16 @@ export class PluginAnnotationsComponent extends LitElement {
       this.annotationCount = this._annotationState.count;
 
       if (this.currentTool === TOOLS.SELECT) {
-        setTimelinePanningAllowed(true);
+        boardCoords.setPanningAllowed(true);
       } else {
-        setTimelinePanningAllowed(false);
+        boardCoords.setPanningAllowed(false);
       }
-
-      // Update overlay sizing if present
-      this._updateOverlayRect();
     });
   }
 
   disconnectedCallback() {
     if (this._unsubscribe) this._unsubscribe();
     super.disconnectedCallback();
-  }
-
-  _updateOverlayRect() {
-    const board = findInBoard('feature-board');
-    const rect = board.getBoundingClientRect();
-    if (!board || !this._overlay) return;
-    console.log('Updating annotation overlay rect:', rect);
-    const left = Math.round(rect.left);
-    const top = Math.round(rect.top);
-    const right = Math.min(window.innerWidth, Math.round(rect.right));
-    const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
-    const width = Math.max(0, right - left);
-    const height = Math.max(0, bottom - top);
-
-    const overlay = this._overlay;
-    overlay.style.position = 'fixed';
-    overlay.style.top = `${top}px`;
-    overlay.style.left = `${left}px`;
-    overlay.style.width = `${width}px`;
-    overlay.style.height = `${height}px`;
-    overlay.style.pointerEvents = 'none';
-    overlay.style.zIndex = '10';
   }
 
   render() {
@@ -283,16 +260,23 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   firstUpdated() {
-    // Reuse existing overlay if present in the document, otherwise create it
-    let overlay = document.querySelector('annotation-overlay');
+    // Reuse existing overlay if present in #board-area, otherwise create and append it there.
+    // Being a sibling of feature-board inside position:relative #board-area means
+    // position:absolute inset:0 covers exactly the card area with no coordinate conversion.
+    let overlay = findInBoard('annotation-overlay');
     if (!overlay) {
       overlay = document.createElement('annotation-overlay');
-      const appHost = document.querySelector('.app-container');
-      appHost.appendChild(overlay);
+      const boardArea = findInBoard('#board-area');
+      if (boardArea) {
+        boardArea.appendChild(overlay);
+      } else {
+        // Fallback: attach to app container (old behaviour)
+        const appHost = document.querySelector('.app-container');
+        appHost?.appendChild(overlay);
+      }
     }
 
     this._overlay = overlay;
-    this._updateOverlayRect();
   }
 
   updated(changedProps) {
@@ -312,7 +296,7 @@ export class PluginAnnotationsComponent extends LitElement {
     this.setAttribute('visible', '');
     this._annotationState.enable();
     this._annotationState.setTool(TOOLS.SELECT);
-    setTimelinePanningAllowed(true);
+    boardCoords.setPanningAllowed(true);
 
     this.updateComplete.then(() => {
       //      if (this._overlay) {
@@ -335,7 +319,7 @@ export class PluginAnnotationsComponent extends LitElement {
     if (this._overlay) {
       this._overlay.hide();
     }
-    setTimelinePanningAllowed(true);
+    boardCoords.setPanningAllowed(true);
   }
 
   toggle() {

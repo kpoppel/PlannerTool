@@ -141,3 +141,11 @@ export const ColorEvents = {
 export const StateFilterEvents = {
   CHANGED: Symbol('states:changed'),
 };
+
+// Board coordinate / scroll events
+export const BoardEvents = {
+  /** Fired by BoardCoordinateService on every scroll of the scroll container. */
+  SCROLL: Symbol('board:scroll'),
+  /** Fired by TimelineBoard once the board area is mounted and BCS is initialised. */
+  READY: Symbol('board:ready'),
+};

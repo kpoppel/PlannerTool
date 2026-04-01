@@ -68,7 +68,17 @@ describe('Plugin export renderer', () => {
     board.renderRoot = document;
     document.body.appendChild(board);
 
-    // timeline section (horizontal scroll container)
+    // scroll-container (single H+V scroll container in new architecture)
+    const sc = document.createElement('div');
+    sc.id = 'scroll-container';
+    sc.scrollLeft = 0;
+    sc.scrollTop = 0;
+    Object.defineProperty(sc, 'scrollWidth', { get: () => 2000, configurable: true });
+    Object.defineProperty(sc, 'scrollHeight', { get: () => 640, configurable: true });
+    sc.getBoundingClientRect = () => ({ x: 0, y: 0, width: 800, height: 440 });
+    document.body.appendChild(sc);
+
+    // timeline section - legacy id, kept for backward compat but no longer used for scroll
     const timeline = document.createElement('div');
     timeline.id = 'timelineSection';
     timeline.scrollLeft = 0;

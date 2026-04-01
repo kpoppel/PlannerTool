@@ -1,18 +1,21 @@
 /**
  * PluginMarkersComponent - Displays delivery plan markers as timeline overlay
  */
-import { LitElement, html, css } from '../vendor/lit.js';
+import { html, css } from '../vendor/lit.js';
+import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
+import { findInBoard } from '../components/board-utils.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { getBoardOffset, findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
-export class PluginMarkersComponent extends LitElement {
+export class PluginMarkersComponent extends OverlaySvgPlugin {
+  static overlayClass = 'markers-overlay-svg';
+
   static properties = {
-    visible: { type: Boolean },
     markers: { type: Array },
     loading: { type: Boolean },
     selectedColors: { type: Object },
@@ -20,12 +23,8 @@ export class PluginMarkersComponent extends LitElement {
 
   constructor() {
     super();
-    this.visible = false;
     this.markers = [];
     this.loading = false;
-    this._svgEl = null;
-    this._scrollScheduled = false;
-    this._overlay = null;
     this.selectedColors = {}; // Map of color -> boolean
   }
 
@@ -135,140 +134,33 @@ export class PluginMarkersComponent extends LitElement {
     }
   `;
 
-  connectedCallback() {
-    super.connectedCallback();
-
-    this._timelineListener = () => {
-      if (this.visible) {
-        if (!this._scrollScheduled) {
-          this._scrollScheduled = true;
-          requestAnimationFrame(() => {
-            this._scrollScheduled = false;
-            this._updateMarkers();
-          });
-        }
-      }
+  _subscribeBusEvents() {
+    this._timelineListener = () => this._scheduleRender();
+    this._selectionListener = () => {
+      this._scheduleRender();
+      this.requestUpdate(); // also refresh toolbar counts
     };
 
     bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
-
-    // Listen for project/team selection changes
-    this._selectionListener = () => {
-      if (this.visible) {
-        // Use requestAnimationFrame to ensure state is updated
-        requestAnimationFrame(() => {
-          this._updateMarkers();
-          this.requestUpdate(); // Trigger re-render to update toolbar count
-        });
-      }
-    };
-
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(TeamEvents.CHANGED, this._selectionListener);
-
-    const board = findInBoard('feature-board');
-    if (board) {
-      this._scrollListener = () => {
-        if (this.visible && !this._scrollScheduled) {
-          this._scrollScheduled = true;
-          requestAnimationFrame(() => {
-            this._scrollScheduled = false;
-            this._updateMarkers();
-          });
-        }
-      };
-      board.addEventListener('scroll', this._scrollListener, { passive: true });
-    }
   }
 
-  disconnectedCallback() {
-    super.disconnectedCallback();
-
+  _unsubscribeBusEvents() {
     if (this._timelineListener) {
       bus.off(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
-
     if (this._selectionListener) {
       bus.off(ProjectEvents.CHANGED, this._selectionListener);
       bus.off(TeamEvents.CHANGED, this._selectionListener);
     }
-
-    if (this._scrollListener) {
-      const board = findInBoard('feature-board');
-      board?.removeEventListener('scroll', this._scrollListener);
-    }
-
-    if (this._syncOverlayScroll) {
-      const board = findInBoard('feature-board');
-      board?.removeEventListener('scroll', this._syncOverlayScroll);
-    }
-
-    this._overlay?.remove();
-    this._overlay = null;
-    this._svgEl = null;
-  }
-
-  firstUpdated() {
-    const board = findInBoard('feature-board');
-    if (!board) return;
-
-    const hostRoot = board.shadowRoot || board;
-    let overlay = hostRoot.querySelector('.markers-overlay-svg');
-
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.className = 'markers-overlay-svg';
-
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('class', 'markers-svg');
-      overlay.appendChild(svg);
-      hostRoot.appendChild(overlay);
-
-      Object.assign(overlay.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: '5',
-        overflow: 'hidden',
-        display: 'block', // Ensure it's visible initially
-      });
-    }
-
-    this._overlay = overlay;
-    this._svgEl = overlay.querySelector('.markers-svg');
-
-    // Ensure overlay scrolls with board content
-    if (board) {
-      this._syncOverlayScroll = () => {
-        if (this._overlay) {
-          this._overlay.style.transform = `translateY(${board.scrollTop}px)`;
-        }
-      };
-      board.addEventListener('scroll', this._syncOverlayScroll, { passive: true });
-      this._syncOverlayScroll(); // Initial sync
-    }
-
-    if (this._svgEl) {
-      Object.assign(this._svgEl.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        overflow: 'visible',
-        pointerEvents: 'none',
-      });
-    }
   }
 
   updated(changedProperties) {
-    if (changedProperties.has('markers') || changedProperties.has('visible')) {
-      this._updateMarkers();
+    if (changedProperties.has('markers') || changedProperties.has('selectedColors')) {
+      this._renderSvg();
     }
   }
 
@@ -299,14 +191,15 @@ export class PluginMarkersComponent extends LitElement {
       const hasProjectSelection = selectedProjects.length > 0;
       const hasTeamSelection = selectedTeams.length > 0;
 
-      // If nothing is selected, show nothing (same as feature board behavior)
-      if (!hasProjectSelection || !hasTeamSelection) {
+      // If no project is selected, show nothing
+      if (!hasProjectSelection) {
         displayCount = 0;
       } else {
         const filtered = this.markers.filter((m) => {
           const projectMatch = selectedProjects.includes(m.project);
-          // If marker has no team_id, treat it as matching any team (team-agnostic marker)
-          const teamMatch = !m.team_id || selectedTeams.includes(m.team_id);
+          // When no teams are selected, treat all teams as matching;
+          // otherwise filter to selected teams (team-agnostic markers always pass)
+          const teamMatch = !hasTeamSelection || !m.team_id || selectedTeams.includes(m.team_id);
           // Check color filter
           const markerColor = m.marker?.color || '#2196F3';
           const colorMatch = this.selectedColors[markerColor] !== false;
@@ -377,9 +270,7 @@ export class PluginMarkersComponent extends LitElement {
   }
 
   async open() {
-    this.visible = true;
-    this.setAttribute('visible', '');
-    if (this._overlay) this._overlay.style.display = 'block';
+    super.open();
     await this.refresh();
   }
 
@@ -390,9 +281,7 @@ export class PluginMarkersComponent extends LitElement {
   }
 
   close() {
-    this.visible = false;
-    this.removeAttribute('visible');
-    if (this._overlay) this._overlay.style.display = 'none';
+    super.close();
   }
 
   async refresh() {
@@ -434,15 +323,14 @@ export class PluginMarkersComponent extends LitElement {
       ...this.selectedColors,
       [color]: !this.selectedColors[color],
     };
-    this._updateMarkers();
   }
 
-  _updateMarkers() {
+  _renderSvg() {
     if (!this.visible || !this._svgEl) return;
 
-    // If SVG is not in DOM, we need to reinitialize
+    // Reattach overlay if it was removed from the DOM
     if (!this._svgEl.isConnected) {
-      this.firstUpdated();
+      this._attachOverlay();
       if (!this._svgEl?.isConnected) return;
     }
 
@@ -460,7 +348,6 @@ export class PluginMarkersComponent extends LitElement {
       width: brClient.width,
       height: brClient.height,
     };
-    const boardOffset = getBoardOffset();
     const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
 
@@ -483,18 +370,18 @@ export class PluginMarkersComponent extends LitElement {
 
     const debugCount = 0;
     const filteredMarkers = this.markers.filter((markerEntry) => {
-      // When no teams or projects are selected, show nothing (same as feature board behavior)
+      // When no project is selected, show nothing
       const hasProjectSelection = selectedProjects.length > 0;
       const hasTeamSelection = selectedTeams.length > 0;
 
-      // If nothing is selected, hide all markers
-      if (!hasProjectSelection || !hasTeamSelection) return false;
+      if (!hasProjectSelection) return false;
 
       // Check if marker's project matches selection
       const projectMatch = selectedProjects.includes(markerEntry.project);
-      // If marker has no team_id, treat it as matching any team (team-agnostic marker)
+      // When no teams are selected, treat all teams as matching;
+      // otherwise filter to selected teams (team-agnostic markers always pass)
       const teamMatch =
-        !markerEntry.team_id || selectedTeams.includes(markerEntry.team_id);
+        !hasTeamSelection || !markerEntry.team_id || selectedTeams.includes(markerEntry.team_id);
       // Check color filter
       const markerColor = markerEntry.marker?.color || '#2196F3';
       const colorMatch = this.selectedColors[markerColor] !== false;
@@ -520,7 +407,7 @@ export class PluginMarkersComponent extends LitElement {
     uniqueMarkers.forEach((markerEntry) => {
       const marker = markerEntry.marker;
 
-      const x = this._calcX(new Date(marker.date), months, monthWidth, boardOffset);
+      const x = this._calcX(new Date(marker.date), months, monthWidth);
       if (x === null) return;
 
       this._createMarker(
@@ -528,33 +415,33 @@ export class PluginMarkersComponent extends LitElement {
         marker.label || marker.title || 'Marker',
         marker.color || '#2196F3',
         markerEntry,
-        boardRect.height
+        boardRect.height,
+        boardCoords.scrollY
       );
       renderedCount++;
     });
   }
 
-  _calcX(date, months, monthWidth, boardOffset) {
+  /**
+   * Convert a date to board-space X. Returns null for dates outside the timeline range.
+   * (boardCoords.dateToContentX clamps to bounds; we skip out-of-range markers instead.)
+   */
+  _calcX(date, months, monthWidth) {
     const year = date.getFullYear();
     const month = date.getMonth();
-    const day = date.getDate();
-
     const monthIndex = months.findIndex(
       (m) => m.getFullYear() === year && m.getMonth() === month
     );
     if (monthIndex === -1) return null;
-
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const dayRatio = (day - 1) / daysInMonth;
-
-    return boardOffset + monthIndex * monthWidth + dayRatio * monthWidth;
+    const dayRatio = (date.getDate() - 1) / daysInMonth;
+    return (monthIndex + dayRatio) * monthWidth;
   }
 
-  _createMarker(x, label, color, markerEntry, boardHeight, scrollTop) {
+  _createMarker(x, label, color, markerEntry, boardHeight, scrollY) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
-    const timelineHeaderHeight = 60; // Height of timeline-lit header
 
-    // Vertical dashed line extending from timeline header to bottom of visible area
+    // Vertical dashed line from top of board area to its bottom
     const line = document.createElementNS(SVG_NS, 'line');
     line.setAttribute('x1', x);
     line.setAttribute('y1', 0);
@@ -567,7 +454,9 @@ export class PluginMarkersComponent extends LitElement {
     line.style.pointerEvents = 'none';
     this._svgEl.appendChild(line);
 
-    // Create compact tag at the top of timeline (not below it)
+    // Create compact tag that sticks to the top of the visible board area.
+    // tagY is in board-area coordinates: scrollY offsets the tag so its
+    // screen position stays constant just below the sticky timeline header.
     const tagGroup = document.createElementNS(SVG_NS, 'g');
     tagGroup.setAttribute('class', 'marker-tag');
     tagGroup.style.cursor = 'pointer';
@@ -575,7 +464,7 @@ export class PluginMarkersComponent extends LitElement {
 
     // Tag dimensions
     const tagHeight = 18;
-    const tagY = 5; // Position near top of timeline header
+    const tagY = (scrollY ?? 0) + 5; // Offset by scrollY so tag sticks to visible top
     const tagPadding = 6;
     const labelWidth = label.length * 5.5;
     const tagWidth = labelWidth + tagPadding * 2;

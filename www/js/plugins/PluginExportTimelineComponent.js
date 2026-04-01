@@ -8,7 +8,7 @@ import {
   getExportRenderer,
 } from './export/TimelineExportRenderer.js';
 import { copyPngBlobToClipboard } from './export/ExportUtils.js';
-import { findInBoard } from '../components/board-utils.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 
 export class PluginExportTimeline extends LitElement {
   static properties = {
@@ -31,15 +31,12 @@ export class PluginExportTimeline extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    // Capture scroll position on any mousedown to preserve it before click handlers run
-    // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
+    // Capture scroll position on mousedown to preserve it before click handlers run.
+    // Scroll is now centralized in boardCoords (replaces old timelineSection.scrollLeft
+    // and featureBoard.scrollTop which no longer exist after TimelineBoard refactor).
     this._mouseDownHandler = () => {
-      const timelineSection = findInBoard('#timelineSection');
-      const featureBoard = findInBoard('feature-board');
-      if (timelineSection && featureBoard) {
-        this._lastKnownScrollLeft = timelineSection.scrollLeft;
-        this._lastKnownScrollTop = featureBoard.scrollTop;
-      }
+      this._lastKnownScrollLeft = boardCoords.scrollX;
+      this._lastKnownScrollTop = boardCoords.scrollY;
     };
     document.addEventListener('mousedown', this._mouseDownHandler);
   }
@@ -59,7 +56,10 @@ export class PluginExportTimeline extends LitElement {
       top: 0;
       right: 0;
       bottom: 0;
-      z-index: 60;
+      /* Must exceed timeline-lit z-index (130) so the fixed panel renders above
+         the sticky timeline header. The :host stacking context (position +
+         z-index) determines the paint-order of all shadow DOM children. */
+      z-index: 140;
       box-sizing: border-box;
       pointer-events: none; /* let clicks pass through by default */
     }
@@ -382,13 +382,12 @@ export class PluginExportTimeline extends LitElement {
   }
 
   open(mode) {
-    // Use scroll position captured on mousedown (before any DOM changes)
-    // IMPORTANT: Horizontal scroll is on timelineSection, vertical on featureBoard
-    const timelineSection = findInBoard('#timelineSection');
-    const featureBoard = findInBoard('feature-board');
-    this._capturedScrollLeft =
-      this._lastKnownScrollLeft ?? timelineSection?.scrollLeft ?? 0;
-    this._capturedScrollTop = this._lastKnownScrollTop ?? featureBoard?.scrollTop ?? 0;
+    // Use scroll position captured on mousedown (before any DOM changes).
+    // Scroll is centralised in boardCoords after the TimelineBoard refactor —
+    // the old timelineSection.scrollLeft / featureBoard.scrollTop fallbacks
+    // are always 0 and must not be used.
+    this._capturedScrollLeft = this._lastKnownScrollLeft ?? boardCoords.scrollX;
+    this._capturedScrollTop = this._lastKnownScrollTop ?? boardCoords.scrollY;
 
     // Check annotations plugin status when opening
     this._checkAnnotationsPlugin();
@@ -472,13 +471,9 @@ export class PluginExportTimeline extends LitElement {
     try {
       // Only include annotations if the plugin is available and checkbox is checked
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
-      // Read current viewport scroll positions at the moment of export
-      const timelineSection = findInBoard('#timelineSection');
-      const featureBoard = findInBoard('feature-board');
-      const currentScrollLeft =
-        timelineSection ? timelineSection.scrollLeft : this._capturedScrollLeft || 0;
-      const currentScrollTop =
-        featureBoard ? featureBoard.scrollTop : this._capturedScrollTop || 0;
+      // Read current viewport scroll positions from boardCoords
+      const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
+      const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
       await exportTimelineToPng({
         includeAnnotations,
@@ -502,12 +497,9 @@ export class PluginExportTimeline extends LitElement {
     this.exporting = true;
     try {
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
-      const timelineSection = findInBoard('#timelineSection');
-      const featureBoard = findInBoard('feature-board');
-      const currentScrollLeft =
-        timelineSection ? timelineSection.scrollLeft : this._capturedScrollLeft || 0;
-      const currentScrollTop =
-        featureBoard ? featureBoard.scrollTop : this._capturedScrollTop || 0;
+      // Read current viewport scroll positions from boardCoords
+      const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
+      const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
       const renderer = getExportRenderer();
       const svg = await renderer.getExportSvg({
@@ -546,12 +538,9 @@ export class PluginExportTimeline extends LitElement {
     this.exporting = true;
     try {
       const includeAnnotations = this.annotationsAvailable && this.includeAnnotations;
-      const timelineSection = findInBoard('#timelineSection');
-      const featureBoard = findInBoard('feature-board');
-      const currentScrollLeft =
-        timelineSection ? timelineSection.scrollLeft : this._capturedScrollLeft || 0;
-      const currentScrollTop =
-        featureBoard ? featureBoard.scrollTop : this._capturedScrollTop || 0;
+      // Read current viewport scroll positions from boardCoords
+      const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
+      const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
       const renderer = getExportRenderer();
       const blob = await renderer.exportToPngBlob({

@@ -7,8 +7,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
-import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
-import { getBoardOffset, findInBoard } from '../components/board-utils.js';
+import { TimelineEvents, ProjectEvents, TeamEvents, ViewEvents } from '../core/EventRegistry.js';
+import { findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
@@ -239,6 +239,23 @@ export class PluginHistoryComponent extends LitElement {
     bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
 
+    // Re-render when condensed/compact mode changes (card layout changes)
+    this._condensedListener = () => {
+      if (this.visible) {
+        if (!this._scrollScheduled) {
+          this._scrollScheduled = true;
+          requestAnimationFrame(() => {
+            this._scrollScheduled = false;
+            this._ensureVisibleProjectsLoaded()
+              .then(() => this._updateHistory())
+              .catch(() => this._updateHistory());
+          });
+        }
+      }
+    };
+
+    bus.on(ViewEvents.CONDENSED, this._condensedListener);
+
     // Listen for project/team selection changes - refetch data
     this._selectionListener = async () => {
       if (this.visible) {
@@ -280,6 +297,10 @@ export class PluginHistoryComponent extends LitElement {
       bus.off(TeamEvents.CHANGED, this._selectionListener);
     }
 
+    if (this._condensedListener) {
+      bus.off(ViewEvents.CONDENSED, this._condensedListener);
+    }
+
     if (this._scrollListener) {
       const board = findInBoard('feature-board');
       board?.removeEventListener('scroll', this._scrollListener);
@@ -298,11 +319,10 @@ export class PluginHistoryComponent extends LitElement {
   }
 
   firstUpdated() {
-    const board = findInBoard('feature-board');
-    if (!board) return;
+    const boardArea = findInBoard('#board-area');
+    if (!boardArea) return;
 
-    const hostRoot = board.shadowRoot || board;
-    let overlay = hostRoot.querySelector('.history-overlay-svg');
+    let overlay = boardArea.querySelector('.history-overlay-svg');
 
     if (!overlay) {
       overlay = document.createElement('div');
@@ -311,7 +331,7 @@ export class PluginHistoryComponent extends LitElement {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'history-svg');
       overlay.appendChild(svg);
-      hostRoot.appendChild(overlay);
+      boardArea.appendChild(overlay);
 
       Object.assign(overlay.style, {
         position: 'absolute',
@@ -329,12 +349,11 @@ export class PluginHistoryComponent extends LitElement {
     this._overlay = overlay;
     this._svgEl = overlay.querySelector('.history-svg');
 
-    // Create tooltip element in the shadow root of feature-board so it moves with the board
+    // Create tooltip element in #board-area so it scrolls with content
     if (!this._tooltipEl) {
       this._tooltipEl = document.createElement('div');
       this._tooltipEl.className = 'history-tooltip';
 
-      // Inject tooltip styles directly on the element
       Object.assign(this._tooltipEl.style, {
         position: 'absolute',
         pointerEvents: 'none',
@@ -349,19 +368,7 @@ export class PluginHistoryComponent extends LitElement {
         display: 'none',
       });
 
-      hostRoot.appendChild(this._tooltipEl);
-    }
-
-    // Keep overlay aligned with the viewport as the board scrolls
-    // This allows us to render in viewport-space coordinates
-    if (board && !this._syncOverlayScroll) {
-      this._syncOverlayScroll = () => {
-        if (this._overlay && board) {
-          this._overlay.style.transform = `translateY(${board.scrollTop}px)`;
-        }
-      };
-      board.addEventListener('scroll', this._syncOverlayScroll, { passive: true });
-      this._syncOverlayScroll(); // Initial sync
+      boardArea.appendChild(this._tooltipEl);
     }
 
     if (this._svgEl) {
@@ -603,7 +610,6 @@ export class PluginHistoryComponent extends LitElement {
       width: br.width,
       height: br.height,
     };
-    const boardOffset = getBoardOffset();
 
     const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
@@ -617,8 +623,6 @@ export class PluginHistoryComponent extends LitElement {
     this._svgEl.style.width = `${boardRect.width}px`;
     this._svgEl.style.height = `${boardRect.height}px`;
 
-    // Get scroll position for viewport-space calculations
-    const scrollTop = board.scrollTop;
     const viewportHeight = boardRect.height;
 
     // Process each task with history
@@ -628,8 +632,6 @@ export class PluginHistoryComponent extends LitElement {
         taskData,
         months,
         monthWidth,
-        boardOffset,
-        scrollTop,
         viewportHeight
       );
     });
@@ -640,8 +642,6 @@ export class PluginHistoryComponent extends LitElement {
     taskData,
     months,
     monthWidth,
-    boardOffset,
-    scrollTop,
     viewportHeight
   ) {
     const taskId = taskData.task_id;
@@ -657,18 +657,14 @@ export class PluginHistoryComponent extends LitElement {
       return;
     }
 
-    // Calculate card position
-    // Prefer offsetTop/offsetHeight which are content coordinates relative to the board
+    // Calculate card position in board-space coordinates (offsetTop is relative to positioned parent)
     const host = cardEl;
     const cardY = host.offsetTop;
     const cardHeight = host.offsetHeight;
 
-    // Convert to viewport-space coordinates and check if visible
-    const cardViewportY = cardY - scrollTop;
-
     // Skip cards that are completely outside the visible viewport
-    if (cardViewportY + cardHeight < -50 || cardViewportY > viewportHeight + 50) {
-      return; // Card is not visible, skip rendering
+    if (cardY + cardHeight < -50 || cardY > viewportHeight + 50) {
+      return;
     }
 
     console.debug(
@@ -679,44 +675,41 @@ export class PluginHistoryComponent extends LitElement {
     const startHistory = history.filter((h) => h.field === 'start');
     const endHistory = history.filter((h) => h.field === 'end');
 
-    // Draw start history line (amber) - use viewport coordinates
+    // Draw start history line (amber) - use board-space coordinates
     if (startHistory.length > 0) {
-      const startY = cardViewportY + cardHeight * 0.33; // Upper third of card
+      const startY = cardY + cardHeight * 0.33; // Upper third of card
       this._drawHistoryLine(
         startHistory,
         startY,
         '#ff9800',
         months,
         monthWidth,
-        boardOffset,
         taskData.title,
         'start'
       );
     }
 
-    // Draw end history line (green) - use viewport coordinates
+    // Draw end history line (green) - use board-space coordinates
     if (endHistory.length > 0) {
-      const endY = cardViewportY + cardHeight * 0.67; // Lower third of card
+      const endY = cardY + cardHeight * 0.67; // Lower third of card
       this._drawHistoryLine(
         endHistory,
         endY,
         '#4caf50',
         months,
         monthWidth,
-        boardOffset,
         taskData.title,
         'end'
       );
     }
 
-    // Draw fish-bone connectors for paired changes - use viewport coordinates
+    // Draw fish-bone connectors for paired changes - use board-space coordinates
     this._drawFishboneConnectors(
       history,
-      cardViewportY,
+      cardY,
       cardHeight,
       months,
-      monthWidth,
-      boardOffset
+      monthWidth
     );
   }
 
@@ -726,7 +719,6 @@ export class PluginHistoryComponent extends LitElement {
     color,
     months,
     monthWidth,
-    boardOffset,
     taskTitle,
     fieldType
   ) {
@@ -740,7 +732,7 @@ export class PluginHistoryComponent extends LitElement {
     const points = historyEntries
       .map((entry, idx) => {
         const date = new Date(entry.value);
-        const x = this._calcX(date, months, monthWidth, boardOffset);
+        const x = this._calcX(date, months, monthWidth);
         if (x === null) {
           console.debug(
             `[PluginHistory] Skipping ${fieldType} entry (out of timeline range):`,
@@ -837,7 +829,7 @@ export class PluginHistoryComponent extends LitElement {
     });
   }
 
-  _drawFishboneConnectors(history, cardY, cardHeight, months, monthWidth, boardOffset) {
+  _drawFishboneConnectors(history, cardY, cardHeight, months, monthWidth) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
     // Group history by pair_id
@@ -874,10 +866,9 @@ export class PluginHistoryComponent extends LitElement {
       const startX = this._calcX(
         new Date(startEntry.value),
         months,
-        monthWidth,
-        boardOffset
+        monthWidth
       );
-      const endX = this._calcX(new Date(endEntry.value), months, monthWidth, boardOffset);
+      const endX = this._calcX(new Date(endEntry.value), months, monthWidth);
 
       if (startX === null || endX === null) return;
 
@@ -915,7 +906,7 @@ export class PluginHistoryComponent extends LitElement {
     });
   }
 
-  _calcX(date, months, monthWidth, boardOffset) {
+  _calcX(date, months, monthWidth) {
     const year = date.getFullYear();
     const month = date.getMonth();
     const day = date.getDate();
@@ -928,7 +919,7 @@ export class PluginHistoryComponent extends LitElement {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const dayRatio = (day - 1) / daysInMonth;
 
-    return boardOffset + monthIndex * monthWidth + dayRatio * monthWidth;
+    return monthIndex * monthWidth + dayRatio * monthWidth;
   }
 
   _lightenColor(color) {

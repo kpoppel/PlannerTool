@@ -88,39 +88,13 @@ describe('FeatureBoard helper coverage (additional)', () => {
     expect(passes).to.equal(true);
   });
 
-  it('_startThumbDrag/_onThumbMove update scroll safely', async () => {
+  it('_startThumbDrag/_onThumbMove scrollbar rail was removed', async () => {
+    // The custom fixed scrollbar rail (_ensureFixedScrollbar, _onThumbMove, etc.)
+    // was removed from FeatureBoard as part of the single-scroll-container refactor.
+    // vertical scroll is now handled by #scroll-container in TimelineBoard.
     const el = await fixture(html`<feature-board></feature-board>`);
-    // ensure fixed rail exists
-    el._ensureFixedScrollbar?.();
-    // set sizes so movement calculates
-    if (el._fixedRail)
-      el._fixedRail.getBoundingClientRect = () => ({ height: 200, top: 0 });
-    if (el._fixedThumb) el._fixedThumb.getBoundingClientRect = () => ({ height: 20 });
-    // override read-only DOM getters on the element for the test environment
-    Object.defineProperty(el, 'scrollHeight', {
-      value: 1000,
-      configurable: true,
-    });
-    Object.defineProperty(el, 'clientHeight', {
-      value: 200,
-      configurable: true,
-    });
-    let _st = 0;
-    Object.defineProperty(el, 'scrollTop', {
-      get: () => _st,
-      set: (v) => {
-        _st = v;
-      },
-      configurable: true,
-    });
-    el._fixedRail = el._fixedRail || document.querySelector('.fb-fixed-rail');
-    el._fixedThumb = el._fixedThumb || document.querySelector('.fb-fixed-thumb');
-    // start drag
-    el._dragging = true;
-    // simulate move
-    el._onThumbMove({ clientY: 50 });
-    // should not throw and scrollTop should be a number
-    expect(typeof el.scrollTop === 'number').to.be.true;
+    expect(typeof el._onThumbMove).to.equal('undefined');
+    expect(typeof el._ensureFixedScrollbar).to.equal('undefined');
   });
 
   it('centerFeatureById uses _cardMap and scrolls', async () => {

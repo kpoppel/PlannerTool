@@ -5,7 +5,6 @@ import * as boardHelpers from '../../www/js/components/FeatureBoard.lit.js';
 import {
   computePosition,
   laneHeight,
-  getBoardOffset,
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
 import { featureFlags } from '../../www/js/config.js';
@@ -37,9 +36,10 @@ describe('FeatureCard Consolidated Tests', () => {
       expect(h).to.be.a('number');
     });
 
-    it('getBoardOffset returns 0 when no board', () => {
-      const v = getBoardOffset();
-      expect(v).to.equal(0);
+    it('laneHeight returns a number (getBoardOffset removed; origin is always at 0,0)', () => {
+      // getBoardOffset() was always returning 0 and has been removed.
+      // laneHeight() is still present and returns a numeric value.
+      expect(laneHeight()).to.be.a('number');
     });
 
     it('computePosition returns left and width for valid ranges', async () => {

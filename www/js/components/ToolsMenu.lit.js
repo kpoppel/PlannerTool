@@ -1,8 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
-import { PluginEvents, ViewEvents } from '../core/EventRegistry.js';
+import { PluginEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { state } from '../services/State.js';
 
 export class ToolsMenuLit extends LitElement {
   static properties = {
@@ -147,7 +146,6 @@ export class ToolsMenuLit extends LitElement {
   constructor() {
     super();
     this.plugins = [];
-    this.showDependencies = false;
   }
 
   connectedCallback() {
@@ -170,29 +168,13 @@ export class ToolsMenuLit extends LitElement {
       this.requestUpdate();
     };
 
-    this._onDepsChanged = (val) => {
-      try {
-        this.showDependencies = !!val;
-      } catch (e) {
-        this.showDependencies = !!val;
-      }
-      this.requestUpdate();
-    };
-
     bus.on(PluginEvents.REGISTERED, this._updatePlugins);
     bus.on(PluginEvents.UNREGISTERED, this._updatePlugins);
     bus.on(PluginEvents.ACTIVATED, this._updatePlugins);
     bus.on(PluginEvents.DEACTIVATED, this._updatePlugins);
-    bus.on(ViewEvents.DEPENDENCIES, this._onDepsChanged);
 
     // initialize
     this._updatePlugins();
-    // initialize dependencies state from global state
-    try {
-      this.showDependencies = !!state.showDependencies;
-    } catch (e) {
-      this.showDependencies = false;
-    }
   }
 
   disconnectedCallback() {
@@ -202,20 +184,6 @@ export class ToolsMenuLit extends LitElement {
       bus.off(PluginEvents.UNREGISTERED, this._updatePlugins);
       bus.off(PluginEvents.ACTIVATED, this._updatePlugins);
       bus.off(PluginEvents.DEACTIVATED, this._updatePlugins);
-    }
-    if (this._onDepsChanged) bus.off(ViewEvents.DEPENDENCIES, this._onDepsChanged);
-  }
-
-  _toggleDependencies(e) {
-    e && e.stopPropagation();
-    try {
-      const newVal = !this.showDependencies;
-      state.setShowDependencies(newVal);
-      // optimistic update; ViewService will emit event which will reconcile
-      this.showDependencies = newVal;
-      this.requestUpdate();
-    } catch (err) {
-      console.warn('[ToolsMenu] toggle dependencies', err);
     }
   }
 
@@ -235,20 +203,6 @@ export class ToolsMenuLit extends LitElement {
     return html`
       <div class="menu-popover">
         <ul class="sidebar-list">
-          <li class="sidebar-list-item">
-            <div
-              class="chip sidebar-chip ${this.showDependencies ? 'active' : ''}"
-              role="button"
-              tabindex="0"
-              @click=${(e) => this._toggleDependencies(e)}
-              title="Toggle dependency links"
-            >
-              <span style="display:inline-flex;width:22px;justify-content:center"
-                >${this.showDependencies ? '🔗' : '🔘'}</span
-              >
-              <div class="project-name-col">Dependencies</div>
-            </div>
-          </li>
           ${Array.isArray(this.plugins) && this.plugins.length > 0 ?
             this.plugins.map((p) => {
               const isActive =

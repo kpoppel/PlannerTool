@@ -12,6 +12,7 @@ import PluginGraph from '../plugins/PluginGraph.js';
 import PluginPlanHealth from '../plugins/PluginPlanHealth.js';
 import PluginHistory from '../plugins/PluginHistory.js';
 import PluginLinkEditor from '../plugins/PluginLinkEditor.js';
+import PluginDependencies from '../plugins/PluginDependencies.js';
 
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
@@ -24,6 +25,7 @@ const PluginRegistry = {
   'plugin-plan-health': PluginPlanHealth,
   'plugin-history': PluginHistory,
   'plugin-link-editor': PluginLinkEditor,
+  'plugin-dependencies': PluginDependencies,
 };
 
 export default PluginRegistry;

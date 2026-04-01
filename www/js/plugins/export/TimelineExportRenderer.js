@@ -13,7 +13,6 @@
 import { state } from '../../services/State.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight } from '../../components/board-utils.js';
-import { getBoardOffset } from '../../components/board-utils.js';
 import { findInBoard } from '../../components/board-utils.js';
 import {
   createSvgElement,
@@ -813,8 +812,8 @@ export class TimelineExportRenderer {
         (function () {
           const months = getTimelineMonths() || [];
           const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
-          const boardOffset = getBoardOffset() || 0;
-          if (!months.length) return boardOffset;
+
+          if (!months.length) return 0;
           const d = new Date(ann.date);
           let idx = months.findIndex(
             (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
@@ -828,7 +827,7 @@ export class TimelineExportRenderer {
             0
           ).getDate();
           const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-          return Math.round(boardOffset + (idx + fraction) * monthWidth);
+          return Math.round((idx + fraction) * monthWidth);
         })()
       : ann.x || 0;
 
@@ -853,8 +852,8 @@ export class TimelineExportRenderer {
         (function () {
           const months = getTimelineMonths() || [];
           const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
-          const boardOffset = getBoardOffset() || 0;
-          if (!months.length) return boardOffset;
+
+          if (!months.length) return 0;
           const d = new Date(ann.date);
           let idx = months.findIndex(
             (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
@@ -868,7 +867,7 @@ export class TimelineExportRenderer {
             0
           ).getDate();
           const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-          return Math.round(boardOffset + (idx + fraction) * monthWidth);
+          return Math.round((idx + fraction) * monthWidth);
         })()
       : ann.x || 0;
     const x = contentX + xOffset;
@@ -914,8 +913,8 @@ export class TimelineExportRenderer {
         (function () {
           const months = getTimelineMonths() || [];
           const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
-          const boardOffset = getBoardOffset() || 0;
-          if (!months.length) return boardOffset;
+
+          if (!months.length) return 0;
           const d = new Date(ann.date);
           let idx = months.findIndex(
             (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
@@ -929,7 +928,7 @@ export class TimelineExportRenderer {
             0
           ).getDate();
           const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-          return Math.round(boardOffset + (idx + fraction) * monthWidth);
+          return Math.round((idx + fraction) * monthWidth);
         })()
       : ann.x || 0;
     const x = contentX + xOffset;
@@ -958,8 +957,8 @@ export class TimelineExportRenderer {
         (function () {
           const months = getTimelineMonths() || [];
           const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
-          const boardOffset = getBoardOffset() || 0;
-          if (!months.length) return boardOffset;
+
+          if (!months.length) return 0;
           const d = new Date(ann.date1);
           let idx = months.findIndex(
             (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
@@ -973,7 +972,7 @@ export class TimelineExportRenderer {
             0
           ).getDate();
           const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-          return Math.round(boardOffset + (idx + fraction) * monthWidth);
+          return Math.round((idx + fraction) * monthWidth);
         })()
       : ann.x1 || 0;
     const contentX2 =
@@ -981,8 +980,8 @@ export class TimelineExportRenderer {
         (function () {
           const months = getTimelineMonths() || [];
           const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
-          const boardOffset = getBoardOffset() || 0;
-          if (!months.length) return boardOffset;
+
+          if (!months.length) return 0;
           const d = new Date(ann.date2);
           let idx = months.findIndex(
             (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
@@ -996,7 +995,7 @@ export class TimelineExportRenderer {
             0
           ).getDate();
           const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-          return Math.round(boardOffset + (idx + fraction) * monthWidth);
+          return Math.round((idx + fraction) * monthWidth);
         })()
       : ann.x2 || 0;
     const x1 = contentX1 + xOffset;

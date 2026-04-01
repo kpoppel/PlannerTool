@@ -12,6 +12,39 @@
       "dependencies": []
     },
     {
+      "id": "plugin-dependencies",
+      "name": "Dependencies",
+      "version": "1.0.0",
+      "description": "Render dependency arrows between feature cards",
+      "enabled": true,
+      "activated": false,
+      "exclusive": false,
+      "mountPoint": "feature-board",
+      "dependencies": []
+    },
+    {
+      "id": "plugin-plan-health",
+      "name": "Plan Health",
+      "version": "1.0.0",
+      "description": "Detect and highlight planning issues and anomalies",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
+    },
+    {
+      "id": "plugin-history",
+      "name": "Task History",
+      "version": "1.0.0",
+      "description": "Display task date change history on timeline",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "mountPoint": "feature-board",
+      "dependencies": []
+    },
+    {
       "id": "plugin-markers",
       "name": "Plan Markers",
       "version": "1.0.0",
@@ -78,28 +111,6 @@
       "exclusive": true,
       "fullscreen": true,
       "mountPoint": "app",
-      "dependencies": []
-    },
-    {
-      "id": "plugin-plan-health",
-      "name": "Plan Health",
-      "version": "1.0.0",
-      "description": "Detect and highlight planning issues and anomalies",
-      "enabled": true,
-      "activated": false,
-      "exclusive": true,
-      "mountPoint": "feature-board",
-      "dependencies": []
-    },
-    {
-      "id": "plugin-history",
-      "name": "Task History",
-      "version": "1.0.0",
-      "description": "Display task date change history on timeline",
-      "enabled": true,
-      "activated": false,
-      "exclusive": true,
-      "mountPoint": "feature-board",
       "dependencies": []
     },
     {

@@ -1,6 +1,5 @@
 import { bus } from './core/EventBus.js';
 import { state } from './services/State.js';
-import { initDependencyRenderer } from './components/DependencyRenderer.lit.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { registerCoreServices } from './core/ServiceRegistry.js';
@@ -64,7 +63,6 @@ async function init() {
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
     await state.initState();
-    initDependencyRenderer();
 
     // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {

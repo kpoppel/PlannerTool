@@ -43,14 +43,6 @@ let _headerPendingPayload = null;
 let _headerScheduledPromise = null;
 let _currentTimelineScale = 'months';
 let _resizeDebounceTimer = null;
-// Control whether timeline panning is allowed. Other components can toggle this
-// (e.g., when drawing annotations we want to disable panning so the board
-// doesn't move while the user draws).
-let timelinePanningAllowed = true;
-
-export function setTimelinePanningAllowed(val) {
-  timelinePanningAllowed = !!val;
-}
 
 /**
  * Timeline - Lit-based timeline component
@@ -309,7 +301,7 @@ export async function initTimeline() {
       // so that exactly 3 months fill the timelineSection viewport width.
       let newMonthWidth = payload.monthWidth;
       if (payload.scale === 'threeMonths') {
-        const section = findInBoard('#timelineSection');
+        const section = findInBoard('#scroll-container');
         if (section && section.clientWidth) {
           newMonthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
         }
@@ -336,7 +328,7 @@ export async function initTimeline() {
             (m) =>
               m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth()
           );
-          const section = findInBoard('#timelineSection');
+          const section = findInBoard('#scroll-container');
           if (idx >= 0 && section) {
             const targetScrollPos = idx * newMonthWidth;
             const centeredScrollPos =
@@ -360,7 +352,7 @@ export async function initTimeline() {
     if (savedScale) {
       _currentTimelineScale = savedScale;
       if (savedScale === 'threeMonths') {
-        const section = findInBoard('#timelineSection');
+        const section = findInBoard('#scroll-container');
         if (section && section.clientWidth) {
           TIMELINE_CONFIG.monthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
           document.documentElement.style.setProperty(
@@ -380,7 +372,7 @@ export async function initTimeline() {
       if (_resizeDebounceTimer) clearTimeout(_resizeDebounceTimer);
       _resizeDebounceTimer = setTimeout(() => {
         if (_currentTimelineScale === 'threeMonths') {
-          const section = findInBoard('#timelineSection');
+          const section = findInBoard('#scroll-container');
           if (section && section.clientWidth) {
             // Preserve the leftmost month index and fractional offset so the
             // visible left edge remains on the same logical date after resize.
@@ -405,7 +397,6 @@ export async function initTimeline() {
         _resizeDebounceTimer = null;
       }, 120);
     });
-    enableTimelinePanning();
 
     // initial render
     renderTimelineHeader();
@@ -483,7 +474,7 @@ async function renderTimelineHeader(payload) {
 
   // Ensure months fill the visible timeline width so header spans entire card area
   const monthWidth = TIMELINE_CONFIG.monthWidth;
-  const section = findInBoard('#timelineSection');
+  const section = findInBoard('#scroll-container');
   if (section) {
     const targetWidth = section.clientWidth;
     const needed = Math.ceil(targetWidth / monthWidth);
@@ -505,10 +496,13 @@ async function renderTimelineHeader(payload) {
     await comp.renderMonths(monthsCache).catch(() => {});
     bus.emit(TimelineEvents.MONTHS, monthsCache);
     const totalWidth = monthsCache.length * TIMELINE_CONFIG.monthWidth;
+    // Set timeline header width
     header.style.width = totalWidth + 10 + 'px';
-    const board = findInBoard('feature-board');
-    if (board) {
-      board.style.width = totalWidth + 'px';
+    // Set board-area width so background stripes span the full content and
+    // position:absolute overlays cover the correct area
+    const boardArea = findInBoard('#board-area');
+    if (boardArea) {
+      boardArea.style.width = totalWidth + 'px';
     }
   } else {
     // No component available; still emit months so consumers can respond
@@ -522,7 +516,7 @@ async function renderTimelineHeader(payload) {
       (m) => m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth()
     );
     if (idx >= 0) {
-      const section = findInBoard('#timelineSection');
+      const section = findInBoard('#scroll-container');
       if (section) {
         requestAnimationFrame(() => {
           section.scrollLeft = idx * TIMELINE_CONFIG.monthWidth;
@@ -564,28 +558,16 @@ function scheduleRenderTimelineHeader(payload) {
 }
 
 /**
- * Get board offset (left padding)
- * @returns {number} Board offset in pixels
- */
-function getBoardOffset() {
-  const board = findInBoard('feature-board');
-  if (!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
-  return Number.isNaN(pl) ? 0 : pl;
-}
-
-/**
  * Calculate the date currently at viewport center
  * @returns {Date|null} Center date or null if timeline not ready
  */
 function getCenterDate() {
-  const section = findInBoard('#timelineSection');
+  const section = findInBoard('#scroll-container');
   if (!section || !monthsCache.length) return null;
 
   const monthWidth = TIMELINE_CONFIG.monthWidth;
   const centerScrollPos = section.scrollLeft + section.clientWidth / 2;
-  const boardOffset = getBoardOffset();
-  const relative = (centerScrollPos - boardOffset) / monthWidth;
+  const relative = centerScrollPos / monthWidth;
 
   const monthIndex = Math.max(0, Math.min(Math.floor(relative), monthsCache.length - 1));
   const fraction = relative - monthIndex;
@@ -610,11 +592,10 @@ function getCenterDate() {
  * @param {Array} months - Current months array
  */
 function scrollToCenterDate(targetDate, months) {
-  const section = findInBoard('#timelineSection');
+  const section = findInBoard('#scroll-container');
   if (!section || !targetDate || !months.length) return;
 
   const monthWidth = TIMELINE_CONFIG.monthWidth;
-  const boardOffset = getBoardOffset();
   const firstMonthDate = months[0];
 
   if (!firstMonthDate || typeof firstMonthDate.toISOString !== 'function') return;
@@ -637,47 +618,8 @@ function scrollToCenterDate(targetDate, months) {
   const fraction = (targetDay - 1) / daysInMonth;
 
   // Calculate scroll position and center in viewport
-  const targetScrollPos = boardOffset + (totalMonths + fraction) * monthWidth;
+  const targetScrollPos = (totalMonths + fraction) * monthWidth;
   section.scrollLeft = targetScrollPos - section.clientWidth / 2;
-}
-
-function enableTimelinePanning() {
-  const section = findInBoard('#timelineSection');
-  if (!section) return;
-  let isPanning = false;
-  let startX = 0,
-    startY = 0;
-  let startScrollLeft = 0,
-    startScrollTop = 0;
-  section.addEventListener('mousedown', (e) => {
-    // If panning is currently disabled by other UI (e.g., annotation drawing),
-    // ignore the mousedown so drawing/drag behavior isn't interrupted.
-    if (!timelinePanningAllowed) return;
-    if (e.target.closest('.feature-card') || e.target.classList.contains('drag-handle'))
-      return;
-    isPanning = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    startScrollLeft = section.scrollLeft;
-    const featureBoard = findInBoard('feature-board');
-    startScrollTop = featureBoard?.scrollTop ?? 0;
-    section.classList.add('panning');
-    function onMove(ev) {
-      if (!isPanning) return;
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      section.scrollLeft = startScrollLeft - dx;
-      if (featureBoard) featureBoard.scrollTop = startScrollTop - dy;
-    }
-    function onUp() {
-      isPanning = false;
-      section.classList.remove('panning');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  });
 }
 
 // Export helper for tests/tools
@@ -712,7 +654,7 @@ export function ensureScrollToMonth(date) {
     const tryScroll = () => {
       const idx = resolveIndex();
       if (idx === -1) return false;
-      const section = findInBoard('#timelineSection');
+      const section = findInBoard('#scroll-container');
       if (!section) return false;
       // Center the target month in the viewport instead of left-aligning it
       const targetScrollPos = idx * monthWidth;

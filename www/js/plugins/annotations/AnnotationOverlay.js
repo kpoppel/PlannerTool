@@ -17,7 +17,8 @@ import {
 import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
 import { bus } from '../../core/EventBus.js';
 import { TimelineEvents } from '../../core/EventRegistry.js';
-import { getBoardOffset, findInBoard } from '../../components/board-utils.js';
+import { findInBoard } from '../../components/board-utils.js';
+import { boardCoords } from '../../services/BoardCoordinateService.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -62,11 +63,13 @@ export class AnnotationOverlay extends LitElement {
   static styles = css`
     :host {
       display: none;
-      /* Make the overlay position absolute so when the element is a child
-        of feature-board it is positioned relative to the board and will
-        be clipped by the board's overflow (preventing overlap with the
-        sidebar). Using fixed positions it would float above page chrome. */
+      /*
+       * Positioned as an absolute sibling of feature-board inside #board-area.
+       * inset:0 makes the overlay cover exactly the card area.
+       * Board-space coords == overlay local coords — no conversion needed.
+       */
       position: absolute;
+      inset: 0;
       z-index: 50;
       pointer-events: none;
       overflow: hidden;
@@ -167,40 +170,31 @@ export class AnnotationOverlay extends LitElement {
     );
     this.style.pointerEvents = isDrawingToolInit ? 'auto' : 'none';
 
-    // Listen for scroll events to reposition overlay and re-render annotations
+    // Subscribe to board scroll via BoardCoordinateService so the SVG is
+    // redrawn when the viewport moves (e.g. for the in-progress draw ghost).
+    // No repositioning needed — the overlay is position:absolute inside #board-area.
     this._scrollScheduled = false;
-    this._scrollHandler = () => {
+    this._scrollUnsubscribe = boardCoords.subscribe(() => {
       if (this._scrollScheduled) return;
       this._scrollScheduled = true;
       requestAnimationFrame(() => {
         this._scrollScheduled = false;
-        // Reposition overlay to stay aligned with featureBoard
-        this._positionOverTimeline();
-
         this._updateSvg();
       });
-    };
+    });
 
-    // Attach scroll listener - may need to wait for DOM
-    this._attachScrollListener();
-
-    // Listen for timeline scale changes so we can rescale annotations that
-    // store pixel widths (notes/rects) to match the new timeline scale.
+    // Listen for timeline scale changes
     this._onScaleChanged = () => {
       const newMonthWidth =
         TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
       const old = this._lastMonthWidth || newMonthWidth;
       if (newMonthWidth !== old) {
         const scale = newMonthWidth / old;
-        // Rescale annotations that use pixel sizes — only scale rects.
-        // Notes contain text and should remain the same pixel size
-        // regardless of timeline zoom; they remain anchored by date.
         const anns = this._state.annotations || [];
         for (const ann of anns) {
           if (ann.type === 'rect') {
             const newW = Math.max(1, Math.round((ann.width || 0) * scale));
-            const updates = { width: newW };
-            this._state.update(ann.id, updates);
+            this._state.update(ann.id, { width: newW });
           }
         }
         this._lastMonthWidth = newMonthWidth;
@@ -355,41 +349,22 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _attachScrollListener() {
-    const { timelineSection, featureBoard } = this._getScrollContainers();
-
-    // Listen to timeline section for horizontal scroll (panning)
-    if (timelineSection && !this._scrollTargetV) {
-      timelineSection.addEventListener('scroll', this._scrollHandler, { passive: true });
-      this._scrollTargetV = timelineSection;
-    }
-
-    // Listen to feature board for vertical scroll
-    if (featureBoard && !this._scrollTargetH) {
-      featureBoard.addEventListener('scroll', this._scrollHandler, { passive: true });
-      this._scrollTargetH = featureBoard;
-    }
-
-    // Also respond to window resizes so overlay follows viewport changes
-    window.addEventListener('resize', this._scrollHandler);
-    this._resizeHandlerAttached = true;
+    // No-op: scroll subscription is handled via boardCoords.subscribe() in connectedCallback.
+    // Kept as a stub so any external callers don't throw.
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this._unsubscribe();
+    this._unsubscribe?.();
     this._unsubscribe = null;
-
-    // Remove scroll listeners
-    this._scrollTargetV.removeEventListener('scroll', this._scrollHandler);
-    this._scrollTargetV = null;
-    this._scrollTargetH.removeEventListener('scroll', this._scrollHandler);
-    this._scrollTargetH = null;
-    window.removeEventListener('resize', this._scrollHandler);
+    this._scrollUnsubscribe?.();
+    this._scrollUnsubscribe = null;
     bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
   }
 
   render() {
-    // Convert note position to viewport coords for the text input
+    // In the new design overlay coords == board coords, so the textarea is
+    // positioned directly at (contentX, y) — no viewport conversion needed.
     let textareaStyle = '';
     if (this._editingNote) {
       const contentX =
@@ -397,10 +372,11 @@ export class AnnotationOverlay extends LitElement {
           this._editingNote.x
         : this._editingNote.date ? this._dateToContentX(this._editingNote.date)
         : 0;
-      const { x: vx, y: vy } = this._contentToViewport(contentX, this._editingNote.y);
+      const x = contentX;
+      const y = this._editingNote.y;
       const fontSize = this._editingNote.fontSize || 12;
       const bgColor = this._editingNote.fill || ANNOTATION_COLORS.defaultFill;
-      textareaStyle = `left: ${vx}px; top: ${vy}px; width: ${this._editingNote.width}px; height: ${this._editingNote.height}px; font-size: ${fontSize}px; background: ${bgColor};`;
+      textareaStyle = `left: ${x}px; top: ${y}px; width: ${this._editingNote.width}px; height: ${this._editingNote.height}px; font-size: ${fontSize}px; background: ${bgColor};`;
     }
 
     // Only make the overlay interactive when using a drawing tool
@@ -508,7 +484,7 @@ export class AnnotationOverlay extends LitElement {
       typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
       : ann.date ? this._dateToContentX(ann.date)
       : 0;
-    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
+    const vx = contentX; const vy = ann.y;
     const g = this._createSvgElement('g', {
       class: `annotation annotation-icon ${isSelected ? 'selected' : ''}`,
       'data-id': ann.id,
@@ -543,7 +519,7 @@ export class AnnotationOverlay extends LitElement {
       typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
       : ann.date ? this._dateToContentX(ann.date)
       : 0;
-    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
+    const vx = contentX; const vy = ann.y;
 
     const g = this._createSvgElement('g', {
       class: `annotation annotation-note ${isSelected ? 'selected' : ''}`,
@@ -615,7 +591,7 @@ export class AnnotationOverlay extends LitElement {
       typeof ann.x !== 'undefined' && ann.x !== null ? ann.x
       : ann.date ? this._dateToContentX(ann.date)
       : 0;
-    const { x: vx, y: vy } = this._contentToViewport(contentX, ann.y);
+    const vx = contentX; const vy = ann.y;
 
     const g = this._createSvgElement('g', {
       class: `annotation annotation-rect ${isSelected ? 'selected' : ''}`,
@@ -671,8 +647,8 @@ export class AnnotationOverlay extends LitElement {
       typeof ann.x2 !== 'undefined' && ann.x2 !== null ? ann.x2
       : ann.date2 ? this._dateToContentX(ann.date2)
       : 0;
-    const { x: vx1, y: vy1 } = this._contentToViewport(contentX1, ann.y1);
-    const { x: vx2, y: vy2 } = this._contentToViewport(contentX2, ann.y2);
+    const vx1 = contentX1; const vy1 = ann.y1;
+    const vx2 = contentX2; const vy2 = ann.y2;
 
     const g = this._createSvgElement('g', {
       class: `annotation annotation-line ${isSelected ? 'selected' : ''}`,
@@ -799,9 +775,9 @@ export class AnnotationOverlay extends LitElement {
         currentContentX
       : currentX;
 
-    // Convert content coordinates to viewport for preview display
-    const { x: vs_x, y: vs_y } = this._contentToViewport(startContent, startY);
-    const { x: vc_x, y: vc_y } = this._contentToViewport(currentContent, currentY);
+    // Board coords == overlay coords — no viewport conversion needed
+    const vs_x = startContent; const vs_y = startY;
+    const vc_x = currentContent; const vc_y = currentY;
 
     if (tool === TOOLS.NOTE || tool === TOOLS.RECT) {
       const x = Math.min(vs_x, vc_x);
@@ -853,92 +829,28 @@ export class AnnotationOverlay extends LitElement {
   // --------------------------------------------------------------------------
 
   /**
-   * Get the scroll containers for horizontal and vertical scrolling.
-   * Horizontal scroll is on the feature-board, vertical scroll is on timeline-section.
-   */
-  _getScrollContainers() {
-    // timelineSection lives inside the timeline-board render root (shadow DOM)
-    const timelineSection = findInBoard('#timelineSection');
-    const featureBoard = findInBoard('feature-board');
-    return { timelineSection, featureBoard };
-  }
-
-  /**
-   * Get current scroll offsets from the appropriate containers.
-   * Horizontal scroll is primarily on timelineSection (via panning), featureBoard is fallback.
-   * Vertical scroll is on featureBoard.
-   */
-  _getScrollOffsets() {
-    // Horizontal panning occurs on timelineSection
-    // Vertical scrolling on featureBoard
-    const { timelineSection, featureBoard } = this._getScrollContainers();
-    return { scrollLeft: timelineSection.scrollLeft, scrollTop: featureBoard.scrollTop };
-  }
-
-  /**
-   * Get coordinates relative to the overlay/featureBoard content, accounting for scroll.
+   * Convert a screen event to board-space coordinates.
+   * With the overlay as position:absolute inside #board-area,
+   * board coords == overlay local coords, so no conversion is needed for rendering.
    *
-   * Horizontal: The overlay repositions on scroll, so coordinates relative to the
-   * overlay are already correct - no need to add scrollLeft.
-   *
-   * Vertical: featureBoard scrolls internally, so we add scrollTop to get
-   * stable content coordinates.
+   * @param {MouseEvent} e
+   * @returns {{ x: number, y: number, contentX: number, outside: boolean }}
    */
   _getEventCoords(e) {
-    const featureBoard = findInBoard('feature-board');
-    let rect = null;
-    const { scrollTop, scrollLeft } = this._getScrollOffsets();
-    rect = featureBoard.getBoundingClientRect();
-
-    const clientX = e.clientX;
-    const clientY = e.clientY;
-    const outside =
-      clientX < rect.left ||
-      clientX > rect.right ||
-      clientY < rect.top ||
-      clientY > rect.bottom;
-
-    const viewportX = clientX - rect.left;
-    const viewportY = clientY - rect.top;
-    // Derive content X from the event: clientX - boardRect.left yields the
-    // absolute content coordinate (boardRect.left already moves with scroll),
-    // so do NOT add scrollLeft here (that double-counts horizontal pan).
-    const contentX = viewportX; // content coordinate inside feature board
-
-    return {
-      x: viewportX,
-      y: viewportY + scrollTop,
-      vx: viewportX,
-      vy: viewportY,
-      contentX,
-      outside,
-    };
+    const { x, y } = boardCoords.screenToBoard(e.clientX, e.clientY);
+    const outside = !boardCoords.isScreenPointInBoard(e.clientX, e.clientY);
+    return { x, y, vx: x, vy: y, contentX: x, outside };
   }
 
   /**
-   * Convert content coordinates back to viewport coordinates for rendering.
-   *
-   * Horizontal: The overlay repositions on scroll to stay with featureBoard,
-   * so we don't need to adjust for horizontal scroll - the overlay already moved.
-   *
-   * Vertical: featureBoard scrolls internally (scrollTop), so we need to
-   * subtract scrollTop to position annotations correctly.
+   * Board coords == overlay local coords — identity transform.
+   * Kept as a method for compatibility with any remaining internal calls.
+   * @param {number} x
+   * @param {number} y
+   * @returns {{ x: number, y: number }}
    */
   _contentToViewport(x, y) {
-    const { scrollTop, scrollLeft } = this._getScrollOffsets();
-    // Compute client coordinates for the content point. The content X is
-    // relative to the board content origin; convert it to a page clientX by
-    // adding the featureBoard's bounding rect.left. The boardRect.left already
-    // accounts for horizontal scrolling, so do NOT subtract scrollLeft here.
-    const featureBoard = findInBoard('feature-board');
-    const rect = featureBoard.getBoundingClientRect();
-    const overlayRect = this.getBoundingClientRect();
-    const clientX = rect.left + x;
-    const clientY = rect.top + (y - scrollTop);
-
-    const localX = clientX - overlayRect.left;
-    const localY = clientY - overlayRect.top;
-    return { x: Math.round(localX), y: Math.round(localY) };
+    return { x: Math.round(x), y: Math.round(y) };
   }
 
   _onMouseDown(e) {
@@ -1070,8 +982,7 @@ export class AnnotationOverlay extends LitElement {
     // Compute content Y and fallbackContentX for annotation creation
     const featureBoard = findInBoard('feature-board');
     const rect = featureBoard.getBoundingClientRect();
-    const { scrollTop } = this._getScrollOffsets();
-    const contentY = clientY - rect.top + (scrollTop || 0);
+    const contentY = clientY - rect.top + boardCoords.scrollY;
     const fallbackContentX =
       typeof contentX !== 'undefined' && contentX !== null ?
         contentX
@@ -1581,58 +1492,14 @@ export class AnnotationOverlay extends LitElement {
   }
 
   // ---------------------------
-  // Date <-> Content X conversions
+  // Date <-> Content X conversions (delegated to BoardCoordinateService)
   // ---------------------------
   _dateToContentX(dateMs) {
-    const months = getTimelineMonths();
-    const monthWidth = TIMELINE_CONFIG.monthWidth;
-    const boardOffset = getBoardOffset() || 0;
-    if (!months.length) return boardOffset;
-
-    const d = new Date(dateMs);
-    // Find month index by scanning (months array contains month start dates)
-    let idx = months.findIndex(
-      (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
-    );
-    if (idx === -1) {
-      // fallback: find nearest earlier month
-      idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
-    }
-    const monthStart = months[idx];
-    const daysInMonth = new Date(
-      monthStart.getFullYear(),
-      monthStart.getMonth() + 1,
-      0
-    ).getDate();
-    const day = d.getDate();
-    const fraction = Math.max(0, Math.min(1, (day - 1) / daysInMonth));
-    const x = boardOffset + (idx + fraction) * monthWidth;
-    return Math.round(x);
+    return boardCoords.dateToContentX(new Date(dateMs));
   }
 
   _contentXToDateMs(contentX) {
-    const months = getTimelineMonths();
-    const monthWidth = TIMELINE_CONFIG.monthWidth;
-    const boardOffset = getBoardOffset() || 0;
-    if (!months.length) return Date.now();
-
-    const rel = (contentX - boardOffset) / monthWidth;
-    let idx = Math.floor(rel);
-    if (idx < 0) idx = 0;
-    if (idx >= months.length) idx = months.length - 1;
-    const monthStart = months[idx];
-    const daysInMonth = new Date(
-      monthStart.getFullYear(),
-      monthStart.getMonth() + 1,
-      0
-    ).getDate();
-    const fraction = rel - idx;
-    const day = Math.max(
-      1,
-      Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1)
-    );
-    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-    return date.getTime();
+    return boardCoords.contentXToDateMs(contentX);
   }
 
   // --------------------------------------------------------------------------
@@ -1641,8 +1508,7 @@ export class AnnotationOverlay extends LitElement {
 
   show() {
     this.active = true;
-    this._positionOverTimeline();
-    this._attachScrollListener();
+    // No repositioning needed: overlay is position:absolute inside #board-area
     this._updateSvg();
   }
 
@@ -1653,31 +1519,15 @@ export class AnnotationOverlay extends LitElement {
 
   toggle() {
     this.active = !this.active;
-    if (this.active) {
-      this._positionOverTimeline();
-    }
+    if (this.active) this._updateSvg();
   }
 
   /**
-   * Position the overlay to cover the feature board only (not the timeline header)
+   * No-op: kept for backward compatibility.
+   * The overlay is positioned by CSS (inset:0) relative to #board-area.
    */
   _positionOverTimeline() {
-    const featureBoard = findInBoard('feature-board');
-    const rect = featureBoard.getBoundingClientRect();
-
-    // Compute visible intersection with viewport so overlay only covers on-screen area
-    const left = Math.round(rect.left);
-    const top = Math.round(rect.top);
-    const right = Math.min(window.innerWidth, Math.round(rect.right));
-    const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
-    const width = Math.max(0, right - left);
-    const height = Math.max(0, bottom - top);
-
-    this.style.position = 'fixed';
-    this.style.top = `${top}px`;
-    this.style.left = `${left}px`;
-    this.style.width = `${width}px`;
-    this.style.height = `${height}px`;
+    // No manual positioning required in the new architecture.
   }
 
   setTool(tool) {

@@ -148,16 +148,8 @@ export class PluginLinkEditor extends Plugin {
   _onFeatureUpdate(payload) {
     console.log('[PluginLinkEditor] Feature updated:', payload);
 
-    // Trigger a re-render of dependency lines if the DependencyRenderer exists
-    try {
-      import('../components/DependencyRenderer.lit.js').then((module) => {
-        if (module.refreshDependencies) {
-          module.refreshDependencies();
-        }
-      });
-    } catch (err) {
-      // DependencyRenderer may not be loaded, ignore
-    }
+    // PluginDependenciesComponent subscribes to FeatureEvents.UPDATED directly,
+    // so dependency lines are refreshed automatically — no manual trigger needed here.
 
     // Request update on component if it exists
     if (this._component && typeof this._component.requestUpdate === 'function') {

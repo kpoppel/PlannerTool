@@ -33,6 +33,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - ViewService now inlines timelineSection lookup to avoid circular dependencies
 - Massive cleanup of code.  Many empty try/catch removed, old LayoutManager code removed.
 - providerREST tests updated using new network mocks usable in all tests. The mocks actually return sensible data. As an effect coverage is better in many places.
+- PLugins harmonised to use the same builerplate code for plugins which use SVG overlays.
 
 ### Fixed
 
@@ -41,8 +42,19 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Export plugin stoped working as it could no longer find any feature cards :-(
 - Fixed most warnings about scroll linkes updates.
 
-### TODO:
+## Refactor: single-scroll timeline-board + canonical coordinate service (branch: refactor-coords)
 
+- Added `BoardCoordinateService` (`www/js/services/BoardCoordinateService.js`) as the single source of truth for board↔screen coordinate transforms, date↔board-X converts, scroll position, and panning control.
+- Replaced split-scroll architecture (dual scroll containers on `timeline-lit` and `feature-board`) with a single `#scroll-container` in `TimelineBoard`; `timeline-lit` is now `position:sticky` inside it.
+- `TimelineBoard` gains Shadow DOM, owns panning mouse events, and calls `boardCoords.init()` after first layout.
+- Removed `getBoardOffset()` from `board-utils.js` (it always returned 0; coordinate origin is now `#board-area`).
+- Removed `setTimelinePanningAllowed` from `Timeline.lit.js`; moved into `boardCoords.setPanningAllowed()`.
+- Removed custom scrollbar rail (~150 lines) from `FeatureBoard.lit.js`; vertical scroll is handled by `#scroll-container`.
+- Simplified `AnnotationOverlay.js`, `dragManager.js`, `PluginMarkersComponent.js`, `PluginHistoryComponent.js`, `PluginAnnotationsComponent.js`, `PluginLinkEditorComponent.js` to use board-space coordinates directly via `boardCoords`.
+- Updated `ExportUtils.js` and `TimelineExportRenderer.js` to use `#scroll-container` and `boardCoords.scrollX/scrollY`.
+- Added `BoardEvents` (`SCROLL`, `READY`) to `EventRegistry.js`.
+
+### TODO:
 - Wire up \_highlightFeatureRelationMode in SideBar in Display section
 
 ## [v3.0.0] - 2026-03-27

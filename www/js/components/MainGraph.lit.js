@@ -15,6 +15,7 @@ import {
   ViewEvents,
 } from '../core/EventRegistry.js';
 import { findInBoard } from './board-utils.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 
 /**
  * MainGraphLit - Lit-based main graph component with canvas rendering
@@ -136,14 +137,8 @@ export class MainGraphLit extends LitElement {
     this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_COMPLETE, scheduleRender));
     this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleRender));
 
-    // Also listen for scroll on timelineSection
-    const section = findInBoard('#timelineSection');
-    if (section) {
-      this._maingraphScrollHandler = scheduleRender;
-      section.addEventListener('scroll', this._maingraphScrollHandler, {
-        passive: true,
-      });
-    }
+    // Listen for scroll via boardCoords (single scroll container)
+    this._maingraphScrollUnsubscribe = boardCoords.subscribe(scheduleRender);
 
     // Initial render
     scheduleRender();
@@ -159,11 +154,11 @@ export class MainGraphLit extends LitElement {
       });
       this._maingraphUnsubs = null;
     }
-    // Remove scroll handler
-    const section = findInBoard('#timelineSection');
-    if (section && this._maingraphScrollHandler)
-      section.removeEventListener('scroll', this._maingraphScrollHandler);
-    this._maingraphScrollHandler = null;
+    // Unsubscribe from scroll
+    if (this._maingraphScrollUnsubscribe) {
+      this._maingraphScrollUnsubscribe();
+      this._maingraphScrollUnsubscribe = null;
+    }
   }
 
   /**
@@ -205,12 +200,12 @@ export class MainGraphLit extends LitElement {
       return;
     }
 
-    // Prefer the component's host size; fall back to timelineSection width or configured defaults
+    // Prefer the component's host size; fall back to scroll container width or configured defaults
     const hostRect = this.getBoundingClientRect ? this.getBoundingClientRect() : null;
-    const sectionEl = findInBoard('#timelineSection');
+    const scrollContainer = findInBoard('#scroll-container');
     const desiredWidth =
       hostRect && hostRect.width ? Math.floor(hostRect.width)
-      : sectionEl && sectionEl.clientWidth ? sectionEl.clientWidth
+      : scrollContainer ? scrollContainer.clientWidth
       : this.width || 800;
     const desiredHeight =
       hostRect && hostRect.height ? Math.floor(hostRect.height) : this.height || 120;
@@ -315,14 +310,14 @@ export class MainGraphLit extends LitElement {
       return Math.max(min, Math.min(max, v));
     }
 
-    // Visible range: use timelineSection scroll if present, otherwise assume full months range
-    const section = findInBoard('#timelineSection');
+    // Visible range: use boardCoords for scroll position and container width
+    const scrollContainer = findInBoard('#scroll-container');
     let range = { startDate: months[0], endDate: months[months.length - 1] };
     let viewportOffsetPx = 0; // Offset from the start of visibleStartIdx to the viewport left edge
 
-    if (section) {
-      const scrollLeft = section.scrollLeft;
-      const width = section.clientWidth;
+    {
+      const scrollLeft = boardCoords.scrollX;
+      const width = scrollContainer ? scrollContainer.clientWidth : (this._canvasRef?.width || 800);
 
       // Calculate which dates are visible in the viewport
       const startMonthIdx = Math.floor(scrollLeft / MONTH_WIDTH);
@@ -349,9 +344,7 @@ export class MainGraphLit extends LitElement {
       );
       range = { startDate, endDate };
 
-      // Calculate the pixel offset: how many pixels from the start of startDate's day to the viewport edge
-      // startDay tells us which day of the month we're on (0-indexed from calculation)
-      // We need the sub-day offset as well
+      // Calculate the pixel offset
       const pxPerDayInStartMonth = MONTH_WIDTH / startMonthDays;
       const exactDayInMonth = (startMonthOffsetPx / MONTH_WIDTH) * startMonthDays;
       const subDayOffset = (exactDayInMonth - startDay) * pxPerDayInStartMonth;

@@ -66,13 +66,6 @@ const findMonthIndexFor = (msVal) => {
 
 export const laneHeight = () => (state._viewService.condensedCards ? 40 : 64);
 
-export const getBoardOffset = () => {
-  const board = findInBoard('feature-board');
-  if (!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
-  return Number.isNaN(pl) ? 0 : pl;
-};
-
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();
   const monthWidth = getMonthWidth();
@@ -116,8 +109,7 @@ export const computePosition = (feature, monthsArg) => {
     const startFraction = (startDate.getDate() - 1) / startDays;
     const endFraction = endDate.getDate() / endDays;
 
-    const boardOffset = getBoardOffset();
-    const left = boardOffset + (startIdx + startFraction) * monthWidth;
+    const left = (startIdx + startFraction) * monthWidth;
     const spanContinuous = endIdx + endFraction - (startIdx + startFraction);
     let width = spanContinuous * monthWidth;
 
@@ -154,8 +146,7 @@ export const computePosition = (feature, monthsArg) => {
   const startFraction = (startDate.getDate() - 1) / startDays;
   const endFraction = endDate.getDate() / endDays;
 
-  const boardOffset = getBoardOffset();
-  const left = boardOffset + (startIdx + startFraction) * monthWidth;
+  const left = (startIdx + startFraction) * monthWidth;
   const spanContinuous = endIdx + endFraction - (startIdx + startFraction);
   let width = spanContinuous * monthWidth;
 

@@ -4,6 +4,7 @@
  */
 
 import { findInBoard } from '../../components/board-utils.js';
+import { boardCoords } from '../../services/BoardCoordinateService.js';
 
 /**
  * Get bounds of the visible timeline viewport
@@ -16,13 +17,13 @@ import { findInBoard } from '../../components/board-utils.js';
 export function getViewportBounds(options = {}) {
   // Prefer elements inside the timeline-board render root (shadow DOM).
   // `findInBoard()` will search the timeline-board's renderRoot/shadowRoot first.
-  const timelineSection = findInBoard('#timelineSection');
+  const scrollContainer = findInBoard('#scroll-container');
   const featureBoard = findInBoard('feature-board');
   const mainGraph = findInBoard('maingraph-lit');
 
-  if (!timelineSection || !featureBoard) {
+  if (!scrollContainer || !featureBoard) {
     console.warn('[Export] Missing required timeline elements:', {
-      timelineSection: !!timelineSection,
+      scrollContainer: !!scrollContainer,
       featureBoard: !!featureBoard,
     });
     return {
@@ -39,16 +40,15 @@ export function getViewportBounds(options = {}) {
     };
   }
 
-  // Safely obtain bounding rects; in some test environments elements may
-  // implement only clientWidth/clientHeight and not a full getBoundingClientRect.
+  // Safely obtain bounding rects
   const rect =
-    typeof timelineSection.getBoundingClientRect === 'function' ?
-      timelineSection.getBoundingClientRect()
+    typeof scrollContainer.getBoundingClientRect === 'function' ?
+      scrollContainer.getBoundingClientRect()
     : {
         x: 0,
         y: 0,
-        width: timelineSection.clientWidth || 0,
-        height: timelineSection.clientHeight || 0,
+        width: scrollContainer.clientWidth || 0,
+        height: scrollContainer.clientHeight || 0,
       };
   const mainGraphRect =
     mainGraph && typeof mainGraph.getBoundingClientRect === 'function' ?
@@ -60,14 +60,13 @@ export function getViewportBounds(options = {}) {
         height: mainGraph?.clientHeight || 0,
       };
 
-  // IMPORTANT: Horizontal scroll is on timelineSection, vertical scroll is on featureBoard
-  // This matches the panning behavior in Timeline.lit.js
+  // Scroll position comes from the single scroll container via boardCoords
   const scrollLeft =
-    options.scrollLeft !== undefined ? options.scrollLeft : timelineSection.scrollLeft;
+    options.scrollLeft !== undefined ? options.scrollLeft : boardCoords.scrollX;
   const scrollTop =
-    options.scrollTop !== undefined ? options.scrollTop : featureBoard.scrollTop;
-  const totalWidth = featureBoard.scrollWidth;
-  const totalHeight = featureBoard.scrollHeight;
+    options.scrollTop !== undefined ? options.scrollTop : boardCoords.scrollY;
+  const totalWidth = scrollContainer.scrollWidth;
+  const totalHeight = scrollContainer.scrollHeight;
 
   return {
     x: rect.x,

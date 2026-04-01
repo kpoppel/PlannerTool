@@ -702,7 +702,7 @@ export class DetailsPanelLit extends LitElement {
     // Record mousedown when it starts on <feature-board>, compare on click.
     this._boardMouseDown = null;
     this._onBodyMouseDown = (e) => {
-      if (e.originalTarget.tagName.toLowerCase() === 'feature-board') {
+      if (e.target?.tagName?.toLowerCase() === 'feature-board') {
         this._boardMouseDown = { x: e.clientX, y: e.clientY };
       }
     };

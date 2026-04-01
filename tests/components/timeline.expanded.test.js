@@ -4,8 +4,8 @@ import {
   getMonthWidthForScale,
   _resetTimelineState,
   getTimelineMonths,
-  setTimelinePanningAllowed,
 } from '../../www/js/components/Timeline.lit.js';
+import { boardCoords } from '../../www/js/services/BoardCoordinateService.js';
 
 describe('Timeline expanded tests', () => {
   it('getMonthWidthForScale returns configured widths and falls back', () => {
@@ -24,9 +24,11 @@ describe('Timeline expanded tests', () => {
     expect(months.length).to.equal(0);
   });
 
-  it('setTimelinePanningAllowed toggles without throwing', () => {
-    // ensure toggling does not throw and is idempotent
-    setTimelinePanningAllowed(false);
-    setTimelinePanningAllowed(true);
+  it('boardCoords.setPanningAllowed toggles without throwing', () => {
+    // setTimelinePanningAllowed was moved into BoardCoordinateService
+    boardCoords.setPanningAllowed(false);
+    expect(boardCoords.panningAllowed).to.equal(false);
+    boardCoords.setPanningAllowed(true);
+    expect(boardCoords.panningAllowed).to.equal(true);
   });
 });

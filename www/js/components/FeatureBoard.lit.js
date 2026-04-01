@@ -31,74 +31,27 @@ class FeatureBoard extends LitElement {
   static styles = css`
     :host {
       display: block;
-      flex: 1;
+      /* No overflow — scroll is handled by the parent #scroll-container in TimelineBoard.
+         Width and height are set programmatically to the full content dimensions so that
+         plugin SVG overlays inside the shadow root can use position:absolute & inset:0. */
       position: relative;
-      overflow: auto;
+      overflow: visible;
       padding: 0;
-      /* Alternating month background aligned with card lanes */
-      background: repeating-linear-gradient(
-        to right,
-        var(--color-bg, #f7f7f7) 0,
-        var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
-        var(--color-month-alt, #ececec) var(--timeline-month-width, 120px),
-        var(--color-month-alt, #ececec) calc(var(--timeline-month-width, 120px) * 2)
-      );
-      background-position: 0 0; /* align stripes with card origin */
+      /* No background — stripes are on #board-area which spans the full content width.
+         feature-board is transparent so the parent background shows through. */
+      background: transparent;
     }
 
-    /* Keep native vertical scrollbar sizing unchanged (restore previous styling) */
-    :host::-webkit-scrollbar {
-      width: 12px;
-      height: 12px;
-    }
-    :host {
-      scrollbar-width: auto;
+    :host(.scenario-mode) {
+      /* Scenario mode class propagated from initBoard; actual color is on #board-area */
     }
 
-    /* Placeholder styles for internal controls (we render fixed controls in body) */
-    .scroll-controls {
-      display: none;
     }
 
     .scroll-button {
       width: 36px;
       height: 36px;
       border-radius: 18px;
-      background: rgba(255, 255, 255, 0.9);
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: #333;
-      transition:
-        transform 120ms ease,
-        background 120ms ease;
-    }
-
-    .scroll-button:hover {
-      transform: translateY(-2px);
-    }
-    .scroll-button:active {
-      transform: translateY(0);
-    }
-
-    .scroll-button[aria-disabled='true'] {
-      opacity: 0.5;
-      pointer-events: none;
-    }
-    :host(.scenario-mode) {
-      background: repeating-linear-gradient(
-        to right,
-        var(--color-bg, #f7f7f7) 0,
-        var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
-        var(--color-month-alt-scenario, #e2e2e2) var(--timeline-month-width, 120px),
-        var(--color-month-alt-scenario, #e2e2e2)
-          calc(var(--timeline-month-width, 120px) * 2)
-      );
-      background-position: 0 0;
-    }
   `;
 
   connectedCallback() {
@@ -106,10 +59,6 @@ class FeatureBoard extends LitElement {
     if (!this.hasAttribute('role')) {
       this.setAttribute('role', 'list');
     }
-    // Defer creating the fixed scrollbar so document.body exists
-    requestAnimationFrame(() => {
-      this._ensureFixedScrollbar();
-    });
   }
 
   // Build and maintain connected feature sets (parent/child and relations)
@@ -192,271 +141,12 @@ class FeatureBoard extends LitElement {
     )} `;
   }
 
-  _scrollToTop() {
-    this.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  _scrollToBottom() {
-    this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
-  }
-
   disconnectedCallback() {
     super.disconnectedCallback();
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
     this._boundHandlers.clear();
-    this._destroyFixedScrollbar?.();
-  }
-
-  // ---- Fixed scrollbar ----
-
-  _ensureFixedScrollbar() {
-    if (this._fixedRail) return;
-
-    const rail = document.createElement('div');
-    rail.className = 'fb-fixed-rail';
-    rail.setAttribute('aria-hidden', 'false');
-    Object.assign(rail.style, {
-      position: 'fixed',
-      right: '4px',
-      top: '72px',
-      bottom: '20px',
-      width: '12px',
-      zIndex: 29,
-      pointerEvents: 'auto',
-    });
-
-    const thumb = document.createElement('div');
-    thumb.className = 'fb-fixed-thumb';
-    Object.assign(thumb.style, {
-      position: 'absolute',
-      left: '0px',
-      width: '100%',
-      borderRadius: '6px',
-      background: 'rgba(0,0,0,0.12)',
-      cursor: 'pointer',
-    });
-    rail.appendChild(thumb);
-
-    const controls = document.createElement('div');
-    controls.className = 'fb-fixed-controls';
-    Object.assign(controls.style, {
-      position: 'fixed',
-      right: '16px',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      zIndex: 29,
-    });
-
-    const btnTop = document.createElement('button');
-    btnTop.className = 'fb-btn-top';
-    btnTop.title = 'Scroll to top';
-    btnTop.innerText = '\u25B2';
-    Object.assign(btnTop.style, {
-      width: '36px',
-      height: '36px',
-      borderRadius: '18px',
-      border: '1px solid rgba(0,0,0,0.08)',
-      background: 'white',
-      cursor: 'pointer',
-    });
-
-    const btnBottom = document.createElement('button');
-    btnBottom.className = 'fb-btn-bottom';
-    btnBottom.title = 'Scroll to bottom';
-    btnBottom.innerText = '\u25BC';
-    Object.assign(btnBottom.style, {
-      width: '36px',
-      height: '36px',
-      borderRadius: '18px',
-      border: '1px solid rgba(0,0,0,0.08)',
-      background: 'white',
-      cursor: 'pointer',
-    });
-
-    controls.appendChild(btnTop);
-    controls.appendChild(btnBottom);
-    document.body.appendChild(rail);
-    document.body.appendChild(controls);
-
-    // Initially hidden - show on proximity
-    rail.style.opacity = '0';
-    rail.style.transition = 'opacity 180ms ease';
-    rail.style.pointerEvents = 'none';
-    controls.style.opacity = '0';
-    controls.style.transition = 'opacity 180ms ease';
-    controls.style.pointerEvents = 'none';
-
-    const onScroll = () => {
-      if (this._thumbUpdateScheduled) return;
-      this._thumbUpdateScheduled = true;
-      requestAnimationFrame(() => {
-        this._thumbUpdateScheduled = false;
-        this._updateFixedThumb();
-      });
-    };
-
-    const onResize = () => {
-      this._updateRailPosition();
-      this._updateFixedThumb();
-    };
-
-    const onDetailsShow = () => {
-      hideRail();
-      this._detailsOpen = true;
-    };
-
-    const onDetailsHide = () => {
-      showRail();
-      this._detailsOpen = false;
-      this._updateFixedThumb();
-    };
-
-    let hideTimer = null;
-    const proximityPx = 50;
-
-    const showRail = () => {
-      if (this._dragging) return;
-      rail.style.opacity = '1';
-      rail.style.pointerEvents = 'auto';
-      controls.style.opacity = '1';
-      controls.style.pointerEvents = 'auto';
-    };
-
-    const hideRail = () => {
-      if (this._dragging) return;
-      rail.style.opacity = '0';
-      rail.style.pointerEvents = 'none';
-      controls.style.opacity = '0';
-      controls.style.pointerEvents = 'none';
-    };
-
-    const onMouseMove = (ev) => {
-      const vw = window.innerWidth;
-      if (vw - ev.clientX <= proximityPx) {
-        showRail();
-        if (hideTimer) {
-          clearTimeout(hideTimer);
-          hideTimer = null;
-        }
-      } else {
-        if (hideTimer) clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => {
-          hideRail();
-          hideTimer = null;
-        }, 10);
-      }
-    };
-
-    const onRailEnter = () => {
-      if (hideTimer) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-      showRail();
-    };
-
-    const onRailLeave = () => {
-      if (hideTimer) clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => {
-        hideRail();
-        hideTimer = null;
-      }, 10);
-    };
-
-    thumb.addEventListener('pointerdown', (e) => this._startThumbDrag(e));
-    btnTop.addEventListener('click', () => this._scrollToTop());
-    btnBottom.addEventListener('click', () => this._scrollToBottom());
-    this.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onResize);
-    document.addEventListener('mousemove', onMouseMove);
-    rail.addEventListener('pointerenter', onRailEnter);
-    rail.addEventListener('pointerleave', onRailLeave);
-    bus.on(UIEvents.DETAILS_SHOW, onDetailsShow);
-    bus.on(UIEvents.DETAILS_HIDE, onDetailsHide);
-
-    this._fixedRail = rail;
-    this._fixedThumb = thumb;
-    this._fixedControls = controls;
-    this._fixedHandlers = {
-      onScroll,
-      onResize,
-      onMouseMove,
-      onRailEnter,
-      onRailLeave,
-      onDetailsShow,
-      onDetailsHide,
-    };
-    this._updateRailPosition();
-    this._updateFixedThumb();
-  }
-
-  _updateRailPosition() {
-    if (!this._fixedRail) return;
-    const timelineHeader = findInBoard('timeline-lit');
-    const rect = timelineHeader.getBoundingClientRect();
-    this._fixedRail.style.top = Math.max(8, rect.bottom + 6) + 'px';
-  }
-
-  _destroyFixedScrollbar() {
-    this._fixedRail.remove();
-    this._fixedRail = null;
-    this._fixedControls.remove();
-    this._fixedControls = null;
-    this._fixedThumb = null;
-    this.removeEventListener('scroll', this._fixedHandlers.onScroll);
-    window.removeEventListener('resize', this._fixedHandlers.onResize);
-    document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
-    document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
-    bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow);
-    bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide);
-    this._fixedHandlers = null;
-  }
-
-  _updateFixedThumb() {
-    if (!this._fixedRail || !this._fixedThumb) return;
-    const railRect = this._fixedRail.getBoundingClientRect();
-    const clientH = this.clientHeight || 0;
-    const scrollH = this.scrollHeight || 0;
-    if (scrollH <= clientH) {
-      this._fixedThumb.style.display = 'none';
-      return;
-    }
-    this._fixedThumb.style.display = '';
-    const railHeight = Math.max(20, railRect.height);
-    const thumbH = Math.max(20, Math.round(railHeight * (clientH / scrollH)));
-    const maxTop = railHeight - thumbH;
-    const frac = (this.scrollTop || 0) / (scrollH - clientH);
-    this._fixedThumb.style.height = thumbH + 'px';
-    this._fixedThumb.style.top = Math.round(frac * maxTop) + 'px';
-  }
-
-  _startThumbDrag(e) {
-    e.preventDefault();
-    this._dragging = true;
-    const onMove = (ev) => this._onThumbMove(ev);
-    const onUp = () => {
-      this._dragging = false;
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  }
-
-  _onThumbMove(ev) {
-    if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
-    const railRect = this._fixedRail.getBoundingClientRect();
-    const thumbH = this._fixedThumb.getBoundingClientRect().height;
-    const y = ev.clientY - railRect.top - thumbH / 2;
-    const maxY = Math.max(0, railRect.height - thumbH);
-    const frac = Math.max(0, Math.min(maxY, y)) / (railRect.height - thumbH || 1);
-    this.scrollTop = Math.round(frac * (this.scrollHeight - this.clientHeight));
-    this._updateFixedThumb();
   }
 
   // ---- Sorting / filtering helpers ----
@@ -707,6 +397,11 @@ class FeatureBoard extends LitElement {
     }
 
     this.features = renderList;
+    // Explicitly size the host so #board-area (the positioned parent) has the
+    // correct dimensions, allowing position:absolute overlays with inset:0 to
+    // cover the full card area.
+    const totalHeight = renderList.length * laneHeight();
+    this.style.height = totalHeight + 'px';
     this.requestUpdate();
 
     if (renderList.length === 0) {
@@ -758,7 +453,7 @@ class FeatureBoard extends LitElement {
     }
   }
 
-  // After render, update card map and scrollbar
+  // After render, update card map
   updated() {
     if (!this.shadowRoot) return;
     const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
@@ -766,8 +461,6 @@ class FeatureBoard extends LitElement {
     cards.forEach((node) => {
       if (node.feature?.id) this._cardMap.set(node.feature.id, node);
     });
-    this._ensureFixedScrollbar();
-    this._updateFixedThumb();
   }
 
   _selectFeature(feature) {
@@ -784,17 +477,15 @@ class FeatureBoard extends LitElement {
     const card =
       this._cardMap.get(String(featureId)) ||
       this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
-    const timeline = findInBoard('#timelineSection');
-    if (!card || !timeline) return;
+    // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
+    const scrollContainer = findInBoard('#scroll-container');
+    if (!card || !scrollContainer) return;
 
     const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
     const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
-    timeline.scrollTo({
-      left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)),
-      behavior: 'smooth',
-    });
-    this.scrollTo({
-      top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)),
+    scrollContainer.scrollTo({
+      left: Math.max(0, Math.round(cardCenterX - scrollContainer.clientWidth / 2)),
+      top: Math.max(0, Math.round(cardCenterY - scrollContainer.clientHeight / 2)),
       behavior: 'smooth',
     });
 
@@ -846,10 +537,15 @@ export async function initBoard() {
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
     const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
+    // Apply scenario-mode class on #board-area (the background container) so
+    // the correct stripe colour is shown.
+    const boardArea = findInBoard('#board-area');
     if (activeScenario && !activeScenario.readonly) {
       board.classList.add('scenario-mode');
+      boardArea?.classList.add('scenario-mode');
     } else {
       board.classList.remove('scenario-mode');
+      boardArea?.classList.remove('scenario-mode');
     }
   };
 

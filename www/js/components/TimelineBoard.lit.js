@@ -1,81 +1,174 @@
+/**
+ * TimelineBoard.lit.js
+ * Host component that wires together the timeline header, feature board, and all overlays.
+ *
+ * Layout (shadow DOM):
+ *
+ *  timeline-board
+ *  ├── #maingraph-section         (static, no scroll)
+ *  └── #scroll-container          (single overflow:auto — handles H + V panning)
+ *      ├── timeline-lit            (position:sticky; top:0 — always on screen, scrolls H)
+ *      └── #board-area             (position:relative — coordinate origin for all overlays)
+ *          └── feature-board       (sized to full content)
+ *
+ * Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are appended
+ * into #board-area as position:absolute siblings by their respective plugins.
+ *
+ * Panning: single mousedown→mousemove→mouseup handler on #scroll-container.
+ * BoardCoordinateService is initialised here and provides the canonical
+ * coordinate transforms used by all overlays.
+ */
+
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
+import { bus } from '../core/EventBus.js';
+import { BoardEvents, UIEvents } from '../core/EventRegistry.js';
 
 class TimelineBoard extends LitElement {
-  static get properties() {
-    return {
-      offsetX: { type: Number },
-      offsetY: { type: Number },
-      scale: { type: Number },
-    };
-  }
+  // LitElement already uses an open shadow root by default — no need to
+  // override createRenderRoot(). The static styles getter below is injected
+  // automatically via Lit's adoptedStyleSheets mechanism.
 
   constructor() {
     super();
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.scale = 1;
-    this._onScroll = this._onScroll.bind(this);
+    this._isPanning = false;
+    this._panStart = null;
+    this._onMouseDown = this._onMouseDown.bind(this);
+    this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseUp = this._onMouseUp.bind(this);
+    this._onProximityMove = this._onProximityMove.bind(this);
   }
-
-  //  createRenderRoot() {
 
   connectedCallback() {
     super.connectedCallback();
-    // Wait for layout and attach scroll handler
-    requestAnimationFrame(async () => {
-      const vp = this.querySelector('.timeline-board-viewport');
-      if (vp) vp.addEventListener('scroll', this._onScroll, { passive: true });
 
-      // Ensure application state initialization has completed before
-      // initializing timeline and feature board. This guarantees any
-      // persisted view (timeline scale) has been applied by State/ViewService
-      // so downstream components render with the correct scale.
+    requestAnimationFrame(async () => {
+      const scrollContainer = this.shadowRoot.querySelector('#scroll-container');
+      const boardArea = this.shadowRoot.querySelector('#board-area');
+
+      if (scrollContainer && boardArea) {
+        boardCoords.init(scrollContainer, boardArea);
+        bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
+      }
+
       if (state && state._initCompleted) await state._initCompleted;
 
       await import('./MainGraph.lit.js');
-      const mgSection = this.querySelector('#maingraphSection');
       const mod_t = await import('./Timeline.lit.js');
       await mod_t.initTimeline();
       mod_t.ensureScrollToMonth();
       const mod_f = await import('./FeatureBoard.lit.js');
       await mod_f.initBoard();
+
+      this._enablePanning();
+      this._initScrollButtons();
+      document.addEventListener('mousemove', this._onProximityMove);
     });
   }
 
   disconnectedCallback() {
-    const vp = this.querySelector('.timeline-board-viewport');
-    if (vp) vp.removeEventListener('scroll', this._onScroll);
+    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    if (scroll) scroll.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mouseup', this._onMouseUp);
+    document.removeEventListener('mousemove', this._onProximityMove);
+    if (this._onDetailsShow) bus.off?.(UIEvents.DETAILS_SHOW, this._onDetailsShow);
+    if (this._onDetailsHide) bus.off?.(UIEvents.DETAILS_HIDE, this._onDetailsHide);
     super.disconnectedCallback();
   }
 
-  _onScroll(e) {
-    const vp = e.target;
-    // update reactive props - use requestAnimationFrame to coalesce
-    window.requestAnimationFrame(() => {
-      this.offsetX = vp.scrollLeft;
-      this.offsetY = vp.scrollTop;
-      this.dispatchEvent(
-        new CustomEvent('board-scroll', {
-          detail: { offsetX: this.offsetX, offsetY: this.offsetY },
-          bubbles: true,
-          composed: true,
-        })
-      );
-    });
+  // ---------------------------------------------------------------------------
+  // Panning
+  // ---------------------------------------------------------------------------
+
+  _enablePanning() {
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    if (!scroll) return;
+    scroll.addEventListener('mousedown', this._onMouseDown);
   }
+
+  _onMouseDown(e) {
+    if (!boardCoords.panningAllowed) return;
+    if (e.target.closest('feature-card-lit') || e.target.classList.contains('drag-handle'))
+      return;
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    if (!scroll) return;
+    this._isPanning = true;
+    this._panStart = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: scroll.scrollLeft,
+      scrollTop: scroll.scrollTop,
+    };
+    scroll.classList.add('panning');
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mouseup', this._onMouseUp);
+  }
+
+  _onMouseMove(e) {
+    if (!this._isPanning || !this._panStart) return;
+    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    if (!scroll) return;
+    const dx = e.clientX - this._panStart.x;
+    const dy = e.clientY - this._panStart.y;
+    scroll.scrollLeft = this._panStart.scrollLeft - dx;
+    scroll.scrollTop = this._panStart.scrollTop - dy;
+  }
+
+  _onMouseUp() {
+    this._isPanning = false;
+    this._panStart = null;
+    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    scroll?.classList.remove('panning');
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mouseup', this._onMouseUp);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scroll buttons
+  // ---------------------------------------------------------------------------
+
+  _initScrollButtons() {
+    const scroll = this.shadowRoot.querySelector('#scroll-container');
+    const btnTop = this.shadowRoot.querySelector('#btn-scroll-top');
+    const btnBottom = this.shadowRoot.querySelector('#btn-scroll-bottom');
+
+    if (btnTop)
+      btnTop.addEventListener('click', () =>
+        scroll?.scrollTo({ top: 0, behavior: 'smooth' })
+      );
+    if (btnBottom)
+      btnBottom.addEventListener('click', () =>
+        scroll?.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' })
+      );
+
+    const scrollButtons = this.shadowRoot.querySelector('#scroll-buttons');
+    this._onDetailsShow = () => { if (scrollButtons) scrollButtons.style.display = 'none'; };
+    this._onDetailsHide = () => { if (scrollButtons) scrollButtons.style.display = ''; };
+    bus.on(UIEvents.DETAILS_SHOW, this._onDetailsShow);
+    bus.on(UIEvents.DETAILS_HIDE, this._onDetailsHide);
+  }
+
+  _onProximityMove(e) {
+    const scrollButtons = this.shadowRoot?.querySelector('#scroll-buttons');
+    if (!scrollButtons) return;
+    const nearEdge = window.innerWidth - e.clientX <= 60;
+    scrollButtons.classList.toggle('visible', nearEdge);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
 
   scrollTo(x, y) {
-    const vp = this.querySelector('.timeline-board-viewport');
-    if (vp) vp.scrollTo(x, y);
+    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    if (scroll) scroll.scrollTo(x, y);
   }
 
-  setScale(s) {
-    this.scale = s;
-    // scale implementation placeholder
-    const inner = this.querySelector('.timeline-board-inner');
-    if (inner) inner.style.transform = `scale(${s})`;
-  }
+  // ---------------------------------------------------------------------------
+  // Styles
+  // ---------------------------------------------------------------------------
 
   static get styles() {
     return css`
@@ -86,74 +179,56 @@ class TimelineBoard extends LitElement {
         min-height: 0;
         height: 100%;
       }
-      /* Scrollbar styling for timeline section only */
-      .timeline-section::-webkit-scrollbar {
-        height: 8px;
-        width: 8px;
-        background: #eee;
-      }
-      .timeline-section::-webkit-scrollbar-thumb {
-        background: #b0cbe6;
-        border-radius: 4px;
-      }
-      .timeline-board-viewport {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        position: relative;
-        background: var(--app-background, #fff);
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-      .timeline-board-inner {
-        /* allow inner to shrink horizontally and not force a huge min-width */
-        min-width: 0;
-        width: 100%;
-        /* allow inner to grow and let timelineSection flex to remaining height */
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        min-height: 0;
-      }
-      .panel {
-        box-sizing: border-box;
-        /* border: 1px dashed rgba(0,0,0,0.08); */
-        margin: 0;
-        padding: 0;
-        border: 0;
-        background: rgba(0, 0, 0, 0.02);
-      }
-      /* For the main graph we don't want the panel padding/margin to push
-         the graph away from the top-left. Override the panel spacing here
-         and let the graph component set its own height. */
-      .maingraph-section {
+
+      #maingraph-section {
         flex: 0 0 auto;
         margin: 0;
         padding: 0;
         border: 0;
         background: transparent;
       }
-      /* Ensure timeline section stacks header + board and allows board to grow
-         Remove panel spacing so the timeline/card area is flush with its container
-         Also ensure the header (timeline-lit) and the card host (feature-board)
-         do not introduce margins that create a visible gap. */
-      .timeline-section {
-        display: flex;
-        flex-direction: column;
+
+      /* Single overflow container for H + V scroll / panning */
+      #scroll-container {
         flex: 1 1 auto;
         min-height: 0;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        width: 100%;
         overflow: auto;
-        cursor: grab;
         position: relative;
-        z-index: 10;
-        /* Alternating month background aligned with card lanes */
+        cursor: grab;
+        background: var(--app-background, #fff);
+      }
+
+      #scroll-container.panning {
+        cursor: grabbing;
+      }
+
+      #scroll-container::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+        background: #eee;
+      }
+      #scroll-container::-webkit-scrollbar-thumb {
+        background: #b0cbe6;
+        border-radius: 4px;
+      }
+
+      /* Timeline header sticks vertically, scrolls horizontally with content.
+         z-index must exceed feature-card ghost titles (z-index: 120) so cards
+         scrolling past the header clip beneath it rather than overlapping. */
+      timeline-lit {
+        position: sticky;
+        top: 0;
+        z-index: 130;
+        display: block;
+      }
+
+      /*
+       * Board area — positioned so overlays can use position:absolute with inset:0.
+       * Background stripes are on this element because its width == content width,
+       * keeping stripe alignment locked to month positions regardless of scroll.
+       */
+      #board-area {
+        position: relative;
         background: repeating-linear-gradient(
           to right,
           var(--color-bg, #f7f7f7) 0,
@@ -163,88 +238,91 @@ class TimelineBoard extends LitElement {
         );
         background-position: 0 0;
       }
-      .timeline-section.panning {
-        cursor: grabbing;
+
+      #board-area.scenario-mode {
+        background: repeating-linear-gradient(
+          to right,
+          var(--color-bg, #f7f7f7) 0,
+          var(--color-bg, #f7f7f7) var(--timeline-month-width, 120px),
+          var(--color-month-alt-scenario, #e2e2e2) var(--timeline-month-width, 120px),
+          var(--color-month-alt-scenario, #e2e2e2)
+            calc(var(--timeline-month-width, 120px) * 2)
+        );
+        background-position: 0 0;
       }
-      /* Header (months row) — let the timeline component size itself */
-      .timeline-section > timeline-lit {
-        flex: 0 0 auto;
-        height: auto;
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+
+      /* Scroll-to-top / scroll-to-bottom buttons */
+      #scroll-buttons {
+        position: fixed;
+        right: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 30;
+        opacity: 0;
+        transition: opacity 180ms ease;
+        pointer-events: none;
       }
-      /* Remove margins/padding that might come from child content */
-      .timeline-section > timeline-lit,
-      .timeline-section > timeline-lit * {
-        margin: 0 !important;
-        padding: 0 !important;
+
+      #scroll-buttons.visible {
+        opacity: 1;
+        pointer-events: auto;
       }
-      /* Card host must be flush under the header */
-      .timeline-section > feature-board {
-        margin: 0;
-        padding: 0;
-        border: 0;
-        width: 100%;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
+
+      .scroll-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.9);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        transition: transform 120ms ease, background 120ms ease;
       }
-      /* make timeline header fixed height and let feature-board grow */
-      .timeline-section > timeline-lit {
-        flex: 0 0 20px;
+
+      .scroll-btn:hover {
+        transform: translateY(-2px);
+        background: #fff;
       }
-      .timeline-section > feature-board {
-        display: block;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
+
+      .scroll-btn:active {
+        transform: translateY(0);
       }
     `;
   }
 
+  // ---------------------------------------------------------------------------
+  // Template
+  // ---------------------------------------------------------------------------
+
   render() {
     return html`
-      <style>
-        .timeline-board-viewport {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          position: relative;
-          background: var(--app-background, #fff);
-          flex: 1 1 auto;
-          min-height: 0;
-        }
-        .timeline-board-inner {
-          min-width: 0;
-          width: 100%;
-          flex: 1 1 auto;
-          display: flex;
-          flex-direction: column;
-          position: relative;
-          min-height: 0;
-        }
-      </style>
-      <div class="timeline-board-viewport">
-        <div class="timeline-board-inner">
-          <section
-            id="maingraphSection"
-            class="panel maingraph-section"
-            aria-label="Organisational Load Graph"
-          >
-            <maingraph-lit></maingraph-lit>
-          </section>
-          <section
-            id="timelineSection"
-            class="panel timeline-section"
-            aria-label="Timeline and Features"
-          >
-            <timeline-lit></timeline-lit>
-            <feature-board></feature-board>
-          </section>
+      <section id="maingraph-section" aria-label="Organisational Load Graph">
+        <maingraph-lit></maingraph-lit>
+      </section>
+
+      <div id="scroll-container">
+        <timeline-lit></timeline-lit>
+        <div id="board-area" role="region" aria-label="Timeline and Features">
+          <feature-board></feature-board>
+          <!--
+            Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
+            appended here by their plugins.  As position:absolute siblings inside
+            a position:relative ancestor they share board-space coordinates with
+            feature-board — no coordinate conversion required.
+          -->
         </div>
+      </div>
+
+      <div id="scroll-buttons" aria-label="Scroll controls">
+        <button id="btn-scroll-top" class="scroll-btn" title="Scroll to top">▲</button>
+        <button id="btn-scroll-bottom" class="scroll-btn" title="Scroll to bottom">▼</button>
       </div>
     `;
   }

@@ -8,13 +8,6 @@ import { findInBoard } from './board-utils.js';
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
-const getBoardOffset = () => {
-  const board = findInBoard('feature-board');
-  if (!board) return 0;
-  const pl = parseInt(getComputedStyle(board).paddingLeft, 10);
-  return Number.isNaN(pl) ? 0 : pl;
-};
-
 /**
  * Get all features (across all plans) for parent/child tree operations.
  * Centralized accessor ensures drag/resize logic works with full feature tree
@@ -41,7 +34,6 @@ export function startDragMove(
 ) {
   const months = getTimelineMonths();
   const monthWidth = getMonthWidth();
-  const boardOffset = getBoardOffset();
 
   // Check if feature is unplanned (ghosted)
   const isUnplanned =
@@ -68,7 +60,7 @@ export function startDragMove(
     card.querySelector('.feature-dates');
 
   function dateFromLeft(px) {
-    const relative = (px - boardOffset) / monthWidth;
+    const relative = px / monthWidth;
     let monthIndex = Math.floor(relative);
     let fraction = relative - monthIndex;
     if (monthIndex < 0) {
@@ -93,7 +85,7 @@ export function startDragMove(
   function onMove(ev) {
     const dx = ev.clientX - startX;
     let newLeft = origLeft + dx;
-    if (newLeft < boardOffset) newLeft = boardOffset;
+    if (newLeft < 0) newLeft = 0;
     card.style.left = newLeft + 'px';
     const newStartDate = dateFromLeft(newLeft);
     const newEndDate = addDays(newStartDate, durationDays - 1);

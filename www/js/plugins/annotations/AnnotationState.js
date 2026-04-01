@@ -4,8 +4,7 @@
  */
 
 import { ANNOTATION_COLORS, getRandomColor } from './AnnotationColors.js';
-import { TIMELINE_CONFIG, getTimelineMonths } from '../../components/Timeline.lit.js';
-import { getBoardOffset } from '../../components/board-utils.js';
+import { boardCoords } from '../../services/BoardCoordinateService.js';
 import { generateId, saveAnnotations, loadAnnotations } from './AnnotationStorage.js';
 
 // ============================================================================
@@ -313,49 +312,8 @@ export class AnnotationState {
     if (!ann) return null;
 
     // If annotation uses date-based X, convert dx (pixels) to date shift
-    const monthWidth =
-      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
-    const months = getTimelineMonths() || [];
-    const boardOffset = getBoardOffset() || 0;
-
-    const contentXForDate = (dateMs) => {
-      if (!months.length) return boardOffset;
-      const d = new Date(dateMs);
-      let idx = months.findIndex(
-        (m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()
-      );
-      if (idx === -1)
-        idx = months.reduce((acc, m, i) => (m.getTime() <= d.getTime() ? i : acc), 0);
-      const monthStart = months[idx];
-      const daysInMonth = new Date(
-        monthStart.getFullYear(),
-        monthStart.getMonth() + 1,
-        0
-      ).getDate();
-      const fraction = Math.max(0, Math.min(1, (d.getDate() - 1) / daysInMonth));
-      return Math.round(boardOffset + (idx + fraction) * monthWidth);
-    };
-
-    const contentXToDateMs = (contentX) => {
-      if (!months.length) return Date.now();
-      const rel = (contentX - boardOffset) / monthWidth;
-      let idx = Math.floor(rel);
-      if (idx < 0) idx = 0;
-      if (idx >= months.length) idx = months.length - 1;
-      const monthStart = months[idx];
-      const daysInMonth = new Date(
-        monthStart.getFullYear(),
-        monthStart.getMonth() + 1,
-        0
-      ).getDate();
-      const fraction = rel - idx;
-      const day = Math.max(
-        1,
-        Math.min(daysInMonth, Math.round(fraction * daysInMonth) + 1)
-      );
-      const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-      return date.getTime();
-    };
+    const contentXForDate = (dateMs) => boardCoords.dateToContentX(new Date(dateMs));
+    const contentXToDateMs = (contentX) => boardCoords.contentXToDateMs(contentX);
 
     if (ann.type === 'line') {
       // Move both endpoints horizontally by dx -> convert to date shift

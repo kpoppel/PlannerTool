@@ -7,7 +7,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { ACTIONS, getLinkEditorState } from './linkeditor/LinkEditorState.js';
 import './linkeditor/LinkEditorOverlay.js';
-import { setTimelinePanningAllowed } from '../components/Timeline.lit.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -289,48 +289,17 @@ export class PluginLinkEditorComponent extends LitElement {
   }
 
   firstUpdated() {
-    // Ensure a single `link-editor-overlay` exists inside the feature board
-    try {
-      const board = findInBoard('feature-board');
-      if (!board) return;
-      const hostRoot = board.shadowRoot || board;
+    // Ensure a single `link-editor-overlay` exists inside #board-area
+    const boardArea = findInBoard('#board-area');
+    if (!boardArea) return;
 
-      // Reuse existing overlay if present
-      let overlay =
-        (hostRoot.querySelector && hostRoot.querySelector('link-editor-overlay')) ||
-        document.querySelector('link-editor-overlay');
-
-      if (!overlay) {
-        overlay = document.createElement('link-editor-overlay');
-        try {
-          hostRoot.appendChild(overlay);
-        } catch (e) {
-          // Fallback to document body
-          try {
-            document.body.appendChild(overlay);
-          } catch (err) {
-            console.error('[PluginLinkEditor] Failed to append overlay:', err);
-          }
-        }
-      }
-
-      // Style the overlay to cover the board
-      try {
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0px';
-        overlay.style.left = '0px';
-        overlay.style.width = `${board.scrollWidth || board.clientWidth}px`;
-        overlay.style.height = `${board.scrollHeight || board.clientHeight}px`;
-        overlay.style.pointerEvents = 'auto';
-        overlay.style.zIndex = '15';
-      } catch (e) {
-        console.error('[PluginLinkEditor] Failed to style overlay:', e);
-      }
-
-      this._overlay = overlay;
-    } catch (e) {
-      console.error('[PluginLinkEditor] Error setting up overlay:', e);
+    let overlay = boardArea.querySelector('link-editor-overlay');
+    if (!overlay) {
+      overlay = document.createElement('link-editor-overlay');
+      boardArea.appendChild(overlay);
     }
+
+    this._overlay = overlay;
   }
 
   updated(changedProps) {
@@ -358,12 +327,7 @@ export class PluginLinkEditorComponent extends LitElement {
     this._linkEditorState.enable();
 
     // Only disable drag-panning, but allow viewport scrolling
-    // The overlay will handle this more elegantly
-    try {
-      setTimelinePanningAllowed(false);
-    } catch (e) {
-      console.warn('[PluginLinkEditor] Failed to disable panning:', e);
-    }
+    boardCoords.setPanningAllowed(false);
 
     // Ensure overlay is shown
     this.updateComplete.then(() => {
@@ -384,11 +348,7 @@ export class PluginLinkEditorComponent extends LitElement {
     }
 
     // Re-enable timeline panning
-    try {
-      setTimelinePanningAllowed(true);
-    } catch (e) {
-      console.warn('[PluginLinkEditor] Failed to re-enable panning:', e);
-    }
+    boardCoords.setPanningAllowed(true);
   }
 
   toggle() {
