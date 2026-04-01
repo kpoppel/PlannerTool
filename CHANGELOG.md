@@ -28,6 +28,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Changed
 
 - Removed fallback from `findInBoard` helper - all code now properly uses shadow DOM structure instead of falling back to document queries
+- Improved scroll performance by adding passive event listeners to all scroll handlers and implementing requestAnimationFrame debouncing for FeatureBoard scrollbar thumb updates
 - Updated SearchTool, PluginPlanHealthComponent, and TimelineExportRenderer to use `findInBoard` consistently
 - ViewService now inlines timelineSection lookup to avoid circular dependencies
 - Massive cleanup of code.  Many empty try/catch removed, old LayoutManager code removed.
@@ -38,6 +39,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Fixed PluginExportTimeline not finding timelineSection element when exporting, causing features to not render in exported SVG/PNG. Changed from `document.getElementById` to `findInBoard` helper to properly locate elements in shadow DOM.
 - Improved export diagnostics with console warnings when features are found but not rendered within viewport bounds.
 - Export plugin stoped working as it could no longer find any feature cards :-(
+- Fixed most warnings about scroll linkes updates.
 
 ### TODO:
 

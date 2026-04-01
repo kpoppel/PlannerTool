@@ -253,7 +253,7 @@ export async function initDependencyRenderer() {
       };
 
       if (scrollParent && scrollParent.addEventListener)
-        scrollParent.addEventListener('scroll', onScroll);
+        scrollParent.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', scheduleRender);
     }
 
@@ -292,7 +292,7 @@ export async function initDependencyRenderer() {
 
   const boardNow = findInBoard('feature-board');
   if (boardNow) {
-    boardNow.addEventListener('scroll', scheduleRender);
+    boardNow.addEventListener('scroll', scheduleRender, { passive: true });
   } else {
     const mo = new MutationObserver((records) => {
       for (const r of records) {
@@ -303,7 +303,7 @@ export async function initDependencyRenderer() {
             n.tagName.toLowerCase &&
             n.tagName.toLowerCase() === 'feature-board';
           if (isBoard) {
-            n.addEventListener('scroll', scheduleRender);
+            n.addEventListener('scroll', scheduleRender, { passive: true });
             scheduleRender();
             mo.disconnect();
             return;

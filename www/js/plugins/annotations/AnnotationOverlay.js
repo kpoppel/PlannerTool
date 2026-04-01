@@ -359,13 +359,13 @@ export class AnnotationOverlay extends LitElement {
 
     // Listen to timeline section for horizontal scroll (panning)
     if (timelineSection && !this._scrollTargetV) {
-      timelineSection.addEventListener('scroll', this._scrollHandler);
+      timelineSection.addEventListener('scroll', this._scrollHandler, { passive: true });
       this._scrollTargetV = timelineSection;
     }
 
     // Listen to feature board for vertical scroll
     if (featureBoard && !this._scrollTargetH) {
-      featureBoard.addEventListener('scroll', this._scrollHandler);
+      featureBoard.addEventListener('scroll', this._scrollHandler, { passive: true });
       this._scrollTargetH = featureBoard;
     }
 

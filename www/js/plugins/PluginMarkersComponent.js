@@ -178,7 +178,7 @@ export class PluginMarkersComponent extends LitElement {
           });
         }
       };
-      board.addEventListener('scroll', this._scrollListener);
+      board.addEventListener('scroll', this._scrollListener, { passive: true });
     }
   }
 
@@ -249,7 +249,7 @@ export class PluginMarkersComponent extends LitElement {
           this._overlay.style.transform = `translateY(${board.scrollTop}px)`;
         }
       };
-      board.addEventListener('scroll', this._syncOverlayScroll);
+      board.addEventListener('scroll', this._syncOverlayScroll, { passive: true });
       this._syncOverlayScroll(); // Initial sync
     }
 

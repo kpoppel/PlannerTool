@@ -291,7 +291,14 @@ class FeatureBoard extends LitElement {
     controls.style.transition = 'opacity 180ms ease';
     controls.style.pointerEvents = 'none';
 
-    const onScroll = () => this._updateFixedThumb();
+    const onScroll = () => {
+      if (this._thumbUpdateScheduled) return;
+      this._thumbUpdateScheduled = true;
+      requestAnimationFrame(() => {
+        this._thumbUpdateScheduled = false;
+        this._updateFixedThumb();
+      });
+    };
 
     const onResize = () => {
       this._updateRailPosition();
@@ -364,7 +371,7 @@ class FeatureBoard extends LitElement {
     thumb.addEventListener('pointerdown', (e) => this._startThumbDrag(e));
     btnTop.addEventListener('click', () => this._scrollToTop());
     btnBottom.addEventListener('click', () => this._scrollToBottom());
-    this.addEventListener('scroll', onScroll);
+    this.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
     document.addEventListener('mousemove', onMouseMove);
     rail.addEventListener('pointerenter', onRailEnter);
