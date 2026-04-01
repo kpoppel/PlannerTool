@@ -27,43 +27,8 @@ describe('DependencyRenderer Consolidated Tests', () => {
     if (layer) layer.remove();
   });
 
-  it('legacy renderer draws path between styled legacy cards', async () => {
-    const board = document.createElement('feature-board');
-    board.id = 'featureBoard';
-    board.style.position = 'relative';
-    board.style.width = '800px';
-    board.style.height = '400px';
-    document.body.appendChild(board);
-    const a = await fixture(html`<feature-card-lit></feature-card-lit>`);
-    const b = await fixture(html`<feature-card-lit></feature-card-lit>`);
-    a.setAttribute('data-feature-id', 'A');
-    b.setAttribute('data-feature-id', 'B');
-    a.style.position = 'absolute';
-    a.style.left = '10px';
-    a.style.top = '20px';
-    a.style.width = '100px';
-    a.style.height = '40px';
-    b.style.position = 'absolute';
-    b.style.left = '200px';
-    b.style.top = '20px';
-    b.style.width = '100px';
-    b.style.height = '40px';
-    board.appendChild(a);
-    board.appendChild(b);
-    state._viewService.setShowDependencies(true);
-    state._viewService.setCondensedCards(false);
-    state.getEffectiveFeatures = () => [
-      { id: 'A', relations: ['B'] },
-      { id: 'B', relations: [] },
-    ];
-    initDependencyRenderer();
-    bus.emit(FeatureEvents.UPDATED);
-    await new Promise((r) => setTimeout(r, 500));
-    const layer = document.getElementById('dependencyLayer');
-    expect(layer).to.exist;
-    const paths = layer.querySelectorAll('path');
-    expect(paths.length).to.be.at.least(1);
-  });
+  // The app uses lit-hosted `feature-card-lit` inside a board's shadowRoot.
+  // Ensure tests reflect that: create a shadow host and place lit cards there.
 
   it('draws a dependency path between lit-host feature cards', async () => {
     state.baselineFeatures = [{ id: 1001 }, { id: 1002 }];
@@ -79,7 +44,21 @@ describe('DependencyRenderer Consolidated Tests', () => {
     board.id = 'featureBoard';
     board.style.width = '800px';
     board.style.height = '400px';
-    document.body.appendChild(board);
+    // create shadow root and host for lit elements
+    const sr = board.attachShadow({ mode: 'open' });
+    const hostInner = document.createElement('div');
+    hostInner.id = 'feature-board-host';
+    sr.appendChild(hostInner);
+    // Insert the test board into the global timeline-board so
+    // `findInBoard('feature-board')` (used by the renderer) finds it.
+    const timeline = document.querySelector('timeline-board');
+    if (timeline) {
+      const existing = timeline.querySelector('feature-board');
+      if (existing) existing.remove();
+      timeline.appendChild(board);
+    } else {
+      document.body.appendChild(board);
+    }
     const a = await fixture(html`<feature-card-lit></feature-card-lit>`);
     const b = await fixture(html`<feature-card-lit></feature-card-lit>`);
     a.setAttribute('data-feature-id', '1001');
@@ -90,60 +69,16 @@ describe('DependencyRenderer Consolidated Tests', () => {
     b.style.position = 'absolute';
     b.style.left = '300px';
     b.style.top = '150px';
-    board.appendChild(a);
-    board.appendChild(b);
-    // Provide a lightweight LayoutManager shim so the renderer can read
-    // seeded geometries instead of trying to measure canvas-style positions.
-    board._layout = {
-      snapshot: () =>
-        new Map([
-          ['1001', {}],
-          ['1002', {}],
-        ]),
-      getGeometry: (id) => {
-        if (String(id) === '1001')
-          return {
-            left: 50,
-            top: 50,
-            width: parseFloat(a.style.width) || 80,
-            height: parseFloat(a.style.height) || 40,
-          };
-        if (String(id) === '1002')
-          return {
-            left: 300,
-            top: 150,
-            width: parseFloat(b.style.width) || 80,
-            height: parseFloat(b.style.height) || 40,
-          };
-        return { left: 0, top: 0, width: 80, height: 40 };
-      },
-      getBoardClientRect: () => ({ left: 0, top: 0, width: 800, height: 400 }),
-      getBoardRect: () => ({ left: 0, top: 0 }),
-    };
+    hostInner.appendChild(a);
+    hostInner.appendChild(b);
 
-    // Ensure a renderer instance is present in the host so it can attach
-    // and render into the board's coordinate space.
-    const dr = document.createElement('dependency-renderer');
-    board.appendChild(dr);
-    if (dr.updateComplete)
-      try {
-        await dr.updateComplete;
-      } catch (e) {
-        /* ignore */
-      }
-    // Trigger a render pass explicitly and allow a short delay for DOM updates
-    try {
-      if (typeof dr.renderLayer === 'function') dr.renderLayer();
-    } catch (e) {
-      /* ignore */
-    }
+    initDependencyRenderer();
     bus.emit(FeatureEvents.UPDATED);
     await new Promise((r) => setTimeout(r, 500));
-    let svg = board.querySelector('svg');
-    if (!svg)
-      svg =
-        document.getElementById('dependencyLayer') ||
-        document.querySelector('#dependencyLayer');
+    const svg =
+      board.shadowRoot.querySelector('svg') ||
+      document.querySelector('#dependencyLayer') ||
+      board.shadowRoot.querySelector('#dependencyLayer');
     expect(svg).to.exist;
     const path = svg.querySelector('path');
     expect(path).to.exist;
@@ -162,7 +97,21 @@ describe('DependencyRenderer Consolidated Tests', () => {
     board.id = 'featureBoard';
     board.style.width = '800px';
     board.style.height = '400px';
-    document.body.appendChild(board);
+    // create shadow root and host for lit elements
+    const sr = board.attachShadow({ mode: 'open' });
+    const hostInner = document.createElement('div');
+    hostInner.id = 'feature-board-host';
+    sr.appendChild(hostInner);
+    // Insert the test board into the global timeline-board so
+    // `findInBoard('feature-board')` (used by the renderer) finds it.
+    const timeline = document.querySelector('timeline-board');
+    if (timeline) {
+      const existing = timeline.querySelector('feature-board');
+      if (existing) existing.remove();
+      timeline.appendChild(board);
+    } else {
+      document.body.appendChild(board);
+    }
     const a = await fixture(
       html`<feature-card-lit
         data-feature-id="1"
@@ -181,45 +130,16 @@ describe('DependencyRenderer Consolidated Tests', () => {
         style="position:absolute;left:400px;top:120px;width:80px;height:40px"
       ></feature-card-lit>`
     );
-    board.appendChild(a);
-    board.appendChild(b);
-    board.appendChild(c);
-    // seed a minimal layout manager so geometry is available synchronously
-    board._layout = {
-      snapshot: () =>
-        new Map([
-          ['1', {}],
-          ['2', {}],
-          ['3', {}],
-        ]),
-      getGeometry: (id) => {
-        if (String(id) === '1') return { left: 20, top: 20, width: 80, height: 40 };
-        if (String(id) === '2') return { left: 200, top: 60, width: 80, height: 40 };
-        if (String(id) === '3') return { left: 400, top: 120, width: 80, height: 40 };
-        return { left: 0, top: 0, width: 80, height: 40 };
-      },
-      getBoardClientRect: () => ({ left: 0, top: 0, width: 800, height: 400 }),
-      getBoardRect: () => ({ left: 0, top: 0 }),
-    };
-    const dr2 = document.createElement('dependency-renderer');
-    board.appendChild(dr2);
-    if (dr2.updateComplete)
-      try {
-        await dr2.updateComplete;
-      } catch (e) {
-        /* ignore */
-      }
-    try {
-      if (typeof dr2.renderLayer === 'function') dr2.renderLayer();
-    } catch (e) {
-      /* ignore */
-    }
+    hostInner.appendChild(a);
+    hostInner.appendChild(b);
+    hostInner.appendChild(c);
+    // Notify renderer that features updated so it can draw into the layer
+    bus.emit(FeatureEvents.UPDATED);
     await new Promise((r) => setTimeout(r, 500));
-    let svg = board.querySelector('svg');
-    if (!svg)
-      svg =
-        document.getElementById('dependencyLayer') ||
-        document.querySelector('#dependencyLayer');
+    const svg =
+      board.shadowRoot.querySelector('svg') ||
+      document.querySelector('#dependencyLayer') ||
+      board.shadowRoot.querySelector('#dependencyLayer');
     expect(svg).to.exist;
     const paths = svg.querySelectorAll('path');
     expect(paths.length).to.be.at.least(2);

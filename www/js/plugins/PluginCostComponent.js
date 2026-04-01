@@ -389,27 +389,6 @@ export class PluginCostComponent extends LitElement {
     // Don't load data here - wait until open() is called
   }
 
-  // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
-  _getAppHost() {
-    // Prefer locating inside the board's render root (handles shadow DOM).
-    let host = null;
-    try {
-      host = findInBoard('timeline-board');
-    } catch (e) {}
-    if (!host) {
-      // Fall back to common app containers so the UI can mount in tests/dev
-      host =
-        document.getElementById('app') ||
-        document.querySelector('.app-container') ||
-        document.body;
-      console.warn(
-        '[PluginCostComponent] <timeline-board> not found; falling back to app host',
-        host
-      );
-    }
-    return host;
-  }
-
   _subscribe() {
     if (this._subscribed) return;
     if (this._onScenarioActivated) {
@@ -421,9 +400,7 @@ export class PluginCostComponent extends LitElement {
   _unsubscribe() {
     if (!this._subscribed) return;
     if (this._onScenarioActivated) {
-      try {
-        bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
-      } catch (e) {}
+      bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     }
     this._subscribed = false;
   }

@@ -142,25 +142,19 @@ export class AnnotationOverlay extends LitElement {
       this.annotations = this._state.annotations;
       this.currentTool = this._state.currentTool;
       this.selectedId = this._state.selectedId;
-      try {
-        console.debug(
-          '[AnnotationOverlay] state.subscribe newTool:',
-          this.currentTool,
-          'selectedId:',
-          this.selectedId
-        );
-      } catch (err) {}
+      console.debug(
+        '[AnnotationOverlay] state.subscribe newTool:',
+        this.currentTool,
+        'selectedId:',
+        this.selectedId
+      );
       // Toggle host pointer-events so the overlay only captures events when
       // a drawing tool is active. When not interactive the host should
       // ignore pointer events so scrolling and panning work normally.
       const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
         this.currentTool
       );
-      try {
-        this.style.pointerEvents = isDrawingTool ? 'auto' : 'none';
-      } catch (e) {
-        /* ignore */
-      }
+      this.style.pointerEvents = isDrawingTool ? 'auto' : 'none';
       this._updateSvg();
     });
 
@@ -168,14 +162,10 @@ export class AnnotationOverlay extends LitElement {
     this.annotations = this._state.annotations;
     this.currentTool = this._state.currentTool;
     // Set initial host pointer-events according to current tool
-    try {
-      const isDrawingToolInit = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
-        this.currentTool
-      );
-      this.style.pointerEvents = isDrawingToolInit ? 'auto' : 'none';
-    } catch (e) {
-      /* ignore */
-    }
+    const isDrawingToolInit = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
+      this.currentTool
+    );
+    this.style.pointerEvents = isDrawingToolInit ? 'auto' : 'none';
 
     // Listen for scroll events to reposition overlay and re-render annotations
     this._scrollScheduled = false;
@@ -196,38 +186,28 @@ export class AnnotationOverlay extends LitElement {
 
     // Listen for timeline scale changes so we can rescale annotations that
     // store pixel widths (notes/rects) to match the new timeline scale.
-    try {
-      this._onScaleChanged = () => {
-        const newMonthWidth =
-          TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ?
-            TIMELINE_CONFIG.monthWidth
-          : 120;
-        const old = this._lastMonthWidth || newMonthWidth;
-        if (newMonthWidth !== old) {
-          const scale = newMonthWidth / old;
-          // Rescale annotations that use pixel sizes — only scale rects.
-          // Notes contain text and should remain the same pixel size
-          // regardless of timeline zoom; they remain anchored by date.
-          const anns = this._state.annotations || [];
-          for (const ann of anns) {
-            if (ann.type === 'rect') {
-              try {
-                const newW = Math.max(1, Math.round((ann.width || 0) * scale));
-                const updates = { width: newW };
-                this._state.update(ann.id, updates);
-              } catch (e) {
-                /* ignore individual update failures */
-              }
-            }
+    this._onScaleChanged = () => {
+      const newMonthWidth =
+        TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
+      const old = this._lastMonthWidth || newMonthWidth;
+      if (newMonthWidth !== old) {
+        const scale = newMonthWidth / old;
+        // Rescale annotations that use pixel sizes — only scale rects.
+        // Notes contain text and should remain the same pixel size
+        // regardless of timeline zoom; they remain anchored by date.
+        const anns = this._state.annotations || [];
+        for (const ann of anns) {
+          if (ann.type === 'rect') {
+            const newW = Math.max(1, Math.round((ann.width || 0) * scale));
+            const updates = { width: newW };
+            this._state.update(ann.id, updates);
           }
-          this._lastMonthWidth = newMonthWidth;
-          this._updateSvg();
         }
-      };
-      bus.on(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
-    } catch (e) {
-      /* ignore */
-    }
+        this._lastMonthWidth = newMonthWidth;
+        this._updateSvg();
+      }
+    };
+    bus.on(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
   }
 
   _attachGlobalPointerHandlers() {
@@ -241,16 +221,8 @@ export class AnnotationOverlay extends LitElement {
 
   _removeGlobalPointerHandlers() {
     if (!this._globalPointerAttached) return;
-    try {
-      window.removeEventListener('mousemove', this._globalMove);
-    } catch (e) {
-      /* ignore */
-    }
-    try {
-      window.removeEventListener('mouseup', this._globalUp);
-    } catch (e) {
-      /* ignore */
-    }
+    window.removeEventListener('mousemove', this._globalMove);
+    window.removeEventListener('mouseup', this._globalUp);
     this._globalMove = null;
     this._globalUp = null;
     this._globalPointerAttached = false;
@@ -397,47 +369,23 @@ export class AnnotationOverlay extends LitElement {
       this._scrollTargetH = featureBoard;
     }
 
-    // Retry if elements not yet available
-    if (!timelineSection || !featureBoard) {
-      setTimeout(() => this._attachScrollListener(), 100);
-    }
     // Also respond to window resizes so overlay follows viewport changes
-    try {
-      window.addEventListener('resize', this._scrollHandler);
-      this._resizeHandlerAttached = true;
-    } catch (e) {
-      /* ignore */
-    }
+    window.addEventListener('resize', this._scrollHandler);
+    this._resizeHandlerAttached = true;
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
-    }
+    this._unsubscribe();
+    this._unsubscribe = null;
 
     // Remove scroll listeners
-    if (this._scrollTargetV && this._scrollHandler) {
-      this._scrollTargetV.removeEventListener('scroll', this._scrollHandler);
-      this._scrollTargetV = null;
-    }
-    if (this._scrollTargetH && this._scrollHandler) {
-      this._scrollTargetH.removeEventListener('scroll', this._scrollHandler);
-      this._scrollTargetH = null;
-    }
-    try {
-      if (this._resizeHandlerAttached)
-        window.removeEventListener('resize', this._scrollHandler);
-    } catch (e) {
-      /* ignore */
-    }
-    try {
-      if (this._onScaleChanged)
-        bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
-    } catch (e) {
-      /* ignore */
-    }
+    this._scrollTargetV.removeEventListener('scroll', this._scrollHandler);
+    this._scrollTargetV = null;
+    this._scrollTargetH.removeEventListener('scroll', this._scrollHandler);
+    this._scrollTargetH = null;
+    window.removeEventListener('resize', this._scrollHandler);
+    bus.off(TimelineEvents.SCALE_CHANGED, this._onScaleChanged);
   }
 
   render() {
@@ -461,16 +409,14 @@ export class AnnotationOverlay extends LitElement {
     const isDrawingTool = [TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE, TOOLS.ICON].includes(
       this.currentTool
     );
-    try {
-      console.debug(
-        '[AnnotationOverlay] render() active:',
-        this.active,
-        'currentTool:',
-        this.currentTool,
-        'isDrawingTool:',
-        isDrawingTool
-      );
-    } catch (err) {}
+    console.debug(
+      '[AnnotationOverlay] render() active:',
+      this.active,
+      'currentTool:',
+      this.currentTool,
+      'isDrawingTool:',
+      isDrawingTool
+    );
     const containerClass =
       isDrawingTool ? 'overlay-container interactive' : 'overlay-container';
 
@@ -509,12 +455,10 @@ export class AnnotationOverlay extends LitElement {
 
   updated(changedProps) {
     if (changedProps.has('annotations') || changedProps.has('selectedId')) {
-      try {
-        console.debug(
-          '[AnnotationOverlay] updated changedProps:',
-          Array.from(changedProps.keys())
-        );
-      } catch (err) {}
+      console.debug(
+        '[AnnotationOverlay] updated changedProps:',
+        Array.from(changedProps.keys())
+      );
       this._updateSvg();
     }
   }
@@ -913,9 +857,8 @@ export class AnnotationOverlay extends LitElement {
    * Horizontal scroll is on the feature-board, vertical scroll is on timeline-section.
    */
   _getScrollContainers() {
-    // timelineSection may live inside the timeline-board render root (shadow DOM)
-    const timelineSection =
-      findInBoard('#timelineSection') || document.getElementById('timelineSection');
+    // timelineSection lives inside the timeline-board render root (shadow DOM)
+    const timelineSection = findInBoard('#timelineSection');
     const featureBoard = findInBoard('feature-board');
     return { timelineSection, featureBoard };
   }
@@ -926,56 +869,10 @@ export class AnnotationOverlay extends LitElement {
    * Vertical scroll is on featureBoard.
    */
   _getScrollOffsets() {
+    // Horizontal panning occurs on timelineSection
+    // Vertical scrolling on featureBoard
     const { timelineSection, featureBoard } = this._getScrollContainers();
-    // Horizontal panning may occur on either timelineSection or featureBoard
-    // depending on app state; choose the container that currently has a
-    // horizontal scrollable area (scrollWidth > clientWidth) and prefer the
-    // one that is actually scrolled. Fallback to timelineSection then
-    // featureBoard then zero.
-    let scrollLeft = 0;
-    try {
-      const tlLeft = timelineSection?.scrollLeft || 0;
-      let fbLeft = featureBoard?.scrollLeft || 0;
-      // If a LayoutManager is present, prefer its board rect for scrollLeft
-      try {
-        if (
-          featureBoard &&
-          featureBoard._layout &&
-          typeof featureBoard._layout.getBoardRect === 'function'
-        ) {
-          const br = featureBoard._layout.getBoardRect();
-          if (br && typeof br.left === 'number') fbLeft = br.left;
-        }
-      } catch (e) {
-        /* ignore layout errors */
-      }
-      // If both containers can scroll, prefer the one with the larger
-      // absolute scrollLeft — that is most likely the active panning source.
-      if (Math.abs(tlLeft) >= Math.abs(fbLeft) && timelineSection) {
-        scrollLeft = tlLeft;
-      } else if (featureBoard) {
-        scrollLeft = fbLeft;
-      } else {
-        scrollLeft = tlLeft || fbLeft || 0;
-      }
-    } catch (e) {
-      scrollLeft = timelineSection?.scrollLeft ?? featureBoard?.scrollLeft ?? 0;
-    }
-
-    let scrollTop = featureBoard?.scrollTop ?? timelineSection?.scrollTop ?? 0;
-    try {
-      if (
-        featureBoard &&
-        featureBoard._layout &&
-        typeof featureBoard._layout.getBoardRect === 'function'
-      ) {
-        const br = featureBoard._layout.getBoardRect();
-        if (br && typeof br.top === 'number') scrollTop = br.top;
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    return { scrollLeft, scrollTop };
+    return { scrollLeft: timelineSection.scrollLeft, scrollTop: featureBoard.scrollTop };
   }
 
   /**
@@ -988,39 +885,10 @@ export class AnnotationOverlay extends LitElement {
    * stable content coordinates.
    */
   _getEventCoords(e) {
-    // Prefer the feature-board client rect from LayoutManager so we avoid
-    // per-event DOM reads which are expensive during pointer moves.
     const featureBoard = findInBoard('feature-board');
     let rect = null;
     const { scrollTop, scrollLeft } = this._getScrollOffsets();
-    try {
-      if (
-        featureBoard &&
-        featureBoard._layout &&
-        typeof featureBoard._layout.getBoardClientRect === 'function'
-      ) {
-        const brClient = featureBoard._layout.getBoardClientRect();
-        if (brClient)
-          rect = {
-            left: brClient.left || 0,
-            top: brClient.top || 0,
-            right: (brClient.left || 0) + (brClient.width || 0),
-            bottom: (brClient.top || 0) + (brClient.height || 0),
-          };
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    if (!rect) {
-      try {
-        rect =
-          featureBoard ?
-            featureBoard.getBoundingClientRect()
-          : this.getBoundingClientRect();
-      } catch (e) {
-        rect = this.getBoundingClientRect();
-      }
-    }
+    rect = featureBoard.getBoundingClientRect();
 
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -1062,73 +930,38 @@ export class AnnotationOverlay extends LitElement {
     // relative to the board content origin; convert it to a page clientX by
     // adding the featureBoard's bounding rect.left. The boardRect.left already
     // accounts for horizontal scrolling, so do NOT subtract scrollLeft here.
-    try {
-      const featureBoard = findInBoard('feature-board');
-      let boardClient = null;
-      try {
-        if (
-          featureBoard &&
-          featureBoard._layout &&
-          typeof featureBoard._layout.getBoardClientRect === 'function'
-        ) {
-          boardClient = featureBoard._layout.getBoardClientRect();
-        }
-      } catch (e) {
-        boardClient = null;
-      }
-      const boardLeft =
-        boardClient ? boardClient.left || 0
-        : featureBoard ? featureBoard.getBoundingClientRect().left
-        : 0;
-      const boardTop =
-        boardClient ? boardClient.top || 0
-        : featureBoard ? featureBoard.getBoundingClientRect().top
-        : 0;
-      const overlayRect = this.getBoundingClientRect();
-      const clientX = boardLeft + x;
-      const clientY = boardTop + (y - scrollTop);
+    const featureBoard = findInBoard('feature-board');
+    const rect = featureBoard.getBoundingClientRect();
+    const overlayRect = this.getBoundingClientRect();
+    const clientX = rect.left + x;
+    const clientY = rect.top + (y - scrollTop);
 
-      const localX = clientX - overlayRect.left;
-      const localY = clientY - overlayRect.top;
-      return { x: Math.round(localX), y: Math.round(localY) };
-    } catch (e) {
-      // Fallback: simple subtraction
-      const viewportX = x - scrollLeft;
-      const viewportY = y - scrollTop;
-      return { x: Math.round(viewportX), y: Math.round(viewportY) };
-    }
+    const localX = clientX - overlayRect.left;
+    const localY = clientY - overlayRect.top;
+    return { x: Math.round(localX), y: Math.round(localY) };
   }
 
   _onMouseDown(e) {
     // Debugging: trace clicks and tool state
-    try {
-      console.debug(
-        '[AnnotationOverlay] _onMouseDown target:',
-        e.target,
-        'currentTool:',
-        this.currentTool
-      );
-    } catch (err) {}
+    console.debug(
+      '[AnnotationOverlay] _onMouseDown target:',
+      e.target,
+      'currentTool:',
+      this.currentTool
+    );
 
     // Check if click is on an annotation (handled separately)
     if (e.target.closest('.annotation')) {
-      try {
-        console.debug(
-          '[AnnotationOverlay] _onMouseDown - click on existing annotation, ignoring'
-        );
-      } catch (err) {}
-      return;
+      console.debug(
+        '[AnnotationOverlay] _onMouseDown - click on existing annotation, ignoring'
+      );
     }
 
     const ev = this._getEventCoords(e);
-    try {
-      console.debug('[AnnotationOverlay] _onMouseDown coords:', ev);
-    } catch (err) {}
+    console.debug('[AnnotationOverlay] _onMouseDown coords:', ev);
     // If pointer is outside the feature board, ignore the down event
     if (ev.outside) {
-      try {
-        console.debug('[AnnotationOverlay] _onMouseDown - outside board, ignoring');
-      } catch (err) {}
+      console.debug('[AnnotationOverlay] _onMouseDown - outside board, ignoring');
       return;
     }
     const x = ev.x;
@@ -1139,11 +972,9 @@ export class AnnotationOverlay extends LitElement {
 
     // Deselect on background click in select mode
     if (this.currentTool === TOOLS.SELECT) {
-      try {
-        console.debug(
-          '[AnnotationOverlay] _onMouseDown - SELECT background click, deselecting'
-        );
-      } catch (err) {}
+      console.debug(
+        '[AnnotationOverlay] _onMouseDown - SELECT background click, deselecting'
+      );
       this._state.deselect();
       // continue so focus remains on container but no drawing starts
       return;
@@ -1151,17 +982,15 @@ export class AnnotationOverlay extends LitElement {
 
     // Start drawing (except ICON which uses a contextual picker)
     if ([TOOLS.NOTE, TOOLS.RECT, TOOLS.LINE].includes(this.currentTool)) {
-      try {
-        console.debug(
-          '[AnnotationOverlay] _onMouseDown - start drawing',
-          this.currentTool,
-          {
-            x,
-            y,
-            contentX,
-          }
-        );
-      } catch (err) {}
+      console.debug(
+        '[AnnotationOverlay] _onMouseDown - start drawing',
+        this.currentTool,
+        {
+          x,
+          y,
+          contentX,
+        }
+      );
       this._drawState = {
         tool: this.currentTool,
         startX: x,
@@ -1174,55 +1003,30 @@ export class AnnotationOverlay extends LitElement {
       this._updateSvg();
     } else if (this.currentTool === TOOLS.ICON) {
       // Show contextual icon picker at the clicked location (use viewport coords)
-      try {
-        console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', {
-          vx,
-          vy,
-          contentX,
-        });
-      } catch (err) {}
-      // Add a transient visual marker so we can see the click position
-      try {
-        const featureBoard = findInBoard('feature-board');
-        let boardClient = null;
-        try {
-          if (
-            featureBoard &&
-            featureBoard._layout &&
-            typeof featureBoard._layout.getBoardClientRect === 'function'
-          )
-            boardClient = featureBoard._layout.getBoardClientRect();
-        } catch (e) {
-          boardClient = null;
-        }
-        const boardLeft =
-          boardClient ? boardClient.left || 0
-          : featureBoard ? featureBoard.getBoundingClientRect().left
-          : 0;
-        const boardTop =
-          boardClient ? boardClient.top || 0
-          : featureBoard ? featureBoard.getBoundingClientRect().top
-          : 0;
-        const pageX = (boardLeft || 0) + vx;
-        const pageY = (boardTop || 0) + vy;
-        const marker = document.createElement('div');
-        marker.style.position = 'fixed';
-        marker.style.left = `${Math.round(pageX)}px`;
-        marker.style.top = `${Math.round(pageY)}px`;
-        marker.style.width = '12px';
-        marker.style.height = '12px';
-        marker.style.borderRadius = '6px';
-        marker.style.background = 'rgba(255,0,0,0.9)';
-        marker.style.zIndex = 12000;
-        document.body.appendChild(marker);
-        setTimeout(() => {
-          try {
-            marker.remove();
-          } catch (e) {}
-        }, 800);
-      } catch (e) {
-        /* ignore */
-      }
+      console.debug('[AnnotationOverlay] _onMouseDown - ICON click, showing picker', {
+        vx,
+        vy,
+        contentX,
+      });
+
+      // DEBUGGING: add a transient marker to show where the click was (for verifying coordinate calculations)
+      // const featureBoard = findInBoard('feature-board');
+      // const rect = featureBoard.getBoundingClientRect();
+      // const pageX = rect.left + vx;
+      // const pageY = rect.top + vy;
+      // const marker = document.createElement('div');
+      // marker.style.position = 'fixed';
+      // marker.style.left = `${Math.round(pageX)}px`;
+      // marker.style.top = `${Math.round(pageY)}px`;
+      // marker.style.width = '12px';
+      // marker.style.height = '12px';
+      // marker.style.borderRadius = '6px';
+      // marker.style.background = 'rgba(255,0,0,0.9)';
+      // marker.style.zIndex = 12000;
+      // document.body.appendChild(marker);
+      // setTimeout(() => {
+      //   marker.remove();
+      // }, 400);
       this._showIconPicker(e.clientX, e.clientY, contentX);
     }
   }
@@ -1265,14 +1069,13 @@ export class AnnotationOverlay extends LitElement {
 
     // Compute content Y and fallbackContentX for annotation creation
     const featureBoard = findInBoard('feature-board');
-    const boardRect =
-      featureBoard ? featureBoard.getBoundingClientRect() : { left: 0, top: 0 };
+    const rect = featureBoard.getBoundingClientRect();
     const { scrollTop } = this._getScrollOffsets();
-    const contentY = clientY - (boardRect.top || 0) + (scrollTop || 0);
+    const contentY = clientY - rect.top + (scrollTop || 0);
     const fallbackContentX =
       typeof contentX !== 'undefined' && contentX !== null ?
         contentX
-      : clientX - (boardRect.left || 0);
+      : clientX - rect.left;
 
     ICONS.forEach((ic, idx) => {
       const btn = document.createElement('button');
@@ -1311,19 +1114,12 @@ export class AnnotationOverlay extends LitElement {
     const pageX = clientX;
     const pageY = clientY - Math.round(btnSize / 2);
 
-    // Place inside app container if available to respect stacking context
+    // Place icon popover inside app container
     const appHost = document.querySelector('.app-container');
-    if (appHost) {
-      const hostRect = appHost.getBoundingClientRect();
-      container.style.left = `${Math.max(6, Math.round(pageX - hostRect.left))}px`;
-      container.style.top = `${Math.max(6, Math.round(pageY - hostRect.top))}px`;
-      appHost.appendChild(container);
-    } else {
-      container.style.position = 'fixed';
-      container.style.left = `${Math.max(6, Math.round(pageX))}px`;
-      container.style.top = `${Math.max(6, Math.round(pageY))}px`;
-      document.body.appendChild(container);
-    }
+    const hostRect = appHost.getBoundingClientRect();
+    container.style.left = `${Math.max(6, Math.round(pageX - hostRect.left))}px`;
+    container.style.top = `${Math.max(6, Math.round(pageY - hostRect.top))}px`;
+    appHost.appendChild(container);
 
     // Clamp to viewport: if overflow, nudge left/up as needed
     const clampRect = container.getBoundingClientRect();
@@ -1360,13 +1156,9 @@ export class AnnotationOverlay extends LitElement {
 
   _hideIconPicker() {
     if (this._iconPickerEl) {
-      try {
-        window.removeEventListener('mousedown', this._iconPickerEl._onDocClick);
-      } catch (e) {}
-      try {
-        const p = this._iconPickerEl.parentNode;
-        if (p) p.removeChild(this._iconPickerEl);
-      } catch (e) {}
+      window.removeEventListener('mousedown', this._iconPickerEl._onDocClick);
+      const p = this._iconPickerEl.parentNode;
+      p.removeChild(this._iconPickerEl);
       this._iconPickerEl = null;
       this._iconPickerTarget = null;
     }
@@ -1792,9 +1584,8 @@ export class AnnotationOverlay extends LitElement {
   // Date <-> Content X conversions
   // ---------------------------
   _dateToContentX(dateMs) {
-    const months = getTimelineMonths() || [];
-    const monthWidth =
-      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
+    const months = getTimelineMonths();
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
     const boardOffset = getBoardOffset() || 0;
     if (!months.length) return boardOffset;
 
@@ -1820,9 +1611,8 @@ export class AnnotationOverlay extends LitElement {
   }
 
   _contentXToDateMs(contentX) {
-    const months = getTimelineMonths() || [];
-    const monthWidth =
-      TIMELINE_CONFIG && TIMELINE_CONFIG.monthWidth ? TIMELINE_CONFIG.monthWidth : 120;
+    const months = getTimelineMonths();
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
     const boardOffset = getBoardOffset() || 0;
     if (!months.length) return Date.now();
 
@@ -1873,60 +1663,21 @@ export class AnnotationOverlay extends LitElement {
    */
   _positionOverTimeline() {
     const featureBoard = findInBoard('feature-board');
-    if (!featureBoard) return;
-    // Prefer a cached client rect from LayoutManager to avoid expensive
-    // per-call DOM measurements. Fall back to getBoundingClientRect once.
-    let rect = null;
-    try {
-      if (
-        featureBoard._layout &&
-        typeof featureBoard._layout.getBoardClientRect === 'function'
-      ) {
-        const br = featureBoard._layout.getBoardClientRect();
-        if (br && (br.left || br.left === 0)) {
-          rect = {
-            left: br.left,
-            top: br.top,
-            right: br.left + (br.width || 0),
-            bottom: br.top + (br.height || 0),
-            width: br.width || 0,
-            height: br.height || 0,
-          };
-        }
-      }
-    } catch (e) {
-      rect = null;
-    }
-
-    if (!rect) {
-      try {
-        rect = featureBoard.getBoundingClientRect();
-      } catch (e) {
-        return;
-      }
-    }
+    const rect = featureBoard.getBoundingClientRect();
 
     // Compute visible intersection with viewport so overlay only covers on-screen area
-    try {
-      const left = Math.round(rect.left);
-      const top = Math.round(rect.top);
-      const right = Math.min(window.innerWidth, Math.round(rect.right));
-      const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
-      const width = Math.max(0, right - left);
-      const height = Math.max(0, bottom - top);
+    const left = Math.round(rect.left);
+    const top = Math.round(rect.top);
+    const right = Math.min(window.innerWidth, Math.round(rect.right));
+    const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
 
-      this.style.position = 'fixed';
-      this.style.top = `${top}px`;
-      this.style.left = `${left}px`;
-      this.style.width = `${width}px`;
-      this.style.height = `${height}px`;
-    } catch (e) {
-      // Fallback to raw rect values
-      this.style.top = `${rect.top}px`;
-      this.style.left = `${rect.left}px`;
-      this.style.width = `${rect.width}px`;
-      this.style.height = `${rect.height}px`;
-    }
+    this.style.position = 'fixed';
+    this.style.top = `${top}px`;
+    this.style.left = `${left}px`;
+    this.style.width = `${width}px`;
+    this.style.height = `${height}px`;
   }
 
   setTool(tool) {

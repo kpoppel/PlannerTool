@@ -56,10 +56,7 @@ class PluginAnnotations {
       // live in the app container so it's on top of the feature board UI.
       const selector = this.config.mountPoint || 'feature-board';
       const board = findInBoard('feature-board');
-      const appRoot =
-        document.querySelector('.app-container') ||
-        document.getElementById('app') ||
-        document.body;
+      const appRoot = document.querySelector('.app-container');
 
       // If the config explicitly requests mounting somewhere other than the
       // app container, honor it. Otherwise, put the toolbox into the app root.
@@ -72,79 +69,47 @@ class PluginAnnotations {
       // to the app container and let the component place the overlay inside
       // the board, so avoid setting board-scoped styles here in that common case.
       if (mountToBoard && board) {
-        try {
-          this._el.style.position = 'absolute';
-          this._el.style.top = '0';
-          this._el.style.left = '0';
-          this._el.style.right = '0';
-          this._el.style.bottom = '0';
-          this._el.style.width = 'auto';
-          this._el.style.height = 'auto';
-          this._el.style.pointerEvents = 'auto';
-          this._el.style.zIndex = '10';
-        } catch (e) {
-          /* ignore */
-        }
+        this._el.style.position = 'absolute';
+        this._el.style.top = '0';
+        this._el.style.left = '0';
+        this._el.style.right = '0';
+        this._el.style.bottom = '0';
+        this._el.style.width = 'auto';
+        this._el.style.height = 'auto';
+        this._el.style.pointerEvents = 'auto';
+        this._el.style.zIndex = '10';
       }
-
-      try {
-        mountTarget.appendChild(this._el);
-      } catch (e) {
-        try {
-          document.body.appendChild(this._el);
-        } catch (err) {
-          /* ignore */
-        }
-      }
+      mountTarget.appendChild(this._el);
 
       // Keep sizing in sync with the board so it doesn't float over sidebars
-      try {
-        const board = findInBoard('feature-board');
-        if (board) {
-          // With inset positioning we don't need to explicitly set pixel
-          // width/height on every resize — but we still need to trigger a
-          // repaint/update when the board size changes (e.g., window resize
-          // or internal scroll). Keep lightweight handlers that invalidate
-          // layout when needed.
-          const resizeFn = () => {
-            try {
-              // toggle a CSS property to force repaint on window resize
-              this._el.style.transform = 'translateZ(0)';
-              setTimeout(() => {
-                try {
-                  this._el.style.transform = '';
-                } catch (e) {
-                  /* ignore */
-                }
-              }, 0);
-            } catch (e) {
-              /* ignore */
-            }
-          };
+      // With inset positioning we don't need to explicitly set pixel
+      // width/height on every resize — but we still need to trigger a
+      // repaint/update when the board size changes (e.g., window resize
+      // or internal scroll). Keep lightweight handlers that invalidate
+      // layout when needed.
+      const resizeFn = () => {
+        // toggle a CSS property to force repaint on window resize
+        this._el.style.transform = 'translateZ(0)';
+        setTimeout(() => {
+          this._el.style.transform = '';
+        }, 0);
+      };
 
-          // Only keep a window resize handler. Do NOT attach a board scroll
-          // listener — scrolling should not cause the toolbox to repaint
-          // (which results in the hide/unhide flash). The overlay inside the
-          // feature board handles its own scroll repositioning.
-          this._annotationBoardHandlers = { resizeFn, board };
+      // Only keep a window resize handler. Do NOT attach a board scroll
+      // listener — scrolling should not cause the toolbox to repaint
+      // (which results in the hide/unhide flash). The overlay inside the
+      // feature board handles its own scroll repositioning.
+      this._annotationBoardHandlers = { resizeFn, board };
 
-          window.addEventListener('resize', resizeFn);
-        }
-      } catch (e) {
-        // ignore
-      }
+      window.addEventListener('resize', resizeFn);
     }
-    if (this._el && typeof this._el.open === 'function') {
-      this._el.open();
-    }
+    this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
-    if (this._el && typeof this._el.close === 'function') {
-      this._el.close();
-    }
+    this._el.close();
     this.active = false;
     bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
@@ -155,19 +120,9 @@ class PluginAnnotations {
     }
     this._el = null;
     // Remove any attached handlers for board resizing/scroll (only resize)
-    try {
-      if (this._annotationBoardHandlers) {
-        const { resizeFn, board } = this._annotationBoardHandlers;
-        try {
-          window.removeEventListener('resize', resizeFn);
-        } catch (e) {
-          /* ignore */
-        }
-        // We intentionally do NOT remove a board scroll listener because
-        // we no longer attach one — scrolling should not trigger toolbox repaint.
-      }
-    } catch (e) {
-      /* ignore */
+    if (this._annotationBoardHandlers) {
+      const { resizeFn, board } = this._annotationBoardHandlers;
+      window.removeEventListener('resize', resizeFn);
     }
     this._annotationBoardHandlers = null;
     this.initialized = false;

@@ -31,8 +31,6 @@ describe('PluginAnnotations', () => {
     findStub = stub(boardUtils, 'findInBoard').callsFake((sel) => board);
 
     const p = new PluginAnnotations('ann-test', { forceMountInBoard: true });
-    p._componentLoaded = true;
-
     await p.activate();
 
     expect(p.active).to.be.true;

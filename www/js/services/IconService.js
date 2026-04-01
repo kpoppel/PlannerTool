@@ -37,39 +37,27 @@ export const featureTemplate = html`${unsafeSVG(FEATURE_SVG_CORE)}`;
 export function epicSvgElement(attrs = {}) {
   const el = parseSvgString(EPIC_SVG_CORE);
   if (!el) return null;
-  try {
-    if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
-    if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
-    if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
-    if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  } catch (e) {
-    /* ignore */
-  }
+  if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
+  if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
+  if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
+  if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
   return el;
 }
 
 export function featureSvgElement(attrs = {}) {
   const el = parseSvgString(FEATURE_SVG_CORE);
   if (!el) return null;
-  try {
-    if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
-    if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
-    if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
-    if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  } catch (e) {
-    /* ignore */
-  }
+  if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
+  if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
+  if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
+  if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
   return el;
 }
 
 function parseSvgString(svgString) {
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgString, 'image/svg+xml');
-    return doc.documentElement;
-  } catch (e) {
-    return null;
-  }
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
+  return doc.documentElement;
 }
 
 export default {

@@ -14,24 +14,7 @@ import {
   TimelineEvents,
   ViewEvents,
 } from '../core/EventRegistry.js';
-
-// Helper to locate elements inside timeline-board's render root when TimelineBoard
-// uses shadow DOM. Falls back to document queries for older behavior.
-function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
-}
+import { findInBoard } from './board-utils.js';
 
 /**
  * MainGraphLit - Lit-based main graph component with canvas rendering
@@ -137,16 +120,9 @@ export class MainGraphLit extends LitElement {
       this._maingraphScheduled = true;
       requestAnimationFrame(async () => {
         this._maingraphScheduled = false;
-        try {
-          const snapshot = buildSnapshot();
-          try {
-            if (this.updateComplete && typeof this.updateComplete.then === 'function')
-              await this.updateComplete;
-          } catch (e) {}
-          if (typeof this.renderGraph === 'function') await this.renderGraph(snapshot);
-        } catch (e) {
-          console.error('[maingraph-lit] render error', e);
-        }
+        const snapshot = buildSnapshot();
+        await this.updateComplete;
+        await this.renderGraph(snapshot);
       });
     };
 
@@ -175,27 +151,19 @@ export class MainGraphLit extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback && super.disconnectedCallback();
-    try {
-      if (this._resizeObserver) this._resizeObserver.disconnect();
-    } catch (e) {}
+    if (this._resizeObserver) this._resizeObserver.disconnect();
     // Unsubscribe from bus events
-    try {
-      if (this._maingraphUnsubs && Array.isArray(this._maingraphUnsubs)) {
-        this._maingraphUnsubs.forEach((u) => {
-          try {
-            if (typeof u === 'function') u();
-          } catch (e) {}
-        });
-        this._maingraphUnsubs = null;
-      }
-    } catch (e) {}
+    if (this._maingraphUnsubs && Array.isArray(this._maingraphUnsubs)) {
+      this._maingraphUnsubs.forEach((u) => {
+        u();
+      });
+      this._maingraphUnsubs = null;
+    }
     // Remove scroll handler
-    try {
-      const section = findInBoard('#timelineSection');
-      if (section && this._maingraphScrollHandler)
-        section.removeEventListener('scroll', this._maingraphScrollHandler);
-      this._maingraphScrollHandler = null;
-    } catch (e) {}
+    const section = findInBoard('#timelineSection');
+    if (section && this._maingraphScrollHandler)
+      section.removeEventListener('scroll', this._maingraphScrollHandler);
+    this._maingraphScrollHandler = null;
   }
 
   /**
@@ -321,16 +289,7 @@ export class MainGraphLit extends LitElement {
     function daysInMonth(d) {
       return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
     }
-    function hexToRgba(hex, alpha) {
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      if (!m) {
-        return `rgba(231,76,60,${alpha})`;
-      }
-      const r = parseInt(m[1], 16),
-        g = parseInt(m[2], 16),
-        b = parseInt(m[3], 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
+
     function hexToRgba(hex, alpha) {
       const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       if (!m) {
@@ -602,7 +561,7 @@ export class MainGraphLit extends LitElement {
       let cum = 0;
       const startDate = new Date(range.startDate);
       let curIdx = dateToIndex(months, startDate);
-      let curDate = new Date(
+      const curDate = new Date(
         startDate.getFullYear(),
         startDate.getMonth(),
         startDate.getDate()

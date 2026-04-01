@@ -524,18 +524,6 @@ export class AreaMappingsNew extends LitElement {
     }
   }
 
-  toggleProject(projectId) {
-    this.expandedProjects = {
-      ...this.expandedProjects,
-      [projectId]: !this.expandedProjects[projectId],
-    };
-    this.requestUpdate();
-  }
-
-  toggleProject(projectId) {
-    // Not needed anymore with card layout
-  }
-
   getAllAreaMappings() {
     // Flatten all areas from all projects into a single list
     const allAreas = [];

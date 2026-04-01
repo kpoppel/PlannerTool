@@ -6,9 +6,7 @@ test.describe('Modal interactions', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     // Ensure session created by global-setup is applied and remove any blocking overlays
-    try {
-      await page.waitForSelector('#openConfigBtn', { timeout: 5000 });
-    } catch (e) {}
+    await page.waitForSelector('#openConfigBtn', { timeout: 5000 });
     await clearOverlays(page);
   });
 

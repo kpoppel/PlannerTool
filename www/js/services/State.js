@@ -241,13 +241,9 @@ class State {
 
   setSidebarDisabledElements(map) {
     this._sidebarDisabled = map || {};
-    try {
-      bus.emit(FilterEvents.CHANGED, {
-        disabledSidebar: this._sidebarDisabled,
-      });
-    } catch (e) {
-      /* ignore */
-    }
+    bus.emit(FilterEvents.CHANGED, {
+      disabledSidebar: this._sidebarDisabled,
+    });
   }
 
   clearSidebarDisabledElements() {
@@ -281,7 +277,7 @@ class State {
     });
   }
 
-    // Toggle a single state's selection on/off
+  // Toggle a single state's selection on/off
   toggleStateSelected(stateName) {
     this._stateFilterService.toggleStateSelected(stateName);
     // Recompute capacity metrics (graphs) whenever state filter changes
@@ -692,11 +688,7 @@ class State {
     // Invalidate expansion cache since project selection changed
     this._expandedFeatureIdsCache = null;
     // Notify UI listeners of project list change (single consolidated event)
-    try {
-      bus.emit(ProjectEvents.CHANGED, this.projects);
-    } catch (e) {
-      /* ignore */
-    }
+    bus.emit(ProjectEvents.CHANGED, this.projects);
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, {
       dates: this.capacityDates,
@@ -715,11 +707,7 @@ class State {
     // Invalidate expansion cache since team selection changed
     this._expandedFeatureIdsCache = null;
     // Notify UI listeners of team list change (single consolidated event)
-    try {
-      bus.emit(TeamEvents.CHANGED, this.teams);
-    } catch (e) {
-      /* ignore */
-    }
+    bus.emit(TeamEvents.CHANGED, this.teams);
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, {
       dates: this.capacityDates,
@@ -743,11 +731,7 @@ class State {
     // Invalidate expansion cache since project selection changed
     this._expandedFeatureIdsCache = null;
     // Notify listeners that project selection changed (single consolidated event)
-    try {
-      bus.emit(ProjectEvents.CHANGED, this.projects);
-    } catch (e) {
-      /* ignore */
-    }
+    bus.emit(ProjectEvents.CHANGED, this.projects);
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, {
       dates: this.capacityDates,
@@ -771,11 +755,7 @@ class State {
     // Invalidate expansion cache since team selection changed
     this._expandedFeatureIdsCache = null;
     // Notify listeners that team selection changed (single consolidated event)
-    try {
-      bus.emit(TeamEvents.CHANGED, this.teams);
-    } catch (e) {
-      /* ignore */
-    }
+    bus.emit(TeamEvents.CHANGED, this.teams);
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, {
       dates: this.capacityDates,
@@ -852,13 +832,12 @@ class State {
       if (featureFlags && featureFlags.USE_QUEUED_FEATURE_SERVICE) {
         // Dynamic import preserves module semantics and avoids circular import issues
         // Note: dynamic import returns a promise; use then() to synchronously assign when available.
-        import('./QueuedFeatureService.js')
-          .then((mod) => {
-            this._featureService = new mod.QueuedFeatureService(
-              this._baselineStore,
-              getActiveScenarioFn
-              );
-          });
+        import('./QueuedFeatureService.js').then((mod) => {
+          this._featureService = new mod.QueuedFeatureService(
+            this._baselineStore,
+            getActiveScenarioFn
+          );
+        });
       } else {
         this._featureService = new FeatureService(
           this._baselineStore,

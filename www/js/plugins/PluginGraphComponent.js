@@ -44,26 +44,6 @@ export class PluginGraph extends LitElement {
     this.xScale = 1;
   }
 
-  // Helper to find the primary app host. Prefer `timeline-board` then fall back to `main`.
-  _getAppHost() {
-    // Prefer locating inside the board's render root (handles shadow DOM).
-    let host = null;
-    try {
-      host = findInBoard('timeline-board');
-    } catch (e) {}
-    if (!host) {
-      host =
-        document.getElementById('app') ||
-        document.querySelector('.app-container') ||
-        document.body;
-      console.warn(
-        '[PluginGraph] <timeline-board> not found; falling back to app host',
-        host
-      );
-    }
-    return host;
-  }
-
   /**
    * Compute inclusive day count between two dates (UTC day boundaries).
    * @param {Date} d0
@@ -142,14 +122,13 @@ export class PluginGraph extends LitElement {
     const applyBtn = this.renderRoot.querySelector('#mvApply');
     const exportSvgBtn = this.renderRoot.querySelector('#mvExportSvg');
     const exportPngBtn = this.renderRoot.querySelector('#mvExportPng');
-    if (applyBtn)
-      applyBtn.addEventListener('click', () => {
-        this.startDate = new Date(startInp.value);
-        this.endDate = new Date(endInp.value);
-        this._render();
-      });
-    if (exportSvgBtn) exportSvgBtn.addEventListener('click', () => this.exportSvg());
-    if (exportPngBtn) exportPngBtn.addEventListener('click', () => this.exportPng());
+    applyBtn.addEventListener('click', () => {
+      this.startDate = new Date(startInp.value);
+      this.endDate = new Date(endInp.value);
+      this._render();
+    });
+    exportSvgBtn.addEventListener('click', () => this.exportSvg());
+    exportPngBtn.addEventListener('click', () => this.exportPng());
 
     bus.on(ProjectEvents.CHANGED, () => this._scheduleRender());
     bus.on(TeamEvents.CHANGED, () => this._scheduleRender());
@@ -160,81 +139,8 @@ export class PluginGraph extends LitElement {
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
-    // Re-render once app/state is ready
-    bus.on(AppEvents.READY, () => {
-      this._initDateRangeDefaults();
-      this._scheduleRender(20);
-    });
-    if (typeof state._viewService.capacityViewMode !== 'undefined')
-      this.mode = state._viewService.capacityViewMode;
-    this._initDateRangeDefaults();
-    // Apply initial left offset to avoid covering the sidebar
-    this._applyPosition();
-    window.addEventListener(
-      'resize',
-      (this._applyPositionBound = this._applyPosition.bind(this))
-    );
-  }
-
-  _applyPosition() {
-    try {
-      // Find sidebar and compute left offset relative to the app host
-      const host = this._getAppHost();
-      if (!host) return;
-      const hostRect =
-        host.getBoundingClientRect ? host.getBoundingClientRect() : { left: 0 };
-      // Prefer sidebar inside the app host, then fall back to document-level
-      let sidebar = null;
-      try {
-        sidebar =
-          host.querySelector('.sidebar') ||
-          host.querySelector('#sidebar') ||
-          document.querySelector('.sidebar') ||
-          document.getElementById('sidebar');
-      } catch (e) {}
-      if (sidebar && sidebar.getBoundingClientRect) {
-        const sb = sidebar.getBoundingClientRect();
-        const left = Math.max(0, sb.right - hostRect.left);
-        this.style.left = `${left}px`;
-      } else {
-        // No sidebar detected -> align to host left
-        this.style.left = `0px`;
-      }
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  _initDateRangeDefaults() {
-    const needCompute = !(this.startDate && this.endDate);
-    if (needCompute) {
-      const months = typeof getTimelineMonths === 'function' ? getTimelineMonths() : null;
-      if (months && months.length) {
-        const d0 = months[0];
-        const last = months[months.length - 1];
-        const d1 = new Date(last.getFullYear(), last.getMonth() + 1, 0);
-        this.startDate = new Date(d0);
-        this.endDate = new Date(d1);
-      } else if (Array.isArray(state?.capacityDates) && state.capacityDates.length) {
-        const firstIso = state.capacityDates[0];
-        const lastIso = state.capacityDates[state.capacityDates.length - 1];
-        this.startDate = new Date(firstIso);
-        this.endDate = new Date(lastIso);
-      } else {
-        const now = new Date();
-        this.startDate = new Date(now);
-        this.endDate = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
-      }
-    }
-    const setInputs = () => {
-      const startInp = this.renderRoot.querySelector('#mvStart');
-      const endInp = this.renderRoot.querySelector('#mvEnd');
-      if (startInp) startInp.value = this._fmtDate(this.startDate);
-      if (endInp) endInp.value = this._fmtDate(this.endDate);
-      return !!(startInp || endInp);
-    };
-    const ok = setInputs();
-    if (!ok) requestAnimationFrame(() => setInputs());
+    // TODO: Should use getViewService...
+    this.mode = state._viewService.capacityViewMode;
   }
 
   _ensureTooltip() {
@@ -270,28 +176,7 @@ export class PluginGraph extends LitElement {
       host.appendChild(this.svgEl);
       this.svgEl.addEventListener('pointermove', (e) => {
         if (!this.dayOffsets) return;
-        // Prefer using LayoutManager cached board client rect to avoid per-event DOM reads
-        let hostLeft = null;
-        try {
-          const board = findInBoard('feature-board');
-          if (
-            board &&
-            board._layout &&
-            typeof board._layout.getBoardClientRect === 'function'
-          ) {
-            const br = board._layout.getBoardClientRect();
-            if (br && typeof br.left === 'number') hostLeft = br.left;
-          }
-        } catch (err) {
-          /* ignore and fallback */
-        }
-        if (hostLeft == null) {
-          try {
-            hostLeft = host.getBoundingClientRect().left;
-          } catch (e) {
-            hostLeft = 0;
-          }
-        }
+        const hostLeft = host.getBoundingClientRect().left;
         const x = e.clientX - hostLeft;
         const unscaledX = x / (this.xScale || 1);
         let lo = 0,
@@ -322,35 +207,27 @@ export class PluginGraph extends LitElement {
     if (this._scheduledRenderTimer) clearTimeout(this._scheduledRenderTimer);
     this._scheduledRenderTimer = setTimeout(() => {
       this._scheduledRenderTimer = null;
-      try {
-        this._render();
-      } catch (e) {
-        console.error('[plugin-graph] scheduled render error', e);
-      }
+      this._render();
     }, delay);
   }
 
-  open(mode) {
-    // prefer provided mode, fall back to state setting, then default
-    if (mode) this.mode = mode;
-    else if (state && typeof state._viewService.capacityViewMode !== 'undefined')
-      this.mode = state._viewService.capacityViewMode;
-    else this.mode = 'project';
-
+  async open(mode) {
     // Plugin's parent (PluginGraph.js) handles display and timeline-board hiding
+    // prefer provided mode, fall back to state setting, then default
+    await this.updateComplete;
+
+    // Set graph mode to match current view mode
+    // TODO: should use getViewService
+    this.mode = state._viewService.capacityViewMode;
+
+    // Always set date range from the current state.
     const months = getTimelineMonths();
-    let d0, d1;
-    if (months && months.length) {
-      d0 = months[0];
-      const last = months[months.length - 1];
-      d1 = new Date(last.getFullYear(), last.getMonth() + 1, 0);
-    } else {
-      d0 = new Date();
-      d1 = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-    }
+    const d0 = months[0];
+    const last = months[months.length - 1];
+    const d1 = new Date(last.getFullYear(), last.getMonth() + 1, 0);
+
     this.startDate = new Date(d0);
     this.endDate = new Date(d1);
-    this._initDateRangeDefaults();
     const startInp = this.renderRoot.querySelector('#mvStart');
     const endInp = this.renderRoot.querySelector('#mvEnd');
     if (startInp) startInp.value = this._fmtDate(this.startDate);
@@ -407,10 +284,6 @@ export class PluginGraph extends LitElement {
     img.src = url;
   }
 
-  _daysBetween(d0, d1) {
-    const ms = new Date(d1).setHours(0, 0, 0, 0) - new Date(d0).setHours(0, 0, 0, 0);
-    return Math.max(0, Math.floor(ms / (24 * 3600 * 1000)) + 1);
-  }
   _addDays(d, n) {
     const dt = new Date(d);
     dt.setDate(dt.getDate() + n);
@@ -677,7 +550,7 @@ export class PluginGraph extends LitElement {
         sDateGlobal.getMonth(),
         sDateGlobal.getDate()
       );
-      let curDate = new Date(start);
+      const curDate = new Date(start);
       for (let k = 0; k < i; k++) {
         cum += pxPerDay(curDate);
         curDate.setDate(curDate.getDate() + 1);
@@ -756,7 +629,7 @@ export class PluginGraph extends LitElement {
     if (dayIndex !== null && totalsForDay) {
       const date = this._addDays(this.startDate, dayIndex);
       html += `<div style="font-weight:700; margin-bottom:6px;">${new Date(date).toLocaleString()}</div>`;
-      html += `<div style="color:#ddd; margin-bottom:6px;">Total: <strong style=\"color:#fff\">${Math.round(totalsForDay.total)}%</strong></div>`;
+      html += `<div style="color:#ddd; margin-bottom:6px;">Total: <strong style="color:#fff">${Math.round(totalsForDay.total)}%</strong></div>`;
       if (this.mode === 'project') {
         const per = totalsForDay.perProject || {};
         const entries = Object.entries(per).map(([id, v]) => ({ id, v }));
@@ -774,7 +647,7 @@ export class PluginGraph extends LitElement {
               isUnfunded ? 'Unfunded'
               : p ? p.name
               : e.id;
-            html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style=\"width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;\"></span><span style=\"flex:1; color:#ddd;\">${name}</span><span style=\"margin-left:8px; color:#fff; font-weight:700;\">${Math.round(e.v)}%</span></div>`;
+            html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style="width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;"></span><span style="flex:1; color:#ddd;">${name}</span><span style="margin-left:8px; color:#fff; font-weight:700;">${Math.round(e.v)}%</span></div>`;
           });
           html += '</div>';
         }
@@ -788,7 +661,7 @@ export class PluginGraph extends LitElement {
             const t = (state.teams || []).find((x) => x.id === e.id);
             const color = t ? t.color : '#888';
             const name = t ? t.name : e.id;
-            html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style=\"width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;\"></span><span style=\"flex:1; color:#ddd;\">${name}</span><span style=\"margin-left:8px; color:#fff; font-weight:700;\">${Math.round(e.v)}%</span></div>`;
+            html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style="width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;"></span><span style="flex:1; color:#ddd;">${name}</span><span style="margin-left:8px; color:#fff; font-weight:700;">${Math.round(e.v)}%</span></div>`;
           });
           html += '</div>';
         }
@@ -859,7 +732,7 @@ export class PluginGraph extends LitElement {
       }
       maxY = teamMax && teamMax > 0 ? Math.ceil(teamMax) : 100;
     }
-    let approx = Math.ceil(maxY / 5);
+    const approx = Math.ceil(maxY / 5);
     step = Math.ceil(approx / 5) * 5;
     if (step < 1) step = 1;
     const monthWidth = TIMELINE_CONFIG.monthWidth;
@@ -869,7 +742,7 @@ export class PluginGraph extends LitElement {
     const daysCount = data.days;
     this.dayOffsets = new Array(daysCount + 1).fill(0);
     let cum = 0;
-    let cur = new Date(
+    const cur = new Date(
       this.startDate.getFullYear(),
       this.startDate.getMonth(),
       this.startDate.getDate()

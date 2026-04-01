@@ -1,6 +1,11 @@
 import { expect } from '@esm-bundle/chai';
 import '../../www/js/components/Timeline.lit.js';
-import { getMonthWidthForScale, _resetTimelineState, getTimelineMonths, setTimelinePanningAllowed } from '../../www/js/components/Timeline.lit.js';
+import {
+  getMonthWidthForScale,
+  _resetTimelineState,
+  getTimelineMonths,
+  setTimelinePanningAllowed,
+} from '../../www/js/components/Timeline.lit.js';
 
 describe('Timeline expanded tests', () => {
   it('getMonthWidthForScale returns configured widths and falls back', () => {

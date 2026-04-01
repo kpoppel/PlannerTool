@@ -570,22 +570,14 @@ export class ViewManagementService {
 
     // Capture selected task types (from sidebar element) if present
     if (sidebarElement && sidebarElement.selectedTaskTypes) {
-      try {
-        snapshot.viewOptions.selectedTaskTypes = Array.from(
-          sidebarElement.selectedTaskTypes || []
-        );
-      } catch (e) {
-        /* ignore */
-      }
+      snapshot.viewOptions.selectedTaskTypes = Array.from(
+        sidebarElement.selectedTaskTypes || []
+      );
     }
 
     // Capture graph type (from sidebar element) if present
     if (sidebarElement && sidebarElement._graphType) {
-      try {
-        snapshot.viewOptions.graphType = sidebarElement._graphType;
-      } catch (e) {
-        /* ignore */
-      }
+      snapshot.viewOptions.graphType = sidebarElement._graphType;
     }
 
     // Capture task filters
@@ -595,15 +587,10 @@ export class ViewManagementService {
 
     // Capture expansion options (from sidebar element) if present
     if (sidebarElement) {
-      try {
-        snapshot.viewOptions.expandParentChild =
-          sidebarElement.expandParentChild || false;
-        snapshot.viewOptions.expandRelations = sidebarElement.expandRelations || false;
-        snapshot.viewOptions.expandTeamAllocated =
-          sidebarElement.expandTeamAllocated || false;
-      } catch (e) {
-        /* ignore */
-      }
+      snapshot.viewOptions.expandParentChild = sidebarElement.expandParentChild || false;
+      snapshot.viewOptions.expandRelations = sidebarElement.expandRelations || false;
+      snapshot.viewOptions.expandTeamAllocated =
+        sidebarElement.expandTeamAllocated || false;
     }
 
     // Capture project selections

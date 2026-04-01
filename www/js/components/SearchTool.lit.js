@@ -1,24 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-
-// Helper to locate elements inside timeline-board's render root when TimelineBoard
-// uses shadow DOM. Falls back to document queries for older behavior.
-function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
-}
-
+import { findInBoard } from './board-utils.js';
 export class SearchTool extends LitElement {
   static properties = {
     visible: { type: Boolean },
@@ -171,9 +153,7 @@ export class SearchTool extends LitElement {
   _onInput(e) {
     this.query = e.target.value || '';
     // Persist immediately so subsequent opens restore the value
-    try {
-      localStorage.setItem('az_planner:search:lastQuery', this.query);
-    } catch (e) {}
+    localStorage.setItem('az_planner:search:lastQuery', this.query);
     if (this._debounce) clearTimeout(this._debounce);
     this._debounce = setTimeout(() => this._performSearch(), 180);
   }
@@ -242,19 +222,13 @@ export class SearchTool extends LitElement {
 
   _onSelect(item) {
     try {
-      const board =
-        findInBoard('feature-board') || document.querySelector('feature-board');
+      const board = findInBoard('feature-board');
       if (board && typeof board.centerFeatureById === 'function') {
         board.centerFeatureById(item.id);
       } else {
-        const timeline =
-          findInBoard('#timelineSection') || document.getElementById('timelineSection');
-        const fb =
-          findInBoard('feature-board') || document.querySelector('feature-board');
-        const card =
-          findInBoard(`feature-card-lit[data-feature-id="${item.id}"]`) ||
-          document.querySelector(`feature-card-lit[data-feature-id="${item.id}"]`) ||
-          document.querySelector(`feature-card-lit[featureid="${item.id}"]`);
+        const timeline = findInBoard('#timelineSection');
+        const fb = findInBoard('feature-board');
+        const card = findInBoard(`feature-card-lit[data-feature-id="${item.id}"]`);
         if (card && timeline && fb) {
           const targetX =
             card.offsetLeft - timeline.clientWidth / 2 + card.clientWidth / 2;

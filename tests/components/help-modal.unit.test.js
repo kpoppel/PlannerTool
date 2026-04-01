@@ -7,7 +7,8 @@ describe('HelpModal unit tests', () => {
     const hm = new HelpModal();
     expect(hm._escapeHtml('<&>')).to.equal('&lt;&amp;&gt;');
 
-    const md = '# Heading\nParagraph with **bold** and *italic* and `code`.\n![alt](img.png)\n[link](http://example.com)\n- item1\n1. one\n```js\nconsole.log(1);\n```';
+    const md =
+      '# Heading\nParagraph with **bold** and *italic* and `code`.\n![alt](img.png)\n[link](http://example.com)\n- item1\n1. one\n```js\nconsole.log(1);\n```';
     const out = hm._renderMarkdown(md, 'doc.md');
     expect(out).to.include('<h1>');
     expect(out).to.include('<strong>');

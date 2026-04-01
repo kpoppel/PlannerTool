@@ -6,14 +6,12 @@ test.describe('Details Panel - Extra coverage', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await clearOverlays(page);
-    // Wait for at least one feature card
-    await page.waitForSelector('feature-card-lit, .feature-card', {
-      timeout: 10000,
-    });
+    // Wait for at least one Lit-hosted feature card
+    await page.waitForSelector('feature-card-lit', { timeout: 10000 });
   });
 
   test('capacity input can be edited and saved', async ({ page }) => {
-    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
+    const card = await page.$('feature-card-lit');
     await card.click();
     await page.waitForFunction(
       () =>
@@ -41,7 +39,7 @@ test.describe('Details Panel - Extra coverage', () => {
   });
 
   test('capacity bar delete removes a team', async ({ page }) => {
-    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
+    const card = await page.$('feature-card-lit');
     await card.click();
     await page.waitForFunction(
       () =>
@@ -68,7 +66,7 @@ test.describe('Details Panel - Extra coverage', () => {
   });
 
   test('add team flow adds a team', async ({ page }) => {
-    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
+    const card = await page.$('feature-card-lit');
     await card.click();
     await page.waitForFunction(
       () =>
@@ -110,7 +108,7 @@ test.describe('Details Panel - Extra coverage', () => {
   }) => {
     // Find an epic card if present
     const epicCard = await page.$(
-      'feature-card-lit[type="epic"], feature-card-lit[feature-type="epic"], .feature-card.epic'
+      'feature-card-lit[type="epic"], feature-card-lit[feature-type="epic"]'
     );
     test.skip(!epicCard, 'No epic feature card present in test data');
     await epicCard.click();

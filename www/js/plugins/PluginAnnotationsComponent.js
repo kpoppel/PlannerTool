@@ -196,55 +196,25 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   _updateOverlayRect() {
-    try {
-      const board = findInBoard('feature-board');
-      if (!board || !this._overlay) return;
+    const board = findInBoard('feature-board');
+    const rect = board.getBoundingClientRect();
+    if (!board || !this._overlay) return;
+    console.log('Updating annotation overlay rect:', rect);
+    const left = Math.round(rect.left);
+    const top = Math.round(rect.top);
+    const right = Math.min(window.innerWidth, Math.round(rect.right));
+    const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
 
-      // Prefer LayoutManager-provided client rect to avoid expensive DOM reads
-      let rect = {
-        left: 0,
-        top: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      };
-      if (board._layout && typeof board._layout.getBoardClientRect === 'function') {
-        const br = board._layout.getBoardClientRect() || {};
-        rect = {
-          left: br.left || 0,
-          top: br.top || 0,
-          right: (br.left || 0) + (br.width || 0),
-          bottom: (br.top || 0) + (br.height || 0),
-          width: br.width || 0,
-          height: br.height || 0,
-        };
-      } else {
-        try {
-          rect = board.getBoundingClientRect();
-        } catch (e) {
-          /* ignore */
-        }
-      }
-
-      const left = Math.round(rect.left);
-      const top = Math.round(rect.top);
-      const right = Math.min(window.innerWidth, Math.round(rect.right));
-      const bottom = Math.min(window.innerHeight, Math.round(rect.bottom));
-      const width = Math.max(0, right - left);
-      const height = Math.max(0, bottom - top);
-
-      const overlay = this._overlay;
-      overlay.style.position = 'fixed';
-      overlay.style.top = `${top}px`;
-      overlay.style.left = `${left}px`;
-      overlay.style.width = `${width}px`;
-      overlay.style.height = `${height}px`;
-      overlay.style.pointerEvents = 'none';
-      overlay.style.zIndex = '10';
-    } catch (e) {
-      /* ignore */
-    }
+    const overlay = this._overlay;
+    overlay.style.position = 'fixed';
+    overlay.style.top = `${top}px`;
+    overlay.style.left = `${left}px`;
+    overlay.style.width = `${width}px`;
+    overlay.style.height = `${height}px`;
+    overlay.style.pointerEvents = 'none';
+    overlay.style.zIndex = '10';
   }
 
   render() {
@@ -313,32 +283,16 @@ export class PluginAnnotationsComponent extends LitElement {
   }
 
   firstUpdated() {
-    try {
-      const board = findInBoard('feature-board');
-      if (!board) return;
-
-      // Reuse existing overlay if present in the document, otherwise create it
-      let overlay = document.querySelector('annotation-overlay');
-      if (!overlay) {
-        overlay = document.createElement('annotation-overlay');
-        const appHost = document.querySelector('.app-container');
-        try {
-          if (appHost) appHost.appendChild(overlay);
-          else document.body.appendChild(overlay);
-        } catch (e) {
-          try {
-            document.body.appendChild(overlay);
-          } catch (err) {
-            /* ignore */
-          }
-        }
-      }
-
-      this._overlay = overlay;
-      this._updateOverlayRect();
-    } catch (e) {
-      /* ignore */
+    // Reuse existing overlay if present in the document, otherwise create it
+    let overlay = document.querySelector('annotation-overlay');
+    if (!overlay) {
+      overlay = document.createElement('annotation-overlay');
+      const appHost = document.querySelector('.app-container');
+      appHost.appendChild(overlay);
     }
+
+    this._overlay = overlay;
+    this._updateOverlayRect();
   }
 
   updated(changedProps) {
@@ -357,17 +311,13 @@ export class PluginAnnotationsComponent extends LitElement {
     this.visible = true;
     this.setAttribute('visible', '');
     this._annotationState.enable();
-    try {
-      this._annotationState.setTool(TOOLS.SELECT);
-      setTimelinePanningAllowed(true);
-    } catch (e) {
-      /* ignore */
-    }
+    this._annotationState.setTool(TOOLS.SELECT);
+    setTimelinePanningAllowed(true);
 
     this.updateComplete.then(() => {
-      if (this._overlay) {
-        this._overlay.show();
-      }
+      //      if (this._overlay) {
+      this._overlay.show();
+      //      }
     });
   }
 
@@ -385,11 +335,7 @@ export class PluginAnnotationsComponent extends LitElement {
     if (this._overlay) {
       this._overlay.hide();
     }
-    try {
-      setTimelinePanningAllowed(true);
-    } catch (e) {
-      /* ignore */
-    }
+    setTimelinePanningAllowed(true);
   }
 
   toggle() {

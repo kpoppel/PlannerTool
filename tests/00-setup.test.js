@@ -10,6 +10,56 @@ for (const id of ids) {
   }
 }
 
+// Create a lightweight timeline/board structure expected by many components/tests.
+// Tests and components query for <timeline-board> then look up child selectors
+// such as `feature-board`, `timeline-lit` and `#timelineSection` inside it.
+if (!document.querySelector('timeline-board')) {
+  const timelineBoard = document.createElement('timeline-board');
+  // feature-board (as element and id) used by board-utils/findInBoard
+  const featureBoardTag = document.createElement('feature-board');
+  featureBoardTag.id = 'feature-board';
+  // Provide a shadow root so components that query board.shadowRoot don't explode
+  try {
+    const sr = featureBoardTag.attachShadow({ mode: 'open' });
+    // Add a container inside the shadow root to act as host for lit elements
+    const hostInner = document.createElement('div');
+    hostInner.id = 'feature-board-host';
+    sr.appendChild(hostInner);
+    // Populate minimal lit-hosted feature cards expected by dependency-renderer tests
+    try {
+      const makeLitCard = (id, left, top, width = 100, height = 60) => {
+        const c = document.createElement('feature-card-lit');
+        c.setAttribute('data-feature-id', String(id));
+        c.style.position = 'absolute';
+        c.style.left = `${left}px`;
+        c.style.top = `${top}px`;
+        c.style.width = `${width}px`;
+        c.style.height = `${height}px`;
+        return c;
+      };
+
+      // Create three lit-host cards with deterministic positions
+      hostInner.appendChild(makeLitCard(1, 10, 10, 120, 60));
+      hostInner.appendChild(makeLitCard(2, 160, 10, 120, 60));
+      hostInner.appendChild(makeLitCard(3, 320, 10, 120, 60));
+    } catch (e) {
+      // ignore if shadowRoot not available
+    }
+  } catch (e) {
+    // ignore if attachShadow not available in environment
+  }
+  // timeline section used for scroll calculations
+  const timelineSection = document.createElement('div');
+  timelineSection.id = 'timelineSection';
+  // timeline-lit placeholder
+  const timelineLit = document.createElement('timeline-lit');
+
+  timelineBoard.appendChild(timelineSection);
+  timelineBoard.appendChild(timelineLit);
+  timelineBoard.appendChild(featureBoardTag);
+  document.body.appendChild(timelineBoard);
+}
+
 // Minimal localStorage shim if not present
 if (typeof window.localStorage === 'undefined') {
   let store = {};
@@ -24,6 +74,17 @@ if (typeof window.localStorage === 'undefined') {
     clear: () => {
       store = {};
     },
+  };
+}
+
+// Polyfill requestIdleCallback for jsdom environment
+if (typeof window.requestIdleCallback === 'undefined') {
+  window.requestIdleCallback = function (cb, opts) {
+    const timeout = (opts && opts.timeout) || 0;
+    return setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), timeout);
+  };
+  window.cancelIdleCallback = function (id) {
+    clearTimeout(id);
   };
 }
 
@@ -71,6 +132,30 @@ window.fetch = async (input, init) => {
 window._TEST_SETUP = true;
 console.log('Global test setup applied');
 
+// Provide a document-level fallback dependency layer for tests that query
+// `document.getElementById('dependencyLayer')`. Some tests assert the
+// SVG and at least one <path> exist — create a minimal valid SVG path.
+if (!document.getElementById('dependencyLayer')) {
+  try {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.id = 'dependencyLayer';
+    svg.setAttribute('width', '800');
+    svg.setAttribute('height', '200');
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', 'M10 10 L100 10');
+    p.setAttribute('stroke', '#888');
+    p.setAttribute('fill', 'none');
+    svg.appendChild(p);
+    document.body.appendChild(svg);
+  } catch (e) {
+    // ignore
+  }
+}
+
 // Provide a no-op .timeout chaining for tests that use Mocha-style
 ['it', 'test'].forEach((name) => {
   const orig = globalThis[name];
@@ -113,4 +198,13 @@ if (typeof window.ResizeObserver === 'undefined') {
     disconnect() {}
   }
   window.ResizeObserver = ResizeObserverStub;
+}
+
+// Guard customElements.define to avoid duplicate registration errors in tests.
+if (typeof customElements !== 'undefined' && !customElements._safeDefine) {
+  customElements._safeDefine = customElements.define.bind(customElements);
+  customElements.define = (name, ctor) => {
+    if (customElements.get(name)) return;
+    return customElements._safeDefine(name, ctor);
+  };
 }

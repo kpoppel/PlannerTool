@@ -170,13 +170,9 @@ export class ScenarioMenuLit extends LitElement {
     };
 
     this._onScenariosUpdated = () => {
-      try {
-        const scenarios = state.getScenarios?.() || [];
-        this.scenarios = scenarios ? [...scenarios] : [];
-        this.requestUpdate();
-      } catch (e) {
-        /* ignore */
-      }
+      const scenarios = state.getScenarios?.() || [];
+      this.scenarios = scenarios ? [...scenarios] : [];
+      this.requestUpdate();
     };
 
     bus.on(ScenarioEvents.LIST, this._onScenariosList);

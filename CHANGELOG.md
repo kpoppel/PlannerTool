@@ -27,9 +27,17 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Changed
 
-- Updated deployment so that image build is separated from compose file. Tagging of images uses VERSION file.
+- Removed fallback from `findInBoard` helper - all code now properly uses shadow DOM structure instead of falling back to document queries
+- Updated SearchTool, PluginPlanHealthComponent, and TimelineExportRenderer to use `findInBoard` consistently
+- ViewService now inlines timelineSection lookup to avoid circular dependencies
+- Massive cleanup of code.  Many empty try/catch removed, old LayoutManager code removed.
+- providerREST tests updated using new network mocks usable in all tests. The mocks actually return sensible data. As an effect coverage is better in many places.
 
 ### Fixed
+
+- Fixed PluginExportTimeline not finding timelineSection element when exporting, causing features to not render in exported SVG/PNG. Changed from `document.getElementById` to `findInBoard` helper to properly locate elements in shadow DOM.
+- Improved export diagnostics with console warnings when features are found but not rendered within viewport bounds.
+- Export plugin stoped working as it could no longer find any feature cards :-(
 
 ### TODO:
 

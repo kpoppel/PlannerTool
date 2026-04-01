@@ -514,65 +514,47 @@ export class PluginCostV2Component extends LitElement {
     // Ensure Parent/Child expansion is enabled while plugin is active so
     // children from selected plans are included in calculations and the
     // Sidebar shows Parent/Child Links as checked.
-    try {
-      state.setExpansionState({
-        expandParentChild: true,
-        expandRelations: true,
-        expandTeamAllocated: true,
-      });
-    } catch (e) {}
+    state.setExpansionState({
+      expandParentChild: true,
+      expandRelations: true,
+      expandTeamAllocated: true,
+    });
   }
 
   connectedCallback() {
     super.connectedCallback();
     // Subscribe to global state events that should trigger a recalculation
-    try {
-      this._unsubscribes.push(
-        bus.on(FeatureEvents.UPDATED, () => this._scheduleReload())
-      );
-      this._unsubscribes.push(
-        bus.on(ProjectEvents.CHANGED, () => this._scheduleReload())
-      );
-      this._unsubscribes.push(bus.on(TeamEvents.CHANGED, () => this._scheduleReload()));
-      this._unsubscribes.push(
-        bus.on(ScenarioEvents.ACTIVATED, () => this._scheduleReload())
-      );
-      this._unsubscribes.push(
-        bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload())
-      );
-      this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
-    } catch (e) {
-      console.warn('[PluginCostV2] failed to subscribe to state events', e);
-    }
+    this._unsubscribes.push(bus.on(FeatureEvents.UPDATED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(ProjectEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(TeamEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(
+      bus.on(ScenarioEvents.ACTIVATED, () => this._scheduleReload())
+    );
+    this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
     // Signal sidebar which controls are not relevant while this plugin is active
     this._applySidebarDisabled();
   }
 
   disconnectedCallback() {
     // Unsubscribe all listeners
-    try {
-      for (const u of this._unsubscribes) {
-        if (typeof u === 'function') u();
-      }
-      this._unsubscribes = [];
-    } catch (e) {}
+    for (const u of this._unsubscribes) {
+      if (typeof u === 'function') u();
+    }
+    this._unsubscribes = [];
+
     if (this._reloadTimer) {
       clearTimeout(this._reloadTimer);
       this._reloadTimer = null;
     }
-    try {
-      state.clearSidebarDisabledElements();
-      // restore expansion defaults when plugin unloads
-      state.setExpansionState({
-        expandParentChild: false,
-        expandRelations: false,
-        expandTeamAllocated: false,
-      });
-    } catch (e) {
-      try {
-        bus.emit(FilterEvents.CHANGED, { disabledSidebar: null });
-      } catch (err) {}
-    }
+
+    state.clearSidebarDisabledElements();
+    // restore expansion defaults when plugin unloads
+    state.setExpansionState({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
     super.disconnectedCallback();
   }
 
@@ -651,7 +633,7 @@ export class PluginCostV2Component extends LitElement {
         }
       };
 
-      let filteredFeatures = (effectiveFeatures || []).filter((f) => {
+      let filteredFeatures = effectiveFeatures.filter((f) => {
         if (!f) return false;
         if (!selectedTypes || selectedTypes.size === 0) return true;
         const ftype = String(f.type || f.feature_type || '').toLowerCase();
@@ -664,78 +646,55 @@ export class PluginCostV2Component extends LitElement {
       });
 
       // Apply task filters (planned/unplanned, allocation, etc.) from TaskFilterService
-      try {
-        const tfs = state.taskFilterService;
-        if (tfs) {
-          // If the schedule.unplanned option is turned off, proactively
-          // filter out features that are truly unplanned. Some backends
-          // set placeholder dates (today) for unplanned items which would
-          // otherwise appear as "planned"; treat those as unplanned too.
-          let taskFilters = null;
-          try {
-            if (typeof tfs.getFilters === 'function') taskFilters = tfs.getFilters();
-          } catch (e) {
-            taskFilters = null;
-          }
+      const tfs = state.taskFilterService;
+      // If the schedule.unplanned option is turned off, proactively
+      // filter out features that are truly unplanned. Some backends
+      // set placeholder dates (today) for unplanned items which would
+      // otherwise appear as "planned"; treat those as unplanned too.
+      const taskFilters = tfs.getFilters();
+      if (taskFilters.schedule.unplanned === false) {
+        const today = new Date().toISOString().slice(0, 10);
+        filteredFeatures = filteredFeatures.filter((f) => {
+          const hasStart = !!f.start;
+          const hasEnd = !!f.end;
+          // No dates => unplanned
+          if (!hasStart && !hasEnd) return false;
+          // Placeholder: start===end===today => treat as unplanned
           if (
-            taskFilters &&
-            taskFilters.schedule &&
-            taskFilters.schedule.unplanned === false
-          ) {
-            const today = new Date().toISOString().slice(0, 10);
-            filteredFeatures = filteredFeatures.filter((f) => {
-              try {
-                const hasStart = !!(f && f.start);
-                const hasEnd = !!(f && f.end);
-                // No dates => unplanned
-                if (!hasStart && !hasEnd) return false;
-                // Placeholder: start===end===today => treat as unplanned
-                if (
-                  hasStart &&
-                  hasEnd &&
-                  String(f.start).startsWith(today) &&
-                  String(f.end).startsWith(today) &&
-                  String(f.start) === String(f.end)
-                )
-                  return false;
-                return true;
-              } catch (e) {
-                return true;
-              }
-            });
-          }
+            hasStart &&
+            hasEnd &&
+            String(f.start).startsWith(today) &&
+            String(f.end).startsWith(today) &&
+            String(f.start) === String(f.end)
+          )
+            return false;
+          return true;
+        });
 
-          if (typeof tfs.featurePassesFilters === 'function') {
-            const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
-            filteredFeatures.length = 0;
-            Array.prototype.push.apply(filteredFeatures, ff);
-          }
-        }
-      } catch (e) {}
+        const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
+        filteredFeatures.length = 0;
+        Array.prototype.push.apply(filteredFeatures, ff);
+      }
 
       // Ensure expansion (parent/child, relations, team-allocated) is respected
       // Include any features from the expanded feature id set so the server
       // will compute costs for those child/related features even if they
       // are not part of the original filtered set.
-      try {
-        if (typeof state.getExpandedFeatureIds === 'function') {
-          const expandedIds = state.getExpandedFeatureIds() || new Set();
-          if (expandedIds.size > 0) {
-            const present = new Set(
-              (filteredFeatures || []).map((f) => String(f && f.id))
-            );
-            const allEffective = state.getEffectiveFeatures() || [];
-            const byId = new Map(allEffective.map((f) => [String(f.id), f]));
-            for (const id of expandedIds) {
-              const sid = String(id);
-              if (!present.has(sid) && byId.has(sid)) {
-                filteredFeatures.push(byId.get(sid));
-                present.add(sid);
-              }
+      if (typeof state.getExpandedFeatureIds === 'function') {
+        const expandedIds = state.getExpandedFeatureIds() || new Set();
+        if (expandedIds.size > 0) {
+          const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
+          const allEffective = state.getEffectiveFeatures() || [];
+          const byId = new Map(allEffective.map((f) => [String(f.id), f]));
+          for (const id of expandedIds) {
+            const sid = String(id);
+            if (!present.has(sid) && byId.has(sid)) {
+              filteredFeatures.push(byId.get(sid));
+              present.add(sid);
             }
           }
         }
-      } catch (e) {}
+      }
 
       const featuresPayload = filteredFeatures.map((f) => ({
         id: f.id,

@@ -10,15 +10,13 @@ test.describe('Details panel (Lit)', () => {
     await page.waitForLoadState('networkidle');
     await clearOverlays(page);
 
-    // Wait for feature board to render at least one feature-card-lit or .feature-card
-    await page.waitForSelector('feature-card-lit, .feature-card', {
-      timeout: 10000,
-    });
+    // Wait for feature board to render at least one feature-card-lit
+    await page.waitForSelector('feature-card-lit', { timeout: 10000 });
 
     // Also first card: await page.getByText('%').first().click();
-    // Prefer Lit host if present; click center of first card
-    const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
-    if (!card) throw new Error('No feature card found');
+    // Click first Lit-hosted feature card
+    const card = await page.$('feature-card-lit');
+    if (!card) throw new Error('No feature card-lit found');
     await card.click();
 
     // The Lit panel is `details-panel` becoming visible.

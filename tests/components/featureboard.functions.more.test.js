@@ -1,6 +1,12 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
+import * as boardUtils from '../../www/js/components/board-utils.js';
+
+// Ensure `scrollTo` exists on elements in the test environment
+if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function () {};
+}
 import { state } from '../../www/js/services/State.js';
 
 describe('FeatureBoard helper coverage (additional)', () => {
@@ -135,7 +141,10 @@ describe('FeatureBoard helper coverage (additional)', () => {
       configurable: true,
     });
     timeline.scrollTo = sinon.stub();
-    document.body.appendChild(timeline);
+    // Put the timeline inside a timeline-board so findInBoard() will locate it
+    const boardWrapper = document.createElement('timeline-board');
+    boardWrapper.appendChild(timeline);
+    document.body.appendChild(boardWrapper);
     Object.defineProperty(el, 'clientHeight', {
       value: 400,
       configurable: true,
@@ -143,7 +152,7 @@ describe('FeatureBoard helper coverage (additional)', () => {
     el.scrollTo = sinon.stub();
     el.centerFeatureById('f1');
     // cleanup
-    timeline.remove();
+    boardWrapper.remove();
     expect(true).to.be.true;
   });
 

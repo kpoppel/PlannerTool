@@ -12,7 +12,7 @@
 
 import { state } from '../../services/State.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
-import { laneHeight, computePosition } from '../../components/board-utils.js';
+import { laneHeight } from '../../components/board-utils.js';
 import { getBoardOffset } from '../../components/board-utils.js';
 import { findInBoard } from '../../components/board-utils.js';
 import {
@@ -189,7 +189,7 @@ export class TimelineExportRenderer {
    * Render the MainGraph canvas as an embedded image
    */
   async _renderMainGraph(yOffset, viewport) {
-    const mainGraph = document.querySelector('maingraph-lit');
+    const mainGraph = findInBoard('maingraph-lit');
     if (!mainGraph) return;
 
     const canvas = mainGraph.shadowRoot?.querySelector('canvas');
@@ -314,18 +314,28 @@ export class TimelineExportRenderer {
    */
   _renderFeatureCards(yOffset, viewport) {
     const featureBoard = findInBoard('feature-board');
-    if (!featureBoard) return;
+    if (!featureBoard) {
+      console.warn('[TimelineExportRenderer] feature-board element not found');
+      return;
+    }
 
-    const months = getTimelineMonths() || [];
+    //const months = getTimelineMonths() || [];
     const scrollLeft = viewport.scrollLeft;
     const cardHeight = laneHeight();
 
     // Get visible features from the board's current render state
     const features = featureBoard.features || [];
+    if (features.length === 0) {
+      console.warn(
+        '[TimelineExportRenderer] No features found in feature-board. The board may not be fully rendered yet or there are no features to display.'
+      );
+      return;
+    }
 
     // Track card data for ghost title rendering
     this._cardData = [];
 
+    let renderedCount = 0;
     for (const featureObj of features) {
       const { feature, left, width, top, project } = featureObj;
 
@@ -344,6 +354,8 @@ export class TimelineExportRenderer {
       const isRightClipped = cardX + width > this._width;
 
       if (visibleWidth <= 0) continue;
+
+      renderedCount++;
 
       // Create a group for this card so we can control drawing order
       const cardGroup = createSvgElement('g', { transform: `translate(0,0)` });
@@ -469,6 +481,12 @@ export class TimelineExportRenderer {
 
       // Append the assembled card group to the root svg so it sits above board background
       this._svg.appendChild(cardGroup);
+    }
+
+    if (renderedCount === 0 && features.length > 0) {
+      console.warn(
+        `[TimelineExportRenderer] Found ${features.length} features but none were rendered in viewport (width: ${this._width}, scrollLeft: ${scrollLeft}). Check feature positions and viewport bounds.`
+      );
     }
   }
 

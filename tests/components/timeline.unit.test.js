@@ -29,7 +29,9 @@ describe('Timeline component unit tests', () => {
     await el.renderMonths(months);
     expect(el.months.length).to.equal(3);
     // verify bus.emit was invoked at least once
-    expect(mockBus.emit && mockBus.emit.mock && mockBus.emit.mock.calls.length).to.be.greaterThan(0);
+    expect(
+      mockBus.emit && mockBus.emit.mock && mockBus.emit.mock.calls.length
+    ).to.be.greaterThan(0);
     expect(el.getTotalWidth()).to.equal(150);
 
     const s = el.scrollToMonth(2);

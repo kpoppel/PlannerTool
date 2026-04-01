@@ -103,11 +103,7 @@ export class AutoCloseMessageModal extends LitElement {
     this.dispatchEvent(new CustomEvent('modal-close', { bubbles: true, composed: true }));
     // Remove self from DOM on next tick so listeners have a chance to handle the event
     setTimeout(() => {
-      try {
-        if (this.parentNode) this.parentNode.removeChild(this);
-      } catch (e) {
-        /* ignore */
-      }
+      if (this.parentNode) this.parentNode.removeChild(this);
     }, 0);
   }
 

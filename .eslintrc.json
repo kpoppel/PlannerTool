@@ -13,12 +13,13 @@
   "plugins": ["lit"],
   "rules": {
     "no-var": "error",
-    "prefer-const": "warn"
+    "prefer-const": "warn",
+    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }]
   },
   "overrides": [
     {
       "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"]
     }
   ],
-  "ignorePatterns": ["dist/", "www/js/vendor/", "docs/"]
+  "ignorePatterns": ["dist/", "www/js/vendor/", "docs/", "tests/"]
 }

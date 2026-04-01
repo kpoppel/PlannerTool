@@ -35,16 +35,17 @@ function getMonthWidthForScale(scale) {
     years: 30,
   };
   if (scale === 'threeMonths') {
-    try {
-      const section =
-        typeof document !== 'undefined' ?
-          document.getElementById('timelineSection')
-        : null;
-      if (section && section.clientWidth) {
-        return Math.max(30, Math.floor(section.clientWidth / 3));
+    // Find timelineSection inline to avoid circular dependency with board-utils
+    let section = null;
+    if (typeof document !== 'undefined') {
+      const boardEl = document.querySelector('timeline-board');
+      if (boardEl) {
+        const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+        section = root && root.querySelector ? root.querySelector('#timelineSection') : null;
       }
-    } catch (e) {
-      /* ignore */
+    }
+    if (section && section.clientWidth) {
+      return Math.max(30, Math.floor(section.clientWidth / 3));
     }
     return 120;
   }

@@ -512,9 +512,7 @@ export class AdminCost extends LitElement {
               <button class="primary" @click=${this.handleSave}>Save Changes</button>
               <button
                 @click=${async () => {
-                  try {
-                    await adminProvider.reloadConfig();
-                  } catch (e) {}
+                  await adminProvider.reloadConfig();
                   this.loadConfig();
                 }}
               >

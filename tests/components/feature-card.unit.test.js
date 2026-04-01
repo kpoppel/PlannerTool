@@ -5,7 +5,12 @@ describe('FeatureCardLit basic behaviors', () => {
   it('constructor defaults and basic render', async () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     expect(el.feature).to.be.an('object');
-    el.feature = { id: 'f1', title: 'My Feature', start: '2025-01-01', end: '2025-01-10' };
+    el.feature = {
+      id: 'f1',
+      title: 'My Feature',
+      start: '2025-01-01',
+      end: '2025-01-10',
+    };
     el.project = { color: '#123456' };
     await el.updateComplete;
     const root = el.shadowRoot.querySelector('.feature-card');
@@ -18,7 +23,13 @@ describe('FeatureCardLit basic behaviors', () => {
     const el = await fixture('<feature-card-lit></feature-card-lit>');
     el.feature = { id: 'f2', title: 'Another' };
     await el.updateComplete;
-    el.applyVisuals({ left: 100, width: 200, selected: true, dirty: true, project: { color: '#abc' } });
+    el.applyVisuals({
+      left: 100,
+      width: 200,
+      selected: true,
+      dirty: true,
+      project: { color: '#abc' },
+    });
     await el.updateComplete;
     expect(el.style.left).to.equal('100px');
     expect(el.style.width).to.equal('200px');

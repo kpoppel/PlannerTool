@@ -10,34 +10,7 @@ import {
   AppEvents,
   FilterEvents,
 } from '../core/EventRegistry.js';
-
-function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
-}
-
-function findAllInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      if (root && root.querySelectorAll)
-        return Array.from(root.querySelectorAll(selector));
-    }
-  } catch (e) {}
-  return Array.from(document.querySelectorAll(selector));
-}
+import { findInBoard } from './board-utils.js';
 
 class DependencyRenderer extends LitElement {
   createRenderRoot() {
@@ -109,13 +82,8 @@ class DependencyRenderer extends LitElement {
 
   renderLayer() {
     const board = findInBoard('feature-board');
-    if (!board) {
-      this.clear();
-      return;
-    }
-
-    const w = board.scrollWidth || board.clientWidth;
-    const h = board.scrollHeight || board.clientHeight;
+    const w = board.scrollWidth;
+    const h = board.scrollHeight;
 
     if (this._svg) {
       this._svg.setAttribute('width', String(w));
@@ -125,180 +93,26 @@ class DependencyRenderer extends LitElement {
       this._svg.style.width = `${w}px`;
       this._svg.style.height = `${h}px`;
     }
-
     this.clear();
 
+    // Collect cards from feature-board shadowRoot
     const cardById = new Map();
-    // Collect cards from each feature-board's shadowRoot (preferred) and from document
-    try {
-      const boards = findAllInBoard('feature-board');
-      for (const b of boards) {
-        try {
-          if (b.shadowRoot) {
-            const hostCards = Array.from(
-              b.shadowRoot.querySelectorAll('feature-card-lit')
-            );
-            for (const c of hostCards) {
-              const id =
-                (c.getAttribute && c.getAttribute('data-feature-id')) ||
-                (c.feature && c.feature.id && String(c.feature.id));
-              if (id) cardById.set(String(id), c);
-            }
-          } else {
-            const hostCards = Array.from(
-              b.querySelectorAll ? b.querySelectorAll('feature-card-lit') : []
-            );
-            for (const c of hostCards) {
-              const id =
-                (c.getAttribute && c.getAttribute('data-feature-id')) ||
-                (c.feature && c.feature.id && String(c.feature.id));
-              if (id) cardById.set(String(id), c);
-            }
-          }
-        } catch (e) {
-          /* ignore board-level errors */
-        }
-      }
-      // Also include any cards that might be in the document root
-      const docCards = Array.from(document.querySelectorAll('feature-card-lit'));
-      for (const c of docCards) {
-        const id =
-          (c.getAttribute && c.getAttribute('data-feature-id')) ||
-          (c.feature && c.feature.id && String(c.feature.id));
-        if (id) cardById.set(String(id), c);
-      }
-    } catch (e) {
-      /* ignore collection errors */
+    const hostCards = Array.from(board.shadowRoot.querySelectorAll('feature-card-lit'));
+    for (const c of hostCards) {
+      const id = c.getAttribute('data-feature-id');
+      cardById.set(String(id), c);
     }
 
-    const features =
-      state && typeof state.getEffectiveFeatures === 'function' ?
-        state.getEffectiveFeatures()
-      : [];
-    // Prefer LayoutManager-provided values to avoid expensive DOM reads
-    let bbox = null;
-    let scrollLeft = 0;
-    let verticalScrollTop = 0;
-    try {
-      if (board && board._layout) {
-        const brClient =
-          typeof board._layout.getBoardClientRect === 'function' ?
-            board._layout.getBoardClientRect()
-          : null;
-        if (brClient)
-          bbox = {
-            left: brClient.left || 0,
-            top: brClient.top || 0,
-            width: brClient.width || 0,
-            height: brClient.height || 0,
-          };
-        const br =
-          typeof board._layout.getBoardRect === 'function' ?
-            board._layout.getBoardRect()
-          : null;
-        if (br) scrollLeft = br.left || 0;
-        verticalScrollTop =
-          br && br.top != null ? br.top
-          : (
-            board.parentElement &&
-            board.parentElement.classList &&
-            board.parentElement.classList.contains('timeline-section')
-          ) ?
-            board.parentElement.scrollTop
-          : board.scrollTop || 0;
-      }
-    } catch (e) {
-      bbox = null;
-    }
-    if (!bbox) {
-      try {
-        bbox = this.getBoundingClientRect();
-      } catch (e) {
-        bbox = { left: 0, top: 0, width: 0, height: 0 };
-      }
-      scrollLeft = board.scrollLeft || 0;
-      const verticalContainer =
-        (
-          board.parentElement &&
-          board.parentElement.classList &&
-          board.parentElement.classList.contains('timeline-section')
-        ) ?
-          board.parentElement
-        : board;
-      verticalScrollTop = verticalContainer ? verticalContainer.scrollTop : 0;
-    }
-    const laneHeight = state && state._viewService.condensedCards ? 40 : 100;
+    const features = state.getEffectiveFeatures();
+    const laneHeight = state._viewService.condensedCards ? 40 : 100;
 
     const computeRect = (el) => {
-      try {
-        // If the host has inline styles (set during drag/resize), prefer
-        // these live values so dependency lines track the interaction.
-        const leftStyle = parseFloat(el.style.left);
-        const topStyle = parseFloat(el.style.top);
-        if (!isNaN(leftStyle) && !isNaN(topStyle)) {
-          const w = parseFloat(el.style.width) || el.offsetWidth;
-          const h = parseFloat(el.style.height) || laneHeight;
-          return { left: leftStyle, top: topStyle, width: w, height: h };
-        }
-      } catch (e) {
-        /* ignore */
-      }
-
-      try {
-        // Prefer board's LayoutManager geometry when available (fallback)
-        const id =
-          (el.getAttribute && el.getAttribute('data-feature-id')) ||
-          (el.feature && el.feature.id && String(el.feature.id));
-        if (
-          id &&
-          board &&
-          board._layout &&
-          typeof board._layout.getGeometry === 'function'
-        ) {
-          const geom = board._layout.getGeometry(id);
-          if (geom) {
-            return {
-              left: geom.left,
-              top: geom.top,
-              width: geom.width,
-              height: geom.height,
-            };
-          }
-        }
-      } catch (e) {
-        /* ignore and fallback */
-      }
-
-      try {
-        if (el && el.shadowRoot) {
-          const inner = el.shadowRoot.querySelector('.feature-card');
-          if (inner) {
-            const r = inner.getBoundingClientRect();
-            return {
-              left: r.left - bbox.left + scrollLeft,
-              top: r.top - bbox.top + verticalScrollTop,
-              width: r.width,
-              height: r.height,
-            };
-          }
-        }
-      } catch (e) {
-        // ignore and fallback
-      }
-
-      try {
-        const r = el.getBoundingClientRect();
-        return {
-          left: r.left - bbox.left + scrollLeft,
-          top: r.top - bbox.top + verticalScrollTop,
-          width: r.width,
-          height: r.height,
-        };
-      } catch (e) {
-        // last-resort: approximate from styles
-        const w = parseFloat(el.style.width) || el.offsetWidth || 0;
-        const h = parseFloat(el.style.height) || laneHeight || 0;
-        return { left: 0, top: 0, width: w, height: h };
+      const leftStyle = parseFloat(el.style.left);
+      const topStyle = parseFloat(el.style.top);
+      if (!isNaN(leftStyle) && !isNaN(topStyle)) {
+        const w = parseFloat(el.style.width) || el.offsetWidth;
+        const h = parseFloat(el.style.height) || laneHeight;
+        return { left: leftStyle, top: topStyle, width: w, height: h };
       }
     };
 
@@ -388,209 +202,91 @@ export async function initDependencyRenderer() {
     const board = findInBoard('feature-board');
     if (!board) return null;
 
-    try {
-      const hostRoot = board.shadowRoot || board;
+    const hostRoot = board.shadowRoot;
+    let lit = hostRoot.querySelector('dependency-renderer');
 
-      let lit =
-        (hostRoot.querySelector && hostRoot.querySelector('dependency-renderer')) ||
-        document.querySelector('dependency-renderer');
-
-      if (!lit) {
-        lit = document.createElement('dependency-renderer');
-        hostRoot.appendChild(lit);
-      } else {
-        // If a global/document-level renderer exists but hostRoot is the
-        // board's shadowRoot, move the existing renderer into the shadowRoot
-        // so its SVG overlays align with the board's coordinate space.
-        try {
-          const parent = lit.parentElement;
-          if (parent && parent !== hostRoot) {
-            hostRoot.appendChild(lit);
-          }
-        } catch (e) {
-          /* ignore move failures */
-        }
-
-        lit.style.position = 'absolute';
-        lit.style.top = '0';
-        lit.style.left = '0';
-
-        try {
-          lit.style.width = `${board.scrollWidth || board.clientWidth}px`;
-        } catch (e) {
-          lit.style.width = '100%';
-        }
-
-        try {
-          lit.style.height = `${board.scrollHeight || board.clientHeight}px`;
-        } catch (e) {
-          lit.style.height = '100%';
-        }
-
-        lit.style.pointerEvents = 'none';
-        lit.style.zIndex = '9999';
-
-        const scrollParent = (function find(el) {
-          let p = el.parentElement;
-          while (p) {
-            try {
-              const s = window.getComputedStyle(p);
-              if (
-                ['auto', 'scroll'].includes(s.overflowY) ||
-                ['auto', 'scroll'].includes(s.overflowX)
-              )
-                return p;
-            } catch (e) {
-              // ignore
-            }
-            p = p.parentElement;
-          }
-          return document.body;
-        })(board);
-
-        let lastLeft = board.scrollLeft || 0;
-        let scrollEndTimer = null;
-        const SCROLL_END_DELAY = 120;
-
-        const onScroll = () => {
-          try {
-            const now = board.scrollLeft || 0;
-            if (now !== lastLeft) {
-              lastLeft = now;
-              scheduleRender();
-            }
-            if (scrollEndTimer) clearTimeout(scrollEndTimer);
-            scrollEndTimer = setTimeout(() => {
-              scrollEndTimer = null;
-              scheduleRender();
-            }, SCROLL_END_DELAY);
-          } catch (e) {
-            // ignore
-          }
-        };
-
-        try {
-          if (scrollParent && scrollParent.addEventListener)
-            scrollParent.addEventListener('scroll', onScroll);
-        } catch (e) {
-          // ignore
-        }
-
-        window.addEventListener('resize', scheduleRender);
-      }
-
-      return lit;
-    } catch (e) {
-      return null;
+    if (!lit) {
+      lit = document.createElement('dependency-renderer');
+      hostRoot.appendChild(lit);
     }
+
+    lit.style.position = 'absolute';
+    lit.style.top = '0';
+    lit.style.left = '0';
+    lit.style.width = `${board.scrollWidth}px`;
+    lit.style.height = `${board.scrollHeight}px`;
+    lit.style.pointerEvents = 'none';
+    lit.style.zIndex = '9999';
+    lit.style.display = '';
+
+    if (!lit._depRendererInit) {
+      lit._depRendererInit = true;
+      const scrollParent = (function find(el) {
+        let p = el.parentElement;
+        while (p) {
+          const s = window.getComputedStyle(p);
+          if (
+            ['auto', 'scroll'].includes(s.overflowY) ||
+            ['auto', 'scroll'].includes(s.overflowX)
+          )
+            return p;
+          p = p.parentElement;
+        }
+        return document.body;
+      })(board);
+
+      let lastLeft = board.scrollLeft;
+      let scrollEndTimer = null;
+      const SCROLL_END_DELAY = 120;
+
+      const onScroll = () => {
+        const now = board.scrollLeft;
+        if (now !== lastLeft) {
+          lastLeft = now;
+          scheduleRender();
+        }
+        if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        scrollEndTimer = setTimeout(() => {
+          scrollEndTimer = null;
+          scheduleRender();
+        }, SCROLL_END_DELAY);
+      };
+
+      if (scrollParent && scrollParent.addEventListener)
+        scrollParent.addEventListener('scroll', onScroll);
+      window.addEventListener('resize', scheduleRender);
+    }
+
+    return lit;
   }
 
   async function render() {
     if (!(state && state._viewService.showDependencies)) {
-      const lits = Array.from(document.querySelectorAll('dependency-renderer'));
-      const boards = findAllInBoard('feature-board');
-
-      for (const b of boards) {
-        try {
-          if (b.shadowRoot) {
-            const s = b.shadowRoot.querySelector('dependency-renderer');
-            if (s) lits.push(s);
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      for (const lit of lits) {
-        try {
+      const board = findInBoard('feature-board');
+      if (board && board.shadowRoot) {
+        const lit = board.shadowRoot.querySelector('dependency-renderer');
+        if (lit) {
           if (typeof lit.clear === 'function') lit.clear();
-        } catch (e) {
-          // ignore
-        }
-        try {
-          if (lit.remove) lit.remove();
-        } catch (e) {
-          // ignore
+          lit.style.display = 'none';
         }
       }
-
       return;
     }
 
-    try {
-      const lit = await attach();
-      if (lit) {
-        // Ensure LayoutManager has seeded geometries before rendering.
-        try {
-          const board = findInBoard('feature-board');
-          const features =
-            state && typeof state.getEffectiveFeatures === 'function' ?
-              state.getEffectiveFeatures()
-            : [];
-          if (board && board._layout && typeof board._layout.snapshot === 'function') {
-            const snap = board._layout.snapshot();
-            // If snapshot appears empty while we have features, it's likely
-            // the LayoutManager hasn't been seeded yet. Retry shortly.
-            if (features.length > 0 && (!snap || snap.size === 0)) {
-              // Retry on next animation frame to give FeatureBoard a chance to seed geometries
-              try {
-                requestAnimationFrame(() => scheduleRender());
-              } catch (e) {
-                setTimeout(() => scheduleRender(), 50);
-              }
-              return;
-            }
-          }
-        } catch (e) {
-          /* ignore and proceed */
-        }
-        try {
-          const lits = Array.from(document.querySelectorAll('dependency-renderer'));
-          for (const L of lits) L.style.display = '';
-
-          const host =
-            lit.getRootNode && lit.getRootNode().host ? lit.getRootNode().host : null;
-          if (host && host.shadowRoot) {
-            const s = host.shadowRoot.querySelector('dependency-renderer');
-            if (s) s.style.display = '';
-          }
-        } catch (e) {
-          // ignore
-        }
-
-        if (lit.updateComplete) {
-          try {
-            await lit.updateComplete;
-          } catch (e) {
-            /* ignore */
-          }
-        }
-
-        if (typeof lit.renderLayer === 'function') lit.renderLayer();
-      }
-    } catch (e) {
-      // ignore
-    }
+    const lit = await attach();
+    lit.style.display = '';
+    await lit.updateComplete;
+    lit.renderLayer();
   }
 
-  try {
-    bus.on(FeatureEvents.UPDATED, scheduleRender);
-    bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
-    bus.on(ProjectEvents.CHANGED, scheduleRender);
-    bus.on(TeamEvents.CHANGED, scheduleRender);
-    bus.on(FilterEvents.CHANGED, scheduleRender);
-    bus.on(DragEvents.MOVE, scheduleRender);
-    bus.on(DragEvents.END, scheduleRender);
-    // Ensure we attempt a render after app initialization completes so
-    // dependency lines are drawn when the dependency toggle is already active.
-    bus.on(AppEvents.READY, () => {
-      try {
-        setTimeout(scheduleRender, 0);
-      } catch (e) {}
-    });
-  } catch (e) {
-    // ignore wiring failures
-  }
+  bus.on(FeatureEvents.UPDATED, scheduleRender);
+  bus.on(ViewEvents.DEPENDENCIES, scheduleRender);
+  bus.on(ProjectEvents.CHANGED, scheduleRender);
+  bus.on(TeamEvents.CHANGED, scheduleRender);
+  bus.on(FilterEvents.CHANGED, scheduleRender);
+  bus.on(DragEvents.MOVE, scheduleRender);
+  bus.on(DragEvents.END, scheduleRender);
+  bus.on(AppEvents.READY, () => setTimeout(scheduleRender, 0));
 
   window.addEventListener('resize', scheduleRender);
 
@@ -607,11 +303,7 @@ export async function initDependencyRenderer() {
             n.tagName.toLowerCase &&
             n.tagName.toLowerCase() === 'feature-board';
           if (isBoard) {
-            try {
-              n.addEventListener('scroll', scheduleRender);
-            } catch (e) {
-              /* ignore */
-            }
+            n.addEventListener('scroll', scheduleRender);
             scheduleRender();
             mo.disconnect();
             return;

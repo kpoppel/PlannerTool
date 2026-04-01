@@ -14,12 +14,14 @@ import { findInBoard } from '../../components/board-utils.js';
  * @returns {Object} - { x, y, width, height, scrollLeft, scrollTop, totalWidth, totalHeight, mainGraphHeight, fullHeight }
  */
 export function getViewportBounds(options = {}) {
-  const timelineSection = document.getElementById('timelineSection');
+  // Prefer elements inside the timeline-board render root (shadow DOM).
+  // `findInBoard()` will search the timeline-board's renderRoot/shadowRoot first.
+  const timelineSection = findInBoard('#timelineSection');
   const featureBoard = findInBoard('feature-board');
-  const mainGraph = document.querySelector('maingraph-lit');
+  const mainGraph = findInBoard('maingraph-lit');
 
   if (!timelineSection || !featureBoard) {
-    console.warn('[Export] Missing elements:', {
+    console.warn('[Export] Missing required timeline elements:', {
       timelineSection: !!timelineSection,
       featureBoard: !!featureBoard,
     });
@@ -37,56 +39,35 @@ export function getViewportBounds(options = {}) {
     };
   }
 
-  const rect = timelineSection.getBoundingClientRect();
-  // Prefer LayoutManager-provided board rect for scroll offsets and sizes
-  let boardRect;
-  try {
-    if (
-      featureBoard &&
-      featureBoard._layout &&
-      typeof featureBoard._layout.getBoardRect === 'function'
-    ) {
-      const br = featureBoard._layout.getBoardRect();
-      boardRect = {
+  // Safely obtain bounding rects; in some test environments elements may
+  // implement only clientWidth/clientHeight and not a full getBoundingClientRect.
+  const rect =
+    typeof timelineSection.getBoundingClientRect === 'function' ?
+      timelineSection.getBoundingClientRect()
+    : {
         x: 0,
         y: 0,
-        left: 0,
-        top: 0,
-        width: br.width || featureBoard.clientWidth || 0,
-        height: br.height || featureBoard.clientHeight || 0,
+        width: timelineSection.clientWidth || 0,
+        height: timelineSection.clientHeight || 0,
       };
-    } else {
-      boardRect = featureBoard.getBoundingClientRect();
-    }
-  } catch (e) {
-    try {
-      boardRect = featureBoard.getBoundingClientRect();
-    } catch (e) {
-      boardRect = { x: 0, y: 0, width: 0, height: 0 };
-    }
-  }
-  const mainGraphRect = mainGraph ? mainGraph.getBoundingClientRect() : { height: 0 };
+  const mainGraphRect =
+    mainGraph && typeof mainGraph.getBoundingClientRect === 'function' ?
+      mainGraph.getBoundingClientRect()
+    : {
+        x: 0,
+        y: 0,
+        width: mainGraph?.clientWidth || 0,
+        height: mainGraph?.clientHeight || 0,
+      };
 
   // IMPORTANT: Horizontal scroll is on timelineSection, vertical scroll is on featureBoard
   // This matches the panning behavior in Timeline.lit.js
   const scrollLeft =
-    options.scrollLeft !== undefined ?
-      options.scrollLeft
-    : timelineSection.scrollLeft ||
-      (featureBoard._layout && featureBoard._layout.getBoardRect ?
-        featureBoard._layout.getBoardRect().left
-      : 0) ||
-      0;
+    options.scrollLeft !== undefined ? options.scrollLeft : timelineSection.scrollLeft;
   const scrollTop =
-    options.scrollTop !== undefined ?
-      options.scrollTop
-    : featureBoard.scrollTop ||
-      (featureBoard._layout && featureBoard._layout.getBoardRect ?
-        featureBoard._layout.getBoardRect().top
-      : 0) ||
-      0;
-  const totalWidth = featureBoard.scrollWidth || boardRect.width;
-  const totalHeight = featureBoard.scrollHeight || boardRect.height;
+    options.scrollTop !== undefined ? options.scrollTop : featureBoard.scrollTop;
+  const totalWidth = featureBoard.scrollWidth;
+  const totalHeight = featureBoard.scrollHeight;
 
   return {
     x: rect.x,
@@ -233,11 +214,7 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
         }, 'image/png');
       } catch (err) {
         // Revoke URL and reject with a helpful message so callers can show an alert
-        try {
-          URL.revokeObjectURL(url);
-        } catch (e) {
-          /* ignore */
-        }
+        URL.revokeObjectURL(url);
         const msg =
           'Canvas operation failed during PNG creation — the export may be too large for your browser. Try showing fewer items and try again.';
         const wrapped = new Error(msg + (err && err.message ? ` (${err.message})` : ''));
@@ -247,11 +224,7 @@ export async function svgToPngBlob(svg, width, height, scale = 2) {
     };
 
     img.onerror = (ev) => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        /* ignore */
-      }
+      URL.revokeObjectURL(url);
       const msg = 'Failed to load SVG as image — export may be too large or malformed.';
       const err = new Error(msg);
       err.event = ev;

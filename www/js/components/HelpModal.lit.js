@@ -109,10 +109,6 @@ export class HelpModal extends LitElement {
     this._loadIndex();
   }
 
-  firstUpdated() {
-    this.addEventListener('modal-close', this._onModalClose);
-  }
-
   disconnectedCallback() {
     super.disconnectedCallback();
     this.removeEventListener('modal-close', this._onModalClose);
@@ -175,30 +171,15 @@ export class HelpModal extends LitElement {
   }
 
   async _showOnboarding() {
-    try {
-      // Dynamically import onboarding module if not already loaded, then append or reopen it
-      try {
-        await import('./OnboardingModal.lit.js');
-      } catch (e) {}
-      let existing = document.querySelector('onboarding-modal');
-      if (existing) {
-        try {
-          const inner =
-            existing.renderRoot && existing.renderRoot.querySelector('modal-lit');
-          if (inner) inner.open = true;
-        } catch (e) {
-          /* ignore */
-        }
-      } else {
-        try {
-          const el = document.createElement('onboarding-modal');
-          document.body.appendChild(el);
-        } catch (e) {
-          console.warn('[HelpModal] failed to create onboarding element', e);
-        }
-      }
-    } catch (e) {
-      console.warn('[HelpModal] show onboarding failed', e);
+    // Dynamically import onboarding module if not already loaded, then append or reopen it
+    const existing = document.querySelector('onboarding-modal');
+    if (existing) {
+      const inner = existing.renderRoot.querySelector('modal-lit');
+      if (inner) inner.open = true;
+    } else {
+      await import('./OnboardingModal.lit.js');
+      const el = document.createElement('onboarding-modal');
+      document.body.appendChild(el);
     }
   }
 
@@ -224,7 +205,7 @@ export class HelpModal extends LitElement {
     let codeLang = '';
     let listOpen = false;
     let listType = '';
-    for (let line of lines) {
+    for (const line of lines) {
       if (line.startsWith('```')) {
         if (!inCode) {
           inCode = true;

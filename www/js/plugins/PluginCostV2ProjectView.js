@@ -216,18 +216,16 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
   const featureIdSet = new Set((features || []).map((f) => String(f && f.id)));
 
   for (const feature of features) {
-    const fid = feature && (feature.id || feature.id === 0) ? String(feature.id) : null;
-    try {
-      const childrenMap =
-        state && state.childrenByEpic ? state.childrenByEpic : new Map();
-      const childrenList =
-        fid ? childrenMap.get(Number(fid)) || childrenMap.get(fid) || [] : [];
-      // Only skip the parent if at least one child is present in our expanded dataset
-      const hasChildInDataset =
-        Array.isArray(childrenList) &&
-        childrenList.some((cid) => featureIdSet.has(String(cid)));
-      if (hasChildInDataset) continue;
-    } catch (e) {}
+    const fid = String(feature.id);
+    const childrenMap = state.childrenByEpic;
+    const childrenList = childrenMap.get(Number(fid));
+    // Only skip the parent if at least one child is present in our expanded dataset
+    const hasChildInDataset =
+      Array.isArray(childrenList) &&
+      childrenList.some((cid) => featureIdSet.has(String(cid)));
+
+    if (hasChildInDataset) continue;
+
     if (fid && seenFeatures.has(fid)) continue;
     if (fid) seenFeatures.add(fid);
     const serversideTeams =
@@ -236,7 +234,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
 
     for (const teamName of Object.keys(serversideTeams)) {
       const t = serversideTeams[teamName] || {};
-      try {
+      // DEBUG: trace processing of features and teams to investigate any discrepancies
+      if (false) {
         if (teamName === 'team-architecture') {
           console.debug('[PluginCostV2][DBG][client][trace] processing feature', {
             fid,
@@ -245,7 +244,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
             h_internal: t.hours && t.hours.internal,
           });
         }
-      } catch (e) {}
+      }
+
       if (!teamAllocations.has(teamName)) {
         teamAllocations.set(teamName, {
           cost: { internal: new Map(), external: new Map() },
@@ -262,10 +262,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
       for (const [mKey, val] of Object.entries(c_internal)) {
         const key = `${teamName}|${fid}|cost|internal|${mKey}`;
         if (seenContrib.has(key)) {
-          try {
-            if (teamName === 'team-architecture')
-              console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          } catch (e) {}
+          if (teamName === 'team-architecture')
+            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
           continue;
         }
         seenContrib.add(key);
@@ -277,10 +275,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
       for (const [mKey, val] of Object.entries(c_external)) {
         const key = `${teamName}|${fid}|cost|external|${mKey}`;
         if (seenContrib.has(key)) {
-          try {
-            if (teamName === 'team-architecture')
-              console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          } catch (e) {}
+          if (teamName === 'team-architecture')
+            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
           continue;
         }
         seenContrib.add(key);
@@ -292,10 +288,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
       for (const [mKey, val] of Object.entries(h_internal)) {
         const key = `${teamName}|${fid}|hours|internal|${mKey}`;
         if (seenContrib.has(key)) {
-          try {
-            if (teamName === 'team-architecture')
-              console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          } catch (e) {}
+          if (teamName === 'team-architecture')
+            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
           continue;
         }
         seenContrib.add(key);
@@ -307,10 +301,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
       for (const [mKey, val] of Object.entries(h_external)) {
         const key = `${teamName}|${fid}|hours|external|${mKey}`;
         if (seenContrib.has(key)) {
-          try {
-            if (teamName === 'team-architecture')
-              console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          } catch (e) {}
+          if (teamName === 'team-architecture')
+            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
           continue;
         }
         seenContrib.add(key);
@@ -329,8 +321,8 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
     for (const val of teamData.cost.external.values()) teamData.totalCost += val;
     for (const val of teamData.hours.internal.values()) teamData.totalHours += val;
     for (const val of teamData.hours.external.values()) teamData.totalHours += val;
-    // One-off detailed debug to inspect map contents vs totals
-    try {
+    // DEBUG: One-off detailed debug to inspect map contents vs totals
+    if (false) {
       if (teamName === 'team-architecture') {
         const toObj = (m) =>
           m instanceof Map ? Object.fromEntries(Array.from(m.entries())) : m || {};
@@ -343,7 +335,7 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
           totalHours: teamData.totalHours,
         });
       }
-    } catch (e) {}
+    }
   }
 
   return teamAllocations;
@@ -365,13 +357,14 @@ function renderProjectSummaryTable(
 
   for (const teamName of teams) {
     const teamData = teamAllocations.get(teamName);
-    // One-time debug: print team allocation for server/client comparison
-    try {
+    // DEBUG: print team allocation for server/client comparison
+    if (false) {
       if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
         component.__dbg_logged_team_arch = true;
         console.debug('[PluginCostV2][DBG][client] team-architecture', teamData);
       }
-    } catch (e) {}
+    }
+
     if (!teamData) continue;
     for (const mKey of monthKeys) {
       const iHours = teamData.hours.internal.get(mKey) || 0;
@@ -386,8 +379,8 @@ function renderProjectSummaryTable(
     }
   }
 
-  // One-off debug: show totals and server-provided project totals for inspection
-  try {
+  // DEBUG: show totals and server-provided project totals for inspection
+  if (false) {
     const pid = projectData && projectData.id ? projectData.id : '(unknown)';
     console.debug('[PluginCostV2][DBG][client][summary]', {
       project: pid,
@@ -400,7 +393,7 @@ function renderProjectSummaryTable(
       ),
       projectTotals: projectData && projectData.totals ? projectData.totals : null,
     });
-  } catch (e) {}
+  }
 
   const sum = (map) => Array.from(map.values()).reduce((a, b) => a + b, 0);
 

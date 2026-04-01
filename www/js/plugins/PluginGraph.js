@@ -70,10 +70,7 @@ class PluginGraphPlugin {
       }
       this._el.style.display = 'flex';
     }
-    // Prefer app/state view mode unless this plugin explicitly requests a forced mode
-    const modeArg =
-      this.config && this.config.forceMode ? this.config.mode || 'project' : undefined;
-    if (this._el && typeof this._el.open === 'function') this._el.open(modeArg);
+    if (this._el && typeof this._el.open === 'function') this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }

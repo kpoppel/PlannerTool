@@ -99,19 +99,16 @@ function renderTasksInProjectTable(component, features) {
     </div>`;
   }
 
-  const formatValue = (val) => {
-    const n = typeof val === 'number' ? val : Number(val || 0);
-    return String(Math.round(n));
-  };
+  // const formatValue = (val) => {
+  //   const n = typeof val === 'number' ? val : Number(val || 0);
+  //   return String(Math.round(n));
+  // };
 
   // Build project name lookup
-  const projects =
-    component.data && component.data.projects ? component.data.projects : {};
+  const projects = component.data.projects || {};
   const projectNames = {};
   for (const pid of Object.keys(projects)) {
-    try {
-      projectNames[String(projects[pid].id)] = projects[pid].name;
-    } catch (e) {}
+    projectNames[String(projects[pid].id)] = projects[pid].name;
   }
 
   return html`
@@ -129,7 +126,7 @@ function renderTasksInProjectTable(component, features) {
       </thead>
       <tbody>
         ${features.map((feature) => {
-          const metrics = feature && feature.metrics ? feature.metrics : null;
+          const metrics = feature.metrics || null;
           let totalCost = 0;
           let totalHours = 0;
           if (metrics) {
@@ -168,11 +165,9 @@ function renderTasksInProjectTable(component, features) {
             : [];
           const teamNameByKey = {};
           for (const tt of costTeamsList) {
-            try {
-              if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
-              if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
-              if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
-            } catch (e) {}
+            if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
+            if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
+            if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
           }
           const teamsLabel = teams.map((t) => teamNameByKey[t] || t).join(', ');
 

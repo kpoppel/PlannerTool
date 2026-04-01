@@ -788,63 +788,52 @@ export class DetailsPanelLit extends LitElement {
     const f = this.feature;
     if (f.type !== 'epic') return;
 
-    try {
-      // childrenByEpic uses baseline ids as keys; try both string/number
-      const childIds =
-        state.childrenByEpic.get(f.id) ||
-        state.childrenByEpic.get(String(f.id)) ||
-        state.childrenByEpic.get(Number(f.id)) ||
-        [];
-      if (!childIds || !childIds.length) return;
+    // childrenByEpic uses baseline ids as keys; try both string/number
+    const childIds =
+      state.childrenByEpic.get(f.id) ||
+      state.childrenByEpic.get(String(f.id)) ||
+      state.childrenByEpic.get(Number(f.id)) ||
+      [];
+    if (!childIds || !childIds.length) return;
 
-      // Use effective feature dates (respecting active scenario overrides)
-      let minStartMs = null;
-      let maxEndMs = null;
-      for (const cid of childIds) {
-        const eff = state.getEffectiveFeatureById(cid);
-        if (!eff) continue;
-        const s = eff.start;
-        const e = eff.end;
-        if (s) {
-          const sMs = Date.parse(s);
-          if (!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
-        }
-        if (e) {
-          const eMs = Date.parse(e);
-          if (!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
-        }
+    // Use effective feature dates (respecting active scenario overrides)
+    let minStartMs = null;
+    let maxEndMs = null;
+    for (const cid of childIds) {
+      const eff = state.getEffectiveFeatureById(cid);
+      if (!eff) continue;
+      const s = eff.start;
+      const e = eff.end;
+      if (s) {
+        const sMs = Date.parse(s);
+        if (!isNaN(sMs) && (minStartMs === null || sMs < minStartMs)) minStartMs = sMs;
       }
-      if (minStartMs === null || maxEndMs === null) return;
-
-      const toIsoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
-      const newStart = toIsoDate(minStartMs);
-      const newEnd = toIsoDate(maxEndMs);
-
-      // Use state.updateFeatureDates to update both start and end together
-      state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
-    } catch (err) {
-      console.error('Shrinkwrap epic failed', err);
+      if (e) {
+        const eMs = Date.parse(e);
+        if (!isNaN(eMs) && (maxEndMs === null || eMs > maxEndMs)) maxEndMs = eMs;
+      }
     }
+    if (minStartMs === null || maxEndMs === null) return;
+
+    const toIsoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const newStart = toIsoDate(minStartMs);
+    const newEnd = toIsoDate(maxEndMs);
+
+    // Use state.updateFeatureDates to update both start and end together
+    state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
   }
 
   hide() {
     this.open = false;
     this.requestUpdate();
-    try {
-      bus.emit(UIEvents.DETAILS_HIDE);
-    } catch (e) {}
+    bus.emit(UIEvents.DETAILS_HIDE);
   }
 
   hideAndEmit() {
     // Close panel and emit a global hide event so other components can respond
-    try {
-      this.open = false;
-      this.requestUpdate();
-      bus.emit(UIEvents.DETAILS_HIDE);
-    } catch (e) {
-      this.open = false;
-      this.requestUpdate();
-    }
+    this.open = false;
+    this.requestUpdate();
+    bus.emit(UIEvents.DETAILS_HIDE);
   }
 
   _handleCapacityClick(teamId, e) {
@@ -1019,7 +1008,7 @@ export class DetailsPanelLit extends LitElement {
       }
 
       // Get all iterations from state
-      let iters = state.iterations || [];
+      const iters = state.iterations || [];
 
       // If feature has a project, optionally filter iterations by project
       // (depends on whether iterations have project info)
@@ -1090,20 +1079,12 @@ export class DetailsPanelLit extends LitElement {
   render() {
     if (!this.open || !this.feature) return html`<div class="panel closed"></div>`;
     const feature = this.feature;
-    const statusClass =
-      feature.state === 'In Progress' ? 'status-inprogress'
-      : feature.state === 'Done' ? 'status-done'
-      : 'status-new';
     // Build a state color chip using state service helper
     // Use ColorService directly
-    const stateColors =
-      state._colorService ?
-        state._colorService.getFeatureStateColors(state.availableFeatureStates)
-      : {};
-    const stateColor =
-      feature && feature.state && stateColors[feature.state] ?
-        stateColors[feature.state]
-      : null;
+    const stateColors = state._colorService.getFeatureStateColors(
+      state.availableFeatureStates
+    );
+    const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
     const stateCls = stateChanged ? 'details-value details-changed' : 'details-value';
@@ -1287,12 +1268,12 @@ export class DetailsPanelLit extends LitElement {
         </div>`
       : '';
 
-    // Build relations HTML similarly to legacy renderer
+    // Build relations HTML
     let relationsTemplate = html`<div class="details-value">—</div>`;
     try {
       const rels = Array.isArray(feature.relations) ? feature.relations.slice() : [];
       if (rels.length) {
-        // Sort and group like legacy
+        // Sort and group
         rels.sort((a, b) => {
           const ta = a.type || a.relationType || 'Related';
           const tb = b.type || b.relationType || 'Related';
@@ -1316,34 +1297,20 @@ export class DetailsPanelLit extends LitElement {
           const groupItems = groups.get(type) || [];
           let groupTitle = type;
           if (type === 'Parent') {
-            try {
-              const otherPlanNames = new Set();
-              for (const r of groupItems) {
-                const otherId = r.id ? String(r.id) : null;
-                try {
-                  const linked =
-                    state &&
-                    state.baselineFeatureById &&
-                    state.baselineFeatureById.get(otherId);
-                  if (
-                    linked &&
-                    linked.project &&
-                    String(linked.project) !== String(feature.project)
-                  ) {
-                    const proj = (state.projects || []).find(
-                      (p) => p.id === linked.project
-                    );
-                    if (proj && proj.name) otherPlanNames.add(proj.name);
-                  }
-                } catch (e) {}
+            const otherPlanNames = new Set();
+            for (const r of groupItems) {
+              const otherId = r.id ? String(r.id) : null;
+
+              const linked = state.baselineFeatureById.get(otherId);
+              if (linked && String(linked.project) !== String(feature.project)) {
+                const proj = state.projects.find((p) => p.id === linked.project);
+                if (proj.name) otherPlanNames.add(proj.name);
               }
-              if (otherPlanNames.size === 1) {
-                groupTitle = `Parent (in ${[...otherPlanNames][0]})`;
-              } else if (otherPlanNames.size > 1) {
-                groupTitle = 'Parent (in multiple plans)';
-              }
-            } catch (e) {
-              /* ignore plan name lookup failures */
+            }
+            if (otherPlanNames.size === 1) {
+              groupTitle = `Parent (in ${[...otherPlanNames][0]})`;
+            } else if (otherPlanNames.size > 1) {
+              groupTitle = 'Parent (in multiple plans)';
             }
           }
 
@@ -1355,26 +1322,15 @@ export class DetailsPanelLit extends LitElement {
             }
             const href = url ? url : '';
             let title = '';
-            try {
-              const linked =
-                state &&
-                state.baselineFeatureById &&
-                state.baselineFeatureById.get(otherId);
-              if (linked && linked.title) title = linked.title;
-            } catch (e) {}
-            let metaParts = [];
-            try {
-              const linked =
-                state &&
-                state.baselineFeatureById &&
-                state.baselineFeatureById.get(otherId);
-              if (linked && linked.state) metaParts.push(linked.state);
-            } catch (e) {}
-            const meta = metaParts.join(' • ');
+
+            const linked = state.baselineFeatureById.get(otherId);
+            if (linked) title = linked.title;
+
             let iconTemplate = '';
             if (type === 'Parent') iconTemplate = epicTemplate;
             else if (type === 'Successor') iconTemplate = '➡️';
             else if (type === 'Predecessor') iconTemplate = '⬅️';
+            // TODO: Instead of the link icon for other relation types, ideally would have specific icons for common types and a generic one for unknown types
             else iconTemplate = '🔗';
             return html`<li class="azure-relation-item">
               <div class="relation-icon">${iconTemplate}</div>

@@ -1117,31 +1117,20 @@ export class SidebarLit extends LitElement {
 
     // Listen for sidebar disabled maps emitted via state
     this._onSidebarFilterChanged = (payload) => {
-      try {
-        if (payload && Object.prototype.hasOwnProperty.call(payload, 'disabledSidebar')) {
-          this._disabledSidebar = payload.disabledSidebar || {};
-          this.requestUpdate();
-        }
-        // Allow external callers (plugins) to programmatically set which
-        // task types are selected in the sidebar via FilterEvents.CHANGED
-        // with `selectedTaskTypes: [ ... ]`.
-        if (
-          payload &&
-          Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')
-        ) {
-          try {
-            const arr =
-              Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
-            this.selectedTaskTypes = new Set(arr);
-            // Mark types initialized so default-selection logic does not override
-            this._taskTypesInitialized = true;
-            this.requestUpdate();
-          } catch (e) {
-            /* ignore */
-          }
-        }
-      } catch (e) {
-        /* ignore */
+      if (payload && Object.prototype.hasOwnProperty.call(payload, 'disabledSidebar')) {
+        this._disabledSidebar = payload.disabledSidebar || {};
+        this.requestUpdate();
+      }
+      // Allow external callers (plugins) to programmatically set which
+      // task types are selected in the sidebar via FilterEvents.CHANGED
+      // with `selectedTaskTypes: [ ... ]`.
+      if (payload && Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')) {
+        const arr =
+          Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
+        this.selectedTaskTypes = new Set(arr);
+        // Mark types initialized so default-selection logic does not override
+        this._taskTypesInitialized = true;
+        this.requestUpdate();
       }
     };
     bus.on(FilterEvents.CHANGED, this._onSidebarFilterChanged);
@@ -1326,7 +1315,6 @@ export class SidebarLit extends LitElement {
         teamAllocated: this.expandTeamAllocated,
       },
     });
-    // Auto-save removed - use View feature instead
   }
 
   _toggleTaskFilter(dimension, option) {
@@ -1380,73 +1368,57 @@ export class SidebarLit extends LitElement {
 
   // Returns true if a control has been disabled via state.setSidebarDisabledElements
   _isControlDisabled(kind, key, opt) {
-    try {
-      if (!this._disabledSidebar) return false;
-      if (kind === 'taskFilter') {
-        const tf = this._disabledSidebar.taskFilters || {};
-        if (tf && Array.isArray(tf[key]) && opt) return tf[key].includes(opt);
-      }
-      if (kind === 'taskType') {
-        const t = this._disabledSidebar.taskTypes || [];
-        return Array.isArray(t) && t.includes(key);
-      }
-      if (kind === 'expansion') {
-        const e = this._disabledSidebar.expansion || [];
-        return Array.isArray(e) && e.includes(key);
-      }
-      if (kind === 'state') {
-        const s = this._disabledSidebar.states || [];
-        return Array.isArray(s) && s.includes(key);
-      }
-      return false;
-    } catch (e) {
-      return false;
+    if (!this._disabledSidebar) return false;
+    if (kind === 'taskFilter') {
+      const tf = this._disabledSidebar.taskFilters || {};
+      if (tf && Array.isArray(tf[key]) && opt) return tf[key].includes(opt);
     }
+    if (kind === 'taskType') {
+      const t = this._disabledSidebar.taskTypes || [];
+      return Array.isArray(t) && t.includes(key);
+    }
+    if (kind === 'expansion') {
+      const e = this._disabledSidebar.expansion || [];
+      return Array.isArray(e) && e.includes(key);
+    }
+    if (kind === 'state') {
+      const s = this._disabledSidebar.states || [];
+      return Array.isArray(s) && s.includes(key);
+    }
+    return false;
   }
 
   // Programmatic API: set a task filter option checked/unchecked
   setTaskFilterChecked(dimension, option, checked) {
-    try {
-      if (
-        state &&
-        state.taskFilterService &&
-        typeof state.taskFilterService.setFilter === 'function'
-      ) {
-        state.taskFilterService.setFilter(dimension, option, !!checked);
-        this.taskFilters = state.taskFilterService.getFilters();
-        this._recomputeDataFunnel && this._recomputeDataFunnel();
-        this.requestUpdate();
-      }
-    } catch (e) {
-      /* ignore */
+    if (
+      state &&
+      state.taskFilterService &&
+      typeof state.taskFilterService.setFilter === 'function'
+    ) {
+      state.taskFilterService.setFilter(dimension, option, !!checked);
+      this.taskFilters = state.taskFilterService.getFilters();
+      this._recomputeDataFunnel && this._recomputeDataFunnel();
+      this.requestUpdate();
     }
   }
 
   // Programmatic API: set a task type checked/unchecked
   setTaskTypeChecked(type, checked) {
-    try {
-      if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
-      if (checked) this.selectedTaskTypes.add(type);
-      else this.selectedTaskTypes.delete(type);
-      bus.emit(FilterEvents.CHANGED, {
-        selectedTaskTypes: Array.from(this.selectedTaskTypes),
-      });
-      this.requestUpdate();
-    } catch (e) {
-      /* ignore */
-    }
+    if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
+    if (checked) this.selectedTaskTypes.add(type);
+    else this.selectedTaskTypes.delete(type);
+    bus.emit(FilterEvents.CHANGED, {
+      selectedTaskTypes: Array.from(this.selectedTaskTypes),
+    });
+    this.requestUpdate();
   }
 
   // Programmatic API: disable/enable sidebar controls via State service
   disableSidebarElements(map) {
-    try {
-      state.setSidebarDisabledElements(map || {});
-    } catch (e) {}
+    state.setSidebarDisabledElements(map || {});
   }
   clearSidebarDisabledElements() {
-    try {
-      state.clearSidebarDisabledElements();
-    } catch (e) {}
+    state.clearSidebarDisabledElements();
   }
 
   _toggleTaskType(type) {
@@ -1454,27 +1426,22 @@ export class SidebarLit extends LitElement {
     if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
     if (this.selectedTaskTypes.has(type)) this.selectedTaskTypes.delete(type);
     else this.selectedTaskTypes.add(type);
-    // Mirror legacy visibility toggles for epics/features when applicable
-    try {
-      const lowered = (type || '').toString().toLowerCase();
-      const hasEpic = Array.from(this.selectedTaskTypes).some(
-        (t) => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics'
-      );
-      const hasFeature = Array.from(this.selectedTaskTypes).some(
-        (t) =>
-          String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features'
-      );
-      if (state && state._viewService) {
-        state._viewService.setShowEpics(!!hasEpic);
-        state._viewService.setShowFeatures(!!hasFeature);
-      }
-    } catch (e) {
-      /* ignore */
+
+    // Visibility toggles for epics/features
+    const hasEpic = Array.from(this.selectedTaskTypes).some(
+      (t) => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics'
+    );
+    const hasFeature = Array.from(this.selectedTaskTypes).some(
+      (t) =>
+        String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features'
+    );
+    if (state && state._viewService) {
+      state._viewService.setShowEpics(!!hasEpic);
+      state._viewService.setShowFeatures(!!hasFeature);
     }
     bus.emit(FilterEvents.CHANGED, {
       selectedTaskTypes: Array.from(this.selectedTaskTypes),
     });
-    // Auto-save removed - use View feature instead
     this.requestUpdate();
   }
 

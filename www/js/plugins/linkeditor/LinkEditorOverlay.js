@@ -194,10 +194,6 @@ export class LinkEditorOverlay extends LitElement {
     }
   }
 
-  render() {
-    return html``;
-  }
-
   /**
    * Attach event handlers to the board and create positioned overlays
    * @private
@@ -222,72 +218,19 @@ export class LinkEditorOverlay extends LitElement {
     overlayContainer.style.zIndex = '100';
 
     // Get board position for absolute positioning relative to the page.
-    // Prefer LayoutManager cached client rect when available.
-    let boardRect = null;
-    try {
-      if (
-        board &&
-        board._layout &&
-        typeof board._layout.getBoardClientRect === 'function'
-      ) {
-        const br = board._layout.getBoardClientRect();
-        boardRect = {
-          left: br.left || 0,
-          top: br.top || 0,
-          width: br.width || 0,
-          height: br.height || 0,
-          right: (br.left || 0) + (br.width || 0),
-          bottom: (br.top || 0) + (br.height || 0),
-        };
-      }
-    } catch (e) {
-      boardRect = null;
-    }
-    if (!boardRect) {
-      try {
-        boardRect = board.getBoundingClientRect();
-      } catch (e) {
-        boardRect = { left: 0, top: 0, width: 0, height: 0 };
-      }
-    }
-    const pageX = window.scrollX || window.pageXOffset || 0;
-    const pageY = window.scrollY || window.pageYOffset || 0;
+    const boardRect = board.getBoundingClientRect();
+    const pageX = window.scrollX;
+    const pageY = window.scrollY;
 
     cards.forEach((card) => {
       const featureId = card.getAttribute('data-feature-id');
       if (!featureId) return;
 
-      // Try to obtain geometry from board LayoutManager first
-      let left = null,
-        top = null,
-        width = null,
-        height = null;
-      try {
-        if (board && board._layout && typeof board._layout.getGeometry === 'function') {
-          const geom = board._layout.getGeometry(featureId);
-          if (geom) {
-            left = geom.left;
-            top = geom.top;
-            width = geom.width;
-            height = geom.height;
-          }
-        }
-      } catch (e) {
-        /* ignore and fallback */
-      }
-
-      // Fallback to DOM measurement for missing geometries
-      if (left == null || top == null) {
-        try {
-          const cardRect = card.getBoundingClientRect();
-          left = cardRect.left - boardRect.left;
-          top = cardRect.top - boardRect.top;
-          width = cardRect.width;
-          height = cardRect.height;
-        } catch (e) {
-          return; // cannot position this card
-        }
-      }
+      const cardRect = card.getBoundingClientRect();
+      const left = cardRect.left - boardRect.left;
+      const top = cardRect.top - boardRect.top;
+      const width = cardRect.width;
+      const height = cardRect.height;
 
       // Create quadrants container for this card
       const quadrants = document.createElement('div');

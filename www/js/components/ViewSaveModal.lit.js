@@ -114,33 +114,21 @@ export class ViewSaveModal extends LitElement {
     // Get task types from sidebar
     const sidebarElement = document.querySelector('app-sidebar');
     if (sidebarElement && sidebarElement.selectedTaskTypes) {
-      try {
-        this.previewData.taskTypes = Array.from(sidebarElement.selectedTaskTypes || []);
-      } catch (e) {
-        /* ignore */
-      }
+      this.previewData.taskTypes = Array.from(sidebarElement.selectedTaskTypes || []);
     }
 
     // Get graph type from sidebar
     if (sidebarElement && sidebarElement._graphType) {
-      try {
-        this.previewData.graphType = sidebarElement._graphType;
-      } catch (e) {
-        /* ignore */
-      }
+      this.previewData.graphType = sidebarElement._graphType;
     }
 
     // Get expansion options from sidebar
     if (sidebarElement) {
-      try {
-        this.previewData.expansionOptions = {
-          expandParentChild: sidebarElement.expandParentChild || false,
-          expandRelations: sidebarElement.expandRelations || false,
-          expandTeamAllocated: sidebarElement.expandTeamAllocated || false,
-        };
-      } catch (e) {
-        /* ignore */
-      }
+      this.previewData.expansionOptions = {
+        expandParentChild: sidebarElement.expandParentChild || false,
+        expandRelations: sidebarElement.expandRelations || false,
+        expandTeamAllocated: sidebarElement.expandTeamAllocated || false,
+      };
     }
 
     this.requestUpdate();

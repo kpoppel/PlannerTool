@@ -5,20 +5,13 @@ import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
 
+// Helper to locate elements inside timeline-board's render root when TimelineBoard
+// uses shadow DOM.
 export function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
+  const boardEl = document.querySelector('timeline-board');
+  if (!boardEl) return null;
+  const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+  return root && root.querySelector ? root.querySelector(selector) : null;
 }
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
@@ -136,8 +129,8 @@ export const computePosition = (feature, monthsArg) => {
   }
 
   // Normal processing for planned features
-  let startDate = parseDate(feature.start) || new Date('2025-01-01');
-  let endDate = parseDate(feature.end) || new Date('2025-01-15');
+  const startDate = parseDate(feature.start) || new Date('2025-01-01');
+  const endDate = parseDate(feature.end) || new Date('2025-01-15');
 
   const ms = startDate.getTime();
   const ems = endDate.getTime();

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test /* expect */ } from '@playwright/test';
 import { clearOverlays } from './helpers.js';
 
 test.describe('Feature Card dim-info e2e', () => {

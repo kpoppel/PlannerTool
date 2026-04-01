@@ -94,60 +94,28 @@ class GhostTitle extends LitElement {
   _performPositioning() {
     if (!this.visible) return;
 
-    // Prefer authoritative geometry from the board's LayoutManager when available.
-    // Prefer authoritative geometry from LayoutManager; require both
-    // `cardRect` (per-feature) and `boardRect` (board content) to continue.
     let cardRect = this.cardRect;
     let boardRect = this.boardRect;
-    if (this.getRootNode) {
-      try {
-        const root = this.getRootNode();
-        const featureBoard = root && root.host ? root.host : null;
-        if (featureBoard && featureBoard._layout) {
-          if (this.featureId) {
-            const geom = featureBoard._layout.getGeometry(this.featureId);
-            if (geom)
-              cardRect = {
-                left: geom.left,
-                top: geom.top,
-                width: geom.width,
-                height: geom.height,
-              };
-          }
-          if (typeof featureBoard._layout.getBoardRect === 'function') {
-            const br = featureBoard._layout.getBoardRect();
-            if (br) boardRect = br;
-          }
-        }
-      } catch (e) {
-        /* ignore layout lookup errors */
-      }
-    }
-
     if (!cardRect || !boardRect) return;
 
     // Use cached ghost size from ResizeObserver to avoid forcing layout.
     if (!this._cachedGhostSize) {
       if (typeof ResizeObserver !== 'undefined') {
-        try {
-          if (!this._resizeObserver) {
-            this._resizeObserver = new ResizeObserver((entries) => {
-              for (const ent of entries) {
-                if (ent && ent.contentRect) {
-                  this._cachedGhostSize = {
-                    width: ent.contentRect.width,
-                    height: ent.contentRect.height,
-                  };
-                  // Defer positioning until next RAF to allow other updates
-                  this._schedulePositionUpdate();
-                }
+        if (!this._resizeObserver) {
+          this._resizeObserver = new ResizeObserver((entries) => {
+            for (const ent of entries) {
+              if (ent && ent.contentRect) {
+                this._cachedGhostSize = {
+                  width: ent.contentRect.width,
+                  height: ent.contentRect.height,
+                };
+                // Defer positioning until next RAF to allow other updates
+                this._schedulePositionUpdate();
               }
-            });
-          }
-          this._resizeObserver.observe(this);
-        } catch (e) {
-          /* ignore observer failures */
+            }
+          });
         }
+        this._resizeObserver.observe(this);
       }
       return;
     }
@@ -200,8 +168,8 @@ class GhostTitle extends LitElement {
       ghostTop = cardTop + cardHeight / 2 - ghostHeight / 2;
     }
 
-    // Compute `right` relative to board content width (authoritative from LayoutManager)
-    const boardContentWidth = br.width || 0;
+    // Compute `right` relative to board content width
+    const boardContentWidth = br.width;
     let ghostRight;
     if (!isStuck) {
       const desiredRightInBoard = cardLeft - gap; // board-content coord for ghost's right
@@ -209,9 +177,7 @@ class GhostTitle extends LitElement {
     } else {
       ghostRight = Math.round(boardContentWidth - (ghostLeft + ghostWidth));
     }
-    try {
-      this.style.left = '';
-    } catch (e) {}
+    this.style.left = '';
     this.style.right = `${ghostRight}px`;
     this.style.top = `${Math.round(ghostTop)}px`;
   }

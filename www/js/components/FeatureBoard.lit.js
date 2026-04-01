@@ -15,25 +15,7 @@ import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
-
-// Helper to locate elements inside timeline-board's render root when TimelineBoard
-// uses shadow DOM. Falls back to document queries for older behavior.
-function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
-}
-
+import { findInBoard } from './board-utils.js';
 class FeatureBoard extends LitElement {
   static properties = {
     features: { type: Array },
@@ -125,13 +107,9 @@ class FeatureBoard extends LitElement {
       this.setAttribute('role', 'list');
     }
     // Defer creating the fixed scrollbar so document.body exists
-    try {
-      requestAnimationFrame(() => {
-        try {
-          this._ensureFixedScrollbar();
-        } catch (e) {}
-      });
-    } catch (e) {}
+    requestAnimationFrame(() => {
+      this._ensureFixedScrollbar();
+    });
   }
 
   // Build and maintain connected feature sets (parent/child and relations)
@@ -215,19 +193,11 @@ class FeatureBoard extends LitElement {
   }
 
   _scrollToTop() {
-    try {
-      this.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) {
-      this.scrollTop = 0;
-    }
+    this.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   _scrollToBottom() {
-    try {
-      this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
-    } catch (e) {
-      this.scrollTop = this.scrollHeight || 0;
-    }
+    this.scrollTo({ top: this.scrollHeight, behavior: 'smooth' });
   }
 
   disconnectedCallback() {
@@ -236,9 +206,7 @@ class FeatureBoard extends LitElement {
       bus.off(event, handler);
     });
     this._boundHandlers.clear();
-    try {
-      this._destroyFixedScrollbar?.();
-    } catch (e) {}
+    this._destroyFixedScrollbar?.();
   }
 
   // ---- Fixed scrollbar ----
@@ -324,62 +292,59 @@ class FeatureBoard extends LitElement {
     controls.style.pointerEvents = 'none';
 
     const onScroll = () => this._updateFixedThumb();
+
     const onResize = () => {
       this._updateRailPosition();
       this._updateFixedThumb();
     };
+
     const onDetailsShow = () => {
-      try {
-        hideRail();
-        this._detailsOpen = true;
-      } catch (e) {}
+      hideRail();
+      this._detailsOpen = true;
     };
+
     const onDetailsHide = () => {
-      try {
-        showRail();
-        this._detailsOpen = false;
-        this._updateFixedThumb();
-      } catch (e) {}
+      showRail();
+      this._detailsOpen = false;
+      this._updateFixedThumb();
     };
 
     let hideTimer = null;
     const proximityPx = 50;
+
     const showRail = () => {
-      try {
-        if (this._dragging) return;
-        rail.style.opacity = '1';
-        rail.style.pointerEvents = 'auto';
-        controls.style.opacity = '1';
-        controls.style.pointerEvents = 'auto';
-      } catch (e) {}
+      if (this._dragging) return;
+      rail.style.opacity = '1';
+      rail.style.pointerEvents = 'auto';
+      controls.style.opacity = '1';
+      controls.style.pointerEvents = 'auto';
     };
+
     const hideRail = () => {
-      try {
-        if (this._dragging) return;
-        rail.style.opacity = '0';
-        rail.style.pointerEvents = 'none';
-        controls.style.opacity = '0';
-        controls.style.pointerEvents = 'none';
-      } catch (e) {}
+      if (this._dragging) return;
+      rail.style.opacity = '0';
+      rail.style.pointerEvents = 'none';
+      controls.style.opacity = '0';
+      controls.style.pointerEvents = 'none';
     };
+
     const onMouseMove = (ev) => {
-      try {
-        const vw = window.innerWidth || document.documentElement.clientWidth;
-        if (vw - ev.clientX <= proximityPx) {
-          showRail();
-          if (hideTimer) {
-            clearTimeout(hideTimer);
-            hideTimer = null;
-          }
-        } else {
-          if (hideTimer) clearTimeout(hideTimer);
-          hideTimer = setTimeout(() => {
-            hideRail();
-            hideTimer = null;
-          }, 10);
+      const vw = window.innerWidth;
+      if (vw - ev.clientX <= proximityPx) {
+        showRail();
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = null;
         }
-      } catch (e) {}
+      } else {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          hideRail();
+          hideTimer = null;
+        }, 10);
+      }
     };
+
     const onRailEnter = () => {
       if (hideTimer) {
         clearTimeout(hideTimer);
@@ -387,6 +352,7 @@ class FeatureBoard extends LitElement {
       }
       showRail();
     };
+
     const onRailLeave = () => {
       if (hideTimer) clearTimeout(hideTimer);
       hideTimer = setTimeout(() => {
@@ -403,10 +369,8 @@ class FeatureBoard extends LitElement {
     document.addEventListener('mousemove', onMouseMove);
     rail.addEventListener('pointerenter', onRailEnter);
     rail.addEventListener('pointerleave', onRailLeave);
-    try {
-      bus.on(UIEvents.DETAILS_SHOW, onDetailsShow);
-      bus.on(UIEvents.DETAILS_HIDE, onDetailsHide);
-    } catch (e) {}
+    bus.on(UIEvents.DETAILS_SHOW, onDetailsShow);
+    bus.on(UIEvents.DETAILS_HIDE, onDetailsHide);
 
     this._fixedRail = rail;
     this._fixedThumb = thumb;
@@ -425,96 +389,67 @@ class FeatureBoard extends LitElement {
   }
 
   _updateRailPosition() {
-    try {
-      if (!this._fixedRail) return;
-      const timelineHeader = findInBoard('timeline-lit');
-      if (timelineHeader) {
-        const rect = timelineHeader.getBoundingClientRect();
-        this._fixedRail.style.top = Math.max(8, rect.bottom + 6) + 'px';
-      } else {
-        this._fixedRail.style.top = '72px';
-      }
-    } catch (e) {}
+    if (!this._fixedRail) return;
+    const timelineHeader = findInBoard('timeline-lit');
+    const rect = timelineHeader.getBoundingClientRect();
+    this._fixedRail.style.top = Math.max(8, rect.bottom + 6) + 'px';
   }
 
   _destroyFixedScrollbar() {
-    try {
-      this._fixedRail?.remove();
-    } catch (e) {}
+    this._fixedRail.remove();
     this._fixedRail = null;
-    try {
-      this._fixedControls?.remove();
-    } catch (e) {}
+    this._fixedControls.remove();
     this._fixedControls = null;
     this._fixedThumb = null;
-    if (this._fixedHandlers) {
-      try {
-        this.removeEventListener('scroll', this._fixedHandlers.onScroll);
-      } catch (e) {}
-      try {
-        window.removeEventListener('resize', this._fixedHandlers.onResize);
-      } catch (e) {}
-      try {
-        document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
-      } catch (e) {}
-      try {
-        bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow);
-      } catch (e) {}
-      try {
-        bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide);
-      } catch (e) {}
-      this._fixedHandlers = null;
-    }
+    this.removeEventListener('scroll', this._fixedHandlers.onScroll);
+    window.removeEventListener('resize', this._fixedHandlers.onResize);
+    document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
+    document.removeEventListener('mousemove', this._fixedHandlers.onMouseMove);
+    bus.off?.(UIEvents.DETAILS_SHOW, this._fixedHandlers.onDetailsShow);
+    bus.off?.(UIEvents.DETAILS_HIDE, this._fixedHandlers.onDetailsHide);
+    this._fixedHandlers = null;
   }
 
   _updateFixedThumb() {
-    try {
-      if (!this._fixedRail || !this._fixedThumb) return;
-      const railRect = this._fixedRail.getBoundingClientRect();
-      const clientH = this.clientHeight || 0;
-      const scrollH = this.scrollHeight || 0;
-      if (scrollH <= clientH) {
-        this._fixedThumb.style.display = 'none';
-        return;
-      }
-      this._fixedThumb.style.display = '';
-      const railHeight = Math.max(20, railRect.height);
-      const thumbH = Math.max(20, Math.round(railHeight * (clientH / scrollH)));
-      const maxTop = railHeight - thumbH;
-      const frac = (this.scrollTop || 0) / (scrollH - clientH);
-      this._fixedThumb.style.height = thumbH + 'px';
-      this._fixedThumb.style.top = Math.round(frac * maxTop) + 'px';
-    } catch (e) {}
+    if (!this._fixedRail || !this._fixedThumb) return;
+    const railRect = this._fixedRail.getBoundingClientRect();
+    const clientH = this.clientHeight || 0;
+    const scrollH = this.scrollHeight || 0;
+    if (scrollH <= clientH) {
+      this._fixedThumb.style.display = 'none';
+      return;
+    }
+    this._fixedThumb.style.display = '';
+    const railHeight = Math.max(20, railRect.height);
+    const thumbH = Math.max(20, Math.round(railHeight * (clientH / scrollH)));
+    const maxTop = railHeight - thumbH;
+    const frac = (this.scrollTop || 0) / (scrollH - clientH);
+    this._fixedThumb.style.height = thumbH + 'px';
+    this._fixedThumb.style.top = Math.round(frac * maxTop) + 'px';
   }
 
   _startThumbDrag(e) {
-    try {
-      e.preventDefault();
-      this._dragging = true;
-      const onMove = (ev) => this._onThumbMove(ev);
-      const onUp = () => {
-        this._dragging = false;
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    } catch (e) {
+    e.preventDefault();
+    this._dragging = true;
+    const onMove = (ev) => this._onThumbMove(ev);
+    const onUp = () => {
       this._dragging = false;
-    }
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   _onThumbMove(ev) {
-    try {
-      if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
-      const railRect = this._fixedRail.getBoundingClientRect();
-      const thumbH = this._fixedThumb.getBoundingClientRect().height;
-      const y = ev.clientY - railRect.top - thumbH / 2;
-      const maxY = Math.max(0, railRect.height - thumbH);
-      const frac = Math.max(0, Math.min(maxY, y)) / (railRect.height - thumbH || 1);
-      this.scrollTop = Math.round(frac * (this.scrollHeight - this.clientHeight));
-      this._updateFixedThumb();
-    } catch (e) {}
+    if (!this._dragging || !this._fixedRail || !this._fixedThumb) return;
+    const railRect = this._fixedRail.getBoundingClientRect();
+    const thumbH = this._fixedThumb.getBoundingClientRect().height;
+    const y = ev.clientY - railRect.top - thumbH / 2;
+    const maxY = Math.max(0, railRect.height - thumbH);
+    const frac = Math.max(0, Math.min(maxY, y)) / (railRect.height - thumbH || 1);
+    this.scrollTop = Math.round(frac * (this.scrollHeight - this.clientHeight));
+    this._updateFixedThumb();
   }
 
   // ---- Sorting / filtering helpers ----
@@ -768,12 +703,10 @@ class FeatureBoard extends LitElement {
     this.requestUpdate();
 
     if (renderList.length === 0) {
-      try {
-        const mh = await import('./modalHelpers.js');
-        if (typeof mh?.openEmptyBoardModal === 'function') {
-          mh.openEmptyBoardModal({ parent: document.body }).catch(() => {});
-        }
-      } catch (e) {}
+      const mh = await import('./modalHelpers.js');
+      if (typeof mh?.openEmptyBoardModal === 'function') {
+        mh.openEmptyBoardModal({ parent: document.body }).catch(() => {});
+      }
     }
   }
 
@@ -826,10 +759,8 @@ class FeatureBoard extends LitElement {
     cards.forEach((node) => {
       if (node.feature?.id) this._cardMap.set(node.feature.id, node);
     });
-    try {
-      this._ensureFixedScrollbar();
-      this._updateFixedThumb();
-    } catch (e) {}
+    this._ensureFixedScrollbar();
+    this._updateFixedThumb();
   }
 
   _selectFeature(feature) {
@@ -843,37 +774,27 @@ class FeatureBoard extends LitElement {
   }
 
   centerFeatureById(featureId) {
-    try {
-      const card =
-        this._cardMap.get(String(featureId)) ||
-        this.shadowRoot?.querySelector(
-          `feature-card-lit[data-feature-id="${featureId}"]`
-        );
-      const timeline = findInBoard('#timelineSection');
-      if (!card || !timeline) return;
+    const card =
+      this._cardMap.get(String(featureId)) ||
+      this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
+    const timeline = findInBoard('#timelineSection');
+    if (!card || !timeline) return;
 
-      const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
-      const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
-      timeline.scrollTo({
-        left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)),
-        behavior: 'smooth',
-      });
-      this.scrollTo({
-        top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)),
-        behavior: 'smooth',
-      });
+    const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
+    const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;
+    timeline.scrollTo({
+      left: Math.max(0, Math.round(cardCenterX - timeline.clientWidth / 2)),
+      behavior: 'smooth',
+    });
+    this.scrollTo({
+      top: Math.max(0, Math.round(cardCenterY - this.clientHeight / 2)),
+      behavior: 'smooth',
+    });
 
-      try {
-        card.classList.add('search-highlight');
-        setTimeout(() => {
-          try {
-            card.classList.remove('search-highlight');
-          } catch (e) {}
-        }, 950);
-      } catch (e) {}
-    } catch (e) {
-      console.warn('centerFeatureById failed', e);
-    }
+    card.classList.add('search-highlight');
+    setTimeout(() => {
+      card.classList.remove('search-highlight');
+    }, 950);
   }
 
   addFeature(nodeOrFeature) {

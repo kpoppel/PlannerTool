@@ -34,15 +34,11 @@ class ConfigModal extends LitElement {
   async _populate() {
     const emailInput = this._qs('#configEmail');
     const autosaveInput = this._qs('#autosaveInterval');
-    try {
-      const storedEmail = await dataService.getLocalPref('user.email');
-      if (storedEmail) emailInput.value = storedEmail;
-      const storedAutosave = await dataService.getLocalPref('autosave.interval');
-      if (storedAutosave !== undefined && autosaveInput)
-        autosaveInput.value = storedAutosave;
-    } catch (e) {
-      /* ignore */
-    }
+    const storedEmail = await dataService.getLocalPref('user.email');
+    if (storedEmail) emailInput.value = storedEmail;
+    const storedAutosave = await dataService.getLocalPref('autosave.interval');
+    if (storedAutosave !== undefined && autosaveInput)
+      autosaveInput.value = storedAutosave;
   }
 
   render() {
@@ -180,45 +176,31 @@ class ConfigModal extends LitElement {
         const innerModal = this._getInner();
         if (innerModal) {
           innerModal.addEventListener('modal-close', () => this.remove());
-          try {
-            innerModal.open = true;
-          } catch (e) {
-            /* ignore */
-          }
+          innerModal.open = true;
         }
       })
       .catch(() => {
         // If definition never arrives, still attempt to open any existing inner modal
         const innerModal = this._getInner();
         if (innerModal) {
-          try {
-            innerModal.open = true;
-          } catch (e) {}
+          innerModal.open = true;
         }
       });
     // Ensure the email input is focused when the inner modal is opened
     const tryFocusEmail = () => {
-      try {
-        const emailInput = this._qs('#configEmail');
-        if (emailInput && typeof emailInput.focus === 'function') {
-          // small timeout to allow any modal open animation to complete
-          setTimeout(() => emailInput.focus(), 60);
-        }
-      } catch (e) {}
+      const emailInput = this._qs('#configEmail');
+      // small timeout to allow any modal open animation to complete
+      setTimeout(() => emailInput.focus(), 60);
     };
     // If modal-lit exists now, focus after it's opened
     const existingInner = this._getInner();
     if (existingInner) {
       // If modal-lit exposes open property, watch for it or attempt immediate focus
-      try {
-        if (existingInner.open) tryFocusEmail();
-        else {
-          existingInner.addEventListener('modal-open', tryFocusEmail, {
-            once: true,
-          });
-        }
-      } catch (e) {
-        tryFocusEmail();
+      if (existingInner.open) tryFocusEmail();
+      else {
+        existingInner.addEventListener('modal-open', tryFocusEmail, {
+          once: true,
+        });
       }
     }
   }

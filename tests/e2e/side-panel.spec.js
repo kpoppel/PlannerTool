@@ -8,12 +8,10 @@ test('Details side panel shows expected elements and can be closed', async ({ pa
   await page.waitForLoadState('networkidle');
   await clearOverlays(page);
 
-  // Wait for a feature card to appear and click it to open the side panel
-  await page.waitForSelector('feature-card-lit, .feature-card', {
-    timeout: 15000,
-  });
-  const card = (await page.$('feature-card-lit')) || (await page.$('.feature-card'));
-  if (!card) throw new Error('No feature card found');
+  // Wait for a feature card-lit to appear and click it to open the side panel
+  await page.waitForSelector('feature-card-lit', { timeout: 15000 });
+  const card = await page.$('feature-card-lit');
+  if (!card) throw new Error('No feature card-lit found');
   await card.click();
 
   // Wait for panel to be shown

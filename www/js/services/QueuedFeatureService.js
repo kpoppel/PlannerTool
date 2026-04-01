@@ -80,10 +80,6 @@ export class QueuedFeatureService {
     return { changedFields, dirty: changedFields.length > 0 };
   }
 
-  setChildrenByEpic(childrenMap) {
-    this._childrenByEpic = childrenMap;
-  }
-
   // Simple pass-through for single-field updates (no queue)
   updateFeatureField(id, field, value, capacityCallback) {
     const activeScenario = this._getActiveScenario();
@@ -105,17 +101,9 @@ export class QueuedFeatureService {
         bus.emit(FeatureEvents.UPDATED);
       }
       if (capacityCallback) {
-        try {
-          setTimeout(() => {
-            try {
-              capacityCallback();
-            } catch (e) {}
-          }, 0);
-        } catch (e) {
-          try {
-            capacityCallback();
-          } catch (e) {}
-        }
+        setTimeout(() => {
+          capacityCallback();
+        }, 0);
       }
       return true;
     }
@@ -124,23 +112,11 @@ export class QueuedFeatureService {
       ov.capacity = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
-      try {
-        bus.emit(FeatureEvents.UPDATED, { ids: [id] });
-      } catch (e) {
-        bus.emit(FeatureEvents.UPDATED);
-      }
+      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
       if (capacityCallback) {
-        try {
-          setTimeout(() => {
-            try {
-              capacityCallback();
-            } catch (e) {}
-          }, 0);
-        } catch (e) {
-          try {
-            capacityCallback();
-          } catch (e) {}
-        }
+        setTimeout(() => {
+          capacityCallback();
+        }, 0);
       }
       return true;
     }
@@ -153,23 +129,11 @@ export class QueuedFeatureService {
     if (activeScenario.overrides[id]) {
       delete activeScenario.overrides[id];
       activeScenario.isChanged = true;
-      try {
-        bus.emit(FeatureEvents.UPDATED, { ids: [id] });
-      } catch (e) {
-        bus.emit(FeatureEvents.UPDATED);
-      }
+      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
       if (capacityCallback) {
-        try {
-          setTimeout(() => {
-            try {
-              capacityCallback();
-            } catch (e) {}
-          }, 0);
-        } catch (e) {
-          try {
-            capacityCallback();
-          } catch (e) {}
-        }
+        setTimeout(() => {
+          capacityCallback();
+        }, 0);
       }
       return true;
     }
@@ -188,201 +152,189 @@ export class QueuedFeatureService {
       this._pendingCapacityCallbacks.push(capacityCallback);
     // Optimistic quick apply (mirror original behavior): apply overrides immediately
     const actuallyAppliedQuickIds = [];
-    try {
-      const baselineFeatureById = this._baselineStore.getFeatureById();
-      for (const u of updates) {
-        if (u && u.id) {
-          const base = baselineFeatureById.get(u.id);
-          const baseline =
-            base ? { start: base.start, end: base.end } : { start: null, end: null };
-          const existing = activeScenario.overrides[u.id];
-          const existingIsExplicit =
-            existing &&
-            (existing.start !== baseline.start || existing.end !== baseline.end);
 
-          // If this update originates from an epic move and the feature already
-          // has an explicit override, do not overwrite it optimistically.
-          if (u.fromEpicMove && existingIsExplicit) {
-            if (featureFlags && featureFlags.serviceInstrumentation) {
-              try {
-                console.log(
-                  '[QueuedFeatureService] skipping optimistic overwrite for',
-                  u.id,
-                  'fromEpicMove because explicit override exists',
-                  existing
-                );
-              } catch (e) {}
-            }
-          } else {
-            // If this is an epic, remember its prior effective start so queued processing
-            // can compute deltas against the pre-optimistic value (avoids cumulative shifts).
-            if (base && base.type === 'epic') {
-              this._priorEpicStart = this._priorEpicStart || new Map();
-              const prevEpic = activeScenario.overrides[u.id] || {
-                start: base.start,
-                end: base.end,
+    const baselineFeatureById = this._baselineStore.getFeatureById();
+    for (const u of updates) {
+      if (u && u.id) {
+        const base = baselineFeatureById.get(u.id);
+        const baseline =
+          base ? { start: base.start, end: base.end } : { start: null, end: null };
+        const existing = activeScenario.overrides[u.id];
+        const existingIsExplicit =
+          existing &&
+          (existing.start !== baseline.start || existing.end !== baseline.end);
+
+        // If this update originates from an epic move and the feature already
+        // has an explicit override, do not overwrite it optimistically.
+        if (u.fromEpicMove && existingIsExplicit) {
+          if (featureFlags && featureFlags.serviceInstrumentation) {
+            console.log(
+              '[QueuedFeatureService] skipping optimistic overwrite for',
+              u.id,
+              'fromEpicMove because explicit override exists',
+              existing
+            );
+          }
+        } else {
+          // If this is an epic, remember its prior effective start so queued processing
+          // can compute deltas against the pre-optimistic value (avoids cumulative shifts).
+          if (base && base.type === 'epic') {
+            this._priorEpicStart = this._priorEpicStart || new Map();
+            const prevEpic = activeScenario.overrides[u.id] || {
+              start: base.start,
+              end: base.end,
+            };
+            this._priorEpicStart.set(u.id, prevEpic.start);
+            // Apply optimistic overrides to all children by shifting them by the epic delta
+            try {
+              const epicActiveStart = prevEpic.start || base.start;
+              const epicNewStart = u.start || epicActiveStart;
+              const deltaMs = Date.parse(epicNewStart) - Date.parse(epicActiveStart);
+              const shiftIsoByMs = (iso, ms) => {
+                try {
+                  return new Date(Date.parse(iso) + ms).toISOString().slice(0, 10);
+                } catch (e) {
+                  return iso;
+                }
               };
-              this._priorEpicStart.set(u.id, prevEpic.start);
-              // Apply optimistic overrides to all children by shifting them by the epic delta
-              try {
-                const epicActiveStart = prevEpic.start || base.start;
-                const epicNewStart = u.start || epicActiveStart;
-                const deltaMs = Date.parse(epicNewStart) - Date.parse(epicActiveStart);
-                const shiftIsoByMs = (iso, ms) => {
-                  try {
-                    return new Date(Date.parse(iso) + ms).toISOString().slice(0, 10);
-                  } catch (e) {
-                    return iso;
-                  }
-                };
-                let minChildStart = null;
-                let maxChildEnd = null;
-                if (!isNaN(deltaMs) && deltaMs !== 0) {
-                  const childIds = this._childrenByEpic.get(base.id) || [];
-                  for (const cid of childIds) {
-                    const chBase = baselineFeatureById.get(cid);
-                    if (!chBase) continue;
-                    const existingChildOv =
-                      activeScenario.overrides ?
-                        activeScenario.overrides[cid]
-                      : undefined;
-                    const existingChild = existingChildOv || {
-                      start: chBase.start,
-                      end: chBase.end,
-                    };
-                    const hasExplicitChild =
-                      existingChildOv &&
-                      (existingChildOv.start !== chBase.start ||
-                        existingChildOv.end !== chBase.end);
-                    if (hasExplicitChild) {
-                      if (featureFlags && featureFlags.serviceInstrumentation) {
-                        try {
-                          console.log(
-                            '[QueuedFeatureService] skipping optimistic overwrite for',
-                            cid,
-                            'fromEpicMove because explicit override exists',
-                            existingChildOv
-                          );
-                        } catch (e) {}
-                      }
-                      // respect explicit override, don't apply optimistic shift
-                      if (minChildStart === null || existingChild.start < minChildStart)
-                        minChildStart = existingChild.start;
-                      if (maxChildEnd === null || existingChild.end > maxChildEnd)
-                        maxChildEnd = existingChild.end;
-                      continue;
+              let minChildStart = null;
+              let maxChildEnd = null;
+              if (!isNaN(deltaMs) && deltaMs !== 0) {
+                const childIds = this._childrenByEpic.get(base.id) || [];
+                for (const cid of childIds) {
+                  const chBase = baselineFeatureById.get(cid);
+                  if (!chBase) continue;
+                  const existingChildOv =
+                    activeScenario.overrides ? activeScenario.overrides[cid] : undefined;
+                  const existingChild = existingChildOv || {
+                    start: chBase.start,
+                    end: chBase.end,
+                  };
+                  const hasExplicitChild =
+                    existingChildOv &&
+                    (existingChildOv.start !== chBase.start ||
+                      existingChildOv.end !== chBase.end);
+                  if (hasExplicitChild) {
+                    if (featureFlags && featureFlags.serviceInstrumentation) {
+                      console.log(
+                        '[QueuedFeatureService] skipping optimistic overwrite for',
+                        cid,
+                        'fromEpicMove because explicit override exists',
+                        existingChildOv
+                      );
                     }
-                    const shiftedStart = shiftIsoByMs(existingChild.start, deltaMs);
-                    const shiftedEnd = shiftIsoByMs(existingChild.end, deltaMs);
-                    const childOv = activeScenario.overrides[cid] || {
-                      start: existingChild.start,
-                      end: existingChild.end,
-                    };
-                    childOv.start = shiftedStart;
-                    childOv.end = shiftedEnd;
-                    activeScenario.overrides[cid] = childOv;
-                    actuallyAppliedQuickIds.push(cid);
-                    if (minChildStart === null || shiftedStart < minChildStart)
-                      minChildStart = shiftedStart;
-                    if (maxChildEnd === null || shiftedEnd > maxChildEnd)
-                      maxChildEnd = shiftedEnd;
-                  }
-                } else {
-                  // No delta; calculate current child extremes from overrides/baseline
-                  const childIds = this._childrenByEpic.get(base.id) || [];
-                  for (const cid of childIds) {
-                    const chBase = baselineFeatureById.get(cid);
-                    if (!chBase) continue;
-                    const existingChild = activeScenario.overrides[cid] || {
-                      start: chBase.start,
-                      end: chBase.end,
-                    };
+                    // respect explicit override, don't apply optimistic shift
                     if (minChildStart === null || existingChild.start < minChildStart)
                       minChildStart = existingChild.start;
                     if (maxChildEnd === null || existingChild.end > maxChildEnd)
                       maxChildEnd = existingChild.end;
+                    continue;
                   }
+                  const shiftedStart = shiftIsoByMs(existingChild.start, deltaMs);
+                  const shiftedEnd = shiftIsoByMs(existingChild.end, deltaMs);
+                  const childOv = activeScenario.overrides[cid] || {
+                    start: existingChild.start,
+                    end: existingChild.end,
+                  };
+                  childOv.start = shiftedStart;
+                  childOv.end = shiftedEnd;
+                  activeScenario.overrides[cid] = childOv;
+                  actuallyAppliedQuickIds.push(cid);
+                  if (minChildStart === null || shiftedStart < minChildStart)
+                    minChildStart = shiftedStart;
+                  if (maxChildEnd === null || shiftedEnd > maxChildEnd)
+                    maxChildEnd = shiftedEnd;
                 }
-
-                // Compute optimistic epic bounds: prefer the candidate (u.start/u.end) when present
-                // so epic moves/changes are reflected immediately, but still ensure epic
-                // does not shrink inside its children by including child extremes.
-                const baselineEpicStart = base.start;
-                const baselineEpicEnd = base.end;
-                const candidateStart = u.start || baselineEpicStart;
-                const candidateEnd = u.end || baselineEpicEnd;
-                const startCandidates = [candidateStart, minChildStart].filter(Boolean);
-                const endCandidates = [candidateEnd, maxChildEnd].filter(Boolean);
-                // If candidate missing, fall back to baseline
-                if (startCandidates.length === 0) startCandidates.push(baselineEpicStart);
-                if (endCandidates.length === 0) endCandidates.push(baselineEpicEnd);
-                const finalStart =
-                  startCandidates.length ?
-                    startCandidates.reduce((a, b) => (a < b ? a : b))
-                  : candidateStart;
-                const finalEnd =
-                  endCandidates.length ?
-                    endCandidates.reduce((a, b) => (a > b ? a : b))
-                  : candidateEnd;
-
-                const epicOv = activeScenario.overrides[u.id] || {
-                  start: base.start,
-                  end: base.end,
-                };
-                epicOv.start = finalStart;
-                epicOv.end = finalEnd;
-                activeScenario.overrides[u.id] = epicOv;
-                actuallyAppliedQuickIds.push(u.id);
-              } catch (e) {
-                // Fallback behavior: apply candidate directly
-                const fallbackOv = activeScenario.overrides[u.id] || {
-                  start: base.start,
-                  end: base.end,
-                };
-                fallbackOv.start = u.start;
-                fallbackOv.end = u.end;
-                activeScenario.overrides[u.id] = fallbackOv;
-                actuallyAppliedQuickIds.push(u.id);
+              } else {
+                // No delta; calculate current child extremes from overrides/baseline
+                const childIds = this._childrenByEpic.get(base.id) || [];
+                for (const cid of childIds) {
+                  const chBase = baselineFeatureById.get(cid);
+                  if (!chBase) continue;
+                  const existingChild = activeScenario.overrides[cid] || {
+                    start: chBase.start,
+                    end: chBase.end,
+                  };
+                  if (minChildStart === null || existingChild.start < minChildStart)
+                    minChildStart = existingChild.start;
+                  if (maxChildEnd === null || existingChild.end > maxChildEnd)
+                    maxChildEnd = existingChild.end;
+                }
               }
+
+              // Compute optimistic epic bounds: prefer the candidate (u.start/u.end) when present
+              // so epic moves/changes are reflected immediately, but still ensure epic
+              // does not shrink inside its children by including child extremes.
+              const baselineEpicStart = base.start;
+              const baselineEpicEnd = base.end;
+              const candidateStart = u.start || baselineEpicStart;
+              const candidateEnd = u.end || baselineEpicEnd;
+              const startCandidates = [candidateStart, minChildStart].filter(Boolean);
+              const endCandidates = [candidateEnd, maxChildEnd].filter(Boolean);
+              // If candidate missing, fall back to baseline
+              if (startCandidates.length === 0) startCandidates.push(baselineEpicStart);
+              if (endCandidates.length === 0) endCandidates.push(baselineEpicEnd);
+              const finalStart =
+                startCandidates.length ?
+                  startCandidates.reduce((a, b) => (a < b ? a : b))
+                : candidateStart;
+              const finalEnd =
+                endCandidates.length ?
+                  endCandidates.reduce((a, b) => (a > b ? a : b))
+                : candidateEnd;
+
+              const epicOv = activeScenario.overrides[u.id] || {
+                start: base.start,
+                end: base.end,
+              };
+              epicOv.start = finalStart;
+              epicOv.end = finalEnd;
+              activeScenario.overrides[u.id] = epicOv;
+              actuallyAppliedQuickIds.push(u.id);
+            } catch (e) {
+              // Fallback behavior: apply candidate directly
+              const fallbackOv = activeScenario.overrides[u.id] || {
+                start: base.start,
+                end: base.end,
+              };
+              fallbackOv.start = u.start;
+              fallbackOv.end = u.end;
+              activeScenario.overrides[u.id] = fallbackOv;
+              actuallyAppliedQuickIds.push(u.id);
             }
           }
+        }
 
-          // If this feature has a parent epic, adjust parent optimistically (earlier start or later end)
-          try {
-            if (base && base.type === 'feature' && base.parentEpic) {
-              const epicId = base.parentEpic;
-              const epicBase = baselineFeatureById.get(epicId);
-              if (epicBase) {
-                const existingEpicOv = activeScenario.overrides[epicId] || {
-                  start: epicBase.start,
-                  end: epicBase.end,
-                };
-                let changed = false;
-                if (u.end && (existingEpicOv.end || epicBase.end) < u.end) {
-                  existingEpicOv.end = u.end;
-                  changed = true;
-                }
-                if (u.start && (existingEpicOv.start || epicBase.start) > u.start) {
-                  existingEpicOv.start = u.start;
-                  changed = true;
-                }
-                if (changed) {
-                  activeScenario.overrides[epicId] = existingEpicOv;
-                  actuallyAppliedQuickIds.push(epicId);
-                }
-              }
+        // If this feature has a parent epic, adjust parent optimistically (earlier start or later end)
+        if (base && base.type === 'feature' && base.parentEpic) {
+          const epicId = base.parentEpic;
+          const epicBase = baselineFeatureById.get(epicId);
+          if (epicBase) {
+            const existingEpicOv = activeScenario.overrides[epicId] || {
+              start: epicBase.start,
+              end: epicBase.end,
+            };
+            let changed = false;
+            if (u.end && (existingEpicOv.end || epicBase.end) < u.end) {
+              existingEpicOv.end = u.end;
+              changed = true;
             }
-          } catch (e) {}
+            if (u.start && (existingEpicOv.start || epicBase.start) > u.start) {
+              existingEpicOv.start = u.start;
+              changed = true;
+            }
+            if (changed) {
+              activeScenario.overrides[epicId] = existingEpicOv;
+              actuallyAppliedQuickIds.push(epicId);
+            }
+          }
         }
       }
-      const dedup = Array.from(new Set(actuallyAppliedQuickIds));
-      try {
-        if (dedup.length) bus.emit(FeatureEvents.UPDATED, { ids: dedup });
-        else bus.emit(FeatureEvents.UPDATED);
-      } catch (e) {
-        bus.emit(FeatureEvents.UPDATED);
-      }
-    } catch (e) {}
+    }
+    const dedup = Array.from(new Set(actuallyAppliedQuickIds));
+    if (dedup.length) bus.emit(FeatureEvents.UPDATED, { ids: dedup });
+    else bus.emit(FeatureEvents.UPDATED);
+
     activeScenario.isChanged = true;
     // Schedule processing
     this._scheduleProcessQueue();
@@ -631,26 +583,14 @@ export class QueuedFeatureService {
         }
       }
       for (const cb of pendingCallbacks) {
-        try {
-          setTimeout(() => {
-            try {
-              cb();
-            } catch (e) {}
-          }, 0);
-        } catch (e) {
-          try {
-            cb();
-          } catch (e) {}
-        }
+        setTimeout(() => {
+          cb();
+        }, 0);
       }
     };
-    if (typeof requestIdleCallback === 'function') {
-      try {
-        requestIdleCallback(process, { timeout: 200 });
-      } catch (e) {
-        setTimeout(process, 50);
-      }
-    } else {
+    try {
+      requestIdleCallback(process, { timeout: 200 });
+    } catch (e) {
       setTimeout(process, 50);
     }
   }

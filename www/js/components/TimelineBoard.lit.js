@@ -31,11 +31,7 @@ class TimelineBoard extends LitElement {
       // initializing timeline and feature board. This guarantees any
       // persisted view (timeline scale) has been applied by State/ViewService
       // so downstream components render with the correct scale.
-      try {
-        if (state && state._initCompleted) await state._initCompleted;
-      } catch (e) {
-        /* ignore */
-      }
+      if (state && state._initCompleted) await state._initCompleted;
 
       await import('./MainGraph.lit.js');
       const mgSection = this.querySelector('#maingraphSection');

@@ -111,3 +111,8 @@ curl -X GET  -s -H "X-Session-Id: $SESSION_ID" http://localhost:8000/api/scenari
 ## Run backend tests (not implemented)
 python -m unittest tests/test_caching_client.py -v
 python -m unittest discover -s tests -p "test_*.py" -v
+
+
+# Test harness
+
+Mock network requests using Mock Service Worker (MSW): https://vitest.dev/guide/mocking/requests.  See `tests/msw/` for the mock.

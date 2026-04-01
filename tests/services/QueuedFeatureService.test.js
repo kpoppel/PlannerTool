@@ -105,22 +105,24 @@ describe('QueuedFeatureService basic behavior', () => {
     expect(activeScenario.overrides['f1']).to.equal(undefined);
   });
 
-  it('updateFeatureDates queues and processes updates', (done) => {
-    activeScenario = { overrides: {} };
-    // schedule an update for f1 (epic child handling)
-    const updates = [
-      { id: 'e1', start: '2025-01-05', end: '2025-01-20', fromEpicMove: true },
-    ];
-    const count = qfs.updateFeatureDates(updates, () => {
-      // capacity callback invoked asynchronously; ensure overrides applied
-      try {
-        expect(activeScenario.overrides['e1']).to.exist;
-        expect(bus.emitted.length).to.be.greaterThan(0);
-        done();
-      } catch (e) {
-        done(e);
-      }
+  it('updateFeatureDates queues and processes updates', () => {
+    return new Promise((resolve, reject) => {
+      activeScenario = { overrides: {} };
+      // schedule an update for f1 (epic child handling)
+      const updates = [
+        { id: 'e1', start: '2025-01-05', end: '2025-01-20', fromEpicMove: true },
+      ];
+      const count = qfs.updateFeatureDates(updates, () => {
+        // capacity callback invoked asynchronously; ensure overrides applied
+        try {
+          expect(activeScenario.overrides['e1']).to.exist;
+          expect(bus.emitted.length).to.be.greaterThan(0);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+      expect(count).to.equal(1);
     });
-    expect(count).to.equal(1);
   });
 });

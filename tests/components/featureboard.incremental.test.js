@@ -82,18 +82,14 @@ describe('FeatureBoard incremental updates', () => {
     card1.style.left = '10px';
     card1.style.width = '100px';
     board.appendChild(card1);
-    try {
-      if (board && board._cardMap) board._cardMap.set('F1', card1);
-    } catch (e) {}
+    if (board && board._cardMap) board._cardMap.set('F1', card1);
 
     const card2 = document.createElement('feature-card-lit');
     card2.feature = features[1];
     card2.style.left = '200px';
     card2.style.width = '120px';
     board.appendChild(card2);
-    try {
-      if (board && board._cardMap) board._cardMap.set('F2', card2);
-    } catch (e) {}
+    if (board && board._cardMap) board._cardMap.set('F2', card2);
 
     // Ensure state will return our source features when updateCardsById queries for them
     state._featureService = {

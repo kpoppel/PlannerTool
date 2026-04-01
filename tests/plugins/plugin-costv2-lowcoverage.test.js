@@ -1,9 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
 import { state } from '../../www/js/services/State.js';
-import {
-  renderTaskView,
-} from '../../www/js/plugins/PluginCostV2TaskView.js';
+import { renderTaskView } from '../../www/js/plugins/PluginCostV2TaskView.js';
 import { renderTeamView } from '../../www/js/plugins/PluginCostV2TeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostV2TeamMembersView.js';
 
@@ -73,7 +71,10 @@ describe('PluginCostV2 low-coverage branches', () => {
                 capacity: [{ team: 'team-1', capacity: 1 }],
                 metrics: {
                   teams: {
-                    'team-1': { cost: { internal: { '2026-01': 200 }, external: {} }, hours: { internal: {}, external: {} } },
+                    'team-1': {
+                      cost: { internal: { '2026-01': 200 }, external: {} },
+                      hours: { internal: {}, external: {} },
+                    },
                   },
                 },
               },
@@ -109,7 +110,14 @@ describe('PluginCostV2 low-coverage branches', () => {
           id: 'team-A',
           name: 'Team A',
           totals: { internal_count: 1, external_count: 0, internal_hours_total: 10 },
-          members: [{ name: 'Alice', site: 'Site A', hourly_rate: { parsedValue: 50 }, hours_per_month: 10 }],
+          members: [
+            {
+              name: 'Alice',
+              site: 'Site A',
+              hourly_rate: { parsedValue: 50 },
+              hours_per_month: 10,
+            },
+          ],
         },
       ],
       expandedTeams: new Set(['team-A']),
@@ -120,7 +128,10 @@ describe('PluginCostV2 low-coverage branches', () => {
     expect(container.innerHTML).to.include('Alice');
 
     // object-with-teams shape
-    const comp3 = { costTeams: { teams: comp2.costTeams }, expandedTeams: new Set(['team-A']) };
+    const comp3 = {
+      costTeams: { teams: comp2.costTeams },
+      expandedTeams: new Set(['team-A']),
+    };
     container = document.createElement('div');
     render(renderTeamMembersView(comp3), container);
     expect(container.innerHTML).to.include('Internal Members');

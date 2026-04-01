@@ -59,9 +59,7 @@ export class OnboardingModal extends LitElement {
   }
 
   _dontShowAgain() {
-    try {
-      localStorage.setItem('az_planner:onboarding_seen', '1');
-    } catch (e) {}
+    localStorage.setItem('az_planner:onboarding_seen', '1');
     const inner = this.renderRoot.querySelector('modal-lit');
     if (inner) inner.close();
     else this.remove();

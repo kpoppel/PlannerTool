@@ -69,6 +69,10 @@ export class ProviderREST {
     this._reacquirePromise = (async () => {
       try {
         await this.acquireSession();
+        // If acquireSession did not set a session id, treat it as failure.
+        if (!this.sessionId) {
+          throw new Error('reacquire_failed');
+        }
         console.log('Session quietly re-acquired');
         return true;
       } catch (err) {
@@ -100,6 +104,7 @@ export class ProviderREST {
       opts.headers = opts.headers || {};
       if (!opts.headers['Accept']) opts.headers['Accept'] = 'application/json';
       const res = await fetch(url, opts);
+      //console.log('[providerREST._fetch, 103] fetched', url, 'status=', res && res.status, 'ok=', res && res.ok, res);
       if (res.status === 401) {
         // Try to parse JSON body for error detail
         let body = null;
@@ -181,7 +186,7 @@ export class ProviderREST {
       if (!res.ok) return [];
       const list = await res.json();
       bus.emit(DataEvents.SCENARIOS_CHANGED, list);
-      console.log('providerREST:listScenarios - Fetched tasks:', list);
+      console.log('providerREST:listScenarios:', list);
       return list;
     } catch (err) {
       return { ok: false, error: String(err) };
@@ -240,7 +245,7 @@ export class ProviderREST {
       const meta = await res.json();
       const list = await this.listScenarios();
       bus.emit(DataEvents.SCENARIOS_CHANGED, list);
-      console.log('providerREST:saveScenario - Fetched tasks:', meta);
+      console.log('providerREST:saveScenario:', meta);
       return meta;
     } catch (err) {
       return { ok: false, error: String(err) };
@@ -263,7 +268,7 @@ export class ProviderREST {
       const meta = await res.json();
       const list = await this.listScenarios();
       bus.emit(DataEvents.SCENARIOS_CHANGED, list);
-      console.log('providerREST:renameScenario - Fetched tasks:', meta);
+      console.log('providerREST:renameScenario:', meta);
       return meta;
     } catch (err) {
       return { ok: false, error: String(err) };
@@ -288,7 +293,7 @@ export class ProviderREST {
         const list = await this.listScenarios();
         bus.emit(DataEvents.SCENARIOS_CHANGED, list);
       }
-      console.log('providerREST:deleteScenario - Fetched tasks:', data);
+      console.log('providerREST:deleteScenario:', data);
       return ok;
     } catch (err) {
       return { ok: false, error: String(err) };
@@ -405,7 +410,7 @@ export class ProviderREST {
       changedFields: [],
       dirty: false,
     }));
-    console.log('providerREST:getFeatures - Fetched tasks:', retval);
+    //console.log('providerREST:getFeatures - Fetched tasks:', retval);
     return retval;
   }
 
@@ -417,7 +422,7 @@ export class ProviderREST {
       let retval = await res.json();
       // TODO: move item selection state to scenario configuration
       retval = retval.map((team) => ({ ...team, selected: true }));
-      console.log('providerREST:getTeams - Fetched teams:', retval);
+      //console.log('providerREST:getTeams - Fetched teams:', retval);
       return retval;
     } catch (err) {
       console.error('providerREST:getTeams error', err);
@@ -707,6 +712,4 @@ export class ProviderREST {
       return false;
     }
   }
-
-  // ...other methods will be added in later steps
 }

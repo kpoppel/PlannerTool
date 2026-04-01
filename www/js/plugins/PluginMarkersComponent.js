@@ -453,47 +453,15 @@ export class PluginMarkersComponent extends LitElement {
     if (!this.markers.length) return;
 
     const board = findInBoard('feature-board');
-    if (!board) return;
-
-    // Prefer LayoutManager-provided board rect when available (avoids DOM reads)
-    let boardRect = {
-      left: 0,
-      top: 0,
-      width: board.clientWidth || 0,
-      height: board.clientHeight || 0,
+    const brClient = board.getBoundingClientRect();
+    const boardRect = {
+      left: brClient.left,
+      top: brClient.top,
+      width: brClient.width,
+      height: brClient.height,
     };
-    try {
-      if (board && board._layout && typeof board._layout.getBoardRect === 'function') {
-        const br = board._layout.getBoardRect();
-        if (br)
-          boardRect = {
-            left: br.left || 0,
-            top: br.top || 0,
-            width: br.width || board.clientWidth || 0,
-            height: br.height || board.clientHeight || 0,
-          };
-      } else {
-        const brClient = board.getBoundingClientRect();
-        boardRect = {
-          left: brClient.left,
-          top: brClient.top,
-          width: brClient.width,
-          height: brClient.height,
-        };
-      }
-    } catch (e) {
-      try {
-        const brClient = board.getBoundingClientRect();
-        boardRect = {
-          left: brClient.left,
-          top: brClient.top,
-          width: brClient.width,
-          height: brClient.height,
-        };
-      } catch (e) {}
-    }
-    const boardOffset = getBoardOffset() || 0;
-    const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+    const boardOffset = getBoardOffset();
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
 
     if (!months?.length) return;
@@ -513,7 +481,7 @@ export class PluginMarkersComponent extends LitElement {
       .map((p) => p.id);
     const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
 
-    let debugCount = 0;
+    const debugCount = 0;
     const filteredMarkers = this.markers.filter((markerEntry) => {
       // When no teams or projects are selected, show nothing (same as feature board behavior)
       const hasProjectSelection = selectedProjects.length > 0;

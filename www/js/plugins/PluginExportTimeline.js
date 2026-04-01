@@ -50,6 +50,7 @@ class PluginExportTimeline {
     if (!this._el) {
       this._el = document.createElement('plugin-export-timeline');
     }
+    // TODO: Crazy stuff. Just mount to the board shadow DOM
     if (this._el && !this._el.parentNode) {
       const appRoot =
         document.querySelector('.app-container') ||
@@ -67,23 +68,11 @@ class PluginExportTimeline {
           try {
             appRoot.appendChild(this._el);
           } catch (err) {
-            try {
-              document.body.appendChild(this._el);
-            } catch (err2) {
-              /* ignore */
-            }
+            document.body.appendChild(this._el);
           }
         }
       } else {
-        try {
-          appRoot.appendChild(this._el);
-        } catch (e) {
-          try {
-            document.body.appendChild(this._el);
-          } catch (err) {
-            /* ignore */
-          }
-        }
+        appRoot.appendChild(this._el);
       }
     }
     if (this._el && typeof this._el.open === 'function') {

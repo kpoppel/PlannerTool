@@ -36,9 +36,7 @@ export class ScenarioDeleteModal extends LitElement {
         delBtn.disabled = true;
         if (cancelBtn) cancelBtn.disabled = true;
         try {
-          try {
-            state.deleteScenario(this.id);
-          } catch (e) {}
+          state.deleteScenario(this.id);
           await dataService.deleteScenario(this.id).catch(() => {});
           this.remove();
         } catch (err) {

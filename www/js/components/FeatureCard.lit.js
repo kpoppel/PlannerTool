@@ -541,9 +541,7 @@ export class FeatureCardLit extends LitElement {
     this._ro.observe(this);
     // Re-render when feature data updates
     this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, () => {
-      try {
-        this.requestUpdate();
-      } catch (e) {}
+      this.requestUpdate();
     });
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
@@ -565,9 +563,7 @@ export class FeatureCardLit extends LitElement {
         }
       }
     };
-    try {
-      bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
-    } catch (e) {}
+    bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
     // Listen for connected-set updates from the board
     this._boundOnConnectedSet = (payload) => {
       const ids = payload && payload.ids ? payload.ids : null;
@@ -589,16 +585,12 @@ export class FeatureCardLit extends LitElement {
     bus.on(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
     // Also clear highlight when details panel hides
     this._boundOnDetailsHide = () => {
-      try {
-        if (this.selected) {
-          this.selected = false;
-          this.requestUpdate();
-        }
-      } catch (e) {}
+      if (this.selected) {
+        this.selected = false;
+        this.requestUpdate();
+      }
     };
-    try {
-      bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
-    } catch (e) {}
+    bus.on(UIEvents.DETAILS_HIDE, this._boundOnDetailsHide);
   }
 
   firstUpdated() {
@@ -623,17 +615,11 @@ export class FeatureCardLit extends LitElement {
   disconnectedCallback() {
     FeatureCardLit._pendingCards.delete(this);
     this._ro?.disconnect();
-    try {
-      this._unsubFeaturesUpdated?.();
-    } catch (e) {}
-    try {
-      this._unsubDragEnd?.();
-    } catch (e) {}
+    this._unsubFeaturesUpdated?.();
+    this._unsubDragEnd?.();
     this.removeEventListener('mousedown', this._onMouseDown);
-    try {
-      if (this._boundOnFeatureSelected)
-        bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
-    } catch (e) {}
+    if (this._boundOnFeatureSelected)
+      bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelected);
     if (this._boundOnConnectedSet)
       bus.off(FeatureEvents.CONNECTED_SET_UPDATED, this._boundOnConnectedSet);
     if (this._boundOnDetailsHide)
@@ -667,19 +653,17 @@ export class FeatureCardLit extends LitElement {
 
   // Transient live-dates used during drag/resize
   setLiveDates(text) {
-    try {
-      const container = this.shadowRoot?.querySelector?.('.feature-dates');
-      if (!container) return;
-      const live = container.querySelector('.dates-live');
-      const def = container.querySelector('.dates-default');
-      if (live) {
-        live.textContent = text ?? '';
-        live.style.display = text ? '' : 'none';
-      }
-      if (def) {
-        def.style.display = text ? 'none' : '';
-      }
-    } catch (e) {}
+    const container = this.shadowRoot?.querySelector?.('.feature-dates');
+    if (!container) return;
+    const live = container.querySelector('.dates-live');
+    const def = container.querySelector('.dates-default');
+    if (live) {
+      live.textContent = text ?? '';
+      live.style.display = text ? '' : 'none';
+    }
+    if (def) {
+      def.style.display = text ? 'none' : '';
+    }
   }
 
   clearLiveDates() {
@@ -742,10 +726,8 @@ export class FeatureCardLit extends LitElement {
 
   _handleClick(e) {
     if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
-    try {
-      const path = (e.composedPath && e.composedPath()) || [];
-      if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
-    } catch (err) {}
+    const path = e.composedPath && e.composedPath();
+    if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
     if (e.detail === 2) return;
 
     const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
@@ -769,13 +751,9 @@ export class FeatureCardLit extends LitElement {
   }
 
   _handleDoubleClick(e) {
-    try {
-      const path = (e.composedPath && e.composedPath()) || [];
-      if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
-    } catch (err) {}
-    try {
-      if (this.feature?.id) state.revertFeature(this.feature.id);
-    } catch (err) {}
+    const path = (e.composedPath && e.composedPath()) || [];
+    if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
+    if (this.feature?.id) state.revertFeature(this.feature.id);
   }
 
   _renderTeamLoadRow() {

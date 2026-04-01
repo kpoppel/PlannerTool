@@ -4,24 +4,9 @@ import { state } from '../services/State.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
+import { findInBoard } from './board-utils.js';
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
-
-function findInBoard(selector) {
-  try {
-    const boardEl = document.querySelector('timeline-board');
-    if (boardEl) {
-      const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-      const found = root && root.querySelector ? root.querySelector(selector) : null;
-      if (found) return found;
-    }
-  } catch (e) {}
-  return (
-    document.querySelector(selector) ||
-    document.getElementById(selector.replace(/^#/, '')) ||
-    null
-  );
-}
 
 const getBoardOffset = () => {
   const board = findInBoard('feature-board');
@@ -76,7 +61,7 @@ export function startDragMove(
     durationDays = Math.round((endDateOrig - startDateOrig) / (1000 * 60 * 60 * 24)) + 1;
   }
 
-  let startX = e.clientX;
+  const startX = e.clientX;
   const origLeft = parseInt(card.style.left, 10);
   const datesEl =
     (card.shadowRoot && card.shadowRoot.querySelector('.feature-dates')) ||
@@ -171,7 +156,7 @@ export function startResize(
 
   // For unplanned features, fix start date at today's date
   const startDate = isUnplanned ? new Date() : parseDate(feature.start);
-  let startX = e.clientX;
+  const startX = e.clientX;
   const origWidth = parseInt(card.style.width, 10);
 
   function endDateFromWidth(width) {
@@ -210,7 +195,7 @@ export function startResize(
       ).getDate();
       const sizePerDay = monthWidth / daysInMonth;
       const startDay = cursor.getDate();
-      let lastDayThisMonth =
+      const lastDayThisMonth =
         (
           eDate.getFullYear() === cursor.getFullYear() &&
           eDate.getMonth() === cursor.getMonth()
@@ -269,7 +254,7 @@ export function startResize(
     window.removeEventListener('mouseup', onUp);
     const finalWidth = parseInt(card.style.width, 10);
     const finalEnd = endDateFromWidth(finalWidth);
-    let adjustedFinalEnd = finalEnd;
+    const adjustedFinalEnd = finalEnd;
     const newStartStr = formatDate(startDate);
     const newEndStr = formatDate(adjustedFinalEnd);
 

@@ -1024,9 +1024,9 @@ export class PluginPlanHealthComponent extends LitElement {
           board.centerFeatureById(issueIdStr);
         } else {
           // Fallback: manually scroll to center the card
-          const timeline = document.getElementById('timelineSection');
+          const timeline = findInBoard('#timelineSection');
           const fb = findInBoard('feature-board');
-          const card = document.querySelector(
+          const card = findInBoard(
             `feature-card-lit[data-feature-id="${issueIdStr}"]`
           );
           if (card && timeline && fb) {

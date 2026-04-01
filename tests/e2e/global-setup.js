@@ -1,23 +1,23 @@
 import { chromium } from 'playwright';
-import fs from 'fs';
+//import fs from 'fs';
 import http from 'http';
 
-function waitForServer(url, timeout = 15000) {
-  const start = Date.now();
-  return new Promise((resolve, reject) => {
-    (function ping() {
-      const req = http
-        .get(url, (res) => {
-          res.resume();
-          resolve();
-        })
-        .on('error', () => {
-          if (Date.now() - start > timeout) return reject(new Error('timeout'));
-          setTimeout(ping, 200);
-        });
-    })();
-  });
-}
+// function waitForServer(url, timeout = 15000) {
+//   const start = Date.now();
+//   return new Promise((resolve, reject) => {
+//     (function ping() {
+//       const req = http
+//         .get(url, (res) => {
+//           res.resume();
+//           resolve();
+//         })
+//         .on('error', () => {
+//           if (Date.now() - start > timeout) return reject(new Error('timeout'));
+//           setTimeout(ping, 200);
+//         });
+//     })();
+//   });
+// }
 
 export default async function globalSetup(config) {
   // Use production server port 8000 by default. Do NOT start a test server here.
@@ -67,12 +67,8 @@ export default async function globalSetup(config) {
     await page.reload({ waitUntil: 'networkidle' });
     // Mark onboarding/tour as seen so modals don't intercept clicks in later sessions
     await page.evaluate(() => {
-      try {
-        localStorage.setItem('az_planner:onboarding_seen', '1');
-      } catch (e) {}
-      try {
-        localStorage.setItem('az_planner:tour_seen', '1');
-      } catch (e) {}
+      localStorage.setItem('az_planner:onboarding_seen', '1');
+      localStorage.setItem('az_planner:tour_seen', '1');
     });
     await context.storageState({ path: 'tests/e2e/storageState.json' });
     console.log('[global-setup] storage state saved to tests/e2e/storageState.json');

@@ -584,61 +584,29 @@ export class PluginHistoryComponent extends LitElement {
     if (!this.visible || !this._svgEl) return;
 
     // If SVG is not in DOM, reinitialize
-    if (!this._svgEl.isConnected) {
-      this.firstUpdated();
-      if (!this._svgEl?.isConnected) return;
-    }
+    // if (!this._svgEl.isConnected) {
+    //   this.firstUpdated();
+    //   if (!this._svgEl?.isConnected) return;
+    // }
 
     // Clear existing visualizations
     this._svgEl.innerHTML = '';
 
     if (!this.historyData?.length) return;
 
+    // Get board dimensions
     const board = findInBoard('feature-board');
-    if (!board) return;
+    const br = board.getBoundingClientRect();
+    const boardRect = {
+      left: br.left,
+      top: br.top,
+      width: br.width,
+      height: br.height,
+    };
+    const boardOffset = getBoardOffset();
 
-    // Prefer LayoutManager-provided client rect (page coords) to avoid DOM reads
-    let boardRect = null;
-    try {
-      if (
-        board &&
-        board._layout &&
-        typeof board._layout.getBoardClientRect === 'function'
-      ) {
-        const brClient = board._layout.getBoardClientRect();
-        if (brClient)
-          boardRect = {
-            left: brClient.left || 0,
-            top: brClient.top || 0,
-            width: brClient.width || board.clientWidth || 0,
-            height: brClient.height || board.clientHeight || 0,
-          };
-      }
-    } catch (e) {
-      boardRect = null;
-    }
-    if (!boardRect) {
-      try {
-        const br = board.getBoundingClientRect();
-        boardRect = {
-          left: br.left,
-          top: br.top,
-          width: br.width,
-          height: br.height,
-        };
-      } catch (e) {
-        boardRect = {
-          left: 0,
-          top: 0,
-          width: board.clientWidth || 0,
-          height: board.clientHeight || 0,
-        };
-      }
-    }
-    const boardOffset = getBoardOffset() || 0;
-    const monthWidth = TIMELINE_CONFIG.monthWidth || 120;
+    const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
-
     if (!months?.length) return;
 
     // Size SVG to viewport
@@ -650,12 +618,13 @@ export class PluginHistoryComponent extends LitElement {
     this._svgEl.style.height = `${boardRect.height}px`;
 
     // Get scroll position for viewport-space calculations
-    const scrollTop = board.scrollTop || 0;
+    const scrollTop = board.scrollTop;
     const viewportHeight = boardRect.height;
 
     // Process each task with history
     this.historyData.forEach((taskData) => {
       this._renderTaskHistory(
+        board,
         taskData,
         months,
         monthWidth,
@@ -667,6 +636,7 @@ export class PluginHistoryComponent extends LitElement {
   }
 
   _renderTaskHistory(
+    board,
     taskData,
     months,
     monthWidth,
@@ -675,45 +645,11 @@ export class PluginHistoryComponent extends LitElement {
     viewportHeight
   ) {
     const taskId = taskData.task_id;
-    const history = taskData.history || [];
+    const history = taskData.history;
 
-    if (!history.length) {
-      console.debug(`[PluginHistory] Task ${taskId} has no history entries`);
-      return;
-    }
-
-    // Find the card element for this task
-    const board = findInBoard('feature-board');
-    if (!board) {
-      console.debug('[PluginHistory] Could not find feature-board element');
-      return;
-    }
-
-    const hostRoot = board.shadowRoot || board;
-
-    // Try different selectors to find the card
-    let cardEl = hostRoot.querySelector(`[data-feature-id="${taskId}"]`);
-    if (!cardEl) {
-      cardEl = hostRoot.querySelector(`[data-id="${taskId}"]`);
-    }
-    if (!cardEl) {
-      cardEl = hostRoot.querySelector(`[data-work-item-id="${taskId}"]`);
-    }
-    if (!cardEl) {
-      cardEl = hostRoot.querySelector(`[data-task-id="${taskId}"]`);
-    }
-    if (!cardEl) {
-      // Try finding by title as fallback
-      const cards = hostRoot.querySelectorAll('feature-card, .card');
-      for (const card of cards) {
-        const titleEl = card.querySelector('.title, .card-title');
-        if (titleEl && titleEl.textContent.includes(taskData.title)) {
-          cardEl = card;
-          break;
-        }
-      }
-    }
-
+    // Find the card
+    const hostRoot = board.shadowRoot;
+    const cardEl = hostRoot.querySelector(`[data-feature-id="${taskId}"]`);
     if (!cardEl) {
       console.debug(
         `[PluginHistory] Could not find card for task ${taskId} (${taskData.title})`
@@ -721,56 +657,11 @@ export class PluginHistoryComponent extends LitElement {
       return;
     }
 
-    console.debug(
-      `[PluginHistory] Rendering ${history.length} history entries for task ${taskId}`
-    );
-
-    // Calculate card position - prefer LayoutManager geometry when available
-    let cardY = 0;
-    let cardHeight = 0;
-    try {
-      if (board && board._layout && typeof board._layout.getGeometry === 'function') {
-        const geom = board._layout.getGeometry(taskId);
-        if (geom) {
-          cardY = geom.top;
-          cardHeight = geom.height || geom.h || 0;
-        }
-      }
-    } catch (e) {
-      /* ignore */
-    }
-
-    if (!cardHeight) {
-      try {
-        // Prefer offsetTop/offsetHeight which are content coordinates relative to the board
-        const host = cardEl;
-        const offTop =
-          typeof host.offsetTop === 'number' ? host.offsetTop
-          : host.getBoundingClientRect ?
-            host.getBoundingClientRect().top - (boardRect.top || 0)
-          : 0;
-        const offH =
-          typeof host.offsetHeight === 'number' ? host.offsetHeight
-          : host.getBoundingClientRect ? host.getBoundingClientRect().height
-          : 0;
-        cardY = offTop;
-        cardHeight = offH;
-        // Update LayoutManager so future renders can use cached geometry
-        try {
-          if (board && board._layout && typeof board._layout.setGeometry === 'function')
-            board._layout.setGeometry(taskId, {
-              left: host.offsetLeft || 0,
-              top: offTop,
-              width: host.offsetWidth || 0,
-              height: offH,
-            });
-        } catch (e) {}
-      } catch (e) {
-        // fallback to defaults
-        cardY = 0;
-        cardHeight = 0;
-      }
-    }
+    // Calculate card position
+    // Prefer offsetTop/offsetHeight which are content coordinates relative to the board
+    const host = cardEl;
+    const cardY = host.offsetTop;
+    const cardHeight = host.offsetHeight;
 
     // Convert to viewport-space coordinates and check if visible
     const cardViewportY = cardY - scrollTop;
@@ -779,6 +670,10 @@ export class PluginHistoryComponent extends LitElement {
     if (cardViewportY + cardHeight < -50 || cardViewportY > viewportHeight + 50) {
       return; // Card is not visible, skip rendering
     }
+
+    console.debug(
+      `[PluginHistory] Rendering ${history.length} history entries for task ${taskId}`
+    );
 
     // Separate history by field type
     const startHistory = history.filter((h) => h.field === 'start');

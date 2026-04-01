@@ -1,5 +1,5 @@
 import { bus } from '../core/EventBus.js';
-import { FeatureEvents, CapacityEvents } from '../core/EventRegistry.js';
+import { FeatureEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
 
 /**
