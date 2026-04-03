@@ -136,7 +136,7 @@ class TaskService(TaskServiceProtocol):
                 include_states = p.get('include_states')
                 
                 # Pass configuration to get_work_items
-                wis = client.get_work_items(path, task_types=task_types, include_states=include_states)  # type: ignore
+                wis = client.get_work_items(path, task_types=task_types, include_states=include_states)
                 logger.debug("Fetched %d work items for project '%s'", len(wis or []), name)
                 for wi in wis or []:
                     parsed_capacity = self._capacity_service.parse(wi.get('description'))

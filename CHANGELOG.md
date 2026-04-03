@@ -14,6 +14,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
+## [v3.2.0] - unreleased
+### Added
+- Admin Projects UI: "Browse from Azure DevOps" panel to select a project, list area paths, and auto-configure a new project_map entry with all live work item types and states.
+- New REST endpoints `GET /api/azure/projects`, `GET /api/azure/area-paths`, `GET /api/azure/work-item-metadata`, and `GET /api/azure/area-path-metadata` (require user session with PAT, no admin privilege needed).
+- `GET /api/azure/area-path-metadata` returns types and states configured for the team that owns the area path, using Azure DevOps backlog configuration API (authoritative board config). Falls back to scanning up to 500 work items via WIQL when no team is mapped to the area path or the backlog config API is unavailable.
+
+### Changed
+- Removed `_safe_type()` normalization from `WorkItemOperations` and `AzureClient`; work item `type` field now reflects the exact Azure DevOps type string (e.g. `"Feature"`, `"User Story"`, `"Bug"`) instead of a lowercased proxy.
+- WIQL query builder no longer capitalizes task type and state strings; values from config are used as-is (Azure WIQL is case-insensitive).
+- `task_types` JSON schema for projects config relaxed from a fixed enum to free strings, supporting any Azure DevOps work item type.
+
+### Fixed
+- Server backend now propagates project-configured `task_types` and `include_states` through the full Azure client stack (`AzureServiceProtocol`, `AzureClient`, `AzureNativeClient`) so any hierarchy of work item types is fetched instead of being silently limited to the built-in default `['epic', 'feature']`.
+- Cache refresh endpoint (`/api/cache/refresh`) now reads per-project `task_types` and `include_states` from the project configuration and passes them to `get_work_items`, aligning cache refreshes with the same type hierarchy used by the standard task-listing path.
+
 ## [v3.1.0] - 2026-04-01
 
 ### Added

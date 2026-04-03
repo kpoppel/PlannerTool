@@ -217,6 +217,12 @@ def ensure_test_sessions(monkeypatch, app):
         monkeypatch.setattr(admin_api_mod, "_get_session_id_or_raise", _fake_get_session_id, raising=False)
     except Exception:
         pass
+    try:
+        import planner_lib.azure.api as azure_api_mod
+
+        monkeypatch.setattr(azure_api_mod, "get_session_id_from_request", _fake_get_session_id, raising=False)
+    except Exception:
+        pass
 
     # Ensure `planner.app` module attribute is available for tests that import it
     try:

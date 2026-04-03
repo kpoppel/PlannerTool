@@ -1,5 +1,6 @@
 import { html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
+import { adminProvider } from '../../services/providerREST.js';
 
 export class AdminProjects extends BaseConfigComponent {
   static properties = {
@@ -8,6 +9,14 @@ export class AdminProjects extends BaseConfigComponent {
     localProjects: { type: Array },
     availableTaskTypes: { type: Array },
     availableStates: { type: Array },
+    // Azure browse state
+    _azureProjects: { type: Array, state: true },
+    _azureAreaPaths: { type: Array, state: true },
+    _selectedAzureProject: { type: String, state: true },
+    _azureBrowseLoading: { type: Boolean, state: true },
+    _azureBrowseError: { type: String, state: true },
+    _azureBrowsePanelOpen: { type: Boolean, state: true },
+    _areaPathFilter: { type: String, state: true },
   };
 
   static styles = [
@@ -203,6 +212,83 @@ export class AdminProjects extends BaseConfigComponent {
         border-radius: 4px;
         font-size: 14px;
       }
+
+      .browse-panel {
+        border: 1px solid #e6e6e6;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+        background: #f9fafb;
+      }
+
+      .browse-panel-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #374151;
+      }
+
+      .browse-panel-body {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .browse-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .browse-select {
+        padding: 6px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        font-size: 13px;
+        min-width: 220px;
+      }
+
+      .area-path-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 220px;
+        overflow-y: auto;
+        border: 1px solid #e6e6e6;
+        border-radius: 4px;
+        padding: 4px;
+        background: #fff;
+      }
+
+      .area-path-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+
+      .area-path-row:hover {
+        background: #f3f4f6;
+      }
+
+      .area-path-name {
+        flex: 1;
+        font-family: monospace;
+        font-size: 12px;
+        color: #374151;
+      }
+
+      .browse-error {
+        color: #dc2626;
+        font-size: 13px;
+        padding: 4px 0;
+      }
     `,
   ];
 
@@ -212,6 +298,13 @@ export class AdminProjects extends BaseConfigComponent {
     this.localProjects = [];
     this.availableTaskTypes = [];
     this.availableStates = [];
+    this._azureProjects = [];
+    this._azureAreaPaths = [];
+    this._selectedAzureProject = '';
+    this._azureBrowseLoading = false;
+    this._azureBrowseError = '';
+    this._azureBrowsePanelOpen = false;
+    this._areaPathFilter = '';
   }
 
   get configType() {
@@ -253,6 +346,127 @@ export class AdminProjects extends BaseConfigComponent {
       this.availableStates = props.display_states.default;
     }
   }
+
+  // --- Azure browse methods ---
+
+  async _onBrowseAzureProjects() {
+    this._azureBrowseLoading = true;
+    this._azureBrowseError = '';
+    this._azureProjects = [];
+    this._azureAreaPaths = [];
+    this._selectedAzureProject = '';
+    const result = await adminProvider.browseAzureProjects();
+    this._azureBrowseLoading = false;
+    if (result.error) {
+      this._azureBrowseError = result.error;
+    } else {
+      this._azureProjects = result.projects || [];
+      this._azureBrowsePanelOpen = true;
+    }
+  }
+
+  async _onAzureProjectSelect(e) {
+    const project = e.target.value;
+    this._selectedAzureProject = project;
+    this._azureAreaPaths = [];
+    this._azureBrowseError = '';
+    if (!project) return;
+    this._areaPathFilter = '';
+    this._azureBrowseLoading = true;
+    const result = await adminProvider.browseAreaPaths(project);
+    this._azureBrowseLoading = false;
+    if (result.error) {
+      this._azureBrowseError = result.error;
+    } else {
+      this._azureAreaPaths = result.area_paths || [];
+    }
+  }
+
+  async _onAddAreaPathToConfig(areaPath) {
+    this._azureBrowseLoading = true;
+    this._azureBrowseError = '';
+    // Query types/states actually present in this specific area path, not all project types.
+    const metadata = await adminProvider.getAreaPathMetadata(this._selectedAzureProject, areaPath);
+    this._azureBrowseLoading = false;
+    if (metadata.error) {
+      this._azureBrowseError = metadata.error;
+      return;
+    }
+    // Derive a friendly name from the last segment of the area path
+    const sep = areaPath.includes('\\') ? '\\' : '/';
+    const segments = areaPath.split(sep);
+    const name = segments[segments.length - 1] || areaPath;
+    const newEntry = {
+      name,
+      type: 'project',
+      area_path: areaPath,
+      task_types: metadata.types || [],
+      include_states: metadata.states || [],
+      display_states: metadata.states || [],
+    };
+    this.localProjects = [...this.localProjects, newEntry];
+    this.editingIndex = this.localProjects.length - 1;
+  }
+
+  renderBrowsePanel() {
+    return html`
+      <div class="browse-panel">
+        <div class="browse-panel-header" @click="${() => { this._azureBrowsePanelOpen = !this._azureBrowsePanelOpen; }}">
+          <span>${this._azureBrowsePanelOpen ? '▼' : '▶'}</span>
+          <span>🔍 Browse from Azure DevOps</span>
+          ${this._azureBrowseLoading ? html`<span class="small" style="margin-left:8px;color:#6b7280">Loading…</span>` : ''}
+        </div>
+        ${this._azureBrowsePanelOpen ? html`
+          <div class="browse-panel-body">
+            ${this._azureBrowseError ? html`<div class="browse-error">${this._azureBrowseError}</div>` : ''}
+            <div class="browse-row">
+              <button class="btn" @click="${this._onBrowseAzureProjects}" ?disabled="${this._azureBrowseLoading}">
+                Load Projects
+              </button>
+              ${this._azureProjects.length > 0 ? html`
+                <select class="browse-select" @change="${this._onAzureProjectSelect}">
+                  <option value="">— Select project —</option>
+                  ${this._azureProjects.map((p) => html`<option value="${p}">${p}</option>`)}
+                </select>
+              ` : ''}
+            </div>
+            ${this._selectedAzureProject && this._azureAreaPaths.length > 0 ? html`
+              <div class="small" style="color:#6b7280">
+                ${this._azureAreaPaths.length} area path${this._azureAreaPaths.length !== 1 ? 's' : ''} found
+                — click <strong>+ Add</strong> to auto-configure a new project entry:
+              </div>
+              <input
+                type="text"
+                class="add-chip-input"
+                style="width:100%;box-sizing:border-box;margin-top:0"
+                placeholder="Filter area paths…"
+                .value="${this._areaPathFilter}"
+                @input="${(e) => { this._areaPathFilter = e.target.value; }}"
+              />
+              <div class="area-path-list">
+                ${this._azureAreaPaths
+                  .filter((ap) => ap.toLowerCase().includes(this._areaPathFilter.toLowerCase()))
+                  .map((ap) => html`
+                    <div class="area-path-row">
+                      <span class="area-path-name">${ap}</span>
+                      <button class="action-btn" ?disabled="${this._azureBrowseLoading}"
+                        @click="${() => this._onAddAreaPathToConfig(ap)}">
+                        + Add
+                      </button>
+                    </div>
+                  `)}
+                ${this._azureAreaPaths.filter((ap) => ap.toLowerCase().includes(this._areaPathFilter.toLowerCase())).length === 0
+                  ? html`<div class="small" style="padding:8px;text-align:center">No matches for "${this._areaPathFilter}"</div>`
+                  : ''}
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  // --- Project CRUD methods ---
 
   addNewProject() {
     const newProject = {
@@ -631,6 +845,7 @@ export class AdminProjects extends BaseConfigComponent {
                   ></textarea>
                 `
               : html`
+                  ${this.renderBrowsePanel()}
                   <div class="table-container">
                     <table>
                       <thead>

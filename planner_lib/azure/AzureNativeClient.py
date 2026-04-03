@@ -22,12 +22,23 @@ class AzureNativeClient(AzureClient):
         self._plans_cache: dict[str, list] = {}
         self._teams_cache: dict[str, list] = {}
 
-    def get_work_items(self, area_path) -> List[dict]:
+    def get_work_items(
+        self,
+        area_path: str,
+        task_types: Optional[List[str]] = None,
+        include_states: Optional[List[str]] = None,
+    ) -> List[dict]:
         """Fetch work items directly from Azure without caching.
-        
-        Delegates to WorkItemOperations for the actual fetch.
+
+        Delegates to WorkItemOperations for the actual fetch, passing any
+        caller-supplied task_types and include_states so the WIQL query is not
+        hard-coded to ['epic', 'feature'].
         """
-        return self._work_item_ops.get_work_items(area_path)
+        return self._work_item_ops.get_work_items(
+            area_path,
+            task_types=task_types,
+            include_states=include_states,
+        )
 
     def invalidate_work_items(self, work_item_ids: List[int]):
         """No-op for AzureNativeClient as it doesn't use caching."""

@@ -260,7 +260,11 @@ def create_app(config: Config) -> FastAPI:
     app.include_router(cost_router, prefix='/api')
     app.include_router(server_router, prefix='/api')
     app.include_router(admin_router, prefix='')
-    
+
+    # Azure browse endpoints (projects, area paths, work item metadata) — always available
+    from planner_lib.azure.api import browse_router as azure_browse_router
+    app.include_router(azure_browse_router)
+
     # Register Azure cache API if memory cache enabled
     if feature_flags.get('enable_memory_cache', False):
         from planner_lib.azure.api import router as azure_cache_router

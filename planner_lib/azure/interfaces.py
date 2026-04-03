@@ -13,7 +13,12 @@ class AzureServiceProtocol(Protocol):
     short-lived connected client that implements the same methods.
     """
 
-    def get_work_items(self, area_path: str) -> List[dict]:
+    def get_work_items(
+        self,
+        area_path: str,
+        task_types: Optional[List[str]] = None,
+        include_states: Optional[List[str]] = None,
+    ) -> List[dict]:
         ...
 
     def get_markers(self, area_path: str) -> List[dict]:

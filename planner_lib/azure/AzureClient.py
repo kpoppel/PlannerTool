@@ -110,10 +110,6 @@ class AzureClient(ABC):
         """Sanitize area path for WIQL queries."""
         return self._work_item_ops._sanitize_area_path(path)
 
-    def _safe_type(self, type: Optional[str]) -> str:
-        """Convert work item type to normalized string."""
-        return self._work_item_ops._safe_type(type)
-
     def _safe_date(self, d):
         """Convert date value to ISO date string."""
         return self._work_item_ops._safe_date(d)
@@ -300,6 +296,13 @@ class AzureClient(ABC):
         """
         return self._work_item_ops.get_work_item_metadata(project)
 
+    def get_area_path_used_metadata(self, project: str, area_path: str) -> dict:
+        """Discover work item types and states actually present in an area path.
+
+        Delegates to WorkItemOperations.  See that method for full documentation.
+        """
+        return self._work_item_ops.get_area_path_used_metadata(project, area_path)
+
     def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None) -> None:
         """Invalidate cached plan-related artifacts for a project.
 
@@ -328,7 +331,12 @@ class AzureClient(ABC):
 
     # Abstract methods: subclass must implement these
     @abstractmethod
-    def get_work_items(self, area_path: str) -> List[dict]:
+    def get_work_items(
+        self,
+        area_path: str,
+        task_types: Optional[List[str]] = None,
+        include_states: Optional[List[str]] = None,
+    ) -> List[dict]:
         raise NotImplementedError()
 
     @abstractmethod

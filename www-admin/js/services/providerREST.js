@@ -383,6 +383,109 @@ export class AdminProviderREST {
     }
   }
 
+  // --- Azure browse helpers (require PAT in session) ---
+
+  async browseAzureProjects() {
+    try {
+      const res = await this._fetch('/api/azure/projects', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { projects: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseAzureProjects', err);
+      return { projects: [], error: String(err) };
+    }
+  }
+
+  async browseAreaPaths(project) {
+    try {
+      const res = await this._fetch(`/api/azure/area-paths?project=${encodeURIComponent(project)}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { area_paths: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseAreaPaths', err);
+      return { area_paths: [], error: String(err) };
+    }
+  }
+
+  async getWorkItemMetadata(project) {
+    try {
+      const res = await this._fetch(`/api/azure/work-item-metadata?project=${encodeURIComponent(project)}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:getWorkItemMetadata', err);
+      return { types: [], states: [], states_by_type: {}, error: String(err) };
+    }
+  }
+
+  // --- Azure browse helpers (require PAT in session) ---
+
+  async browseAzureProjects() {
+    try {
+      const res = await this._fetch('/api/azure/projects', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { projects: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseAzureProjects', err);
+      return { projects: [], error: String(err) };
+    }
+  }
+
+  async browseAreaPaths(project) {
+    try {
+      const res = await this._fetch(`/api/azure/area-paths?project=${encodeURIComponent(project)}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { area_paths: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseAreaPaths', err);
+      return { area_paths: [], error: String(err) };
+    }
+  }
+
+  async getWorkItemMetadata(project) {
+    try {
+      const res = await this._fetch(`/api/azure/work-item-metadata?project=${encodeURIComponent(project)}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:getWorkItemMetadata', err);
+      return { types: [], states: [], states_by_type: {}, error: String(err) };
+    }
+  }
+
+  async getAreaPathMetadata(project, areaPath) {
+    try {
+      const url = `/api/azure/area-path-metadata?project=${encodeURIComponent(project)}&area_path=${encodeURIComponent(areaPath)}`;
+      const res = await this._fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:getAreaPathMetadata', err);
+      return { types: [], states: [], states_by_type: {}, error: String(err) };
+    }
+  }
+
   async cleanupCache() {
     try {
       const res = await this._fetch('/admin/v1/cache/cleanup', {

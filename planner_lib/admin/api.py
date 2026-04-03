@@ -1101,10 +1101,9 @@ async def admin_get_schema(request: Request, config_type: str):
                                 'title': 'Work Item Types',
                                 'description': 'Types of work items to include',
                                 'items': {
-                                    'type': 'string',
-                                    'enum': ['feature', 'epic', 'user story', 'task', 'bug']
+                                    'type': 'string'
                                 },
-                                'default': ['feature', 'epic']
+                                'default': ['Feature', 'Epic']
                             },
                             'include_states': {
                                 'type': 'array',

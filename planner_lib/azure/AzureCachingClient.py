@@ -497,7 +497,7 @@ class AzureCachingClient(AzureClient):
                     try:
                         wi = {
                             "id": str(item.id),
-                            "type": self._safe_type(item.fields.get("System.WorkItemType")),
+                            "type": item.fields.get("System.WorkItemType") or "",
                             "title": item.fields.get("System.Title"),
                             "assignee": assignedTo,
                             "state": item.fields.get("System.State"),
