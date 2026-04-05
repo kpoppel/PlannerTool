@@ -432,6 +432,7 @@ class WorkItemOperations:
             return {wid: None for wid in work_item_ids}
     
     def _get_area_path_used_metadata_wiql(self, project: str, area_path: str) -> dict:
+        # TODO: Should never be used.
         """Fallback: scan work items UNDER the area path to discover types/states.
 
         Used when the team-based backlog configuration approach is unavailable
@@ -450,6 +451,7 @@ class WorkItemOperations:
         ORDER BY [System.Id] ASC
         """
 
+        logger.error(f"Falling back to WIQL scan for area path metadata on '{area_path}' - this is inefficient and should be avoided. Error details logged above.")
         try:
             from azure.devops.v7_1.work_item_tracking.models import Wiql
             wiql_obj = Wiql(query=wiql_query)

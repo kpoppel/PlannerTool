@@ -24,6 +24,20 @@ class ProjectService(ProjectServiceProtocol):
     def list_projects(self) -> List[dict]:
         cfg = self._storage_config.load("config", "projects")
         project_map = cfg["project_map"]
+
+        # Load the server-wide global settings to get the task type hierarchy.
+        # The hierarchy is a global concept and is not stored per-project.
+        # NOTE: Attaching the global hierarchy to each project entry here for convenience, so that callers (e.g. State)
+        # don't have to load global settings separately to get the hierarchy. This is admittedly a bit hacky but it
+        # avoids unnecessary complexity and extra loads in multiple places. The hierarchy is global, so it doesn't matter
+        # that we attach it to each project entry since it will be the same for all of them.
+        global_hierarchy: list = []
+        try:
+            gs = self._storage_config.load("config", "global_settings")
+            global_hierarchy = gs.get("task_type_hierarchy", []) if isinstance(gs, dict) else []
+        except (KeyError, Exception):
+            global_hierarchy = []
+
         if project_map:
             names = [
                 {
@@ -32,6 +46,7 @@ class ProjectService(ProjectServiceProtocol):
                     "type": p.get("type") if isinstance(p.get("type"), str) else "project",
                     "display_states": p.get("display_states", []),
                     "task_types": p.get("task_types", []),
+                    "task_type_hierarchy": global_hierarchy,
                 }
                 for p in project_map
             ]

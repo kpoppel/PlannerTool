@@ -16,6 +16,7 @@ import {
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -1341,7 +1342,16 @@ export class SidebarLit extends LitElement {
         const t = f.type || f.workItemType || f.work_item_type || null;
         if (t) types.add(String(t));
       });
-      this.availableTaskTypes = Array.from(types).sort();
+      // Order by hierarchy level when a hierarchy is configured; fall back to sort.
+      const unordered = Array.from(types);
+      this.availableTaskTypes = state.taskTypeHierarchy && state.taskTypeHierarchy.length
+        ? [...unordered].sort((a, b) => {
+            const la = state.getTypeLevel(a);
+            const lb = state.getTypeLevel(b);
+            if (la !== lb) return la - lb;
+            return a.localeCompare(b);
+          })
+        : unordered.sort();
       // Default selection only on first initialization AND only when types are available.
       // Guard: if connectedCallback fires before data loads (availableTaskTypes=[]), do NOT
       // set _taskTypesInitialized=true yet — allow the next call (after data loads) to init.
@@ -1538,7 +1548,8 @@ export class SidebarLit extends LitElement {
   _renderTaskFilters() {
     // Render dynamic 'Task Filters' box with States and Types
     const states = this.availableFeatureStates || [];
-    const types = this.availableTaskTypes || [];
+    const ordered = state.availableTaskTypesOrdered;
+    const types = (ordered && ordered.length > 0) ? ordered : (this.availableTaskTypes || []);
     return html`${states.length === 0 && types.length === 0 ?
       html`<div class="section-description">
         <span class="small">No filters available</span>
@@ -1598,22 +1609,19 @@ export class SidebarLit extends LitElement {
         <div class="filter-dimension-title">Task Types</div>
         <div class="filter-options">
           ${types.map(
-            (t) => html`
-              <div
-                class="filter-option ${(
-                  // Use ViewService as the authoritative source for active/inactive state
-                  // so the checkbox always matches what the board is actually filtering.
-                  state._viewService ? state._viewService.isTypeVisible(t)
-                  : (this.selectedTaskTypes && this.selectedTaskTypes.has(t))
-                ) ?
-                  'active'
-                : ''}"
-                @click=${() => this._toggleTaskType(t)}
-              >
-                <div class="filter-checkbox"></div>
-                <div style="flex:1;">${t}</div>
-              </div>
-            `
+            (t) => {
+              const isActive = state._viewService ? state._viewService.isTypeVisible(t)
+                : (this.selectedTaskTypes && this.selectedTaskTypes.has(t));
+              return html`
+                <div
+                  class="filter-option ${isActive ? 'active' : ''}"
+                  @click=${() => this._toggleTaskType(t)}
+                >
+                  <div class="filter-checkbox"></div>
+                  <div style="flex:1;display:flex;align-items:center;gap:4px;"><span style="width:16px;height:16px;flex-shrink:0;display:inline-flex;align-items:center;">${getIconTemplate(t)}</span>${t}</div>
+                </div>
+              `;
+            }
           )}
         </div>
       </div>`

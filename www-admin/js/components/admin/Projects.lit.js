@@ -17,6 +17,10 @@ export class AdminProjects extends BaseConfigComponent {
     _azureBrowseError: { type: String, state: true },
     _azureBrowsePanelOpen: { type: Boolean, state: true },
     _areaPathFilter: { type: String, state: true },
+    // Per-edit metadata fetched from the area path
+    _editMetadata: { type: Object, state: true },
+    _editMetadataLoading: { type: Boolean, state: true },
+    _editMetadataError: { type: String, state: true },
   };
 
   static styles = [
@@ -305,6 +309,9 @@ export class AdminProjects extends BaseConfigComponent {
     this._azureBrowseError = '';
     this._azureBrowsePanelOpen = false;
     this._areaPathFilter = '';
+    this._editMetadata = null;
+    this._editMetadataLoading = false;
+    this._editMetadataError = '';
   }
 
   get configType() {
@@ -344,6 +351,35 @@ export class AdminProjects extends BaseConfigComponent {
     // Also check display_states for available states
     if (props.display_states?.default && this.availableStates.length === 0) {
       this.availableStates = props.display_states.default;
+    }
+  }
+
+  // --- Per-edit area path metadata ---
+
+  /**
+   * Fetch work item types and states for the given area path and store in _editMetadata.
+   * The Azure project name is derived from the first segment of the area path.
+   * @param {string} areaPath
+   */
+  async _fetchEditMetadata(areaPath) {
+    if (!areaPath) {
+      this._editMetadata = null;
+      this._editMetadataError = '';
+      return;
+    }
+    // First segment of the area path is the Azure DevOps project name
+    const sep = areaPath.includes('\\') ? '\\' : '/';
+    const azureProject = areaPath.split(sep)[0];
+    if (!azureProject) return;
+
+    this._editMetadataLoading = true;
+    this._editMetadataError = '';
+    const metadata = await adminProvider.getAreaPathMetadata(azureProject, areaPath);
+    this._editMetadataLoading = false;
+    if (metadata.error) {
+      this._editMetadataError = `Could not load metadata: ${metadata.error}`;
+    } else {
+      this._editMetadata = metadata;
     }
   }
 
@@ -406,6 +442,9 @@ export class AdminProjects extends BaseConfigComponent {
     };
     this.localProjects = [...this.localProjects, newEntry];
     this.editingIndex = this.localProjects.length - 1;
+    // Re-use the metadata we just fetched so the edit form's selects are pre-populated
+    this._editMetadata = metadata;
+    this._editMetadataError = '';
   }
 
   renderBrowsePanel() {
@@ -479,16 +518,26 @@ export class AdminProjects extends BaseConfigComponent {
     };
     this.localProjects = [...this.localProjects, newProject];
     this.editingIndex = this.localProjects.length - 1;
+    this._editMetadata = null;
+    this._editMetadataError = '';
   }
 
   editProject(index) {
     this.editingIndex = index;
+    this._editMetadata = null;
+    this._editMetadataError = '';
+    const project = this.localProjects[index];
+    if (project?.area_path) {
+      this._fetchEditMetadata(project.area_path);
+    }
   }
 
   cancelEdit() {
     // Reset local projects from content
     this.localProjects = JSON.parse(JSON.stringify(this.content.project_map || []));
     this.editingIndex = -1;
+    this._editMetadata = null;
+    this._editMetadataError = '';
   }
 
   saveEdit(index) {
@@ -600,6 +649,14 @@ export class AdminProjects extends BaseConfigComponent {
   }
 
   renderEditRow(project, index) {
+    // Use metadata fetched from the area path when available; fall back to schema-derived lists
+    const editTypes = this._editMetadata?.types?.length > 0
+      ? this._editMetadata.types
+      : this.availableTaskTypes;
+    const editStates = this._editMetadata?.states?.length > 0
+      ? this._editMetadata.states
+      : this.availableStates;
+
     return html`
       <tr class="edit-row">
         <td></td>
@@ -633,12 +690,29 @@ export class AdminProjects extends BaseConfigComponent {
               </label>
               <label style="display:flex;flex-direction:column;flex:1">
                 Area Path
-                <input
-                  style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px"
-                  .value="${project.area_path || ''}"
-                  @input="${(e) =>
-                    this.updateProjectField(index, 'area_path', e.target.value)}"
-                />
+                <div style="display:flex;gap:6px;margin-top:4px">
+                  <input
+                    style="flex:1;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:14px"
+                    .value="${project.area_path || ''}"
+                    @input="${(e) => {
+                      this.updateProjectField(index, 'area_path', e.target.value);
+                      // Clear stale metadata when area path is edited manually
+                      this._editMetadata = null;
+                      this._editMetadataError = '';
+                    }}"
+                  />
+                  <button
+                    class="btn"
+                    title="Fetch available work item types and states for this area path"
+                    ?disabled="${this._editMetadataLoading || !project.area_path}"
+                    @click="${() => this._fetchEditMetadata(project.area_path)}"
+                  >${this._editMetadataLoading ? '…' : '⟳ Load'}</button>
+                </div>
+                ${this._editMetadataError ? html`<div class="browse-error" style="font-size:12px">${this._editMetadataError}</div>` : ''}
+                ${this._editMetadata && !this._editMetadataLoading ? html`
+                  <div class="small" style="color:#6b7280;margin-top:2px">
+                    Types available: ${(this._editMetadata.types || []).join(', ') || '—'}
+                  </div>` : ''}
               </label>
             </div>
 
@@ -657,7 +731,7 @@ export class AdminProjects extends BaseConfigComponent {
                     `
                   )}
                 </div>
-                ${this.availableTaskTypes.length > 0 ?
+                ${editTypes.length > 0 ?
                   html`
                     <select
                       class="add-chip-select"
@@ -669,7 +743,7 @@ export class AdminProjects extends BaseConfigComponent {
                       }}"
                     >
                       <option value="">+ Add work item type</option>
-                      ${this.availableTaskTypes
+                      ${editTypes
                         .filter((t) => !(project.task_types || []).includes(t))
                         .map((type) => html` <option value="${type}">${type}</option> `)}
                     </select>
@@ -702,7 +776,7 @@ export class AdminProjects extends BaseConfigComponent {
                     `
                   )}
                 </div>
-                ${this.availableStates.length > 0 ?
+                ${editStates.length > 0 ?
                   html`
                     <select
                       class="add-chip-select"
@@ -714,7 +788,7 @@ export class AdminProjects extends BaseConfigComponent {
                       }}"
                     >
                       <option value="">+ Add state to fetch</option>
-                      ${this.availableStates
+                      ${editStates
                         .filter((s) => !(project.include_states || []).includes(s))
                         .map(
                           (state) => html` <option value="${state}">${state}</option> `
@@ -749,7 +823,7 @@ export class AdminProjects extends BaseConfigComponent {
                     `
                   )}
                 </div>
-                ${this.availableStates.length > 0 ?
+                ${editStates.length > 0 ?
                   html`
                     <select
                       class="add-chip-select"
@@ -761,7 +835,7 @@ export class AdminProjects extends BaseConfigComponent {
                       }}"
                     >
                       <option value="">+ Add display state</option>
-                      ${this.availableStates
+                      ${editStates
                         .filter((s) => !(project.display_states || []).includes(s))
                         .map(
                           (state) => html` <option value="${state}">${state}</option> `

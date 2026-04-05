@@ -1,0 +1,14 @@
+# Server-wide global settings — stored in data/config/global_settings.yml
+# Edit via the admin "Global Settings" tab.
+
+# Task type hierarchy defines the parent→child ordering used in the user
+# client's Sidebar "Task Types" filter, the Plan Menu, and the Team Menu.
+# Each entry is a level; types within the same level are siblings (same depth).
+# The client uses this to indent types in the filter and sort type columns in
+# the plan/team menus from root to leaf (left to right).
+task_type_hierarchy:
+  - types: [Initiative]
+  - types: [Epic]
+  - types: [Feature]
+  - types: [User Story, Bug, Defect]
+  - types: [Sub-Task]

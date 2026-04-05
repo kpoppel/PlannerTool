@@ -125,6 +125,8 @@ class State {
     this._expandedFeatureIdsCache = null;
     // Cache for available task types (computed from baselineFeatures)
     this._availableTaskTypesCache = null;
+    // Cache for the merged task type hierarchy from loaded projects
+    this._taskTypeHierarchyCache = null;
   }
 
   // ========== Backward Compatibility Property Accessors ==========
@@ -414,6 +416,76 @@ class State {
     }
   }
 
+  /**
+   * Merged task type hierarchy from all loaded projects.
+   * Returns the first non-empty hierarchy found across baselineProjects.
+   * Shape: Array<{ types: string[] }>, ordered from root to leaf.
+   */
+  get taskTypeHierarchy() {
+    if (this._taskTypeHierarchyCache !== null) return this._taskTypeHierarchyCache;
+    const projects = this.baselineProjects || [];
+    for (const p of projects) {
+      if (Array.isArray(p.task_type_hierarchy) && p.task_type_hierarchy.length > 0) {
+        this._taskTypeHierarchyCache = p.task_type_hierarchy;
+        return this._taskTypeHierarchyCache;
+      }
+    }
+    this._taskTypeHierarchyCache = [];
+    return this._taskTypeHierarchyCache;
+  }
+
+  /**
+   * Returns the 0-based hierarchy level for a given type name.
+   * Types not found in the hierarchy return 9999 (sorts to end).
+   * @param {string} type
+   * @returns {number}
+   */
+  getTypeLevel(type) {
+    const hierarchy = this.taskTypeHierarchy;
+    const key = String(type || '').toLowerCase();
+    for (let i = 0; i < hierarchy.length; i++) {
+      const types = (hierarchy[i].types || []).map((t) => String(t).toLowerCase());
+      if (types.includes(key)) return i;
+    }
+    return 9999;
+  }
+
+  /**
+   * Returns the canonical display name for a type as configured in the hierarchy
+   * (preserving the capitalisation set by the admin). Falls back to the raw string
+   * when the type is not found in the hierarchy.
+   * @param {string} type
+   * @returns {string}
+   */
+  getTypeDisplayName(type) {
+    const hierarchy = this.taskTypeHierarchy;
+    const key = String(type || '').toLowerCase();
+    for (const level of hierarchy) {
+      const canonical = (level.types || []).find((t) => String(t).toLowerCase() === key);
+      if (canonical !== undefined) return canonical;
+    }
+    return type;
+  }
+
+  /**
+   * Available task types ordered by their position in the task type hierarchy.
+   * Types not present in the hierarchy are appended at the end alphabetically.
+   * Falls back to alphabetical order when no hierarchy is configured.
+   * Display names are normalised to use the capitalisation from the hierarchy.
+   */
+  get availableTaskTypesOrdered() {
+    const all = this.availableTaskTypes || [];
+    if (!this.taskTypeHierarchy.length) return all;
+    return [...all]
+      .sort((a, b) => {
+        const la = this.getTypeLevel(a);
+        const lb = this.getTypeLevel(b);
+        if (la !== lb) return la - lb;
+        return a.localeCompare(b);
+      })
+      .map((t) => this.getTypeDisplayName(t));
+  }
+
   // ========== Autosave Helper ==========
 
   /**
@@ -472,15 +544,12 @@ class State {
     this.baselineProjects = result.baselineProjects;
     this.baselineTeams = result.baselineTeams;
     this.baselineFeatures = result.baselineFeatures;
-    // Populate available task types by delegating to the getter so computation
-    // and caching are centralized. The getter prefers server-provided
-    // configuration when available and falls back to deriving from features.
-    // TODO: FIX THIS so task types are loaded from the server instead of this ugly hack.
-    try {
-      this._availableTaskTypesCache = this.availableTaskTypes || [];
-    } catch (e) {
-      this._availableTaskTypesCache = [];
-    }
+    // Populate available task types. Clear the cache first so the getter always
+    // re-derives from the freshly-loaded features
+    this._availableTaskTypesCache = null;
+    // Invalidate the hierarchy cache so it is recomputed from the newly
+    // loaded project data (which may now include task_type_hierarchy).
+    this._taskTypeHierarchyCache = null;
 
     // Update FeatureService with new childrenByParent if it exists
     if (this._featureService) {

@@ -15,6 +15,13 @@ project_map:
   - resolved
   - stuck
   task_types:
-  - feature
+  - initiative
   - epic
+  - feature
+  - user story
+  - bug
+  - sub-task
+  # NOTE: task_type_hierarchy is a server-wide global setting stored in
+  # data/config/global_settings.yml, NOT per-project.
+  # Edit it via the admin "Global Settings" tab.
 - ...

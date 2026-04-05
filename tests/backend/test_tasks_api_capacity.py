@@ -350,3 +350,98 @@ def test_update_tasks_capacity_format_validation(mock_config, mock_client):
     # Original team IDs should NOT appear
     assert "team-integration-team" not in updated_desc
     assert "team-architecture" not in updated_desc
+
+
+# ---------------------------------------------------------------------------
+# Tests for list_tasks type normalization
+# ---------------------------------------------------------------------------
+
+class _MultiStorage:
+    """Storage stub returning different data per (namespace, key)."""
+    def __init__(self, default_cfg, overrides=None):
+        self._default = default_cfg
+        self._overrides = overrides or {}
+
+    def load(self, namespace, key):
+        return self._overrides.get((namespace, key), self._default)
+
+    def exists(self, namespace, key):
+        return True
+
+
+class _DummyProjectService:
+    def __init__(self, project_map):
+        self._map = project_map
+
+    def get_project_map(self):
+        return self._map
+
+
+def test_list_tasks_normalizes_type_capitalisation(mock_config, mock_client):
+    """Azure may return work item types with inconsistent casing (e.g. 'epic',
+    'feature'). TaskService.list_tasks must normalise them to the canonical
+    capitalisation defined in global_settings.task_type_hierarchy."""
+    global_settings = {
+        'task_type_hierarchy': [
+            {'types': ['Initiative']},
+            {'types': ['Epic']},
+            {'types': ['Feature']},
+            {'types': ['User Story']},
+        ]
+    }
+
+    storage = _MultiStorage(
+        default_cfg=mock_config,
+        overrides={('config', 'global_settings'): global_settings},
+    )
+
+    project_map = [{
+        'id': 'project-test',
+        'name': 'Test Project',
+        'area_path': 'TestOrg\\TestProject',
+        'task_types': ['epic', 'feature', 'initiative', 'user story'],
+        'include_states': [],
+    }]
+
+    # Azure returns types with inconsistent casing
+    mock_client.get_work_items = Mock(return_value=[
+        {'id': '1', 'type': 'epic', 'title': 'E1',
+         'assignee': '', 'state': 'New', 'tags': None, 'description': None,
+         'startDate': '2026-01-01', 'finishDate': '2026-03-31',
+         'areaPath': 'TestOrg\\TestProject', 'iterationPath': 'TestOrg\\2026',
+         'url': 'https://example.com/1', 'relations': []},
+        {'id': '2', 'type': 'feature', 'title': 'F1',
+         'assignee': '', 'state': 'Active', 'tags': None, 'description': None,
+         'startDate': '2026-01-01', 'finishDate': '2026-03-31',
+         'areaPath': 'TestOrg\\TestProject', 'iterationPath': 'TestOrg\\2026',
+         'url': 'https://example.com/2', 'relations': []},
+        {'id': '3', 'type': 'User Story', 'title': 'US1',
+         'assignee': '', 'state': 'Active', 'tags': None, 'description': None,
+         'startDate': '2026-01-01', 'finishDate': '2026-03-31',
+         'areaPath': 'TestOrg\\TestProject', 'iterationPath': 'TestOrg\\2026',
+         'url': 'https://example.com/3', 'relations': []},
+        {'id': '4', 'type': 'Initiative', 'title': 'I1',
+         'assignee': '', 'state': 'New', 'tags': None, 'description': None,
+         'startDate': '2026-01-01', 'finishDate': '2026-12-31',
+         'areaPath': 'TestOrg\\TestProject', 'iterationPath': 'TestOrg\\2026',
+         'url': 'https://example.com/4', 'relations': []},
+    ])
+    mock_client.get_iterations = Mock(return_value=[])
+
+    team_svc = TeamService(storage_config=_DummyStorage(mock_config))
+    capacity_svc = CapacityService(team_svc)
+    service = TaskService(
+        storage_config=storage,
+        project_service=_DummyProjectService(project_map),
+        team_service=team_svc,
+        capacity_service=capacity_svc,
+        azure_client=_DummyAzureManager(mock_client),
+    )
+
+    result = service.list_tasks(pat='dummy-pat')
+    by_id = {item['id']: item['type'] for item in result}
+
+    assert by_id['1'] == 'Epic',        f"'epic' should normalise to 'Epic', got '{by_id['1']}'"
+    assert by_id['2'] == 'Feature',     f"'feature' should normalise to 'Feature', got '{by_id['2']}'"
+    assert by_id['3'] == 'User Story',  f"'User Story' should remain 'User Story', got '{by_id['3']}'"
+    assert by_id['4'] == 'Initiative',  f"'Initiative' should remain 'Initiative', got '{by_id['4']}'"

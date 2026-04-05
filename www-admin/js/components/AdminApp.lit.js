@@ -1,4 +1,5 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import './admin/GlobalSettings.lit.js';
 
 export class AdminApp extends LitElement {
   static properties = {
@@ -85,6 +86,7 @@ export class AdminApp extends LitElement {
     this.sections = [
       'System',
       'Users',
+      'Global Project Settings',
       'Projects',
       'Teams',
       'People',
@@ -131,6 +133,8 @@ export class AdminApp extends LitElement {
         return html`<admin-system></admin-system>`;
       case 'Users':
         return html`<admin-users></admin-users>`;
+      case 'Global Project Settings':
+        return html`<admin-global-settings></admin-global-settings>`;
       case 'Projects':
         return html`<admin-projects></admin-projects>`;
       case 'Teams':

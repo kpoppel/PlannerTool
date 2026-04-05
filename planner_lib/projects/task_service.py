@@ -110,6 +110,19 @@ class TaskService(TaskServiceProtocol):
         cfg = self._storage_config.load('config', 'server_config')
         project_map = self._project_service.get_project_map()
 
+        # Build a case-insensitive type normalizer from the global hierarchy.
+        # Azure DevOps may return type names with any casing (e.g. "epic", "Epic"),
+        # while the admin-configured hierarchy holds the canonical capitalisation.
+        # NOTE: Modifying word cAsE here. Not great doing this random places!
+        type_canonical: dict = {}
+        try:
+            gs = self._storage_config.load('config', 'global_settings')
+            for level in (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else []):
+                for t in (level.get('types') or []):
+                    type_canonical[str(t).lower()] = t
+        except Exception:
+            pass  # Non-fatal; fall back to raw Azure type strings
+
         # PAT is required for all Azure accesses; create a short-lived
         # connected client via the composed `azure_client` connect() context.
         with self._azure_client.connect(pat) as client:
@@ -147,6 +160,9 @@ class TaskService(TaskServiceProtocol):
                             continue
                         filtered_capacity.append({'team': mapped, 'capacity': entry.get('capacity', 0)})
                     entry = dict(wi)
+                    # Normalise the type to the canonical capitalisation from the hierarchy.
+                    raw_type = entry.get('type') or ''
+                    entry['type'] = type_canonical.get(raw_type.lower(), raw_type)
                     entry['project'] = slugify(name, prefix='project-')
                     
                     # Infer start/end dates from iteration if not explicitly set

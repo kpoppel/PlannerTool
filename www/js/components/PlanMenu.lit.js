@@ -253,11 +253,10 @@ export class PlanMenuLit extends LitElement {
   }
 
   render() {
-    const projects = this.projects || [];
+    const projects = this.projects;
     const delivery = projects.filter((p) => (p.type || 'project') === 'project');
     const teamBacklogs = projects.filter((p) => (p.type || 'project') !== 'project');
-    // Derive task types dynamically from available types in state
-    const taskTypes = state.availableTaskTypes || [];
+    const taskTypes = state.availableTaskTypesOrdered;
 
     return html`
       <div class="menu-popover">

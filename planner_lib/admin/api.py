@@ -234,6 +234,45 @@ async def admin_save_projects(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get('/admin/v1/global-settings')
+@require_admin_session
+async def admin_get_global_settings(request: Request):
+    """Return the server-wide global settings (data/config/global_settings.yml)."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        try:
+            data = storage.load('config', 'global_settings')
+            if isinstance(data, (bytes, bytearray)):
+                return {'content': data.decode('utf-8')}
+            return {'content': data}
+        except KeyError:
+            return {'content': {'task_type_hierarchy': []}}
+    except Exception as e:
+        logger.exception('Failed to load global settings: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/admin/v1/global-settings')
+@require_admin_session
+async def admin_save_global_settings(request: Request):
+    """Save server-wide global settings; create a timestamped backup before overwrite."""
+    try:
+        payload = await request.json()
+        content = payload.get('content')
+        if content is None:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+        admin_svc = resolve_service(request, 'admin_service')
+        storage = admin_svc._config_storage
+        _backup_existing(storage, 'global_settings', 'global_settings')
+        storage.save('config', 'global_settings', content)
+        return {'ok': True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to save global settings: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get('/admin/v1/iterations')
 @require_admin_session

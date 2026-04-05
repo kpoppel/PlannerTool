@@ -15,6 +15,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 
 ## [unreleased]
+### Fixed
+- `TaskService.list_tasks`: normalise `type` field in `/api/tasks` response to the canonical capitalisation from `global_settings.task_type_hierarchy` (Azure DevOps may return lowercase names such as `"epic"` / `"feature"` depending on how the project was configured).
+- `State.initState`: re-emit `ProjectEvents.CHANGED` and `FeatureEvents.UPDATED` after `baselineProjects` is assigned to state, so components that read `state.availableTaskTypesOrdered` (e.g. `PlanMenu` and `TeamMenu` header icons and task counts) re-render with the correct task type hierarchy once data is fully loaded.
+- `State._availableTaskTypesCache`: reset cache to `null` before repopulating in `initState()`. An empty array `[]` is truthy, so any early access before features loaded silently poisoned the cache, preventing it from ever being populated with the actual task types; this caused `PlanMenu` and `TeamMenu` count badges to disappear after the counts were made dynamic (depending on `availableTaskTypes`).
+
+---
+
+## [unreleased]
+### Added
+- Task type hierarchy configuration: admin can define parent→child levels (e.g. Initiative→Epic→Feature→Bug→Sub-Task) as a **server-wide global setting** in a new "Global Settings" admin tab; stored in `data/config/global_settings.yml`; hierarchy is served to the client via `/api/projects` and used to order and indent types in the Sidebar Task Types filter, PlanMenu, and TeamMenu columns.
+- Project setup UI now auto-fetches available work item types and states for the selected area path when opening a project entry for editing; type and state select lists are populated with the exact values configured in Azure DevOps for that area path. A "⟳ Load" button allows refreshing after manually changing the area path.
+
+---
+
+## [unreleased]
 ### Added
 - `collectAllDescendants(rootId, features)` helper in `dragManager.js` — builds a parent→children map and does a BFS to collect the full descendant subtree, enabling O(n) recursive hierarchy operations.
 

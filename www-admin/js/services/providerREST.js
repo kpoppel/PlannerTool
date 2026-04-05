@@ -557,6 +557,37 @@ export class AdminProviderREST {
       return { ok: false, error: String(err) };
     }
   }
+
+  async getGlobalSettings() {
+    try {
+      const res = await this._fetch('/admin/v1/global-settings', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.content || { task_type_hierarchy: [] };
+    } catch (err) {
+      console.error('AdminProviderREST:getGlobalSettings', err);
+      return null;
+    }
+  }
+
+  async saveGlobalSettings(content) {
+    try {
+      const res = await this._fetch('/admin/v1/global-settings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:saveGlobalSettings', err);
+      return { ok: false, error: String(err) };
+    }
+  }
 }
 
 // Export a default instance for simple imports

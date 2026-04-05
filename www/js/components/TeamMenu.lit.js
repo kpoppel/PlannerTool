@@ -227,8 +227,8 @@ export class TeamMenuLit extends LitElement {
   }
 
   render() {
-    const teams = this.teams || [];
-    const taskTypes = state.availableTaskTypes || [];
+    const teams = this.teams;
+    const taskTypes = state.availableTaskTypesOrdered;
 
     return html`
       <div class="menu-popover">
