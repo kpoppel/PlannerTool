@@ -70,7 +70,7 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       expect(events.some((e) => e.type === 'data')).to.equal(true);
     });
 
-    it('getFeatures maps parent relation to parentEpic', async () => {
+    it('getFeatures maps parent relation to parentId', async () => {
       const mod = await import('/www/js/services/providerREST.js');
       const provider = new mod.ProviderREST();
       globalThis.fetch = async (url, opts) => {
@@ -83,7 +83,7 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
         return { ok: false };
       };
       const features = await provider.getFeatures();
-      expect(features[0].parentEpic).to.equal('e1');
+      expect(features[0].parentId).to.equal('e1');
     });
 
     it('getTeams and getProjects return arrays with selected true', async () => {

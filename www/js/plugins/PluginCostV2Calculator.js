@@ -37,22 +37,22 @@ export {
 /**
  * Expand a feature dataset to include all descendants via parent/child relations.
  *
- * Given a set of features and a childrenByEpic map, returns a new array
+ * Given a set of features and a childrenByParent map, returns a new array
  * containing the input features plus all their children (recursively).
  * Prevents duplicates by tracking visited IDs.
  *
  * @param {Array<Object>} features - Initial feature set
- * @param {Map<string|number, Array<string|number>>} childrenByEpic - Parent->children mapping
+ * @param {Map<string|number, Array<string|number>>} childrenByParent - Parent->children mapping
  * @param {Array<Object>} allFeatures - Complete feature list to lookup children
  * @returns {Array<Object>} Expanded feature set including all descendants
- * @throws {Error} If childrenByEpic is not a Map or allFeatures is not an array
+ * @throws {Error} If childrenByParent is not a Map or allFeatures is not an array
  */
-export function expandDataset(features, childrenByEpic, allFeatures) {
+export function expandDataset(features, childrenByParent, allFeatures) {
   if (!Array.isArray(features)) {
     throw new Error('expandDataset: features must be an array');
   }
-  if (!(childrenByEpic instanceof Map)) {
-    throw new Error('expandDataset: childrenByEpic must be a Map');
+  if (!(childrenByParent instanceof Map)) {
+    throw new Error('expandDataset: childrenByParent must be a Map');
   }
   if (!Array.isArray(allFeatures)) {
     throw new Error('expandDataset: allFeatures must be an array');
@@ -73,7 +73,7 @@ export function expandDataset(features, childrenByEpic, allFeatures) {
     result.push(feature);
 
     // Add children recursively
-    const children = childrenByEpic.get(Number(fid)) || childrenByEpic.get(fid) || [];
+    const children = childrenByParent.get(Number(fid)) || childrenByParent.get(fid) || [];
     for (const childId of children) {
       addWithChildren(childId);
     }
@@ -95,26 +95,26 @@ export function expandDataset(features, childrenByEpic, allFeatures) {
  * - parentMap: Map of childId -> parentId
  *
  * @param {Array<Object>} features - Feature list
- * @param {Map<string|number, Array<string|number>>} childrenByEpic - Parent->children mapping
+ * @param {Map<string|number, Array<string|number>>} childrenByParent - Parent->children mapping
  * @returns {{roots: Array<string>, childrenMap: Map<string, Array<string>>, parentMap: Map<string, string>}}
- * @throws {Error} If features is not an array or childrenByEpic is not a Map
+ * @throws {Error} If features is not an array or childrenByParent is not a Map
  */
-export function buildTaskTree(features, childrenByEpic) {
+export function buildTaskTree(features, childrenByParent) {
   if (!Array.isArray(features)) {
     throw new Error('buildTaskTree: features must be an array');
   }
-  if (!(childrenByEpic instanceof Map)) {
-    throw new Error('buildTaskTree: childrenByEpic must be a Map');
+  if (!(childrenByParent instanceof Map)) {
+    throw new Error('buildTaskTree: childrenByParent must be a Map');
   }
 
   const childrenMap = new Map();
   const parentMap = new Map();
   const allIds = new Set(features.map((f) => String(f.id)));
 
-  // Build childrenMap and parentMap from childrenByEpic
+  // Build childrenMap and parentMap from childrenByParent
   for (const f of features) {
     const fid = String(f.id);
-    const children = childrenByEpic.get(Number(f.id)) || childrenByEpic.get(fid) || [];
+    const children = childrenByParent.get(Number(f.id)) || childrenByParent.get(fid) || [];
 
     // Filter to only include children that exist in our feature set
     const validChildren = children.filter((cid) => allIds.has(String(cid)));

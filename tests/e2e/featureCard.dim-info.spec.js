@@ -117,7 +117,7 @@ test.describe('Feature Card dim-info e2e', () => {
       // Ensure state._dataInitService exists and expose children map
       if (!window.state) window.state = {};
       if (!window.state._dataInitService) window.state._dataInitService = {};
-      window.state._dataInitService.getChildrenByEpicMap = function () {
+      window.state._dataInitService.getChildrenByParentMap = function () {
         return new Map([['epic-with-child', ['child-1']]]);
       };
 

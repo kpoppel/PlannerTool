@@ -136,7 +136,7 @@ export class TaskFilterService {
     if (!allocationOk) return false;
 
     // Hierarchy filter
-    const hasParent = !!feature.parentEpic;
+    const hasParent = !!feature.parentId;
     const hierarchyOk =
       (hasParent && this._filters.hierarchy.hasParent) ||
       (!hasParent && this._filters.hierarchy.noParent);

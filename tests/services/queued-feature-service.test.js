@@ -11,14 +11,14 @@ describe('QueuedFeatureService epic-child behavior', () => {
       {
         id: 'f1',
         type: 'feature',
-        parentEpic: 'e1',
+        parentId: 'e1',
         start: '2025-09-05',
         end: '2025-09-10',
       },
       {
         id: 'f2',
         type: 'feature',
-        parentEpic: 'e1',
+        parentId: 'e1',
         start: '2025-09-12',
         end: '2025-09-15',
       },
@@ -36,7 +36,7 @@ describe('QueuedFeatureService epic-child behavior', () => {
     const svc = new QueuedFeatureService(baselineStore, {
       getActiveScenario: () => activeScenario,
     });
-    svc.setChildrenByEpic(new Map([['e1', ['f1', 'f2']]]));
+    svc.setChildrenByParent(new Map([['e1', ['f1', 'f2']]]));
 
     // Enable instrumentation
     featureFlags.serviceInstrumentation = true;
@@ -81,7 +81,7 @@ describe('QueuedFeatureService resize behavior', () => {
       {
         id: 'f3',
         type: 'feature',
-        parentEpic: 'e2',
+        parentId: 'e2',
         start: '2025-09-10',
         end: '2025-10-05',
       },
@@ -94,7 +94,7 @@ describe('QueuedFeatureService resize behavior', () => {
     const svc = new QueuedFeatureService(baselineStore, {
       getActiveScenario: () => activeScenario,
     });
-    svc.setChildrenByEpic(new Map([['e2', ['f3']]]));
+    svc.setChildrenByParent(new Map([['e2', ['f3']]]));
 
     // Shrink epic to earlier end that would cut off child
     const updates = [{ id: 'e2', start: '2025-09-01', end: '2025-09-15' }];
@@ -115,7 +115,7 @@ describe('QueuedFeatureService resize behavior', () => {
       {
         id: 'f4',
         type: 'feature',
-        parentEpic: 'e3',
+        parentId: 'e3',
         start: '2025-09-10',
         end: '2025-09-20',
       },
@@ -128,7 +128,7 @@ describe('QueuedFeatureService resize behavior', () => {
     const svc = new QueuedFeatureService(baselineStore, {
       getActiveScenario: () => activeScenario,
     });
-    svc.setChildrenByEpic(new Map([['e3', ['f4']]]));
+    svc.setChildrenByParent(new Map([['e3', ['f4']]]));
 
     // Extend feature beyond epic end
     const updates = [{ id: 'f4', start: '2025-09-10', end: '2025-10-10' }];

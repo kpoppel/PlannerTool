@@ -16,7 +16,7 @@ describe('FeatureService public methods', () => {
         id: 'f1',
         title: 'F1',
         type: 'feature',
-        parentEpic: 'e1',
+        parentId: 'e1',
         start: '2025-01-01',
         end: '2025-01-10',
         capacity: null,
@@ -46,7 +46,7 @@ describe('FeatureService public methods', () => {
     activeScenario = { overrides: {}, isChanged: false };
 
     fs = new FeatureService(baselineStore, () => activeScenario);
-    fs.setChildrenByEpic(new Map([['e1', ['f1']]]));
+    fs.setChildrenByParent(new Map([['e1', ['f1']]]));
 
     // stub bus.emit to capture events
     origBusEmit = bus.emit;

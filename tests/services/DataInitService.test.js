@@ -25,9 +25,9 @@ describe('DataInitService helpers', () => {
 
   it('builds lookup maps and returns children by epic', () => {
     const features = [
-      { id: 'f1', parentEpic: 'e1' },
-      { id: 'f2', parentEpic: 'e1' },
-      { id: 'f3', parentEpic: 'e2' },
+      { id: 'f1', parentId: 'e1' },
+      { id: 'f2', parentId: 'e1' },
+      { id: 'f3', parentId: 'e2' },
       { id: 'f4' },
     ];
 
@@ -37,23 +37,23 @@ describe('DataInitService helpers', () => {
     // baselineFeatureById should map ids
     expect(svc.getBaselineFeatureById('f1')).to.deep.equal({
       id: 'f1',
-      parentEpic: 'e1',
+      parentId: 'e1',
     });
     expect(svc.getBaselineFeatureById('f4')).to.deep.equal({ id: 'f4' });
     expect(svc.getBaselineFeatureById('missing')).to.equal(undefined);
 
-    // childrenByEpic should return correct arrays
-    const e1Children = svc.getChildrenByEpic('e1');
+    // childrenByParent should return correct arrays
+    const e1Children = svc.getChildrenByParent('e1');
     expect(e1Children).to.be.an('array').that.has.members(['f1', 'f2']);
 
-    const e2Children = svc.getChildrenByEpic('e2');
+    const e2Children = svc.getChildrenByParent('e2');
     expect(e2Children).to.deep.equal(['f3']);
 
     // non-existing epic returns empty array
-    expect(svc.getChildrenByEpic('nope')).to.deep.equal([]);
+    expect(svc.getChildrenByParent('nope')).to.deep.equal([]);
 
-    // getChildrenByEpicMap returns the underlying Map
-    const map = svc.getChildrenByEpicMap();
+    // getChildrenByParentMap returns the underlying Map
+    const map = svc.getChildrenByParentMap();
     expect(map).to.be.instanceOf(Map);
     expect(map.get('e1')).to.deep.equal(['f1', 'f2']);
   });

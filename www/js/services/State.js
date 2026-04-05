@@ -135,10 +135,18 @@ class State {
     return this._viewService.timelineScale;
   }
   get showEpics() {
-    return this._viewService.showEpics;
+    // Backward-compat shim: returns true when 'epic' is not in hiddenTypes
+    return !this._viewService.hiddenTypes.has('epic');
   }
   get showFeatures() {
-    return this._viewService.showFeatures;
+    // Backward-compat shim: returns true when 'feature' is not in hiddenTypes
+    return !this._viewService.hiddenTypes.has('feature');
+  }
+  get hiddenTypes() {
+    return this._viewService.hiddenTypes;
+  }
+  isTypeVisible(type) {
+    return this._viewService.isTypeVisible(type);
   }
   get showDependencies() {
     return this._viewService.showDependencies;
@@ -374,8 +382,8 @@ class State {
   get baselineFeatureById() {
     return this._dataInitService.baselineFeatureById;
   }
-  get childrenByEpic() {
-    return this._dataInitService.getChildrenByEpicMap();
+  get childrenByParent() {
+    return this._dataInitService.getChildrenByParentMap();
   }
   get iterations() {
     return this._dataInitService.iterations || [];
@@ -474,9 +482,9 @@ class State {
       this._availableTaskTypesCache = [];
     }
 
-    // Update FeatureService with new childrenByEpic if it exists
+    // Update FeatureService with new childrenByParent if it exists
     if (this._featureService) {
-      this._featureService.setChildrenByEpic(this.childrenByEpic);
+      this._featureService.setChildrenByParent(this.childrenByParent);
     }
 
     // Initialize default scenario
@@ -512,9 +520,9 @@ class State {
     this.baselineTeams = result.baselineTeams;
     this.baselineFeatures = result.baselineFeatures;
 
-    // Update FeatureService with new childrenByEpic if it exists
+    // Update FeatureService with new childrenByParent if it exists
     if (this._featureService) {
-      this._featureService.setChildrenByEpic(this.childrenByEpic);
+      this._featureService.setChildrenByParent(this.childrenByParent);
     }
 
     // Reinitialize default scenario
@@ -586,6 +594,24 @@ class State {
 
   countFeaturesForTeam(teamId) {
     return this._getFeatureService().countFeaturesForTeam(teamId);
+  }
+
+  /**
+   * Return a Map<type, count> of all task types for a given project.
+   * @param {string} projectId
+   * @returns {Map<string, number>}
+   */
+  allCountsForProject(projectId) {
+    return this._getFeatureService().allCountsForProject(projectId);
+  }
+
+  /**
+   * Return a Map<type, count> of all task types for a given team.
+   * @param {string} teamId
+   * @returns {Map<string, number>}
+   */
+  allCountsForTeam(teamId) {
+    return this._getFeatureService().allCountsForTeam(teamId);
   }
 
   // Bulk update the state
@@ -773,11 +799,17 @@ class State {
   }
 
   setShowEpics(val) {
-    this._viewService.setShowEpics(val);
+    // Backward-compat shim
+    this._viewService.setTypeVisibility('epic', !!val);
   }
 
   setShowFeatures(val) {
-    this._viewService.setShowFeatures(val);
+    // Backward-compat shim
+    this._viewService.setTypeVisibility('feature', !!val);
+  }
+
+  setTypeVisibility(type, visible) {
+    this._viewService.setTypeVisibility(type, visible);
   }
 
   setCondensedCards(val) {
@@ -846,7 +878,7 @@ class State {
       }
       // Provide fallback to baselineFeatures if BaselineStore returns empty
       this._featureService._getBaselineFallback = () => this.baselineFeatures;
-      this._featureService.setChildrenByEpic(this.childrenByEpic);
+      this._featureService.setChildrenByParent(this.childrenByParent);
       this._featureService.setProjectTeamService(this._projectTeamService);
     }
     return this._featureService;
@@ -1022,9 +1054,9 @@ class State {
       return;
     }
 
-    // Ensure childrenByEpic map is set in calculator
-    this._capacityCalculator.setChildrenByEpic(
-      this._dataInitService.getChildrenByEpicMap()
+    // Ensure childrenByParent map is set in calculator
+    this._capacityCalculator.setChildrenByParent(
+      this._dataInitService.getChildrenByParentMap()
     );
 
     const filters = {

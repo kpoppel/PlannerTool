@@ -28,7 +28,7 @@ describe('FeatureBoard helper coverage', () => {
     const child = {
       id: 'f1',
       type: 'feature',
-      parentEpic: 'e1',
+      parentId: 'e1',
       originalRank: 2,
     };
     const standalone = { id: 'f2', type: 'feature', originalRank: 3 };
@@ -48,7 +48,7 @@ describe('FeatureBoard helper coverage', () => {
   it('_isHierarchicallyLinkedToSelectedProjectEpics follows parent chain', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
     const epic = { id: 'e1', type: 'epic' };
-    const child = { id: 'c1', parentEpic: 'e1' };
+    const child = { id: 'c1', parentId: 'e1' };
     const all = [epic, child];
     const selected = new Set(['e1']);
     const res = el._isHierarchicallyLinkedToSelectedProjectEpics(child, all, selected);
@@ -61,8 +61,8 @@ describe('FeatureBoard helper coverage', () => {
     state._projectTeamService.getProjects = () => [{ id: 'p1', selected: true }];
     state._projectTeamService.getTeams = () => [{ id: 't1', selected: true }];
     // Ensure view service flags
-    state._viewService.setShowEpics(true);
-    state._viewService.setShowFeatures(true);
+    state._viewService.setTypeVisibility('epic', true);
+    state._viewService.setTypeVisibility('feature', true);
     state._viewService.setShowUnallocatedCards(true);
     state._viewService.setShowUnplannedWork(true);
     state._viewService.setShowOnlyProjectHierarchy(false);

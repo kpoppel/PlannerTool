@@ -298,8 +298,6 @@ export class PluginGraph extends LitElement {
     const effective = state.getEffectiveFeatures();
     const teams = state.teams || [];
     const allProjects = state.projects || [];
-    const showEpics = !!state._viewService.showEpics;
-    const showFeatures = !!state._viewService.showFeatures;
     const selectedTeams = teams.filter((t) => t.selected).map((t) => t.id);
     const selectedProjects = allProjects.filter((p) => p.selected).map((p) => p.id);
     const selectedStates =
@@ -383,9 +381,9 @@ export class PluginGraph extends LitElement {
 
     const featuresByEpic = new Map();
     for (const f of effective) {
-      if (f.type === 'feature' && f.parentEpic) {
-        if (!featuresByEpic.has(f.parentEpic)) featuresByEpic.set(f.parentEpic, []);
-        featuresByEpic.get(f.parentEpic).push(f);
+      if (f.parentId) {
+        if (!featuresByEpic.has(f.parentId)) featuresByEpic.set(f.parentId, []);
+        featuresByEpic.get(f.parentId).push(f);
       }
     }
 
@@ -395,11 +393,11 @@ export class PluginGraph extends LitElement {
     for (const item of effective) {
       const itemState = item.state;
       if (stateSetSelected.size > 0 && !stateSetSelected.has(itemState)) continue;
-      const isEpic = item.type === 'epic';
+      const hasChildren = featuresByEpic.has(item.id);
       if (!projectSetSelected.has(item.project)) continue;
       const itemStart = new Date(item.start).setHours(0, 0, 0, 0);
       const itemEnd = new Date(item.end).setHours(0, 0, 0, 0);
-      if (isEpic) {
+      if (hasChildren) {
         const children = featuresByEpic.get(item.id) || [];
         const childRanges =
           children.length ?

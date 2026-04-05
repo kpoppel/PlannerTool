@@ -11,7 +11,7 @@
  *
  * Events emitted:
  * - TimelineEvents.SCALE_CHANGED: when timeline scale changes
- * - FilterEvents.CHANGED: when showEpics/showFeatures changes
+ * - FilterEvents.CHANGED: when type visibility (hiddenTypes) changes
  * - ViewEvents.CONDENSED: when condensed card mode changes
  * - ViewEvents.DEPENDENCIES: when dependency visibility changes
  * - ViewEvents.CAPACITY_MODE: when capacity view mode changes
@@ -64,8 +64,9 @@ export class ViewService {
     this._timelineScale = 'months';
 
     // Visibility toggles
-    this._showEpics = true;
-    this._showFeatures = true;
+    // _hiddenTypes: Set<string> of lower-cased type names that are hidden.
+    // Empty set means all types are visible (the default).
+    this._hiddenTypes = new Set();
     this._showDependencies = false;
     this._showUnassignedCards = true; // Show features without capacity by default
     this._showUnplannedWork = true; // Show features without dates by default (when feature flag is ON)
@@ -113,53 +114,47 @@ export class ViewService {
     }
   }
 
+  // ========== Task Type Visibility ==========
+
+  /**
+   * Get the set of currently hidden type names (lower-cased).
+   * Empty set = all types visible.
+   * @returns {Set<string>}
+   */
+  get hiddenTypes() {
+    return this._hiddenTypes;
+  }
+
+  /**
+   * Return true if the given task type should be shown.
+   * @param {string} type - Task type name (case-insensitive)
+   * @returns {boolean}
+   */
+  isTypeVisible(type) {
+    return !this._hiddenTypes.has(String(type || '').toLowerCase());
+  }
+
+  /**
+   * Show or hide a specific task type and emit filter/feature events.
+   * @param {string} type - Task type name (case-insensitive)
+   * @param {boolean} visible - true to show, false to hide
+   */
+  setTypeVisibility(type, visible) {
+    const key = String(type || '').toLowerCase();
+    if (visible) {
+      this._hiddenTypes.delete(key);
+    } else {
+      this._hiddenTypes.add(key);
+    }
+    if (!arguments[2]) {
+      this.bus.emit(FilterEvents.CHANGED, {
+        hiddenTypes: Array.from(this._hiddenTypes),
+      });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
   // ========== Visibility Toggles ==========
-
-  /**
-   * Get whether epics are visible
-   * @returns {boolean}
-   */
-  get showEpics() {
-    return this._showEpics;
-  }
-
-  /**
-   * Set epic visibility and emit change events
-   * @param {boolean} val - Whether to show epics
-   */
-  setShowEpics(val) {
-    this._showEpics = !!val;
-    if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        showEpics: this._showEpics,
-        showFeatures: this._showFeatures,
-      });
-      this.bus.emit(FeatureEvents.UPDATED);
-    }
-  }
-
-  /**
-   * Get whether features are visible
-   * @returns {boolean}
-   */
-  get showFeatures() {
-    return this._showFeatures;
-  }
-
-  /**
-   * Set feature visibility and emit change events
-   * @param {boolean} val - Whether to show features
-   */
-  setShowFeatures(val) {
-    this._showFeatures = !!val;
-    if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        showEpics: this._showEpics,
-        showFeatures: this._showFeatures,
-      });
-      this.bus.emit(FeatureEvents.UPDATED);
-    }
-  }
 
   /**
    * Get whether dependencies are visible
@@ -343,8 +338,7 @@ export class ViewService {
       showDependencies: this._showDependencies,
       showUnplannedWork: this._showUnplannedWork,
       timelineScale: this._timelineScale,
-      showEpics: this._showEpics,
-      showFeatures: this._showFeatures,
+      hiddenTypes: Array.from(this._hiddenTypes),
       showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
     };
   }
@@ -373,10 +367,14 @@ export class ViewService {
     if (typeof viewState.showUnplannedWork !== 'undefined')
       this._showUnplannedWork = !!viewState.showUnplannedWork;
     if (viewState.timelineScale) this._timelineScale = viewState.timelineScale;
-    if (typeof viewState.showEpics !== 'undefined')
-      this._showEpics = !!viewState.showEpics;
-    if (typeof viewState.showFeatures !== 'undefined')
-      this._showFeatures = !!viewState.showFeatures;
+    // New format: hiddenTypes is an array of lower-cased type names.
+    if (Array.isArray(viewState.hiddenTypes)) {
+      this._hiddenTypes = new Set(viewState.hiddenTypes);
+    } else {
+      // Backward-compat: translate legacy showEpics/showFeatures booleans
+      if (viewState.showEpics === false) this._hiddenTypes.add('epic');
+      if (viewState.showFeatures === false) this._hiddenTypes.add('feature');
+    }
     if (typeof viewState.showOnlyProjectHierarchy !== 'undefined')
       this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
   }
@@ -393,8 +391,7 @@ export class ViewService {
 
     if (emitAggregated) {
       this.bus.emit(FilterEvents.CHANGED, {
-        showEpics: this._showEpics,
-        showFeatures: this._showFeatures,
+        hiddenTypes: Array.from(this._hiddenTypes),
         showUnassignedCards: this._showUnassignedCards,
         showUnplannedWork: this._showUnplannedWork,
         showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,

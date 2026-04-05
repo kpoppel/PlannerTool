@@ -53,7 +53,7 @@ describe('startResize interactive', () => {
     };
     const child = {
       id: 'c1',
-      parentEpic: 'E',
+      parentId: 'E',
       start: '2025-01-05',
       end: '2025-01-25',
     };

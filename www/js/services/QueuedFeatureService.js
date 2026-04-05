@@ -22,14 +22,14 @@ export class QueuedFeatureService {
     } else {
       this._getActiveScenario = () => null;
     }
-    this._childrenByEpic = new Map();
+    this._childrenByParent = new Map();
     this._updateQueue = [];
     this._processingQueue = false;
     this._pendingCapacityCallbacks = [];
   }
 
-  setChildrenByEpic(childrenMap) {
-    this._childrenByEpic = childrenMap;
+  setChildrenByParent(childrenMap) {
+    this._childrenByParent = childrenMap;
   }
 
   setProjectTeamService(projectTeamService) {
@@ -178,7 +178,7 @@ export class QueuedFeatureService {
         } else {
           // If this is an epic, remember its prior effective start so queued processing
           // can compute deltas against the pre-optimistic value (avoids cumulative shifts).
-          if (base && base.type === 'epic') {
+          if (base && (this._childrenByParent.get(base.id) || []).length > 0) {
             this._priorEpicStart = this._priorEpicStart || new Map();
             const prevEpic = activeScenario.overrides[u.id] || {
               start: base.start,
@@ -200,7 +200,7 @@ export class QueuedFeatureService {
               let minChildStart = null;
               let maxChildEnd = null;
               if (!isNaN(deltaMs) && deltaMs !== 0) {
-                const childIds = this._childrenByEpic.get(base.id) || [];
+                const childIds = this._childrenByParent.get(base.id) || [];
                 for (const cid of childIds) {
                   const chBase = baselineFeatureById.get(cid);
                   if (!chBase) continue;
@@ -247,7 +247,7 @@ export class QueuedFeatureService {
                 }
               } else {
                 // No delta; calculate current child extremes from overrides/baseline
-                const childIds = this._childrenByEpic.get(base.id) || [];
+                const childIds = this._childrenByParent.get(base.id) || [];
                 for (const cid of childIds) {
                   const chBase = baselineFeatureById.get(cid);
                   if (!chBase) continue;
@@ -306,8 +306,8 @@ export class QueuedFeatureService {
         }
 
         // If this feature has a parent epic, adjust parent optimistically (earlier start or later end)
-        if (base && base.type === 'feature' && base.parentEpic) {
-          const epicId = base.parentEpic;
+        if (base && base.parentId) {
+          const epicId = base.parentId;
           const epicBase = baselineFeatureById.get(epicId);
           if (epicBase) {
             const existingEpicOv = activeScenario.overrides[epicId] || {
@@ -372,7 +372,7 @@ export class QueuedFeatureService {
       for (const [id, upd] of lastById.entries()) {
         const base = baselineFeatureById.get(id);
         if (!base) continue;
-        if (base.type === 'epic') epicIds.push(id);
+        if ((this._childrenByParent.get(id) || []).length > 0) epicIds.push(id);
         else featureIds.push(id);
       }
       const processOrder = [...featureIds, ...epicIds];
@@ -384,8 +384,8 @@ export class QueuedFeatureService {
         let start = upd.start;
         let end = upd.end;
 
-        if (base.type === 'epic') {
-          const childIds = this._childrenByEpic.get(base.id) || [];
+        if ((this._childrenByParent.get(base.id) || []).length > 0) {
+          const childIds = this._childrenByParent.get(base.id) || [];
           if (childIds.length) {
             // If epic itself was queued/moved, shift children by the same delta
             const epicQueued = lastById.get(base.id);
@@ -547,8 +547,8 @@ export class QueuedFeatureService {
         newOverrides[id] = { start, end };
         appliedIds.push(id);
 
-        if (base.type === 'feature' && base.parentEpic) {
-          const epicId = base.parentEpic;
+        if (base.parentId) {
+          const epicId = base.parentId;
           const epicBase = baselineFeatureById.get(epicId);
           if (epicBase) {
             const epicOv = activeScenario.overrides[epicId] || {

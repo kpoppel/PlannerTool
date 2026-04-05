@@ -12,8 +12,8 @@ describe('State (unit)', () => {
       availableFeatureStates: JSON.parse(JSON.stringify(S.availableFeatureStates || [])),
       selectedFeatureStateFilter: new Set(Array.from(S.selectedFeatureStateFilter || [])),
       timelineScale: S.timelineScale,
-      showEpics: S.showEpics,
-      showFeatures: S.showFeatures,
+      hiddenEpic: !S.showEpics,
+      hiddenFeature: !S.showFeatures,
       condensedCards: S.condensedCards,
       capacityViewMode: S.capacityViewMode,
       featureSortMode: S.featureSortMode,
@@ -33,8 +33,11 @@ describe('State (unit)', () => {
       Array.from(backup.selectedFeatureStateFilter || [])
     );
     S._viewService._timelineScale = backup.timelineScale;
-    S._viewService._showEpics = backup.showEpics;
-    S._viewService._showFeatures = backup.showFeatures;
+    // Restore hidden types from backed-up boolean flags
+    const restoredHiddenTypes = new Set();
+    if (backup.hiddenEpic) restoredHiddenTypes.add('epic');
+    if (backup.hiddenFeature) restoredHiddenTypes.add('feature');
+    S._viewService._hiddenTypes = restoredHiddenTypes;
     S._viewService._condensedCards = backup.condensedCards;
     S._viewService._capacityViewMode = backup.capacityViewMode;
     S._viewService._featureSortMode = backup.featureSortMode;

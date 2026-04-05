@@ -11,7 +11,7 @@
  */
 
 import { dataService } from './dataService.js';
-import { ViewManagementEvents } from '../core/EventRegistry.js';
+import { ViewManagementEvents, FilterEvents } from '../core/EventRegistry.js';
 import { getDefaultViewOptions } from '../config/viewDefaults.js';
 
 export class ViewManagementService {
@@ -191,17 +191,15 @@ export class ViewManagementService {
         // Reset sidebar-local properties (task types and graph type)
         const sidebarElement = document.querySelector('app-sidebar');
         if (sidebarElement) {
-          // Reset task types to all available types
-          if (
-            sidebarElement.availableTaskTypes &&
-            Array.isArray(sidebarElement.availableTaskTypes)
-          ) {
-            sidebarElement.selectedTaskTypes = new Set(sidebarElement.availableTaskTypes);
-            // Emit event to notify other components
-            this._bus.emit('filter:changed', {
-              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-            });
-          }
+          // Derive selectedTaskTypes from ViewService (authoritative after restoreView)
+          const availableTypes = sidebarElement.availableTaskTypes || [];
+          sidebarElement.selectedTaskTypes = new Set(
+            availableTypes.filter((t) => this._viewService.isTypeVisible(t))
+          );
+          // Emit with the correct Symbol so Sidebar._onSidebarFilterChanged fires
+          this._bus.emit(FilterEvents.CHANGED, {
+            selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
+          });
 
           // Reset graph type to default
           if (typeof sidebarElement._graphType !== 'undefined') {
@@ -271,26 +269,16 @@ export class ViewManagementService {
           // Restore sidebar-local properties (task types and graph type)
           const sidebarElement = document.querySelector('app-sidebar');
           if (sidebarElement) {
-            // Restore task types if saved
-            if (
-              response.viewOptions.selectedTaskTypes &&
-              Array.isArray(response.viewOptions.selectedTaskTypes)
-            ) {
-              const availableTypes = sidebarElement.availableTaskTypes || [];
-              const savedTypes = response.viewOptions.selectedTaskTypes;
-              const validTypes = savedTypes.filter((t) => availableTypes.includes(t));
-
-              if (validTypes.length > 0) {
-                sidebarElement.selectedTaskTypes = new Set(validTypes);
-              } else {
-                // If no valid types, default to all available
-                sidebarElement.selectedTaskTypes = new Set(availableTypes);
-              }
-
-              this._bus.emit('filter:changed', {
-                selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-              });
-            }
+            // Derive selectedTaskTypes from ViewService (authoritative after restoreView)
+            // so the sidebar UI always reflects the actual board filter state.
+            const availableTypes = sidebarElement.availableTaskTypes || [];
+            sidebarElement.selectedTaskTypes = new Set(
+              availableTypes.filter((t) => this._viewService.isTypeVisible(t))
+            );
+            // Use the Symbol key so Sidebar._onSidebarFilterChanged fires for proper sync
+            this._bus.emit(FilterEvents.CHANGED, {
+              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
+            });
 
             // Restore graph type if saved
             if (response.viewOptions.graphType) {

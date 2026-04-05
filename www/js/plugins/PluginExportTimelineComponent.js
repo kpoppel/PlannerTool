@@ -579,8 +579,8 @@ export class PluginExportTimeline extends LitElement {
       view: {
         capacityMode:
           state._viewService ? state._viewService.capacityViewMode : undefined,
-        showEpics: state._viewService ? !!state._viewService.showEpics : undefined,
-        showFeatures: state._viewService ? !!state._viewService.showFeatures : undefined,
+        hiddenTypes:
+          state._viewService ? Array.from(state._viewService.hiddenTypes) : [],
         showDependencies:
           state._viewService ? !!state._viewService.showDependencies : undefined,
       },

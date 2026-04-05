@@ -30,7 +30,8 @@ class ProjectService(ProjectServiceProtocol):
                     "id": slugify(p.get("name"), prefix="project-"),
                     "name": p.get("name"),
                     "type": p.get("type") if isinstance(p.get("type"), str) else "project",
-                    "display_states": p.get("display_states", [])
+                    "display_states": p.get("display_states", []),
+                    "task_types": p.get("task_types", []),
                 }
                 for p in project_map
             ]

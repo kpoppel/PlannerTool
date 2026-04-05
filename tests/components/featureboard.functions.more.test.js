@@ -25,7 +25,7 @@ describe('FeatureBoard helper coverage (additional)', () => {
     const child = {
       id: 'c1',
       type: 'feature',
-      parentEpic: 'e1',
+      parentId: 'e1',
       originalRank: 1,
       start: '2025-01-01',
     };
@@ -54,7 +54,7 @@ describe('FeatureBoard helper coverage (additional)', () => {
     const el = await fixture(html`<feature-board></feature-board>`);
     expect(el._isUnplanned({})).to.be.true;
     const epic = { id: 'e1', type: 'epic' };
-    const child = { id: 'c1', parentEpic: 'e1' };
+    const child = { id: 'c1', parentId: 'e1' };
     const res = el._isHierarchicallyLinkedToSelectedProjectEpics(
       child,
       [epic, child],
@@ -71,8 +71,8 @@ describe('FeatureBoard helper coverage (additional)', () => {
       [{ id: 't1', selected: true }]
     );
     state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setShowEpics(true);
-    state._viewService.setShowFeatures(true);
+    state._viewService.setTypeVisibility('epic', true);
+    state._viewService.setTypeVisibility('feature', true);
     state._viewService.setShowUnplannedWork(true);
     state._viewService.setShowUnallocatedCards(true);
     state._stateFilterService.restoreFilterState({ selectedStates: ['New'] });

@@ -308,14 +308,14 @@ export class PluginPlanHealthComponent extends LitElement {
    * Check for parent features where children have dates exceeding parent's date range
    * Skips ghosted (unplanned) cards and only checks visible features
    */
-  _checkParentChildDateMismatches(features, childrenByEpic, visibleIds) {
+  _checkParentChildDateMismatches(features, childrenByParent, visibleIds) {
     const issues = [];
 
     // Create a feature lookup map for quick access
     const featureMap = new Map(features.map((f) => [String(f.id), f]));
 
     // Iterate through all features that have children
-    for (const [parentId, childIds] of childrenByEpic.entries()) {
+    for (const [parentId, childIds] of childrenByParent.entries()) {
       if (!childIds || childIds.length === 0) continue;
 
       const parentIdStr = String(parentId);
@@ -380,14 +380,14 @@ export class PluginPlanHealthComponent extends LitElement {
    * Check for unplanned (ghosted) children where the parent is planned
    * Only checks visible features
    */
-  _checkGhostedChildrenWithPlannedParent(features, childrenByEpic, visibleIds) {
+  _checkGhostedChildrenWithPlannedParent(features, childrenByParent, visibleIds) {
     const issues = [];
 
     // Create a feature lookup map for quick access
     const featureMap = new Map(features.map((f) => [String(f.id), f]));
 
     // Iterate through all features that have children
-    for (const [parentId, childIds] of childrenByEpic.entries()) {
+    for (const [parentId, childIds] of childrenByParent.entries()) {
       if (!childIds || childIds.length === 0) continue;
 
       const parentIdStr = String(parentId);
@@ -433,14 +433,14 @@ export class PluginPlanHealthComponent extends LitElement {
    * Check for parent-child team allocation mismatches
    * Verifies that parent teams match child teams (not checking percentages)
    */
-  _checkParentChildTeamMismatches(features, childrenByEpic, visibleIds) {
+  _checkParentChildTeamMismatches(features, childrenByParent, visibleIds) {
     const issues = [];
 
     // Create a feature lookup map for quick access
     const featureMap = new Map(features.map((f) => [String(f.id), f]));
 
     // Iterate through all features that have children
-    for (const [parentId, childIds] of childrenByEpic.entries()) {
+    for (const [parentId, childIds] of childrenByParent.entries()) {
       if (!childIds || childIds.length === 0) continue;
 
       const parentIdStr = String(parentId);
@@ -552,7 +552,7 @@ export class PluginPlanHealthComponent extends LitElement {
    * - Epics that belong to a team plan but have no parent epic which is in a project plan
    * - Features (non-epics) that belong to a team plan but have no parent epic
    */
-  _checkOrphans(features, childrenByEpic, visibleIds) {
+  _checkOrphans(features, childrenByParent, visibleIds) {
     const issues = [];
 
     try {
@@ -576,72 +576,49 @@ export class PluginPlanHealthComponent extends LitElement {
         const projectIdStr = feature.project ? String(feature.project) : null;
         if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue; // only check features in team plans
 
-        // Epics: must have a parent epic that is in a project plan
-        if (feature.type === 'epic') {
-          const parentId = feature.parentEpic || null;
-          if (!parentId) {
-            issues.push({
-              featureId: feature.id,
-              type: 'Orphan',
-              title: 'Orphaned Epic',
-              description:
-                'Epic belongs to a team plan but has no parent epic in a project plan',
-              severity: 'warning',
-            });
-            continue;
-          }
+        // Any item in a team plan must have a parent; if that parent exists it should
+        // be in a project-type plan so it can appear on the master project board.
+        const typeLabel =
+          feature.type ?
+            feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
+          : 'Item';
+        const parentId = feature.parentId || null;
+        if (!parentId) {
+          issues.push({
+            featureId: feature.id,
+            type: 'Orphan',
+            title: `Orphaned ${typeLabel}`,
+            description: `${typeLabel} belongs to a team plan but has no parent`,
+            severity: 'warning',
+          });
+          continue;
+        }
 
-          const parent = featureMap.get(String(parentId));
-          if (!parent) {
-            issues.push({
-              featureId: feature.id,
-              type: 'Orphan',
-              title: 'Orphaned Epic',
-              description: 'Epic has a parent id but the parent cannot be found',
-              severity: 'warning',
-            });
-            continue;
-          }
+        const parent = featureMap.get(String(parentId));
+        if (!parent) {
+          issues.push({
+            featureId: feature.id,
+            type: 'Orphan',
+            title: `Orphaned ${typeLabel}`,
+            description: `${typeLabel} has a parent id but the parent cannot be found`,
+            severity: 'warning',
+          });
+          continue;
+        }
 
-          const parentProject = parent.project ? String(parent.project) : null;
-          const parentPlan = parentProject ? projectMap.get(parentProject) : null;
-          const parentPlanType =
-            parentPlan && parentPlan.type ? String(parentPlan.type) : 'project';
+        const parentProject = parent.project ? String(parent.project) : null;
+        const parentPlan = parentProject ? projectMap.get(parentProject) : null;
+        const parentPlanType =
+          parentPlan && parentPlan.type ? String(parentPlan.type) : 'project';
 
-          if (parentPlanType !== 'project') {
-            issues.push({
-              featureId: feature.id,
-              type: 'Orphan',
-              title: 'Orphaned Epic',
-              description:
-                'Epic parent is not a project plan (expected a project parent)',
-              severity: 'warning',
-            });
-          }
-        } else {
-          // Non-epic features: should have a parent epic
-          const parentId = feature.parentEpic || null;
-          if (!parentId) {
-            issues.push({
-              featureId: feature.id,
-              type: 'Orphan',
-              title: 'Orphaned Feature',
-              description: 'Feature belongs to a team plan but has no parent epic',
-              severity: 'warning',
-            });
-            continue;
-          }
-
-          const parent = featureMap.get(String(parentId));
-          if (!parent) {
-            issues.push({
-              featureId: feature.id,
-              type: 'Orphan',
-              title: 'Orphaned Feature',
-              description: 'Feature parent epic cannot be found',
-              severity: 'warning',
-            });
-          }
+        if (parentPlanType !== 'project') {
+          issues.push({
+            featureId: feature.id,
+            type: 'Orphan',
+            title: `Orphaned ${typeLabel}`,
+            description: `${typeLabel} parent is not a project plan (expected a project parent)`,
+            severity: 'warning',
+          });
         }
       }
     } catch (e) {
@@ -739,7 +716,7 @@ export class PluginPlanHealthComponent extends LitElement {
    * 3. Tasks planned in the future that are "Active" or "Resolved"
    * Note: Skips ghosted (unplanned) cards
    */
-  _checkStateConsistency(features, childrenByEpic, visibleIds) {
+  _checkStateConsistency(features, childrenByParent, visibleIds) {
     const issues = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
@@ -821,7 +798,7 @@ export class PluginPlanHealthComponent extends LitElement {
     }
 
     // Check 2: Parent/child state mismatches
-    for (const [parentId, childIds] of childrenByEpic.entries()) {
+    for (const [parentId, childIds] of childrenByParent.entries()) {
       if (!childIds || childIds.length === 0) continue;
 
       const parentIdStr = String(parentId);
@@ -907,14 +884,14 @@ export class PluginPlanHealthComponent extends LitElement {
       // Filter to only visible features but keep full feature data with all properties
       const visibleFeatures = allFeatures.filter((f) => visibleIds.has(String(f.id)));
 
-      const childrenByEpic = state.childrenByEpic || new Map();
+      const childrenByParent = state.childrenByParent || new Map();
 
       const checkResults = [];
 
       // Run parent-child date check (only for visible features)
       const dateIssues = this._checkParentChildDateMismatches(
         visibleFeatures,
-        childrenByEpic,
+        childrenByParent,
         visibleIds
       );
       checkResults.push({
@@ -927,7 +904,7 @@ export class PluginPlanHealthComponent extends LitElement {
       // Run ghosted children check (only for visible features)
       const ghostedIssues = this._checkGhostedChildrenWithPlannedParent(
         visibleFeatures,
-        childrenByEpic,
+        childrenByParent,
         visibleIds
       );
       checkResults.push({
@@ -940,7 +917,7 @@ export class PluginPlanHealthComponent extends LitElement {
       // Run team allocation mismatch check (only for visible features)
       const teamIssues = this._checkParentChildTeamMismatches(
         visibleFeatures,
-        childrenByEpic,
+        childrenByParent,
         visibleIds
       );
       checkResults.push({
@@ -953,7 +930,7 @@ export class PluginPlanHealthComponent extends LitElement {
       // Run orphan detection for team-plan features/epics
       const orphanIssues = this._checkOrphans(
         visibleFeatures,
-        childrenByEpic,
+        childrenByParent,
         visibleIds
       );
       checkResults.push({
@@ -979,7 +956,7 @@ export class PluginPlanHealthComponent extends LitElement {
       // Run state consistency check (only for visible features)
       const stateIssues = this._checkStateConsistency(
         visibleFeatures,
-        childrenByEpic,
+        childrenByParent,
         visibleIds
       );
       checkResults.push({

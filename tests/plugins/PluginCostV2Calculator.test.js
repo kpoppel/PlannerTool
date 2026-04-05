@@ -16,10 +16,10 @@ describe('PluginCostV2Calculator', () => {
   describe('expandDataset', () => {
     it('should include initial features', () => {
       const features = [{ id: '1', title: 'Feature 1' }];
-      const childrenByEpic = new Map();
+      const childrenByParent = new Map();
       const allFeatures = features;
 
-      const result = expandDataset(features, childrenByEpic, allFeatures);
+      const result = expandDataset(features, childrenByParent, allFeatures);
 
       expect(result).to.have.length(1);
       expect(result[0].id).to.equal('1');
@@ -27,7 +27,7 @@ describe('PluginCostV2Calculator', () => {
 
     it('should recursively include children', () => {
       const features = [{ id: '1', title: 'Parent' }];
-      const childrenByEpic = new Map([
+      const childrenByParent = new Map([
         [1, ['2']],
         [2, ['3']],
       ]);
@@ -37,7 +37,7 @@ describe('PluginCostV2Calculator', () => {
         { id: '3', title: 'Grandchild' },
       ];
 
-      const result = expandDataset(features, childrenByEpic, allFeatures);
+      const result = expandDataset(features, childrenByParent, allFeatures);
 
       expect(result).to.have.length(3);
       expect(result.map((f) => f.id)).to.include.members(['1', '2', '3']);
@@ -48,10 +48,10 @@ describe('PluginCostV2Calculator', () => {
         { id: '1', title: 'Feature 1' },
         { id: '1', title: 'Feature 1' },
       ];
-      const childrenByEpic = new Map();
+      const childrenByParent = new Map();
       const allFeatures = features;
 
-      const result = expandDataset(features, childrenByEpic, allFeatures);
+      const result = expandDataset(features, childrenByParent, allFeatures);
 
       expect(result).to.have.length(1);
     });
@@ -62,17 +62,17 @@ describe('PluginCostV2Calculator', () => {
       );
     });
 
-    it('should throw if childrenByEpic is not a Map', () => {
-      expect(() => expandDataset([], {}, [])).to.throw('childrenByEpic must be a Map');
+    it('should throw if childrenByParent is not a Map', () => {
+      expect(() => expandDataset([], {}, [])).to.throw('childrenByParent must be a Map');
     });
   });
 
   describe('buildTaskTree', () => {
     it('should identify orphan features', () => {
       const features = [{ id: '1', title: 'Orphan' }];
-      const childrenByEpic = new Map();
+      const childrenByParent = new Map();
 
-      const result = buildTaskTree(features, childrenByEpic);
+      const result = buildTaskTree(features, childrenByParent);
 
       expect(result.roots).to.include('1');
       expect(result.childrenMap.size).to.equal(0);
@@ -84,9 +84,9 @@ describe('PluginCostV2Calculator', () => {
         { id: '1', title: 'Parent' },
         { id: '2', title: 'Child' },
       ];
-      const childrenByEpic = new Map([[1, ['2']]]);
+      const childrenByParent = new Map([[1, ['2']]]);
 
-      const result = buildTaskTree(features, childrenByEpic);
+      const result = buildTaskTree(features, childrenByParent);
 
       expect(result.roots).to.include('1');
       expect(result.roots).to.not.include('2');
@@ -99,9 +99,9 @@ describe('PluginCostV2Calculator', () => {
         { id: '1', title: 'Orphan 1' },
         { id: '2', title: 'Orphan 2' },
       ];
-      const childrenByEpic = new Map();
+      const childrenByParent = new Map();
 
-      const result = buildTaskTree(features, childrenByEpic);
+      const result = buildTaskTree(features, childrenByParent);
 
       expect(result.roots).to.have.length(2);
       expect(result.roots).to.include.members(['1', '2']);

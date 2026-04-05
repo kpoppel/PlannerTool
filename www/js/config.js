@@ -27,7 +27,7 @@ export const featureFlags = {
   // Epic capacity handling/cost calculation modes:
   // false: 'ignoreIfHasChildren' - Ignore epic capacity entirely if the epic has any children
   // true: 'fillGapsIfNoChildCoversDate' - Use epic capacity only on days where no child feature covers the date
-  USE_EPIC_CAPACITY_GAP_FILLS: false,
+  USE_PARENT_CAPACITY_GAP_FILLS: false,
 
   // Unplanned work visualization:
   // false: Add default dates (today-120 to today-90) to features with no dates
@@ -36,7 +36,7 @@ export const featureFlags = {
 
   // When true: keep unplanned children unplanned when their parent epic is moved.
   // When false: moving/planning an epic may assign default dates to unplanned children (legacy behaviour).
-  PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE: true,
+  PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE: true,
 
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };

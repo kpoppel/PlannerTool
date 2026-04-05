@@ -24,7 +24,7 @@ import {
   generateFilename,
 } from './ExportUtils.js';
 import { getAnnotationState, ANNOTATION_COLORS } from '../annotations/index.js';
-import { epicSvgElement, featureSvgElement } from '../../services/IconService.js';
+import { getIconSvgElement } from '../../services/IconService.js';
 
 // ============================================================================
 // Constants
@@ -410,8 +410,7 @@ export class TimelineExportRenderer {
           : visibleX + CARD_BORDER_LEFT_WIDTH + CARD_PADDING; // After project color border
 
         // Determine if we should render a type icon (match FeatureCard.lit layout)
-        const hasTypeIcon =
-          !isLeftClipped && (feature.type === 'epic' || feature.type === 'feature');
+        const hasTypeIcon = !isLeftClipped && !!feature.type;
         const iconReserve = hasTypeIcon ? ICON_SIZE + ICON_GAP : 0;
         const textX = baseTextX + iconReserve;
 
@@ -434,26 +433,15 @@ export class TimelineExportRenderer {
 
         // Render type icon (if applicable) to the left of the title
         if (hasTypeIcon) {
-          const iconX = baseTextX; // place icon at base text start (before textX)
+          const iconX = baseTextX;
           const iconY = cardY + (cardHeight - ICON_SIZE) / 2;
-
-          if (feature.type === 'epic') {
-            const node = epicSvgElement({
-              x: iconX,
-              y: iconY,
-              width: ICON_SIZE,
-              height: ICON_SIZE,
-            });
-            if (node) cardGroup.appendChild(node);
-          } else if (feature.type === 'feature') {
-            const node = featureSvgElement({
-              x: iconX,
-              y: iconY,
-              width: ICON_SIZE,
-              height: ICON_SIZE,
-            });
-            if (node) cardGroup.appendChild(node);
-          }
+          const node = getIconSvgElement(feature.type, {
+            x: iconX,
+            y: iconY,
+            width: ICON_SIZE,
+            height: ICON_SIZE,
+          });
+          if (node) cardGroup.appendChild(node);
         }
       }
 

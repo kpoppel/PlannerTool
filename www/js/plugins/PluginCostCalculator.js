@@ -358,7 +358,7 @@ const buildFeature = (raw, monthKeys, months) => {
  */
 const buildProjects = (projects, months, state) => {
   const monthKeys = months.map(monthKey);
-  const useEpicGapFills = isEnabled('USE_EPIC_CAPACITY_GAP_FILLS');
+  const useEpicGapFills = isEnabled('USE_PARENT_CAPACITY_GAP_FILLS');
 
   const projectsOut = (projects || []).map((p) => {
     const feats = (p.features || []).map((f) => buildFeature(f, monthKeys, months));
@@ -366,18 +366,18 @@ const buildProjects = (projects, months, state) => {
 
     const childrenMap = new Map();
     const featuresList = p.features || [];
-    if (state?.childrenByEpic?.get) {
+    if (state?.childrenByParent?.get) {
       for (const f of featuresList) {
         const raw =
-          state.childrenByEpic.get(Number(f.id)) ||
-          state.childrenByEpic.get(String(f.id)) ||
+          state.childrenByParent.get(Number(f.id)) ||
+          state.childrenByParent.get(String(f.id)) ||
           [];
         if (raw.length) childrenMap.set(String(f.id), raw.map(String));
       }
     } else {
       for (const f of featuresList) {
-        if (f.parentEpic || f.parentEpic === 0) {
-          const key = String(f.parentEpic);
+        if (f.parentId || f.parentId === 0) {
+          const key = String(f.parentId);
           childrenMap.set(key, (childrenMap.get(key) || []).concat(String(f.id)));
         }
       }

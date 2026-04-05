@@ -71,8 +71,8 @@ class FeatureBoard extends LitElement {
     // children map
     const childrenMap = new Map();
     for (const f of features) {
-      if (f.parentEpic) {
-        const p = idKey(f.parentEpic);
+      if (f.parentId) {
+        const p = idKey(f.parentId);
         if (!childrenMap.has(p)) childrenMap.set(p, []);
         childrenMap.get(p).push(f);
       }
@@ -87,8 +87,8 @@ class FeatureBoard extends LitElement {
       const f = byId.get(cur);
       if (!f) continue;
       // parent
-      if (f.parentEpic) {
-        const p = idKey(f.parentEpic);
+      if (f.parentId) {
+        const p = idKey(f.parentId);
         if (!seen.has(p)) {
           seen.add(p);
           q.push(p);
@@ -164,37 +164,56 @@ class FeatureBoard extends LitElement {
     });
   }
 
+  /**
+   * Build a Map<parentId, child[]> from all items that have a parentId.
+   * Covers any hierarchy depth — not limited to feature→epic links.
+   */
   _buildChildrenMap(features) {
     const childrenMap = new Map();
     features.forEach((f) => {
-      if (f.type === 'feature' && f.parentEpic) {
-        if (!childrenMap.has(f.parentEpic)) childrenMap.set(f.parentEpic, []);
-        childrenMap.get(f.parentEpic).push(f);
+      if (f.parentId) {
+        if (!childrenMap.has(f.parentId)) childrenMap.set(f.parentId, []);
+        childrenMap.get(f.parentId).push(f);
       }
     });
     return childrenMap;
   }
 
+  /**
+   * Order features hierarchically for N-level nesting via DFS.
+   * Roots are items with no parentId. Their children (and grandchildren, etc.)
+   * are inserted in sorted order immediately after each parent.
+   */
   _orderFeaturesHierarchically(sourceFeatures, sortMode) {
     const sortFn =
       sortMode === 'rank' ? this._sortByRank.bind(this) : this._sortByDate.bind(this);
-    const epics = sortFn(sourceFeatures.filter((f) => f.type === 'epic'));
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     childrenMap.forEach((children) => sortFn(children));
-    const standalone = sortFn(
-      sourceFeatures.filter((f) => f.type === 'feature' && !f.parentEpic)
+
+    // Roots are items with no parentId present in this dataset
+    const sourceIds = new Set(sourceFeatures.map((f) => f.id));
+    const roots = sortFn(
+      sourceFeatures.filter((f) => !f.parentId || !sourceIds.has(f.parentId))
     );
 
     const ordered = [];
-    for (const epic of epics) {
-      ordered.push(epic);
-      ordered.push(...(childrenMap.get(epic.id) || []));
-    }
-    ordered.push(...standalone);
+    const visited = new Set();
 
-    const included = new Set(ordered.map((f) => f.id));
-    const remaining = sortFn(sourceFeatures.filter((f) => !included.has(f.id)));
-    if (remaining.length) ordered.push(...remaining);
+    const visit = (item) => {
+      if (visited.has(item.id)) return;
+      visited.add(item.id);
+      ordered.push(item);
+      const kids = childrenMap.get(item.id) || [];
+      for (const child of kids) visit(child);
+    };
+
+    for (const root of roots) visit(root);
+
+    // Append any remaining items not reachable from roots (guards against cycles)
+    for (const f of sourceFeatures) {
+      if (!visited.has(f.id)) ordered.push(f);
+    }
+
     return ordered;
   }
 
@@ -212,8 +231,8 @@ class FeatureBoard extends LitElement {
     if (visited.has(feature.id)) return false;
     visited.add(feature.id);
     if (selectedProjectEpicIds.has(feature.id)) return true;
-    if (feature.parentEpic) {
-      const parent = allFeatures.find((f) => f.id === feature.parentEpic);
+    if (feature.parentId) {
+      const parent = allFeatures.find((f) => f.id === feature.parentId);
       if (parent)
         return this._isHierarchicallyLinkedToSelectedProjectEpics(
           parent,
@@ -265,7 +284,7 @@ class FeatureBoard extends LitElement {
       const projectTypePlanIds = new Set(projectTypePlans.map((p) => p.id));
       const projectTypeEpicIds = new Set(
         allFeatures
-          .filter((f) => f.type === 'epic' && projectTypePlanIds.has(f.project))
+          .filter((f) => !f.parentId && projectTypePlanIds.has(f.project))
           .map((f) => f.id)
       );
       if (
@@ -301,8 +320,7 @@ class FeatureBoard extends LitElement {
       return false;
     }
 
-    if (feature.type === 'epic' && !state._viewService.showEpics) return false;
-    if (feature.type === 'feature' && !state._viewService.showFeatures) return false;
+    if (!state._viewService.isTypeVisible(feature.type)) return false;
 
     if (featureFlags.SHOW_UNPLANNED_WORK) {
       if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork)
@@ -314,7 +332,10 @@ class FeatureBoard extends LitElement {
       state.projects.filter((p) => p.selected).map((p) => String(p.id))
     );
 
-    if (feature.type === 'epic') {
+    // A parent item is visible if it has direct or indirect visible children,
+    // or if it itself passes team/project/capacity checks.
+    // Use childrenMap to detect parent items generically (no type string check).
+    if (childrenMap.has(feature.id)) {
       const children = childrenMap.get(feature.id) || [];
       const anyChildVisible = children.some((child) => {
         const childProject = state.projects.find(
@@ -399,9 +420,17 @@ class FeatureBoard extends LitElement {
     this.features = renderList;
     // Explicitly size the host so #board-area (the positioned parent) has the
     // correct dimensions, allowing position:absolute overlays with inset:0 to
-    // cover the full card area.
+    // cover the full card area. Ensure we never shrink below the visible
+    // scroll-container height so the background stripes always fill the screen.
     const totalHeight = renderList.length * laneHeight();
-    this.style.height = totalHeight + 'px';
+    try {
+      const sc = findInBoard('#scroll-container');
+      const minH = sc && sc.clientHeight ? sc.clientHeight : 0;
+      const finalH = Math.max(totalHeight, minH);
+      this.style.height = finalH + 'px';
+    } catch (e) {
+      this.style.height = totalHeight + 'px';
+    }
     this.requestUpdate();
 
     if (renderList.length === 0) {

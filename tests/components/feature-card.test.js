@@ -302,9 +302,9 @@ describe('FeatureCard Consolidated Tests', () => {
       };
       // ensure dataInitService exposes a children map the way the component expects
       if (!state._dataInitService) state._dataInitService = {};
-      if (!state._dataInitService.childrenByEpic)
-        state._dataInitService.childrenByEpic = new Map();
-      state._dataInitService.childrenByEpic.set(parentFeature.id, [{ id: 'CHILD1' }]);
+      if (!state._dataInitService.childrenByParent)
+        state._dataInitService.childrenByParent = new Map();
+      state._dataInitService.childrenByParent.set(parentFeature.id, [{ id: 'CHILD1' }]);
 
       const el = await fixture(
         html`<feature-card-lit
@@ -320,7 +320,7 @@ describe('FeatureCard Consolidated Tests', () => {
       const info = el.shadowRoot.querySelector('.dim-info');
       expect(info).to.exist;
       // cleanup
-      state._dataInitService.childrenByEpic.delete(parentFeature.id);
+      state._dataInitService.childrenByParent.delete(parentFeature.id);
     });
 
     it('when highlightRelationMode is enabled emits request then selected when not connected', async () => {

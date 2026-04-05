@@ -14,8 +14,8 @@ describe('viewOptions', () => {
     state._viewService.setShowDependencies(false);
     state._viewService.setCapacityViewMode('team');
     state._viewService.setFeatureSortMode('rank');
-    state._viewService.setShowEpics(true);
-    state._viewService.setShowFeatures(true);
+    state._viewService.setTypeVisibility('epic', true);
+    state._viewService.setTypeVisibility('feature', true);
     state._stateFilterService.setAvailableStates(['New', 'In Progress', 'Done']);
     state._stateFilterService._selectedStates = ['New', 'In Progress', 'Done'];
     state.getFeatureStateColor = (s) => ({
@@ -35,7 +35,7 @@ describe('viewOptions', () => {
     expect(state._viewService.showDependencies).to.equal(false);
     expect(state._viewService.capacityViewMode).to.equal('team');
     expect(state._viewService.featureSortMode).to.equal('rank');
-    expect(state._viewService.showEpics).to.equal(true);
-    expect(state._viewService.showFeatures).to.equal(true);
+    expect(state._viewService.isTypeVisible('epic')).to.equal(true);
+    expect(state._viewService.isTypeVisible('feature')).to.equal(true);
   });
 });

@@ -124,7 +124,7 @@ describe('CapacityCalculator (unit)', () => {
     const child1 = {
       id: 'f1',
       type: 'feature',
-      parentEpic: 'e1',
+      parentId: 'e1',
       project: 'teamB', // Feature belongs to team, not project
       start: '2025-03-01',
       end: '2025-03-03',
@@ -135,7 +135,7 @@ describe('CapacityCalculator (unit)', () => {
     const child2 = {
       id: 'f2',
       type: 'feature',
-      parentEpic: 'e1',
+      parentId: 'e1',
       project: 'teamB', // Feature belongs to team, not project
       start: '2025-03-03',
       end: '2025-03-05',
@@ -151,9 +151,9 @@ describe('CapacityCalculator (unit)', () => {
     ];
 
     // Set up children map
-    const childrenByEpic = new Map();
-    childrenByEpic.set('e1', ['f1', 'f2']);
-    calc.setChildrenByEpic(childrenByEpic);
+    const childrenByParent = new Map();
+    childrenByParent.set('e1', ['f1', 'f2']);
+    calc.setChildrenByParent(childrenByParent);
 
     const filters = {
       selectedProjects: ['projectA', 'teamB'],
@@ -232,7 +232,7 @@ describe('CapacityCalculator (unit)', () => {
     const orphanChild = {
       id: 'f3',
       type: 'feature',
-      parentEpic: 'e2',
+      parentId: 'e2',
       project: 'teamB',
       start: '2025-04-01',
       end: '2025-04-02',
@@ -254,9 +254,9 @@ describe('CapacityCalculator (unit)', () => {
     const teams = [{ id: 't1' }];
     const projects = [{ id: 'teamB', type: 'team' }];
 
-    const childrenByEpic = new Map();
-    childrenByEpic.set('e2', ['f3']);
-    calc.setChildrenByEpic(childrenByEpic);
+    const childrenByParent = new Map();
+    childrenByParent.set('e2', ['f3']);
+    calc.setChildrenByParent(childrenByParent);
 
     const filters = {
       selectedProjects: ['teamB'],

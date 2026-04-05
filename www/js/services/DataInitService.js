@@ -33,7 +33,7 @@ export class DataInitService {
 
     // Lookup maps
     this.baselineFeatureById = new Map();
-    this.childrenByEpic = new Map();
+    this.childrenByParent = new Map();
   }
 
   /**
@@ -225,14 +225,14 @@ export class DataInitService {
    */
   _buildLookupMaps(features) {
     this.baselineFeatureById = new Map(features.map((f) => [f.id, f]));
-    this.childrenByEpic = new Map();
+    this.childrenByParent = new Map();
 
     for (const f of features) {
-      if (f.parentEpic) {
-        if (!this.childrenByEpic.has(f.parentEpic)) {
-          this.childrenByEpic.set(f.parentEpic, []);
+      if (f.parentId) {
+        if (!this.childrenByParent.has(f.parentId)) {
+          this.childrenByParent.set(f.parentId, []);
         }
-        this.childrenByEpic.get(f.parentEpic).push(f.id);
+        this.childrenByParent.get(f.parentId).push(f.id);
       }
     }
   }
@@ -247,19 +247,19 @@ export class DataInitService {
   }
 
   /**
-   * Get children IDs for an epic
-   * @param {string} epicId - Epic ID
-   * @returns {Array<string>} - Array of child feature IDs
+   * Get children IDs for a given parent item.
+   * @param {string|number} parentId - Parent item ID
+   * @returns {Array<string>} - Array of child item IDs
    */
-  getChildrenByEpic(epicId) {
-    return this.childrenByEpic.get(epicId) || [];
+  getChildrenByParent(parentId) {
+    return this.childrenByParent.get(parentId) || [];
   }
 
   /**
-   * Get the childrenByEpic map
-   * @returns {Map} - Map of epic IDs to child feature IDs
+   * Get the childrenByParent map (parent ID → [child IDs]).
+   * @returns {Map}
    */
-  getChildrenByEpicMap() {
-    return this.childrenByEpic;
+  getChildrenByParentMap() {
+    return this.childrenByParent;
   }
 }

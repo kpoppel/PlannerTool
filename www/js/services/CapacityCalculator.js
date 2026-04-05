@@ -11,9 +11,9 @@ import { isEnabled } from '../config.js';
 const UNFUNDED_PROJECT_ID = '__unfunded__';
 
 export class CapacityCalculator {
-  constructor(eventBus, childrenByEpicMap = null) {
+  constructor(eventBus, childrenByParentMap = null) {
     this.bus = eventBus;
-    this.childrenByEpic = childrenByEpicMap || new Map();
+    this.childrenByParent = childrenByParentMap || new Map();
     // Caches for incremental updates
     this._lastResultCache = null; // { dates, teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily }
     this._lastFeaturesById = new Map(); // featureId -> feature (last seen)
@@ -45,8 +45,8 @@ export class CapacityCalculator {
       }
 
       // Follow parent chain
-      if (current.parentEpic) {
-        current = effectiveById.get(current.parentEpic);
+      if (current.parentId) {
+        current = effectiveById.get(current.parentId);
       } else {
         break;
       }
@@ -57,10 +57,10 @@ export class CapacityCalculator {
 
   /**
    * Set children by epic map (needed for epic capacity mode)
-   * @param {Map} childrenByEpic - Map of epic ID to array of child feature IDs
+   * @param {Map} childrenByParent - Map of epic ID to array of child feature IDs
    */
-  setChildrenByEpic(childrenByEpic) {
-    this.childrenByEpic = childrenByEpic;
+  setChildrenByParent(childrenByParent) {
+    this.childrenByParent = childrenByParent;
   }
 
   /**
@@ -266,9 +266,9 @@ export class CapacityCalculator {
       const fState = f.state;
       if (!selectedStateSet.has(fState)) continue;
 
-      if (f.type === 'epic') {
-        const childIds = this.childrenByEpic.get(f.id) || [];
-        if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS') && childIds.length) continue;
+      if ((this.childrenByParent.get(f.id) || []).length > 0) {
+        const childIds = this.childrenByParent.get(f.id) || [];
+        if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS') && childIds.length) continue;
       }
 
       const startIdx = dateIndex.get(f.start);
@@ -277,8 +277,8 @@ export class CapacityCalculator {
 
       const tls = f.capacity || [];
       for (let di = startIdx; di <= endIdx; di++) {
-        if (f.type === 'epic' && isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
-          const childIds = this.childrenByEpic.get(f.id) || [];
+        if ((this.childrenByParent.get(f.id) || []).length > 0 && isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
+          const childIds = this.childrenByParent.get(f.id) || [];
           if (childIds.length) {
             let childCovers = false;
             for (const cid of childIds) {
@@ -305,10 +305,10 @@ export class CapacityCalculator {
 
           // Determine target project: if feature is a child of an Epic, roll up to Epic's project
           let targetProjectId = f.project;
-          if (f.parentEpic) {
-            const parentEpic = effectiveById.get(f.parentEpic);
-            if (parentEpic && parentEpic.project) {
-              targetProjectId = parentEpic.project;
+          if (f.parentId) {
+            const parentItem = effectiveById.get(f.parentId);
+            if (parentItem && parentItem.project) {
+              targetProjectId = parentItem.project;
             }
           }
 
@@ -379,9 +379,9 @@ export class CapacityCalculator {
         const fState = f.state;
         if (!selectedStateSet.has(fState)) return;
 
-        if (f.type === 'epic') {
-          const childIds = this.childrenByEpic.get(f.id) || [];
-          if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS') && childIds.length) return;
+        if ((this.childrenByParent.get(f.id) || []).length > 0) {
+          const childIds = this.childrenByParent.get(f.id) || [];
+          if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS') && childIds.length) return;
         }
 
         const startIdx = dateIndex.get(f.start);
@@ -390,8 +390,8 @@ export class CapacityCalculator {
 
         const tls = f.capacity || [];
         for (let di = startIdx; di <= endIdx; di++) {
-          if (f.type === 'epic' && isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByEpic.get(f.id) || [];
+          if ((this.childrenByParent.get(f.id) || []).length > 0 && isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
+            const childIds = this.childrenByParent.get(f.id) || [];
             if (childIds.length) {
               let childCovers = false;
               for (const cid of childIds) {
@@ -418,10 +418,10 @@ export class CapacityCalculator {
 
             // Determine target project: if feature is a child of an Epic, roll up to Epic's project
             let targetProjectId = f.project;
-            if (f.parentEpic) {
-              const parentEpic = effectiveById.get(f.parentEpic);
-              if (parentEpic && parentEpic.project) {
-                targetProjectId = parentEpic.project;
+            if (f.parentId) {
+              const parentItem = effectiveById.get(f.parentId);
+              if (parentItem && parentItem.project) {
+                targetProjectId = parentItem.project;
               }
             }
 
@@ -559,12 +559,12 @@ export class CapacityCalculator {
         if (!selectedStateSet.has(fState)) continue;
 
         // Handle epic capacity based on mode
-        if (f.type === 'epic') {
-          if (!isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByEpic.get(f.id) || [];
+        if ((this.childrenByParent.get(f.id) || []).length > 0) {
+          if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
+            const childIds = this.childrenByParent.get(f.id) || [];
             if (childIds.length) continue; // Skip epic if has children
-          } else if (isEnabled('USE_EPIC_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByEpic.get(f.id) || [];
+          } else if (isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
+            const childIds = this.childrenByParent.get(f.id) || [];
             if (childIds.length) {
               // Check if any child covers this day
               let childCovers = false;

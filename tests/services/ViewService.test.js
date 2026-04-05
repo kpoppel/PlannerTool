@@ -30,8 +30,7 @@ describe('ViewService', () => {
     viewService.bus = mockBus;
     // Reset internals to defaults to avoid test cross-contamination
     viewService._timelineScale = 'months';
-    viewService._showEpics = true;
-    viewService._showFeatures = true;
+    viewService._hiddenTypes = new Set(); // all types visible by default
     viewService._showDependencies = false;
     viewService._showUnassignedCards = true;
     viewService._showUnplannedWork = true;
@@ -43,8 +42,8 @@ describe('ViewService', () => {
   describe('Initialization', () => {
     it('should initialize with default values', () => {
       expect(viewService.timelineScale).to.equal('months');
-      expect(viewService.showEpics).to.equal(true);
-      expect(viewService.showFeatures).to.equal(true);
+      expect(viewService.isTypeVisible('epic')).to.equal(true);
+      expect(viewService.isTypeVisible('feature')).to.equal(true);
       expect(viewService.showDependencies).to.equal(false);
       expect(viewService.condensedCards).to.equal(false);
       expect(viewService.capacityViewMode).to.equal('team');
@@ -130,14 +129,14 @@ describe('ViewService', () => {
   });
 
   describe('Visibility Toggles', () => {
-    it('should toggle showEpics', () => {
-      viewService.setShowEpics(false);
-      expect(viewService.showEpics).to.equal(false);
+    it('should hide epics via setTypeVisibility', () => {
+      viewService.setTypeVisibility('epic', false);
+      expect(viewService.isTypeVisible('epic')).to.equal(false);
     });
 
     it('should emit FilterEvents.CHANGED when toggling epics', () => {
       emitCalls = [];
-      viewService.setShowEpics(false);
+      viewService.setTypeVisibility('epic', false);
       expect(emitCalls.some((call) => call.event === FilterEvents.CHANGED)).to.equal(
         true
       );
@@ -145,15 +144,15 @@ describe('ViewService', () => {
 
     it('should emit FeatureEvents.UPDATED when toggling epics', () => {
       emitCalls = [];
-      viewService.setShowEpics(false);
+      viewService.setTypeVisibility('epic', false);
       expect(emitCalls.some((call) => call.event === FeatureEvents.UPDATED)).to.equal(
         true
       );
     });
 
-    it('should toggle showFeatures', () => {
-      viewService.setShowFeatures(false);
-      expect(viewService.showFeatures).to.equal(false);
+    it('should hide features via setTypeVisibility', () => {
+      viewService.setTypeVisibility('feature', false);
+      expect(viewService.isTypeVisible('feature')).to.equal(false);
     });
 
     it('should toggle showDependencies', () => {

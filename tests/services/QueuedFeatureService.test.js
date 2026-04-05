@@ -15,7 +15,7 @@ describe('QueuedFeatureService basic behavior', () => {
         id: 'f1',
         title: 'F1',
         type: 'feature',
-        parentEpic: 'e1',
+        parentId: 'e1',
         start: '2025-01-01',
         end: '2025-01-10',
       },
@@ -45,7 +45,7 @@ describe('QueuedFeatureService basic behavior', () => {
     activeScenario = null;
 
     qfs = new QueuedFeatureService(baselineStore, () => activeScenario);
-    qfs.setChildrenByEpic(new Map([['e1', ['f1']]]));
+    qfs.setChildrenByParent(new Map([['e1', ['f1']]]));
 
     // stub bus.emit to capture
     origBusEmit = bus.emit;

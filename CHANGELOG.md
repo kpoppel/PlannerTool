@@ -14,6 +14,29 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
+## [unreleased]
+### Added
+- `collectAllDescendants(rootId, features)` helper in `dragManager.js` — builds a parent→children map and does a BFS to collect the full descendant subtree, enabling O(n) recursive hierarchy operations.
+
+### Changed
+- Refactored client to support arbitrary N-level task type hierarchies (Initiative → Epic → Feature → User Story, etc.): replaced hardcoded `parentEpic`/`childrenByEpic`/`showEpics`/`showFeatures` with generic `parentId`, `childrenByParent` map, and `hiddenTypes` Set throughout all services, components, and plugins.
+- `IconService`: added `getIconTemplate(type)` and `getIconSvgElement(type, attrs)` with a default/generic fallback icon for unknown task types.
+- `ViewService`: replaced boolean `_showEpics`/`_showFeatures` with `_hiddenTypes: Set<string>` and new `isTypeVisible(type)` / `setTypeVisibility(type, visible)` API; backward-compatible with saved views.
+- `/api/projects` now returns `task_types` array from project config.
+- `FeatureService`: counts now stored as `Map<projectId, Map<type, count>>` supporting any number of task types; added `allCountsForProject(id)` and `allCountsForTeam(id)`.
+- `CapacityCalculator`, `QueuedFeatureService`, `dragManager`: detect parent items by children-presence (`childrenByParent.has(id)`) instead of `type === 'epic'`; renamed `PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE` → `USE_PARENT_CAPACITY_GAP_FILLS` pattern.
+- `FeatureBoard`: N-level DFS hierarchy ordering replaces two-level sort; filters use `isTypeVisible`.
+- `PlanMenu`, `TeamMenu`, `Sidebar`: render dynamic columns per task type from `state.availableTaskTypes`.
+- Plugin updates: `PluginCostV2*`, `TimelineExportRenderer`, `PluginExportTimelineComponent`, `PluginGraphComponent`, `PluginPlanHealthComponent` all use generic type APIs.
+- `dragManager`: resize and move operations now consider the **full descendant subtree** (grandchildren, etc.) — resizing a parent is clamped to the deepest grandchild's end date; moving a parent shifts all descendants by the same delta.
+- `DetailsPanel`: "Shrink" button label is now dynamic (`Shrink Epic`, `Shrink Feature`, etc.) based on the item's type; button is hidden for leaf items (those without children).
+
+### Fixed
+- `DetailsPanel` Links section: `relItem` was undefined (should have been `linked`), causing a `ReferenceError` caught silently by the try/catch that hid all relations for child items (only top-level items with no Parent-type relation were unaffected). Fixed to use `linked?.type`.
+- `DetailsPanel` "Shrink" button: typo "Shink Epic" corrected to "Shrink {Type}".
+
+---
+
 ## [v3.2.0] - unreleased
 ### Added
 - Admin Projects UI: "Browse from Azure DevOps" panel to select a project, list area paths, and auto-configure a new project_map entry with all live work item types and states.

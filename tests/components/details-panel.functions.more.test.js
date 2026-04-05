@@ -24,8 +24,8 @@ describe('DetailsPanel additional function coverage', () => {
 
     const childrenMap = new Map();
     childrenMap.set('e1', ['c1', 'c2']);
-    // childrenByEpic is a getter on state; stub the getter to return our map
-    const childrenStub = sinon.stub(state, 'childrenByEpic').get(() => childrenMap);
+    // childrenByParent is a getter on state; stub the getter to return our map
+    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
 
     // stub effective features
     const stubGet = sinon.stub(state, 'getEffectiveFeatureById');

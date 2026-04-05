@@ -99,7 +99,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
     expect(monthLabel(f)).to.be.a('string').and.to.not.equal('');
   });
 
-  it('epic ignores children when USE_EPIC_CAPACITY_GAP_FILLS is false', () => {
+  it('epic ignores children when USE_PARENT_CAPACITY_GAP_FILLS is false', () => {
     const cfg = { dataset_start: '2026-01-01', dataset_end: '2026-03-31' };
     const months = buildMonths(cfg);
     const epic = {
@@ -119,7 +119,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
         {
           id: 101,
           title: 'C1',
-          parentEpic: 100,
+          parentId: 100,
           start: '2026-01-01',
           end: '2026-01-31',
           metrics: {
@@ -130,7 +130,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
         {
           id: 102,
           title: 'C2',
-          parentEpic: 100,
+          parentId: 100,
           start: '2026-02-01',
           end: '2026-02-28',
           metrics: {
@@ -147,9 +147,9 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
     expect(featMap['100'].internalTotal).to.equal(200);
   });
 
-  it('epic fills gaps when USE_EPIC_CAPACITY_GAP_FILLS is true', () => {
+  it('epic fills gaps when USE_PARENT_CAPACITY_GAP_FILLS is true', () => {
     // Enable the feature via the runtime API so config.featureFlags is updated
-    enable('USE_EPIC_CAPACITY_GAP_FILLS');
+    enable('USE_PARENT_CAPACITY_GAP_FILLS');
     const cfg = { dataset_start: '2026-01-01', dataset_end: '2026-03-31' };
     const months = buildMonths(cfg);
     const epic = {
@@ -169,7 +169,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
         {
           id: 201,
           title: 'C1',
-          parentEpic: 200,
+          parentId: 200,
           start: '2026-01-01',
           end: '2026-01-31',
           metrics: {

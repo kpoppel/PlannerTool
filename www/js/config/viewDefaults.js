@@ -15,8 +15,9 @@ export const DEFAULT_VIEW_OPTIONS = {
   timelineScale: 'months',
 
   // Visibility toggles
-  showEpics: true,
-  showFeatures: true,
+  // hiddenTypes: array of lower-cased task type names that are hidden.
+  // Empty array means all types are visible (the default).
+  hiddenTypes: [],
   showDependencies: false,
   showUnassignedCards: true, // Show features without capacity
   showUnplannedWork: true, // Show features without dates

@@ -2,7 +2,7 @@ import { html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
 import { expandDataset } from './PluginCostV2Calculator.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 function getTeamLabel(component, teamKey) {
   const costTeams =
@@ -88,7 +88,7 @@ function renderProjectTable(component, project, monthKeys) {
   );
   const expandedFeatures = expandDataset(
     projectData.features,
-    state.childrenByEpic || new Map(),
+    state.childrenByParent || new Map(),
     allFeatures
   );
 
@@ -217,7 +217,7 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
 
   for (const feature of features) {
     const fid = String(feature.id);
-    const childrenMap = state.childrenByEpic;
+    const childrenMap = state.childrenByParent;
     const childrenList = childrenMap.get(Number(fid));
     // Only skip the parent if at least one child is present in our expanded dataset
     const hasChildInDataset =
@@ -783,20 +783,7 @@ function renderFeatureList(component, features, monthKeys) {
           return html`
             <tr>
               <td style="text-align:center;">
-                ${(() => {
-                  const ft = (feature.type || '').toString().toLowerCase();
-                  if (ft === 'epic' || ft === 'epics') {
-                    return html`<span class="type-icon epic" title="Epic"
-                      >${epicTemplate}</span
-                    >`;
-                  }
-                  if (ft === 'feature' || ft === 'features') {
-                    return html`<span class="type-icon feature" title="Feature"
-                      >${featureTemplate}</span
-                    >`;
-                  }
-                  return html`<span class="type-icon" title="Task">•</span>`;
-                })()}
+                <span class="type-icon ${(feature.type || '').toLowerCase()}" title="${feature.type || 'Task'}">${getIconTemplate(feature.type)}</span>
               </td>
               <td style="vertical-align:top;">
                 ${feature.title || feature.name || feature.id}

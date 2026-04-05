@@ -25,6 +25,42 @@ function getAllFeatures() {
   return state.features || [];
 }
 
+/**
+ * Collect all descendants (direct children, grandchildren, etc.) of the given item.
+ * Works across the entire feature tree using both parentId and relations fields.
+ * Returns an array of feature objects (not including the root itself).
+ * Uses a parent→children map built from the full features array for O(n) traversal.
+ */
+function collectAllDescendants(rootId, features) {
+  // Build parent→children lookup for efficient traversal
+  const childrenMap = new Map();
+  for (const ch of features) {
+    const pId =
+      ch.parentId != null ?
+        ch.parentId
+      : (
+          Array.isArray(ch.relations) &&
+          ch.relations.find((r) => r.type === 'Parent')?.id
+        ) ?? null;
+    if (pId == null) continue;
+    if (!childrenMap.has(pId)) childrenMap.set(pId, []);
+    childrenMap.get(pId).push(ch);
+  }
+  const result = [];
+  const queue = [rootId];
+  const seen = new Set([rootId]);
+  while (queue.length) {
+    const parentId = queue.shift();
+    for (const ch of childrenMap.get(parentId) || []) {
+      if (seen.has(ch.id)) continue;
+      seen.add(ch.id);
+      result.push(ch);
+      queue.push(ch.id);
+    }
+  }
+  return result;
+}
+
 export function startDragMove(
   e,
   feature,
@@ -109,8 +145,8 @@ export function startDragMove(
       const updates = computeMoveUpdates(feature, newStartDate, newEndDate, allFeatures);
 
       // If planning an unplanned child feature, also plan its parent epic
-      if (isUnplanned && feature.parentEpic) {
-        const epic = allFeatures.find((f) => f.id === feature.parentEpic);
+      if (isUnplanned && feature.parentId) {
+        const epic = allFeatures.find((f) => f.id === feature.parentId);
         if (epic && (!epic.start || !epic.end)) {
           // Plan the epic with the same dates as the child
           updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
@@ -205,28 +241,22 @@ export function startResize(
     const dx = ev.clientX - startX;
     let tentativeWidth = Math.max(10, origWidth + dx);
     let tentativeEnd = endDateFromWidth(tentativeWidth);
-    if (feature.type === 'epic') {
-      // Use full feature tree so parent/child constraints work across plans
+    {
+      // Use full feature tree so parent/child constraints work across all hierarchy levels
       const allFeatures = getAllFeatures();
-      const children = allFeatures.filter(
-        (ch) =>
-          ch.parentEpic === feature.id ||
-          (Array.isArray(ch.relations) &&
-            ch.relations.some((r) => r.type === 'Parent' && r.id === feature.id))
-      );
-      if (children.length) {
-        // consider only children with an end date and compare parsed dates
-        const childEndDates = children
+      const descendants = collectAllDescendants(feature.id, allFeatures);
+      if (descendants.length) {
+        const descendantEndDates = descendants
           .map((ch) => ch.end)
           .filter(Boolean)
           .map((s) => parseDate(s));
-        if (childEndDates.length) {
-          const maxChildEnd = childEndDates.reduce(
+        if (descendantEndDates.length) {
+          const maxDescendantEnd = descendantEndDates.reduce(
             (max, d) => (d > max ? d : max),
-            childEndDates[0]
+            descendantEndDates[0]
           );
-          if (tentativeEnd < maxChildEnd) {
-            tentativeEnd = maxChildEnd;
+          if (tentativeEnd < maxDescendantEnd) {
+            tentativeEnd = maxDescendantEnd;
             tentativeWidth = widthForSpan(startDate, tentativeEnd);
           }
         }
@@ -257,8 +287,8 @@ export function startResize(
         const updates = [{ id: feature.id, start: newStartStr, end: newEndStr }];
 
         // If planning an unplanned child feature, also plan its parent epic
-        if (feature.parentEpic) {
-          const epic = allFeatures.find((f) => f.id === feature.parentEpic);
+        if (feature.parentId) {
+          const epic = allFeatures.find((f) => f.id === feature.parentId);
           if (epic && (!epic.start || !epic.end)) {
             // Plan the epic with the same dates as the child
             updates.push({ id: epic.id, start: newStartStr, end: newEndStr });
@@ -294,16 +324,11 @@ export function startResize(
   window.addEventListener('mouseup', onUp);
 }
 
-function clampEpicEndAgainstChildren(epic, features, proposedEndStr) {
-  const children = features.filter(
-    (ch) =>
-      ch.parentEpic === epic.id ||
-      (Array.isArray(ch.relations) &&
-        ch.relations.some((r) => r.type === 'Parent' && r.id === epic.id))
-  );
-  if (!children.length) return proposedEndStr;
-  // Consider only children with an end date and compare using parsed dates
-  const childEnds = children
+function clampParentEndAgainstChildren(parentItem, features, proposedEndStr) {
+  // Recursively collect all descendants so the deepest grandchild end date is honoured
+  const descendants = collectAllDescendants(parentItem.id, features);
+  if (!descendants.length) return proposedEndStr;
+  const childEnds = descendants
     .map((ch) => ch.end)
     .filter(Boolean)
     .map((s) => parseDate(s));
@@ -316,35 +341,33 @@ function clampEpicEndAgainstChildren(epic, features, proposedEndStr) {
 // Build list of update ops {id,start,end}
 function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
   const updates = [];
-  const isUnplannedEpic =
+  // Collect all descendants (grandchildren etc.) for full hierarchy move
+  const descendants = collectAllDescendants(feature.id, features);
+  // A parent item is considered "unplanned" if it has no dates (used to trigger legacy
+  // child date assignment when PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE is disabled).
+  const isUnplannedParent =
     featureFlags.SHOW_UNPLANNED_WORK &&
-    feature.type === 'epic' &&
+    descendants.length > 0 &&
     (!feature.start || !feature.end);
   const preserveUnplanned =
-    featureFlags.PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE === true;
+    featureFlags.PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE === true;
   const origStart = feature.start ? parseDate(feature.start) : null;
   const deltaDays =
     origStart ? Math.round((newStartDate - origStart) / (1000 * 60 * 60 * 24)) : 0;
   const newStartStr = formatDate(newStartDate);
   const newEndStr = formatDate(newEndDate);
 
-  if (feature.type === 'epic') {
-    // Move children first so scenario/baseline callbacks can react before epic final dates if desired.
-    // Epic retains original duration; no clamping during a pure move.
+  if (descendants.length > 0) {
+    // Move parent first so scenario/baseline callbacks can react before final child dates if desired.
+    // Parent retains original duration; no clamping during a pure move.
     updates.push({ id: feature.id, start: newStartStr, end: newEndStr });
 
-    // Decide whether to shift or (legacy) plan children when epic is moved/planned.
-    // By default (preserveUnplanned=true) we only shift already-planned children and
-    // leave unplanned children alone. When disabled, legacy behaviour applies: if the
-    // epic is being planned (isUnplannedEpic) we may assign default dates to unplanned children.
-    if (deltaDays !== 0 || (isUnplannedEpic && !preserveUnplanned)) {
-      const children = features.filter(
-        (ch) =>
-          ch.parentEpic === feature.id ||
-          (Array.isArray(ch.relations) &&
-            ch.relations.some((r) => r.type === 'Parent' && r.id === feature.id))
-      );
-      for (const ch of children) {
+    // Decide whether to shift or (legacy) plan descendants when parent is moved/planned.
+    // By default (preserveUnplanned=true) we only shift already-planned descendants and
+    // leave unplanned ones alone. When disabled, legacy behaviour applies: if the
+    // parent is being planned (isUnplannedParent) we may assign default dates to unplanned descendants.
+    if (deltaDays !== 0 || (isUnplannedParent && !preserveUnplanned)) {
+      for (const ch of descendants) {
         const isUnplannedChild =
           featureFlags.SHOW_UNPLANNED_WORK && (!ch.start || !ch.end);
         if (isUnplannedChild) {
@@ -352,7 +375,7 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
             // preserve as unplanned
             continue;
           }
-          // Legacy: assign 1-month default duration starting from epic's new start date
+          // Legacy: assign 1-month default duration starting from parent's new start date
           const childStart = new Date(newStartDate);
           const childEnd = new Date(childStart);
           childEnd.setMonth(childStart.getMonth() + 1);
@@ -377,7 +400,7 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
       }
     }
   }
-  // Feature or epic itself
+  // Final update for the moved item (covers leaf items and closes parent update after children)
   updates.push({ id: feature.id, start: newStartStr, end: newEndStr });
   return updates;
 }
@@ -385,8 +408,9 @@ function computeMoveUpdates(feature, newStartDate, newEndDate, features) {
 function computeResizeUpdates(feature, newEndDate, features) {
   const updates = [];
   let newEndStr = formatDate(newEndDate);
-  if (feature.type === 'epic') {
-    newEndStr = clampEpicEndAgainstChildren(feature, features, newEndStr);
+  // Clamp against all descendants (grandchildren etc.) not just direct children
+  if (collectAllDescendants(feature.id, features).length > 0) {
+    newEndStr = clampParentEndAgainstChildren(feature, features, newEndStr);
   }
   if (newEndStr !== feature.end) {
     updates.push({ id: feature.id, start: feature.start, end: newEndStr });
@@ -400,4 +424,4 @@ function applyUpdates(updates, updateDatesCb) {
 }
 
 // Export schedule helper functions for tests and other modules
-export { computeMoveUpdates, computeResizeUpdates, applyUpdates };
+export { computeMoveUpdates, computeResizeUpdates, applyUpdates, collectAllDescendants };

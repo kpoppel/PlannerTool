@@ -21,7 +21,7 @@ export class FeatureService {
     } else {
       this._getActiveScenario = () => null;
     }
-    this._childrenByEpic = new Map();
+    this._childrenByParent = new Map();
     // Cache for aggregated counts to avoid repeated expensive traversals
     this._countsCache = null;
 
@@ -37,25 +37,25 @@ export class FeatureService {
   }
 
   /**
-   * Compute aggregated counts for projects and teams in a single pass.
-   * Returns an object { projectCounts: { [projectId]: { epics, features } },
-   *                      teamCounts: { [teamId]: { epics, features } } }
+   * Compute aggregated counts per task type for projects and teams in a single pass.
+   * Returns an object { projectCounts: Map<projectId, Map<type, count>>,
+   *                      teamCounts: Map<teamId, Map<type, count>> }
    */
   _ensureCounts() {
     if (this._countsCache) return this._countsCache;
-    const projectCounts = Object.create(null);
-    const teamCounts = Object.create(null);
+    const projectCounts = new Map();
+    const teamCounts = new Map();
 
     const feats = this.getEffectiveFeatures() || [];
     for (const f of feats) {
       const projId = f.project || '__unknown__';
-      if (!projectCounts[projId]) projectCounts[projId] = { epics: 0, features: 0 };
-      if (f.type === 'epic') projectCounts[projId].epics++;
-      else if (f.type === 'feature') projectCounts[projId].features++;
+      const type = String(f.type || '__unknown__').toLowerCase();
+      if (!projectCounts.has(projId)) projectCounts.set(projId, new Map());
+      const projMap = projectCounts.get(projId);
+      projMap.set(type, (projMap.get(type) || 0) + 1);
 
-      // For team-level counts, count a feature/epic once per team if it has
-      // any non-zero allocation for that team (avoid double-counting multiple
-      // capacity entries for same team).
+      // For team-level counts, count each item once per team if it has
+      // any non-zero allocation for that team (avoid double-counting).
       if (Array.isArray(f.capacity)) {
         const seen = new Set();
         for (const tl of f.capacity) {
@@ -65,9 +65,9 @@ export class FeatureService {
           const teamId = tl.team;
           if (seen.has(teamId)) continue;
           seen.add(teamId);
-          if (!teamCounts[teamId]) teamCounts[teamId] = { epics: 0, features: 0 };
-          if (f.type === 'epic') teamCounts[teamId].epics++;
-          else if (f.type === 'feature') teamCounts[teamId].features++;
+          if (!teamCounts.has(teamId)) teamCounts.set(teamId, new Map());
+          const teamMap = teamCounts.get(teamId);
+          teamMap.set(type, (teamMap.get(type) || 0) + 1);
         }
       }
     }
@@ -79,8 +79,8 @@ export class FeatureService {
   /**
    * Set the children-by-epic mapping for epic constraint handling
    */
-  setChildrenByEpic(childrenMap) {
-    this._childrenByEpic = childrenMap;
+  setChildrenByParent(childrenMap) {
+    this._childrenByParent = childrenMap;
   }
 
   /**
@@ -214,21 +214,19 @@ export class FeatureService {
       const base = baselineFeatureById.get(id);
       if (!base) continue;
 
-      // Epic shrink inhibition
-      if (base.type === 'epic') {
-        const childIds = this._childrenByEpic.get(base.id) || [];
-        if (childIds.length) {
-          // Compute effective ends for children using newOverrides if present
-          let maxChildEnd = null;
-          for (const cid of childIds) {
-            const chBase = baselineFeatureById.get(cid);
-            if (!chBase) continue;
-            const ov = newOverrides[cid];
-            const effEnd = ov && ov.end ? ov.end : chBase.end;
-            if (maxChildEnd === null || effEnd > maxChildEnd) maxChildEnd = effEnd;
-          }
-          if (maxChildEnd && end < maxChildEnd) end = maxChildEnd;
+      // Parent shrink inhibition: prevent dates from shrinking past children's end dates
+      const _shrinkChildIds = this._childrenByParent.get(base.id) || [];
+      if (_shrinkChildIds.length > 0) {
+        // Compute effective ends for children using newOverrides if present
+        let maxChildEnd = null;
+        for (const cid of _shrinkChildIds) {
+          const chBase = baselineFeatureById.get(cid);
+          if (!chBase) continue;
+          const ov = newOverrides[cid];
+          const effEnd = ov && ov.end ? ov.end : chBase.end;
+          if (maxChildEnd === null || effEnd > maxChildEnd) maxChildEnd = effEnd;
         }
+        if (maxChildEnd && end < maxChildEnd) end = maxChildEnd;
       }
 
       // Apply override - merge with any existing override so we don't drop other
@@ -246,7 +244,7 @@ export class FeatureService {
       changedIdsCollector.push(id);
 
       // If this is an epic move, shift children that do NOT have explicit overrides
-      if (base.type === 'epic') {
+      if ((this._childrenByParent.get(base.id) || []).length > 0) {
         try {
           const priorEpic = activeScenario.overrides[id] || {
             start: base.start,
@@ -255,7 +253,7 @@ export class FeatureService {
           const priorStart = priorEpic.start || base.start;
           const newStart = start || priorStart;
           const deltaMs = Date.parse(newStart) - Date.parse(priorStart);
-          const childIds = this._childrenByEpic.get(base.id) || [];
+          const childIds = this._childrenByParent.get(base.id) || [];
           if (!isNaN(deltaMs) && deltaMs !== 0) {
             for (const cid of childIds) {
               const chBase = baselineFeatureById.get(cid);
@@ -300,8 +298,8 @@ export class FeatureService {
       }
 
       // If feature extends parent epic, adjust epic override
-      if (base.type === 'feature' && base.parentEpic) {
-        const epicId = base.parentEpic;
+      if (base.parentId) {
+        const epicId = base.parentId;
         const epicBase = baselineFeatureById.get(epicId);
         if (epicBase) {
           const epicOv = activeScenario.overrides[epicId] || {
@@ -335,7 +333,7 @@ export class FeatureService {
       // (changedIdsCollector may already contain epic ids from above)
       for (const cid of Array.from(changedIdsCollector)) {
         // If cid is an epic, add its children
-        const childIds = this._childrenByEpic.get(cid) || [];
+        const childIds = this._childrenByParent.get(cid) || [];
         if (childIds && childIds.length) changedIdsCollector.push(...childIds);
       }
 
@@ -382,9 +380,9 @@ export class FeatureService {
       // Also include parent epic or children where relevant so all affected
       // cards receive updated `feature` data (dirty flags, dates).
       const idsToEmit = new Set([id]);
-      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
-      if (base.type === 'epic') {
-        const childIds = this._childrenByEpic.get(base.id) || [];
+      if (base.parentId) idsToEmit.add(base.parentId);
+      if ((this._childrenByParent.get(base.id) || []).length > 0) {
+        const childIds = this._childrenByParent.get(base.id) || [];
         for (const cid of childIds) idsToEmit.add(cid);
       }
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
@@ -405,7 +403,7 @@ export class FeatureService {
 
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
-      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
+      if (base.parentId) idsToEmit.add(base.parentId);
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // Trigger capacity recalculation if callback provided
@@ -424,7 +422,7 @@ export class FeatureService {
 
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
-      if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
+      if (base.parentId) idsToEmit.add(base.parentId);
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // State change may affect derived color mappings; trigger no capacity callback
@@ -449,9 +447,9 @@ export class FeatureService {
       const idsToEmit = new Set([id]);
       const base = this._baselineStore.getFeatureById().get(id);
       if (base) {
-        if (base.type === 'feature' && base.parentEpic) idsToEmit.add(base.parentEpic);
-        if (base.type === 'epic') {
-          const childIds = this._childrenByEpic.get(base.id) || [];
+        if (base.parentId) idsToEmit.add(base.parentId);
+        if ((this._childrenByParent.get(base.id) || []).length > 0) {
+          const childIds = this._childrenByParent.get(base.id) || [];
           for (const cid of childIds) idsToEmit.add(cid);
         }
       }
@@ -508,44 +506,56 @@ export class FeatureService {
   }
 
   /**
-   * Count epics for a given project id
+   * Count epics for a given project id (backward-compat shim)
    */
   countEpicsForProject(projectId) {
-    const counts = this._ensureCounts();
-    const proj = counts.projectCounts[projectId] || { epics: 0, features: 0 };
-    return proj.epics;
+    return this.allCountsForProject(projectId).get('epic') || 0;
   }
 
   /**
-   * Count features for a given project id
+   * Count features for a given project id (backward-compat shim)
    */
   countFeaturesForProject(projectId) {
-    const counts = this._ensureCounts();
-    const proj = counts.projectCounts[projectId] || { epics: 0, features: 0 };
-    return proj.features;
+    return this.allCountsForProject(projectId).get('feature') || 0;
   }
 
   /**
-   * Count epics that have non-zero allocation for a team
+   * Count epics that have non-zero allocation for a team (backward-compat shim)
    */
   countEpicsForTeam(teamId) {
-    const counts = this._ensureCounts();
-    const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
-    return t.epics;
+    return this.allCountsForTeam(teamId).get('epic') || 0;
   }
 
   /**
-   * Count features that have non-zero allocation for a team
+   * Count items of any type that have non-zero allocation for a team (backward-compat shim)
    */
   countFeaturesForTeam(teamId) {
+    return this.allCountsForTeam(teamId).get('feature') || 0;
+  }
+
+  /**
+   * Return a Map<type, count> for all task types in a given project.
+   * @param {string} projectId
+   * @returns {Map<string, number>}
+   */
+  allCountsForProject(projectId) {
     const counts = this._ensureCounts();
-    const t = counts.teamCounts[teamId] || { epics: 0, features: 0 };
-    return t.features;
+    return counts.projectCounts.get(projectId) || new Map();
+  }
+
+  /**
+   * Return a Map<type, count> for all task types for a given team.
+   * @param {string} teamId
+   * @returns {Map<string, number>}
+   */
+  allCountsForTeam(teamId) {
+    const counts = this._ensureCounts();
+    return counts.teamCounts.get(teamId) || new Map();
   }
 
   /**
    * Expand feature set with transitive closure of parent/child relations
-   * Given a set of feature IDs, return all features connected via parentEpic relationships
+   * Given a set of feature IDs, return all features connected via parentId relationships
    * Only includes features that exist in the database (excludes User Stories, etc.)
    * @param {Set<string>} baseIds - Starting feature IDs
    * @returns {Set<string>} - Expanded feature IDs including all ancestors and descendants
@@ -562,17 +572,17 @@ export class FeatureService {
       if (!feature) continue;
 
       // Add parent epic if exists in database
-      if (feature.parentEpic && !expanded.has(feature.parentEpic)) {
+      if (feature.parentId && !expanded.has(feature.parentId)) {
         // Only add if parent exists in our feature set
-        if (featureById.has(feature.parentEpic)) {
-          expanded.add(feature.parentEpic);
-          toProcess.push(feature.parentEpic);
+        if (featureById.has(feature.parentId)) {
+          expanded.add(feature.parentId);
+          toProcess.push(feature.parentId);
         }
       }
 
       // Add children (features that have this as parent)
       // Only include children that exist in the database
-      const children = this._childrenByEpic.get(id) || [];
+      const children = this._childrenByParent.get(id) || [];
       for (const childId of children) {
         if (!expanded.has(childId) && featureById.has(childId)) {
           expanded.add(childId);

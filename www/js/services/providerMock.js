@@ -71,7 +71,7 @@ export class ProviderMock {
       {
         id: 'feat-alpha-A',
         type: 'feature',
-        parentEpic: 'epic-alpha-1',
+        parentId: 'epic-alpha-1',
         title: 'User Onboarding Overhaul',
         project: 'alpha',
         start: '2025-01-01',
@@ -89,7 +89,7 @@ export class ProviderMock {
       {
         id: 'feat-alpha-B',
         type: 'feature',
-        parentEpic: 'epic-alpha-1',
+        parentId: 'epic-alpha-1',
         title: 'Search Scalability Upgrade',
         project: 'alpha',
         start: '2025-03-01',
@@ -106,7 +106,7 @@ export class ProviderMock {
       {
         id: 'feat-alpha-C',
         type: 'feature',
-        parentEpic: 'epic-alpha-1',
+        parentId: 'epic-alpha-1',
         title: 'Reporting Dashboard Improvements',
         project: 'alpha',
         start: '2025-05-01',
@@ -123,7 +123,7 @@ export class ProviderMock {
       {
         id: 'feat-beta-A',
         type: 'feature',
-        parentEpic: 'epic-beta-1',
+        parentId: 'epic-beta-1',
         title: 'Error Tracking Integration',
         project: 'beta',
         start: '2025-02-03',
@@ -140,7 +140,7 @@ export class ProviderMock {
       {
         id: 'feat-beta-B',
         type: 'feature',
-        parentEpic: 'epic-beta-1',
+        parentId: 'epic-beta-1',
         title: 'Service Health Monitoring',
         project: 'beta',
         start: '2025-04-01',
@@ -157,7 +157,7 @@ export class ProviderMock {
       {
         id: 'feat-beta-C',
         type: 'feature',
-        parentEpic: 'epic-beta-1',
+        parentId: 'epic-beta-1',
         title: 'Automated Failover',
         project: 'beta',
         start: '2025-07-01',
@@ -174,7 +174,7 @@ export class ProviderMock {
       {
         id: 'feat-beta-C-followup',
         type: 'feature',
-        parentEpic: 'epic-beta-1',
+        parentId: 'epic-beta-1',
         title: 'Failover Validation',
         project: 'beta',
         start: '2025-09-16',
@@ -206,7 +206,7 @@ export class ProviderMock {
       {
         id: 'feat-alpha-A-sub',
         type: 'feature',
-        parentEpic: 'epic-alpha-1',
+        parentId: 'epic-alpha-1',
         title: 'Onboarding Email',
         project: 'alpha',
         start: '2025-02-01',

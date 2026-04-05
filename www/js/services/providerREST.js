@@ -405,7 +405,7 @@ export class ProviderREST {
     //console.log("Parent Epic:", parentEpic);
     const retval = (tasks || []).map((f) => ({
       ...f,
-      parentEpic: getParent(f),
+      parentId: getParent(f),
       original: { ...f },
       changedFields: [],
       dirty: false,

@@ -66,7 +66,7 @@ describe('Service Integration Tests', () => {
   describe('Event Chain Integration', () => {
     it('should emit correct events when view changes affect features', () => {
       emitCalls = [];
-      viewService.setShowEpics(false);
+      viewService.setTypeVisibility('epic', false);
 
       // Should emit both FilterEvents.CHANGED and FeatureEvents.UPDATED
       expect(emitCalls.some((call) => call.event === FilterEvents.CHANGED)).to.equal(
@@ -197,7 +197,7 @@ describe('Service Integration Tests', () => {
 
       // ViewService state should be unaffected
       expect(viewService.timelineScale).to.equal('months');
-      expect(viewService.showEpics).to.equal(true);
+      expect(viewService.isTypeVisible('epic')).to.equal(true);
 
       // StateFilterService should be unaffected
       expect(stateFilterService.availableFeatureStates.length).to.equal(0);
@@ -224,7 +224,7 @@ describe('Service Integration Tests', () => {
       emitCalls = [];
 
       // Trigger events from different services
-      viewService.setShowEpics(false);
+      viewService.setTypeVisibility('epic', false);
       stateFilterService.setAvailableStates(['New']);
       configService.setupAutosave(5, () => {});
 

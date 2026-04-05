@@ -13,7 +13,7 @@
   --color-month-alt-scenario: #e2e2e2; /* slightly different grey for scenario mode */
   --transition-fast: 120ms;
   --z-sidebar: 20;
-  --z-details: 30;
+  --z-details: 140;
   --z-header: 10;
   --color-connected-bg: #e8f2ff;
   font-size: 16px;

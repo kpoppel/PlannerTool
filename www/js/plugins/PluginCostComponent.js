@@ -696,17 +696,17 @@ export class PluginCostComponent extends LitElement {
       const eff =
         state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
       const parent =
-        eff && (eff.parentEpic || eff.parentEpic === 0) ?
-          eff.parentEpic
-        : f.parentEpic || null;
+        eff && (eff.parentId || eff.parentId === 0) ?
+          eff.parentId
+        : f.parentId || null;
       if (parent) {
         if (!epicMap.has(parent)) epicMap.set(parent, []);
         epicMap.get(parent).push({ base: f, eff });
       } else {
         const children =
-          state.childrenByEpic &&
-          state.childrenByEpic.get &&
-          state.childrenByEpic.get(f.id);
+          state.childrenByParent &&
+          state.childrenByParent.get &&
+          state.childrenByParent.get(f.id);
         if (children && children.length) {
           if (!epicMap.has(f.id)) epicMap.set(f.id, []);
         }
@@ -1088,20 +1088,20 @@ export class PluginCostComponent extends LitElement {
                                   state.getEffectiveFeatureById(f.id)
                                 : null;
                               const parent =
-                                eff && (eff.parentEpic || eff.parentEpic === 0) ?
-                                  eff.parentEpic
-                                : f.parentEpic || null;
+                                eff && (eff.parentId || eff.parentId === 0) ?
+                                  eff.parentId
+                                : f.parentId || null;
                               // Only group under parent if the parent is in our visible features
                               if (parent && visibleIds.has(String(parent))) {
                                 if (!epicMap.has(parent)) epicMap.set(parent, []);
                                 epicMap.get(parent).push({ base: f, eff });
                               } else {
                                 // Could be an epic (has children in state) or a standalone feature
-                                // Mark epics by presence in state.childrenByEpic
+                                // Mark epics by presence in state.childrenByParent
                                 const children =
-                                  state.childrenByEpic &&
-                                  state.childrenByEpic.get &&
-                                  state.childrenByEpic.get(f.id);
+                                  state.childrenByParent &&
+                                  state.childrenByParent.get &&
+                                  state.childrenByParent.get(f.id);
                                 if (children && children.length) {
                                   // This is an epic - ensure it exists in map
                                   if (!epicMap.has(f.id)) epicMap.set(f.id, []);

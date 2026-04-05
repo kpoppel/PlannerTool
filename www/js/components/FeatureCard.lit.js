@@ -6,7 +6,7 @@ import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { startDragMove, startResize } from './dragManager.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';
 
 /**
@@ -761,7 +761,7 @@ export class FeatureCardLit extends LitElement {
     const hasChildren = (() => {
       try {
         const map =
-          state._dataInitService?.getChildrenByEpicMap?.() || state.childrenByEpic;
+          state._dataInitService?.getChildrenByParentMap?.() || state.childrenByParent;
         const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
       } catch (e) {
@@ -808,10 +808,8 @@ export class FeatureCardLit extends LitElement {
   }
 
   _renderTypeIcon() {
-    if (this.feature.type === 'epic') {
-      return html`<span class="feature-card-icon epic">${epicTemplate}</span>`;
-    }
-    return html`<span class="feature-card-icon feature">${featureTemplate}</span>`;
+    const type = this.feature.type || 'feature';
+    return html`<span class="feature-card-icon ${type.toLowerCase()}">${getIconTemplate(type)}</span>`;
   }
 
   _splitTitleAtMiddle(title) {

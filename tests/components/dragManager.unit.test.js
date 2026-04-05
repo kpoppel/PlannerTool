@@ -16,7 +16,7 @@ describe('dragManager helpers', () => {
     };
     const child = {
       id: 'C1',
-      parentEpic: 'E1',
+      parentId: 'E1',
       start: '2025-01-02',
       end: '2025-01-05',
     };
@@ -61,7 +61,7 @@ describe('dragManager helpers', () => {
     };
     const child1 = {
       id: 'cA',
-      parentEpic: 'E2',
+      parentId: 'E2',
       start: '2025-01-05',
       end: '2025-01-20',
     };

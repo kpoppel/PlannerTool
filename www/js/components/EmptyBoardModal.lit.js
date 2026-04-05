@@ -111,13 +111,19 @@ export class EmptyBoardModal extends LitElement {
       reasons.push('Feature state filter excludes all states (no state selected).');
     }
 
-    // View options
-    if (!state._viewService.showFeatures && !state._viewService.showEpics) {
-      reasons.push('Both features and epics are hidden in view options.');
-    } else if (!state._viewService.showFeatures) {
-      reasons.push('Features are hidden in view options.');
-    } else if (!state._viewService.showEpics) {
-      reasons.push('Epics are hidden in view options.');
+    // View options — check if all task types are hidden
+    if (state._viewService) {
+      const hiddenTypes = state._viewService.hiddenTypes;
+      const availableTypes = (state.availableTaskTypes || ['epic', 'feature']);
+      const allHidden = availableTypes.every((t) => hiddenTypes.has(t));
+      if (allHidden) {
+        reasons.push('All task types are hidden in view options.');
+      } else {
+        const hiddenLabels = availableTypes.filter((t) => hiddenTypes.has(t));
+        for (const t of hiddenLabels) {
+          reasons.push(`${t.charAt(0).toUpperCase() + t.slice(1)}s are hidden in view options.`);
+        }
+      }
     }
 
     // Unplanned work visibility
@@ -215,8 +221,7 @@ export class EmptyBoardModal extends LitElement {
         if (!stateFilterLower.has(featureStateLower)) continue;
 
         // view options
-        if (feature.type === 'epic' && !state._viewService.showEpics) continue;
-        if (feature.type === 'feature' && !state._viewService.showFeatures) continue;
+        if (state._viewService && !state._viewService.isTypeVisible(feature.type)) continue;
 
         // unplanned work
         if (featureFlags.SHOW_UNPLANNED_WORK) {

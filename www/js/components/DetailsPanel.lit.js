@@ -3,7 +3,7 @@ import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 export class DetailsPanelLit extends LitElement {
   static properties = {
@@ -702,8 +702,21 @@ export class DetailsPanelLit extends LitElement {
     // Record mousedown when it starts on <feature-board>, compare on click.
     this._boardMouseDown = null;
     this._onBodyMouseDown = (e) => {
-      if (e.target?.tagName?.toLowerCase() === 'feature-board') {
-        this._boardMouseDown = { x: e.clientX, y: e.clientY };
+      // Record mousedown when it starts on the board area or feature-board
+      // Use composedPath() to detect shadow-root-hosted elements like #board-area
+      try {
+        const path = e.composedPath ? e.composedPath() : [e.target];
+        const hit = path.find((n) => {
+          if (!n || !n.tagName) return false;
+          if (n.tagName && n.tagName.toLowerCase() === 'feature-board') return true;
+          if (n.id && n.id === 'board-area') return true;
+          return false;
+        });
+        if (hit) this._boardMouseDown = { x: e.clientX, y: e.clientY };
+      } catch (err) {
+        if (e.target?.tagName?.toLowerCase() === 'feature-board') {
+          this._boardMouseDown = { x: e.clientX, y: e.clientY };
+        }
       }
     };
 
@@ -786,13 +799,14 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    if (f.type !== 'epic') return;
+    // shrinkwrap applies to any parent item (has children in the hierarchy)
+    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
 
-    // childrenByEpic uses baseline ids as keys; try both string/number
+    // childrenByParent uses baseline ids as keys; try both string/number
     const childIds =
-      state.childrenByEpic.get(f.id) ||
-      state.childrenByEpic.get(String(f.id)) ||
-      state.childrenByEpic.get(Number(f.id)) ||
+      state.childrenByParent.get(f.id) ||
+      state.childrenByParent.get(String(f.id)) ||
+      state.childrenByParent.get(Number(f.id)) ||
       [];
     if (!childIds || !childIds.length) return;
 
@@ -1327,7 +1341,7 @@ export class DetailsPanelLit extends LitElement {
             if (linked) title = linked.title;
 
             let iconTemplate = '';
-            if (type === 'Parent') iconTemplate = epicTemplate;
+            if (type === 'Parent') iconTemplate = getIconTemplate(linked?.type || 'epic');
             else if (type === 'Successor') iconTemplate = '➡️';
             else if (type === 'Predecessor') iconTemplate = '⬅️';
             // TODO: Instead of the link icon for other relation types, ideally would have specific icons for common types and a generic one for unknown types
@@ -1356,8 +1370,8 @@ export class DetailsPanelLit extends LitElement {
       relationsTemplate = html`<div class="details-value">—</div>`;
     }
 
-    if (feature && feature.type && String(feature.type).toLowerCase() === 'epic') {
-      console.debug('[DetailsPanel] rendering shrinkwrap button for epic', feature.id);
+    if (feature && feature.type && state.childrenByParent && state.childrenByParent.has(feature.id)) {
+      console.debug('[DetailsPanel] rendering shrinkwrap button for parent item', feature.id);
     }
 
     return html`
@@ -1372,7 +1386,7 @@ export class DetailsPanelLit extends LitElement {
           </button>
           <div class="details-label">
             <span class="title-icon"
-              >${feature.type === 'epic' ? epicTemplate : featureTemplate}</span
+              >${getIconTemplate(feature.type)}</span
             >
             <span>${feature.title}</span>
           </div>
@@ -1512,14 +1526,14 @@ export class DetailsPanelLit extends LitElement {
                   </select>
                 </div>
               </div>
-              ${feature && feature.type && String(feature.type).toLowerCase() === 'epic' ?
+              ${feature && feature.type && state.childrenByParent && state.childrenByParent.has(feature.id) ?
                 html`<div style="margin-top:8px;">
                   <button
                     data-test="shrinkwrap-chip"
                     class="chip"
                     @click=${(e) => this._shrinkwrapEpic(e)}
-                    title="Shrinkwrap epic to children"
-                    aria-label="Shrinkwrap epic to children"
+                    title="Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)} to children"
+                    aria-label="Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)} to children"
                     style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"
                   >
                     <svg
@@ -1542,7 +1556,7 @@ export class DetailsPanelLit extends LitElement {
                         height="1.6"
                         fill="currentColor"
                       /></svg
-                    ><span style="display:inline-block;line-height:1;">Shink Epic</span>
+                    ><span style="display:inline-block;line-height:1;">Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)}</span>
                   </button>
                 </div>`
               : ''}

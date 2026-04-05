@@ -622,10 +622,10 @@ export class PluginCostV2Component extends LitElement {
         selectedTypes = null;
       }
 
-      // Helper: determine if a feature has children according to state.childrenByEpic
+      // Helper: determine if a feature has children according to state.childrenByParent
       const hasChildren = (fid) => {
         try {
-          const map = state.childrenByEpic || new Map();
+          const map = state.childrenByParent || new Map();
           const list = map.get(Number(fid)) || map.get(String(fid)) || [];
           return Array.isArray(list) && list.length > 0;
         } catch (e) {

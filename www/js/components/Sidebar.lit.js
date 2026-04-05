@@ -1128,6 +1128,13 @@ export class SidebarLit extends LitElement {
         const arr =
           Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
         this.selectedTaskTypes = new Set(arr);
+        // Sync to ViewService so the board filter matches (external callers or
+        // plugin-driven selectedTaskTypes must also be reflected in _hiddenTypes).
+        if (state && state._viewService) {
+          for (const t of (this.availableTaskTypes || [])) {
+            state._viewService.setTypeVisibility(t, this.selectedTaskTypes.has(t), /* suppressEmit= */true);
+          }
+        }
         // Mark types initialized so default-selection logic does not override
         this._taskTypesInitialized = true;
         this.requestUpdate();
@@ -1335,12 +1342,11 @@ export class SidebarLit extends LitElement {
         if (t) types.add(String(t));
       });
       this.availableTaskTypes = Array.from(types).sort();
-      // Default selection only on first initialization: select all if no prior selection exists
-      if (!this._taskTypesInitialized) {
-        if (
-          this.availableTaskTypes.length > 0 &&
-          (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0)
-        ) {
+      // Default selection only on first initialization AND only when types are available.
+      // Guard: if connectedCallback fires before data loads (availableTaskTypes=[]), do NOT
+      // set _taskTypesInitialized=true yet — allow the next call (after data loads) to init.
+      if (!this._taskTypesInitialized && this.availableTaskTypes.length > 0) {
+        if (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0) {
           this.selectedTaskTypes = new Set(this.availableTaskTypes);
           // emit initial filter so other parts can respond
           bus.emit(FilterEvents.CHANGED, {
@@ -1407,6 +1413,10 @@ export class SidebarLit extends LitElement {
     if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
     if (checked) this.selectedTaskTypes.add(type);
     else this.selectedTaskTypes.delete(type);
+    // Sync to ViewService (authoritative source for board filter)
+    if (state && state._viewService) {
+      state._viewService.setTypeVisibility(type, !!checked);
+    }
     bus.emit(FilterEvents.CHANGED, {
       selectedTaskTypes: Array.from(this.selectedTaskTypes),
     });
@@ -1423,21 +1433,21 @@ export class SidebarLit extends LitElement {
 
   _toggleTaskType(type) {
     if (!type) return;
-    if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
-    if (this.selectedTaskTypes.has(type)) this.selectedTaskTypes.delete(type);
-    else this.selectedTaskTypes.add(type);
+    // Use ViewService as the authoritative source for current visibility —
+    // avoids stale-selectedTaskTypes bugs when selectedTaskTypes was never
+    // initialised (e.g. data loaded after connectedCallback ran with no features).
+    const isCurrentlyVisible =
+      state && state._viewService ? state._viewService.isTypeVisible(type) : true;
+    const nowVisible = !isCurrentlyVisible;
 
-    // Visibility toggles for epics/features
-    const hasEpic = Array.from(this.selectedTaskTypes).some(
-      (t) => String(t).toLowerCase() === 'epic' || String(t).toLowerCase() === 'epics'
-    );
-    const hasFeature = Array.from(this.selectedTaskTypes).some(
-      (t) =>
-        String(t).toLowerCase() === 'feature' || String(t).toLowerCase() === 'features'
-    );
+    // Keep selectedTaskTypes in sync for persistence (view save/restore)
+    if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
+    if (nowVisible) this.selectedTaskTypes.add(type);
+    else this.selectedTaskTypes.delete(type);
+
+    // Generically update type visibility via ViewService — no hardcoded type strings
     if (state && state._viewService) {
-      state._viewService.setShowEpics(!!hasEpic);
-      state._viewService.setShowFeatures(!!hasFeature);
+      state._viewService.setTypeVisibility(type, nowVisible);
     }
     bus.emit(FilterEvents.CHANGED, {
       selectedTaskTypes: Array.from(this.selectedTaskTypes),
@@ -1591,7 +1601,10 @@ export class SidebarLit extends LitElement {
             (t) => html`
               <div
                 class="filter-option ${(
-                  this.selectedTaskTypes && this.selectedTaskTypes.has(t)
+                  // Use ViewService as the authoritative source for active/inactive state
+                  // so the checkbox always matches what the board is actually filtering.
+                  state._viewService ? state._viewService.isTypeVisible(t)
+                  : (this.selectedTaskTypes && this.selectedTaskTypes.has(t))
                 ) ?
                   'active'
                 : ''}"

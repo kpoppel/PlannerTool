@@ -86,7 +86,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
         {
           id: 'f1',
           type: 'feature',
-          parentEpic: 'e1',
+          parentId: 'e1',
           start: '2025-01-01',
           end: '2025-01-12',
         },
@@ -99,7 +99,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
       const svc = new FeatureService(baselineStore, {
         getActiveScenario: () => activeScenario,
       });
-      svc.setChildrenByEpic(new Map([['e1', ['f1']]]));
+      svc.setChildrenByParent(new Map([['e1', ['f1']]]));
 
       const updates = [{ id: 'e1', start: '2025-01-01', end: '2025-01-05' }];
       const count = svc.updateFeatureDates(updates);
@@ -113,7 +113,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
         {
           id: 'f2',
           type: 'feature',
-          parentEpic: 'e2',
+          parentId: 'e2',
           start: '2025-01-01',
           end: '2025-01-08',
         },
@@ -126,7 +126,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
       const svc = new FeatureService(baselineStore, {
         getActiveScenario: () => activeScenario,
       });
-      svc.setChildrenByEpic(new Map([['e2', ['f2']]]));
+      svc.setChildrenByParent(new Map([['e2', ['f2']]]));
 
       const updates = [{ id: 'f2', start: '2025-01-01', end: '2025-01-15' }];
       const count = svc.updateFeatureDates(updates);
@@ -168,7 +168,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
           team: 't1',
           project: 'p1',
           state: 'active',
-          parentEpic: 'e1',
+          parentId: 'e1',
         },
         {
           id: 'e1',
@@ -183,16 +183,16 @@ describe('Feature Service and State Oracles (consolidated)', () => {
       ];
       state._baselineStore.setFeatures(state.baselineFeatures);
       state._dataInitService.baselineFeatureById = new Map();
-      state._dataInitService.childrenByEpic = new Map();
+      state._dataInitService.childrenByParent = new Map();
       for (const f of state.baselineFeatures) {
         state._dataInitService.baselineFeatureById.set(f.id, f);
       }
       for (const f of state.baselineFeatures) {
-        if (f.type === 'feature' && f.parentEpic) {
-          if (!state._dataInitService.childrenByEpic.has(f.parentEpic)) {
-            state._dataInitService.childrenByEpic.set(f.parentEpic, []);
+        if (f.type === 'feature' && f.parentId) {
+          if (!state._dataInitService.childrenByParent.has(f.parentId)) {
+            state._dataInitService.childrenByParent.set(f.parentId, []);
           }
-          state._dataInitService.childrenByEpic.get(f.parentEpic).push(f.id);
+          state._dataInitService.childrenByParent.get(f.parentId).push(f.id);
         }
       }
       state._scenarioEventService._scenarios = [

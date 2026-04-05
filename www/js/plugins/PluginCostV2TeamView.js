@@ -1,7 +1,7 @@
 import { html } from '../vendor/lit.js';
 import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 export function renderTeamView(component) {
   if (!component.data || !component.data.projects) {
@@ -261,10 +261,7 @@ function renderTeamTable(component, team, monthKeys) {
               const projectName = projectData ? projectData.name : feature.project || '-';
 
               const ft = (feature.type || '').toString().toLowerCase();
-              const iconTemplate =
-                ft === 'epic' || ft === 'epics' ? epicTemplate
-                : ft === 'feature' || ft === 'features' ? featureTemplate
-                : html`<span style="display:inline-block;width:10px;">•</span>`;
+              const iconTemplate = getIconTemplate(ft);
 
               return html`
                 <tr>

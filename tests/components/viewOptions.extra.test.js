@@ -12,8 +12,8 @@ describe('viewOptions extra', () => {
     state._viewService.setShowDependencies(false);
     state._viewService.setCapacityViewMode('team');
     state._viewService.setFeatureSortMode('rank');
-    state._viewService.setShowEpics(true);
-    state._viewService.setShowFeatures(true);
+    state._viewService.setTypeVisibility('epic', true);
+    state._viewService.setTypeVisibility('feature', true);
     state._stateFilterService.setAvailableStates(['New', 'Done']);
     state._stateFilterService._selectedStates = ['New', 'Done'];
     state.getFeatureStateColor = (s) => ({ background: '#ccc' });

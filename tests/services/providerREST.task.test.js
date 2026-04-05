@@ -8,7 +8,7 @@ describe('ProviderREST feature/team/project endpoints', () => {
     expect(Array.isArray(feats)).to.equal(true);
     expect(feats.length).to.be.at.least(1);
     const f = feats[0];
-    expect(f).to.have.property('parentEpic');
+    expect(f).to.have.property('parentId');
     expect(f).to.have.property('original');
     expect(f).to.have.property('changedFields');
     expect(Array.isArray(f.changedFields)).to.equal(true);

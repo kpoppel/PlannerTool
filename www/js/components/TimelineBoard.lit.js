@@ -229,6 +229,9 @@ class TimelineBoard extends LitElement {
        */
       #board-area {
         position: relative;
+        /* Ensure the board background (stripes) fills the visible viewport
+           even when there are few or no feature cards. */
+        min-height: 100vh;
         background: repeating-linear-gradient(
           to right,
           var(--color-bg, #f7f7f7) 0,

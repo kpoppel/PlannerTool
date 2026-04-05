@@ -5,7 +5,7 @@ import {
   hasSignificantDeviation,
 } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 export function renderTaskView(component) {
   if (!component.data || !component.data.projects) {
@@ -172,10 +172,7 @@ function renderTasksInProjectTable(component, features) {
           const teamsLabel = teams.map((t) => teamNameByKey[t] || t).join(', ');
 
           const ft = (feature.type || '').toString().toLowerCase();
-          const iconTemplate =
-            ft === 'epic' || ft === 'epics' ? epicTemplate
-            : ft === 'feature' || ft === 'features' ? featureTemplate
-            : html`<span style="display:inline-block;width:10px;">•</span>`;
+          const iconTemplate = getIconTemplate(ft);
 
           return html`
             <tr>

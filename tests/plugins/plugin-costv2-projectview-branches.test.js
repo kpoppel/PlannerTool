@@ -23,11 +23,11 @@ describe('PluginCostV2 Project View deeper branches', () => {
         state._projectTeamService.projects.slice()
       : [];
     state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
-    state._dataInitService.childrenByEpic = new Map();
+    state._dataInitService.childrenByParent = new Map();
   });
   afterEach(() => {
     state._projectTeamService.projects = originalProjects;
-    state._dataInitService.childrenByEpic = new Map();
+    state._dataInitService.childrenByParent = new Map();
   });
 
   it('renders team-month table and summary when project has features', () => {

@@ -3,7 +3,7 @@ import { state, PALETTE } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
-import { epicTemplate, featureTemplate } from '../services/IconService.js';
+import { getIconTemplate } from '../services/IconService.js';
 
 /**
  * PlanMenu - Dropdown menu for Plans (Projects)
@@ -39,7 +39,7 @@ export class PlanMenuLit extends LitElement {
 
     .counts-header {
       display: grid;
-      grid-template-columns: 24px 28px 1fr 58px 31px;
+      grid-template-columns: 28px 50px 1fr;
       align-items: center;
       gap: 8px;
       color: #ddd;
@@ -218,10 +218,9 @@ export class PlanMenuLit extends LitElement {
     cp.openFor('project', projectId, rect);
   }
 
-  _renderProjectsList(projects) {
+  _renderProjectsList(projects, taskTypes) {
     return html`${projects.map((project) => {
-      const epicsCount = state.countEpicsForProject(project.id);
-      const featuresCount = state.countFeaturesForProject(project.id);
+      const counts = state.allCountsForProject(project.id);
 
       return html`
         <li class="sidebar-list-item">
@@ -245,8 +244,7 @@ export class PlanMenuLit extends LitElement {
               ${project.name}
             </div>
             <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
-              <span class="chip-badge">${epicsCount}</span>
-              <span class="chip-badge">${featuresCount}</span>
+              ${taskTypes.map((t) => html`<span class="chip-badge" title="${t}">${counts.get(t.toLowerCase()) || 0}</span>`)}
             </div>
           </div>
         </li>
@@ -258,10 +256,12 @@ export class PlanMenuLit extends LitElement {
     const projects = this.projects || [];
     const delivery = projects.filter((p) => (p.type || 'project') === 'project');
     const teamBacklogs = projects.filter((p) => (p.type || 'project') !== 'project');
+    // Derive task types dynamically from available types in state
+    const taskTypes = state.availableTaskTypes || [];
 
     return html`
       <div class="menu-popover">
-        <div class="counts-header">
+        <div class="counts-header" style="grid-template-columns: 28px 50px 1fr${taskTypes && taskTypes.length ? ` repeat(${taskTypes.length}, 30px)` : ''}">
           <span></span>
           <button
             class="list-toggle-btn"
@@ -271,15 +271,14 @@ export class PlanMenuLit extends LitElement {
             ${this._anyUncheckedProjects() ? 'All' : 'None'}
           </button>
           <span></span>
-          <span class="type-icon epic" title="Epics">${epicTemplate}</span>
-          <span class="type-icon feature" title="Features">${featureTemplate}</span>
+          ${taskTypes.map((t) => html`<span class="type-icon" title="${t}">${getIconTemplate(t)}</span>`)}
         </div>
 
         <div class="plans-group">
           ${delivery.length ?
             html`
               <ul class="sidebar-list">
-                ${this._renderProjectsList(delivery)}
+                ${this._renderProjectsList(delivery, taskTypes)}
               </ul>
             `
           : ''}
@@ -289,7 +288,7 @@ export class PlanMenuLit extends LitElement {
           ${teamBacklogs.length ?
             html`
               <ul class="sidebar-list">
-                ${this._renderProjectsList(teamBacklogs)}
+                ${this._renderProjectsList(teamBacklogs, taskTypes)}
               </ul>
             `
           : ''}
