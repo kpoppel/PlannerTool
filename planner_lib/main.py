@@ -103,6 +103,10 @@ def create_app(config: Config) -> FastAPI:
     team_service = TeamService(storage_config=storage_yaml)
     capacity_service = CapacityService(team_service=team_service)
 
+    # Disk-backed cache for Azure project work-item metadata (types/states/categories).
+    # Created early so it can be injected into TaskService for closed-task filtering.
+    azure_project_metadata_service = AzureProjectMetadataService(cache=storage_diskcache)
+
     # Create PeopleService for managing people database
     from planner_lib.people import PeopleService
     people_service = PeopleService(storage=storage_yaml, data_dir=config.data_dir)
@@ -124,6 +128,7 @@ def create_app(config: Config) -> FastAPI:
         team_service=team_service,
         capacity_service=capacity_service,
         azure_client=azure_client,
+        metadata_service=azure_project_metadata_service,
     )
 
     from planner_lib.cost.service import CostService
@@ -172,9 +177,6 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("session_manager", session_manager)
     container.register_singleton("admin_service", admin_service)
     container.register_singleton("memory_cache", memory_cache)
-
-    # Disk-backed cache for Azure project work-item metadata (types/states/categories)
-    azure_project_metadata_service = AzureProjectMetadataService(cache=storage_diskcache)
     container.register_singleton("azure_project_metadata_service", azure_project_metadata_service)
 
     # Build FastAPI app and expose services on app.state for request-time access

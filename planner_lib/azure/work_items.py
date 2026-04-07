@@ -494,6 +494,57 @@ class WorkItemOperations:
             'state_categories': {},  # Not available via WIQL scan
         }
 
+    def get_work_items_by_ids(self, ids: List[int]) -> List[dict]:
+        """Fetch work items by explicit IDs, returning minimal dicts for parent traversal.
+
+        Returns only the fields needed to determine ancestry state and to keep
+        walking up the Parent relation chain:  ``id``, ``type``, ``state``,
+        and ``relations`` (Parent/Child entries only).
+
+        Used by the closed-task filter to resolve parent items that were not
+        returned by the area-path WIQL query.
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        if not ids:
+            return []
+
+        assert self.client.conn is not None
+        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+
+        results: List[dict] = []
+
+        def chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+
+        try:
+            for batch in chunks(ids, 200):
+                items = wit_client.get_work_items(batch, expand="relations")
+                for item in items or []:
+                    try:
+                        relations = getattr(item, "relations", []) or []
+                        relation_map = []
+                        for r in relations:
+                            name = (r.attributes.get("name") if hasattr(r, "attributes") else None)
+                            if name in ("Parent", "Child"):
+                                relation_map.append({
+                                    "type": name,
+                                    "id": str(r.url.split('/')[-1]),
+                                })
+                        results.append({
+                            "id": str(item.id),
+                            "type": item.fields.get("System.WorkItemType") or "",
+                            "state": item.fields.get("System.State") or "",
+                            "relations": relation_map,
+                        })
+                    except Exception as e:
+                        logger.warning("Error processing fetched item %s: %s", getattr(item, "id", "?"), e)
+        except Exception as e:
+            logger.warning("get_work_items_by_ids batch failed for ids %s: %s", ids, e)
+
+        return results
+
     def get_area_path_used_metadata(self, project: str, area_path: str) -> dict:
         """Discover work item types and states configured for the team that owns an area path.
 

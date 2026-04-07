@@ -18,6 +18,11 @@ from planner_lib.projects.interfaces import (
     CapacityServiceProtocol,
     TaskServiceProtocol,
 )
+from planner_lib.projects.closed_tasks import (
+    get_completed_states,
+    get_non_completed_states,
+    filter_completed_with_open_ancestors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +36,16 @@ class TaskService(TaskServiceProtocol):
         team_service: TeamServiceProtocol,
         capacity_service: CapacityServiceProtocol,
         azure_client: AzureServiceProtocol,
+        metadata_service=None,  # Optional AzureProjectMetadataService for closed-task filtering
     ):
         self._storage_config: StorageProtocol = storage_config
         self._project_service: ProjectServiceProtocol = project_service
         self._team_service: TeamServiceProtocol = team_service
         self._capacity_service: CapacityServiceProtocol = capacity_service
         self._azure_client: AzureServiceProtocol = azure_client
+        # Optional; when present enables automatic fetching of Completed-category
+        # tasks that still have open (non-Completed) ancestors.
+        self._metadata_service = metadata_service
 
     def _build_iteration_map(self, client, azure_project: str) -> dict:
         """Build a mapping of iteration paths to their start/end dates.
@@ -147,10 +156,58 @@ class TaskService(TaskServiceProtocol):
                 # Extract task_types and include_states from project configuration
                 task_types = p.get('task_types')
                 include_states = p.get('include_states')
-                
-                # Pass configuration to get_work_items
-                wis = client.get_work_items(path, task_types=task_types, include_states=include_states)
+
+                # --- Closed-task split ---
+                # If the metadata service has cached state_categories for this Azure
+                # project and any of the configured include_states belong to the
+                # Completed category, we split the fetch:
+                #   1. Regular fetch uses only non-Completed states.
+                #   2. A separate fetch retrieves Completed-state items, which are
+                #      then filtered to those with at least one non-Completed ancestor.
+                # When metadata is unavailable we fall back to the original single fetch.
+                completed_states: list = []
+                regular_include_states = include_states  # default: unchanged
+
+                if self._metadata_service and include_states:
+                    cached_meta = self._metadata_service.get_cached(azure_project)
+                    if cached_meta:
+                        sc = cached_meta.get('state_categories', {})
+                        if sc:
+                            c_states = get_completed_states(include_states, sc)
+                            if c_states:
+                                completed_states = c_states
+                                nc_states = get_non_completed_states(include_states, sc)
+                                # If all configured states are Completed (edge case) fall back
+                                # to the original list so the regular fetch still runs.
+                                regular_include_states = nc_states or include_states
+
+                # Regular fetch (non-Completed states, or all states when no split)
+                wis = client.get_work_items(path, task_types=task_types, include_states=regular_include_states)
                 logger.debug("Fetched %d work items for project '%s'", len(wis or []), name)
+
+                # Fetch and filter Completed-category tasks
+                if completed_states:
+                    completed_wis = client.get_work_items(
+                        path, task_types=task_types, include_states=completed_states
+                    )
+                    logger.debug(
+                        "Fetched %d completed work items for project '%s'",
+                        len(completed_wis or []), name,
+                    )
+                    if completed_wis:
+                        # Build combined lookup map so ancestor checks can reuse
+                        # already-fetched items without extra API calls.
+                        all_by_id = {str(w['id']): w for w in (wis or [])}
+                        for w in completed_wis:
+                            all_by_id[str(w['id'])] = w
+                        qualifying = filter_completed_with_open_ancestors(
+                            completed_wis,
+                            all_by_id,
+                            cached_meta.get('state_categories', {}),  # type: ignore[union-attr]
+                            lambda ids: client.get_work_items_by_ids(ids),  # type: ignore[union-attr]
+                        )
+                        wis = (wis or []) + qualifying
+
                 for wi in wis or []:
                     parsed_capacity = self._capacity_service.parse(wi.get('description'))
                     filtered_capacity: List[dict] = []

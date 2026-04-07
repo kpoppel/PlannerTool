@@ -303,6 +303,14 @@ class AzureClient(ABC):
         """
         return self._work_item_ops.get_area_path_used_metadata(project, area_path)
 
+    def get_work_items_by_ids(self, ids: list) -> list:
+        """Fetch minimal work-item dicts (id, type, state, relations) by explicit IDs.
+
+        Used by the closed-task filter to resolve parent items that were not
+        returned by the area-path WIQL query.  Delegates to WorkItemOperations.
+        """
+        return self._work_item_ops.get_work_items_by_ids(ids)
+
     def invalidate_plans(self, project: str, plan_ids: Optional[List[str]] = None) -> None:
         """Invalidate cached plan-related artifacts for a project.
 
