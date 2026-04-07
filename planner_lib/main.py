@@ -98,7 +98,7 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.middleware.session import SessionManager
     session_manager = SessionManager(session_storage=None, account_manager=account_manager)
 
-    from planner_lib.projects import ProjectService, TeamService, CapacityService
+    from planner_lib.projects import ProjectService, TeamService, CapacityService, AzureProjectMetadataService
     project_service = ProjectService(storage_config=storage_yaml)
     team_service = TeamService(storage_config=storage_yaml)
     capacity_service = CapacityService(team_service=team_service)
@@ -172,6 +172,10 @@ def create_app(config: Config) -> FastAPI:
     container.register_singleton("session_manager", session_manager)
     container.register_singleton("admin_service", admin_service)
     container.register_singleton("memory_cache", memory_cache)
+
+    # Disk-backed cache for Azure project work-item metadata (types/states/categories)
+    azure_project_metadata_service = AzureProjectMetadataService(cache=storage_diskcache)
+    container.register_singleton("azure_project_metadata_service", azure_project_metadata_service)
 
     # Build FastAPI app and expose services on app.state for request-time access
 

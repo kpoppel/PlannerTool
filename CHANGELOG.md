@@ -15,6 +15,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 
 ## [unreleased]
+### Added
+- `planner_lib/projects/metadata_service.py`: new `AzureProjectMetadataService` — disk-backed cache (via `DiskCacheStorage`) for Azure DevOps project work-item metadata (types, states, states_by_type, state_categories) keyed by Azure project name. Survives server restarts and is shared across all admin operations.
+- `GET /api/azure/prefetch-projects-metadata?area_paths=...` endpoint: batch-fetches and disk-caches metadata for a comma-separated list of area paths; serves from cache on repeated calls so the admin tab loads cheaply.
+- `www-admin/js/services/azureMetadataCache.js`: module-level in-memory cache for Azure project metadata including `CATEGORY_COLORS` mapping and helper functions `setMetadata`, `getMetadata`, `getStateCategory`, `getStateCategoryColor`, `azureProjectFromAreaPath`.
+### Changed
+- `planner_lib/azure/work_items.py`: `get_area_path_used_metadata` and `get_work_item_metadata` now return a `state_categories` dict `{state_name: AzureCategory}` in addition to `types`, `states`, `states_by_type`.
+- `GET /api/azure/area-path-metadata` now also persists the result in the disk-backed `AzureProjectMetadataService` cache and returns `state_categories`.
+- `www-admin/js/services/providerREST.js`: removed duplicate `browseAzureProjects`, `browseAreaPaths`, `getWorkItemMetadata` method definitions; added `prefetchProjectsMetadata(areaPaths)` method; error fallbacks now include `state_categories: {}`.
+- `www-admin/js/components/admin/Projects.lit.js`: full redesign — inline row editing (Edit unlocks inputs in the same row, no separate expansion); fetch+display states shown side-by-side on one horizontal line; search field filters by name and area path; state chips are colored by Azure DevOps category (Proposed/gray, InProgress/blue, Resolved/amber, Completed/green, Removed/rose); project metadata is prefetched from the server on tab load and also cached when browsing Azure projects.
 ### Fixed
 - `TaskService.list_tasks`: normalise `type` field in `/api/tasks` response to the canonical capitalisation from `global_settings.task_type_hierarchy` (Azure DevOps may return lowercase names such as `"epic"` / `"feature"` depending on how the project was configured).
 - `State.initState`: re-emit `ProjectEvents.CHANGED` and `FeatureEvents.UPDATED` after `baselineProjects` is assigned to state, so components that read `state.availableTaskTypesOrdered` (e.g. `PlanMenu` and `TeamMenu` header icons and task counts) re-render with the correct task type hierarchy once data is fully loaded.

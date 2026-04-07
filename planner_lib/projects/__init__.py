@@ -8,5 +8,6 @@ classes from the package root for convenience.
 from .project_service import ProjectService
 from .team_service import TeamService
 from .capacity_service import CapacityService
+from .metadata_service import AzureProjectMetadataService
 
-__all__ = ["ProjectService", "TeamService", "CapacityService"]
+__all__ = ["ProjectService", "TeamService", "CapacityService", "AzureProjectMetadataService"]

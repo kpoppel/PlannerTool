@@ -458,13 +458,13 @@ class WorkItemOperations:
             result = wit_client.query_by_wiql(wiql=wiql_obj)
         except Exception as e:
             logger.warning(f"WIQL query for area '{area_path}' metadata failed: {e}")
-            return {'types': [], 'states': [], 'states_by_type': {}}
+            return {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
 
         task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
         task_ids = [int(t) for t in task_ids if t is not None][:500]
 
         if not task_ids:
-            return {'types': [], 'states': [], 'states_by_type': {}}
+            return {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
 
         types_found: set = set()
         states_by_type: dict = {}
@@ -491,6 +491,7 @@ class WorkItemOperations:
             'types': sorted_types,
             'states': all_states,
             'states_by_type': {t: sorted(s) for t, s in states_by_type.items()},
+            'state_categories': {},  # Not available via WIQL scan
         }
 
     def get_area_path_used_metadata(self, project: str, area_path: str) -> dict:
@@ -571,26 +572,33 @@ class WorkItemOperations:
         types_found = []
         states_by_type: dict = {}
         all_states: set = set()
+        # state_categories: {state_name: category} — e.g. {"Active": "InProgress"}
+        state_categories: dict = {}
 
         for mapping in mappings:
             type_name = getattr(mapping, 'work_item_type_name', None)
             if not type_name:
                 continue
             types_found.append(type_name)
-            # .states is {state_name: state_category} — keys are the state names we want
+            # .states is {state_name: state_category} — keys are state names, values are categories
             states_dict = getattr(mapping, 'states', {}) or {}
             type_states = sorted(states_dict.keys())
             states_by_type[type_name] = type_states
             all_states.update(type_states)
+            # Collect category info — first seen category wins for states shared across types
+            for state_name, category in states_dict.items():
+                state_categories.setdefault(state_name, category)
 
         logger.info(
             f"Backlog config for team '{team_name}': "
-            f"{len(types_found)} types, {len(all_states)} states"
+            f"{len(types_found)} types, {len(all_states)} states, "
+            f"{len(state_categories)} state-category mappings"
         )
         return {
             'types': sorted(types_found),
             'states': sorted(all_states),
             'states_by_type': states_by_type,
+            'state_categories': state_categories,
         }
 
     def get_work_item_metadata(self, project: str) -> dict:
@@ -615,25 +623,32 @@ class WorkItemOperations:
             
             types = []
             states_by_type = {}
-            
+            # state_categories: {state_name: category} from WorkItemStateColor.category
+            state_categories: dict = {}
+
             for wi_type in wi_types:
                 type_name = wi_type.name
                 types.append(type_name)
-                
+
                 # Retrieve states for this specific type
                 if hasattr(wi_type, 'states') and wi_type.states:
                     states = [state.name for state in wi_type.states]
                     states_by_type[type_name] = states
-            
+                    # Extract category if the SDK provides it (WorkItemStateColor.category)
+                    for state in wi_type.states:
+                        if state.name and hasattr(state, 'category') and state.category:
+                            state_categories.setdefault(state.name, state.category)
+
             # Collect all unique states across all types
             all_states = set()
             for states in states_by_type.values():
                 all_states.update(states)
-            
+
             return {
                 'types': sorted(types),
                 'states': sorted(all_states),
-                'states_by_type': states_by_type
+                'states_by_type': states_by_type,
+                'state_categories': state_categories,
             }
         except Exception as e:
             logger.warning(f"Failed to retrieve work item metadata for project '{project}': {e}")
@@ -641,7 +656,8 @@ class WorkItemOperations:
             return {
                 'types': ['Feature', 'Epic', 'User Story', 'Task', 'Bug'],
                 'states': ['New', 'Active', 'Defined', 'Resolved', 'Closed', 'Removed'],
-                'states_by_type': {}
+                'states_by_type': {},
+                'state_categories': {},
             }
     
     def get_task_revision_history(

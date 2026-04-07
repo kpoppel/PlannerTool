@@ -419,55 +419,11 @@ export class AdminProviderREST {
         method: 'GET',
         credentials: 'same-origin',
       });
-      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
+      if (!res.ok) return { types: [], states: [], states_by_type: {}, state_categories: {}, error: `HTTP ${res.status}` };
       return await res.json();
     } catch (err) {
       console.error('AdminProviderREST:getWorkItemMetadata', err);
-      return { types: [], states: [], states_by_type: {}, error: String(err) };
-    }
-  }
-
-  // --- Azure browse helpers (require PAT in session) ---
-
-  async browseAzureProjects() {
-    try {
-      const res = await this._fetch('/api/azure/projects', {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
-      if (!res.ok) return { projects: [], error: `HTTP ${res.status}` };
-      return await res.json();
-    } catch (err) {
-      console.error('AdminProviderREST:browseAzureProjects', err);
-      return { projects: [], error: String(err) };
-    }
-  }
-
-  async browseAreaPaths(project) {
-    try {
-      const res = await this._fetch(`/api/azure/area-paths?project=${encodeURIComponent(project)}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
-      if (!res.ok) return { area_paths: [], error: `HTTP ${res.status}` };
-      return await res.json();
-    } catch (err) {
-      console.error('AdminProviderREST:browseAreaPaths', err);
-      return { area_paths: [], error: String(err) };
-    }
-  }
-
-  async getWorkItemMetadata(project) {
-    try {
-      const res = await this._fetch(`/api/azure/work-item-metadata?project=${encodeURIComponent(project)}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
-      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
-      return await res.json();
-    } catch (err) {
-      console.error('AdminProviderREST:getWorkItemMetadata', err);
-      return { types: [], states: [], states_by_type: {}, error: String(err) };
+      return { types: [], states: [], states_by_type: {}, state_categories: {}, error: String(err) };
     }
   }
 
@@ -478,11 +434,34 @@ export class AdminProviderREST {
         method: 'GET',
         credentials: 'same-origin',
       });
-      if (!res.ok) return { types: [], states: [], states_by_type: {}, error: `HTTP ${res.status}` };
+      if (!res.ok) return { types: [], states: [], states_by_type: {}, state_categories: {}, error: `HTTP ${res.status}` };
       return await res.json();
     } catch (err) {
       console.error('AdminProviderREST:getAreaPathMetadata', err);
-      return { types: [], states: [], states_by_type: {}, error: String(err) };
+      return { types: [], states: [], states_by_type: {}, state_categories: {}, error: String(err) };
+    }
+  }
+
+  /**
+   * Prefetch and disk-cache work-item metadata for a list of area paths.
+   * Returns metadata keyed by area path each including an 'azure_project' field.
+   * Cheap to call repeatedly — the server only contacts Azure on a cache miss.
+   * @param {string[]} areaPaths
+   * @returns {Promise<{results: Record<string, object>}>}
+   */
+  async prefetchProjectsMetadata(areaPaths) {
+    if (!areaPaths || areaPaths.length === 0) return { results: {} };
+    try {
+      const encoded = areaPaths.map(encodeURIComponent).join(',');
+      const res = await this._fetch(`/api/azure/prefetch-projects-metadata?area_paths=${encoded}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { results: {}, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:prefetchProjectsMetadata', err);
+      return { results: {}, error: String(err) };
     }
   }
 
