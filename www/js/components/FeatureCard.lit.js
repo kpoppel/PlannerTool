@@ -99,6 +99,21 @@ export class FeatureCardLit extends LitElement {
       }
     }
 
+    /* Completed-category state: grey background + strikethrough title.
+       Placed before .dirty / .selected so those rules override the background
+       for modified or selected completed cards while the strikethrough on the
+       title persists regardless (none of the later rules touch .feature-title
+       text-decoration). */
+    .feature-card.completed {
+      background: var(--color-completed-bg, #f0f0f0);
+      border-left-color: var(--color-completed-border, #aaa);
+    }
+
+    .feature-card.completed .feature-title {
+      text-decoration: line-through;
+      color: var(--color-completed-text, #888);
+    }
+
     .feature-card.dirty {
       /* Highlight entire card background for modified features (matches legacy look) */
       background: var(--color-dirty-bg, #ffe5c2);
@@ -834,6 +849,10 @@ export class FeatureCardLit extends LitElement {
     const isUnplanned =
       featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     const projectColor = this.project?.color || '#ccc';
+    const isCompleted = state.featureStateService.isStateInCategory(
+      this.feature.state,
+      'Completed'
+    );
 
     const cardClasses = {
       'feature-card': true,
@@ -841,6 +860,7 @@ export class FeatureCardLit extends LitElement {
       dirty: this.feature.dirty,
       condensed: this.condensed,
       ghosted: isUnplanned,
+      completed: isCompleted,
     };
 
     return html`
