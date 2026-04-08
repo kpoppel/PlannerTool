@@ -8,6 +8,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## Template:
 
 ## [v] - unreleased
+
+- Add `GRAPH_ONLY_SELECTED_PLANS` feature flag (default `false`): mainGraph capacity lines now always reflect all plans regardless of which project cards are selected, making cross-plan overallocation visible at all times. Teams menu continues to control which team lines are displayed. Set to `true` to restore the previous selected-plans-only behaviour.
+- CapacityCalculator: replace date-based gap-fill with team-aware child precedence. Teams that have any child features defined have their parent-level capacity suppressed entirely; teams with no children continue to show parent estimates. Enables `USE_PARENT_CAPACITY_GAP_FILLS` by default.
+
 ### Added
 ### Changed
 ### Fixed

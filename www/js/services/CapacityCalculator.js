@@ -266,36 +266,38 @@ export class CapacityCalculator {
       const fState = f.state;
       if (!selectedStateSet.has(fState)) continue;
 
-      if ((this.childrenByParent.get(f.id) || []).length > 0) {
-        const childIds = this.childrenByParent.get(f.id) || [];
-        if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS') && childIds.length) continue;
-      }
+      const childIds = this.childrenByParent.get(f.id) || [];
+      if (childIds.length && !isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) continue;
 
       const startIdx = dateIndex.get(f.start);
       const endIdx = dateIndex.get(f.end);
       if (startIdx === undefined || endIdx === undefined) continue;
 
-      const tls = f.capacity || [];
-      for (let di = startIdx; di <= endIdx; di++) {
-        if ((this.childrenByParent.get(f.id) || []).length > 0 && isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
-          const childIds = this.childrenByParent.get(f.id) || [];
-          if (childIds.length) {
-            let childCovers = false;
-            for (const cid of childIds) {
-              const ch = effectiveById.get(cid);
-              if (!ch || !ch.start || !ch.end) continue;
-              if (dates[di] >= ch.start && dates[di] <= ch.end) {
-                childCovers = true;
-                break;
-              }
-            }
-            if (childCovers) continue;
+      // Team-aware child precedence: build the set of teams whose capacity is already
+      // covered by at least one child. A team in this set contributed estimates at a
+      // finer level, so we suppress ALL parent-level allocation for that team across
+      // the entire parent date range (including days the children don't cover).
+      // Teams that have no children continue to show the parent estimate normally.
+      let teamsWithChildren = null;
+      if (childIds.length) {
+        teamsWithChildren = new Set();
+        for (const cid of childIds) {
+          const ch = effectiveById.get(cid);
+          if (!ch) continue;
+          for (const ctl of (ch.capacity || [])) {
+            teamsWithChildren.add(ctl.team);
           }
         }
+      }
 
+      const tls = f.capacity || [];
+      for (let di = startIdx; di <= endIdx; di++) {
         let projectLoadForDay = 0;
         for (const tl of tls) {
           if (!selectedTeamSet.has(tl.team)) continue;
+          // Children take full precedence for their team: if this parent has a child
+          // with capacity for this team, skip the parent's contribution entirely.
+          if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
           const ti = teamIndexById.get(tl.team);
           const load = Number(tl.capacity) || 0;
           if (ti !== undefined) {
@@ -379,36 +381,35 @@ export class CapacityCalculator {
         const fState = f.state;
         if (!selectedStateSet.has(fState)) return;
 
-        if ((this.childrenByParent.get(f.id) || []).length > 0) {
-          const childIds = this.childrenByParent.get(f.id) || [];
-          if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS') && childIds.length) return;
-        }
+        const childIds = this.childrenByParent.get(f.id) || [];
+        if (childIds.length && !isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) return;
 
         const startIdx = dateIndex.get(f.start);
         const endIdx = dateIndex.get(f.end);
         if (startIdx === undefined || endIdx === undefined) return;
 
-        const tls = f.capacity || [];
-        for (let di = startIdx; di <= endIdx; di++) {
-          if ((this.childrenByParent.get(f.id) || []).length > 0 && isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByParent.get(f.id) || [];
-            if (childIds.length) {
-              let childCovers = false;
-              for (const cid of childIds) {
-                const ch = this._lastFeaturesById.get(cid) || effectiveById.get(cid);
-                if (!ch || !ch.start || !ch.end) continue;
-                if (dates[di] >= ch.start && dates[di] <= ch.end) {
-                  childCovers = true;
-                  break;
-                }
-              }
-              if (childCovers) continue;
+        // Team-aware child precedence (mirrors FeatureFirst logic).
+        // Use effectiveById for the current child state in both add and subtract
+        // passes so the cache stays consistent with the live feature set.
+        let teamsWithChildren = null;
+        if (childIds.length) {
+          teamsWithChildren = new Set();
+          for (const cid of childIds) {
+            const ch = effectiveById.get(cid);
+            if (!ch) continue;
+            for (const ctl of (ch.capacity || [])) {
+              teamsWithChildren.add(ctl.team);
             }
           }
+        }
 
+        const tls = f.capacity || [];
+        for (let di = startIdx; di <= endIdx; di++) {
           let projectLoadForDay = 0;
           for (const tl of tls) {
             if (!selectedTeamSet.has(tl.team)) continue;
+            // Children take full precedence for their team.
+            if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
             const ti = teamIndexById.get(tl.team);
             const load = Number(tl.capacity) || 0;
             if (ti !== undefined) {

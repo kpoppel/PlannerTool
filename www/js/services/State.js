@@ -1112,9 +1112,21 @@ class State {
         Array.from(this.selectedFeatureStateFilter)
       : this.selectedFeatureStateFilter || [];
 
-    // Check for empty selections
+    // When GRAPH_ONLY_SELECTED_PLANS is false (default), the capacity graph
+    // always reflects ALL plans so overallocation from unselected plans is visible.
+    // When true, only features from the user-selected projects are counted (legacy).
+    const graphOnlySelected = featureFlags.GRAPH_ONLY_SELECTED_PLANS;
+    const projectsForFilter = graphOnlySelected ?
+      selectedProjects
+    : (this.projects || []).map((p) => p.id);
+
+    // Check for empty selections. When graphOnlySelected is false, project
+    // selection on the board is irrelevant to the graph so we skip that check.
     if (
-      (this.projects && this.projects.length > 0 && selectedProjects.length === 0) ||
+      (graphOnlySelected &&
+        this.projects &&
+        this.projects.length > 0 &&
+        selectedProjects.length === 0) ||
       (this.teams && this.teams.length > 0 && selectedTeams.length === 0) ||
       (this.selectedFeatureStateFilter && selectedStateIds.length === 0)
     ) {
@@ -1139,7 +1151,7 @@ class State {
     );
 
     const filters = {
-      selectedProjects,
+      selectedProjects: projectsForFilter,
       selectedTeams,
       selectedStates: selectedStateIds,
     };

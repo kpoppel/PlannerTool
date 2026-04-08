@@ -286,4 +286,165 @@ describe('CapacityCalculator (unit)', () => {
     // Verify teamB has no capacity (all went to unfunded)
     expect(result.projectDailyCapacityMap[0]['teamB']).to.be.undefined;
   });
+
+  // ---------------------------------------------------------------------------
+  // Team-aware child precedence (USE_PARENT_CAPACITY_GAP_FILLS = true)
+  // ---------------------------------------------------------------------------
+
+  it('team-aware: team with children suppresses parent for that team across all parent days', () => {
+    // Scenario from requirements:
+    //   Parent epic: day 1-10, Team A 10%, Team B 20%
+    //   Child feature: day 1-5, Team A 20%
+    // Expected:
+    //   day 1-5  → Team A 20% (child), Team B 20% (parent)
+    //   day 6-10 → Team B 20% (parent)  — Team A parent NOT gap-filled
+    const calc = new CapacityCalculator(bus);
+
+    const epic = {
+      id: 'epic1',
+      project: 'p1',
+      start: '2025-05-01', // day 1
+      end: '2025-05-10',  // day 10
+      state: 's',
+      capacity: [
+        { team: 'teamA', capacity: 10 },
+        { team: 'teamB', capacity: 20 },
+      ],
+    };
+
+    const child = {
+      id: 'child1',
+      parentId: 'epic1',
+      project: 'p1',
+      start: '2025-05-01', // day 1
+      end: '2025-05-05',   // day 5
+      state: 's',
+      capacity: [{ team: 'teamA', capacity: 20 }],
+    };
+
+    const features = [epic, child];
+    const teams = [{ id: 'teamA' }, { id: 'teamB' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      selectedTeams: ['teamA', 'teamB'],
+      selectedStates: ['s'],
+    };
+
+    const childrenByParent = new Map([['epic1', ['child1']]]);
+    calc.setChildrenByParent(childrenByParent);
+
+    const result = calc.calculate(features, filters, teams, projects);
+
+    // Should span full epic range (day 1 – day 10)
+    expect(result.dates).to.have.lengthOf(10);
+
+    const teamAIdx = teams.findIndex((t) => t.id === 'teamA'); // 0
+    const teamBIdx = teams.findIndex((t) => t.id === 'teamB'); // 1
+
+    // Days 0-4 (day 1-5): Team A = 20 (child wins), Team B = 20 (parent, unaffected)
+    for (let d = 0; d < 5; d++) {
+      expect(result.teamDailyCapacity[d][teamAIdx]).to.equal(
+        20,
+        `Day ${d + 1}: Team A should come from child`
+      );
+      expect(result.teamDailyCapacity[d][teamBIdx]).to.equal(
+        20,
+        `Day ${d + 1}: Team B should come from parent`
+      );
+    }
+
+    // Days 5-9 (day 6-10): Team A = 0 (parent suppressed, no child), Team B = 20 (parent)
+    for (let d = 5; d < 10; d++) {
+      expect(result.teamDailyCapacity[d][teamAIdx]).to.equal(
+        0,
+        `Day ${d + 1}: Team A parent must be suppressed (has children)`
+      );
+      expect(result.teamDailyCapacity[d][teamBIdx]).to.equal(
+        20,
+        `Day ${d + 1}: Team B should still come from parent`
+      );
+    }
+  });
+
+  it('team-aware: team without any children shows parent estimate unchanged', () => {
+    // Parent: Team A 10% only, no children for Team A
+    // Expected: parent's Team A allocation shown for all parent days
+    const calc = new CapacityCalculator(bus);
+
+    const epic = {
+      id: 'epic2',
+      project: 'p1',
+      start: '2025-06-01',
+      end: '2025-06-03',
+      state: 's',
+      capacity: [{ team: 'teamA', capacity: 15 }],
+    };
+    // Child has capacity for teamB (unrelated team)
+    const child = {
+      id: 'child2',
+      parentId: 'epic2',
+      project: 'p1',
+      start: '2025-06-01',
+      end: '2025-06-02',
+      state: 's',
+      capacity: [{ team: 'teamB', capacity: 25 }],
+    };
+
+    const features = [epic, child];
+    const teams = [{ id: 'teamA' }, { id: 'teamB' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      selectedTeams: ['teamA', 'teamB'],
+      selectedStates: ['s'],
+    };
+
+    const childrenByParent = new Map([['epic2', ['child2']]]);
+    calc.setChildrenByParent(childrenByParent);
+
+    const result = calc.calculate(features, filters, teams, projects);
+    expect(result.dates).to.have.lengthOf(3);
+
+    const teamAIdx = 0;
+    const teamBIdx = 1;
+
+    // Day 0-1: teamA from parent (unaffected), teamB from child
+    expect(result.teamDailyCapacity[0][teamAIdx]).to.equal(15, 'Day 0: teamA from parent');
+    expect(result.teamDailyCapacity[0][teamBIdx]).to.equal(25, 'Day 0: teamB from child');
+
+    // Day 2: teamA from parent, teamB = 0 (child does not cover day 2)
+    expect(result.teamDailyCapacity[2][teamAIdx]).to.equal(15, 'Day 2: teamA from parent');
+    expect(result.teamDailyCapacity[2][teamBIdx]).to.equal(0, 'Day 2: teamB child ends day 1');
+  });
+
+  it('team-aware: parent with no children is rendered fully', () => {
+    // Regression: parent with no children must not be affected
+    const calc = new CapacityCalculator(bus);
+
+    const epic = {
+      id: 'epicNone',
+      project: 'p1',
+      start: '2025-07-01',
+      end: '2025-07-02',
+      state: 's',
+      capacity: [{ team: 'teamA', capacity: 30 }],
+    };
+
+    const features = [epic];
+    const teams = [{ id: 'teamA' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      selectedTeams: ['teamA'],
+      selectedStates: ['s'],
+    };
+
+    calc.setChildrenByParent(new Map());
+
+    const result = calc.calculate(features, filters, teams, projects);
+    expect(result.dates).to.have.lengthOf(2);
+    expect(result.teamDailyCapacity[0][0]).to.equal(30);
+    expect(result.teamDailyCapacity[1][0]).to.equal(30);
+  });
 });

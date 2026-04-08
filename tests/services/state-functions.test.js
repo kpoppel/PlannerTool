@@ -1,6 +1,7 @@
 import { expect } from '@esm-bundle/chai';
 import { state, PALETTE } from '../../www/js/services/State.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { featureFlags } from '../../www/js/config.js';
 
 describe('State small function coverage', () => {
   it('recomputeDerived detects changed fields', () => {
@@ -112,6 +113,47 @@ describe('State small function coverage', () => {
     state._stateFilterService._selectedStates = new Set();
     state.recomputeCapacityMetrics();
     expect(Array.isArray(state.capacityDates)).to.equal(true);
+  });
+
+  it('recomputeCapacityMetrics passes all project IDs to calculator when GRAPH_ONLY_SELECTED_PLANS is false', () => {
+    // Setup: p1 selected, p2 NOT selected
+    state._projectTeamService.initFromBaseline(
+      [{ id: 'p1', type: 'project' }, { id: 'p2', type: 'project' }],
+      [{ id: 't1', color: '#aabbcc' }]
+    );
+    state.setProjectSelected('p1', true);
+    state.setProjectSelected('p2', false);
+    state.setTeamSelected('t1', true);
+    state._stateFilterService._selectedFeatureStateFilter = new Set(['active']);
+
+    const calc = state._capacityCalculator;
+    const origCalculate = calc.calculate.bind(calc);
+    const capturedFilters = [];
+    calc.calculate = (features, filters, teams, projects, changed) => {
+      capturedFilters.push({ ...filters, selectedProjects: [...filters.selectedProjects] });
+      return calc._emptyResult();
+    };
+
+    try {
+      featureFlags.GRAPH_ONLY_SELECTED_PLANS = false;
+      state.recomputeCapacityMetrics();
+      const allPlansProjects = capturedFilters[0]?.selectedProjects ?? [];
+
+      capturedFilters.length = 0;
+      featureFlags.GRAPH_ONLY_SELECTED_PLANS = true;
+      state.recomputeCapacityMetrics();
+      const selectedOnlyProjects = capturedFilters[0]?.selectedProjects ?? [];
+
+      // All-plans mode: both projects passed to calculator
+      expect(allPlansProjects).to.include('p1');
+      expect(allPlansProjects).to.include('p2');
+      // Selected-only mode: only p1 (the selected project) passed
+      expect(selectedOnlyProjects).to.include('p1');
+      expect(selectedOnlyProjects).to.not.include('p2');
+    } finally {
+      calc.calculate = origCalculate;
+      featureFlags.GRAPH_ONLY_SELECTED_PLANS = false;
+    }
   });
 
   describe('getEffectiveSelectedProjectIds', () => {
