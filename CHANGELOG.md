@@ -16,6 +16,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ## [unreleased]
 ### Added
+- `FeatureStateService` (frontend): single source of truth for feature state names and state→category mappings; loaded from project configuration delivered via `/api/projects`.
+- `ProjectService` now injects `AzureProjectMetadataService` to enrich each project in the `/api/projects` response with a `state_categories` field (state name → category string, filtered to `display_states` only).
 - `planner_lib/projects/metadata_service.py`: new `AzureProjectMetadataService` — disk-backed cache (via `DiskCacheStorage`) for Azure DevOps project work-item metadata (types, states, states_by_type, state_categories) keyed by Azure project name. Survives server restarts and is shared across all admin operations.
 - `GET /api/azure/prefetch-projects-metadata?area_paths=...` endpoint: batch-fetches and disk-caches metadata for a comma-separated list of area paths; serves from cache on repeated calls so the admin tab loads cheaply.
 - `www-admin/js/services/azureMetadataCache.js`: module-level in-memory cache for Azure project metadata including `CATEGORY_COLORS` mapping and helper functions `setMetadata`, `getMetadata`, `getStateCategory`, `getStateCategoryColor`, `azureProjectFromAreaPath`.

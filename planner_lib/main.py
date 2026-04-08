@@ -99,13 +99,15 @@ def create_app(config: Config) -> FastAPI:
     session_manager = SessionManager(session_storage=None, account_manager=account_manager)
 
     from planner_lib.projects import ProjectService, TeamService, CapacityService, AzureProjectMetadataService
-    project_service = ProjectService(storage_config=storage_yaml)
-    team_service = TeamService(storage_config=storage_yaml)
-    capacity_service = CapacityService(team_service=team_service)
 
     # Disk-backed cache for Azure project work-item metadata (types/states/categories).
-    # Created early so it can be injected into TaskService for closed-task filtering.
+    # Created before ProjectService so it can be injected for state_categories enrichment
+    # of the /api/projects response, and later into TaskService for closed-task filtering.
     azure_project_metadata_service = AzureProjectMetadataService(cache=storage_diskcache)
+
+    project_service = ProjectService(storage_config=storage_yaml, metadata_service=azure_project_metadata_service)
+    team_service = TeamService(storage_config=storage_yaml)
+    capacity_service = CapacityService(team_service=team_service)
 
     # Create PeopleService for managing people database
     from planner_lib.people import PeopleService

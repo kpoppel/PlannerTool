@@ -22,6 +22,7 @@ export class DataInitService {
     baselineStore,
     projectTeamService,
     stateFilterService,
+    featureStateService,
     colorService
   ) {
     this._bus = bus;
@@ -29,6 +30,7 @@ export class DataInitService {
     this._baselineStore = baselineStore;
     this._projectTeamService = projectTeamService;
     this._stateFilterService = stateFilterService;
+    this._featureStateService = featureStateService;
     this._colorService = colorService;
 
     // Lookup maps
@@ -78,18 +80,10 @@ export class DataInitService {
       /* noop on failure */
     }
 
-    // Set available states from configured display_states (server-provided)
-    // No fallback to dataset traversal - rely entirely on server configuration
-    const configuredDisplayStates = new Set();
-    const teamProjects = this._projectTeamService.getProjects();
-    for (const project of teamProjects) {
-      if (Array.isArray(project.display_states)) {
-        project.display_states.forEach((state) => configuredDisplayStates.add(state));
-      }
-    }
-
-    const availableStates = Array.from(configuredDisplayStates);
-    this._stateFilterService.setAvailableStates(availableStates);
+    // Populate FeatureStateService with state metadata from project config
+    // (display_states and state_categories are server-provided via /api/projects)
+    this._featureStateService.loadFromProjects(this._projectTeamService.getProjects());
+    this._stateFilterService.setAvailableStates(this._featureStateService.getAvailableStates());
 
     // Initialize colors
     await this._colorService.initColors(
@@ -187,18 +181,9 @@ export class DataInitService {
     Object.freeze(baselineTeams);
     Object.freeze(baselineFeatures);
 
-    // Set available states from configured display_states (server-provided)
-    // No fallback to dataset traversal - rely entirely on server configuration
-    const configuredDisplayStates = new Set();
-    const teamProjects = this._projectTeamService.getProjects();
-    for (const project of teamProjects) {
-      if (Array.isArray(project.display_states)) {
-        project.display_states.forEach((state) => configuredDisplayStates.add(state));
-      }
-    }
-
-    const availableStates = Array.from(configuredDisplayStates);
-    this._stateFilterService.setAvailableStates(availableStates);
+    // Repopulate FeatureStateService with fresh state metadata from project config
+    this._featureStateService.loadFromProjects(this._projectTeamService.getProjects());
+    this._stateFilterService.setAvailableStates(this._featureStateService.getAvailableStates());
 
     console.log('Re-initializing colors after baseline refresh');
     await this._colorService.initColors(

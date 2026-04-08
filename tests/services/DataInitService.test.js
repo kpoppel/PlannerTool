@@ -11,6 +11,7 @@ describe('DataInitService helpers', () => {
     const baselineStore = {};
     const projectTeamService = {};
     const stateFilterService = {};
+    const featureStateService = { loadFromProjects() {} };
     const colorService = {};
 
     svc = new DataInitService(
@@ -19,6 +20,7 @@ describe('DataInitService helpers', () => {
       baselineStore,
       projectTeamService,
       stateFilterService,
+      featureStateService,
       colorService
     );
   });
@@ -113,6 +115,11 @@ describe('DataInitService helpers', () => {
       availableFeatureStates: [],
     };
 
+    const featureStateService = {
+      loadFromProjects() {},
+      getAvailableStates() { return []; },
+    };
+
     const colorService = {
       initColors() {
         return Promise.resolve();
@@ -133,6 +140,7 @@ describe('DataInitService helpers', () => {
       baselineStore,
       projectTeamService,
       stateFilterService,
+      featureStateService,
       colorService
     );
 
@@ -206,6 +214,11 @@ describe('DataInitService helpers', () => {
       availableFeatureStates: [],
     };
 
+    const featureStateService = {
+      loadFromProjects() {},
+      getAvailableStates() { return []; },
+    };
+
     const colorService = {
       initColors() {
         return Promise.resolve();
@@ -226,6 +239,7 @@ describe('DataInitService helpers', () => {
       baselineStore,
       projectTeamService,
       stateFilterService,
+      featureStateService,
       colorService
     );
 

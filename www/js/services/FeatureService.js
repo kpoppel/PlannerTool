@@ -4,7 +4,6 @@ import { featureFlags } from '../config.js';
 
 /**
  * FeatureService - Manages feature operations and scenario overrides
- * Phase 5.1: Extracted from state.js
  */
 export class FeatureService {
   constructor(baselineStore, getActiveScenarioFn) {

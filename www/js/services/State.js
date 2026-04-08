@@ -11,6 +11,7 @@ import { TaskFilterService } from './TaskFilterService.js';
 import { ColorService } from './ColorService.js';
 import { ConfigService } from './ConfigService.js';
 import { StateFilterService } from './StateFilterService.js';
+import { FeatureStateService } from './FeatureStateService.js';
 import { ProjectTeamService } from './ProjectTeamService.js';
 import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
@@ -60,6 +61,9 @@ class State {
     this._configService = new ConfigService(bus, dataService);
     this._stateFilterService = new StateFilterService(bus);
 
+    // FeatureStateService: single source of truth for state names and their categories
+    this._featureStateService = new FeatureStateService();
+
     // Project/team management service
     this._projectTeamService = new ProjectTeamService(bus);
 
@@ -70,6 +74,7 @@ class State {
       this._baselineStore,
       this._projectTeamService,
       this._stateFilterService,
+      this._featureStateService,
       this._colorService
     );
 
@@ -190,6 +195,11 @@ class State {
   }
   get selectedFeatureStateFilter() {
     return this._stateFilterService.selectedFeatureStateFilter;
+  }
+
+  // FeatureStateService — state metadata (names + category mappings)
+  get featureStateService() {
+    return this._featureStateService;
   }
 
   // ProjectTeamService properties

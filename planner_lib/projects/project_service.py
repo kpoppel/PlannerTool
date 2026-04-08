@@ -1,7 +1,7 @@
 """ProjectService: project listing helpers extracted from the original combined service."""
 from __future__ import annotations
 
-from typing import List
+from typing import Any, List, Optional
 import logging
 
 from planner_lib.util import slugify
@@ -18,8 +18,9 @@ class ProjectService(ProjectServiceProtocol):
     backend and exposes `list_projects` returning frontend-ready entries.
     """
 
-    def __init__(self, storage_config: StorageProtocol):
+    def __init__(self, storage_config: StorageProtocol, metadata_service: Optional[Any] = None):
         self._storage_config = storage_config
+        self._metadata_service = metadata_service
 
     def list_projects(self) -> List[dict]:
         cfg = self._storage_config.load("config", "projects")
@@ -45,6 +46,7 @@ class ProjectService(ProjectServiceProtocol):
                     "name": p.get("name"),
                     "type": p.get("type") if isinstance(p.get("type"), str) else "project",
                     "display_states": p.get("display_states", []),
+                    "state_categories": self._get_state_categories(p),
                     "task_types": p.get("task_types", []),
                     "task_type_hierarchy": global_hierarchy,
                 }
@@ -66,3 +68,34 @@ class ProjectService(ProjectServiceProtocol):
         project_map = cfg.get("project_map", [])
 
         return [dict(p, id=slugify(p.get("name"), prefix="project-")) for p in project_map]
+
+    def _get_state_categories(self, project: dict) -> dict:
+        """Return a state→category mapping for the project's display_states.
+
+        Uses the AzureProjectMetadataService cache when available.  Only
+        states listed in display_states are included in the returned mapping
+        so the frontend receives only what it needs.
+
+        Falls back to an empty dict when no metadata service is configured or
+        when no cached metadata exists for the project yet.
+        """
+        display_states: list = project.get("display_states", [])
+        if not display_states or self._metadata_service is None:
+            return {}
+
+        area_path: str = project.get("area_path", "")
+        if not area_path:
+            return {}
+
+        sep = '\\' if '\\' in area_path else '/'
+        azure_project = area_path.split(sep)[0]
+        if not azure_project:
+            return {}
+
+        cached = self._metadata_service.get_cached(azure_project)
+        if not cached:
+            return {}
+
+        all_categories: dict = cached.get("state_categories", {})
+        # Return only the categories for states that are configured for display
+        return {state: all_categories[state] for state in display_states if state in all_categories}
