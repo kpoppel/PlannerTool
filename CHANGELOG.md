@@ -15,7 +15,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
-## [v3.2.0] - unreleased
+## [v3.2.0] - 2026-04-09
 ### Added
 - Configurable N-level task-type hierarchies (admin-configurable) so projects can use arbitrary work item type trees (Initiative → Epic → Feature → Story, etc.).
 - Admin improvements: Global Settings for task-type hierarchy and an updated Projects UI that can browse Azure DevOps, auto-load work item types/states, and prefetch area-path metadata.
