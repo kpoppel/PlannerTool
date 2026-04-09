@@ -371,86 +371,111 @@ export class CapacityCalculator {
     const selectedTeamSet = new Set(selectedTeams);
     const selectedStateSet = new Set(selectedStates);
 
+    // Expand the set of IDs to process beyond just the directly changed ones.
+    // When a child's capacity changes, the parent's effective contribution also
+    // changes (teamsWithChildren suppresses parent capacity for teams children cover).
+    // We must reprocess the parent too so the cache stays correct.
+    const allChangedIds = new Set(changedIds);
     for (const id of changedIds) {
+      const f = effectiveById.get(id) || this._lastFeaturesById.get(id);
+      if (f && f.parentId) {
+        allChangedIds.add(f.parentId);
+      }
+    }
+
+    // processFeature adjusts the cache arrays by `sign` (+1 or -1) for feature `f`.
+    // `childSource` controls which map is used to build teamsWithChildren: the subtract
+    // pass uses _lastFeaturesById (old child state) and the add pass uses effectiveById
+    // (new child state).  This is critical: using the same childSource for both passes
+    // would fail to remove the parent's old contribution when a child gains capacity.
+    const processFeature = (f, sign, childSource) => {
+      if (!f || !f.start || !f.end) return;
+      if (!selectedProjectSet.has(f.project)) return;
+      const fState = f.state;
+      if (!selectedStateSet.has(fState)) return;
+
+      const childIds = this.childrenByParent.get(f.id) || [];
+      if (childIds.length && !isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) return;
+
+      const startIdx = dateIndex.get(f.start);
+      const endIdx = dateIndex.get(f.end);
+      if (startIdx === undefined || endIdx === undefined) return;
+
+      let teamsWithChildren = null;
+      if (childIds.length) {
+        teamsWithChildren = new Set();
+        for (const cid of childIds) {
+          const ch = childSource.get(cid);
+          if (!ch) continue;
+          for (const ctl of (ch.capacity || [])) {
+            teamsWithChildren.add(ctl.team);
+          }
+        }
+      }
+
+      const tls = f.capacity || [];
+      for (let di = startIdx; di <= endIdx; di++) {
+        let projectLoadForDay = 0;
+        for (const tl of tls) {
+          if (!selectedTeamSet.has(tl.team)) continue;
+          // Children take full precedence for their team.
+          if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
+          const ti = teamIndexById.get(tl.team);
+          const load = Number(tl.capacity) || 0;
+          if (ti !== undefined) {
+            teamDaily[di][ti] += sign * load;
+            teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + sign * load;
+          }
+
+          // Determine target project: if feature is a child of an Epic, roll up to Epic's project
+          let targetProjectId = f.project;
+          if (f.parentId) {
+            const parentItem = effectiveById.get(f.parentId);
+            if (parentItem && parentItem.project) {
+              targetProjectId = parentItem.project;
+            }
+          }
+
+          // Check if target project is type='project', otherwise use unfunded
+          const targetProject = projectById.get(targetProjectId);
+          const isProjectType =
+            targetProject && (targetProject.type || 'project') === 'project';
+          if (!isProjectType) {
+            targetProjectId = UNFUNDED_PROJECT_ID;
+          }
+
+          const pi = projectIndexById.get(targetProjectId);
+          if (pi !== undefined) {
+            projectDaily[di][pi] += sign * load;
+            projectDailyMap[di][targetProjectId] =
+              (projectDailyMap[di][targetProjectId] || 0) + sign * load;
+            projectLoadForDay += load;
+          }
+        }
+        totalOrgDaily[di] += sign * projectLoadForDay;
+      }
+    };
+
+    // Pass 1 – subtract old contributions using the ORIGINAL _lastFeaturesById for
+    // ALL ids before any snapshots are updated.  This guarantees that when a child
+    // change causes the parent to be included in allChangedIds, the parent subtract
+    // sees the old child state (teamA not yet in teamsWithChildren) and correctly
+    // removes the parent's old teamA contribution from the cache.
+    for (const id of allChangedIds) {
       const oldF = this._lastFeaturesById.get(id) || null;
+      if (oldF) processFeature(oldF, -1, this._lastFeaturesById);
+    }
+
+    // Pass 2 – add new contributions using effectiveById (new child state) so parent
+    // suppression correctly reflects the live teamsWithChildren.
+    for (const id of allChangedIds) {
       const newF = effectiveById.get(id) || null;
+      if (newF) processFeature(newF, +1, effectiveById);
+    }
 
-      const processFeature = (f, sign) => {
-        if (!f || !f.start || !f.end) return;
-        if (!selectedProjectSet.has(f.project)) return;
-        const fState = f.state;
-        if (!selectedStateSet.has(fState)) return;
-
-        const childIds = this.childrenByParent.get(f.id) || [];
-        if (childIds.length && !isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) return;
-
-        const startIdx = dateIndex.get(f.start);
-        const endIdx = dateIndex.get(f.end);
-        if (startIdx === undefined || endIdx === undefined) return;
-
-        // Team-aware child precedence (mirrors FeatureFirst logic).
-        // Use effectiveById for the current child state in both add and subtract
-        // passes so the cache stays consistent with the live feature set.
-        let teamsWithChildren = null;
-        if (childIds.length) {
-          teamsWithChildren = new Set();
-          for (const cid of childIds) {
-            const ch = effectiveById.get(cid);
-            if (!ch) continue;
-            for (const ctl of (ch.capacity || [])) {
-              teamsWithChildren.add(ctl.team);
-            }
-          }
-        }
-
-        const tls = f.capacity || [];
-        for (let di = startIdx; di <= endIdx; di++) {
-          let projectLoadForDay = 0;
-          for (const tl of tls) {
-            if (!selectedTeamSet.has(tl.team)) continue;
-            // Children take full precedence for their team.
-            if (teamsWithChildren && teamsWithChildren.has(tl.team)) continue;
-            const ti = teamIndexById.get(tl.team);
-            const load = Number(tl.capacity) || 0;
-            if (ti !== undefined) {
-              teamDaily[di][ti] += sign * load;
-              teamDailyMap[di][tl.team] = (teamDailyMap[di][tl.team] || 0) + sign * load;
-            }
-
-            // Determine target project: if feature is a child of an Epic, roll up to Epic's project
-            let targetProjectId = f.project;
-            if (f.parentId) {
-              const parentItem = effectiveById.get(f.parentId);
-              if (parentItem && parentItem.project) {
-                targetProjectId = parentItem.project;
-              }
-            }
-
-            // Check if target project is type='project', otherwise use unfunded
-            const targetProject = projectById.get(targetProjectId);
-            const isProjectType =
-              targetProject && (targetProject.type || 'project') === 'project';
-            if (!isProjectType) {
-              targetProjectId = UNFUNDED_PROJECT_ID;
-            }
-
-            const pi = projectIndexById.get(targetProjectId);
-            if (pi !== undefined) {
-              projectDaily[di][pi] += sign * load;
-              projectDailyMap[di][targetProjectId] =
-                (projectDailyMap[di][targetProjectId] || 0) + sign * load;
-              projectLoadForDay += load;
-            }
-          }
-          totalOrgDaily[di] += sign * projectLoadForDay;
-        }
-      };
-
-      // subtract old then add new
-      if (oldF) processFeature(oldF, -1);
-      if (newF) processFeature(newF, +1);
-
-      // update stored feature snapshot (deep copy capacity array to avoid reference issues)
+    // Pass 3 – update stored snapshots after all cache adjustments are complete.
+    for (const id of allChangedIds) {
+      const newF = effectiveById.get(id) || null;
       if (newF) {
         const snapshot = { ...newF };
         if (Array.isArray(newF.capacity)) {

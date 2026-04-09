@@ -32,6 +32,7 @@ export class PluginPlanHealthComponent extends LitElement {
       'ghosted-children': true,
       'parent-child-teams': true,
       orphans: true,
+      'hierarchy-violations': true,
       'dependency-violations': true,
       'state-consistency': true,
     };
@@ -567,6 +568,21 @@ export class PluginPlanHealthComponent extends LitElement {
         (projects || []).filter((p) => String(p.type) === 'team').map((p) => String(p.id))
       );
 
+      // Determine the minimum (top) hierarchy level present per team plan among visible
+      // features.  Items at that level are the natural root of the plan and are never
+      // flagged as orphans even when they have no parent.
+      const planMinLevel = new Map(); // planId → min type-level number
+      for (const feature of features) {
+        if (!visibleIds.has(String(feature.id))) continue;
+        const projectIdStr = feature.project ? String(feature.project) : null;
+        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
+        const level = state.getTypeLevel(feature.type);
+        const current = planMinLevel.get(projectIdStr);
+        if (current === undefined || level < current) {
+          planMinLevel.set(projectIdStr, level);
+        }
+      }
+
       for (const feature of features) {
         const featureIdStr = String(feature.id);
 
@@ -574,21 +590,27 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!visibleIds.has(featureIdStr)) continue;
 
         const projectIdStr = feature.project ? String(feature.project) : null;
-        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue; // only check features in team plans
+        if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
 
-        // Any item in a team plan must have a parent; if that parent exists it should
-        // be in a project-type plan so it can appear on the master project board.
+        const typeLevel = state.getTypeLevel(feature.type);
+        const topLevel = planMinLevel.get(projectIdStr) ?? 9999;
+
+        // Top-level type for this plan: not flagged as orphan
+        if (typeLevel === topLevel) continue;
+
         const typeLabel =
-          feature.type ?
+          state.getTypeDisplayName(feature.type) ||
+          (feature.type ?
             feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
-          : 'Item';
+          : 'Item');
+
         const parentId = feature.parentId || null;
         if (!parentId) {
           issues.push({
             featureId: feature.id,
             type: 'Orphan',
             title: `Orphaned ${typeLabel}`,
-            description: `${typeLabel} belongs to a team plan but has no parent`,
+            description: `${typeLabel} has no parent (expected a parent for a non-root item in this plan)`,
             severity: 'warning',
           });
           continue;
@@ -600,29 +622,159 @@ export class PluginPlanHealthComponent extends LitElement {
             featureId: feature.id,
             type: 'Orphan',
             title: `Orphaned ${typeLabel}`,
-            description: `${typeLabel} has a parent id but the parent cannot be found`,
-            severity: 'warning',
-          });
-          continue;
-        }
-
-        const parentProject = parent.project ? String(parent.project) : null;
-        const parentPlan = parentProject ? projectMap.get(parentProject) : null;
-        const parentPlanType =
-          parentPlan && parentPlan.type ? String(parentPlan.type) : 'project';
-
-        if (parentPlanType !== 'project') {
-          issues.push({
-            featureId: feature.id,
-            type: 'Orphan',
-            title: `Orphaned ${typeLabel}`,
-            description: `${typeLabel} parent is not a project plan (expected a project parent)`,
+            description: `${typeLabel} has a parent ID but the parent cannot be found`,
             severity: 'warning',
           });
         }
+        // If parent exists the item is not orphaned — hierarchy correctness is
+        // checked separately by _checkHierarchyViolations.
       }
     } catch (e) {
       console.error('[PlanHealth] Error checking orphans:', e);
+    }
+
+    return issues;
+  }
+
+  /**
+   * Check for hierarchy violations: parenting relationships that contradict the
+   * configured task-type hierarchy (same-level parenting, or reverse parenting).
+   *
+   * This is separate from orphan detection:
+   *   - Orphan check: item has no valid parent
+   *   - Hierarchy check: item has a parent, but the parent's type is wrong
+   *
+   * @param {Array} features - visible feature list
+   * @param {Set<string>} visibleIds
+   * @returns {Array} issues
+   */
+  _checkHierarchyViolations(features, visibleIds) {
+    const issues = [];
+
+    try {
+      const hierarchy = state.taskTypeHierarchy;
+      if (!hierarchy || hierarchy.length === 0) return issues; // no hierarchy configured
+
+      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
+
+      const projects = state.projects || [];
+      const projectMap = new Map((projects || []).map((p) => [String(p.id), p]));
+
+      const teamPlanIds = new Set(
+        (projects || []).filter((p) => String(p.type) === 'team').map((p) => String(p.id))
+      );
+
+      // Determine the minimum (top) hierarchy level present per team plan among visible
+      // features.  Items at that level MUST be anchored to a project-type plan.
+      const planMinLevel = new Map(); // planId → min type-level number
+      for (const feature of features) {
+        if (!visibleIds.has(String(feature.id))) continue;
+        const planId = feature.project ? String(feature.project) : null;
+        if (!planId || !teamPlanIds.has(planId)) continue;
+        const level = state.getTypeLevel(feature.type);
+        const current = planMinLevel.get(planId);
+        if (current === undefined || level < current) {
+          planMinLevel.set(planId, level);
+        }
+      }
+
+      for (const feature of features) {
+        const featureIdStr = String(feature.id);
+        if (!visibleIds.has(featureIdStr)) continue;
+
+        const planId = feature.project ? String(feature.project) : null;
+        const typeLevel = state.getTypeLevel(feature.type);
+        const typeLabel =
+          state.getTypeDisplayName(feature.type) || feature.type || 'Item';
+
+        // ----------------------------------------------------------------
+        // Check A: top-level item in a team plan must have a parent in a
+        // project-type plan.  Without it the team plan floats unanchored.
+        //
+        // Only fires for items at the plan's minimum hierarchy level that
+        // have no resolvable parent (no parentId, or parentId not in feature
+        // map).  Items that DO have an existing parent (even a wrong-type
+        // parent) are handed off to Check B, which will flag the cross-type
+        // violation there instead.
+        // ----------------------------------------------------------------
+        let isTopLevelAnchoredToProject = false;
+        if (planId && teamPlanIds.has(planId)) {
+          const topLevel = planMinLevel.get(planId) ?? 9999;
+          if (typeLevel === topLevel) {
+            const parentId = feature.parentId || null;
+            const parent = parentId ? featureMap.get(String(parentId)) : null;
+
+            if (parent) {
+              // Parent found — check if it's in a project-type plan.
+              // If yes, this is properly anchored; skip Check B (same-type
+              // cross-plan anchoring is intentional, not a hierarchy error).
+              // If no (parent is in a team plan etc.), let Check B flag it.
+              const parentPlanId = parent.project ? String(parent.project) : null;
+              const parentPlan = parentPlanId ? projectMap.get(parentPlanId) : null;
+              if (parentPlan != null && String(parentPlan.type) === 'project') {
+                isTopLevelAnchoredToProject = true;
+              }
+              // else: parent in wrong plan type → Check B will catch it
+            } else {
+              // No parent or parent not resolvable → unanchored root
+              issues.push({
+                featureId: feature.id,
+                type: 'HierarchyViolation',
+                title: `Unanchored ${typeLabel}`,
+                description: `${typeLabel} is the top-level type in this team plan but has no parent in a project plan (the team plan is not connected to a project)`,
+                severity: 'warning',
+              });
+            }
+          }
+        }
+
+        // Skip Check B for top-level items correctly anchored to a project plan
+        // (e.g., team-Epic parented by a project-Epic — same type is expected).
+        if (isTopLevelAnchoredToProject) continue;
+
+        // ----------------------------------------------------------------
+        // Check B: items with a parent → validate parent type is higher in
+        // the hierarchy (existing same-level / reverse-parenting checks).
+        // ----------------------------------------------------------------
+        const parentId = feature.parentId || null;
+        if (!parentId) continue;
+
+        const parent = featureMap.get(String(parentId));
+        if (!parent) continue; // orphan check handles missing parent
+
+        const childLevel = typeLevel;
+        const parentLevel = state.getTypeLevel(parent.type);
+
+        // If either type is unknown (9999) skip — we cannot evaluate hierarchy
+        // for types not present in the configuration.
+        if (childLevel === 9999 || parentLevel === 9999) continue;
+
+        const parentTypeLabel =
+          state.getTypeDisplayName(parent.type) || parent.type || 'Item';
+
+        if (parentLevel === childLevel) {
+          issues.push({
+            featureId: feature.id,
+            type: 'HierarchyViolation',
+            title: `Hierarchy Violation: ${typeLabel}`,
+            description: `${typeLabel} is parented by another ${parentTypeLabel} (same hierarchy level — expected a higher-level parent)`,
+            severity: 'warning',
+          });
+        } else if (parentLevel > childLevel) {
+          // Parent is deeper in the hierarchy than the child → reverse parenting
+          issues.push({
+            featureId: feature.id,
+            type: 'HierarchyViolation',
+            title: `Hierarchy Violation: ${typeLabel}`,
+            description: `${typeLabel} is parented by ${parentTypeLabel} which is at a lower hierarchy level (reverse parenting)`,
+            severity: 'warning',
+          });
+        }
+        // parentLevel < childLevel → correct hierarchy, no issue
+      }
+    } catch (e) {
+      console.error('[PlanHealth] Error checking hierarchy violations:', e);
     }
 
     return issues;
@@ -935,10 +1087,23 @@ export class PluginPlanHealthComponent extends LitElement {
       );
       checkResults.push({
         id: 'orphans',
-        name: 'Orphaned Features / Epics',
+        name: 'Orphaned Items',
         description:
-          'Team-plan epics or features without a project parent or parent epic',
+          'Team-plan items that have no valid parent but are not the top-level type for this plan',
         issues: orphanIssues,
+      });
+
+      // Run hierarchy violation check: parented by wrong type (same-level or reverse)
+      const hierarchyIssues = this._checkHierarchyViolations(
+        visibleFeatures,
+        visibleIds
+      );
+      checkResults.push({
+        id: 'hierarchy-violations',
+        name: 'Hierarchy Violations',
+        description:
+          'Items parented by a same-level or lower-level type, contradicting the configured hierarchy',
+        issues: hierarchyIssues,
       });
 
       // Run dependency date violation check (only for visible features)

@@ -418,6 +418,61 @@ describe('CapacityCalculator (unit)', () => {
     expect(result.teamDailyCapacity[2][teamBIdx]).to.equal(0, 'Day 2: teamB child ends day 1');
   });
 
+  // ---------------------------------------------------------------------------
+  // Incremental delta: child capacity change must suppress parent contribution
+  // ---------------------------------------------------------------------------
+
+  it('incremental delta: adding child Team A capacity removes parent Team A from cache', () => {
+    // Regression: Bug steps:
+    //   1. Parent (epic) has Team A capacity → full calculate → cache stores parent Team A
+    //   2. Child gets Team A capacity → delta update with changedIds = [child.id]
+    // Expected after step 2: total Team A = child value only (parent suppressed).
+    // Before fix: parent Team A stays in cache AND child is added → double-counting.
+    const calc = new CapacityCalculator(bus);
+
+    const epic = {
+      id: 'epicDelta',
+      project: 'p1',
+      start: '2025-08-01',
+      end: '2025-08-05',
+      state: 's',
+      capacity: [{ team: 'teamA', capacity: 10 }],
+    };
+    const childV1 = {
+      id: 'childDelta',
+      parentId: 'epicDelta',
+      project: 'p1',
+      start: '2025-08-01',
+      end: '2025-08-05',
+      state: 's',
+      capacity: [],  // initially no capacity
+    };
+
+    const teams = [{ id: 'teamA' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = { selectedProjects: ['p1'], selectedTeams: ['teamA'], selectedStates: ['s'] };
+
+    const childrenByParent = new Map([['epicDelta', ['childDelta']]]);
+    calc.setChildrenByParent(childrenByParent);
+
+    // Step 1: full calculate — parent contributes Team A, child has no capacity
+    const step1 = calc.calculate([epic, childV1], filters, teams, projects);
+    const teamAIdx = 0;
+    expect(step1.teamDailyCapacity[0][teamAIdx]).to.equal(10, 'Step1: parent Team A = 10');
+
+    // Step 2: child gets Team A capacity — incremental delta (only child.id changed)
+    const childV2 = { ...childV1, capacity: [{ team: 'teamA', capacity: 20 }] };
+    const step2 = calc.calculate([epic, childV2], filters, teams, projects, ['childDelta']);
+
+    // Child wins → total must be 20, NOT 30 (which would be the double-count bug)
+    for (let d = 0; d < 5; d++) {
+      expect(step2.teamDailyCapacity[d][teamAIdx]).to.equal(
+        20,
+        `Day ${d}: child Team A replaces parent; must be 20 not 30`
+      );
+    }
+  });
+
   it('team-aware: parent with no children is rendered fully', () => {
     // Regression: parent with no children must not be affected
     const calc = new CapacityCalculator(bus);

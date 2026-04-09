@@ -15,6 +15,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
+## [v3.2.1] - unreleased
+
+### Added
+- Plan Health plugin: new **Hierarchy Violations** check that flags items parented by a same-level or lower-level type, contradicting the configured `task_type_hierarchy`. Also flags top-level team-plan items (e.g., Epics) that are not anchored to a parent in a project-type plan.
+
+### Fixed
+- Fixed incremental delta update in `CapacityCalculator._applyFeatureDeltas` where setting capacity for a child caused the parent's capacity for the same team to remain in the cache, resulting in double-counting on the main graph. The fix expands delta processing to include parent nodes and separates subtract/add passes so child state is read consistently.
+- Fixed Plan Health orphan check: top-level items in a team plan (e.g., Epics when there are no Initiatives) are no longer flagged as orphans. Items below the top level are only flagged as orphaned when they have no valid parent, not when their parent resides in a team plan rather than a project plan.
+
 ## [v3.2.0] - 2026-04-09
 ### Added
 - Configurable N-level task-type hierarchies (admin-configurable) so projects can use arbitrary work item type trees (Initiative → Epic → Feature → Story, etc.).
