@@ -15,7 +15,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
-## [v3.2.1] - unreleased
+## [v3.2.1] - 2026-04-09
 
 ### Added
 - Plan Health plugin: new **Hierarchy Violations** check that flags items parented by a same-level or lower-level type, contradicting the configured `task_type_hierarchy`. Also flags top-level team-plan items (e.g., Epics) that are not anchored to a parent in a project-type plan.
