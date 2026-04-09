@@ -9,80 +9,34 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ## [v] - unreleased
 
-- Add `GRAPH_ONLY_SELECTED_PLANS` feature flag (default `false`): mainGraph capacity lines now always reflect all plans regardless of which project cards are selected, making cross-plan overallocation visible at all times. Teams menu continues to control which team lines are displayed. Set to `true` to restore the previous selected-plans-only behaviour.
-- CapacityCalculator: replace date-based gap-fill with team-aware child precedence. Teams that have any child features defined have their parent-level capacity suppressed entirely; teams with no children continue to show parent estimates. Enables `USE_PARENT_CAPACITY_GAP_FILLS` by default.
-
 ### Added
 ### Changed
 ### Fixed
-
----
-
-## [unreleased]
-### Added
-- `FeatureStateService` (frontend): single source of truth for feature state names and state→category mappings; loaded from project configuration delivered via `/api/projects`.
-- `ProjectService` now injects `AzureProjectMetadataService` to enrich each project in the `/api/projects` response with a `state_categories` field (state name → category string, filtered to `display_states` only).
-- `planner_lib/projects/metadata_service.py`: new `AzureProjectMetadataService` — disk-backed cache (via `DiskCacheStorage`) for Azure DevOps project work-item metadata (types, states, states_by_type, state_categories) keyed by Azure project name. Survives server restarts and is shared across all admin operations.
-- `GET /api/azure/prefetch-projects-metadata?area_paths=...` endpoint: batch-fetches and disk-caches metadata for a comma-separated list of area paths; serves from cache on repeated calls so the admin tab loads cheaply.
-- `www-admin/js/services/azureMetadataCache.js`: module-level in-memory cache for Azure project metadata including `CATEGORY_COLORS` mapping and helper functions `setMetadata`, `getMetadata`, `getStateCategory`, `getStateCategoryColor`, `azureProjectFromAreaPath`.
-- `planner_lib/projects/closed_tasks.py`: new pure-function module that filters Completed-category work items to include only those with at least one non-Completed transitive ancestor (`filter_completed_with_open_ancestors`); also exports `get_completed_states` / `get_non_completed_states` helpers and the `COMPLETED_CATEGORY` constant.
-- `planner_lib/azure/work_items.py` / `AzureClient.py`: new `get_work_items_by_ids(ids)` method for fetching arbitrary work items by ID list, used by the closed-task ancestry traversal.
-### Changed
-- `planner_lib/azure/work_items.py`: `get_area_path_used_metadata` and `get_work_item_metadata` now return a `state_categories` dict `{state_name: AzureCategory}` in addition to `types`, `states`, `states_by_type`.
-- `GET /api/azure/area-path-metadata` now also persists the result in the disk-backed `AzureProjectMetadataService` cache and returns `state_categories`.
-- `www-admin/js/services/providerREST.js`: removed duplicate `browseAzureProjects`, `browseAreaPaths`, `getWorkItemMetadata` method definitions; added `prefetchProjectsMetadata(areaPaths)` method; error fallbacks now include `state_categories: {}`.
-- `www-admin/js/components/admin/Projects.lit.js`: full redesign — inline row editing (Edit unlocks inputs in the same row, no separate expansion); fetch+display states shown side-by-side on one horizontal line; search field filters by name and area path; state chips are colored by Azure DevOps category (Proposed/gray, InProgress/blue, Resolved/amber, Completed/green, Removed/rose); project metadata is prefetched from the server on tab load and also cached when browsing Azure projects.
-- `planner_lib/projects/task_service.py` / `TaskService`: accepts optional `metadata_service` parameter; when metadata is cached for a project, `list_tasks` automatically splits the `include_states` list into regular vs Completed, fetches Completed items in a separate query, and runs `filter_completed_with_open_ancestors` to include only closed tasks that still have an open ancestor.
-- `www-admin/js/components/admin/Projects.lit.js`: full redesign — inline row editing (Edit unlocks inputs in the same row, no separate expansion); fetch+display states shown side-by-side on one horizontal line; search field filters by name and area path; state chips are colored by Azure DevOps category (Proposed/gray, InProgress/blue, Resolved/amber, Completed/green, Removed/rose); project metadata is prefetched from the server on tab load and also cached when browsing Azure projects.
-### Fixed
-- `TaskService.list_tasks`: normalise `type` field in `/api/tasks` response to the canonical capitalisation from `global_settings.task_type_hierarchy` (Azure DevOps may return lowercase names such as `"epic"` / `"feature"` depending on how the project was configured).
-- `State.initState`: re-emit `ProjectEvents.CHANGED` and `FeatureEvents.UPDATED` after `baselineProjects` is assigned to state, so components that read `state.availableTaskTypesOrdered` (e.g. `PlanMenu` and `TeamMenu` header icons and task counts) re-render with the correct task type hierarchy once data is fully loaded.
-- `State._availableTaskTypesCache`: reset cache to `null` before repopulating in `initState()`. An empty array `[]` is truthy, so any early access before features loaded silently poisoned the cache, preventing it from ever being populated with the actual task types; this caused `PlanMenu` and `TeamMenu` count badges to disappear after the counts were made dynamic (depending on `availableTaskTypes`).
-
----
-
-## [unreleased]
-### Added
-- Task type hierarchy configuration: admin can define parent→child levels (e.g. Initiative→Epic→Feature→Bug→Sub-Task) as a **server-wide global setting** in a new "Global Settings" admin tab; stored in `data/config/global_settings.yml`; hierarchy is served to the client via `/api/projects` and used to order and indent types in the Sidebar Task Types filter, PlanMenu, and TeamMenu columns.
-- Project setup UI now auto-fetches available work item types and states for the selected area path when opening a project entry for editing; type and state select lists are populated with the exact values configured in Azure DevOps for that area path. A "⟳ Load" button allows refreshing after manually changing the area path.
-
----
-
-## [unreleased]
-### Added
-- `collectAllDescendants(rootId, features)` helper in `dragManager.js` — builds a parent→children map and does a BFS to collect the full descendant subtree, enabling O(n) recursive hierarchy operations.
-
-### Changed
-- Refactored client to support arbitrary N-level task type hierarchies (Initiative → Epic → Feature → User Story, etc.): replaced hardcoded `parentEpic`/`childrenByEpic`/`showEpics`/`showFeatures` with generic `parentId`, `childrenByParent` map, and `hiddenTypes` Set throughout all services, components, and plugins.
-- `IconService`: added `getIconTemplate(type)` and `getIconSvgElement(type, attrs)` with a default/generic fallback icon for unknown task types.
-- `ViewService`: replaced boolean `_showEpics`/`_showFeatures` with `_hiddenTypes: Set<string>` and new `isTypeVisible(type)` / `setTypeVisibility(type, visible)` API; backward-compatible with saved views.
-- `/api/projects` now returns `task_types` array from project config.
-- `FeatureService`: counts now stored as `Map<projectId, Map<type, count>>` supporting any number of task types; added `allCountsForProject(id)` and `allCountsForTeam(id)`.
-- `CapacityCalculator`, `QueuedFeatureService`, `dragManager`: detect parent items by children-presence (`childrenByParent.has(id)`) instead of `type === 'epic'`; renamed `PRESERVE_UNPLANNED_CHILDREN_ON_EPIC_MOVE` → `USE_PARENT_CAPACITY_GAP_FILLS` pattern.
-- `FeatureBoard`: N-level DFS hierarchy ordering replaces two-level sort; filters use `isTypeVisible`.
-- `PlanMenu`, `TeamMenu`, `Sidebar`: render dynamic columns per task type from `state.availableTaskTypes`.
-- Plugin updates: `PluginCostV2*`, `TimelineExportRenderer`, `PluginExportTimelineComponent`, `PluginGraphComponent`, `PluginPlanHealthComponent` all use generic type APIs.
-- `dragManager`: resize and move operations now consider the **full descendant subtree** (grandchildren, etc.) — resizing a parent is clamped to the deepest grandchild's end date; moving a parent shifts all descendants by the same delta.
-- `DetailsPanel`: "Shrink" button label is now dynamic (`Shrink Epic`, `Shrink Feature`, etc.) based on the item's type; button is hidden for leaf items (those without children).
-
-### Fixed
-- `DetailsPanel` Links section: `relItem` was undefined (should have been `linked`), causing a `ReferenceError` caught silently by the try/catch that hid all relations for child items (only top-level items with no Parent-type relation were unaffected). Fixed to use `linked?.type`.
-- `DetailsPanel` "Shrink" button: typo "Shink Epic" corrected to "Shrink {Type}".
 
 ---
 
 ## [v3.2.0] - unreleased
 ### Added
+- Configurable N-level task-type hierarchies (admin-configurable) so projects can use arbitrary work item type trees (Initiative → Epic → Feature → Story, etc.).
+- Admin improvements: Global Settings for task-type hierarchy and an updated Projects UI that can browse Azure DevOps, auto-load work item types/states, and prefetch area-path metadata.
+- Server-side Azure metadata caching and new endpoints to prefetch project/area-path metadata for faster admin operations.
+- Capacity and graph updates: team-aware capacity handling and a `GRAPH_ONLY_SELECTED_PLANS` feature flag to control whether the main graph shows all plans or only selected plans.
+- Small developer/user-facing helpers and API improvements (feature state service, generic icon support, and helper methods for plugin authors).
 - Admin Projects UI: "Browse from Azure DevOps" panel to select a project, list area paths, and auto-configure a new project_map entry with all live work item types and states.
 - New REST endpoints `GET /api/azure/projects`, `GET /api/azure/area-paths`, `GET /api/azure/work-item-metadata`, and `GET /api/azure/area-path-metadata` (require user session with PAT, no admin privilege needed).
 - `GET /api/azure/area-path-metadata` returns types and states configured for the team that owns the area path, using Azure DevOps backlog configuration API (authoritative board config). Falls back to scanning up to 500 work items via WIQL when no team is mapped to the area path or the backlog config API is unavailable.
 
 ### Changed
+- Client and server refactors to use generic task-type APIs across the UI (Sidebar, PlanMenu, TeamMenu, FeatureBoard) and plugins — counts, columns, and filters now work with any configured task types.
+- Drag/move/resize behavior now applies to the full descendant subtree (parents and all children move/resize together).
+- `/api/projects` and related endpoints now return richer project metadata including `task_types` and `state_categories` used by the UI.
 - Removed `_safe_type()` normalization from `WorkItemOperations` and `AzureClient`; work item `type` field now reflects the exact Azure DevOps type string (e.g. `"Feature"`, `"User Story"`, `"Bug"`) instead of a lowercased proxy.
 - WIQL query builder no longer capitalizes task type and state strings; values from config are used as-is (Azure WIQL is case-insensitive).
 - `task_types` JSON schema for projects config relaxed from a fixed enum to free strings, supporting any Azure DevOps work item type.
 
 ### Fixed
+- Details panel relation rendering bug and the "Shrink" button label typo.
+- Task type/state normalization and state-cache issues that could cause missing counts or incorrect UI renders.
 - Server backend now propagates project-configured `task_types` and `include_states` through the full Azure client stack (`AzureServiceProtocol`, `AzureClient`, `AzureNativeClient`) so any hierarchy of work item types is fetched instead of being silently limited to the built-in default `['epic', 'feature']`.
 - Cache refresh endpoint (`/api/cache/refresh`) now reads per-project `task_types` and `include_states` from the project configuration and passes them to `get_work_items`, aligning cache refreshes with the same type hierarchy used by the standard task-listing path.
 
