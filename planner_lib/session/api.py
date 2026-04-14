@@ -14,13 +14,13 @@ async def api_session_post(payload: AccountPayload, response: Response, request:
         raise HTTPException(status_code=400, detail={'error': 'invalid_email', 'message': 'Invalid email address'})
 
     try:
-        # pass the request so the session helper can look up the manager
         sid = create_session(email, request=request)
     except KeyError:
         # No account exists for this email
         raise HTTPException(status_code=401, detail={'error': 'account_not_found', 'message': 'Account not found'})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception('Session creation failed for %s: %s', email, e)
+        raise HTTPException(status_code=500, detail='Internal server error')
 
     # Inform middleware to set the session cookie centrally
     response.headers['x-set-session-id'] = sid

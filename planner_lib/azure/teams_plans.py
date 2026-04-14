@@ -35,7 +35,7 @@ class TeamPlanOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        core_client = self.client.conn.clients.get_core_client()
+        core_client = self.client.core_client
         
         teams = core_client.get_teams(project_id=project)
         items = getattr(teams, 'value', teams) or []
@@ -66,7 +66,7 @@ class TeamPlanOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         
         plans = work_client.get_plans(project=project)
         items = getattr(plans, 'value', plans) or []
@@ -143,7 +143,7 @@ class TeamPlanOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         
         teams = self.get_all_teams(project)
         if not teams:
@@ -214,7 +214,7 @@ class TeamPlanOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         
         teams = self.get_all_teams(project) or []
         
@@ -284,7 +284,7 @@ class TeamPlanOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        wit_client = self.client.wit_client
         
         # Fetch iteration classification nodes
         try:

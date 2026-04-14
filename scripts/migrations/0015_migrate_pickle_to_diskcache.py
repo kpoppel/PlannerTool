@@ -21,7 +21,19 @@ def upgrade(dry_run=False, backup=False):
     from pathlib import Path
     import pickle
     import shutil
-    from diskcache import Cache
+    
+    # Check for diskcache availability
+    try:
+        from diskcache import Cache
+    except ImportError:
+        print(f"Migration {MIGRATION_ID}: diskcache module not installed")
+        if dry_run:
+            print("  [DRY-RUN] Would migrate pickle files to diskcache (requires 'diskcache' package)")
+            return
+        else:
+            print("  ERROR: Install 'diskcache' package to run this migration")
+            print("  Run: pip install diskcache")
+            raise
     
     root = Path(__file__).resolve().parents[2]
     data_dir = root / 'data'

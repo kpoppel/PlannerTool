@@ -11,8 +11,27 @@ from datetime import datetime, timezone, timedelta
 logger = logging.getLogger(__name__)
 
 from planner_lib.azure.AzureClient import AzureClient
-from planner_lib.azure.caching import CacheManager, CACHE_TTL, HISTORY_CACHE_TTL, NAMESPACE
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.azure.caching import (
+    CacheManager, HistoryCacheManager, CACHE_TTL, HISTORY_CACHE_TTL, NAMESPACE,
+    key_for_area, key_for_teams, key_for_plans, key_for_area_plan,
+    key_for_plan_markers, key_for_iterations, key_for_revision_history,
+)
+from planner_lib.storage.base import StorageBackend
+
+
+def _merge_ranked(task_ids: list, area_cache: dict, limited_wiql: bool) -> list:
+    """Return items from *area_cache* ordered by *task_ids* (WIQL StackRank).
+
+    When *limited_wiql* is True the WIQL only returned recently-changed items;
+    cached items not present in the WIQL result are appended after the
+    StackRank-ordered items so that the full set is always returned.
+    """
+    wiql_ordered = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+    if not limited_wiql:
+        return wiql_ordered
+    wiql_ids_set = {str(tid) for tid in task_ids}
+    remaining = [area_cache[cid] for cid in area_cache if cid not in wiql_ids_set]
+    return wiql_ordered + remaining
 
 
 class AzureCachingClient(AzureClient):
@@ -26,7 +45,7 @@ class AzureCachingClient(AzureClient):
     - Periodically prunes old cache entries
     """
 
-    def __init__(self, organization_url: str, storage: StorageProtocol, memory_cache=None):
+    def __init__(self, organization_url: str, storage: StorageBackend, memory_cache=None):
         """Initialize caching client with storage backend and optional memory cache.
 
         The client is instantiated without a PAT; use the `connect(pat)` 
@@ -40,8 +59,9 @@ class AzureCachingClient(AzureClient):
         logger.info("Using AzureCachingClient (deferred connect) with storage backend")
         super().__init__(organization_url, storage=storage)
         self._cache = CacheManager(storage, namespace=NAMESPACE)
+        self._history_cache = HistoryCacheManager(self._cache)
         self._memory_cache = memory_cache
-        
+
         # History cache metrics
         self._history_metrics = {
             "history_cache_hits": 0,
@@ -53,12 +73,12 @@ class AzureCachingClient(AzureClient):
     @property
     def _fetch_count(self):
         """Expose fetch count for tests."""
-        return self._cache._fetch_count
-    
+        return self._cache.fetch_count
+
     @_fetch_count.setter
     def _fetch_count(self, value):
         """Set fetch count for tests."""
-        self._cache._fetch_count = value
+        self._cache.fetch_count = value
     
     @property
     def _has_memory_cache(self) -> bool:
@@ -98,113 +118,23 @@ class AzureCachingClient(AzureClient):
         
         self._memory_cache.mark_stale(NAMESPACE, key)
 
-    def _key_for_area(self, area_path: str) -> str:
-        """Generate cache key for an area path."""
-        safe = area_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
-        safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
-        return safe
+    # Cache key helpers — delegate to module-level functions in caching.py
+    # so the same logic is shared with the API layer.
+    def _key_for_area(self, area_path: str) -> str: return key_for_area(area_path)
+    def _key_for_teams(self, project: str) -> str: return key_for_teams(project)
+    def _key_for_plans(self, project: str) -> str: return key_for_plans(project)
+    def _key_for_area_plan(self, area_path: str) -> str: return key_for_area_plan(area_path)
+    def _key_for_plan_markers(self, project: str, plan_id: str) -> str: return key_for_plan_markers(project, plan_id)
+    def _key_for_iterations(self, project: str, root_path: Optional[str] = None) -> str: return key_for_iterations(project, root_path)
+    def _key_for_revision_history(self, work_item_id: int) -> str: return key_for_revision_history(work_item_id)
 
-    def _key_for_teams(self, project: str) -> str:
-        """Generate cache key for project teams."""
-        safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-        return f"teams_{safe}"
+    def _write_history_cache(self, work_item_id: int, history: List[dict], revision: int, timestamp=None) -> None:
+        """Delegate to HistoryCacheManager."""
+        self._history_cache.write(work_item_id, history, revision, timestamp=timestamp)
 
-    def _key_for_plans(self, project: str) -> str:
-        """Generate cache key for project plans."""
-        safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-        return f"plans_{safe}"
-
-    def _key_for_area_plan(self, area_path: str) -> str:
-        """Generate cache key for area->plan mapping."""
-        safe = self._key_for_area(area_path)
-        return f"area_plan_{safe}"
-
-    def _key_for_plan_markers(self, project: str, plan_id: str) -> str:
-        """Generate cache key for plan markers."""
-        safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-        safe_plan = str(plan_id).replace(' ', '_')
-        return f"plan_markers_{safe_proj}_{safe_plan}"
-    
-    def _key_for_iterations(self, project: str, root_path: Optional[str] = None) -> str:
-        """Generate cache key for iterations."""
-        safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-        if root_path:
-            safe_root = root_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
-            safe_root = ''.join(c for c in safe_root if c.isalnum() or c in ('_', '-'))
-            return f"iterations_{safe_proj}_{safe_root}"
-        return f"iterations_{safe_proj}_all"
-    
-    def _key_for_revision_history(self, work_item_id: int) -> str:
-        """Generate cache key for work item revision history."""
-        return f"history_{work_item_id}"
-
-    def _write_history_cache(self, work_item_id: int, history: List[dict], revision: int, timestamp: Optional[datetime] = None) -> None:
-        """Write revision history to cache with revision and timestamp metadata.
-        
-        Args:
-            work_item_id: Work item ID
-            history: List of revision records
-            revision: Current revision number of the work item
-        """
-        key = self._key_for_revision_history(work_item_id)
-        if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
-        cache_entry = {
-            "data": history,
-            "metadata": {
-                "revision": revision,
-                "work_item_id": work_item_id,
-                "timestamp": timestamp.isoformat()
-            }
-        }
-        self._cache.write(key, cache_entry)
-        self._cache.update_timestamp(key)
-    
-    def _read_history_cache(self, work_item_id: int, ttl: timedelta = HISTORY_CACHE_TTL) -> tuple[Optional[List[dict]], Optional[int], bool]:
-        """Read revision history from cache with revision metadata and TTL check.
-        
-        Args:
-            work_item_id: Work item ID
-            ttl: Time-to-live for cache (default 24 hours)
-            
-        Returns:
-            Tuple of (history list, revision number, is_fresh)
-            - (None, None, False) if not cached
-            - (history, revision, True) if cached and within TTL
-            - (history, revision, False) if cached but TTL expired
-        """
-        key = self._key_for_revision_history(work_item_id)
-        cached = self._cache.read(key)
-        
-        if cached is None:
-            return None, None, False
-        
-        # Expected format with metadata
-        if isinstance(cached, dict) and "data" in cached and "metadata" in cached:
-            history = cached["data"]
-            metadata = cached["metadata"]
-            revision = metadata.get("revision")
-            timestamp_str = metadata.get("timestamp")
-            
-            # Check TTL if timestamp available
-            is_fresh = False
-            if timestamp_str:
-                try:
-                    timestamp = datetime.fromisoformat(timestamp_str)
-                    age = datetime.now(timezone.utc) - timestamp
-                    is_fresh = age < ttl
-                    if is_fresh:
-                        logger.debug(f"History cache fresh for {work_item_id} (age={age}, ttl={ttl})")
-                    else:
-                        logger.debug(f"History cache stale for {work_item_id} (age={age}, ttl={ttl})")
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Invalid timestamp in cache for {work_item_id}: {e}")
-            
-            return history, revision, is_fresh
-        
-        # Invalid format - return None to force refetch
-        logger.warning(f"Invalid cache format for work item {work_item_id}, will refetch")
-        return None, None, False
+    def _read_history_cache(self, work_item_id: int, ttl: timedelta = HISTORY_CACHE_TTL):
+        """Delegate to HistoryCacheManager."""
+        return self._history_cache.read(work_item_id, ttl=ttl)
 
     def _get_current_revision(self, work_item_id: int) -> Optional[int]:
         """Get current work item revision number (lightweight API call).
@@ -324,15 +254,6 @@ class AzureCachingClient(AzureClient):
         # canonical StackRank ordering that must be preserved for the UI
         logger.debug(f"Running WIQL for area '{area_key}' (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
 
-        # Cache hit: skip WIQL if cache is fresh and no invalidations
-        if not force_full_refresh and not invalidated_in_area and last_update:
-            logger.debug(f"Cache hit for area '{area_key}' ({len(area_cache)} items) - skipping WIQL")
-            result = list(area_cache.values())
-            # Update memory cache with fresh disk data
-            if self._has_memory_cache:
-                self._write_memory_cache(area_key, result)
-            return result
-        
         logger.debug(f"Cache miss for area '{area_key}' - running WIQL (force_refresh={force_full_refresh}, invalidated={len(invalidated_in_area)})")
 
         # Build WIQL query with optional ModifiedDate filter
@@ -456,15 +377,10 @@ class AzureCachingClient(AzureClient):
         logger.debug(f"Changed/new items: {len(items_to_fetch)}, Deleted: {len(deleted_ids)}")
         logger.debug(f"Skipping {len(task_ids) - len(items_to_fetch)} unchanged items")
         
-        # If nothing changed and no deletes, return cached data. If we ran a
-        # limited WIQL we don't have a full rank ordering, so return the
-        # cached list as-is; otherwise preserve WIQL order.
+        # If nothing changed and no deletes, return cached data.
         if not items_to_fetch and not deleted_ids and not force_full_refresh:
             logger.debug(f"No changes detected for area '{area_key}' - using cache")
-            #if limited_wiql:
-            #    return list(area_cache.values())
-            # Sort by task_ids order (preserves StackRank from WIQL)
-            result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+            result = _merge_ranked(task_ids, area_cache, limited_wiql)
             # Update memory cache if it was stale
             if self._has_memory_cache:
                 self._write_memory_cache(area_key, result)
@@ -548,8 +464,7 @@ class AzureCachingClient(AzureClient):
         self._cache.prune_old_entries(keep_count=50)
         
         # Update memory cache (write-through)
-        # Sort by task_ids order (preserves StackRank from WIQL) before returning
-        result = [area_cache[str(tid)] for tid in task_ids if str(tid) in area_cache]
+        result = _merge_ranked(task_ids, area_cache, limited_wiql)
         if self._has_memory_cache:
             self._write_memory_cache(area_key, result)
             logger.debug(f"Updated memory cache for area '{area_key}' with {len(result)} items")
@@ -750,11 +665,7 @@ class AzureCachingClient(AzureClient):
         
         # Read index to get area keys
         try:
-            index = self._cache._read_index()
-            for area_key in list(index.keys()):
-                if area_key == '_invalidated':
-                    continue
-                
+            for area_key in list(self._cache.list_area_keys()):
                 # Check if any work items belong to this area
                 area_list = self._cache.read(area_key) or []
                 area_ids = {int(it.get('id')) for it in area_list if it.get('id')}
@@ -815,11 +726,7 @@ class AzureCachingClient(AzureClient):
         
         # Clean up area->plan mappings that reference invalidated plans
         try:
-            index = self._cache._read_index()
-            for area_key in list(index.keys()):
-                if area_key == '_invalidated':
-                    continue
-                
+            for area_key in list(self._cache.list_area_keys()):
                 map_key = self._key_for_area_plan(area_key)
                 mapping = self._cache.read(map_key)
                 
@@ -1124,14 +1031,32 @@ class AzureCachingClient(AzureClient):
         
         return result
     
+    def invalidate_history_cache(self) -> int:
+        """Delete all cached revision-history entries (keys starting with 'history_').
+
+        Returns:
+            Number of cache entries deleted.
+        """
+        history_keys = [k for k in self._cache.list_all_index_keys() if k.startswith('history_')]
+        logger.info(f"Found {len(history_keys)} history cache entries to invalidate")
+        invalidated = 0
+        for key in history_keys:
+            try:
+                self._cache.delete(key)
+                invalidated += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete cache key {key}: {e}")
+        logger.info(f"Invalidated {invalidated} history cache entries")
+        return invalidated
+
     def invalidate_all_caches(self) -> dict:
         """Invalidate all cached data.
-        
+
         This clears all work items, teams, plans, markers, and iterations
         from the cache, forcing a complete refresh on the next fetch.
         Also cleans up any orphaned index entries.
         Clears both disk and memory caches.
-        
+
         Returns:
             Dictionary with count of cleared entries
         """

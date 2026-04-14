@@ -75,6 +75,8 @@ COPY VERSION ./
 COPY docs ./docs
 COPY planner_lib ./planner_lib
 COPY www-admin ./www-admin
+COPY scripts/migrate.py ./scripts/migrate.py
+COPY scripts/migrations ./scripts/migrations
 
 # Set ownership of the app directory. The entrypoint will handle the volume mount.
 RUN chown -R planner:planner /app

@@ -64,7 +64,15 @@ class AzureServiceProtocol(Protocol):
 
     def update_work_item_description(self, work_item_id: int, description: str) -> Any:  # pragma: no cover - typing shim
         ...
-    
+
+    def get_work_item_description(self, work_item_id: int) -> str:  # pragma: no cover - typing shim
+        """Fetch the current description (HTML) of a work item."""
+        ...
+
+    def get_work_item(self, work_item_id: int, fields=None) -> Any:  # pragma: no cover - typing shim
+        """Fetch a single work item by ID without requiring caller to access conn."""
+        ...
+
     def invalidate_all_caches(self) -> dict:  # pragma: no cover - typing shim
         """Invalidate all cached data and force a complete refresh on next fetch."""
         ...

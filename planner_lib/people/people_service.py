@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 import logging
 from pathlib import Path
 
-from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from planner_lib.people.interfaces import PeopleServiceProtocol
 from planner_lib.storage.serializer import YAMLSerializer
 
@@ -22,7 +22,7 @@ class PeopleService(PeopleServiceProtocol):
     The inline overrides take precedence over entries from the database_file.
     """
 
-    def __init__(self, storage: StorageProtocol, data_dir: str = "data"):
+    def __init__(self, storage: StorageBackend, data_dir: str = "data"):
         """Initialize the PeopleService.
         
         Args:

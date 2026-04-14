@@ -50,7 +50,12 @@ def test_save_projects_backup_fallback(tmp_path, monkeypatch):
     # ensure working directory has no www-admin interference
     monkeypatch.chdir(tmp_path)
     storage = FakeStorageFailSave()
-    admin_svc = SimpleNamespace(_config_storage=storage)
+    # save_config must let RuntimeError propagate so admin_save_projects raises HTTPException
+    admin_svc = SimpleNamespace(
+        _config_storage=storage,
+        get_config=lambda key, default=None: default,
+        save_config=lambda key, content: storage.save('config', key, content),
+    )
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
 
     class Req:
@@ -71,7 +76,12 @@ def test_save_projects_backup_fallback(tmp_path, monkeypatch):
 
 def test_get_projects_raises_on_storage_error():
     storage = FakeStorageRaiseOnLoad()
-    admin_svc = SimpleNamespace(_config_storage=storage)
+    # get_config lets non-KeyError exceptions propagate; admin_get_projects outer try/except
+    # converts them to HTTPException(500)
+    admin_svc = SimpleNamespace(
+        _config_storage=storage,
+        get_config=lambda key, default=None: storage.load('config', key),
+    )
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
     req = make_request(container)
     with pytest.raises(HTTPException):
@@ -79,13 +89,16 @@ def test_get_projects_raises_on_storage_error():
 
 
 def test_get_users_handles_list_errors():
-    # storage.list_keys raises -> admin_get_users should return empty lists
+    # get_all_users / get_all_admins return [] on error -> admin_get_users returns empty lists
     class S:
         def list_keys(self, ns):
             raise Exception('boom')
     storage = S()
-    admin_svc = SimpleNamespace(_account_storage=storage)
-    # session manager absent / raising
+    admin_svc = SimpleNamespace(
+        _account_storage=storage,
+        get_all_users=lambda: [],
+        get_all_admins=lambda: [],
+    )
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
     req = make_request(container)
     res = asyncio.run(admin_api.admin_get_users.__wrapped__(req))
@@ -132,7 +145,22 @@ def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
         def list_keys(self, ns):
             return []
     storage = Storage()
-    admin_svc = SimpleNamespace(_config_storage=storage)
+
+    def _save_config(key, content):
+        try:
+            existing = storage.load('config', key)
+            from datetime import datetime, timezone
+            ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            storage.save('config', f'{key}_backup_{ts}', existing)
+        except Exception:
+            pass
+        storage.save('config', key, content)
+
+    admin_svc = SimpleNamespace(
+        _config_storage=storage,
+        get_config=lambda key, default=None: storage.load('config', key) if key in storage.data.get('config', {}) else default,
+        save_config=_save_config,
+    )
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
 
     class Req:
@@ -169,7 +197,35 @@ def test_admin_save_users_delete_keyerror_handled():
         def load(self, ns, key):
             raise KeyError(key)
     storage = Storage()
-    admin_svc = SimpleNamespace(_account_storage=storage)
+
+    def _sync_full(users, admins):
+        if isinstance(users, list):
+            users = {e: {'email': e} for e in users}
+        if isinstance(admins, list):
+            admins = {e: {'email': e} for e in admins}
+        current_users = set(storage.list_keys('accounts'))
+        current_admins = set(storage.list_keys('accounts_admin'))
+        for k, v in users.items():
+            storage.save('accounts', k, v)
+        for k in current_users - set(users):
+            try:
+                storage.delete('accounts', k)
+            except KeyError:
+                pass
+        for k, v in admins.items():
+            storage.save('accounts_admin', k, v)
+        for k in current_admins - set(admins):
+            try:
+                storage.delete('accounts_admin', k)
+            except KeyError:
+                pass
+
+    admin_svc = SimpleNamespace(
+        _account_storage=storage,
+        get_all_users=lambda: list(storage.list_keys('accounts')),
+        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        sync_accounts_full=_sync_full,
+    )
     session_mgr = SessMgr({'email': 'admin@admin'})
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 

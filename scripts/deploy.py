@@ -103,7 +103,8 @@ def generate_docker_compose(instances, version):
         compose["services"][container_name] = {
             "image": image,
             "environment": [
-                f"ROOT_PATH=/{name}"
+                f"ROOT_PATH=/{name}",
+                "PLANNER_SECRET_KEY=${PLANNER_SECRET_KEY}"
             ],
             "volumes": volumes,
             "restart": "unless-stopped"

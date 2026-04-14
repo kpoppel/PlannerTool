@@ -122,7 +122,29 @@ This application can also be deployed using Docker Compose to host multiple isol
    python3 scripts/deploy.py --config path/to/my-instances.yml
    ```
 
-3. To start the services, either run the script with the `--start` flag, or do it manually:
+3. **Set the encryption key**: Before starting the containers, you must set the `PLANNER_SECRET_KEY` environment variable. This key is used to encrypt Personal Access Tokens (PATs) at rest.
+
+   ```bash
+   # Generate a random encryption key (do this once and save it securely!)
+   openssl rand -base64 32 > .encryption_key
+
+   # Create the environment file for docker compose
+   echo "PLANNER_SECRET_KEY="$(cat .encryption_key) > deployment/.env
+   ```
+
+   If running by docker container or development mode, set the environment variable
+   ```
+   export PLANNER_SECRET_KEY=$(cat .encryption_key)
+   ```
+
+   **Important**: 
+   - Store the `.encryption_key` file securely and back it up
+   - Never commit `.encryption_key` to version control
+   - The same key must be used consistently or encrypted PATs cannot be decrypted
+   - For production deployments, consider using Docker secrets or a secrets management service
+
+
+4. To start the services, either run the script with the `--start` flag, or do it manually:
    ```bash
    # Option A: Let the script start everything
    python3 scripts/deploy.py --start

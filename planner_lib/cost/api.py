@@ -27,8 +27,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
                 loaded = account_manager.load(email)
                 if loaded:
                     pat = loaded.get('pat')
-                    ctx['pat'] = pat
-                    session_manager.set(sid, ctx)
+                    session_manager.set_val(sid, 'pat', pat)
             except Exception as e:
                 logger.exception('Failed to load user config for %s: %s', email, e)
 
@@ -112,7 +111,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         raise
     except Exception as e:
         logger.exception('Failed to calculate cost: %s', e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post('/cost/features')
@@ -154,7 +153,7 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
         return build_cost_schema(raw, mode='full', session_features=ctx.get('features'), project_types=project_types)
     except Exception as e:
         logger.exception('Failed to calculate feature costs: %s', e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get('/cost')
@@ -215,7 +214,7 @@ async def api_cost_get(request: Request):
 
     except Exception as e:
         logger.exception('Failed to fetch cost data: %s', e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get('/cost/teams')
@@ -293,4 +292,4 @@ async def api_cost_teams(request: Request):
         return { 'teams': teams }
     except Exception as e:
         logger.exception('Failed to build teams data: %s', e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

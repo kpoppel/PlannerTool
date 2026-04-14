@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from planner_lib.azure.AzureClient import AzureClient
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 
 class AzureNativeClient(AzureClient):
     """Azure client without caching.
@@ -15,7 +15,7 @@ class AzureNativeClient(AzureClient):
     Optional in-memory caching for plans/teams can be enabled via cache_plans flag.
     """
     
-    def __init__(self, organization_url: str, storage: StorageProtocol, *, cache_plans: bool = True):
+    def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         logger.info("Using AzureNativeClient (deferred connect)")
         super().__init__(organization_url, storage=storage, cache_plans=cache_plans)
         # simple in-memory runtime caches for plans/teams when cache_plans is True

@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from planner_lib.projects.interfaces import ProjectServiceProtocol
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class ProjectService(ProjectServiceProtocol):
     backend and exposes `list_projects` returning frontend-ready entries.
     """
 
-    def __init__(self, storage_config: StorageProtocol, metadata_service: Optional[Any] = None):
+    def __init__(self, storage_config: StorageBackend, metadata_service: Optional[Any] = None):
         self._storage_config = storage_config
         self._metadata_service = metadata_service
 

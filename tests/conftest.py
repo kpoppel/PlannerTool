@@ -2,6 +2,10 @@ import os
 import yaml
 import pytest
 
+# Ensure a test secret key is always available so AccountManager can encrypt
+# PATs without raising RuntimeError about a missing PLANNER_SECRET_KEY.
+os.environ.setdefault('PLANNER_SECRET_KEY', 'test-only-secret-key-not-for-production')
+
 
 class SimpleCache:
     def __init__(self):
@@ -147,7 +151,7 @@ def ensure_test_sessions(monkeypatch, app):
         def exists_any(self, sid):
             return True
 
-        def create_any(self, email: str, request=None):
+        def create_any(self, email: str):
             return "test-session"
 
         def get_any(self, sid):
@@ -183,8 +187,8 @@ def ensure_test_sessions(monkeypatch, app):
                 pass
             return {"email": "test@example.com", "pat": "token"}
 
-        def create_any(self_or_email, email_or_request=None, request=None):
-            # Support both (email) signature and (email, request=...) usage.
+        def create_any(self_or_email, email_or_request=None):
+            # Support (email) signature.
             # Normalize to return a constant test session id.
             return "test-session"
 

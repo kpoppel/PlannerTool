@@ -15,6 +15,20 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ---
 
+## [v3.3.0] - unreleased
+Summary: A focused cleanup and security-forward release that improves migrations, deployment, caching, service structure, and several API/bug fixes for more robust operation.
+
+### Added:
+- Security & Data Protection: PATs are now encrypted at rest using Fernet (PBKDF2HMAC-derived key) and startup validates PLANNER_SECRET_KEY, hardening secrets handling.
+- Migrations & Deployment: New migration 0017_encrypt_pats.py to encrypt existing PATs; migrate.py is version-aware; Docker entrypoint runs migrations automatically and validates required env vars; docs updated.
+
+### Changed:
+- Architecture & Service Cleanup: Large refactor to simplify and modularize startup and services — create_app() split, AdminService reduced via composed managers, TaskUpdateService extracted, DI registration improved with ServiceKeys, and a CacheCoordinator added.
+- Caching & Azure Client Improvements: Cache logic consolidated (new caching.py / HistoryCacheManager), AzureClient now builds clients once, AzureCachingClient WIQL ordering fixed, and memory/cache warmup behavior corrected.
+- Storage & Reuse: New UserDataStore centralizes file-locking and CRUD for user stores; MemoryStorage now implements StorageBackend; StorageProtocol renamed to StorageBackend for a single canonical interface.
+- API Stability & Security Fixes: Numerous route and handler cleanups (admin, cost, projects, accounts), OWASP A05 fix (internal errors no longer leak details), safer restore/validation flows, and other bug fixes.
+- Tests & Tooling: Test suite updated to reflect behavior changes; conftest.py ensures PLANNER_SECRET_KEY is available for tests; new admin/azure helper endpoints added to support admin workflows.
+
 ## [v3.2.1] - 2026-04-09
 
 ### Added

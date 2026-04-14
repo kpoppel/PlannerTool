@@ -10,17 +10,26 @@ import logging
 import threading
 from pathlib import Path
 import json
+import os
 
-#from planner_lib.config.config import account_manager
 from planner_lib.storage import StorageBackend
 from planner_lib.accounts.interfaces import AccountManagerProtocol
-from planner_lib.accounts import config as accounts_config_mod
 from planner_lib.services.resolver import resolve_service
 
 logger = logging.getLogger(__name__)
 
 # Cookie name used by the frontend
 SESSION_COOKIE = "sessionId"
+
+# Read the 401 HTML template once at module load.  The path is resolved
+# relative to this file so the server can be started from any working directory.
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_ERROR_PAGE_PATH = os.path.join(_MODULE_DIR, "..", "..", "www", "404.html")
+try:
+    with open(_ERROR_PAGE_PATH, "r", encoding="utf-8") as _f:
+        _ERROR_PAGE_TEMPLATE: str = _f.read()
+except FileNotFoundError:
+    _ERROR_PAGE_TEMPLATE = ""
 
 
 class SessionManager:
@@ -30,55 +39,42 @@ class SessionManager:
     can use `manager.get(sid) or {}` without try/except.
     """
 
-    def __init__(self, session_storage: StorageBackend, account_manager: AccountManagerProtocol) -> None:
-        # TODO: Make session_storage as injected storage backend. Make an in-memory backend?
+    def __init__(
+        self,
+        account_manager: AccountManagerProtocol,
+        account_storage: Optional[StorageBackend] = None,
+    ) -> None:
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._account_manager = account_manager
-    def create(self, email: str, request: Optional[Request] = None) -> str:
+        # Used for admin-fallback: check accounts_admin namespace without an HTTP round-trip.
+        self._account_storage = account_storage
+
+    def create(self, email: str) -> str:
         # Ensure the account exists before creating a session. We consider
         # missing account a client error — do not create sessions for unknown
         # emails. Let account_manager.load raise KeyError if not present.
         try:
-            # Prefer a test-injected module-level storage when present so tests
-            # that set `planner_lib.accounts.config._storage` are honored.
-            test_store = getattr(accounts_config_mod, '_storage', None)
-            if test_store is not None:
-                mgr = AccountManager(account_storage=test_store)
-                cfg = mgr.load(email)
-            else:
-                cfg = self._account_manager.load(email)
+            cfg = self._account_manager.load(email)
         except KeyError:
             # If the account is not present in the primary accounts namespace
             # but an admin marker exists under `accounts_admin`, allow session
             # creation for admin users (no PAT will be set). This keeps admin
             # bootstrap working where admin markers live separately.
-            if request is not None:
+            if self._account_storage is not None:
                 try:
-                    admin_svc = resolve_service(request, 'admin_service')
-                    if admin_svc and getattr(admin_svc, 'is_admin', lambda e: False)(email):
-                        # Create a session context without a PAT.
+                    if self._account_storage.exists('accounts_admin', email):
                         with self._lock:
                             for sid, ctx in list(self._store.items()):
                                 if ctx.get('email') == email:
                                     logger.debug("Pruning existing session %s for %s", sid, email)
                                     del self._store[sid]
-
                             sid = uuid.uuid4().hex
-                            ctx: dict[str, Any] = {
-                                'email': email,
-                                'pat': None,
-                            }
-
-                            self._store[sid] = ctx
-                            try:
-                                ip = request.client.host if request is not None and getattr(request, 'client', None) else None
-                            except Exception:
-                                ip = None
-                            logger.info('Session created (admin): %s by %s%s', sid, email, f" from {ip}" if ip else '')
+                            self._store[sid] = {'email': email, 'pat': None}
+                            logger.info('Session created (admin): %s by %s', sid, email)
                             return sid
                 except Exception:
-                    logger.debug('Admin fallback lookup failed')
+                    logger.debug('Admin fallback lookup failed for %s', email)
             # Caller should translate this into an HTTP 401/400; raise to
             # indicate creation is not allowed for unknown accounts.
             raise
@@ -91,17 +87,11 @@ class SessionManager:
                     del self._store[sid]
 
             sid = uuid.uuid4().hex
-            ctx: dict[str, Any] = {
+            self._store[sid] = {
                 'email': email,
                 'pat': cfg.get('pat'),
             }
-
-            self._store[sid] = ctx
-            try:
-                ip = request.client.host if request is not None and getattr(request, 'client', None) else None
-            except Exception:
-                ip = None
-            logger.info('Session created: %s by %s%s', sid, email, f" from {ip}" if ip else '')
+            logger.info('Session created: %s by %s', sid, email)
             return sid
 
     def get(self, sid: str) -> Optional[dict[str, Any]]:
@@ -148,16 +138,10 @@ def create_session(email: str, request: Request) -> str:
     This will prune any existing sessions for the same email and attempt
     to load the user's PAT into the session context.
 
-    The SessionManager is looked up from `request.app.state.session_manager`.
+    The SessionManager is looked up from `request.app.state.container`.
     """
-    # Use the centralized resolver which prefers an explicit
-    # `app.state.session_manager` override (tests may set this),
-    # otherwise falls back to the application container.
     mgr = resolve_service(request, 'session_manager')
-    # Pass the request through so session manager can consult other
-    # services (e.g., `admin_service`) when deciding whether to allow
-    # session creation for emails not present in the primary accounts.
-    return mgr.create(email, request=request)
+    return mgr.create(email)
 
 
 def get_session_id_from_request(request: Request) -> str:
@@ -210,18 +194,14 @@ def access_denied_response(request: Request, error_code: dict) -> Response:
     FastAPI handlers still raise HTTPException(401) for API callers; this
     function is used by a global exception handler to return friendly HTML.
     """
-    # Prefer JSON for API clients and HTML for browser-based UI. Heuristics:
-    # - If the request Accept header prefers JSON, return JSON
-    # - If the path looks like an API route (starts with /api), return JSON
-    # - Otherwise return HTML
     accept = (request.headers.get('accept') or '').lower()
-    path = (request.url.path or '')
-    if 'application/json' in accept:# or path.startswith('/api'):
+    if 'application/json' in accept:
         return JSONResponse(status_code=401, content=error_code)
 
-    path = Path('www/404.html')
-    content = path.read_text(encoding='utf-8')
-    content = content.replace('{{ error_code }}', json.dumps(error_code))
+    if _ERROR_PAGE_TEMPLATE:
+        content = _ERROR_PAGE_TEMPLATE.replace('{{ error_code }}', json.dumps(error_code))
+    else:
+        content = f"<html><body>401 Unauthorized</body></html>"
     return HTMLResponse(content=content, status_code=401, media_type='text/html')
 
 def require_session(func: Callable) -> Callable:

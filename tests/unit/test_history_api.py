@@ -126,15 +126,9 @@ def test_history_api_happy_path(client):
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_service', MockTaskService())
     register_service_on_client(client, 'azure_client', MockAzureClient())
-    
-    # Mock the HistoryService import in the API handler
-    import sys
-    from unittest.mock import MagicMock
-    
-    # Create a mock module for history_service
-    mock_history_module = MagicMock()
-    mock_history_module.HistoryService.return_value = history_svc
-    sys.modules['planner_lib.projects.history_service'] = mock_history_module
+    # Inject the mock history service directly into the DI container so the
+    # route handler resolves it instead of instantiating a new one.
+    register_service_on_client(client, 'history_service', history_svc)
     
     # Make the request
     r = client.get('/api/history/tasks', headers={'X-Session-Id': 'test-session'})
@@ -167,13 +161,7 @@ def test_history_api_with_project_filter(client):
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_service', MockTaskService())
     register_service_on_client(client, 'azure_client', MockAzureClient())
-    
-    # Mock module
-    import sys
-    from unittest.mock import MagicMock
-    mock_history_module = MagicMock()
-    mock_history_module.HistoryService.return_value = history_svc
-    sys.modules['planner_lib.projects.history_service'] = mock_history_module
+    register_service_on_client(client, 'history_service', history_svc)
     
     r = client.get(
         '/api/history/tasks?project=project-test',
@@ -201,12 +189,7 @@ def test_history_api_with_plan_filter(client):
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_service', MockTaskService())
     register_service_on_client(client, 'azure_client', MockAzureClient())
-    
-    import sys
-    from unittest.mock import MagicMock
-    mock_history_module = MagicMock()
-    mock_history_module.HistoryService.return_value = history_svc
-    sys.modules['planner_lib.projects.history_service'] = mock_history_module
+    register_service_on_client(client, 'history_service', history_svc)
     
     r = client.get(
         '/api/history/tasks?plan=plan_1',
@@ -234,12 +217,7 @@ def test_history_api_with_date_range(client):
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_service', MockTaskService())
     register_service_on_client(client, 'azure_client', MockAzureClient())
-    
-    import sys
-    from unittest.mock import MagicMock
-    mock_history_module = MagicMock()
-    mock_history_module.HistoryService.return_value = history_svc
-    sys.modules['planner_lib.projects.history_service'] = mock_history_module
+    register_service_on_client(client, 'history_service', history_svc)
     
     r = client.get(
         '/api/history/tasks?since=2026-01-01&until=2026-12-31',
@@ -271,12 +249,7 @@ def test_history_api_pagination(client):
     register_service_on_client(client, 'session_manager', session_mgr)
     register_service_on_client(client, 'task_service', MockTaskService())
     register_service_on_client(client, 'azure_client', MockAzureClient())
-    
-    import sys
-    from unittest.mock import MagicMock
-    mock_history_module = MagicMock()
-    mock_history_module.HistoryService.return_value = history_svc
-    sys.modules['planner_lib.projects.history_service'] = mock_history_module
+    register_service_on_client(client, 'history_service', history_svc)
     
     r = client.get(
         '/api/history/tasks?page=2&per_page=50',

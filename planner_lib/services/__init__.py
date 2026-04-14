@@ -3,16 +3,17 @@
 Keep this package minimal — it only exposes the interfaces and container
 used by the initial refactor steps.
 """
-from .container import ServiceContainer
+from .container import ServiceContainer, ServiceKeys
 from .interfaces import (
     AccountManagerProtocol,
     SessionManagerProtocol,
-    StorageProtocol,
+    StorageBackend,
 )
 
 __all__ = [
     "ServiceContainer",
+    "ServiceKeys",
     "AccountManagerProtocol",
     "SessionManagerProtocol",
-    "StorageProtocol",
+    "StorageBackend",
 ]

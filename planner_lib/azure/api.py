@@ -11,17 +11,12 @@ import logging
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
+from planner_lib.azure.caching import key_for_area as _key_for_area
 
-router = APIRouter(prefix="/api/cache", tags=["cache"])
-browse_router = APIRouter(prefix="/api/azure", tags=["azure"])
+router = APIRouter(tags=["cache"])
+browse_router = APIRouter(tags=["azure"])
 logger = logging.getLogger(__name__)
 
-
-def _key_for_area(area_path: str) -> str:
-    """Generate cache key for an area path (matches AzureCachingClient logic)."""
-    safe = area_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
-    safe = ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
-    return safe
 
 
 def _get_all_configured_areas(request: Request) -> list:

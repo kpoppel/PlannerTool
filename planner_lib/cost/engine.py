@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from planner_lib.util import slugify
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def invalidate_team_rates_cache(cache_storage: StorageProtocol) -> None:
+def invalidate_team_rates_cache(cache_storage: StorageBackend) -> None:
     """Clear the team aggregates cache.
 
     Call this after changing configuration files or during tests to force
@@ -55,7 +55,7 @@ def _hours_between(start: Optional[str], end: Optional[str], default_hours_per_m
     except Exception:
         return float(default_hours_per_month)
 
-def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dict[str, Dict[str, Any]]:
+def _team_members(config: Dict[str, Any], cache_storage: StorageBackend) -> Dict[str, Dict[str, Any]]:
     """Return aggregated team information.
 
     Returns a mapping: {
@@ -201,7 +201,7 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageProtocol) -> Dic
     
     return res
 
-def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageProtocol) -> Dict[str, Any]:
+def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageBackend) -> Dict[str, Any]:
     """Calculate costs for a single task given a company config and task profile.
 
     Args:
@@ -268,7 +268,7 @@ def calculate(config: Dict[str, Any], start: Optional[str], end: Optional[str], 
     return entry
 
 
-def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageProtocol) -> Dict[str, Any]:
+def calculate_detailed(config: Dict[str, Any], start: Optional[str], end: Optional[str], capacity: list[Dict[str, float]], cache_storage: StorageBackend) -> Dict[str, Any]:
     """Calculate costs for a single task and return detailed per-team, per-month allocations.
 
     Returns dict with overall totals plus a `teams` mapping containing per-team

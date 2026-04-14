@@ -59,6 +59,60 @@ class FakeAdminService:
         return {'reloaded': True}
     def is_admin(self, email):
         return email and email.endswith('@admin')
+    def get_config(self, key, default=None):
+        try:
+            data = self._config_storage.load('config', key)
+            if isinstance(data, (bytes, bytearray)):
+                return data.decode('utf-8')
+            return data
+        except Exception:
+            return default
+    def save_config(self, key, content):
+        try:
+            existing = self._config_storage.load('config', key)
+            from datetime import datetime, timezone
+            ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            self._config_storage.save('config', f'{key}_backup_{ts}', existing)
+        except Exception:
+            pass
+        self._config_storage.save('config', key, content)
+    def save_config_raw(self, key, content):
+        self._config_storage.save('config', key, content)
+    def get_all_users(self):
+        try:
+            return list(self._account_storage.list_keys('accounts'))
+        except Exception:
+            return []
+    def get_all_admins(self):
+        try:
+            return list(self._account_storage.list_keys('accounts_admin'))
+        except Exception:
+            return []
+    def admin_count(self):
+        return len(self.get_all_admins())
+    def create_admin_account(self, email, pat):
+        try:
+            user = self._account_storage.load('accounts', email)
+            user['pat'] = pat
+        except Exception:
+            user = {'email': email, 'pat': pat}
+        self._account_storage.save('accounts', email, user)
+        self._account_storage.save('accounts_admin', email, user)
+    def sync_accounts_full(self, users, admins):
+        if isinstance(users, list):
+            users = {e: {'email': e} for e in users}
+        if isinstance(admins, list):
+            admins = {e: {'email': e} for e in admins}
+        current_users = set(self._account_storage.list_keys('accounts') or [])
+        current_admins = set(self._account_storage.list_keys('accounts_admin') or [])
+        for k, v in users.items():
+            self._account_storage.save('accounts', k, v)
+        for k in current_users - set(users):
+            self._account_storage.delete('accounts', k)
+        for k, v in admins.items():
+            self._account_storage.save('accounts_admin', k, v)
+        for k in current_admins - set(admins):
+            self._account_storage.delete('accounts_admin', k)
 
 
 class SessMgr:

@@ -5,7 +5,7 @@ from typing import List, Optional
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from planner_lib.projects.interfaces import TeamServiceProtocol
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class TeamService(TeamServiceProtocol):
     Teams marked with "exclude": true are filtered out from operations.
     """
 
-    def __init__(self, storage_config: StorageProtocol):
+    def __init__(self, storage_config: StorageBackend):
         self._storage_config = storage_config
 
     def _get_teams_list(self, cfg: dict, include_excluded: bool = False) -> List[dict]:

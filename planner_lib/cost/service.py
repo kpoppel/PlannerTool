@@ -3,7 +3,7 @@ from .engine import calculate, invalidate_team_rates_cache
 from . import engine as _engine
 import logging
 from datetime import datetime, timezone
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from planner_lib.projects.project_service import ProjectServiceProtocol
 from planner_lib.projects.interfaces import TeamServiceProtocol
 from planner_lib.people.interfaces import PeopleServiceProtocol
@@ -21,11 +21,11 @@ class CostService:
 
     def __init__(
         self,
-        storage: StorageProtocol,
+        storage: StorageBackend,
         project_service: ProjectServiceProtocol,
         team_service: TeamServiceProtocol,
         people_service: PeopleServiceProtocol,
-        cache_storage: StorageProtocol,
+        cache_storage: StorageBackend,
     ):
         # `storage` is the config/cost storage (yaml). `people_service` provides
         # access to the people database with overrides. The `team_service`
@@ -37,38 +37,44 @@ class CostService:
         self._project_service = project_service
         self._team_service = team_service
         self._cache_storage = cache_storage
-        # Load cost configuration once at service construction by reading the
-        # underlying storage directly. This removes the need for a separate
-        # helper to be called from the application.
-        try:
-            cost_cfg = {}
-            db_cfg = {}
-            cost_cfg = {}
-            try:
-                cost_cfg = self._storage.load("config", "cost_config") or {}
-            except Exception:
-                cost_cfg = {}
+        self._cfg = self._load_cfg()
 
-            # Get people from PeopleService
-            people = []
-            try:
-                people = self._people_service.get_people()
-            except Exception:
-                people = []
-            
-            database = {"people": people}
-            self._cfg = {"cost": cost_cfg or {}, "database": database or {}}
-        except Exception:
-            self._cfg = {"cost": {}, "database": {}}
+    def _load_cfg(self) -> dict:
+        """Load cost configuration and people data from storage.
+
+        Only catches expected missing-key / file-not-found errors. Unexpected
+        exceptions (schema errors, corrupt data, etc.) are allowed to propagate
+        so they are visible rather than silently producing empty config.
+        """
+        try:
+            cost_cfg = self._storage.load("config", "cost_config") or {}
+        except KeyError:
+            cost_cfg = {}
+        people = []
+        try:
+            people = self._people_service.get_people()
+        except KeyError:
+            pass
+        return {"cost": cost_cfg, "database": {"people": people}}
 
     def invalidate_cache(self) -> None:
         """Invalidate the team rates cache.
-        
+
         Call this after updating teams, people, or cost configuration to force
         recomputation of team aggregates on the next cost calculation.
         """
         invalidate_team_rates_cache(self._cache_storage)
         logger.debug("CostService: team rates cache invalidated")
+
+    def reload(self) -> None:
+        """Reload cost configuration and people data from storage, then invalidate caches.
+
+        Satisfies the Reloadable protocol. Call after an admin config save so
+        subsequent requests see updated cost config without a restart.
+        """
+        self._cfg = self._load_cfg()
+        self.invalidate_cache()
+        logger.info("CostService: configuration reloaded")
 
     def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """Traverse features/tasks from a session-like dict and compute costs.

@@ -1,8 +1,11 @@
-"""TaskService: handles task listing and updates (Azure interactions).
+"""TaskService: handles task listing, iteration, and marker queries.
 
-This service depends on a storage_config (to load server_config), a
-TeamService for token/id mapping, and a CapacityService for parsing and
-serializing the capacity blocks.
+Read operations only.  Write operations (update_tasks) live in
+:mod:`planner_lib.projects.task_update_service.TaskUpdateService`.
+
+TaskService delegates update_tasks() to a composed TaskUpdateService instance
+so callers that depend on the full TaskServiceProtocol surface still work
+without changes.
 """
 from __future__ import annotations
 
@@ -10,7 +13,7 @@ from typing import List, Optional
 import logging
 
 from planner_lib.util import slugify
-from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from planner_lib.azure.interfaces import AzureServiceProtocol
 from planner_lib.projects.interfaces import (
     ProjectServiceProtocol,
@@ -23,6 +26,7 @@ from planner_lib.projects.closed_tasks import (
     get_non_completed_states,
     filter_completed_with_open_ancestors,
 )
+from planner_lib.projects.task_update_service import TaskUpdateService
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +35,14 @@ class TaskService(TaskServiceProtocol):
     def __init__(
         self,
         *,
-        storage_config: StorageProtocol,
+        storage_config: StorageBackend,
         project_service: ProjectServiceProtocol,
         team_service: TeamServiceProtocol,
         capacity_service: CapacityServiceProtocol,
         azure_client: AzureServiceProtocol,
         metadata_service=None,  # Optional AzureProjectMetadataService for closed-task filtering
     ):
-        self._storage_config: StorageProtocol = storage_config
+        self._storage_config: StorageBackend = storage_config
         self._project_service: ProjectServiceProtocol = project_service
         self._team_service: TeamServiceProtocol = team_service
         self._capacity_service: CapacityServiceProtocol = capacity_service
@@ -46,74 +50,155 @@ class TaskService(TaskServiceProtocol):
         # Optional; when present enables automatic fetching of Completed-category
         # tasks that still have open (non-Completed) ancestors.
         self._metadata_service = metadata_service
+        # Composed update service: same dependencies, handles all write operations.
+        self._updater = TaskUpdateService(
+            storage_config=storage_config,
+            team_service=team_service,
+            capacity_service=capacity_service,
+            azure_client=azure_client,
+        )
 
     def _build_iteration_map(self, client, azure_project: str) -> dict:
         """Build a mapping of iteration paths to their start/end dates.
-        
+
         Args:
             client: Connected Azure client
             azure_project: Azure project name
-            
+
         Returns:
-            Dict mapping iteration path -> {startDate, finishDate}
+            Dict mapping normalized iteration path -> {startDate, finishDate, name}
         """
         try:
-            # Load iterations configuration to determine root paths
-            iterations_config = {}
+            iterations_config: dict = {}
             if self._storage_config.exists('config', 'iterations'):
                 iterations_config = self._storage_config.load('config', 'iterations') or {}
-            
-            # Get root paths for this project (or use defaults)
+
             project_overrides = iterations_config.get('project_overrides', {})
             root_paths = project_overrides.get(azure_project, iterations_config.get('default_roots', []))
-            
-            # Fetch iterations from Azure for each root path
-            iteration_map = {}
-            if root_paths:
-                for root_path in root_paths:
-                    try:
-                        iterations = client.get_iterations(azure_project, root_path=root_path)  # type: ignore
-                        for iter_data in iterations:
-                            path = iter_data.get('path', '')
-                            if path:
-                                # Normalize the path for matching with work item iterationPath
-                                # Remove leading backslash and "Iteration\" component
-                                normalized_path = path.lstrip('\\')
-                                # Remove "Iteration\" component if present
-                                if '\\Iteration\\' in normalized_path:
-                                    normalized_path = normalized_path.replace('\\Iteration\\', '\\', 1)
-                                
-                                iteration_map[normalized_path] = {
-                                    'startDate': iter_data.get('startDate'),
-                                    'finishDate': iter_data.get('finishDate'),
-                                    'name': iter_data.get('name')
-                                }
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch iterations for root '{root_path}': {e}")
-            else:
-                # No roots configured, fetch all iterations for the project
-                try:
-                    iterations = client.get_iterations(azure_project)  # type: ignore
-                    for iter_data in iterations:
-                        path = iter_data.get('path', '')
-                        if path:
-                            # Normalize the path for matching with work item iterationPath
-                            normalized_path = path.lstrip('\\')
-                            if '\\Iteration\\' in normalized_path:
-                                normalized_path = normalized_path.replace('\\Iteration\\', '\\', 1)
-                            
-                            iteration_map[normalized_path] = {
-                                'startDate': iter_data.get('startDate'),
-                                'finishDate': iter_data.get('finishDate'),
-                                'name': iter_data.get('name')
-                            }
-                except Exception as e:
-                    logger.warning(f"Failed to fetch iterations for project '{azure_project}': {e}")
-            
-            return iteration_map
+
+            return self._fetch_iterations_as_map(client, azure_project, root_paths)
         except Exception as e:
-            logger.warning(f"Error building iteration map for '{azure_project}': {e}")
+            logger.warning("Error building iteration map for '%s': %s", azure_project, e)
             return {}
+
+    def _fetch_iterations_as_map(self, client, azure_project: str, root_paths: list) -> dict:
+        """Fetch Azure iterations for each root path and return as a normalized map.
+
+        Shared by :meth:`_build_iteration_map` and :meth:`list_iterations`.
+        All iteration paths are normalized via :meth:`_strip_iteration_segment`.
+
+        Args:
+            client: Connected Azure client.
+            azure_project: Azure DevOps project name.
+            root_paths: Root iteration paths to query; when empty all iterations
+                        for the project are fetched.
+
+        Returns:
+            Dict mapping normalized iteration path -> {startDate, finishDate, name}.
+        """
+        iteration_map: dict = {}
+        roots = root_paths or [None]  # None means "fetch all" in get_iterations
+        for root in roots:
+            try:
+                iterations = client.get_iterations(azure_project, root_path=root)  # type: ignore
+                for iter_data in iterations:
+                    raw_path = iter_data.get('path', '')
+                    norm_path = self._strip_iteration_segment(raw_path)
+                    if norm_path:
+                        iteration_map[norm_path] = {
+                            'startDate': iter_data.get('startDate'),
+                            'finishDate': iter_data.get('finishDate'),
+                            'name': iter_data.get('name'),
+                        }
+            except Exception as e:
+                logger.warning("Failed to fetch iterations for root '%s': %s", root, e)
+        return iteration_map
+
+    @staticmethod
+    def _strip_iteration_segment(path: str) -> str:
+        """Remove any 'Iteration' or 'Iterations' path segments from an Azure path.
+
+        Example: 'Project\\Iteration\\eSW\\Sprint 1' -> 'Project\\eSW\\Sprint 1'
+        """
+        if not path or not isinstance(path, str):
+            return path
+        parts = path.split('\\')
+        parts = [p for p in parts if p and p.lower() not in ('iteration', 'iterations')]
+        return '\\'.join(parts)
+
+    def list_iterations(self, pat: str, project_filter: str = None) -> List[dict]:
+        """Return the configured iterations from Azure, filtered and sorted.
+
+        Encapsulates the full iteration-fetch pipeline that was previously
+        inlined in the GET /api/iterations route handler.
+
+        Args:
+            pat: Personal Access Token for Azure DevOps.
+            project_filter: Optional project name; when set uses project_overrides
+                            from iterations.yml instead of default_roots.
+
+        Returns:
+            List of iteration dicts sorted by startDate, restricted to the
+            current year or later, with normalized paths (Iteration segment stripped).
+        """
+        from datetime import datetime
+
+        try:
+            iterations_cfg = self._storage_config.load('config', 'iterations') or {}
+        except KeyError:
+            iterations_cfg = {}
+
+        azure_project = iterations_cfg.get('azure_project', '')
+        if not azure_project:
+            raise ValueError('azure_project not configured in iterations.yml')
+
+        if project_filter and 'project_overrides' in iterations_cfg:
+            roots = iterations_cfg.get('project_overrides', {}).get(project_filter)
+            if not roots:
+                roots = iterations_cfg.get('default_roots', [])
+        else:
+            roots = iterations_cfg.get('default_roots', [])
+
+        if not roots:
+            return []
+
+        all_iterations: List[dict] = []
+        seen_paths: set = set()
+
+        with self._azure_client.connect(pat) as client:
+            # Build full root paths (Azure expects "Project\Iteration\RootName")
+            full_roots = [f"{azure_project}\\Iteration\\{r}" for r in roots]
+            raw_map = self._fetch_iterations_as_map(client, azure_project, full_roots)
+            for norm_path, data in raw_map.items():
+                if norm_path not in seen_paths:
+                    all_iterations.append({**data, 'path': norm_path})
+                    seen_paths.add(norm_path)
+
+        def _sort_key(item):
+            start = item.get('startDate')
+            if start:
+                return (0, start, item.get('path', ''))
+            return (1, '', item.get('path', ''))
+
+        all_iterations.sort(key=_sort_key)
+
+        current_year = datetime.now().year
+
+        def _is_current_or_future(it):
+            start = it.get('startDate')
+            finish = it.get('finishDate')
+            if not start and not finish:
+                return False
+            try:
+                if start and int(start[:4]) >= current_year:
+                    return True
+                if finish and int(finish[:4]) >= current_year:
+                    return True
+            except (ValueError, IndexError):
+                return False
+            return False
+
+        return [it for it in all_iterations if _is_current_or_future(it)]
 
     def list_tasks(self, pat: str, project_id: Optional[str] = None) -> List[dict]:
         cfg = self._storage_config.load('config', 'server_config')
@@ -246,59 +331,8 @@ class TaskService(TaskServiceProtocol):
         return items
 
     def update_tasks(self, updates: List[dict], pat: str) -> dict:
-        cfg = self._storage_config.load('config', 'server_config')
-        if not cfg:
-            return {'ok': False, 'updated': 0, 'errors': ['No server config loaded']}
-        # Require PAT for updates as well — use composed client's connect()
-        with self._azure_client.connect(pat) as client:
-            updated = 0
-            errors: List[str] = []
-            for u in updates or []:
-                try:
-                    wid = int(u.get('id') or 0)
-                except Exception:
-                    errors.append(f'Invalid work item id: {u}')
-                    continue
-
-                start = u.get('start')
-                end = u.get('end')
-                capacity = u.get('capacity')
-                item_updated = False
-                if start is not None or end is not None:
-                    try:
-                        client.update_work_item_dates(wid, start=start, end=end)  # type: ignore
-                        item_updated = True
-                    except Exception as e:
-                        errors.append(f"{wid} (dates): {e}")
-                if capacity is not None and isinstance(capacity, list):
-                    try:
-                        wit = client.conn.clients.get_work_item_tracking_client()  # type: ignore
-                        work_item = wit.get_work_item(wid)
-                        current_description = work_item.fields.get('System.Description', '')
-                        updated_description = self._capacity_service.update_description(current_description, capacity, cfg)
-                        client.update_work_item_description(wid, updated_description)  # type: ignore
-                        item_updated = True
-                    except Exception as e:
-                        errors.append(f"{wid} (capacity): {e}")
-                # Apply state change if provided
-                state_val = u.get('state')
-                if state_val is not None:
-                    try:
-                        client.update_work_item_state(wid, state_val)  # type: ignore
-                        item_updated = True
-                    except Exception as e:
-                        errors.append(f"{wid} (state): {e}")
-                # Apply relation changes if provided
-                relations = u.get('relations')
-                if relations is not None:
-                    try:
-                        client.update_work_item_relations(wid, relations)  # type: ignore
-                        item_updated = True
-                    except Exception as e:
-                        errors.append(f"{wid} (relations): {e}")
-                if item_updated:
-                    updated += 1
-            return {'ok': len(errors) == 0, 'updated': updated, 'errors': errors}
+        """Delegate to the composed TaskUpdateService (write side)."""
+        return self._updater.update_tasks(updates, pat)
 
     def list_markers(self, pat: str, project_id: Optional[str] = None) -> List[dict]:
         """Return markers for configured projects using area_plan_map.

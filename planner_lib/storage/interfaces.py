@@ -1,23 +1,10 @@
-from typing import Protocol, Any, Iterable, Sequence, runtime_checkable
+"""Storage interface alias.
 
+``StorageBackend`` (in ``planner_lib.storage.base``) is the canonical storage
+interface. ``StorageProtocol`` is a **deprecated** alias kept so existing
+imports continue to work, but all new code should import ``StorageBackend``
+directly from ``planner_lib.storage.base``.
+"""
+from planner_lib.storage.base import StorageBackend
 
-@runtime_checkable
-class StorageProtocol(Protocol):
-    """Storage backend protocol mirroring `planner_lib.storage.StorageBackend`.
-
-    Implementations should follow the semantics documented on the abstract
-    base class in `planner_lib.storage.base` (KeyError for missing keys,
-    thread-safety where required, etc.).
-    """
-
-    def save(self, namespace: str, key: str, value: Any) -> None: ...
-
-    def load(self, namespace: str, key: str) -> Any: ...
-
-    def delete(self, namespace: str, key: str) -> None: ...
-
-    def list_keys(self, namespace: str) -> Iterable[str]: ...
-
-    def exists(self, namespace: str, key: str) -> bool: ...
-
-    def configure(self, **options) -> None: ...
+__all__ = ["StorageBackend"]

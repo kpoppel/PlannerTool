@@ -91,7 +91,7 @@ class MarkersOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         
         try:
             full_plan = None
@@ -156,7 +156,7 @@ class MarkersOperations:
         if not owner_team_ids:
             return []
         
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         markers_out: List[dict] = []
         
         # Find plans that reference these teams

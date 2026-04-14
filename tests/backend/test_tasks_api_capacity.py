@@ -45,22 +45,14 @@ def mock_config():
 def mock_client():
     """Mock Azure client."""
     client = Mock()
-    
-    # Mock work item tracking client
-    wit_client = Mock()
-    mock_work_item = Mock()
-    mock_work_item.fields = {"System.Description": "Existing description"}
-    wit_client.get_work_item = Mock(return_value=mock_work_item)
-    
-    # Mock connection structure
-    client.conn = Mock()
-    client.conn.clients = Mock()
-    client.conn.clients.get_work_item_tracking_client = Mock(return_value=wit_client)
-    
+
+    # Mock the protocol method used by TaskUpdateService
+    client.get_work_item_description = Mock(return_value="Existing description")
+
     # Mock update methods
     client.update_work_item_dates = Mock()
     client.update_work_item_description = Mock()
-    
+
     return client
 
 

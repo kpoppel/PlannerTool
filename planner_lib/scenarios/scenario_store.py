@@ -1,9 +1,8 @@
-import os
-import uuid
-from contextlib import contextmanager
+"""Scenario storage — delegates to the generic UserDataStore."""
 from typing import Any, Dict, List
 
 from planner_lib.storage.base import StorageBackend
+from planner_lib.storage.user_store import UserDataStore
 
 SCENARIO_NS = "scenarios"
 REGISTER_KEY = "scenario_register"
@@ -11,83 +10,33 @@ LOCK_FILE = "scenario_register.lock"
 
 
 def _scenario_key(user_id: str, scenario_id: str) -> str:
-    return f"{user_id}_{scenario_id}"
+    """Return the storage key for a scenario (matches UserDataStore._item_key)."""
+    return f'{user_id}_{scenario_id}'
+
+
+def _store(storage: StorageBackend) -> UserDataStore:
+    return UserDataStore(SCENARIO_NS, REGISTER_KEY, LOCK_FILE, storage)
 
 
 def load_scenario_register(storage: StorageBackend) -> Dict[str, Dict[str, Any]]:
-    # Load the canonical register key; backend is responsible for on-disk
-    # filename extensions and storage format.
-    try:
-        return storage.load(SCENARIO_NS, REGISTER_KEY) or {}
-    except KeyError:
-        return {}
+    return _store(storage).load_register()
 
 
 def save_scenario_register(storage: StorageBackend, register: Dict[str, Dict[str, Any]]) -> None:
-    # Save to the canonical register key. Existing legacy files named
-    # '<register>.pkl' will still be read by the fallback above.
-    storage.save(SCENARIO_NS, REGISTER_KEY, register)
-
-
-@contextmanager
-def with_register_lock(storage: StorageBackend):
-    # Create lock file path under data/scenarios (consistent with FileStorageBackend layout)
-    # Avoid touching storage internals; compute path explicitly.
-    base_dir = os.path.join("data", SCENARIO_NS)
-    os.makedirs(base_dir, exist_ok=True)
-    lock_path = os.path.join(base_dir, LOCK_FILE)
-    # Use simple exclusive lock via open + flock where available
-    f = open(lock_path, "a+")
-    try:
-        try:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_EX)
-        except Exception:
-            pass
-        yield
-    finally:
-        try:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_UN)
-        except Exception:
-            pass
-        f.close()
+    _store(storage).save_register(register)
 
 
 def save_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str | None, data: Any) -> Dict[str, Any]:
-    sid = scenario_id or uuid.uuid4().hex
-    key = _scenario_key(user_id, sid)
-    storage.save(SCENARIO_NS, key, data)
-    meta = {"id": sid, "user": user_id, "shared": False}
-    with with_register_lock(storage):
-        reg = load_scenario_register(storage)
-        reg[key] = meta
-        save_scenario_register(storage, reg)
-    return meta
+    return _store(storage).save_item(user_id, scenario_id, data, extra_meta={'shared': False})
 
 
 def load_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str) -> Any:
-    key = _scenario_key(user_id, scenario_id)
-    # Load the scenario by logical key. File naming is handled by backend.
-    return storage.load(SCENARIO_NS, key)
+    return _store(storage).load_item(user_id, scenario_id)
 
 
 def delete_user_scenario(storage: StorageBackend, user_id: str, scenario_id: str) -> bool:
-    key = _scenario_key(user_id, scenario_id)
-    with with_register_lock(storage):
-        # Delete the logical key; backend determines the on-disk filename.
-        try:
-            storage.delete(SCENARIO_NS, key)
-        except KeyError:
-            return False
-        reg = load_scenario_register(storage)
-        if key in reg:
-            del reg[key]
-            save_scenario_register(storage, reg)
-    return True
+    return _store(storage).delete_item(user_id, scenario_id)
 
 
 def list_user_scenarios(storage: StorageBackend, user_id: str) -> List[Dict[str, Any]]:
-    reg = load_scenario_register(storage)
-    prefix = f"{user_id}_"
-    return [meta for key, meta in reg.items() if key.startswith(prefix)]
+    return _store(storage).list_items_for_user(user_id)

@@ -87,7 +87,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        wit_client = self.client.wit_client
         
         # Use defaults if not provided
         if task_types is None:
@@ -201,7 +201,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
         
         ops = []
         if start is not None:
@@ -231,7 +231,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
         
         ops = [{"op": "add", "path": "/fields/System.Description", "value": description}]
         
@@ -254,7 +254,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
 
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
 
         ops = [{"op": "add", "path": "/fields/System.State", "value": state_value}]
 
@@ -277,7 +277,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
 
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
 
         # Mapping from semantic type to Azure rel name
         rel_map = {
@@ -317,7 +317,7 @@ class WorkItemOperations:
                 for idx in sorted(remove_indices, reverse=True):
                     ops.append({'op': 'remove', 'path': f'/relations/{idx}'})
                 # Add new relation
-                api_url = f"{self.client.conn.base_url}/_apis/wit/workItems/{other_id}"
+                api_url = f"{self.client.base_url}/_apis/wit/workItems/{other_id}"
                 relname = rel_map.get(typ, 'System.LinkTypes.Related')
                 ops.append({'op': 'add', 'path': '/relations/-', 'value': {'rel': relname, 'url': api_url, 'attributes': {'name': typ}}})
 
@@ -333,7 +333,7 @@ class WorkItemOperations:
                         ops.append({'op': 'remove', 'path': f'/relations/{idx}'})
 
             elif op == 'add':
-                api_url = f"{self.client.conn.base_url}/_apis/wit/workItems/{other_id}"
+                api_url = f"{self.client.base_url}/_apis/wit/workItems/{other_id}"
                 relname = rel_map.get(typ, 'System.LinkTypes.Related')
                 ops.append({'op': 'add', 'path': '/relations/-', 'value': {'rel': relname, 'url': api_url, 'attributes': {'name': typ}}})
             else:
@@ -347,6 +347,24 @@ class WorkItemOperations:
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} relations: {e}")
+
+    def get_work_item_description(self, work_item_id: int) -> str:
+        """Fetch the description (HTML) of a single work item.
+
+        Args:
+            work_item_id: Work item ID.
+
+        Returns:
+            The current System.Description field value as a string (may be empty).
+        """
+        if not self.client._connected:
+            raise RuntimeError(
+                "Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client."
+            )
+        assert self.client.conn is not None
+        wit = self.client.wit_client
+        work_item = wit.get_work_item(id=work_item_id, fields=["System.Description"])
+        return work_item.fields.get("System.Description", "") or ""
     
     def get_work_item_revision(self, work_item_id: int) -> Optional[int]:
         """Get current revision number for a work item (lightweight API call).
@@ -364,7 +382,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
         
         try:
             # Only fetch the System.Rev field for minimal data transfer
@@ -396,7 +414,7 @@ class WorkItemOperations:
             return {}
         
         assert self.client.conn is not None
-        wit = self.client.conn.clients.get_work_item_tracking_client()
+        wit = self.client.wit_client
         
         result = {}
         
@@ -439,7 +457,7 @@ class WorkItemOperations:
         (e.g. no team maps to the area path, or the backlog config API fails).
         Inspects up to 500 work items.
         """
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()  # type: ignore[union-attr]
+        wit_client = self.client.wit_client
 
         wiql_area = self._sanitize_area_path(area_path)
         wiql_area_escaped = wiql_area.replace("'", "''").replace('\\', '\\\\')
@@ -510,7 +528,7 @@ class WorkItemOperations:
             return []
 
         assert self.client.conn is not None
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        wit_client = self.client.wit_client
 
         results: List[dict] = []
 
@@ -593,7 +611,7 @@ class WorkItemOperations:
             return self._get_area_path_used_metadata_wiql(project, area_path)
 
         # --- Step 2: fetch backlog configuration for the first matching team ---
-        work_client = self.client.conn.clients.get_work_client()
+        work_client = self.client.work_client
         team_name = team_names[0]
 
         try:
@@ -666,7 +684,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        wit_client = self.client.wit_client
         
         try:
             # Retrieve all work item types for the project
@@ -736,7 +754,7 @@ class WorkItemOperations:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
         
         assert self.client.conn is not None
-        wit_client = self.client.conn.clients.get_work_item_tracking_client()
+        wit_client = self.client.wit_client
         
         try:
             # Fetch all revisions for the work item

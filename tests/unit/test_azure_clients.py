@@ -247,7 +247,7 @@ def test_area_path_metadata_falls_back_to_wiql_when_no_team():
     c = _make_area_path_client(team_ids=[], teams=[], backlog_config=None)
     result = c.get_area_path_used_metadata('Proj', 'Proj\\Orphan')
     # WIQL fake returns no items → empty lists
-    assert result == {'types': [], 'states': [], 'states_by_type': {}}
+    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
 
 
 def test_area_path_metadata_falls_back_when_backlog_config_throws():
@@ -283,7 +283,7 @@ def test_area_path_metadata_falls_back_when_backlog_config_throws():
     )
 
     result = c.get_area_path_used_metadata('Proj', 'Proj\\Beta')
-    assert result == {'types': [], 'states': [], 'states_by_type': {}}
+    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
 
 
 def test_area_path_metadata_falls_back_when_empty_mappings():
@@ -293,7 +293,7 @@ def test_area_path_metadata_falls_back_when_empty_mappings():
     c = _make_area_path_client(team_ids=['tid-1'], teams=teams, backlog_config=backlog)
 
     result = c.get_area_path_used_metadata('Proj', 'Proj\\Gamma')
-    assert result == {'types': [], 'states': [], 'states_by_type': {}}
+    assert result == {'types': [], 'states': [], 'states_by_type': {}, 'state_categories': {}}
 
 
 def test_native_client_passes_task_types_to_wiql():

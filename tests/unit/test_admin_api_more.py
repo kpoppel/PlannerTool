@@ -2,24 +2,40 @@ from tests.helpers import register_service_on_client
 
 
 class _FakeAdmin:
+    """Test stub for AdminService.
+
+    Accepts an optional DI container at construction time so reload_config()
+    can access registered services (e.g. server_config_storage) without needing
+    an HTTP request object.  This mirrors AdminService.reload_config(session_id)
+    calling convention introduced in the architecture-review phase.
+    """
+
+    def __init__(self, container=None):
+        self._container = container
+
     def is_admin(self, email: str) -> bool:
         return True
 
-    def reload_config(self, request=None):
-        # Emulate AdminService.reload_config behavior needed by tests: load
-        # server_config from the registered storage and append to setup._loaded_config
+    def reload_config(self, session_id: str = '', request=None):
+        # Emulate AdminService.reload_config: load server_config and update
+        # setup._loaded_config using the container (preferred) or request fallback.
         try:
-            from planner_lib.services.resolver import resolve_service
-            storage = resolve_service(request, 'server_config_storage')
-            try:
-                cfg = storage.load('config', 'server_config')
-            except Exception:
-                cfg = None
-            if cfg is not None:
-                import planner_lib.setup as setup_module
-                if hasattr(setup_module, '_loaded_config'):
-                    setup_module._loaded_config.clear()
-                    setup_module._loaded_config.append(cfg)
+            storage = None
+            if self._container is not None:
+                storage = self._container.get('server_config_storage')
+            elif request is not None:
+                from planner_lib.services.resolver import resolve_service
+                storage = resolve_service(request, 'server_config_storage')
+            if storage is not None:
+                try:
+                    cfg = storage.load('config', 'server_config')
+                except Exception:
+                    cfg = None
+                if cfg is not None:
+                    import planner_lib.setup as setup_module
+                    if hasattr(setup_module, '_loaded_config'):
+                        setup_module._loaded_config.clear()
+                        setup_module._loaded_config.append(cfg)
         except Exception:
             pass
         # Attempt to call cost engine invalidation if available
@@ -29,20 +45,18 @@ class _FakeAdmin:
                 cost_engine.invalidate_team_rates_cache()
         except Exception:
             pass
-        # Attempt to refresh account via account_manager.load
+        # Reload account for the given session_id (same contract as real AdminService)
         try:
-            from planner_lib.services.resolver import resolve_service
-            sid = None
-            try:
-                from planner_lib.middleware.session import get_session_id_from_request as _get_session
-                sid = _get_session(request)
-            except Exception:
-                sid = None
-            acct_mgr = resolve_service(request, 'account_manager')
-            try:
-                acct_mgr.load(sid)
-            except Exception:
-                pass
+            acct_mgr = None
+            if self._container is not None:
+                acct_mgr = self._container.get('account_manager')
+            elif request is not None:
+                from planner_lib.services.resolver import resolve_service
+                acct_mgr = resolve_service(request, 'account_manager')
+            if acct_mgr is not None:
+                sid = session_id or None
+                if sid:
+                    acct_mgr.load(sid)
         except Exception:
             pass
         return {'ok': True}
@@ -57,7 +71,7 @@ def test_reload_config_appends_server_config(client, monkeypatch):
     fake_storage = type('S', (), {'load': lambda self, namespace, key: {'server': 'cfg'}})()
     register_service_on_client(client, 'server_config_storage', fake_storage)
     # Ensure admin checks succeed in tests by registering a permissive admin service
-    register_service_on_client(client, 'admin_service', _FakeAdmin())
+    register_service_on_client(client, 'admin_service', _FakeAdmin(client.app.state.container))
 
     # Ensure a session context exists for the test session id so the
     # middleware/require_admin_session can resolve the email.

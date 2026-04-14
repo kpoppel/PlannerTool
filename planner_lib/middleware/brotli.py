@@ -18,31 +18,37 @@ class BrotliCompression(BaseHTTPMiddleware):
         if 'br' not in accept_encoding.lower():
             return await call_next(request)
 
-        response: Response = await call_next(request)
+        response = await call_next(request)
 
         # If the response is already encoded, or has no body, skip compression
         if response.headers.get('content-encoding'):
             return response
 
-        # Safely access response body. Some response types (eg. StreamingResponse)
-        # don't expose a `.body` attribute and previously caused AttributeError
-        # which crashed the middleware. Use getattr to avoid the exception and
-        # skip compression for streaming responses.
-        body = getattr(response, 'body', b'') or b''
-        if not body or len(body) < self.minimum_size:
-            return response
+        # Consume the streaming body — BaseHTTPMiddleware's call_next always
+        # returns a StreamingResponse; .body is not populated on that wrapper.
+        body_chunks: list = []
+        async for chunk in response.body_iterator:
+            body_chunks.append(chunk)
+        body = b''.join(body_chunks)
 
         content_type = response.headers.get('content-type', '')
-        if 'application/json' in content_type or content_type.startswith('text/') or 'javascript' in content_type:
+        compressible = (
+            'application/json' in content_type
+            or content_type.startswith('text/')
+            or 'javascript' in content_type
+        )
+
+        if body and len(body) >= self.minimum_size and compressible:
             try:
                 comp = brotli.compress(body, quality=self.quality)
-                response.body = comp
-                response.headers.pop('content-length', None)
-                response.headers['content-encoding'] = 'br'
-                response.headers['vary'] = 'Accept-Encoding'
-                response.headers['content-length'] = str(len(comp))
+                headers = dict(response.headers)
+                headers.pop('content-length', None)
+                headers['content-encoding'] = 'br'
+                headers['vary'] = 'Accept-Encoding'
+                headers['content-length'] = str(len(comp))
+                return Response(content=comp, status_code=response.status_code, headers=headers)
             except Exception:
-                # If compression fails, return original response unchanged
-                return response
+                pass
 
-        return response
+        # Return response reconstructed from the consumed body
+        return Response(content=body, status_code=response.status_code, headers=dict(response.headers))

@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 
-from planner_lib.services.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class HistoryService:
     and returns a filtered, deduplicated history suitable for frontend display.
     """
 
-    def __init__(self, storage_config: StorageProtocol, azure_client=None):
+    def __init__(self, storage_config: StorageBackend, azure_client=None):
         """Initialize with storage config and optional Azure client.
         
         Args:
@@ -200,41 +200,22 @@ class HistoryService:
         project_id: Optional[str] = None
     ) -> int:
         """Invalidate cached revision history for tasks in a project.
-        
+
+        Delegates to ``azure_client.invalidate_history_cache()`` when that
+        public method is available (i.e. when the client is an
+        ``AzureCachingClient``).  For non-caching clients the method returns 0.
+
         Args:
-            azure_client: Azure client instance with caching support
-            project_id: Optional project ID to filter which cache entries to clear
-            
+            azure_client: Azure client instance (caching or plain)
+            project_id: Currently unused; reserved for future per-project scoping
+
         Returns:
             Number of cache entries invalidated
         """
-        # Check if the azure_client has caching capabilities
-        if not hasattr(azure_client, '_cache'):
-            logger.warning("Azure client does not support caching, nothing to invalidate")
+        if not hasattr(azure_client, 'invalidate_history_cache'):
+            logger.warning("Azure client does not support history cache invalidation, nothing to clear")
             return 0
-        
-        cache = azure_client._cache
-        invalidated = 0
-        
-        # Get all cache keys
-        with cache._lock:
-            index = cache._read_index()
-            
-            # Find all history cache keys
-            history_keys = [k for k in index.keys() if k.startswith('history_')]
-            
-            logger.info(f"Found {len(history_keys)} history cache entries to invalidate")
-            
-            # Delete all history cache entries
-            for key in history_keys:
-                try:
-                    cache.delete(key)
-                    invalidated += 1
-                except Exception as e:
-                    logger.warning(f"Failed to delete cache key {key}: {e}")
-        
-        logger.info(f"Invalidated {invalidated} history cache entries")
-        return invalidated
+        return azure_client.invalidate_history_cache()
 
     def list_task_history(
         self,

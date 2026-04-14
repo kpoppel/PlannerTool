@@ -10,7 +10,9 @@ def test_post_config_and_persistence(client, app):
     body = resp.json()
     assert body.get('ok') is True
 
-    # verify config can be loaded via the app's account manager storage
-    stored = app.state.container.get('account_manager')._storage.load('accounts', 'tester@example.com')
-    assert stored['email'] == payload['email']
-    assert stored['pat'] == payload['pat']
+    # verify config can be loaded via the app's account manager storage.
+    # PATs are encrypted at rest; use AccountManager.get() to decrypt and
+    # verify the round-trip value equals the original plaintext.
+    result = app.state.container.get('account_manager').load('tester@example.com')
+    assert result['email'] == payload['email']
+    assert result['pat'] == payload['pat']

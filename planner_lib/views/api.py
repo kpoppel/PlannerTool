@@ -55,7 +55,7 @@ async def api_view_get(request: Request):
         raise HTTPException(status_code=404, detail='View not found')
     except Exception as e:
         logger.error("Error fetching view: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post('/view')
@@ -132,4 +132,4 @@ async def api_view_post(request: Request, payload: dict = Body(default={})):
         raise
     except Exception as e:
         logger.error("Error processing view operation: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

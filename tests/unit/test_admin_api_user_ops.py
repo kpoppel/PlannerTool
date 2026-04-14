@@ -37,6 +37,30 @@ class RecordingStorage:
         return []
 
 
+def _do_sync(storage, users, admins):
+    """Simple sync helper used by test stubs."""
+    if isinstance(users, list):
+        users = {e: {'email': e} for e in users}
+    if isinstance(admins, list):
+        admins = {e: {'email': e} for e in admins}
+    current_users = set(storage.list_keys('accounts'))
+    current_admins = set(storage.list_keys('accounts_admin'))
+    for k, v in users.items():
+        storage.save('accounts', k, v)
+    for k in current_users - set(users):
+        try:
+            storage.delete('accounts', k)
+        except KeyError:
+            pass
+    for k, v in admins.items():
+        storage.save('accounts_admin', k, v)
+    for k in current_admins - set(admins):
+        try:
+            storage.delete('accounts_admin', k)
+        except KeyError:
+            pass
+
+
 class SessMgr:
     def __init__(self, ctx=None):
         self._ctx = ctx or {}
@@ -64,7 +88,12 @@ def test_add_admin_copies_existing_account_and_removes_user_admin_marker():
     storage.save('accounts', 'u1', {'email': 'u1'})
     storage.save('accounts_admin', 'admin_old', {'email': 'admin_old'})
 
-    admin_svc = SimpleNamespace(_account_storage=storage)
+    admin_svc = SimpleNamespace(
+        _account_storage=storage,
+        get_all_users=lambda: list(storage.list_keys('accounts')),
+        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
+    )
     session_mgr = SessMgr({'email': 'admin_old'})
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
@@ -82,7 +111,12 @@ def test_remove_user_also_removes_admin_marker_if_present():
     storage.save('accounts', 'remove_me', {'email': 'remove_me'})
     storage.save('accounts_admin', 'remove_me', {'email': 'remove_me'})
 
-    admin_svc = SimpleNamespace(_account_storage=storage)
+    admin_svc = SimpleNamespace(
+        _account_storage=storage,
+        get_all_users=lambda: list(storage.list_keys('accounts')),
+        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
+    )
     session_mgr = SessMgr({'email': 'someone@admin'})
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 

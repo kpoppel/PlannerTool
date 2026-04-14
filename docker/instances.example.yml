@@ -16,3 +16,6 @@ instances:
   # Example with an external people database mapped into the container
   - name: gamma
     external_database: /opt/shared/company-people-db.yaml
+
+# Environment variables (set these before running docker compose):
+# - PLANNER_SECRET_KEY: Required. Encryption key for PAT storage (generate with: openssl rand -base64 32)

@@ -51,9 +51,11 @@ def test_teams_happy_path(client):
 
 
 def test_teams_missing_service(client):
-    # Ensure service is not present in the container
-    if getattr(client.app.state, 'container', None) and 'team_service' in client.app.state.container._singletons:
-        del client.app.state.container._singletons['team_service']
+    # Ensure service is not present in the container (clear both singletons and factories)
+    container = getattr(client.app.state, 'container', None)
+    if container is not None:
+        container._singletons.pop('team_service', None)
+        container._factories.pop('team_service', None)
     # Use a client that does not raise server exceptions so we can assert 500
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
@@ -102,6 +104,9 @@ def test_tasks_list_and_project_param(client):
 def test_tasks_update_success_and_errors(client):
     task_svc = _make_task_service()
     register_service_on_client(client, 'task_service', task_svc)
+    # POST /api/tasks routes to task_update_service; register the same mock so
+    # tests do not need a separate update-only stub.
+    register_service_on_client(client, 'task_update_service', task_svc)
     class FakeSessionMgr:
         def exists(self, sid):
             return True
@@ -133,8 +138,10 @@ def test_tasks_update_success_and_errors(client):
 
 
 def test_tasks_missing_service_returns_500(client):
-    if getattr(client.app.state, 'container', None) and 'task_service' in client.app.state.container._singletons:
-        del client.app.state.container._singletons['task_service']
+    container = getattr(client.app.state, 'container', None)
+    if container is not None:
+        container._singletons.pop('task_service', None)
+        container._factories.pop('task_service', None)
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
     r = c.get('/api/tasks', headers={'X-Session-Id': 'test-session'})

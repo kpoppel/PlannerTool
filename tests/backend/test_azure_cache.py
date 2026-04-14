@@ -87,9 +87,10 @@ class FakeWitClient:
 
 @pytest.fixture
 def patch_config(monkeypatch, data_dir):
-    # Provide a config object with feature_flags mapping and data_dir pointing to test dir
+    # Provide a config object with feature_flags mapping and data_dir pointing to test dir.
+    # The legacy setup.get_loaded_config path has been removed; AzureCachingClient
+    # receives its configuration via injected arguments, so no monkeypatch is needed.
     cfg = SimpleNamespace(feature_flags={"enable_azure_cache": True}, data_dir=data_dir)
-    monkeypatch.setattr("planner_lib.setup.get_loaded_config", lambda: cfg)
     return cfg
 
 

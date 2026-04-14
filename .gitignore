@@ -40,6 +40,7 @@ Thumbs.db
 deployment/
 data*/
 instances.yml
+.encryption_key
 
 # Test output
 test-results/

@@ -50,6 +50,32 @@ class FakeAdminService:
         return {'reloaded': True}
     def is_admin(self, email):
         return email and email.endswith('@admin')
+    def get_config(self, key, default=None):
+        try:
+            data = self._config_storage.load('config', key)
+            if isinstance(data, (bytes, bytearray)):
+                return data.decode('utf-8')
+            return data
+        except Exception:
+            return default
+    def save_config(self, key, content):
+        self._config_storage.save('config', key, content)
+    def save_config_raw(self, key, content):
+        self._config_storage.save('config', key, content)
+    def get_all_users(self):
+        try:
+            return list(self._account_storage.list_keys('accounts'))
+        except Exception:
+            return []
+    def get_all_admins(self):
+        try:
+            return list(self._account_storage.list_keys('accounts_admin'))
+        except Exception:
+            return []
+    def admin_count(self):
+        return len(self.get_all_admins())
+    def sync_accounts_full(self, users, admins):
+        pass
 
 
 class SessMgr:

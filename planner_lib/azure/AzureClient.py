@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional, Any
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend
 from abc import ABC, abstractmethod
 import logging
 import re
@@ -25,7 +25,7 @@ class AzureClient(ABC):
     Subclasses must implement `get_work_items` and `invalidate_work_items`.
     """
 
-    def __init__(self, organization_url: str, storage: StorageProtocol, *, cache_plans: bool = True):
+    def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         self.organization_url = organization_url
         self._connected = False
         self.conn: Optional[Any] = None
@@ -89,6 +89,48 @@ class AzureClient(ABC):
         # clear references; SDK connection has no explicit close
         self.conn = None
         self._connected = False
+
+    # ------------------------------------------------------------------
+    # SDK sub-client properties — operation helpers must use these instead
+    # of reaching through self.client.conn.clients.get_*() directly.
+    # ------------------------------------------------------------------
+
+    @property
+    def wit_client(self):
+        """Return the work-item-tracking SDK client for the active connection."""
+        assert self.conn is not None
+        return self.conn.clients.get_work_item_tracking_client()
+
+    @property
+    def work_client(self):
+        """Return the work SDK client for the active connection."""
+        assert self.conn is not None
+        return self.conn.clients.get_work_client()
+
+    @property
+    def core_client(self):
+        """Return the core SDK client for the active connection."""
+        assert self.conn is not None
+        return self.conn.clients.get_core_client()
+
+    @property
+    def base_url(self) -> str:
+        """Return the organization base URL from the active SDK connection."""
+        assert self.conn is not None
+        return self.conn.base_url
+
+    def get_work_item(self, work_item_id: int, fields=None) -> Any:
+        """Fetch a single work item by ID.
+
+        Provides a stable public method so callers (e.g. TaskService) can
+        retrieve a work item without reaching through conn.clients directly.
+        """
+        if not self._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        if fields:
+            return self.wit_client.get_work_item(work_item_id, fields=fields)
+        return self.wit_client.get_work_item(work_item_id)
 
     def api_url_to_ui_link(self, api_url: str) -> str:
         """Convert Azure API URL to web UI link."""
@@ -282,6 +324,14 @@ class AzureClient(ABC):
     def update_work_item_relations(self, work_item_id: int, relations_ops: list):
         """Update work item relations (delegates to WorkItemOperations)."""
         return self._work_item_ops.update_work_item_relations(work_item_id, relations_ops)
+
+    def get_work_item_description(self, work_item_id: int) -> str:
+        """Fetch the description field of a single work item.
+
+        Delegates to WorkItemOperations. Callers should prefer this over
+        reaching through ``client.conn`` directly.
+        """
+        return self._work_item_ops.get_work_item_description(work_item_id)
     
     def get_work_item_metadata(self, project: str) -> dict:
         """Retrieve work item types and states for a project.

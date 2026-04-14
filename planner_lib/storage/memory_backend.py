@@ -1,11 +1,15 @@
 """Simple memory-backed storage backend
 
 This backend stores Python objects in memory as a data structure `[<namespace>][<key>]`.
+Inherits from StorageBackend so it satisfies isinstance checks throughout the app.
 """
 from threading import RLock
 from typing import Dict, Any, Optional, Iterable
 
-class MemoryStorage:
+from planner_lib.storage.base import StorageBackend
+
+
+class MemoryStorage(StorageBackend):
     def __init__(self):
         self._lock = RLock()
         self._store: Dict[str, Any] = {}
@@ -45,7 +49,6 @@ class MemoryStorage:
             return namespace in self._store and key in self._store[namespace]
 
     def configure(self, **options) -> None:
-        # Configuration is intentionally a no-op for the simple file
-        # backend; serializers handle formats. Accept options for
-        # backward-compatible callers but ignore them.
+        # Configuration is intentionally a no-op for the in-memory
+        # backend; accept options for backward-compatible callers.
         return

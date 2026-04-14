@@ -35,7 +35,7 @@ async def api_scenario_get(request: Request):
     except KeyError:
         raise HTTPException(status_code=404, detail='Scenario not found')
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post('/scenario')
@@ -79,4 +79,4 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
