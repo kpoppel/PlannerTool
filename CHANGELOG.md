@@ -19,6 +19,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 Summary: A focused cleanup and security-forward release that improves migrations, deployment, caching, service structure, and several API/bug fixes for more robust operation.
 
 ### Added:
+- Details Panel display child links for loaded data with indication of task type and task state using the same color scheme as the rest of the application.
 - Security & Data Protection: PATs are now encrypted at rest using Fernet (PBKDF2HMAC-derived key) and startup validates PLANNER_SECRET_KEY, hardening secrets handling.
 - Migrations & Deployment: New migration 0017_encrypt_pats.py to encrypt existing PATs; migrate.py is version-aware; Docker entrypoint runs migrations automatically and validates required env vars; docs updated.
 

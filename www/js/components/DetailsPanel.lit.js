@@ -5,6 +5,23 @@ import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
 import { getIconTemplate } from '../services/IconService.js';
 
+/**
+ * Azure DevOps state category → CSS background-color mapping.
+ * Categories: Proposed | InProgress | Resolved | Completed | Removed
+ */
+const CATEGORY_COLORS = {
+  Proposed:   '#f3f4f6',   // light gray   — not started
+  InProgress: '#dbeafe',   // light blue   — active work
+  Resolved:   '#fef3c7',   // light amber  — awaiting validation
+  Completed:  '#dcfce7',   // light green  — done
+  Removed:    '#fee2e2',   // light rose   — discarded
+};
+
+/**
+ * Ordered list of state categories for sorting Child relations.
+ */
+const CATEGORY_ORDER = ['Proposed', 'InProgress', 'Resolved', 'Completed', 'Removed'];
+
 export class DetailsPanelLit extends LitElement {
   static properties = {
     feature: { type: Object },
@@ -577,21 +594,27 @@ export class DetailsPanelLit extends LitElement {
       margin: 6px 0;
     }
     .relation-icon {
-      width: 20px;
-      height: 20px;
+      width: 1.2em;
+      height: 1.2em;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
-      border-radius: 10px;
+      font-size: 1em;
+      border-radius: 0.6em;
       background: rgba(0, 0, 0, 0.06);
-      flex: 0 0 20px;
+      flex: 0 0 1.2em;
     }
     .relation-content {
       display: flex;
       flex-direction: row;
       gap: 8px;
       align-items: center;
+    }
+    .relation-state-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex: 0 0 12px;
     }
     .relation-title,
     .relation-title a.details-link {
@@ -1308,7 +1331,7 @@ export class DetailsPanelLit extends LitElement {
         }
 
         const groupsArr = orderedKeys.map((type) => {
-          const groupItems = groups.get(type) || [];
+          let groupItems = groups.get(type) || [];
           let groupTitle = type;
           if (type === 'Parent') {
             const otherPlanNames = new Set();
@@ -1328,6 +1351,38 @@ export class DetailsPanelLit extends LitElement {
             }
           }
 
+          // Sort Child relations: loaded first, then by state category, then non-loaded
+          if (type === 'Child') {
+            groupItems = [...groupItems].sort((a, b) => {
+              const aId = a.id ? String(a.id) : null;
+              const bId = b.id ? String(b.id) : null;
+              const aLinked = state.baselineFeatureById.get(aId);
+              const bLinked = state.baselineFeatureById.get(bId);
+              
+              // Loaded vs non-loaded: loaded first
+              if (aLinked && !bLinked) return -1;
+              if (!aLinked && bLinked) return 1;
+              
+              // Both loaded: sort by state category
+              if (aLinked && bLinked) {
+                const aState = aLinked.state || '';
+                const bState = bLinked.state || '';
+                const aCategory = state.featureStateService?.getCategoryForState(aState) || '';
+                const bCategory = state.featureStateService?.getCategoryForState(bState) || '';
+                const aIdx = CATEGORY_ORDER.indexOf(aCategory);
+                const bIdx = CATEGORY_ORDER.indexOf(bCategory);
+                const aCatOrder = aIdx >= 0 ? aIdx : 999;
+                const bCatOrder = bIdx >= 0 ? bIdx : 999;
+                if (aCatOrder !== bCatOrder) return aCatOrder - bCatOrder;
+                // Same category: maintain original order
+                return 0;
+              }
+              
+              // Both non-loaded: maintain original order
+              return 0;
+            });
+          }
+
           const items = groupItems.map((r) => {
             const otherId = r.id ? String(r.id) : null;
             let url = r.url || '';
@@ -1341,14 +1396,34 @@ export class DetailsPanelLit extends LitElement {
             if (linked) title = linked.title;
 
             let iconTemplate = '';
-            if (type === 'Parent') iconTemplate = getIconTemplate(linked?.type || 'epic');
-            else if (type === 'Successor') iconTemplate = '➡️';
-            else if (type === 'Predecessor') iconTemplate = '⬅️';
-            // TODO: Instead of the link icon for other relation types, ideally would have specific icons for common types and a generic one for unknown types
-            else iconTemplate = '🔗';
+            let stateIndicator = '';
+            
+            if (type === 'Parent') {
+              iconTemplate = getIconTemplate(linked?.type || 'epic');
+            } else if (type === 'Child') {
+              if (linked) {
+                // For loaded children: use task type icon and add state indicator
+                iconTemplate = getIconTemplate(linked.type || 'task');
+                const childState = linked.state || '';
+                const childStateColor = stateColors[childState];
+                const bgColor = childStateColor ? childStateColor.background : '#9e9e9e';
+                stateIndicator = html`<div class="relation-state-indicator" style="background: ${bgColor};" title="${childState}"></div>`;
+              } else {
+                // For non-loaded children: use link icon
+                iconTemplate = '🔗';
+              }
+            } else if (type === 'Successor') {
+              iconTemplate = '➡️';
+            } else if (type === 'Predecessor') {
+              iconTemplate = '⬅️';
+            } else {
+              iconTemplate = '🔗';
+            }
+            
             return html`<li class="azure-relation-item">
               <div class="relation-icon">${iconTemplate}</div>
               <div class="relation-content">
+                ${stateIndicator}
                 <div class="relation-title">
                   <a class="details-link" href="${href}" target="_blank"
                     >${otherId ? otherId : ''}${title ? ' ' + title : ''}</a
