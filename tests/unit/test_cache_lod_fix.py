@@ -74,10 +74,10 @@ class TestCacheManagerFetchCount:
 
         client = AzureCachingClient('org', FakeStorage())
         # Reading/writing _fetch_count should go through cache.fetch_count
-        client._fetch_count = 5
+        client._cache.fetch_count = 5
         assert client._cache.fetch_count == 5
         client._cache.fetch_count = 10
-        assert client._fetch_count == 10
+        assert client._cache.fetch_count == 10
 
 
 # ---------------------------------------------------------------------------

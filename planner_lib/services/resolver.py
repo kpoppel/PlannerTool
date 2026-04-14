@@ -1,6 +1,9 @@
 from typing import Any
+import logging
 from fastapi import HTTPException
 from starlette.requests import Request
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_service(request: Request, name: str) -> Any:
@@ -12,11 +15,13 @@ def resolve_service(request: Request, name: str) -> Any:
     """
     container = getattr(request.app.state, 'container', None)
     if container is None:
-        raise HTTPException(status_code=500, detail=f"Service container not configured")
+        logger.error("Service container not attached to app.state")
+        raise HTTPException(status_code=500, detail="Internal server error")
     try:
         return container.get(name)
     except KeyError:
-        raise HTTPException(status_code=500, detail=f"Service '{name}' not configured")
+        logger.error("Service '%s' not registered in container", name)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 def resolve_optional_service(request: Request, name: str) -> Any:

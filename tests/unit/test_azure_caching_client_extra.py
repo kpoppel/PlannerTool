@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 
 from planner_lib.storage.memory_backend import MemoryStorage
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.caching import key_for_area, key_for_revision_history
 
 
 class FakeWitNoCall:
@@ -52,7 +53,7 @@ def test_cache_hit_returns_cached_items():
 
     # prepopulate cache and index with a fresh timestamp
     # Use _key_for_area directly to match actual implementation
-    cache_key = client._key_for_area(area_path)
+    cache_key = key_for_area(area_path)
     client._cache.write(cache_key, [{'id': '1', 'title': 'T1'}])
     client._cache.update_timestamp(cache_key)
 
@@ -70,7 +71,7 @@ def test_force_refresh_fetches_and_updates_cache():
 
     # prepopulate cache with an old timestamp to force full refresh
     # Use _key_for_area directly to match actual implementation
-    cache_key = client._key_for_area(area_path)
+    cache_key = key_for_area(area_path)
     client._cache.write(cache_key, [{'id': '1', 'title': 'OLD'}])
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
     # Set stale timestamp
@@ -96,7 +97,7 @@ def test_invalidate_work_items_maps_per_area():
     area_path = 'Area/Sub'
     area_key = client._sanitize_area_path(area_path)
 
-    cache_key = client._key_for_area(area_key)
+    cache_key = key_for_area(area_key)
     client._cache.write(cache_key, [{'id': '5', 'title': 'T5'}])
     client._cache.update_timestamp(cache_key)
 
@@ -113,7 +114,7 @@ def test_update_area_cache_item_inlines():
     area_key = client._sanitize_area_path(area_path)
 
     # Test that we can update items in cache directly
-    cache_key = client._key_for_area(area_key)
+    cache_key = key_for_area(area_key)
     client._cache.write(cache_key, [{'id': '1', 'title': 'old'}])
     # Update by writing new data
     area_list = client._cache.read(cache_key) or []
@@ -132,7 +133,7 @@ def test_query_by_wiql_failure_returns_empty():
     area_key = client._sanitize_area_path(area_path)
 
     # empty index ensures WIQL path will be used
-    cache_key = client._key_for_area(area_key)
+    cache_key = key_for_area(area_key)
     client._cache._write_index({})
     client._cache.write(cache_key, [])
 
@@ -198,11 +199,11 @@ def test_prune_if_needed_removes_old_entries():
     for i in range(60):
         key = f'area{i}'
         idx[key] = {'last_update': datetime.now(timezone.utc).isoformat()}
-        cache_key = client._key_for_area(key)
+        cache_key = key_for_area(key)
         client._cache.write(cache_key, [{'id': str(i)}])
     
     client._cache._write_index(idx)
-    client._fetch_count = 99
+    client._cache.fetch_count = 99
     removed = client._cache.prune_old_entries(keep_count=50)
     # should have pruned some entries (kept 50)
     assert isinstance(removed, list)

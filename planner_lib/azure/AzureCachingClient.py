@@ -71,16 +71,6 @@ class AzureCachingClient(AzureClient):
         }
     
     @property
-    def _fetch_count(self):
-        """Expose fetch count for tests."""
-        return self._cache.fetch_count
-
-    @_fetch_count.setter
-    def _fetch_count(self, value):
-        """Set fetch count for tests."""
-        self._cache.fetch_count = value
-    
-    @property
     def _has_memory_cache(self) -> bool:
         """Check if memory cache is available."""
         return self._memory_cache is not None
@@ -118,15 +108,7 @@ class AzureCachingClient(AzureClient):
         
         self._memory_cache.mark_stale(NAMESPACE, key)
 
-    # Cache key helpers — delegate to module-level functions in caching.py
-    # so the same logic is shared with the API layer.
-    def _key_for_area(self, area_path: str) -> str: return key_for_area(area_path)
-    def _key_for_teams(self, project: str) -> str: return key_for_teams(project)
-    def _key_for_plans(self, project: str) -> str: return key_for_plans(project)
-    def _key_for_area_plan(self, area_path: str) -> str: return key_for_area_plan(area_path)
-    def _key_for_plan_markers(self, project: str, plan_id: str) -> str: return key_for_plan_markers(project, plan_id)
-    def _key_for_iterations(self, project: str, root_path: Optional[str] = None) -> str: return key_for_iterations(project, root_path)
-    def _key_for_revision_history(self, work_item_id: int) -> str: return key_for_revision_history(work_item_id)
+    # Cache key helpers are module-level functions in caching.py; call them directly.
 
     def _write_history_cache(self, work_item_id: int, history: List[dict], revision: int, timestamp=None) -> None:
         """Delegate to HistoryCacheManager."""
@@ -205,7 +187,7 @@ class AzureCachingClient(AzureClient):
             include_states = []
         
         # Use _key_for_area for cache key (consistent with other cache keys)
-        area_key = self._key_for_area(area_path)
+        area_key = key_for_area(area_path)
         
         # FAST PATH: Check memory cache first (hot path, <1ms)
         if self._has_memory_cache:
@@ -473,7 +455,7 @@ class AzureCachingClient(AzureClient):
 
     def get_all_teams(self, project: str) -> List[dict]:
         """Fetch teams with memory and disk caching."""
-        key = self._key_for_teams(project)
+        key = key_for_teams(project)
         
         # Check memory cache first
         if self._has_memory_cache:
@@ -509,7 +491,7 @@ class AzureCachingClient(AzureClient):
 
     def get_all_plans(self, project: str) -> List[dict]:
         """Fetch plans with memory and disk caching."""
-        key = self._key_for_plans(project)
+        key = key_for_plans(project)
         
         # Check memory cache first
         if self._has_memory_cache:
@@ -545,7 +527,7 @@ class AzureCachingClient(AzureClient):
 
     def get_markers_for_plan(self, project: str, plan_id: str) -> List[dict]:
         """Fetch markers for a plan with memory and disk caching."""
-        key = self._key_for_plan_markers(project, plan_id)
+        key = key_for_plan_markers(project, plan_id)
         
         # Check memory cache first
         if self._has_memory_cache:
@@ -601,7 +583,7 @@ class AzureCachingClient(AzureClient):
         project = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
 
         # Check if we have cached area->plan mapping
-        map_key = self._key_for_area_plan(area_path)
+        map_key = key_for_area_plan(area_path)
         mapping = self._cache.read(map_key)
         
         if mapping and isinstance(mapping, dict) and 'plans' in mapping:
@@ -704,7 +686,7 @@ class AzureCachingClient(AzureClient):
         
         # Invalidate plans list cache
         if plan_ids is None:
-            plans_key = self._key_for_plans(project)
+            plans_key = key_for_plans(project)
             self._cache.delete(plans_key)
             self._cache.invalidate([plans_key])
             invalidated_keys.add(plans_key)
@@ -714,12 +696,12 @@ class AzureCachingClient(AzureClient):
         
         if not pids_to_invalidate and plan_ids is None:
             # Need to get plan IDs from cache
-            plans_key = self._key_for_plans(project)
+            plans_key = key_for_plans(project)
             cached_plans = self._cache.read(plans_key) or []
             pids_to_invalidate = [p.get('id') for p in cached_plans if p.get('id')]
         
         for pid in pids_to_invalidate:
-            key = self._key_for_plan_markers(project, str(pid))
+            key = key_for_plan_markers(project, str(pid))
             self._cache.delete(key)
             self._cache.invalidate([key])
             invalidated_keys.add(key)
@@ -727,7 +709,7 @@ class AzureCachingClient(AzureClient):
         # Clean up area->plan mappings that reference invalidated plans
         try:
             for area_key in list(self._cache.list_area_keys()):
-                map_key = self._key_for_area_plan(area_key)
+                map_key = key_for_area_plan(area_key)
                 mapping = self._cache.read(map_key)
                 
                 if not mapping or not isinstance(mapping, dict):
@@ -813,7 +795,7 @@ class AzureCachingClient(AzureClient):
         Returns:
             List of cached or freshly-fetched iteration dicts sorted by startDate
         """
-        key = self._key_for_iterations(project, root_path)
+        key = key_for_iterations(project, root_path)
         
         # Check memory cache first
         if self._has_memory_cache:
@@ -896,7 +878,7 @@ class AzureCachingClient(AzureClient):
             if current_revision is None:
                 # Work item deleted - invalidate cache
                 logger.info(f"Work item {work_item_id} not found, clearing cache")
-                key = self._key_for_revision_history(work_item_id)
+                key = key_for_revision_history(work_item_id)
                 self._cache.delete(key)
                 return []
             
@@ -930,7 +912,7 @@ class AzureCachingClient(AzureClient):
             logger.debug(f"Cached {len(result)} revision records for work item {work_item_id} (rev {current_revision})")
         else:
             # Fallback to old caching if we can't get revision
-            key = self._key_for_revision_history(work_item_id)
+            key = key_for_revision_history(work_item_id)
             self._cache.write(key, result)
             self._cache.update_timestamp(key)
             logger.debug(f"Cached {len(result)} revision records for work item {work_item_id} (no revision metadata)")
@@ -996,7 +978,7 @@ class AzureCachingClient(AzureClient):
                 if current_revision is None:
                     # Work item deleted
                     logger.info(f"Work item {work_item_id} not found, clearing cache")
-                    key = self._key_for_revision_history(work_item_id)
+                    key = key_for_revision_history(work_item_id)
                     self._cache.delete(key)
                     result[work_item_id] = []
                 elif current_revision == cached_revision:

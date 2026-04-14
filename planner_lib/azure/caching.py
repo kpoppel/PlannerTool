@@ -27,16 +27,19 @@ def key_for_area(area_path: str) -> str:
     return safe
 
 
+def _safe_path(s: str) -> str:
+    """Normalise a project/path string for use as a cache key segment."""
+    return s.replace(' ', '_').replace('/', '__').replace('\\', '__')
+
+
 def key_for_teams(project: str) -> str:
     """Generate a cache key for project teams."""
-    safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-    return f"teams_{safe}"
+    return f"teams_{_safe_path(project)}"
 
 
 def key_for_plans(project: str) -> str:
     """Generate a cache key for project plans."""
-    safe = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
-    return f"plans_{safe}"
+    return f"plans_{_safe_path(project)}"
 
 
 def key_for_area_plan(area_path: str) -> str:
@@ -46,14 +49,13 @@ def key_for_area_plan(area_path: str) -> str:
 
 def key_for_plan_markers(project: str, plan_id: str) -> str:
     """Generate a cache key for plan markers."""
-    safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
     safe_plan = str(plan_id).replace(' ', '_')
-    return f"plan_markers_{safe_proj}_{safe_plan}"
+    return f"plan_markers_{_safe_path(project)}_{safe_plan}"
 
 
 def key_for_iterations(project: str, root_path: Optional[str] = None) -> str:
     """Generate a cache key for iterations."""
-    safe_proj = project.replace(' ', '_').replace('/', '__').replace('\\', '__')
+    safe_proj = _safe_path(project)
     if root_path:
         safe_root = root_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
         safe_root = ''.join(c for c in safe_root if c.isalnum() or c in ('_', '-'))

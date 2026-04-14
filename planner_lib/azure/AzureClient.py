@@ -195,55 +195,6 @@ class AzureClient(ABC):
         except Exception:
             return []
 
-    def query_by_wiql(self, project: str, wiql: str):
-        """ TODO: This function is only used by some scripts and tests. Consider removing and reworking call sites."""
-        if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-        assert self.conn is not None
-        wit = self.conn.clients.get_work_item_tracking_client()
-        from azure.devops.v7_1.work_item_tracking.models import Wiql
-        q = Wiql(query=wiql)
-        return wit.query_by_wiql(q)
-
-    def get_work_items_by_wiql(self, project: str, wiql: str, fields: Optional[list[str]] = None):
-        """
-        Retrieve work items matching the supplied WIQL query.
-        TODO: The function is only used in a test. Consider removing and reworking call sites.
-        
-        :param self: Description
-        :param project: Description
-        :type project: str
-        :param wiql: Description
-        :type wiql: str
-        :param fields: Description
-        :type fields: Optional[list[str]]
-        """
-        if not self._connected:
-            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-        assert self.conn is not None
-        wit = self.conn.clients.get_work_item_tracking_client()
-        try:
-            res = self.query_by_wiql(project, wiql)
-        except Exception as e:
-            raise RuntimeError(f"WIQL query failed for project {project}: {e}")
-
-        ids: list[int] = []
-        candidates = getattr(res, "work_items", None) or getattr(res, "workItems", None) or []
-        for it in candidates:
-            iid = getattr(it, "id", None)
-            if iid is None and isinstance(it, dict):
-                iid = it.get("id")
-            if isinstance(iid, int):
-                ids.append(iid)
-
-        if not ids:
-            return []
-
-        try:
-            return wit.get_work_items(ids, fields=fields) if fields else wit.get_work_items(ids)
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch work items for project {project}: {e}")
-
     def get_all_teams(self, project: str) -> List[dict]:
         """Return lightweight team dicts for the given project.
 

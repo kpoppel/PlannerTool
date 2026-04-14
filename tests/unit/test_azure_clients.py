@@ -106,23 +106,26 @@ def test_get_projects_uses_connection():
     assert 'ProjA' in projs and 'ProjB' in projs
 
 
-def test_query_and_get_work_items_by_wiql_calls_wit():
+def test_wit_client_query_by_wiql_calls_sdk():
+    """wit_client property returns the SDK WIT client; callers use it directly."""
     c = ConcreteAzure('org', DummyStorage())
-    # Create fake wit client with expected methods
+
     class FakeWit:
         def query_by_wiql(self, q):
             return SimpleNamespace(work_items=[SimpleNamespace(id=1), SimpleNamespace(id=2)])
 
         def get_work_items(self, ids, fields=None):
-            return [SimpleNamespace(id=i, fields={'System.Title': f'T{i}'}, url=f'https://dev.azure.com/x/y/_apis/wit/workItems/{i}', relations=[] ) for i in ids]
+            return [SimpleNamespace(id=i) for i in ids]
 
     clients = SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit(), get_core_client=lambda: None)
     c._connected = True
     c.conn = SimpleNamespace(clients=clients)
 
-    res = c.query_by_wiql('proj', 'select 1')
+    from azure.devops.v7_1.work_item_tracking.models import Wiql
+    res = c.wit_client.query_by_wiql(Wiql(query='select 1'))
     assert hasattr(res, 'work_items')
-    items = c.get_work_items_by_wiql('proj', 'select 1', fields=['System.Title'])
+    ids = [wi.id for wi in res.work_items]
+    items = c.wit_client.get_work_items(ids, fields=['System.Title'])
     assert items
 
 

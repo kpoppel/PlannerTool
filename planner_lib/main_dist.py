@@ -20,6 +20,3 @@ def create_dist_app(config: Config = None):
     # surgery after the app is constructed.
     config.static_dir = "dist"
     return create_app(config)
-    app.mount("/static", StaticFiles(directory="dist"), name="static")
-    
-    return app

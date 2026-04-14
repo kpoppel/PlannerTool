@@ -40,11 +40,7 @@ class AdminService:
         scenarios_storage: Optional[StorageBackend] = None,
         reloadable_services: Optional[list] = None,
     ) -> None:
-        self._account_storage = account_storage
-        self._config_storage = config_storage
         self._project_service = project_service
-        self._account_manager = account_manager
-        self._azure_client = azure_client
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
             config_storage=config_storage,

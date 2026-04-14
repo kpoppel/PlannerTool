@@ -67,7 +67,7 @@ class ReloadOrchestrator:
         self._azure_client.organization_url = cfg.get('azure_devops_organization')
         self._azure_client.feature_flags = cfg.get('feature_flags') or {}
         # Rebuild the concrete client so feature-flag changes take effect.
-        self._azure_client._client = self._azure_client._build_client()
+        self._azure_client.rebuild_client()
 
         # Reload / invalidate all registered services.
         for svc in self._reloadable_services:

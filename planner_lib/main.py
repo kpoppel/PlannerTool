@@ -88,6 +88,21 @@ def _build_services(
     from planner_lib.services import ServiceContainer
     from planner_lib.services.cache_coordinator import CacheCoordinator
     from planner_lib.server.health import HealthConfig
+    from planner_lib.accounts.config import AccountManager
+    from planner_lib.middleware.session import SessionManager
+    from planner_lib.projects import (
+        AzureProjectMetadataService,
+        ProjectService,
+        TeamService,
+        CapacityService,
+    )
+    from planner_lib.people import PeopleService
+    from planner_lib.azure import AzureService
+    from planner_lib.projects.task_service import TaskService
+    from planner_lib.projects.task_update_service import TaskUpdateService
+    from planner_lib.projects.history_service import HistoryService
+    from planner_lib.cost.service import CostService
+    from planner_lib.admin.service import AdminService
 
     container = ServiceContainer()
 
@@ -96,7 +111,6 @@ def _build_services(
     container.register_singleton("account_storage", storage_diskcache)
     container.register_singleton("scenarios_storage", storage_diskcache)
     container.register_singleton("views_storage", storage_diskcache)
-    container.register_singleton("cost_cache_storage", storage_diskcache)
 
     # --- Optional memory cache ---
     memory_cache = None
@@ -116,101 +130,76 @@ def _build_services(
     container.register_singleton("memory_cache", memory_cache)
 
     # --- Accounts / session ---
-    container.register_factory("account_manager", lambda: (
-        __import__('planner_lib.accounts.config', fromlist=['AccountManager'])
-        .AccountManager(account_storage=storage_diskcache)
-    ))
-    container.register_factory("session_manager", lambda: (
-        __import__('planner_lib.middleware.session', fromlist=['SessionManager'])
-        .SessionManager(
+    container.register_factory("account_manager",
+        lambda: AccountManager(account_storage=storage_diskcache))
+    container.register_factory("session_manager",
+        lambda: SessionManager(
             account_manager=container.get("account_manager"),
             account_storage=storage_diskcache,
-        )
-    ))
+        ))
 
     # --- Project domain ---
-    container.register_factory("azure_project_metadata_service", lambda: (
-        __import__('planner_lib.projects', fromlist=['AzureProjectMetadataService'])
-        .AzureProjectMetadataService(cache=storage_diskcache)
-    ))
-    container.register_factory("project_service", lambda: (
-        __import__('planner_lib.projects', fromlist=['ProjectService'])
-        .ProjectService(
+    container.register_factory("azure_project_metadata_service",
+        lambda: AzureProjectMetadataService(cache=storage_diskcache))
+    container.register_factory("project_service",
+        lambda: ProjectService(
             storage_config=storage_yaml,
             metadata_service=container.get("azure_project_metadata_service"),
-        )
-    ))
-    container.register_factory("team_service", lambda: (
-        __import__('planner_lib.projects', fromlist=['TeamService'])
-        .TeamService(storage_config=storage_yaml)
-    ))
-    container.register_factory("capacity_service", lambda: (
-        __import__('planner_lib.projects', fromlist=['CapacityService'])
-        .CapacityService(team_service=container.get("team_service"))
-    ))
+        ))
+    container.register_factory("team_service",
+        lambda: TeamService(storage_config=storage_yaml))
+    container.register_factory("capacity_service",
+        lambda: CapacityService(team_service=container.get("team_service")))
 
     # --- People ---
-    container.register_factory("people_service", lambda: (
-        __import__('planner_lib.people', fromlist=['PeopleService'])
-        .PeopleService(storage=storage_yaml, data_dir=config.data_dir)
-    ))
+    container.register_factory("people_service",
+        lambda: PeopleService(storage=storage_yaml, data_dir=config.data_dir))
 
     # --- Azure ---
-    container.register_factory("azure_client", lambda: (
-        __import__('planner_lib.azure', fromlist=['AzureService'])
-        .AzureService(
+    container.register_factory("azure_client",
+        lambda: AzureService(
             server_cfg.get('azure_devops_organization'),
             storage_diskcache,
             feature_flags=feature_flags,
             memory_cache=memory_cache,
-        )
-    ))
+        ))
 
     # --- Tasks ---
-    container.register_factory("task_service", lambda: (
-        __import__('planner_lib.projects.task_service', fromlist=['TaskService'])
-        .TaskService(
+    container.register_factory("task_service",
+        lambda: TaskService(
             storage_config=storage_yaml,
             project_service=container.get("project_service"),
             team_service=container.get("team_service"),
             capacity_service=container.get("capacity_service"),
             azure_client=container.get("azure_client"),
             metadata_service=container.get("azure_project_metadata_service"),
-        )
-    ))
-    container.register_factory("task_update_service", lambda: (
-        __import__('planner_lib.projects.task_update_service', fromlist=['TaskUpdateService'])
-        .TaskUpdateService(
+        ))
+    container.register_factory("task_update_service",
+        lambda: TaskUpdateService(
             storage_config=storage_yaml,
             team_service=container.get("team_service"),
             capacity_service=container.get("capacity_service"),
             azure_client=container.get("azure_client"),
-        )
-    ))
-    container.register_factory("history_service", lambda: (
-        __import__('planner_lib.projects.history_service', fromlist=['HistoryService'])
-        .HistoryService(
+        ))
+    container.register_factory("history_service",
+        lambda: HistoryService(
             storage_config=storage_yaml,
             azure_client=container.get("azure_client"),
-        )
-    ))
+        ))
 
     # --- Cost ---
-    container.register_factory("cost_service", lambda: (
-        __import__('planner_lib.cost.service', fromlist=['CostService'])
-        .CostService(
+    container.register_factory("cost_service",
+        lambda: CostService(
             storage=storage_yaml,
             people_service=container.get("people_service"),
             project_service=container.get("project_service"),
             team_service=container.get("team_service"),
             cache_storage=storage_diskcache,
-        )
-    ))
+        ))
 
     # --- Admin ---
-    container.register_factory("admin_service", lambda: (
-        __import__('planner_lib.admin.service', fromlist=['AdminService'])
-        .AdminService(
+    container.register_factory("admin_service",
+        lambda: AdminService(
             account_storage=storage_diskcache,
             config_storage=storage_yaml,
             project_service=container.get("project_service"),
@@ -225,8 +214,7 @@ def _build_services(
                 container.get("capacity_service"),
                 container.get("cost_service"),
             ],
-        )
-    ))
+        ))
 
     # --- Cache coordinator ---
     def _make_cache_coordinator():

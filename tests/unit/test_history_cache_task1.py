@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from typing import List
 
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.caching import key_for_area, key_for_revision_history
 from planner_lib.storage.memory_backend import MemoryStorage
 
 
@@ -45,7 +46,7 @@ def test_write_history_cache_stores_revision_metadata(caching_client):
     caching_client._write_history_cache(work_item_id, history, revision)
     
     # Read directly from cache
-    cache_key = caching_client._key_for_revision_history(work_item_id)
+    cache_key = key_for_revision_history(work_item_id)
     cached_entry = caching_client._cache.read(cache_key)
     
     # Verify structure
@@ -89,7 +90,7 @@ def test_read_history_cache_returns_none_for_missing(caching_client):
 def test_cache_handles_invalid_format(caching_client):
     """Verify that invalid cache format returns None to trigger refetch."""
     work_item_id = 55555
-    cache_key = caching_client._key_for_revision_history(work_item_id)
+    cache_key = key_for_revision_history(work_item_id)
     
     # Write invalid format (just a list, no metadata)
     invalid_history = [
@@ -110,7 +111,7 @@ def test_cache_handles_invalid_format(caching_client):
 def test_cache_handles_malformed_format(caching_client):
     """Verify that malformed cache entries return None."""
     work_item_id = 44444
-    cache_key = caching_client._key_for_revision_history(work_item_id)
+    cache_key = key_for_revision_history(work_item_id)
     
     # Write malformed format (missing metadata)
     malformed_data = {"data": [{"rev": 1}]}  # Missing metadata

@@ -51,6 +51,10 @@ class AzureService(AzureServiceProtocol):
         """
         return self._client.connect(pat)
 
+    def rebuild_client(self) -> None:
+        """Rebuild the concrete client (e.g. after a feature-flag change via admin reload)."""
+        self._client = self._build_client()
+
     def invalidate_all_caches(self) -> dict:
         """Invalidate all cached Azure data.
 

@@ -9,6 +9,7 @@ import threading
 import time
 
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.caching import key_for_area, key_for_revision_history
 from planner_lib.storage.memory_backend import MemoryStorage
 
 
@@ -68,7 +69,7 @@ def test_deleted_work_item_returns_empty_list(caching_client):
         assert history2 == []
         
         # Verify cache was cleared
-        cache_key = client._key_for_revision_history(work_item_id)
+        cache_key = key_for_revision_history(work_item_id)
         assert client._cache.read(cache_key) is None
 
 
@@ -188,7 +189,7 @@ def test_api_error_during_revision_check_fallback(caching_client):
         assert len(history) == 15
         
         # Verify it was cached (even without revision metadata)
-        cache_key = client._key_for_revision_history(work_item_id)
+        cache_key = key_for_revision_history(work_item_id)
         cached_data = client._cache.read(cache_key)
         assert cached_data is not None
 

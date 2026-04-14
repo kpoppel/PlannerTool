@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, patch
 
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.caching import key_for_area, key_for_revision_history
 from planner_lib.storage.memory_backend import MemoryStorage
 
 
@@ -128,7 +129,7 @@ def test_cache_invalidated_for_deleted_item(caching_client):
         assert history2 == []
         
         # Verify cache was cleared
-        cache_key = client._key_for_revision_history(work_item_id)
+        cache_key = key_for_revision_history(work_item_id)
         assert client._cache.read(cache_key) is None
 
 

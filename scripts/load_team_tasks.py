@@ -157,7 +157,9 @@ def main():
             continue
 
         try:
-            qres = client.query_by_wiql(project, wiql)
+            from azure.devops.v7_1.work_item_tracking.models import Wiql
+            wit_client_sdk = client.wit_client
+            qres = wit_client_sdk.query_by_wiql(Wiql(query=wiql))
         except Exception as e:
             print(f"  Query failed for team {name}: {e}")
             continue

@@ -1,7 +1,8 @@
 import pytest
+from dataclasses import asdict
 from planner_lib.setup import BackendConfig
 from planner_lib.storage.base import StorageBackend, SerializerBackend
-from planner_lib.storage.serializer import PickleSerializer, YAMLSerializer
+from planner_lib.storage.serializer import JSONSerializer, YAMLSerializer
 
 
 # Tests should use the storage composition classes provided by the library.
@@ -41,10 +42,10 @@ class InMemoryBackend(StorageBackend):
 
 def test_save_and_load_roundtrip():
     backend = InMemoryBackend()
-    # Use the library's SerializerBackend with PickleSerializer so the
-    # BackendConfig instance round-trips as an object (pickle preserves
-    # the dataclass instance semantics for the test).
-    store = SerializerBackend(backend, PickleSerializer())
+    # Serialise BackendConfig as JSON via asdict() and round-trip through
+    # JSONSerializer — this is the supported serialisation path now that
+    # PickleSerializer was removed for security reasons.
+    store = SerializerBackend(backend, JSONSerializer())
 
     cfg = BackendConfig(
         azure_devops_organization="https://dev.azure.com/org",
@@ -58,10 +59,10 @@ def test_save_and_load_roundtrip():
         data_dir=None,
     )
 
-    store.save("config", "project_config.yml", cfg)
+    store.save("config", "project_config.yml", asdict(cfg))
     loaded = store.load("config", "project_config.yml")
 
-    assert loaded == cfg
+    assert loaded == asdict(cfg)
 
 
 def test_load_invalid_format_raises():
