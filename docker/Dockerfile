@@ -98,4 +98,4 @@ EXPOSE $PORT
 ENTRYPOINT ["entrypoint.sh"]
 
 # Run the production app using uvicorn factory via the entrypoint.
-CMD ["sh", "-c", "uvicorn planner:make_dist_app --factory --host $HOST --port $PORT --root-path \"${ROOT_PATH}\""]
+CMD ["sh", "-c", "exec uvicorn planner:make_dist_app --factory --host $HOST --port $PORT --root-path \"${ROOT_PATH}\""]

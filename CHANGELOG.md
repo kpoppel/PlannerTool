@@ -22,6 +22,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Migration 0007 was not skipped
 - Migration 0016 failed to update the server_config.yml correctly
 - deploy.py script dumped Caddyfile with too-greedy path prefix "/path*" Changed to "/path/*" so that "/path-two/*" also works
+- Dockerfile updated to use exec to replace the shell with the ubicon process so that terminate signals are processed correctly. This reduces shutdown time 10x.
 
 ## [v3.3.0] - internal release only
 Summary: A focused cleanup and security-forward release that improves migrations, deployment, caching, service structure, and several API/bug fixes for more robust operation.
