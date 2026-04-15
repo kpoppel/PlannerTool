@@ -36,7 +36,7 @@ OBSOLETE_MIGRATIONS = {
     '0004.clear-azure-cache': '3.0.0',     # Cache format changed long ago
     '0005.add-project-map-type': '3.0.0',  # Project map type now required
     '0006.split-server-config-into-projects-teams': '3.1.0',  # Config split done
-    '0007.rename-database-and-update-projects': '3.1.0',  # Database renamed
+    '0007.rename-db-and-update-projects': '3.1.0',  # Database renamed
     '0008.remove-plugins-from-server-config': '3.1.0',  # Plugins removed
     '0009.clear-azure-cache-for-key-format': '3.1.0',  # Cache key format changed
     '0010.teams-schema-v2-rename-team-map-to-teams': '3.1.0',  # Schema v2 done

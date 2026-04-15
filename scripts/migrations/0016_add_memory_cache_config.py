@@ -25,32 +25,32 @@ def upgrade(dry_run=False, backup=False):
         return
     
     text = config_file.read_text(encoding='utf8')
-    
-    # Check if memory_cache config already exists
-    if 'memory_cache:' in text:
+
+    # Parse YAML to preserve structure and avoid substring false-positives
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as e:
+        print(f"Migration {MIGRATION_ID}: Failed to parse YAML: {e}")
+        return
+
+    # If memory_cache already present as a key, nothing to do
+    if 'memory_cache' in data:
         print(f"Migration {MIGRATION_ID}: memory_cache already present in {config_file}")
         return
-    
+
     print(f"Migration {MIGRATION_ID}: will add memory_cache config to {config_file}")
     if dry_run:
         print("  Would add:")
         print("    - enable_memory_cache: true to feature_flags")
         print("    - memory_cache section with max_size_mb and staleness_seconds")
         return
-    
+
     # Backup if requested
     if backup:
         bak = config_file.with_suffix(config_file.suffix + '.bak')
         import shutil
         shutil.copy2(config_file, bak)
         print(f"Backed up {config_file} -> {bak}")
-    
-    # Parse YAML to preserve structure
-    try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as e:
-        print(f"Migration {MIGRATION_ID}: Failed to parse YAML: {e}")
-        return
     
     modified = False
     
@@ -77,16 +77,14 @@ def upgrade(dry_run=False, backup=False):
         return
     
     # Write back with formatting
-    # Use custom YAML dumper to preserve order and formatting
     yaml_content = yaml.dump(data, default_flow_style=False, sort_keys=False, indent=2)
-    
-    # Add comment before memory_cache section for clarity
-    if 'memory_cache:' in yaml_content:
-        yaml_content = yaml_content.replace(
-            'memory_cache:',
-            '\n# Memory cache configuration (active when enable_memory_cache: true)\nmemory_cache:'
-        )
-    
+
+    # Insert a single comment line immediately before the top-level memory_cache key.
+    # Use a line-anchored substitution so we don't accidentally replace other occurrences.
+    import re
+    comment = '# Memory cache configuration (active when enable_memory_cache: true)\n'
+    yaml_content, n = re.subn(r'(?m)^memory_cache:', comment + 'memory_cache:', yaml_content, count=1)
+
     config_file.write_text(yaml_content, encoding='utf8')
     print(f"Migration {MIGRATION_ID}: Updated {config_file}")
 

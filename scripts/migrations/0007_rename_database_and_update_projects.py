@@ -1,8 +1,7 @@
 """Migration: Rename `database.yaml` and update `projects.yml` entries
 
 Behavior:
-- Rename `data/config/database.yaml` to `data/config/databse.yml` (note: intentional
-  target name `databse.yml` as requested). If the target already exists, the rename is
+- Rename `data/config/database.yaml` to `data/config/database.yml`. If the target already exists, the rename is
   skipped.
 - Update `data/config/projects.yml`:
   - set `schema_version` to `2`
@@ -27,10 +26,10 @@ def upgrade(dry_run=False, backup=False):
     root = Path(__file__).resolve().parents[2]
     cfg_dir = root / 'data' / 'config'
     db_path = cfg_dir / 'database.yaml'
-    db_target = cfg_dir / 'databse.yml'
+    db_target = cfg_dir / 'database.yml'
     projects_path = cfg_dir / 'projects.yml'
 
-    print(f"Migration {MIGRATION_ID}: rename database.yaml -> databse.yml and update projects.yml entries")
+    print(f"Migration {MIGRATION_ID}: rename database.yaml -> database.yml and update projects.yml entries")
 
     # Part 1: rename database file if present
     if db_path.exists():

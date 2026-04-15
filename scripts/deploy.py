@@ -51,7 +51,7 @@ def generate_caddyfile(instances):
         lines.extend([
             f"    redir /{name} /{name}/",
             f"    redir /{name}/admin /{name}/admin/",
-            f"    handle_path /{name}* {{",
+            f"    handle_path /{name}/* {{",
             f"        reverse_proxy planner-{name}:8000",
             "    }"
         ])
