@@ -14,17 +14,8 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v3.3.1] - unreleased
 
-### Added
-### Changed
-### Fixed
-- Migration 0007 was not skipped
-- Migration 0016 failed to update the server_config.yml correctly
-- deploy.py script dumped Caddyfile with too-greedy path prefix "/path*" Changed to "/path/*" so that "/path-two/*" also works
-- Dockerfile updated to use exec to replace the shell with the ubicon process so that terminate signals are processed correctly. This reduces shutdown time 10x.
-
-## [v3.3.0] - internal release only
+## [v3.3.0] - 2026-04-15
 Summary: A focused cleanup and security-forward release that improves migrations, deployment, caching, service structure, and several API/bug fixes for more robust operation.
 
 ### Added:
@@ -38,6 +29,12 @@ Summary: A focused cleanup and security-forward release that improves migrations
 - Storage & Reuse: New UserDataStore centralizes file-locking and CRUD for user stores; MemoryStorage now implements StorageBackend; StorageProtocol renamed to StorageBackend for a single canonical interface.
 - API Stability & Security Fixes: Numerous route and handler cleanups (admin, cost, projects, accounts), OWASP A05 fix (internal errors no longer leak details), safer restore/validation flows, and other bug fixes.
 - Tests & Tooling: Test suite updated to reflect behavior changes; conftest.py ensures PLANNER_SECRET_KEY is available for tests; new admin/azure helper endpoints added to support admin workflows.
+
+### Fixed:
+- Migration 0007 was not skipped
+- Migration 0016 failed to update the server_config.yml correctly
+- deploy.py script dumped Caddyfile with too-greedy path prefix "/path*" Changed to "/path/*" so that "/path-two/*" also works
+- Dockerfile updated to use exec to replace the shell with the ubicon process so that terminate signals are processed correctly. This reduces shutdown time 10x.
 
 ## [v3.2.1] - 2026-04-09
 
