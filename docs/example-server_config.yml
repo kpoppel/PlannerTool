@@ -5,6 +5,14 @@ azure_devops_organization: <Azure azure_devops_organisation>
 log_level: <level: DEBUG, INFO, WARNING, ERRRR, CRITICAL>
 # Feature flags to enable/disable specific features
 feature_flags:
+  # Optional: Use pre-recorded mock data instead of live Azure DevOps (default: false).
+  # Useful for offline development when ADC / Azure DevOps is unavailable.
+  # Record fixture data first with:
+  #   AZURE_DEVOPS_PAT=<pat> python scripts/record_azure_mock.py
+  use_azure_mock: false
+  # Optional: Custom path for the mock fixture directory (default: data/azure_mock).
+  # Only used when use_azure_mock is true.
+  azure_mock_data_dir: data/azure_mock
   # Optional: Enable Azure Cache (default: false)
   enable_azure_cache: true
   # Optional: Enable in-memory cache layer (default: false, requires enable_azure_cache: true)

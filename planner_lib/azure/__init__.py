@@ -33,6 +33,15 @@ class AzureService(AzureServiceProtocol):
 
     def _build_client(self):
         """Construct the concrete client once based on current feature flags."""
+        if self.feature_flags.get("use_azure_mock", False):
+            from planner_lib.azure.AzureMockClient import AzureMockClient
+            fixture_dir = self.feature_flags.get("azure_mock_data_dir", "data/azure_mock")
+            return AzureMockClient(
+                self.organization_url,
+                storage=self.storage,
+                fixture_dir=fixture_dir,
+                memory_cache=self.memory_cache,
+            )
         if self.feature_flags.get("enable_azure_cache", False):
             from planner_lib.azure.AzureCachingClient import AzureCachingClient
             return AzureCachingClient(
