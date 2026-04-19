@@ -14,6 +14,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v.3.4.0] - unreleased
+
+## Added:
+- Add in synthetic data generator for the server. This can be used for demo instances and development when upstream ADO endpoints are not available.
+
+### Fixed:
+- PAT decryption failure (corrupt stored PAT, key rotation, or pre-migration plaintext value) no longer crashes session creation with a 500 error. `AccountManager.load()` now treats any `InvalidToken` / base64 error as "no PAT" and logs a warning, so users can recover by re-entering their PAT rather than being locked out.
+- Added PAT format validation (printable non-whitespace ASCII, max 512 chars) in `AccountManager.save()`, the admin initial-setup endpoint, the user config modal, and the admin first-user form to prevent obviously malformed tokens from being persisted in the first place.
+- Admin backup now exports PATs as plaintext so the dump is portable: restoring to a fresh installation with a new or rotated `PLANNER_SECRET_KEY` works correctly. PATs are re-encrypted on restore. Old encrypted backups (no `_meta` marker) are passed through unchanged for backward compatibility.
 
 ## [v3.3.0] - 2026-04-15
 Summary: A focused cleanup and security-forward release that improves migrations, deployment, caching, service structure, and several API/bug fixes for more robust operation.

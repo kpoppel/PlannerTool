@@ -168,6 +168,102 @@ def test_restore_backup_guards_current_admin():
 
 
 # ---------------------------------------------------------------------------
+# PAT plaintext backup / re-encryption on restore
+# ---------------------------------------------------------------------------
+
+
+def test_get_backup_decrypts_pats_to_plaintext(monkeypatch):
+    """get_backup must store PATs as plaintext in the JSON, not the Fernet ciphertext."""
+    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+    from planner_lib.accounts.config import AccountManager, AccountPayload
+    from planner_lib.admin.config_manager import ConfigManager
+
+    acct = _Store()
+    # Save a user with a properly encrypted PAT via AccountManager
+    mgr = AccountManager(account_storage=acct)
+    mgr.save(AccountPayload(email='user@example.com', pat='my-azure-pat-abc123'))
+
+    cm = ConfigManager(config_storage=_Store(), account_storage=acct)
+    bk = cm.get_backup()
+
+    assert bk.get('_meta', {}).get('pat_format') == 'plaintext', \
+        "Backup must declare pat_format=plaintext in _meta"
+    user_record = bk['accounts']['users'].get('user@example.com', {})
+    assert user_record.get('pat') == 'my-azure-pat-abc123', \
+        "PAT in backup must be plaintext, not the Fernet ciphertext"
+
+
+def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
+    """restore_backup must encrypt plaintext PATs from a plaintext-format backup."""
+    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+    from planner_lib.accounts.config import _try_decrypt_pat
+    from planner_lib.admin.config_manager import ConfigManager
+
+    synced: dict = {}
+
+    def sync(users, admins):
+        synced['users'] = users
+        synced['admins'] = admins
+
+    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    data = {
+        '_meta': {'pat_format': 'plaintext'},
+        'accounts': {
+            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
+            'admins': {},
+        },
+    }
+    cm.restore_backup(data, sync_accounts_fn=sync)
+
+    stored_pat = synced['users']['user@example.com']['pat']
+    assert stored_pat != 'plaintext-pat', "PAT must be encrypted in storage, not stored as plaintext"
+    # Must be decryptable back to the original
+    assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
+
+
+def test_restore_backup_old_format_passed_through(monkeypatch):
+    """Old encrypted backups (no _meta) must be stored as-is for backward compatibility."""
+    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+    from planner_lib.admin.config_manager import ConfigManager
+
+    synced: dict = {}
+
+    def sync(users, admins):
+        synced['users'] = users
+
+    # Old-style backup: no _meta field, PAT value is an opaque string (e.g. encrypted blob)
+    fake_encrypted = 'some-old-encrypted-blob-value'
+    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    data = {
+        'accounts': {
+            'users': {'user@example.com': {'email': 'user@example.com', 'pat': fake_encrypted}},
+            'admins': {},
+        },
+    }
+    cm.restore_backup(data, sync_accounts_fn=sync)
+    # Must be passed through unchanged
+    assert synced['users']['user@example.com']['pat'] == fake_encrypted
+
+
+def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
+    """If a stored PAT can't be decrypted (e.g. key rotation), backup includes pat=None."""
+    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+    from planner_lib.admin.config_manager import ConfigManager
+
+    acct = _Store()
+    # Inject a corrupt ciphertext directly into storage
+    acct.save('accounts', 'bad@example.com', {'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
+    acct.save('accounts_admin', 'bad@example.com', {'email': 'bad@example.com'})
+
+    cm = ConfigManager(config_storage=_Store(), account_storage=acct)
+    bk = cm.get_backup()
+
+    user_record = bk['accounts']['users'].get('bad@example.com', {})
+    # Corrupt PAT should degrade to None, not crash backup
+    assert user_record.get('pat') is None
+
+
+# ---------------------------------------------------------------------------
 # AdminService delegation tests
 # ---------------------------------------------------------------------------
 

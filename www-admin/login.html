@@ -138,6 +138,15 @@
 
         const endpoint = isSetupMode ? '/admin/v1/setup' : '/api/session';
 
+        // Basic PAT sanity check: disallow whitespace/control characters.
+        const PAT_RE = /^[\x21-\x7E]+$/;
+        if (isSetupMode && pat && !PAT_RE.test(pat)) {
+          errorEl.innerText = 'Invalid PAT format: remove spaces or control characters.';
+          errorEl.style.display = 'block';
+          btn.disabled = false;
+          return;
+        }
+
         const payload = { email: email };
         if (isSetupMode) {
           payload.pat = pat;

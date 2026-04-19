@@ -13,6 +13,7 @@ from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import SESSION_COOKIE
 from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
+from planner_lib.accounts.config import _is_valid_pat
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +41,12 @@ async def admin_setup(request: Request):
         pat = payload.get('pat')
         if not email or not pat:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Email and PAT are required'})
+
+        # Validate PAT format before creating the admin account to avoid
+        # persisting obviously malformed tokens that could cause server
+        # runtime errors when later used.
+        if not _is_valid_pat(pat):
+            raise HTTPException(status_code=400, detail={'error': 'invalid_pat', 'message': 'PAT format invalid'})
 
         admin_svc = resolve_service(request, 'admin_service')
 

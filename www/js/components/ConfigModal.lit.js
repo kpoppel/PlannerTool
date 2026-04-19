@@ -144,6 +144,14 @@ class ConfigModal extends LitElement {
         const email = emailInput.value.trim();
         const pat = patInput.value;
         const autosaveInterval = parseInt(autosaveInput.value, 10) || 0;
+        // Client-side PAT format guard: disallow whitespace and require
+        // printable non-space ASCII characters. Accept empty string to
+        // indicate "preserve existing" behaviour.
+        const PAT_RE = /^[\x21-\x7E]+$/;
+        if (pat && !PAT_RE.test(pat)) {
+          status.textContent = 'Invalid PAT format. Remove spaces or control characters.';
+          return;
+        }
         if (email) await dataService.setLocalPref('user.email', email);
         await dataService.setLocalPref('autosave.interval', autosaveInterval);
         let patText = '';

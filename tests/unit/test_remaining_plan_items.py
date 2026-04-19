@@ -214,3 +214,73 @@ class TestUserDataStoreDeduplication:
         assert deleted
         with pytest.raises(KeyError):
             store.load_item('user1', item_id)
+
+
+# ---------------------------------------------------------------------------
+# 4. PAT corruption & format validation safety
+# ---------------------------------------------------------------------------
+
+class TestPatValidation:
+    """AccountManager must reject malformed PATs on save and survive corrupt PATs on load."""
+
+    def _make_storage(self):
+        class FakeStorage:
+            def __init__(self):
+                self.data = {}
+            def load(self, ns, key):
+                if key in self.data:
+                    return self.data[key]
+                raise KeyError(key)
+            def save(self, ns, key, value):
+                self.data[key] = value
+        return FakeStorage()
+
+    def _make_manager(self, storage=None):
+        from planner_lib.accounts.config import AccountManager
+        return AccountManager(account_storage=storage or self._make_storage())
+
+    @pytest.mark.parametrize('bad_pat', [
+        'token with spaces',
+        'token\twith\ttab',
+        'token\nwith\nnewline',
+        '\x00null',
+        'a' * 513,  # too long
+    ])
+    def test_invalid_pat_formats_rejected_on_save(self, bad_pat, monkeypatch):
+        """AccountManager.save must return ok=False for malformed PATs."""
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+        from planner_lib.accounts.config import AccountPayload
+        mgr = self._make_manager()
+        result = mgr.save(AccountPayload(email='user@example.com', pat=bad_pat))
+        assert result.get('ok') is False, f"Expected malformed PAT {bad_pat!r} to be rejected"
+        assert result.get('error') == 'invalid_pat'
+
+    def test_corrupted_stored_pat_returns_none_on_load(self, monkeypatch):
+        """If the stored ciphertext is corrupt, load must return pat=None, not raise."""
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+        storage = self._make_storage()
+        # Manually inject a corrupt (non-Fernet) encrypted value into storage
+        storage.data['user@example.com'] = {
+            'email': 'user@example.com',
+            'pat': 'this-is-not-a-valid-fernet-token',
+        }
+        mgr = self._make_manager(storage)
+        loaded = mgr.load('user@example.com')
+        assert loaded['ok'] is True
+        # Should degrade gracefully: pat is None, not a crash
+        assert loaded['pat'] is None
+
+    def test_wrong_key_returns_none_on_load(self, monkeypatch, tmp_path):
+        """A PAT encrypted with key A must degrade to None when loaded with key B."""
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'key-A-llllllllllllllllllllllllll')
+        from planner_lib.accounts.config import AccountPayload
+        storage = self._make_storage()
+        mgr = self._make_manager(storage)
+        mgr.save(AccountPayload(email='user@example.com', pat='validtoken123'))
+
+        # Switch to a different key (simulates key rotation or misconfiguration)
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'key-B-llllllllllllllllllllllllll')
+        # Must not raise; pat returns None so session creation continues safely
+        loaded = mgr.load('user@example.com')
+        assert loaded['ok'] is True
+        assert loaded['pat'] is None

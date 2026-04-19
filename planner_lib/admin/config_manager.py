@@ -111,8 +111,16 @@ class ConfigManager:
     # ------------------------------------------------------------------
 
     def get_backup(self) -> dict:
-        """Create a full backup snapshot of configuration and data."""
+        """Create a full backup snapshot of configuration and data.
+
+        PATs are decrypted to plaintext before being written into the JSON
+        so the backup can be restored to a fresh installation using a
+        different ``PLANNER_SECRET_KEY``.  The ``_meta.pat_format`` field is
+        set to ``"plaintext"`` so :meth:`restore_backup` knows to re-encrypt
+        them on the way back in.
+        """
         backup_data: dict = {
+            "_meta": {"pat_format": "plaintext"},
             "config": {},
             "accounts": {},
             "views": {},
@@ -126,14 +134,26 @@ class ConfigManager:
             except KeyError:
                 backup_data["config"][key] = None
 
-        # User accounts and admin markers
+        # User accounts and admin markers.
+        # PATs are decrypted so the backup JSON is portable across key rotations.
         try:
+            from planner_lib.accounts.config import _try_decrypt_pat
             users: dict = {}
             for user_key in self._account_storage.list_keys('accounts'):
-                users[user_key] = self._account_storage.load('accounts', user_key)
+                raw = self._account_storage.load('accounts', user_key)
+                if isinstance(raw, dict) and raw.get('pat'):
+                    # Decrypt to plaintext; falls back to None on corrupt/missing ciphertext.
+                    raw = dict(raw)
+                    raw['pat'] = _try_decrypt_pat(raw['pat'])
+                users[user_key] = raw
             admins: dict = {}
             for admin_key in self._account_storage.list_keys('accounts_admin'):
-                admins[admin_key] = self._account_storage.load('accounts_admin', admin_key)
+                # Admin marker records typically just contain email; handle PAT defensively.
+                raw = self._account_storage.load('accounts_admin', admin_key)
+                if isinstance(raw, dict) and raw.get('pat'):
+                    raw = dict(raw)
+                    raw['pat'] = _try_decrypt_pat(raw['pat'])
+                admins[admin_key] = raw
             backup_data["accounts"] = {"users": users, "admins": admins}
         except Exception as e:
             logger.error("Failed to backup accounts: %s", e)
@@ -203,6 +223,37 @@ class ConfigManager:
                 and current_user_email not in admins
             ):
                 raise ValueError("Cannot remove the current admin account.")
+
+            # Re-encrypt PATs when the backup was produced with plaintext PATs
+            # (i.e. by get_backup() after the pat_format="plaintext" change).
+            # Old encrypted backups (no _meta or pat_format != "plaintext") are
+            # passed through unchanged for backward compatibility.
+            pat_format = (data.get("_meta") or {}).get("pat_format")
+            if pat_format == "plaintext":
+                try:
+                    from planner_lib.accounts.config import _encrypt_pat
+                    def _reencrypt(record: dict) -> dict:
+                        if not isinstance(record, dict):
+                            return record
+                        rec = dict(record)
+                        if rec.get('pat'):
+                            try:
+                                rec['pat'] = _encrypt_pat(rec['pat'])
+                            except Exception:
+                                # If encryption fails (e.g. key not set), store without PAT
+                                # rather than crash; admin can re-enter it via the UI.
+                                logger.warning(
+                                    'Could not re-encrypt PAT for %s during restore; '
+                                    'PAT will be cleared.',
+                                    rec.get('email', '?'),
+                                )
+                                rec['pat'] = None
+                        return rec
+                    users = {k: _reencrypt(v) for k, v in users.items()}
+                    admins = {k: _reencrypt(v) for k, v in admins.items()}
+                except Exception as e:
+                    logger.error('PAT re-encryption during restore failed: %s', e)
+
             if sync_accounts_fn is not None:
                 sync_accounts_fn(users, admins)
 
