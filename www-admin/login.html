@@ -4,7 +4,7 @@
     <script>
       // Dynamically compute base URL for API requests to support reverse proxy sub-paths
       window.APP_BASE_URL = window.location.pathname
-        .replace(/\/admin\/?$/, '')
+        .replace(/\/admin(\/login)?\/?$/, '')
         .replace(/\/$/, '');
     </script>
     <meta charset="utf-8" />
@@ -70,6 +70,15 @@
         margin-bottom: 1rem;
         display: none;
       }
+      .info {
+        color: #1565c0;
+        background: #e3f2fd;
+        border-radius: 4px;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        display: none;
+      }
       .setup-notice {
         background: #e3f2fd;
         color: #0d47a1;
@@ -89,6 +98,7 @@
         email below to become the first administrator.
       </div>
       <div id="error-message" class="error"></div>
+      <div id="info-message" class="info"></div>
       <form id="login-form">
         <div class="form-group">
           <label for="email">Email Address</label>
@@ -110,6 +120,15 @@
 
     <script>
       let isSetupMode = false;
+
+      // Show a contextual info message when redirected here with ?error=
+      const _urlError = new URLSearchParams(window.location.search).get('error');
+      if (_urlError === 'not_admin') {
+        const infoEl = document.getElementById('info-message');
+        infoEl.innerText =
+          'That email address does not have admin access. Please sign in with an admin account.';
+        infoEl.style.display = 'block';
+      }
 
       // Check if setup is needed
       fetch((window.APP_BASE_URL || '') + '/admin/v1/setup-status')

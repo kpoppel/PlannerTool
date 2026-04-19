@@ -14,7 +14,7 @@ def make_request(container, headers=None, cookies=None):
 
 class FakeStorage:
     def __init__(self):
-        self.data = {'config': {}, 'accounts': {}, 'accounts_admin': {}}
+        self.data = {'config': {}, 'accounts': {}}
         self._backend = None
     def load(self, ns, key):
         if ns == 'config' and key in self.data['config']:
@@ -27,18 +27,12 @@ class FakeStorage:
             self.data['config'][key] = value
         elif ns == 'accounts':
             self.data['accounts'][key] = value
-        elif ns == 'accounts_admin':
-            self.data['accounts_admin'][key] = value
     def delete(self, ns, key):
         if ns == 'accounts' and key in self.data['accounts']:
             del self.data['accounts'][key]
-        if ns == 'accounts_admin' and key in self.data['accounts_admin']:
-            del self.data['accounts_admin'][key]
     def list_keys(self, ns):
         if ns == 'accounts':
             return list(self.data['accounts'].keys())
-        if ns == 'accounts_admin':
-            return list(self.data['accounts_admin'].keys())
         return []
 
 
@@ -69,7 +63,8 @@ class FakeAdminService:
             return []
     def get_all_admins(self):
         try:
-            return list(self._account_storage.list_keys('accounts_admin'))
+            return [k for k, v in self._account_storage.data['accounts'].items()
+                    if 'admin' in (v.get('permissions') or [])]
         except Exception:
             return []
     def admin_count(self):
@@ -136,13 +131,16 @@ def test_admin_root_serving_and_session_paths(tmp_path, monkeypatch):
     res3 = asyncio.run(admin_api.admin_root(req3))
     assert res3 is not None
 
-    # Session exists but not admin -> 401
+    # Session exists but not admin -> 302 redirect to login with error flag
+    # (admin_root no longer raises 401; it redirects to /admin/login?error=not_admin)
+    from starlette.responses import RedirectResponse
     session_mgr3 = SessMgr({'email': 'user@not'})
     container4 = SimpleNamespace(get=lambda name: {'session_manager': session_mgr3, 'admin_service': admin_svc}.get(name))
     req4 = make_request(container4, headers={'X-Session-Id': 's1'})
-    with pytest.raises(HTTPException) as ei:
-        asyncio.run(admin_api.admin_root(req4))
-    assert ei.value.status_code == 401
+    res4 = asyncio.run(admin_api.admin_root(req4))
+    assert isinstance(res4, RedirectResponse)
+    assert res4.status_code == 302
+    assert 'not_admin' in res4.headers.get('location', '')
 
 
 def test_admin_teams_and_system_endpoints(monkeypatch):

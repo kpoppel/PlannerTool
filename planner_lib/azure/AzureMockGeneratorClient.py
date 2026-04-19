@@ -266,14 +266,17 @@ def _load_projects_config(data_dir: str) -> List[dict]:
 
 
 def _load_teams_config(data_dir: str) -> Dict[str, str]:
-    """Return ``{team_name: short_name}`` from *data_dir*/config/teams.yml."""
+    """Return ``{team_name: short_name}`` from *data_dir*/config/teams.yml.
+
+    Teams with ``exclude: true`` are omitted.
+    """
     data = _load_yaml(Path(data_dir) / "config" / "teams.yml")
     if not data:
         return {}
     teams = data.get("teams", [])
     return {
         t["name"]: t.get("short_name", t["name"][:3].upper())
-        for t in teams if "name" in t
+        for t in teams if "name" in t and not t.get("exclude", False)
     }
 
 
@@ -1176,31 +1179,27 @@ class AzureDataset:
         by_project: Dict[str, List[dict]],
         all_team_ids: Dict[str, str],
     ) -> None:
+        # Load team names from teams.yml once (excluded entries already filtered out).
+        teams_yml = _load_teams_config(self.data_dir)
+        included_team_names = list(teams_yml.keys())
+
         for proj in projects:
             proj_id = project_ids[proj]
             areas = by_project.get(proj, [])
             if not areas:
                 continue
 
-            n = min(self.config.n_plans, max(1, len(areas)))
-            shuffled = list(areas)
-            rng.shuffle(shuffled)
+            # Every area config (type="project" or type="team") becomes its own plan.
+            # Team rows shown inside each plan's timeline are taken from teams.yml
+            # (non-excluded entries); any whose name matches a built team ID are included.
 
             plan_list: List[dict] = []
             creator_id = _det_uuid(f"plan-creator:{proj}")
             creator = {"display_name": "Admin", "id": creator_id}
 
-            for plan_idx in range(n):
-                plan_id = _det_uuid(f"plan:{proj}:{plan_idx}")
-                plan_name = f"Plan {plan_idx + 1}"
-
-                # Assign 2-4 teams to this plan (cyclic rotation for coverage)
-                n_plan_teams = min(rng.randint(2, 4), len(shuffled))
-                start_i = (plan_idx * 2) % len(shuffled)
-                plan_areas = shuffled[start_i: start_i + n_plan_teams]
-                # Wrap around if needed
-                if len(plan_areas) < n_plan_teams:
-                    plan_areas += shuffled[:n_plan_teams - len(plan_areas)]
+            for area in areas:
+                plan_name = area["name"]
+                plan_id = _det_uuid(f"plan:{proj}:{plan_name}")
 
                 plan_list.append({
                     "id": plan_id,
@@ -1221,11 +1220,12 @@ class AzureDataset:
                 # Plan markers (empty — matches real fixture behaviour)
                 self.plan_markers[f"{_safe_key(proj)}__{plan_id}"] = []
 
-                # Timeline
+                # Timeline rows: teams from teams.yml that have a known team ID
                 tl_teams = []
-                for area in plan_areas:
-                    tname = area["name"]
-                    tid = all_team_ids.get(tname, _det_uuid(f"team:{proj}:{tname}"))
+                for tname in included_team_names:
+                    tid = all_team_ids.get(tname)
+                    if tid is None:
+                        continue
                     tl_teams.append({
                         "id": tid,
                         "name": tname,
@@ -1433,6 +1433,23 @@ class AzureMockGeneratorClient(AzureCachingClient):
     # ------------------------------------------------------------------
     # Override — called by AzureClient.connect() context manager
     # ------------------------------------------------------------------
+
+    def connect(self, pat: str):
+        """Override: skip PAT validation — no live Azure connection is made."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _cm():
+            self._connect_with_pat(pat or "")
+            try:
+                yield self
+            finally:
+                try:
+                    self.close()
+                except Exception:
+                    pass
+
+        return _cm()
 
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a _GeneratedConnection instead of the real SDK."""

@@ -58,8 +58,8 @@ def test_admin_count_returns_zero_when_no_admins():
 
 def test_admin_count_returns_correct_count():
     svc, store = _make_service()
-    store.save('accounts_admin', 'a@example.com', {})
-    store.save('accounts_admin', 'b@example.com', {})
+    store.save('accounts', 'a@example.com', {'email': 'a@example.com', 'permissions': ['admin']})
+    store.save('accounts', 'b@example.com', {'email': 'b@example.com', 'permissions': ['admin']})
     assert svc.admin_count() == 2
 
 
@@ -68,10 +68,9 @@ def test_create_admin_account_creates_user_and_admin_records():
     svc.create_admin_account('admin@example.com', 'mytoken')
 
     user = store.load('accounts', 'admin@example.com')
-    assert user == {'email': 'admin@example.com', 'pat': 'mytoken'}
-
-    admin = store.load('accounts_admin', 'admin@example.com')
-    assert admin == {'email': 'admin@example.com', 'pat': 'mytoken'}
+    assert user['email'] == 'admin@example.com'
+    assert user['pat'] == 'mytoken'
+    assert 'admin' in user.get('permissions', [])
 
 
 def test_create_admin_account_updates_pat_if_account_exists():

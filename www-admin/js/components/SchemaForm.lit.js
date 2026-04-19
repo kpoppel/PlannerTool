@@ -394,6 +394,13 @@ export class SchemaForm extends LitElement {
     const isReadOnly = schema.readOnly === true;
     const isRequired = this.schema?.required?.includes(key);
 
+    // Fall back to schema default when no value is stored yet
+    if (value === undefined || value === null) {
+      if (schema.default !== undefined) {
+        value = schema.default;
+      }
+    }
+
     const label = html`
       <label>
         ${schema.title || key} ${isRequired ? html`<span class="required">*</span>` : ''}
@@ -515,6 +522,19 @@ export class SchemaForm extends LitElement {
       return this._renderPatternProperties(key, schema, value, path);
     }
 
+    if (!schema.properties) {
+      return html`
+        <div class="object-section">
+          <div class="object-title">${schema.title || key}</div>
+        </div>
+      `;
+    }
+
+    // Exclude dependent properties (x-showWhen) — those are rendered at root level
+    const visibleKeys = Object.keys(schema.properties).filter(
+      (k) => !schema.properties[k]['x-showWhen']
+    );
+
     return html`
       <div class="object-section">
         <div class="object-title">${schema.title || key}</div>
@@ -522,11 +542,9 @@ export class SchemaForm extends LitElement {
           html`<div class="field-description">${schema.description}</div>`
         : ''}
         <div class="form-container">
-          ${schema.properties ?
-            Object.keys(schema.properties).map((propKey) =>
-              this._renderField(propKey, schema.properties[propKey], value[propKey], path)
-            )
-          : ''}
+          ${visibleKeys.map((propKey) =>
+            this._renderField(propKey, schema.properties[propKey], value[propKey], path)
+          )}
         </div>
       </div>
     `;
@@ -809,14 +827,62 @@ export class SchemaForm extends LitElement {
       return html`<div>No schema provided</div>`;
     }
 
-    // Render root level properties
+    /**
+     * Resolve a dotted path (e.g. "feature_flags.enable_memory_cache") against
+     * this.data, returning the value or undefined.
+     */
+    const resolveFlag = (flagPath) =>
+      flagPath.split('.').reduce((obj, k) => (obj != null ? obj[k] : undefined), this.data);
+
+    // Collect conditional panels bubbled up from nested objects (x-showWhen).
+    // These are rendered as peer sections at root level, matching the style of
+    // sibling object properties like memory_cache.
+    const conditionalPanels = [];
+    if (this.schema.properties) {
+      for (const [parentKey, parentSchema] of Object.entries(this.schema.properties)) {
+        if (parentSchema.type !== 'object' || !parentSchema.properties) continue;
+        const parentValue = this.data[parentKey] || {};
+
+        // Group dependent sub-properties by their controlling flag
+        const byFlag = {};
+        for (const [subKey, subSchema] of Object.entries(parentSchema.properties)) {
+          const flagKey = subSchema['x-showWhen'];
+          if (!flagKey) continue;
+          if (!byFlag[flagKey]) byFlag[flagKey] = [];
+          byFlag[flagKey].push({ subKey, subSchema });
+        }
+
+        for (const [flagKey, entries] of Object.entries(byFlag)) {
+          if (!parentValue[flagKey]) continue;
+          const flagTitle = parentSchema.properties[flagKey]?.title || flagKey;
+          const parentPath = parentKey;
+          conditionalPanels.push(html`
+            <div class="object-section">
+              <div class="object-title">${flagTitle} — Options</div>
+              <div class="form-container">
+                ${entries.map(({ subKey, subSchema }) =>
+                  this._renderField(subKey, subSchema, parentValue[subKey], parentPath)
+                )}
+              </div>
+            </div>
+          `);
+        }
+      }
+    }
+
+    // Render root level properties, skipping those whose x-showWhen condition
+    // is not satisfied (dotted path resolved against this.data).
     return html`
       <div class="form-container">
         ${this.schema.properties ?
-          Object.keys(this.schema.properties).map((key) =>
-            this._renderField(key, this.schema.properties[key], this.data[key])
-          )
+          Object.keys(this.schema.properties).map((key) => {
+            const propSchema = this.schema.properties[key];
+            const showWhen = propSchema['x-showWhen'];
+            if (showWhen && !resolveFlag(showWhen)) return '';
+            return this._renderField(key, propSchema, this.data[key]);
+          })
         : html`<div>No properties defined in schema</div>`}
+        ${conditionalPanels}
       </div>
     `;
   }

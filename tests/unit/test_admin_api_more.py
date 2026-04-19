@@ -138,10 +138,15 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
     assert r2.status_code == 200
 
     sid = r2.json().get('sessionId')
-    # Mark created account as admin so the admin endpoint accepts the session
+    # Mark created account as admin: set 'admin' in the permissions field
     try:
         acct_storage = client.app.state.container.get('account_storage')
-        acct_storage.save('accounts_admin', 'b@test.com', {'email': 'b@test.com'})
+        try:
+            record = dict(acct_storage.load('accounts', 'b@test.com'))
+        except (KeyError, Exception):
+            record = {'email': 'b@test.com'}
+        record['permissions'] = ['admin']
+        acct_storage.save('accounts', 'b@test.com', record)
     except Exception:
         pass
     # Ensure session manager has the session context for the created sid

@@ -709,3 +709,169 @@ class TestAzureMockGeneratorPersistence:
         with svc.connect("dummy-pat"):
             pass
         assert (tmp_path / "fflags" / "_manifest.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# New feature flag tests — stand_alone_mode + generator_persist_enabled
+# ---------------------------------------------------------------------------
+
+class TestStandAloneMode:
+    """stand_alone_mode is a reserved boolean flag surfaced in the schema."""
+
+    def test_stand_alone_mode_in_schema(self):
+        from planner_lib.admin.schema import get_schema
+        schema = get_schema('system')
+        ff = schema['properties']['feature_flags']['properties']
+        assert 'stand_alone_mode' in ff, "stand_alone_mode must appear in feature_flags schema"
+        flag = ff['stand_alone_mode']
+        assert flag['type'] == 'boolean'
+        assert flag.get('default') is False
+
+    def test_stand_alone_mode_no_showwhen(self):
+        """Flag should always be visible (no conditional display)."""
+        from planner_lib.admin.schema import get_schema
+        schema = get_schema('system')
+        ff = schema['properties']['feature_flags']['properties']
+        assert 'x-showWhen' not in ff['stand_alone_mode']
+
+    def test_stand_alone_mode_does_not_affect_client_build(self):
+        """Setting stand_alone_mode should not change which client is constructed."""
+        from planner_lib.azure import AzureService
+        from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        # Without the generator flag, setting stand_alone_mode must not raise
+        # and must NOT select the generator client.
+        svc = AzureService(
+            organization_url="anonymous-org",
+            storage=storage,
+            feature_flags={"stand_alone_mode": True},
+        )
+        from planner_lib.azure.AzureNativeClient import AzureNativeClient
+        assert isinstance(svc._client, AzureNativeClient)
+
+
+class TestGeneratorPersistEnabled:
+    """generator_persist_enabled boolean auto-resolves the persist_dir."""
+
+    DATA_DIR = "data"
+    _CFG = dict(_MULTI_CONFIG_DICT, seed=55)
+
+    def _svc(self, storage, extra_flags: dict):
+        from planner_lib.azure import AzureService
+        flags = {
+            "use_azure_mock_generator": True,
+            "data_dir": self.DATA_DIR,
+            "generator_config": self._CFG,
+        }
+        flags.update(extra_flags)
+        return AzureService(organization_url="anonymous-org", storage=storage, feature_flags=flags)
+
+    def test_persist_enabled_in_schema(self):
+        from planner_lib.admin.schema import get_schema
+        schema = get_schema('system')
+        ff = schema['properties']['feature_flags']['properties']
+        assert 'generator_persist_enabled' in ff
+        flag = ff['generator_persist_enabled']
+        assert flag['type'] == 'boolean'
+        assert flag.get('default') is False
+        assert flag.get('x-showWhen') == 'use_azure_mock_generator'
+
+    def test_persist_dir_shown_when_enabled(self):
+        """generator_persist_dir should only show when generator_persist_enabled is on."""
+        from planner_lib.admin.schema import get_schema
+        schema = get_schema('system')
+        ff = schema['properties']['feature_flags']['properties']
+        assert ff['generator_persist_dir'].get('x-showWhen') == 'generator_persist_enabled'
+
+    def test_persist_enabled_false_no_persist_dir(self):
+        """With generator_persist_enabled=False and no explicit dir, persist_dir is None."""
+        from planner_lib.storage import create_storage
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": False},
+        )
+        assert svc._client._persist_dir is None
+
+    def test_persist_enabled_true_auto_resolves_dir(self):
+        """generator_persist_enabled=True must auto-set persist_dir."""
+        from planner_lib.storage import create_storage
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": True},
+        )
+        assert svc._client._persist_dir is not None
+        assert "azure_mock_generated" in svc._client._persist_dir
+
+    def test_persist_enabled_respects_explicit_dir(self):
+        """An explicit generator_persist_dir overrides the auto-resolved path."""
+        from planner_lib.storage import create_storage
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": True, "generator_persist_dir": "/custom/path"},
+        )
+        assert svc._client._persist_dir == "/custom/path"
+
+    def test_persist_enabled_writes_files(self, tmp_path):
+        """When enabled, connecting triggers dataset build and file persistence."""
+        import json as _json
+        from planner_lib.storage import create_storage
+        pdir = str(tmp_path / "auto_persist")
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": True, "generator_persist_dir": pdir},
+        )
+        with svc.connect("") as c:
+            plans = c.get_all_plans("Platform_Development")
+            assert len(plans) > 0
+        manifest_path = tmp_path / "auto_persist" / "_manifest.json"
+        assert manifest_path.exists(), "Manifest should be written when persist_enabled=True"
+        manifest = _json.loads(manifest_path.read_text())
+        assert manifest["work_item_count"] > 0
+
+    def test_persist_enabled_mutation_persists(self, tmp_path):
+        """A save-to-cloud mutation (date update) is written to disk immediately."""
+        import json as _json
+        from planner_lib.storage import create_storage
+        pdir = tmp_path / "mutations"
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": True, "generator_persist_dir": str(pdir)},
+        )
+        # Fetch a work item
+        with svc.connect("") as c:
+            items = c.get_work_items(
+                "Platform_Development\\eSW\\Teams\\Architecture",
+                task_types=["Feature"],
+                include_states=["New", "Active", "Defined", "Resolved", "Closed"],
+            )
+        assert items, "Need a Feature work item to test mutation persistence"
+        wid = int(items[0].get("id") or items[0].get("work_item_id"))
+
+        def _disk_item(wid_: int) -> dict:
+            for f in pdir.glob("sdk_work_items__*.json"):
+                for it in _json.loads(f.read_text()):
+                    if int(it["id"]) == wid_:
+                        return it
+            return {}
+
+        new_start = "2026-06-01T00:00:00Z"
+        new_end   = "2026-09-01T00:00:00Z"
+        with svc.connect("") as c:
+            c.update_work_item_dates(wid, start=new_start, end=new_end)
+
+        updated = _disk_item(wid)
+        assert updated, f"WI#{wid} not found on disk after update"
+        assert updated["fields"].get("Microsoft.VSTS.Scheduling.StartDate") == new_start
+        assert updated["fields"].get("Microsoft.VSTS.Scheduling.TargetDate") == new_end
+
+    def test_empty_pat_no_error_with_persist_enabled(self, tmp_path):
+        """An empty PAT must not raise when the generator client is active."""
+        from planner_lib.storage import create_storage
+        svc = self._svc(
+            create_storage(backend='memory', serializer='json'),
+            {"generator_persist_enabled": True, "generator_persist_dir": str(tmp_path / "p")},
+        )
+        # Should not raise ValueError("PAT must be a non-empty string")
+        with svc.connect("") as c:
+            teams = c.get_all_teams("Platform_Development")
+        assert isinstance(teams, list)

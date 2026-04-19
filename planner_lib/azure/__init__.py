@@ -38,11 +38,10 @@ class AzureService(AzureServiceProtocol):
             from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
             data_dir = self.feature_flags.get("data_dir", "data")
             cfg = dict(self.feature_flags.get("generator_config") or {})
-            # persist_dir may be top-level flag or inside generator_config
-            persist_dir = (
-                self.feature_flags.get("generator_persist_dir")
-                or cfg.pop("persist_dir", None)
-            )
+            # Resolve persist_dir: explicit flag > boolean toggle > config dict entry
+            persist_dir = self.feature_flags.get("generator_persist_dir") or cfg.pop("persist_dir", None)
+            if not persist_dir and self.feature_flags.get("generator_persist_enabled", False):
+                persist_dir = f"{data_dir}/azure_mock_generated"
             return AzureMockGeneratorClient(
                 self.organization_url,
                 storage=self.storage,
@@ -56,11 +55,13 @@ class AzureService(AzureServiceProtocol):
         if self.feature_flags.get("use_azure_mock", False):
             from planner_lib.azure.AzureMockClient import AzureMockClient
             fixture_dir = self.feature_flags.get("azure_mock_data_dir", "data/azure_mock")
+            persist_enabled = bool(self.feature_flags.get("azure_mock_persist_enabled", False))
             return AzureMockClient(
                 self.organization_url,
                 storage=self.storage,
                 fixture_dir=fixture_dir,
                 memory_cache=self.memory_cache,
+                persist_enabled=persist_enabled,
             )
         if self.feature_flags.get("enable_azure_cache", False):
             from planner_lib.azure.AzureCachingClient import AzureCachingClient
@@ -79,6 +80,17 @@ class AzureService(AzureServiceProtocol):
         Callers should use ``with service.connect(pat) as client:``.
         """
         return self._client.connect(pat)
+
+    @property
+    def requires_pat(self) -> bool:
+        """Return True when a non-empty PAT is required to make API calls.
+
+        False for both mock clients (fixture replay and synthetic generator)
+        because they never contact the live Azure DevOps endpoint.
+        """
+        from planner_lib.azure.AzureMockClient import AzureMockClient
+        from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
+        return not isinstance(self._client, (AzureMockClient, AzureMockGeneratorClient))
 
     def rebuild_client(self) -> None:
         """Rebuild the concrete client (e.g. after a feature-flag change via admin reload)."""

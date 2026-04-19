@@ -149,11 +149,37 @@ async def admin_root(request: Request):
         if email and admin_svc.is_admin(email):
             return serve_file(index_path)
 
-        raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
+        # Valid session but not an admin — redirect to login with an error flag
+        # and clear the session cookie so the user can try a different account.
+        try:
+            with open(login_path, 'r', encoding='utf-8') as f:
+                login_html = f.read()
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail='Admin UI not found')
+        resp = HTMLResponse(content=login_html)
+        resp.delete_cookie(SESSION_COOKIE, path='/')
+        # Redirect so the browser URL reflects the error state cleanly.
+        redirect = RedirectResponse(url='/admin/login?error=not_admin', status_code=302)
+        redirect.delete_cookie(SESSION_COOKIE, path='/')
+        return redirect
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': 'Admin access required.'})
+        # Any unexpected error — redirect to login rather than showing the Dead End page.
+        redirect = RedirectResponse(url='/admin/login?error=not_admin', status_code=302)
+        redirect.delete_cookie(SESSION_COOKIE, path='/')
+        return redirect
+
+
+@router.get('/admin/login', response_class=HTMLResponse)
+async def admin_login(request: Request):
+    """Serve the admin login page directly (e.g. after a redirect from admin_root)."""
+    login_path = Path('www-admin') / 'login.html'
+    try:
+        with open(login_path, 'r', encoding='utf-8') as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail='Login page not found')
 
 
 @router.get('/admin/check')

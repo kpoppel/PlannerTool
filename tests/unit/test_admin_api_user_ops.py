@@ -5,58 +5,66 @@ from planner_lib.admin import api as admin_api
 
 
 class RecordingStorage:
+    """In-memory storage that records all mutations.
+
+    Accounts are stored in a single 'accounts' namespace; admin status is
+    tracked via the 'permissions' field in each record rather than a separate
+    'accounts_admin' namespace.
+    """
     def __init__(self):
-        self.data = {'accounts': {}, 'accounts_admin': {}}
+        self.data = {'accounts': {}}
         self.saved = []
         self.deleted = []
+
     def load(self, ns, key):
         if ns == 'accounts' and key in self.data['accounts']:
             return self.data['accounts'][key]
-        if ns == 'accounts_admin' and key in self.data['accounts_admin']:
-            return self.data['accounts_admin'][key]
         raise KeyError(key)
+
     def save(self, ns, key, value):
         self.saved.append((ns, key, value))
         if ns == 'accounts':
             self.data['accounts'][key] = value
-        elif ns == 'accounts_admin':
-            self.data['accounts_admin'][key] = value
+
     def delete(self, ns, key):
         self.deleted.append((ns, key))
         if ns == 'accounts' and key in self.data['accounts']:
             del self.data['accounts'][key]
-        elif ns == 'accounts_admin' and key in self.data['accounts_admin']:
-            del self.data['accounts_admin'][key]
         else:
             raise KeyError(key)
+
     def list_keys(self, ns):
         if ns == 'accounts':
             return list(self.data['accounts'].keys())
-        if ns == 'accounts_admin':
-            return list(self.data['accounts_admin'].keys())
         return []
+
+    def exists(self, ns, key):
+        return (ns == 'accounts') and (key in self.data['accounts'])
 
 
 def _do_sync(storage, users, admins):
-    """Simple sync helper used by test stubs."""
+    """Simple sync helper that mirrors AccountAdminService.sync_accounts_full logic."""
     if isinstance(users, list):
         users = {e: {'email': e} for e in users}
     if isinstance(admins, list):
-        admins = {e: {'email': e} for e in admins}
+        admins_set = set(admins)
+    else:
+        admins_set = set(admins.keys())
+
     current_users = set(storage.list_keys('accounts'))
-    current_admins = set(storage.list_keys('accounts_admin'))
     for k, v in users.items():
-        storage.save('accounts', k, v)
+        record = dict(v) if v else {'email': k}
+        permissions = list(record.get('permissions') or [])
+        if k in admins_set:
+            if 'admin' not in permissions:
+                permissions.append('admin')
+        else:
+            permissions = [p for p in permissions if p != 'admin']
+        record['permissions'] = permissions
+        storage.save('accounts', k, record)
     for k in current_users - set(users):
         try:
             storage.delete('accounts', k)
-        except KeyError:
-            pass
-    for k, v in admins.items():
-        storage.save('accounts_admin', k, v)
-    for k in current_admins - set(admins):
-        try:
-            storage.delete('accounts_admin', k)
         except KeyError:
             pass
 
@@ -84,37 +92,40 @@ def make_request(container, payload, session_email=None):
 
 def test_add_admin_copies_existing_account_and_removes_user_admin_marker():
     storage = RecordingStorage()
-    # existing accounts: u1. existing admin: admin_old
-    storage.save('accounts', 'u1', {'email': 'u1'})
-    storage.save('accounts_admin', 'admin_old', {'email': 'admin_old'})
+    # existing accounts: u1. existing admin: admin_old (has 'admin' permission)
+    storage.save('accounts', 'u1', {'email': 'u1', 'permissions': []})
+    storage.save('accounts', 'admin_old', {'email': 'admin_old', 'permissions': ['admin']})
 
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        get_all_admins=lambda: [k for k, v in storage.data['accounts'].items()
+                                if 'admin' in (v.get('permissions') or [])],
         sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
     )
     session_mgr = SessMgr({'email': 'admin_old'})
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
-    # incoming: add admin_new (should copy payload if account exists), remove nothing
-    payload = {'users': ['u1', 'u2'], 'admins': ['admin_old', 'admin_new']}
+    # incoming: add admin_new (should be given admin permission), remove nothing
+    payload = {'users': ['u1', 'u2', 'admin_old', 'admin_new'], 'admins': ['admin_old', 'admin_new']}
     req = make_request(container, payload, session_email='admin_old')
     res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
     assert res['ok']
-    # admin_new should be created under accounts_admin (copied or minimal)
-    assert any(ns == 'accounts_admin' and key == 'admin_new' for (ns, key, _) in storage.saved)
+    # admin_new should have been saved to 'accounts' with 'admin' permission
+    assert any(ns == 'accounts' and key == 'admin_new' for (ns, key, _) in storage.saved)
+    saved_admin_new = storage.data['accounts'].get('admin_new', {})
+    assert 'admin' in (saved_admin_new.get('permissions') or [])
 
 
-def test_remove_user_also_removes_admin_marker_if_present():
+def test_remove_user_also_removes_account():
     storage = RecordingStorage()
-    storage.save('accounts', 'remove_me', {'email': 'remove_me'})
-    storage.save('accounts_admin', 'remove_me', {'email': 'remove_me'})
+    storage.save('accounts', 'remove_me', {'email': 'remove_me', 'permissions': ['admin']})
 
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        get_all_admins=lambda: [k for k, v in storage.data['accounts'].items()
+                                if 'admin' in (v.get('permissions') or [])],
         sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
     )
     session_mgr = SessMgr({'email': 'someone@admin'})
@@ -124,6 +135,5 @@ def test_remove_user_also_removes_admin_marker_if_present():
     req = make_request(container, payload, session_email='someone@admin')
     res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
     assert res['ok']
-    # deletion should have been attempted for accounts and accounts_admin
+    # deletion should have been attempted for the accounts record
     assert ('accounts', 'remove_me') in storage.deleted
-    assert ('accounts_admin', 'remove_me') in storage.deleted

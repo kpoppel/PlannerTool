@@ -17,7 +17,20 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v.3.4.0] - unreleased
 
 ## Added:
-- Add in synthetic data generator for the server. This can be used for demo instances and development when upstream ADO endpoints are not available.
+- Add in synthetic data generator for the server. This can be used for demo instances and development when upstream ADO endpoints
+  are not available.  The mocked data is at the cloud API level, so the Azure module can be tested still.
+  Data can be persisted in this mode. It is enabled using a featureflag.
+- Add a cloud anonymising mock endpoint. It downloads data from the real cloud API but anonymizes them in the cache. This can be used
+  to get real-world data, but not store possibly sensitive data on disk.  Special use case for this for development purposes.
+  The mocked data is at the cloud API level, so the Azure module can be tested still.
+  Data can be persisted in this mode. It is enabled using a featureflag.
+
+  Both these features pave the way to a true stand-alone service where no ADO backend is needed.
+  A task create plugin is necessary still, but would not be difficult to add.
+
+## Changed:
+- accounts are updates to remove old directory based account split and instead introduce a permission field on each account.
+  This alllows for further persmissions later on.
 
 ### Fixed:
 - PAT decryption failure (corrupt stored PAT, key rotation, or pre-migration plaintext value) no longer crashes session creation with a 500 error. `AccountManager.load()` now treats any `InvalidToken` / base64 error as "no PAT" and logs a warning, so users can recover by re-entering their PAT rather than being locked out.

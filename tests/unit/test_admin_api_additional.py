@@ -183,7 +183,7 @@ def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
 def test_admin_save_users_delete_keyerror_handled():
     class Storage:
         def __init__(self):
-            self.data = {'accounts': {'u1': {}}, 'accounts_admin': {}}
+            self.data = {'accounts': {'u1': {}}}
         def list_keys(self, ns):
             return list(self.data.get(ns, {}).keys())
         def save(self, ns, key, val):
@@ -191,8 +191,6 @@ def test_admin_save_users_delete_keyerror_handled():
         def delete(self, ns, key):
             # simulate missing key by raising KeyError for accounts deletion
             if ns == 'accounts':
-                raise KeyError(key)
-            if ns == 'accounts_admin':
                 raise KeyError(key)
         def load(self, ns, key):
             raise KeyError(key)
@@ -202,28 +200,31 @@ def test_admin_save_users_delete_keyerror_handled():
         if isinstance(users, list):
             users = {e: {'email': e} for e in users}
         if isinstance(admins, list):
-            admins = {e: {'email': e} for e in admins}
+            admins_set = set(admins)
+        else:
+            admins_set = set(admins.keys())
         current_users = set(storage.list_keys('accounts'))
-        current_admins = set(storage.list_keys('accounts_admin'))
         for k, v in users.items():
-            storage.save('accounts', k, v)
+            record = dict(v) if v else {'email': k}
+            permissions = list(record.get('permissions') or [])
+            if k in admins_set:
+                if 'admin' not in permissions:
+                    permissions.append('admin')
+            else:
+                permissions = [p for p in permissions if p != 'admin']
+            record['permissions'] = permissions
+            storage.save('accounts', k, record)
         for k in current_users - set(users):
             try:
                 storage.delete('accounts', k)
-            except KeyError:
-                pass
-        for k, v in admins.items():
-            storage.save('accounts_admin', k, v)
-        for k in current_admins - set(admins):
-            try:
-                storage.delete('accounts_admin', k)
             except KeyError:
                 pass
 
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: list(storage.list_keys('accounts_admin')),
+        get_all_admins=lambda: [k for k, v in storage.data.get('accounts', {}).items()
+                                if 'admin' in (v.get('permissions') or [])],
         sync_accounts_full=_sync_full,
     )
     session_mgr = SessMgr({'email': 'admin@admin'})
@@ -253,6 +254,10 @@ def test_admin_root_session_admin_service_missing(tmp_path, monkeypatch):
     session_mgr = SessMgr({'email': 'someone@admin'})
     container = SimpleNamespace(get=lambda name: {'session_manager': session_mgr}.get(name))
     req = make_request(container, headers={'X-Session-Id': 's1'})
-    # should raise HTTPException with 401 because admin_service not available
-    with pytest.raises(Exception):
-        asyncio.run(admin_api.admin_root(req))
+    # admin_service missing: admin_root now returns a 302 redirect to login
+    # rather than raising, so the caller is sent to the login page gracefully.
+    from starlette.responses import RedirectResponse
+    res = asyncio.run(admin_api.admin_root(req))
+    assert isinstance(res, RedirectResponse)
+    assert res.status_code == 302
+    assert 'not_admin' in res.headers.get('location', '')

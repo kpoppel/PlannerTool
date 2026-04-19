@@ -34,8 +34,8 @@ async function mountAdminApp() {
       return;
     }
     if (res.status === 401) {
-      // Let the server render the access-denied page to the browser.
-      window.location.href = '/admin';
+      // Redirect to the login page; the server has already cleared the cookie.
+      window.location.href = (window.APP_BASE_URL || '') + '/admin/login?error=not_admin';
       return;
     }
   } catch (err) {

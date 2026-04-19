@@ -121,12 +121,15 @@ def test_get_backup_includes_config_keys():
 def test_get_backup_includes_accounts():
     from planner_lib.admin.config_manager import ConfigManager
     acct = _Store()
-    acct.save('accounts', 'a@b.com', {'email': 'a@b.com'})
-    acct.save('accounts_admin', 'a@b.com', {'email': 'a@b.com'})
+    # Admin account: has 'admin' in permissions (no separate accounts_admin namespace)
+    acct.save('accounts', 'a@b.com', {'email': 'a@b.com', 'permissions': ['admin']})
     cm = ConfigManager(config_storage=_Store(), account_storage=acct)
     bk = cm.get_backup()
     assert 'a@b.com' in bk['accounts']['users']
-    assert 'a@b.com' in bk['accounts']['admins']
+    # Permissions should be preserved in the backup record
+    assert 'admin' in (bk['accounts']['users']['a@b.com'].get('permissions') or [])
+    # No separate 'admins' key in new backup format
+    assert 'admins' not in bk['accounts']
 
 
 def test_restore_backup_writes_config():
@@ -148,9 +151,29 @@ def test_restore_backup_calls_sync_accounts_fn():
         called['admins'] = admins
 
     cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
-    data = {'accounts': {'users': {'u@x.com': {}}, 'admins': {'u@x.com': {}}}}
+    # New backup format: admin status in permissions field, no separate 'admins' dict
+    data = {'accounts': {'users': {'u@x.com': {'email': 'u@x.com', 'permissions': ['admin']}}}}
     cm.restore_backup(data, sync_accounts_fn=sync)
     assert 'u@x.com' in called['users']
+    # sync is called with the admin email list derived from permissions
+    assert 'u@x.com' in called['admins']
+
+
+def test_restore_backup_calls_sync_accounts_fn_legacy_format():
+    """Legacy backup with separate 'admins' dict is still handled correctly."""
+    from planner_lib.admin.config_manager import ConfigManager
+    called = {}
+
+    def sync(users, admins):
+        called['users'] = users
+        called['admins'] = admins
+
+    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    # Old backup format: had a separate 'admins' key
+    data = {'accounts': {'users': {'u@x.com': {'email': 'u@x.com'}}, 'admins': {'u@x.com': {}}}}
+    cm.restore_backup(data, sync_accounts_fn=sync)
+    assert 'u@x.com' in called['users']
+    # Legacy admin entry should be promoted to permissions and included in admins list
     assert 'u@x.com' in called['admins']
 
 
@@ -253,7 +276,6 @@ def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
     acct = _Store()
     # Inject a corrupt ciphertext directly into storage
     acct.save('accounts', 'bad@example.com', {'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
-    acct.save('accounts_admin', 'bad@example.com', {'email': 'bad@example.com'})
 
     cm = ConfigManager(config_storage=_Store(), account_storage=acct)
     bk = cm.get_backup()

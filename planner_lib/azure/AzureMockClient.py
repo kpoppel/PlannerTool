@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from planner_lib.azure.AzureCachingClient import AzureCachingClient
-from planner_lib.storage.interfaces import StorageProtocol
+from planner_lib.storage.base import StorageBackend as StorageProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +380,45 @@ class _MockFixtures:
     def get_revisions(self, wid: int) -> list:
         self._load(); return self.revisions.get(int(wid), [])
 
+    # ------------------------------------------------------------------
+    # Persistence — write a mutated work item back to its area file
+    # ------------------------------------------------------------------
+
+    def persist_work_item(self, wid: int) -> None:
+        """Rewrite the ``sdk_work_items__<area>.json`` file that contains *wid*.
+
+        Only has effect when the fixture directory is writable.  Called after
+        ``_MockWITClient.update_work_item`` mutates the in-memory dict.
+        """
+        item = self.work_item_by_id.get(int(wid))
+        if item is None:
+            return
+        area_path: str = item["fields"].get("System.AreaPath", "")
+        if not area_path:
+            return
+
+        # Collect all items whose AreaPath matches this area
+        area_items = [
+            i for i in self.work_item_by_id.values()
+            if i["fields"].get("System.AreaPath") == area_path
+        ]
+        stem = "sdk_work_items__" + _safe_key(area_path)
+        dest = self._dir / f"{stem}.json"
+        tmp = dest.with_suffix(".json.tmp")
+        try:
+            tmp.write_text(
+                json.dumps(area_items, indent=2, default=str, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            tmp.replace(dest)
+            logger.debug(
+                "AzureMockClient: persisted %d items for area '%s'",
+                len(area_items), area_path,
+            )
+        except Exception as exc:
+            logger.warning("AzureMockClient: could not persist area '%s': %s", area_path, exc)
+            tmp.unlink(missing_ok=True)
+
 
 # ===========================================================================
 # Mock SDK clients
@@ -566,11 +605,33 @@ class _MockClientsAccessor:
 class _MockConnection:
     """Replaces ``azure.devops.connection.Connection`` for offline development."""
 
-    def __init__(self, fixture_dir: str) -> None:
+    def __init__(self, fixture_dir: str, persist_enabled: bool = False) -> None:
         self._fixtures = _MockFixtures(fixture_dir)
-        self.clients = _MockClientsAccessor(self._fixtures)
+        if persist_enabled:
+            self.clients = _PersistingMockClientsAccessor(self._fixtures)
+        else:
+            self.clients = _MockClientsAccessor(self._fixtures)
         # Placeholder that preserves the URL structure for api_url_to_ui_link
         self.base_url = "https://dev.azure.com/anonymous-org"
+
+
+class _PersistingMockClientsAccessor(_MockClientsAccessor):
+    """Wraps the WIT client so every ``update_work_item`` call is immediately
+    written back to the fixture file on disk."""
+
+    def __init__(self, fixtures: _MockFixtures) -> None:
+        super().__init__(fixtures)
+
+        _base_wit = self._wit
+        _on_mutated = fixtures.persist_work_item
+
+        class _PersistingWITClient(_MockWITClient):
+            def update_work_item(self, document, id, **kwargs):
+                result = super().update_work_item(document, id, **kwargs)
+                _on_mutated(int(id))
+                return result
+
+        self._wit = _PersistingWITClient(_base_wit._f)
 
 
 # ===========================================================================
@@ -585,6 +646,14 @@ class AzureMockClient(AzureCachingClient):
     (``get_work_items``, ``get_all_teams``, ``get_iterations``, etc.)
     is inherited unchanged from ``AzureCachingClient`` — including all
     caching, revision-checking, and normalisation logic.
+
+    Parameters
+    ----------
+    persist_enabled:
+        When ``True``, every ``update_work_item`` call (date, state, description,
+        relations) immediately rewrites the affected ``sdk_work_items__<area>.json``
+        fixture file in *fixture_dir*.  Useful for testing save-to-cloud operations
+        against anonymised fixture data.
     """
 
     def __init__(
@@ -593,17 +662,38 @@ class AzureMockClient(AzureCachingClient):
         storage: StorageProtocol,
         fixture_dir: str = "data/azure_mock",
         memory_cache: Any = None,
+        persist_enabled: bool = False,
     ) -> None:
         super().__init__(organization_url, storage=storage, memory_cache=memory_cache)
         self._fixture_dir = fixture_dir
+        self._persist_enabled = persist_enabled
+
+    def connect(self, pat: str):
+        """Override: skip PAT validation — no live Azure connection is made."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _cm():
+            self._connect_with_pat(pat or "")
+            try:
+                yield self
+            finally:
+                try:
+                    self.close()
+                except Exception:
+                    pass
+
+        return _cm()
 
     def _connect_with_pat(self, pat: str) -> None:
         """Override: inject a MockConnection instead of the real Azure SDK."""
         if self._connected:
             return
         logger.info(
-            "AzureMockClient: using fixture data from '%s' (no Azure connection made)",
+            "AzureMockClient: using fixture data from '%s' "
+            "(persist_enabled=%s, no Azure connection made)",
             self._fixture_dir,
+            self._persist_enabled,
         )
-        self.conn = _MockConnection(self._fixture_dir)
+        self.conn = _MockConnection(self._fixture_dir, persist_enabled=self._persist_enabled)
         self._connected = True

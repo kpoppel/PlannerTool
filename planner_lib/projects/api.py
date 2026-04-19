@@ -80,7 +80,12 @@ async def api_config_iterations(request: Request):
     sid = get_session_id_from_request(request)
     session_mgr = resolve_service(request, 'session_manager')
     pat = session_mgr.get_val(sid, 'pat')
-    if not pat:
+
+    azure_client = resolve_service(request, 'azure_client')
+    # Only require a PAT when talking to the live Azure DevOps endpoint.
+    # Mock clients (fixture replay and synthetic generator) work without one.
+    pat_required = getattr(azure_client, 'requires_pat', True)
+    if pat_required and not pat:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
     project_filter = request.query_params.get('project')

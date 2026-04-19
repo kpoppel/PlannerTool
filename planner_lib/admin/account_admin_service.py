@@ -6,6 +6,19 @@ account CRUD lives in its own focused class.
 All methods interact exclusively with ``account_storage``; no config
 keys, no Azure connections, no other service dependencies.
 
+Permissions model
+-----------------
+Each account record stored under the ``'accounts'`` namespace has the shape::
+
+    {
+        'email': 'user@example.com',
+        'pat':   '<encrypted>',        # optional
+        'permissions': ['admin'],      # list of permission strings; empty = regular user
+    }
+
+The ``'permissions'`` field is a list so that additional permissions can be
+added in future without schema changes.  Currently only ``'admin'`` is used.
+
 Public API:
 - ``is_admin(email)``
 - ``admin_count()``
@@ -23,6 +36,14 @@ from planner_lib.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
 
+# The permission string that grants admin access.
+PERMISSION_ADMIN = 'admin'
+
+
+def _has_permission(record: dict, permission: str) -> bool:
+    """Return True when *record* contains *permission* in its permissions list."""
+    return permission in (record.get('permissions') or [])
+
 
 class AccountAdminService:
     """Owns all account / admin-marker CRUD over a single storage backend."""
@@ -35,10 +56,11 @@ class AccountAdminService:
     # ------------------------------------------------------------------
 
     def is_admin(self, email: str) -> bool:
-        """Return True when an admin marker exists for *email*."""
+        """Return True when the account for *email* has the 'admin' permission."""
         try:
-            return bool(self._account_storage.exists('accounts_admin', email))
-        except Exception:
+            record = self._account_storage.load('accounts', email)
+            return _has_permission(record, PERMISSION_ADMIN)
+        except (KeyError, Exception):
             return False
 
     def admin_count(self) -> int:
@@ -50,27 +72,38 @@ class AccountAdminService:
     # ------------------------------------------------------------------
 
     def create_admin_account(self, email: str, pat: str) -> None:
-        """Create (or update) a user account and elevate it to admin.
+        """Create (or update) a user account and grant it admin permission.
 
-        If an account for *email* already exists its PAT is updated.
-        A corresponding admin marker is always written.
+        If an account for *email* already exists its PAT is updated and
+        'admin' is added to its permissions list (idempotent).
         """
         try:
-            user_data = self._account_storage.load('accounts', email)
+            user_data = dict(self._account_storage.load('accounts', email))
             user_data['pat'] = pat
         except KeyError:
             user_data = {'email': email, 'pat': pat}
+        permissions = list(user_data.get('permissions') or [])
+        if PERMISSION_ADMIN not in permissions:
+            permissions.append(PERMISSION_ADMIN)
+        user_data['permissions'] = permissions
         self._account_storage.save('accounts', email, user_data)
-        self._account_storage.save('accounts_admin', email, user_data)
 
     # ------------------------------------------------------------------
     # Listing
     # ------------------------------------------------------------------
 
     def get_all_admins(self) -> list:
-        """Return a list of all admin email keys."""
+        """Return a list of email addresses that have the 'admin' permission."""
         try:
-            return list(self._account_storage.list_keys('accounts_admin'))
+            result = []
+            for key in self._account_storage.list_keys('accounts'):
+                try:
+                    record = self._account_storage.load('accounts', key)
+                    if _has_permission(record, PERMISSION_ADMIN):
+                        result.append(key)
+                except Exception:
+                    pass
+            return result
         except Exception:
             return []
 
@@ -92,10 +125,14 @@ class AccountAdminService:
     ) -> None:
         """Synchronize user and admin accounts to exactly the supplied sets.
 
-        *users* and *admins* may be lists of email strings (from the admin UI)
-        or dicts of ``{email: user_data}`` (from backup restore).  When a list
-        is provided, existing user data is preserved; otherwise a minimal
-        record with just the email is created.
+        *users* is the complete set of accounts; *admins* is the subset that
+        should have the 'admin' permission.  Both may be lists of email strings
+        (from the admin UI) or dicts of ``{email: user_data}`` (from backup
+        restore).  When a list is provided, existing stored data is preserved.
+
+        Accounts no longer present in *users* are deleted.
+        The 'admin' permission is added/removed from each account record to
+        match the *admins* set exactly.
         """
         # Normalise lists → dicts, preserving any existing stored user data.
         if isinstance(users, list):
@@ -107,37 +144,28 @@ class AccountAdminService:
                     users_dict[email] = {'email': email}
             users = users_dict
         if isinstance(admins, list):
-            admins_dict: dict = {}
-            for email in admins:
-                try:
-                    admins_dict[email] = self._account_storage.load('accounts', email)
-                except KeyError:
-                    admins_dict[email] = {'email': email}
-            admins = admins_dict
+            admins_set = set(admins)
+        else:
+            admins_set = set(admins.keys())
 
         current_users = set(self._account_storage.list_keys('accounts') or [])
-        current_admins = set(self._account_storage.list_keys('accounts_admin') or [])
         incoming_users = set(users.keys())
-        incoming_admins = set(admins.keys())
 
-        # Add / update users.
+        # Add / update users — set permissions according to admin membership.
         for user_key, user_data in users.items():
-            self._account_storage.save('accounts', user_key, user_data)
+            record = dict(user_data) if user_data else {'email': user_key}
+            permissions = list(record.get('permissions') or [])
+            if user_key in admins_set:
+                if PERMISSION_ADMIN not in permissions:
+                    permissions.append(PERMISSION_ADMIN)
+            else:
+                permissions = [p for p in permissions if p != PERMISSION_ADMIN]
+            record['permissions'] = permissions
+            self._account_storage.save('accounts', user_key, record)
 
-        # Remove users no longer in the incoming set.
+        # Remove accounts no longer in the incoming set.
         for user_key in current_users - incoming_users:
             try:
                 self._account_storage.delete('accounts', user_key)
-            except KeyError:
-                pass
-
-        # Add / update admins.
-        for admin_key, admin_data in admins.items():
-            self._account_storage.save('accounts_admin', admin_key, admin_data)
-
-        # Remove admin markers no longer in the incoming set.
-        for admin_key in current_admins - incoming_admins:
-            try:
-                self._account_storage.delete('accounts_admin', admin_key)
             except KeyError:
                 pass

@@ -28,8 +28,17 @@ def test_admin_login_flow_with_memory_storage(app):
     # until the account is marked as an admin.
     sid = 'test-session'
     client.cookies.clear()
+    # admin_root now redirects non-admins to /admin/login?error=not_admin (302)
+    # instead of returning 401. TestClient follows redirects by default, so we
+    # check the final URL and content rather than the intermediate status code.
     r = client.get('/admin', headers={'X-Session-Id': sid})
-    assert r.status_code == 401
+    # Either the redirect landed on the login page (200 with login content),
+    # or the server returned an intermediate redirect that was not followed.
+    assert r.status_code in (200, 302), f"Expected redirect or login page, got {r.status_code}"
+    if r.status_code == 200:
+        assert 'Admin Login' in r.text or 'not_admin' in r.url
+    else:
+        assert 'not_admin' in r.headers.get('location', '')
 
     # Malformed (non-email) payloads are rejected (4xx/5xx depending on global
     # exception handling). Accept any error status here.
@@ -37,7 +46,14 @@ def test_admin_login_flow_with_memory_storage(app):
     assert r.status_code >= 400
 
     # Now mark the test subject as an admin and verify /admin loads for that session
-    account_storage.save('accounts_admin', subject, {'email': subject})
+    # New model: add 'admin' to the account's permissions field, no separate namespace
+    existing = {}
+    try:
+        existing = account_storage.load('accounts', subject)
+    except (KeyError, Exception):
+        pass
+    existing.update({'email': subject, 'permissions': ['admin']})
+    account_storage.save('accounts', subject, existing)
     client.cookies.clear()
     # Create a session for the subject so the server-side session helpers
     # and middleware will recognize the caller. The test harness returns a
