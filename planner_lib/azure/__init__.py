@@ -33,6 +33,26 @@ class AzureService(AzureServiceProtocol):
 
     def _build_client(self):
         """Construct the concrete client once based on current feature flags."""
+        # Generator mock: builds a coherent synthetic dataset from config files.
+        if self.feature_flags.get("use_azure_mock_generator", False):
+            from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
+            data_dir = self.feature_flags.get("data_dir", "data")
+            cfg = dict(self.feature_flags.get("generator_config") or {})
+            # persist_dir may be top-level flag or inside generator_config
+            persist_dir = (
+                self.feature_flags.get("generator_persist_dir")
+                or cfg.pop("persist_dir", None)
+            )
+            return AzureMockGeneratorClient(
+                self.organization_url,
+                storage=self.storage,
+                data_dir=data_dir,
+                config_dict=cfg or None,
+                memory_cache=self.memory_cache,
+                persist_dir=persist_dir,
+            )
+
+        # Fixture mock: replays pre-recorded SDK responses from disk.
         if self.feature_flags.get("use_azure_mock", False):
             from planner_lib.azure.AzureMockClient import AzureMockClient
             fixture_dir = self.feature_flags.get("azure_mock_data_dir", "data/azure_mock")
