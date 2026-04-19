@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v.3.4.0] - unreleased
+## [v3.4.0] - 2026-04-20
 
 ## Added:
 - Add in synthetic data generator for the server. This can be used for demo instances and development when upstream ADO endpoints
