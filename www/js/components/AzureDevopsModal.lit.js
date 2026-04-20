@@ -26,11 +26,14 @@ export class AzureDevopsModal extends LitElement {
   }
 
   _formatRange(from, to) {
-    if (!from && !to) return '';
-    if (!from) return to;
-    if (!to) return from;
-    if (from === to) return from;
-    return `${from} -> ${to}`;
+    // undefined → field not overridden, just show the original value
+    if (to === undefined) return from || '—';
+    const f = from || null;
+    const t = to || null; // normalise empty string to null
+    if (f === null && t === null) return '—';
+    if (t === null) return html`${f || '—'} \u2192 <em style="color:#c0392b">(cleared)</em>`;
+    if (f === t) return f;
+    return `${f || '—'} \u2192 ${t}`;
   }
 
   _toggleAll() {
@@ -51,8 +54,14 @@ export class AzureDevopsModal extends LitElement {
   _onSave() {
     const selected = Array.from(this._selected).map((id) => {
       const ov = this.overrides[id] || {};
-      const out = { id, start: ov.start, end: ov.end, capacity: ov.capacity };
+      // Only include keys that exist in the override so the backend can
+      // distinguish "explicit clear (null)" from "not provided (absent)".
+      const out = { id };
+      if ('start' in ov) out.start = ov.start;
+      if ('end' in ov) out.end = ov.end;
+      if (ov.capacity) out.capacity = ov.capacity;
       if (ov.state) out.state = ov.state;
+      if ('iterationPath' in ov) out.iterationPath = ov.iterationPath;
       return out;
     });
     this.dispatchEvent(
@@ -69,6 +78,126 @@ export class AzureDevopsModal extends LitElement {
     this.remove();
   }
 
+  /**
+   * Build per-row change metadata and render the table.
+   * Columns with no changes across all rows are hidden entirely.
+   * Cells that did not change within a row are dimmed.
+   */
+  _renderTable(entries) {
+    const normDate = (v) => v || null;
+
+    // Build row data with per-cell change flags
+    const rows = entries.map(([id, ov]) => {
+      const base =
+        this.state && this.state.baselineFeatures ?
+          this.state.baselineFeatures.find((f) => f.id === id) || {}
+        : {};
+      const origStart = base.start || '';
+      const origEnd = base.end || '';
+      const origCapacity = base.capacity || [];
+      const origState = base.state || '';
+      const origIterationPath = base.iterationPath || '';
+
+      const startChanged = 'start' in ov && normDate(ov.start) !== normDate(origStart);
+      const endChanged = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
+      const capacityChanged =
+        ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
+      const stateChanged = ov.state && ov.state !== origState;
+      const iterationChanged =
+        'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
+
+      // Format capacity diff
+      let capacityContent = '';
+      if (capacityChanged) {
+        const teams = this.state?.teams || [];
+        const origMap = new Map(origCapacity.map((c) => [c.team, c.capacity]));
+        const newMap = new Map(ov.capacity.map((c) => [c.team, c.capacity]));
+        const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
+        const changes = [];
+        for (const teamId of allTeams) {
+          const origVal = origMap.get(teamId);
+          const newVal = newMap.get(teamId);
+          if (origVal === newVal) continue;
+          const name = teams.find((t) => t.id === teamId)?.name || teamId;
+          if (origVal === undefined)
+            changes.push(html`<div><strong>${name}:</strong> +${newVal}%</div>`);
+          else if (newVal === undefined)
+            changes.push(html`<div><strong>${name}:</strong> ${origVal}% → removed</div>`);
+          else
+            changes.push(html`<div><strong>${name}:</strong> ${origVal}% → ${newVal}%</div>`);
+        }
+        capacityContent = html`${changes}`;
+      }
+
+      return {
+        id, ov,
+        origStart, origEnd, origState, origIterationPath,
+        startChanged, endChanged, capacityChanged, stateChanged, iterationChanged,
+        capacityContent,
+      };
+    });
+
+    // Only show columns that have at least one changed cell across all rows
+    const showStart     = rows.some((r) => r.startChanged);
+    const showEnd       = rows.some((r) => r.endChanged);
+    const showCapacity  = rows.some((r) => r.capacityChanged);
+    const showState     = rows.some((r) => r.stateChanged);
+    const showIteration = rows.some((r) => r.iterationChanged);
+
+    // Helper: render a table cell styled by whether its value changed
+    const td = (changed, content) =>
+      html`<td class=${changed ? 'changed' : 'unchanged'}>${content}</td>`;
+
+    return html`
+      <table class="scenario-annotate-table">
+        <thead>
+          <tr>
+            <th style="width:64px">Select</th>
+            <th>Title</th>
+            ${showStart     ? html`<th>Start</th>`     : ''}
+            ${showEnd       ? html`<th>End</th>`       : ''}
+            ${showCapacity  ? html`<th>Capacity</th>`  : ''}
+            ${showState     ? html`<th>State</th>`     : ''}
+            ${showIteration ? html`<th>Iteration</th>` : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r) => html`
+            <tr>
+              <td>
+                <input
+                  type="checkbox"
+                  .checked=${this._selected.has(r.id)}
+                  data-id=${r.id}
+                  @change=${this._onCheckboxChange}
+                />
+              </td>
+              <td>${this.state ? this.state.getFeatureTitleById(r.id) : r.id}</td>
+              ${showStart ? td(r.startChanged,
+                  this._formatRange(r.origStart, r.ov.start)) : ''}
+              ${showEnd ? td(r.endChanged,
+                  this._formatRange(r.origEnd, r.ov.end)) : ''}
+              ${showCapacity ? td(r.capacityChanged,
+                  r.capacityChanged ?
+                    html`<span style="font-size:0.9em;line-height:1.4;">${r.capacityContent}</span>`
+                  : html`<span style="font-size:0.9em;">—</span>`) : ''}
+              ${showState ? td(r.stateChanged,
+                  r.stateChanged ?
+                    html`<span style="font-size:0.9em;">${r.origState || '—'} → <strong>${r.ov.state}</strong></span>`
+                  : html`<span style="font-size:0.9em;">${r.origState || '—'}</span>`) : ''}
+              ${showIteration ? td(r.iterationChanged,
+                  r.iterationChanged ?
+                    html`<span style="font-size:0.9em;">
+                      ${r.origIterationPath || '—'} →
+                      <strong>${r.ov.iterationPath || html`<em style="color:#c0392b">(cleared)</em>`}</strong>
+                    </span>`
+                  : html`<span style="font-size:0.9em;">${r.origIterationPath || '—'}</span>`) : ''}
+            </tr>
+          `)}
+        </tbody>
+      </table>`;
+  }
+
   render() {
     const allEntries = Object.entries(this.overrides || {});
 
@@ -83,14 +212,26 @@ export class AzureDevopsModal extends LitElement {
       const origCapacity = baseFeature.capacity || [];
       const origState = baseFeature.state || '';
 
-      // Check if there are actual changes
-      const hasStartChange = ov.start && ov.start !== origStart;
-      const hasEndChange = ov.end && ov.end !== origEnd;
+      const origIterationPath = baseFeature.iterationPath || '';
+
+      // Guard: override entries from test fixtures or legacy data may not be
+      // plain objects — bail out early to avoid TypeError from 'in' operator.
+      if (!ov || typeof ov !== 'object') return false;
+
+      // Normalise null/undefined/empty as "no value" when comparing dates.
+      // This ensures cleared dates (null) are detected as a change from a
+      // previously set date, and avoids false positives when both sides have
+      // no date.
+      const normDate = (v) => v || null;
+      const hasStartChange = 'start' in ov && normDate(ov.start) !== normDate(origStart);
+      const hasEndChange = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
       const hasCapacityChange =
         ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
       const hasStateChange = ov.state && ov.state !== origState;
+      const hasIterationChange =
+        'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
 
-      return hasStartChange || hasEndChange || hasCapacityChange || hasStateChange;
+      return hasStartChange || hasEndChange || hasCapacityChange || hasStateChange || hasIterationChange;
     });
 
     return html`
@@ -127,6 +268,16 @@ export class AzureDevopsModal extends LitElement {
               border: 1px solid #ddd;
               vertical-align: top;
               color: #333;
+            }
+            /* Unchanged cells are visually de-emphasised */
+            .scenario-annotate-table td.unchanged {
+              color: #bbb;
+              font-style: italic;
+            }
+            /* Changed cells get a subtle left accent so they stand out */
+            .scenario-annotate-table td.changed {
+              background: #fffbe6;
+              border-left: 3px solid #e6a817;
             }
             .scenario-annotate-table tbody tr {
               background: #fff;
@@ -172,109 +323,7 @@ export class AzureDevopsModal extends LitElement {
                 </button>
               </div>
               <div style="max-height:60vh;overflow-y:auto;padding-right:8px;">
-                <table class="scenario-annotate-table">
-                  <thead>
-                    <tr>
-                      <th style="width:64px">Select</th>
-                      <th>Title</th>
-                      <th>Start</th>
-                      <th>End</th>
-                      <th>Capacity</th>
-                      <th>State</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${entries.map(([id, ov]) => {
-                      const baseFeature =
-                        this.state && this.state.baselineFeatures ?
-                          this.state.baselineFeatures.find((f) => f.id === id) || {}
-                        : {};
-                      const origStart = baseFeature.start || '';
-                      const origEnd = baseFeature.end || '';
-                      const origCapacity = baseFeature.capacity || [];
-                      const origState = baseFeature.state || '';
-                      const checked = this._selected.has(id);
-
-                      // Format capacity changes with details
-                      let capacityChange = '';
-                      if (ov.capacity) {
-                        const hasChanges =
-                          JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
-                        if (hasChanges) {
-                          // Show detailed capacity changes
-                          const teams = this.state?.teams || [];
-                          const changes = [];
-
-                          // Build maps for comparison
-                          const origMap = new Map(
-                            origCapacity.map((c) => [c.team, c.capacity])
-                          );
-                          const newMap = new Map(
-                            ov.capacity.map((c) => [c.team, c.capacity])
-                          );
-
-                          // Find all teams involved (added, removed, or modified)
-                          const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
-
-                          for (const teamId of allTeams) {
-                            const origVal = origMap.get(teamId);
-                            const newVal = newMap.get(teamId);
-                            const team = teams.find((t) => t.id === teamId);
-                            const teamName = team?.name || teamId;
-
-                            if (origVal === undefined && newVal !== undefined) {
-                              // Added
-                              changes.push(
-                                html`<div><strong>${teamName}:</strong> +${newVal}%</div>`
-                              );
-                            } else if (origVal !== undefined && newVal === undefined) {
-                              // Removed
-                              changes.push(
-                                html`<div>
-                                  <strong>${teamName}:</strong> ${origVal}% → removed
-                                </div>`
-                              );
-                            } else if (origVal !== newVal) {
-                              // Modified
-                              changes.push(
-                                html`<div>
-                                  <strong>${teamName}:</strong> ${origVal}% → ${newVal}%
-                                </div>`
-                              );
-                            }
-                          }
-
-                          capacityChange = html`${changes}`;
-                        }
-                      }
-
-                      return html`<tr>
-                        <td>
-                          <input
-                            type="checkbox"
-                            .checked=${checked}
-                            data-id=${id}
-                            @change=${this._onCheckboxChange}
-                          />
-                        </td>
-                        <td>${this.state ? this.state.getFeatureTitleById(id) : id}</td>
-                        <td>${this._formatRange(origStart, ov.start)}</td>
-                        <td>${this._formatRange(origEnd, ov.end)}</td>
-                        <td style="font-size:0.9em;line-height:1.4;">
-                          ${capacityChange}
-                        </td>
-                        <td style="font-size:0.9em;line-height:1.4;">
-                          ${ov.state && ov.state !== origState ?
-                            html`<div>
-                              <strong>${origState || '—'}</strong> →
-                              <strong>${ov.state}</strong>
-                            </div>`
-                          : html`${origState || '—'}`}
-                        </td>
-                      </tr>`;
-                    })}
-                  </tbody>
-                </table>
+                ${this._renderTable(entries)}
               </div>
             `}
         </div>

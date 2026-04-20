@@ -168,9 +168,13 @@ export class FeatureService {
   _recomputeDerived(featureBase, override) {
     const changedFields = [];
     if (override) {
-      if (override.start && override.start !== featureBase.start)
+      // Use key-presence + null-normalised comparison so that clearing a date
+      // to null (unplanning) is detected as a change even though null is falsy.
+      const normDate = (v) => v || null;
+      if ('start' in override && normDate(override.start) !== normDate(featureBase.start))
         changedFields.push('start');
-      if (override.end && override.end !== featureBase.end) changedFields.push('end');
+      if ('end' in override && normDate(override.end) !== normDate(featureBase.end))
+        changedFields.push('end');
       if (
         override.capacity &&
         JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)
@@ -179,6 +183,12 @@ export class FeatureService {
       // Support state override detection
       const baseState = featureBase.state || '';
       if (override.state && override.state !== baseState) changedFields.push('state');
+      // Support iterationPath override detection
+      if (
+        override.iterationPath !== undefined &&
+        override.iterationPath !== featureBase.iterationPath
+      )
+        changedFields.push('iterationPath');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -425,6 +435,18 @@ export class FeatureService {
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
 
       // State change may affect derived color mappings; trigger no capacity callback
+      return true;
+    }
+
+    if (field === 'iterationPath') {
+      const ov = activeScenario.overrides[id] || {};
+      ov.iterationPath = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+
+      const idsToEmit = new Set([id]);
+      if (base.parentId) idsToEmit.add(base.parentId);
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
       return true;
     }
 

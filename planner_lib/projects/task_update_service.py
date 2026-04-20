@@ -74,9 +74,19 @@ class TaskUpdateService:
                 capacity = u.get('capacity')
                 item_updated = False
 
-                if start is not None or end is not None:
+                # Use key-presence to distinguish "not provided" from "explicit null
+                # (clear the field)".  Only pass kwargs that are present in the payload
+                # so the Azure client sentinel logic works correctly.
+                has_start = 'start' in u
+                has_end = 'end' in u
+                if has_start or has_end:
                     try:
-                        client.update_work_item_dates(wid, start=start, end=end)  # type: ignore
+                        date_kwargs = {}
+                        if has_start:
+                            date_kwargs['start'] = u['start']
+                        if has_end:
+                            date_kwargs['end'] = u['end']
+                        client.update_work_item_dates(wid, **date_kwargs)  # type: ignore
                         item_updated = True
                     except Exception as e:
                         errors.append(f"{wid} (dates): {e}")
@@ -107,6 +117,15 @@ class TaskUpdateService:
                         item_updated = True
                     except Exception as e:
                         errors.append(f"{wid} (relations): {e}")
+
+                # iterationPath uses key-presence: present (even as null) means
+                # "set/clear the field"; absent means "leave unchanged".
+                if 'iterationPath' in u:
+                    try:
+                        client.update_work_item_iteration_path(wid, u['iterationPath'])  # type: ignore
+                        item_updated = True
+                    except Exception as e:
+                        errors.append(f"{wid} (iterationPath): {e}")
 
                 if item_updated:
                     updated += 1

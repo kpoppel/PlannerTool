@@ -10,6 +10,11 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v] - unreleased
 
 ### Added
+- Details panel: date pickers for Start and End dates allow direct date editing; a "Clear dates" button makes a task unplanned.
+- Details panel: compact scheduling section — iteration dropdown (quick-fill preset) on top, inline start→end date row, action toolbar with snap-start (⇤), shrink-both (⇔), snap-end (⇥), and clear. Iteration shows "— (custom dates)" when hand-tuned dates don't match any iteration.
+### Fixed
+- Details panel: iteration dropdown now correctly restores to the saved iteration when the same card is reopened after the panel is closed (bypassed Lit property-binding diff cache by imperatively setting select value after `updateComplete`).
+
 ### Changed
 ### Fixed
 

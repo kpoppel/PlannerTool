@@ -172,4 +172,204 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
     itersStub.restore();
   });
+
+  it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f20', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+    const stub = sinon.stub(state, 'updateFeatureDates');
+
+    el._onStartDateChange({ target: { value: '2025-01-15' } });
+
+    expect(stub.calledOnce).to.be.true;
+    const arg = stub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('f20');
+    expect(arg.start).to.equal('2025-01-15');
+    expect(arg.end).to.equal('2025-02-01');
+    stub.restore();
+  });
+
+  it('_onEndDateChange calls state.updateFeatureDates with new end', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f21', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+    const stub = sinon.stub(state, 'updateFeatureDates');
+
+    el._onEndDateChange({ target: { value: '2025-03-01' } });
+
+    expect(stub.calledOnce).to.be.true;
+    const arg = stub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('f21');
+    expect(arg.start).to.equal('2025-01-01');
+    expect(arg.end).to.equal('2025-03-01');
+    stub.restore();
+  });
+
+  it('_onStartDateChange treats empty value as null', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f22', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+    const stub = sinon.stub(state, 'updateFeatureDates');
+
+    el._onStartDateChange({ target: { value: '' } });
+
+    expect(stub.calledOnce).to.be.true;
+    const arg = stub.getCall(0).args[0][0];
+    expect(arg.start).to.equal(null);
+    stub.restore();
+  });
+
+  it('_clearDates calls state.updateFeatureDates with null dates', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f23', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+    const stub = sinon.stub(state, 'updateFeatureDates');
+
+    el._clearDates();
+
+    expect(stub.calledOnce).to.be.true;
+    const arg = stub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('f23');
+    expect(arg.start).to.equal(null);
+    expect(arg.end).to.equal(null);
+    stub.restore();
+  });
+
+  it('_clearDates also clears iterationPath when one is set', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f24', start: '2025-01-01', end: '2025-02-01', iterationPath: 'Team\\Sprint 3' };
+    await el.updateComplete;
+    const fieldStub = sinon.stub(state, 'updateFeatureField');
+    const datesStub = sinon.stub(state, 'updateFeatureDates');
+
+    el._clearDates();
+
+    // iterationPath must be cleared before the dates call
+    expect(fieldStub.calledOnce).to.be.true;
+    expect(fieldStub.getCall(0).args).to.deep.equal(['f24', 'iterationPath', null]);
+    expect(datesStub.calledOnce).to.be.true;
+    expect(datesStub.getCall(0).args[0][0]).to.deep.include({ id: 'f24', start: null, end: null });
+    fieldStub.restore();
+    datesStub.restore();
+  });
+
+  it('_clearDates does not call updateFeatureField when no iterationPath is set', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f25', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+    const fieldStub = sinon.stub(state, 'updateFeatureField');
+    const datesStub = sinon.stub(state, 'updateFeatureDates');
+
+    el._clearDates();
+
+    expect(fieldStub.called).to.be.false;
+    expect(datesStub.calledOnce).to.be.true;
+    fieldStub.restore();
+    datesStub.restore();
+  });
+
+  it('_clearDates does nothing when no feature is set', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const stub = sinon.stub(state, 'updateFeatureDates');
+
+    el._clearDates();
+
+    expect(stub.called).to.be.false;
+    stub.restore();
+  });
+
+  it('_snapStartDate snaps start to earliest child, keeps current end', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'ep1', type: 'epic', start: '2025-01-01', end: '2025-03-01' };
+    await el.updateComplete;
+
+    const childrenMap = new Map([['ep1', ['c1', 'c2']]]);
+    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
+    const getStub = sinon.stub(state, 'getEffectiveFeatureById');
+    getStub.withArgs('c1').returns({ id: 'c1', start: '2025-02-01', end: '2025-02-15' });
+    getStub.withArgs('c2').returns({ id: 'c2', start: '2025-01-10', end: '2025-02-20' });
+    const updateStub = sinon.stub(state, 'updateFeatureDates');
+
+    el._snapStartDate({ stopPropagation: () => {} });
+
+    expect(updateStub.calledOnce).to.be.true;
+    const arg = updateStub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('ep1');
+    expect(arg.start).to.equal('2025-01-10');
+    expect(arg.end).to.equal('2025-03-01'); // unchanged
+
+    childrenStub.restore();
+    getStub.restore();
+    updateStub.restore();
+  });
+
+  it('_snapEndDate snaps end to latest child, keeps current start', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'ep2', type: 'epic', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+
+    const childrenMap = new Map([['ep2', ['c3', 'c4']]]);
+    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
+    const getStub = sinon.stub(state, 'getEffectiveFeatureById');
+    getStub.withArgs('c3').returns({ id: 'c3', start: '2025-01-05', end: '2025-02-10' });
+    getStub.withArgs('c4').returns({ id: 'c4', start: '2025-01-08', end: '2025-03-15' });
+    const updateStub = sinon.stub(state, 'updateFeatureDates');
+
+    el._snapEndDate({ stopPropagation: () => {} });
+
+    expect(updateStub.calledOnce).to.be.true;
+    const arg = updateStub.getCall(0).args[0][0];
+    expect(arg.id).to.equal('ep2');
+    expect(arg.start).to.equal('2025-01-01'); // unchanged
+    expect(arg.end).to.equal('2025-03-15');
+
+    childrenStub.restore();
+    getStub.restore();
+    updateStub.restore();
+  });
+
+  it('_snapStartDate does nothing when feature has no children', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f30', start: '2025-01-01', end: '2025-02-01' };
+    await el.updateComplete;
+
+    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => new Map());
+    const updateStub = sinon.stub(state, 'updateFeatureDates');
+
+    el._snapStartDate({ stopPropagation: () => {} });
+
+    expect(updateStub.called).to.be.false;
+
+    childrenStub.restore();
+    updateStub.restore();
+  });
+
+  it('_activeIterationPath returns matching path when dates match exactly', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const feature = { start: '2025-04-01', end: '2025-04-30' };
+    const iterations = [
+      { path: 'Proj\\It1', startDate: '2025-03-01', finishDate: '2025-03-31' },
+      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
+    ];
+    const result = el._activeIterationPath(feature, iterations);
+    expect(result).to.equal('Proj\\It2');
+  });
+
+  it('_activeIterationPath returns null when dates do not match any iteration', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const feature = { start: '2025-04-05', end: '2025-04-28' };
+    const iterations = [
+      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
+    ];
+    const result = el._activeIterationPath(feature, iterations);
+    expect(result).to.equal(null);
+  });
+
+  it('_activeIterationPath returns null when feature has no dates', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const result = el._activeIterationPath({}, [
+      { path: 'Proj\\It2', startDate: '2025-04-01', finishDate: '2025-04-30' },
+    ]);
+    expect(result).to.equal(null);
+  });
 });

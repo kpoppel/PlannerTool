@@ -743,16 +743,24 @@ class AzureCachingClient(AzureClient):
                 self._mark_stale(key)
                 logger.debug(f"Marked memory cache key '{key}' as stale")
 
-    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
+    def update_work_item_dates(self, work_item_id: int, **kwargs):
         """Update work item dates and invalidate cache."""
-        logger.debug(f"Updating work item {work_item_id}: start={start}, end={end}")
-        result = super().update_work_item_dates(work_item_id, start=start, end=end)
-        
+        logger.debug(f"Updating work item {work_item_id}: {kwargs}")
+        result = super().update_work_item_dates(work_item_id, **kwargs)
         try:
             self.invalidate_work_items([work_item_id])
         except Exception:
             logger.exception(f"Failed to invalidate work item {work_item_id} after update")
-        
+        return result
+
+    def update_work_item_iteration_path(self, work_item_id: int, iteration_path):
+        """Update work item iteration path and invalidate cache."""
+        logger.debug(f"Updating work item {work_item_id} iteration path: {iteration_path}")
+        result = super().update_work_item_iteration_path(work_item_id, iteration_path)
+        try:
+            self.invalidate_work_items([work_item_id])
+        except Exception:
+            logger.exception(f"Failed to invalidate work item {work_item_id} after iteration path update")
         return result
 
     def update_work_item_description(self, work_item_id: int, description: str):

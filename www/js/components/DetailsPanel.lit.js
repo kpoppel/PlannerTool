@@ -86,6 +86,108 @@ export class DetailsPanelLit extends LitElement {
     .details-changed {
       background: #fadd92ff;
     }
+    .date-input {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 4px 4px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: Arial, sans-serif;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .date-input.details-changed {
+      background: #fadd92ff;
+      border-color: #e6b020;
+    }
+    .date-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .date-sep {
+      flex: 0 0 auto;
+      color: #888;
+      font-size: 13px;
+      padding: 0 2px;
+    }
+    .date-toolbar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+    .date-tool-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 1px solid rgba(35,52,77,0.18);
+      border-radius: 5px;
+      background: rgba(35,52,77,0.06);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      color: #23344d;
+      flex: 0 0 auto;
+      transition: background 0.12s;
+    }
+    .date-tool-btn:hover {
+      background: rgba(35,52,77,0.14);
+    }
+    .date-tool-sep {
+      width: 1px;
+      height: 16px;
+      background: #ccc;
+      flex: 0 0 auto;
+      margin: 0 2px;
+    }
+    .clear-dates-btn {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      font-size: 12px;
+      color: #c0392b;
+      cursor: pointer;
+      background: none;
+      border: 1px solid rgba(192,57,43,0.25);
+      border-radius: 5px;
+      padding: 0 6px;
+    }
+    .clear-dates-btn:hover {
+      background: rgba(192,57,43,0.07);
+    }
+    .iteration-select {
+      width: 100%;
+      font-size: 13px;
+      padding: 4px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .iteration-select.dates-override {
+      border-style: dashed;
+      border-color: #e6a817;
+      outline: none;
+    }
+    .iteration-select.iteration-dirty {
+      border-style: solid;
+      border-color: #e6a817;
+      outline: none;
+    }
+    /* Both dirty AND mismatch: keep dashed to surface the mismatch hint */
+    .iteration-select.iteration-dirty.dates-override {
+      border-style: dashed;
+      border-color: #e6a817;
+    }
     /* Status color variants (migrated from global CSS into details panel) */
     .status-new {
       color: #27ae60;
@@ -860,6 +962,77 @@ export class DetailsPanelLit extends LitElement {
     state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
   }
 
+  /**
+   * Snap only the start date to the earliest child start, keeping the current end.
+   */
+  _snapStartDate(e) {
+    e && e.stopPropagation();
+    if (!this.feature) return;
+    const f = this.feature;
+    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
+    const childIds =
+      state.childrenByParent.get(f.id) ||
+      state.childrenByParent.get(String(f.id)) ||
+      state.childrenByParent.get(Number(f.id)) ||
+      [];
+    if (!childIds || !childIds.length) return;
+    let minStartMs = null;
+    for (const cid of childIds) {
+      const eff = state.getEffectiveFeatureById(cid);
+      if (!eff || !eff.start) continue;
+      const ms = Date.parse(eff.start);
+      if (!isNaN(ms) && (minStartMs === null || ms < minStartMs)) minStartMs = ms;
+    }
+    if (minStartMs === null) return;
+    const newStart = new Date(minStartMs).toISOString().slice(0, 10);
+    const currentEnd = f.end || null;
+    state.updateFeatureDates([{ id: f.id, start: newStart, end: currentEnd }]);
+  }
+
+  /**
+   * Snap only the end date to the latest child end, keeping the current start.
+   */
+  _snapEndDate(e) {
+    e && e.stopPropagation();
+    if (!this.feature) return;
+    const f = this.feature;
+    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
+    const childIds =
+      state.childrenByParent.get(f.id) ||
+      state.childrenByParent.get(String(f.id)) ||
+      state.childrenByParent.get(Number(f.id)) ||
+      [];
+    if (!childIds || !childIds.length) return;
+    let maxEndMs = null;
+    for (const cid of childIds) {
+      const eff = state.getEffectiveFeatureById(cid);
+      if (!eff || !eff.end) continue;
+      const ms = Date.parse(eff.end);
+      if (!isNaN(ms) && (maxEndMs === null || ms > maxEndMs)) maxEndMs = ms;
+    }
+    if (maxEndMs === null) return;
+    const newEnd = new Date(maxEndMs).toISOString().slice(0, 10);
+    const currentStart = f.start || null;
+    state.updateFeatureDates([{ id: f.id, start: currentStart, end: newEnd }]);
+  }
+
+  /**
+   * Returns the iteration path whose dates exactly match the feature's current
+   * start/end, or null if no iteration's bounds match (dates overridden).
+   */
+  _activeIterationPath(feature, iterations) {
+    if (!feature || !feature.start || !feature.end || !iterations || !iterations.length) {
+      return null;
+    }
+    const match = iterations.find(
+      (it) =>
+        it.startDate && it.finishDate &&
+        it.startDate.slice(0, 10) === feature.start &&
+        it.finishDate.slice(0, 10) === feature.end
+    );
+    return match ? match.path : null;
+  }
+
   hide() {
     this.open = false;
     this.requestUpdate();
@@ -1028,8 +1201,11 @@ export class DetailsPanelLit extends LitElement {
   }
 
   updated(changedProps) {
-    if (changedProps.has && changedProps.has('feature')) {
-      // load iterations when feature changes / panel opens
+    if (changedProps.has && (changedProps.has('feature') || changedProps.has('open'))) {
+      // load iterations whenever the panel opens or the feature changes.
+      // Checking 'open' ensures we reload when the same card is reopened after
+      // the panel was closed — in that case 'feature' hasn't changed reference
+      // so Lit would not flag it as changed.
       this._loadIterationsForFeature();
     }
   }
@@ -1053,7 +1229,13 @@ export class DetailsPanelLit extends LitElement {
       // by project may not be needed if iterations are already scoped
 
       this.iterations = Array.isArray(iters) ? iters : [];
-      this.requestUpdate();
+      // Lit's property-binding diff skips re-setting `.value` on the <select>
+      // when `selectedPath` hasn't changed between renders (same card reopened).
+      // Waiting for updateComplete ensures <option> elements exist, then we
+      // imperatively sync the select value to bypass Lit's stale cache.
+      await this.updateComplete;
+      const sel = this.shadowRoot?.querySelector('.iteration-select');
+      if (sel) sel.value = f.iterationPath || '';
     } catch (e) {
       console.warn('Failed to load iterations from state', e);
     }
@@ -1082,6 +1264,43 @@ export class DetailsPanelLit extends LitElement {
     return path;
   }
 
+  _onStartDateChange(e) {
+    const val = e.target.value || null;
+    if (!this.feature) return;
+    const end = this.feature.end || null;
+    try {
+      state.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
+    } catch (err) {
+      console.warn('Failed to update start date', err);
+    }
+  }
+
+  _onEndDateChange(e) {
+    const val = e.target.value || null;
+    if (!this.feature) return;
+    const start = this.feature.start || null;
+    try {
+      state.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
+    } catch (err) {
+      console.warn('Failed to update end date', err);
+    }
+  }
+
+  _clearDates() {
+    if (!this.feature) return;
+    try {
+      // Clearing dates fully unplans the task — the iteration preset is also
+      // cleared because keeping a sprint label without any dates would be
+      // contradictory ("iteration as quick-fill preset" paradigm).
+      if (this.feature.iterationPath) {
+        state.updateFeatureField(this.feature.id, 'iterationPath', null);
+      }
+      state.updateFeatureDates([{ id: this.feature.id, start: null, end: null }]);
+    } catch (err) {
+      console.warn('Failed to clear dates', err);
+    }
+  }
+
   async _onIterationChange(e) {
     const sel = e.target && e.target.value ? e.target.value : null;
     if (!sel) return;
@@ -1091,12 +1310,16 @@ export class DetailsPanelLit extends LitElement {
     if (!it) return;
     const start = it.startDate ? it.startDate.slice(0, 10) : null;
     const end = it.finishDate ? it.finishDate.slice(0, 10) : null;
-    if (start && end && this.feature) {
-      try {
+    if (!this.feature) return;
+    try {
+      // Persist the iterationPath field first so it is included in the override
+      state.updateFeatureField(this.feature.id, 'iterationPath', sel);
+      // Then update dates (preserves iterationPath already stored in override)
+      if (start && end) {
         state.updateFeatureDates([{ id: this.feature.id, start, end }]);
-      } catch (err) {
-        console.warn('Failed to update feature dates', err);
       }
+    } catch (err) {
+      console.warn('Failed to update iteration', err);
     }
   }
 
@@ -1548,91 +1771,139 @@ export class DetailsPanelLit extends LitElement {
         <div class="details-content">
           ${this._renderField('Assignee', 'assignee', feature.assignee)}
           ${(() => {
-            // stacked dates section
+            // Scheduling section: Iteration (quick-fill) on top, compact date row + toolbar below
             const orig = feature.original || {};
             const startOrig = orig.start;
             const endOrig = orig.end;
             const startChanged = startOrig !== undefined && feature.start !== startOrig;
             const endChanged = endOrig !== undefined && feature.end !== endOrig;
+            const hasAnyDate = !!(feature.start || feature.end);
+            const hasChildren =
+              feature &&
+              feature.type &&
+              state.childrenByParent &&
+              state.childrenByParent.has(feature.id);
+
+            // Selected iteration is always the ADO iterationPath field
+            const selectedPath = feature.iterationPath || '';
+            // Look up the iteration record for the stored ADO path (fuzzy: endsWith for prefix mismatches)
+            const selectedIter = selectedPath ?
+              (this.iterations || []).find(
+                (it) =>
+                  it.path === selectedPath ||
+                  (it.path && it.path.endsWith(selectedPath)) ||
+                  selectedPath.endsWith(it.path)
+              )
+            : null;
+            // Dates override: iteration is set, dates exist, and dates differ from iter's bounds
+            const datesOverride = !!(selectedIter && hasAnyDate && (
+              !selectedIter.startDate ||
+              !selectedIter.finishDate ||
+              selectedIter.startDate.slice(0, 10) !== feature.start ||
+              selectedIter.finishDate.slice(0, 10) !== feature.end
+            ));
+            // Dirty: iterationPath was changed from its original (base/ADO) value
+            const iterationDirty = orig.iterationPath !== undefined &&
+              feature.iterationPath !== orig.iterationPath;
+
+            // Tooltip text for changed inputs
+            const startTitle = startChanged ? `was ${startOrig}` : 'Start date';
+            const endTitle = endChanged ? `was ${endOrig}` : 'End date';
+
+            const typeLabel =
+              feature.type ?
+                feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
+              : 'Item';
+
             return html`
-              <div class="details-label">Dates</div>
-              <div
-                style="display:flex;flex-direction:row;gap:12px;align-items:flex-start;"
-              >
-                <div style="flex:1;min-width:0;">
-                  <div class="details-label">Start</div>
-                  <div class="details-value ${startChanged ? 'details-changed' : ''}">
-                    ${feature.start || '—'}
-                  </div>
-                  ${startChanged ?
-                    html`<div class="original-date">(was ${startOrig})</div>`
-                  : ''}
-                </div>
-                <div style="flex:1;min-width:0;">
-                  <div class="details-label">End</div>
-                  <div class="details-value ${endChanged ? 'details-changed' : ''}">
-                    ${feature.end || '—'}
-                  </div>
-                  ${endChanged ?
-                    html`<div class="original-date">(was ${endOrig})</div>`
-                  : ''}
-                </div>
+              <div class="details-label" style="margin-top:8px;">Scheduling</div>
+
+              <!-- Iteration: quick-fill preset, always editable -->
+              <!-- .value binding ensures the select resets when a different card is opened -->
+              <div style="margin-top:4px;">
+                <select
+                  class="iteration-select${iterationDirty ? ' iteration-dirty' : ''}${datesOverride ? ' dates-override' : ''}"
+                  .value=${selectedPath}
+                  @change=${(e) => this._onIterationChange(e)}
+                  title=${iterationDirty && datesOverride ?
+                    `Changed from '${orig.iterationPath || '—'}' — dates also differ from this iteration's bounds`
+                  : iterationDirty ?
+                    `Changed from '${orig.iterationPath || '—'}'`
+                  : datesOverride ?
+                    'Dates have been overridden — they differ from this iteration\'s bounds'
+                  : 'Pick a sprint to fill the dates below'}
+                >
+                  <option value="">—</option>
+                  ${this.iterations && this.iterations.length ?
+                    this.iterations.map(
+                      (it) =>
+                        html`<option value="${it.path}">
+                          ${this._formatIterationLabel(it)}
+                        </option>`
+                    )
+                  : html`<option disabled>Loading…</option>`}
+                </select>
               </div>
-              <div style="margin-top:8px;">
-                <div class="details-label">Iteration</div>
-                <div class="details-value">
-                  <select
-                    class="iteration-select"
-                    @change=${(e) => this._onIterationChange(e)}
-                  >
-                    <option value="">—</option>
-                    ${this.iterations && this.iterations.length ?
-                      this.iterations.map(
-                        (it) =>
-                          html`<option
-                            value="${it.path}"
-                            ?selected=${feature &&
-                            (feature.iterationPath || '') === it.path}
-                          >
-                            ${this._formatIterationLabel(it)}
-                          </option>`
-                      )
-                    : html`<option disabled>Loading...</option>`}
-                  </select>
-                </div>
+
+              <!-- Inline date row: [start] → [end] -->
+              <div class="date-row" style="margin-top:6px;">
+                <input
+                  type="date"
+                  class="date-input${startChanged ? ' details-changed' : ''}"
+                  .value=${feature.start || ''}
+                  title=${startTitle}
+                  @change=${(e) => this._onStartDateChange(e)}
+                />
+                <span class="date-sep">→</span>
+                <input
+                  type="date"
+                  class="date-input${endChanged ? ' details-changed' : ''}"
+                  .value=${feature.end || ''}
+                  title=${endTitle}
+                  @change=${(e) => this._onEndDateChange(e)}
+                />
               </div>
-              ${feature && feature.type && state.childrenByParent && state.childrenByParent.has(feature.id) ?
-                html`<div style="margin-top:8px;">
-                  <button
-                    data-test="shrinkwrap-chip"
-                    class="chip"
-                    @click=${(e) => this._shrinkwrapEpic(e)}
-                    title="Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)} to children"
-                    aria-label="Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)} to children"
-                    style="display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:12px;border:1px solid rgba(35,52,77,0.12);background:rgba(35,52,77,0.12);font-size:0.85rem;color:inherit;"
-                  >
-                    <svg
-                      width="20"
-                      height="16"
-                      viewBox="0 0 20 16"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden="true"
-                      focusable="false"
-                      style="flex:0 0 auto;"
-                    >
-                      <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor" />
-                      <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor" />
-                      <polygon points="6.5,4 10,8 6.5,12" fill="currentColor" />
-                      <polygon points="13.5,4 10,8 13.5,12" fill="currentColor" />
-                      <rect
-                        x="9"
-                        y="7.2"
-                        width="2"
-                        height="1.6"
-                        fill="currentColor"
-                      /></svg
-                    ><span style="display:inline-block;line-height:1;">Shrink ${feature.type.charAt(0).toUpperCase() + feature.type.slice(1)}</span>
-                  </button>
+
+              <!-- Action toolbar: snap-start, shrink-both, snap-end | clear -->
+              ${hasChildren || hasAnyDate ?
+                html`<div class="date-toolbar">
+                  ${hasChildren ?
+                    html`
+                      <button
+                        class="date-tool-btn"
+                        @click=${(e) => this._snapStartDate(e)}
+                        title="Snap start to earliest child"
+                        aria-label="Snap start to earliest child"
+                      >⇤</button>
+                      <button
+                        class="date-tool-btn"
+                        data-test="shrinkwrap-chip"
+                        @click=${(e) => this._shrinkwrapEpic(e)}
+                        title="Shrink ${typeLabel} to span of children"
+                        aria-label="Shrink ${typeLabel} to children"
+                      ><svg width="18" height="14" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                          <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor"/>
+                          <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor"/>
+                          <polygon points="6.5,4 10,8 6.5,12" fill="currentColor"/>
+                          <polygon points="13.5,4 10,8 13.5,12" fill="currentColor"/>
+                          <rect x="9" y="7.2" width="2" height="1.6" fill="currentColor"/>
+                        </svg></button>
+                      <button
+                        class="date-tool-btn"
+                        @click=${(e) => this._snapEndDate(e)}
+                        title="Snap end to latest child"
+                        aria-label="Snap end to latest child"
+                      >⇥</button>
+                      ${hasAnyDate ? html`<span class="date-tool-sep"></span>` : ''}
+                    `
+                  : ''}
+                  ${hasAnyDate ?
+                    html`<button
+                      class="clear-dates-btn"
+                      @click=${() => this._clearDates()}
+                      title="Remove dates — task becomes unplanned"
+                    >✕ Clear dates</button>`
+                  : ''}
                 </div>`
               : ''}
             `;

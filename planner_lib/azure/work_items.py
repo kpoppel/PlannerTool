@@ -8,6 +8,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Sentinel that distinguishes "caller did not supply this argument" from
+# "caller explicitly passed None (meaning: clear the field in ADO)".
+_UNSET = object()
+
 
 class WorkItemOperations:
     """Handles work item queries and updates."""
@@ -186,36 +190,62 @@ class WorkItemOperations:
         
         return ret
     
-    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None) -> Any:
+    def update_work_item_dates(self, work_item_id: int, start=_UNSET, end=_UNSET) -> Any:
         """Update start and/or end dates for a work item.
-        
+
+        Pass a date string (YYYY-MM-DD) to set a field, ``None`` to clear it,
+        or omit the argument entirely to leave it unchanged.
+
         Args:
             work_item_id: Work item ID
-            start: Start date in ISO format (YYYY-MM-DD) or None
-            end: End date in ISO format (YYYY-MM-DD) or None
-            
+            start: Start date string, None to clear, or omitted to leave unchanged.
+            end:   End date string,   None to clear, or omitted to leave unchanged.
+
         Returns:
-            Azure SDK response object
+            Azure SDK response object, or None when nothing changed.
         """
         if not self.client._connected:
             raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
-        
+
         assert self.client.conn is not None
         wit = self.client.wit_client
-        
+
         ops = []
-        if start is not None:
-            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
-        if end is not None:
-            ops.append({"op": "add", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
-        
+        # Use "replace" so the PATCH works for both setting and clearing (null) values.
+        if start is not _UNSET:
+            ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
+        if end is not _UNSET:
+            ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
+
         if not ops:
             return None
-        
+
         try:
             return wit.update_work_item(document=ops, id=work_item_id)
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id}: {e}")
+
+    def update_work_item_iteration_path(self, work_item_id: int, iteration_path: Optional[str]) -> Any:
+        """Update (or clear) the iteration path for a work item.
+
+        Args:
+            work_item_id:   Work item ID
+            iteration_path: New ``System.IterationPath`` value, or None to clear.
+
+        Returns:
+            Azure SDK response object.
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+
+        assert self.client.conn is not None
+        wit = self.client.wit_client
+
+        ops = [{"op": "replace", "path": "/fields/System.IterationPath", "value": iteration_path}]
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update iteration path for work item {work_item_id}: {e}")
     
     def update_work_item_description(self, work_item_id: int, description: str) -> Any:
         """Update the description field for a work item.

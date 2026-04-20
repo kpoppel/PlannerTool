@@ -251,12 +251,20 @@ class AzureClient(ABC):
         """
         return self._markers_ops.get_markers(area_path)
 
-    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None):
+    def update_work_item_dates(self, work_item_id: int, **kwargs):
         """Update start and/or end dates for a work item.
-        
+
+        Forwards kwargs directly to WorkItemOperations so the sentinel logic
+        (distinguishing absent from explicit None) is preserved.
+        """
+        return self._work_item_ops.update_work_item_dates(work_item_id, **kwargs)
+
+    def update_work_item_iteration_path(self, work_item_id: int, iteration_path):
+        """Update (or clear) the iteration path for a work item.
+
         Delegates to WorkItemOperations.
         """
-        return self._work_item_ops.update_work_item_dates(work_item_id, start=start, end=end)
+        return self._work_item_ops.update_work_item_iteration_path(work_item_id, iteration_path)
 
     def update_work_item_description(self, work_item_id: int, description: str):
         """Update the description field for a work item.

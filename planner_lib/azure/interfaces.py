@@ -59,7 +59,10 @@ class AzureServiceProtocol(Protocol):
         marked with `include_children` will match descendant area paths.
         """
         ...
-    def update_work_item_dates(self, work_item_id: int, start: Optional[str] = None, end: Optional[str] = None) -> Any:  # pragma: no cover - typing shim
+    def update_work_item_dates(self, work_item_id: int, **kwargs) -> Any:  # pragma: no cover - typing shim
+        ...
+
+    def update_work_item_iteration_path(self, work_item_id: int, iteration_path) -> Any:  # pragma: no cover - typing shim
         ...
 
     def update_work_item_description(self, work_item_id: int, description: str) -> Any:  # pragma: no cover - typing shim
