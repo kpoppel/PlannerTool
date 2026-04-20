@@ -152,8 +152,14 @@ export class FeatureCardLit extends LitElement {
     }
 
     .feature-card.condensed {
-      height: 40px;
-      padding: 4px 8px;
+      height: 28px;
+      min-height: 28px;
+      padding: 2px 8px;
+    }
+
+    /* Remove title-row bottom margin in condensed mode — nothing follows it */
+    .feature-card.condensed .title-row {
+      margin-bottom: 0;
     }
 
     /* Keep title font-size consistent across narrow/regular variants */
@@ -520,7 +526,11 @@ export class FeatureCardLit extends LitElement {
             const textNode = g.querySelector('.ghost-title-text');
             if (textNode) {
               try {
-                textNode.innerHTML = r.card._splitTitleAtMiddle(r.card.feature?.title);
+                // In condensed mode show the full title on a single line (no mid-split)
+                const ghostHtml = r.card.condensed
+                  ? r.card._escapeHtml(r.card.feature?.title)
+                  : r.card._splitTitleAtMiddle(r.card.feature?.title);
+                textNode.innerHTML = ghostHtml;
               } catch (e) {
                 textNode.textContent = r.card.feature?.title || '';
               }

@@ -112,7 +112,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     }
 
     const features = state.getEffectiveFeatures?.() ?? [];
-    const laneHeight = state._viewService?.condensedCards ? 40 : 100;
+    const laneHeight = state._viewService?.condensedCards ? 28 : 100;
 
     /**
      * Read the board-space rect of a card from its inline style.

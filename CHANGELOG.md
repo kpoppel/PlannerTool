@@ -14,6 +14,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.5.0] - unreleased
+
+### Added
+### Changed
+- Compact card mode is now tighter: condensed cards reduced from 40 px to 28 px height (2 px vertical padding, no title-row margin); lane height and dependency overlay updated accordingly; ghost title shows on a single line instead of wrapping.
+### Fixed
+
 ## [v3.4.0] - 2026-04-20
 
 ## Added:
