@@ -172,3 +172,35 @@ export const _test_resetCache = () => {
 bus.on(TimelineEvents.SCALE_CHANGED, () => {
   _test_resetCache();
 });
+
+/**
+ * Calculate the pixel X position for today's date given the current months array.
+ * Returns null if today is outside the visible month range.
+ * @param {Date[]} months - Array of month start Date objects from getTimelineMonths()
+ * @returns {number|null} X offset in pixels, or null if today is not in range
+ */
+export function calcTodayX(months) {
+  if (!months || months.length === 0) return null;
+  const today = new Date();
+  const todayMs = today.getTime();
+  const monthWidth = getMonthWidth();
+
+  let idx = -1;
+  for (let i = 0; i < months.length; i++) {
+    const start = months[i].getTime();
+    const end =
+      i + 1 < months.length
+        ? months[i + 1].getTime()
+        : new Date(months[i].getFullYear(), months[i].getMonth() + 1, 1).getTime();
+    if (todayMs >= start && todayMs < end) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return null;
+
+  const monthStart = months[idx];
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const fraction = (today.getDate() - 1) / daysInMonth;
+  return (idx + fraction) * monthWidth;
+}

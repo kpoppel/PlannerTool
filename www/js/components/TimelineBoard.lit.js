@@ -23,7 +23,8 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
-import { BoardEvents, UIEvents } from '../core/EventRegistry.js';
+import { BoardEvents, UIEvents, TimelineEvents } from '../core/EventRegistry.js';
+import { calcTodayX } from './board-utils.js';
 
 class TimelineBoard extends LitElement {
   // LitElement already uses an open shadow root by default — no need to
@@ -61,6 +62,10 @@ class TimelineBoard extends LitElement {
       const mod_f = await import('./FeatureBoard.lit.js');
       await mod_f.initBoard();
 
+      // Position today-line once months are available, and re-position on scale changes
+      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
+      bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
+
       this._enablePanning();
       this._initScrollButtons();
       document.addEventListener('mousemove', this._onProximityMove);
@@ -75,7 +80,20 @@ class TimelineBoard extends LitElement {
     document.removeEventListener('mousemove', this._onProximityMove);
     if (this._onDetailsShow) bus.off?.(UIEvents.DETAILS_SHOW, this._onDetailsShow);
     if (this._onDetailsHide) bus.off?.(UIEvents.DETAILS_HIDE, this._onDetailsHide);
+    if (this._onMonthsUpdated) bus.off?.(TimelineEvents.MONTHS, this._onMonthsUpdated);
     super.disconnectedCallback();
+  }
+
+  _positionTodayLine(months) {
+    const line = this.shadowRoot?.querySelector('#today-line');
+    if (!line) return;
+    const x = calcTodayX(months);
+    if (x === null) {
+      line.style.display = 'none';
+    } else {
+      line.style.left = `${x}px`;
+      line.style.display = 'block';
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -254,6 +272,30 @@ class TimelineBoard extends LitElement {
         background-position: 0 0;
       }
 
+      /* Vertical line marking today on the feature board */
+      #today-line {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: rgba(255, 59, 48, 0.7);
+        pointer-events: none;
+        z-index: 10;
+        display: none;
+      }
+
+      #today-line::before {
+        content: 'Today';
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        color: rgba(255, 59, 48, 0.85);
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
       /* Scroll-to-top / scroll-to-bottom buttons */
       #scroll-buttons {
         position: fixed;
@@ -314,6 +356,8 @@ class TimelineBoard extends LitElement {
         <timeline-lit></timeline-lit>
         <div id="board-area" role="region" aria-label="Timeline and Features">
           <feature-board></feature-board>
+          <!-- Vertical marker for today's date -->
+          <div id="today-line" aria-hidden="true"></div>
           <!--
             Plugin overlays (annotation-overlay, link-editor-overlay, etc.) are
             appended here by their plugins.  As position:absolute siblings inside
