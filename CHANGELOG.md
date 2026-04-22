@@ -10,11 +10,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ## [v] - unreleased
 
 ### Added
-- Details panel: date pickers for Start and End dates allow direct date editing; a "Clear dates" button makes a task unplanned.
-- Details panel: compact scheduling section — iteration dropdown (quick-fill preset) on top, inline start→end date row, action toolbar with snap-start (⇤), shrink-both (⇔), snap-end (⇥), and clear. Iteration shows "— (custom dates)" when hand-tuned dates don't match any iteration.
-### Fixed
-- Details panel: iteration dropdown now correctly restores to the saved iteration when the same card is reopened after the panel is closed (bypassed Lit property-binding diff cache by imperatively setting select value after `updateComplete`).
-
 ### Changed
 ### Fixed
 
@@ -23,9 +18,14 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 - Add "today" vertical line indicator on the feature board timeline, positioned at the current date and labelled "Today".
+- Details panel redesign: date pickers for Start and End dates allow direct date editing
+  Made a more compact scheduling section — iteration dropdown (quick-fill preset) on top, inline start→end date row, action toolbar with snap-start (⇤), shrink-both (⇔), snap-end (⇥), and clear dates to make a task unplanned.  Improved iteration handling as well to persist this in scenarios.
+
 ### Changed
 - Compact card mode is now tighter: condensed cards reduced from 40 px to 28 px height (2 px vertical padding, no title-row margin); lane height and dependency overlay updated accordingly; ghost title shows on a single line instead of wrapping.
+
 ### Fixed
+- Details panel: iteration dropdown now correctly restores to the saved iteration when the same card is reopened after the panel is closed (bypassed Lit property-binding diff cache by imperatively setting select value after `updateComplete`).
 
 ## [v3.4.0] - 2026-04-20
 
