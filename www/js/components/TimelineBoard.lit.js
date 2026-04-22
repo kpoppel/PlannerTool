@@ -57,8 +57,15 @@ class TimelineBoard extends LitElement {
 
       await import('./MainGraph.lit.js');
       const mod_t = await import('./Timeline.lit.js');
+
+      // Ensure we register for MONTHS before initializing the timeline so
+      // the initial MONTHS emission during initTimeline() isn't missed.
+      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
+      bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
+
       await mod_t.initTimeline();
       mod_t.ensureScrollToMonth();
+
       const mod_f = await import('./FeatureBoard.lit.js');
       await mod_f.initBoard();
 
