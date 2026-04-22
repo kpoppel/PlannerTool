@@ -275,8 +275,8 @@ export class FeatureCardLit extends LitElement {
     .feature-card.small-feature {
       min-width: 8px !important;
       /* Make small features visually compact while preserving alignment
-         Use a smaller min-height and reduced vertical padding (~32px total) */
-      min-height: 32px;
+         Use a smaller min-height and reduced vertical padding (~28px total) */
+      min-height: 28px;
       padding: 2px 6px;
       overflow: hidden;
       cursor: pointer;
