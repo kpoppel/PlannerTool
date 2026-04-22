@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v3.5.0] - unreleased
+## [v3.5.0] - 2026-04-22
 
 ### Added
 - Add "today" vertical line indicator on the feature board timeline, positioned at the current date and labelled "Today".
