@@ -9,6 +9,7 @@ import {
   ViewEvents,
   AppEvents,
   UIEvents,
+  PlanSummaryEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
@@ -16,6 +17,7 @@ import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
+
 class FeatureBoard extends LitElement {
   static properties = {
     features: { type: Array },
@@ -26,6 +28,14 @@ class FeatureBoard extends LitElement {
     this.features = [];
     this._cardMap = new Map();
     this._boundHandlers = new Map();
+    // Swimlane drag-to-group state — used by board-level event delegation handlers
+    this._dragOverCard = null;
+    this._summaryGroupService = null; // cached after first load
+    // Stable bound handlers for swimlane drag delegation (added once, never re-bound)
+    this._onBoardDragOver = this._onBoardDragOver.bind(this);
+    this._onBoardDragLeave = this._onBoardDragLeave.bind(this);
+    this._onBoardDrop = this._onBoardDrop.bind(this);
+    this._onBoardDragEnd = this._onBoardDragEnd.bind(this);
   }
 
   static styles = css`
@@ -59,6 +69,14 @@ class FeatureBoard extends LitElement {
     if (!this.hasAttribute('role')) {
       this.setAttribute('role', 'list');
     }
+    // Board-level drag delegation for swimlane group creation.
+    // Binding here (not in the Lit template) means these listeners survive
+    // every board re-render, eliminating the race window where Lit removes +
+    // re-adds per-card arrow-function listeners between dragover and drop.
+    this.addEventListener('dragover', this._onBoardDragOver);
+    this.addEventListener('dragleave', this._onBoardDragLeave);
+    this.addEventListener('drop', this._onBoardDrop);
+    this.addEventListener('dragend', this._onBoardDragEnd);
   }
 
   // Build and maintain connected feature sets (parent/child and relations)
@@ -128,21 +146,167 @@ class FeatureBoard extends LitElement {
     if (!this.features?.length) {
       return html`<slot></slot>`;
     }
-    return html`${this.features.map(
-      (featureObj) =>
-        html`<feature-card-lit
+    const inSwimlaneMode = !!state._viewService?.planSummaryMode;
+    return html`${this.features.map((featureObj) => {
+      // Swimlane mode: render group bars alongside feature cards
+      if (featureObj._layoutType === 'background') {
+        // Full-width tinted band that visually identifies each swimlane row.
+        // Use 8-digit hex alpha so background and border opacity are independent.
+        const bc = featureObj.color;
+        const bgColor = bc ? `${bc}1a` : 'transparent'; // ~10% opacity tint
+        const borderColor = bc ? `${bc}55` : 'rgba(0,0,0,0.1)'; // ~33% opacity separator
+        return html`<div
+          style="position:absolute; left:0; right:0; top:${featureObj.top}px; height:${featureObj.height}px; background:${bgColor}; border-bottom:2px solid ${borderColor}; pointer-events:none"
+          aria-hidden="true"
+        ></div>`;
+      }
+      if (featureObj._layoutType === 'group') {
+        return html`<summary-group-bar
+          .group=${featureObj.group}
+          .left=${featureObj.left}
+          .width=${featureObj.width}
+          .project=${featureObj.project}
+          .condensed=${featureObj.condensed}
+          style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
+        ></summary-group-bar>`;
+      }
+      if (inSwimlaneMode) {
+        // In swimlane mode feature cards are HTML5 drag sources so they can be
+        // dropped onto other cards or group bars to create/join groups.
+        // dragover/dragleave/drop are handled via board-level event delegation
+        // (see connectedCallback) so per-card bindings are not used — this avoids
+        // the race where Lit removes + re-adds arrow-function listeners on every
+        // render, which could cause a dropped dragover and silently prevent drops.
+        // Ghost titles (overflow labels) are hidden to keep the swimlane clean.
+        return html`<feature-card-lit
           .feature=${featureObj.feature}
           .bus=${bus}
           .teams=${featureObj.teams}
           .condensed=${featureObj.condensed}
           .project=${featureObj.project}
+          .hideGhostTitle=${true}
+          .groupColor=${featureObj.groupColor}
+          draggable="true"
+          data-feature-id="${featureObj.feature?.id}"
+          @dragstart=${(e) => this._onCardDragStart(e, featureObj.feature)}
           style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
-        ></feature-card-lit>`
-    )} `;
+        ></feature-card-lit>`;
+      }
+
+      return html`<feature-card-lit
+        .feature=${featureObj.feature}
+        .bus=${bus}
+        .teams=${featureObj.teams}
+        .condensed=${featureObj.condensed}
+        .project=${featureObj.project}
+        style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
+      ></feature-card-lit>`;
+    })} `;
+  }
+
+  // ---- Drag-to-group handlers (swimlane mode only, board-level delegation) ----
+
+  /**
+   * Find the nearest feature-card-lit element in a composed event path.
+   * Using composedPath() works across shadow DOM boundaries.
+   * @param {EventTarget[]} path
+   * @returns {HTMLElement|null}
+   */
+  _findFeatureCard(path) {
+    for (const el of path) {
+      if (el.tagName?.toUpperCase() === 'FEATURE-CARD-LIT') return el;
+    }
+    return null;
+  }
+
+  _clearDragHighlight() {
+    if (this._dragOverCard) {
+      this._dragOverCard.style.outline = '';
+      this._dragOverCard.style.outlineOffset = '';
+      this._dragOverCard = null;
+    }
+  }
+
+  _onBoardDragOver(e) {
+    if (!state._viewService?.planSummaryMode) return;
+    e.preventDefault();
+    const card = this._findFeatureCard(e.composedPath());
+    if (card !== this._dragOverCard) {
+      this._clearDragHighlight();
+      if (card) {
+        card.style.outline = '2px dashed rgba(92, 107, 192, 0.7)';
+        card.style.outlineOffset = '2px';
+        this._dragOverCard = card;
+      }
+    }
+  }
+
+  _onBoardDragLeave(e) {
+    if (!state._viewService?.planSummaryMode) return;
+    // Only clear when the cursor actually leaves the board, not when moving
+    // between internal children (shadow DOM retargeting makes relatedTarget
+    // a board child in that case).
+    const related = e.relatedTarget;
+    if (!related || !this.contains(related)) {
+      this._clearDragHighlight();
+    }
+  }
+
+  _onBoardDragEnd() {
+    this._clearDragHighlight();
+  }
+
+  _onCardDragStart(e, feature) {
+    if (!feature?.id) return;
+    e.dataTransfer.setData('text/feature-id', String(feature.id));
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/feature-project', String(feature.project ?? ''));
+  }
+
+  async _onBoardDrop(e) {
+    if (!state._viewService?.planSummaryMode) return;
+    e.preventDefault();
+    this._clearDragHighlight();
+
+    // Capture transferable data synchronously before any await.
+    const draggedFeatureId = e.dataTransfer.getData('text/feature-id');
+    const draggedProjectId = e.dataTransfer.getData('text/feature-project');
+
+    const card = this._findFeatureCard(e.composedPath());
+    const targetFeatureId = card?.getAttribute('data-feature-id') ?? '';
+
+    if (!draggedFeatureId || !targetFeatureId || draggedFeatureId === targetFeatureId) return;
+
+    // Load service lazily on first use; reuse cached reference thereafter.
+    if (!this._summaryGroupService) {
+      const mod = await import('../services/SummaryGroupService.js');
+      this._summaryGroupService = mod.summaryGroupService;
+    }
+    const svc = this._summaryGroupService;
+    const existingGroup = svc.getGroupForFeature(targetFeatureId);
+
+    if (existingGroup) {
+      svc.addMember(existingGroup.id, draggedFeatureId);
+    } else {
+      // Resolve project: try the drag-source's stored project ID first, then look
+      // up the target card's project from the current render list.
+      const projectId =
+        draggedProjectId ||
+        this.features.find(
+          (f) => f._layoutType === 'feature' && String(f.feature?.id) === targetFeatureId
+        )?.project?.id;
+      if (projectId) {
+        svc.createGroup([draggedFeatureId, targetFeatureId], String(projectId));
+      }
+    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.removeEventListener('dragover', this._onBoardDragOver);
+    this.removeEventListener('dragleave', this._onBoardDragLeave);
+    this.removeEventListener('drop', this._onBoardDrop);
+    this.removeEventListener('dragend', this._onBoardDragEnd);
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
@@ -387,7 +551,85 @@ class FeatureBoard extends LitElement {
 
   // ---- Render features ----
 
+  /**
+   * Swimlane render path — used when plan summary mode is active.
+   * Imports layout engine and group service lazily to avoid loading them during
+   * normal board operation.
+   */
+  async _renderSwimlaneModeFeatures() {
+    const [{ buildSwimlaneLayout, flattenSwimlaneLayout }, { summaryGroupService }] =
+      await Promise.all([
+        import('./SwimlaneLayout.js'),
+        import('../services/SummaryGroupService.js'),
+      ]);
+
+    // Cache the service reference so _onBoardDrop can act synchronously
+    // (no await) on subsequent drops once the board has rendered at least once.
+    this._summaryGroupService = summaryGroupService;
+
+    // Load the custom elements if not already defined
+    if (!customElements.get('summary-group-bar')) {
+      await import('./SummaryGroupBar.lit.js');
+    }
+
+    const allEffectiveFeatures = state.getEffectiveFeatures();
+    const months = getTimelineMonths();
+
+    // Apply the same type-visibility and state filters that normal board mode uses,
+    // so hidden types and excluded states don't appear as extra cards.
+    const _stateFilter =
+      state.selectedFeatureStateFilter instanceof Set ?
+        state.selectedFeatureStateFilter
+      : new Set(
+          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
+        );
+    const _stateFilterLower = new Set(
+      Array.from(_stateFilter).map((s) => String(s).toLowerCase())
+    );
+    const sourceFeatures = allEffectiveFeatures.filter((f) => {
+      if (!state._viewService.isTypeVisible(f.type)) return false;
+      if (_stateFilter.size > 0 && !_stateFilterLower.has((f.state || '').toLowerCase()))
+        return false;
+      return true;
+    });
+
+    const selectedProjects = state.projects.filter((p) => p.selected);
+    const groups = summaryGroupService.getGroups();
+
+    const layout = buildSwimlaneLayout(sourceFeatures, groups, selectedProjects, months);
+
+    // Emit swimlane layout so SwimlaneLabels can update (TimelineBoard listens)
+    bus.emit(PlanSummaryEvents.LAYOUT_UPDATED, { swimlanes: layout.swimlanes });
+
+    // Prepend background-band items (one per swimlane) so they render behind cards.
+    // These are full-width tinted divs that clearly delineate each project's lane.
+    const backgrounds = layout.swimlanes.map((lane) => ({
+      _layoutType: 'background',
+      top: lane.offsetY,
+      height: lane.totalHeight,
+      color: lane.project?.color ?? null,
+    }));
+
+    const renderList = [...backgrounds, ...flattenSwimlaneLayout(layout, state.teams, state._viewService.condensedCards)];
+    this.features = renderList;
+
+    const totalHeight = layout.totalHeight;
+    try {
+      const sc = findInBoard('#scroll-container');
+      const minH = sc && sc.clientHeight ? sc.clientHeight : 0;
+      this.style.height = Math.max(totalHeight, minH) + 'px';
+    } catch (e) {
+      this.style.height = totalHeight + 'px';
+    }
+    this.requestUpdate();
+  }
+
   async renderFeatures() {
+    // Branch to swimlane renderer when plan summary mode is active
+    if (state._viewService?.planSummaryMode) {
+      return this._renderSwimlaneModeFeatures();
+    }
+
     const sourceFeatures = state.getEffectiveFeatures();
     const ordered = this._orderFeaturesHierarchically(
       sourceFeatures,
@@ -586,6 +828,12 @@ export async function initBoard() {
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
+
+  // Plan summary mode: re-render when mode toggles or groups change
+  bus.on(PlanSummaryEvents.MODE_CHANGED, renderFeatures);
+  bus.on(PlanSummaryEvents.GROUP_CREATED, renderFeatures);
+  bus.on(PlanSummaryEvents.GROUP_UPDATED, renderFeatures);
+  bus.on(PlanSummaryEvents.GROUP_DISSOLVED, renderFeatures);
 
   // Connected-set handling: request, selection within set, and clear on details hide
   bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {

@@ -24,6 +24,7 @@ import {
   FilterEvents,
   ViewEvents,
   FeatureEvents,
+  PlanSummaryEvents,
 } from '../core/EventRegistry.js';
 // Local monthWidth mapping to avoid circular import with Timeline component
 function getMonthWidthForScale(scale) {
@@ -78,6 +79,9 @@ export class ViewService {
     this._featureSortMode = 'rank'; // 'rank' | 'date'
     //TODO: Wire this into the sidepanel:
     this._highlightFeatureRelationMode = true; // If true, highlight features when clicked.
+
+    // Plan Summary / Swimlane mode
+    this._planSummaryMode = false;
   }
 
   // ========== Timeline Scale ==========
@@ -322,6 +326,29 @@ export class ViewService {
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
+  // ========== Plan Summary Mode ==========
+
+  /**
+   * Get whether plan summary (swimlane) mode is active
+   * @returns {boolean}
+   */
+  get planSummaryMode() {
+    return this._planSummaryMode;
+  }
+
+  /**
+   * Toggle plan summary swimlane mode on/off.
+   * @param {boolean} val
+   * @param {boolean} [suppressEmit]
+   */
+  setPlanSummaryMode(val, suppressEmit = false) {
+    this._planSummaryMode = !!val;
+    if (!suppressEmit) {
+      this.bus.emit(PlanSummaryEvents.MODE_CHANGED, { active: this._planSummaryMode });
+      this.bus.emit(FeatureEvents.UPDATED);
+    }
+  }
+
   // ========== State Capture ==========
 
   /**

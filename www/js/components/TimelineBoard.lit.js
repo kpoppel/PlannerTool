@@ -23,8 +23,9 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
-import { BoardEvents, UIEvents, TimelineEvents } from '../core/EventRegistry.js';
+import { BoardEvents, UIEvents, TimelineEvents, PlanSummaryEvents } from '../core/EventRegistry.js';
 import { calcTodayX } from './board-utils.js';
+import { SWIMLANE_LABEL_WIDTH } from './SwimlaneLabels.lit.js';
 
 class TimelineBoard extends LitElement {
   // LitElement already uses an open shadow root by default — no need to
@@ -39,6 +40,7 @@ class TimelineBoard extends LitElement {
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onMouseUp = this._onMouseUp.bind(this);
     this._onProximityMove = this._onProximityMove.bind(this);
+    this._swimlaneLabelsEl = null;
   }
 
   connectedCallback() {
@@ -69,8 +71,89 @@ class TimelineBoard extends LitElement {
       const mod_f = await import('./FeatureBoard.lit.js');
       await mod_f.initBoard();
 
-      // Position today-line once months are available, and re-position on scale changes
-      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
+      // Plan summary mode: mount SwimlaneLabels and apply gutter CSS variable
+      this._onPlanSummaryModeChanged = async ({ active }) => {
+        const scrollContainer = this.shadowRoot?.querySelector('#scroll-container');
+        if (!scrollContainer) return;
+
+        if (active) {
+          // Import and ensure custom element is registered
+          await import('./SwimlaneLabels.lit.js');
+          if (!this._swimlaneLabelsEl) {
+            this._swimlaneLabelsEl = document.createElement('swimlane-labels');
+            this._swimlaneLabelsEl.style.cssText = `
+              position: absolute;
+              left: 0;
+              pointer-events: none;
+              z-index: 50;
+            `;
+            this.shadowRoot.appendChild(this._swimlaneLabelsEl);
+          }
+
+          // Position the labels column to start exactly where #board-area starts.
+          // We measure this with DOM offsetTop values rather than inferring from
+          // element heights — more reliable when custom elements render asynchronously.
+          //   scrollContainer.offsetTop = distance from host top to #scroll-container top
+          //   boardArea.offsetTop       = distance from #scroll-container top to #board-area top
+          //                             = sticky timeline-lit height
+          const _positionLabels = () => {
+            const sc = this.shadowRoot?.querySelector('#scroll-container');
+            const ba = this.shadowRoot?.querySelector('#board-area');
+            if (!sc || !ba || !this._swimlaneLabelsEl) return;
+            const topOffset = sc.offsetTop + ba.offsetTop;
+            this._swimlaneLabelsEl.style.top = topOffset + 'px';
+            this._swimlaneLabelsEl.style.height = `calc(100% - ${topOffset}px)`;
+          };
+          // Defer initial measurement until after the browser has computed layout.
+          // Calling _positionLabels synchronously returns ba.offsetTop=0 because
+          // the newly appended element hasn't been laid out yet.
+          // Two nested rAFs ensure we wait for both Lit's async render pass and
+          // the following browser layout/paint cycle.
+          requestAnimationFrame(() => requestAnimationFrame(_positionLabels));
+
+          // Re-measure when elements that affect the offset change height.
+          if (typeof ResizeObserver !== 'undefined') {
+            const maingraph = this.shadowRoot?.querySelector('#maingraph-section');
+            const timeline = this.shadowRoot?.querySelector('timeline-lit');
+            this._maingraphResizeObserver = new ResizeObserver(_positionLabels);
+            if (maingraph) this._maingraphResizeObserver.observe(maingraph);
+            if (timeline) this._maingraphResizeObserver.observe(timeline);
+          }
+
+          scrollContainer.style.marginLeft = SWIMLANE_LABEL_WIDTH + 'px';
+          // The maingraph section sits ABOVE the scroll-container in the flex column
+          // and must receive the same left margin so month positions stay aligned.
+          const maingraphSection = this.shadowRoot?.querySelector('#maingraph-section');
+          if (maingraphSection) maingraphSection.style.marginLeft = SWIMLANE_LABEL_WIDTH + 'px';
+          this._swimlaneLabelsEl.attachScrollSync(scrollContainer);
+
+          // Update labels when layout changes
+          this._onLayoutUpdated = ({ swimlanes }) => {
+            if (this._swimlaneLabelsEl) {
+              this._swimlaneLabelsEl.swimlanes = swimlanes;
+            }
+          };
+          bus.on(PlanSummaryEvents.LAYOUT_UPDATED, this._onLayoutUpdated);
+        } else {
+          scrollContainer.style.marginLeft = '';
+          const maingraphSection = this.shadowRoot?.querySelector('#maingraph-section');
+          if (maingraphSection) maingraphSection.style.marginLeft = '';
+          if (this._swimlaneLabelsEl) {
+            this._swimlaneLabelsEl.detachScrollSync(scrollContainer);
+            this._swimlaneLabelsEl.swimlanes = [];
+          }
+          if (this._maingraphResizeObserver) {
+            this._maingraphResizeObserver.disconnect();
+            this._maingraphResizeObserver = null;
+          }
+          if (this._onLayoutUpdated) {
+            bus.off(PlanSummaryEvents.LAYOUT_UPDATED, this._onLayoutUpdated);
+            this._onLayoutUpdated = null;
+          }
+        }
+      };
+      bus.on(PlanSummaryEvents.MODE_CHANGED, this._onPlanSummaryModeChanged);
+
       bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
 
       this._enablePanning();
@@ -88,6 +171,14 @@ class TimelineBoard extends LitElement {
     if (this._onDetailsShow) bus.off?.(UIEvents.DETAILS_SHOW, this._onDetailsShow);
     if (this._onDetailsHide) bus.off?.(UIEvents.DETAILS_HIDE, this._onDetailsHide);
     if (this._onMonthsUpdated) bus.off?.(TimelineEvents.MONTHS, this._onMonthsUpdated);
+    if (this._onPlanSummaryModeChanged)
+      bus.off?.(PlanSummaryEvents.MODE_CHANGED, this._onPlanSummaryModeChanged);
+    if (this._onLayoutUpdated)
+      bus.off?.(PlanSummaryEvents.LAYOUT_UPDATED, this._onLayoutUpdated);
+    if (this._maingraphResizeObserver) {
+      this._maingraphResizeObserver.disconnect();
+      this._maingraphResizeObserver = null;
+    }
     super.disconnectedCallback();
   }
 
@@ -203,6 +294,8 @@ class TimelineBoard extends LitElement {
         flex: 1 1 auto;
         min-height: 0;
         height: 100%;
+        /* Needed so swimlane-labels can use position:absolute relative to the host */
+        position: relative;
       }
 
       #maingraph-section {

@@ -68,6 +68,9 @@ export function startDragMove(
   updateDatesCb = state.updateFeatureDates.bind(state),
   featuresSource = state.features
 ) {
+  // Horizontal date-editing drag is disabled in plan summary / swimlane mode.
+  // Cards use HTML5 drag-and-drop for grouping instead.
+  if (state._viewService?.planSummaryMode) return;
   const months = getTimelineMonths();
   const monthWidth = getMonthWidth();
 
@@ -176,7 +179,8 @@ export function startResize(
   updateDatesCb = state.updateFeatureDates.bind(state),
   featuresSource = state.features
 ) {
-  const monthWidth = getMonthWidth();
+  // Date-editing resize is disabled in plan summary / swimlane mode.
+  if (state._viewService?.planSummaryMode) return;
 
   // Check if feature is unplanned (ghosted)
   const isUnplanned =

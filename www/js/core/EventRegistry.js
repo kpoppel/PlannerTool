@@ -149,3 +149,17 @@ export const BoardEvents = {
   /** Fired by TimelineBoard once the board area is mounted and BCS is initialised. */
   READY: Symbol('board:ready'),
 };
+
+// Plan Summary mode events (swimlane / virtual group overlay)
+export const PlanSummaryEvents = {
+  /** Fired when plan summary mode is toggled on or off. Payload: { active: boolean } */
+  MODE_CHANGED: Symbol('planSummary:modeChanged'),
+  /** Fired when a new summary group is created. Payload: SummaryGroup object */
+  GROUP_CREATED: Symbol('planSummary:groupCreated'),
+  /** Fired when a summary group is modified (title, membership, collapse). Payload: SummaryGroup object */
+  GROUP_UPDATED: Symbol('planSummary:groupUpdated'),
+  /** Fired when a summary group is dissolved. Payload: { id: string } */
+  GROUP_DISSOLVED: Symbol('planSummary:groupDissolved'),
+  /** Fired after swimlane layout is computed. Payload: { swimlanes: SwimlaneDef[] } */
+  LAYOUT_UPDATED: Symbol('planSummary:layoutUpdated'),
+};

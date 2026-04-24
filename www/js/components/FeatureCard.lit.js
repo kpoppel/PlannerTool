@@ -22,6 +22,11 @@ export class FeatureCardLit extends LitElement {
     condensed: { type: Boolean },
     selected: { type: Boolean },
     project: { type: Object },
+    /** When true, suppresses the ghost (overflow) title label — used in swimlane mode. */
+    hideGhostTitle: { type: Boolean },
+    /** Hex color string of the parent summary group (e.g. '#e57373'). When set, the
+     *  card renders a subtle tint of this color instead of the default white background. */
+    groupColor: { type: String },
   };
 
   static styles = css`
@@ -462,6 +467,8 @@ export class FeatureCardLit extends LitElement {
     this.condensed = false;
     this.selected = false;
     this.project = null;
+    this.hideGhostTitle = false;
+    this.groupColor = null;
     this._suppressClickUntil = 0;
     this._rootCard = null;
     this._titleEl = null;
@@ -515,7 +522,7 @@ export class FeatureCardLit extends LitElement {
         r.rootCard.classList.toggle('small-feature', r.isSmall);
         r.rootCard.classList.toggle('culled', r.isCulled);
         r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
-        r.card.classList.toggle('ghost-visible', r.titleOverflows);
+        r.card.classList.toggle('ghost-visible', r.titleOverflows && !r.card.hideGhostTitle);
         r.card.classList.toggle('title-overflow', r.titleOverflows);
 
         if (r.titleOverflows) {
@@ -855,10 +862,29 @@ export class FeatureCardLit extends LitElement {
       .replace(/"/g, '&quot;');
   }
 
+  /**
+   * Convert a 6-digit hex color to an rgba() string with the given alpha.
+   * Used to produce the group membership tint on the card background.
+   * @param {string} hex - e.g. '#e57373'
+   * @param {number} alpha - 0-1
+   * @returns {string}
+   */
+  _hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
   render() {
     const isUnplanned =
       featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     const projectColor = this.project?.color || '#ccc';
+    // When this card is a member of a summary group, tint the background with
+    // the group's color so the visual grouping is immediately apparent.
+    const cardBg = this.groupColor && this.groupColor.startsWith('#')
+      ? `linear-gradient(${this._hexToRgba(this.groupColor, 0.18)}, ${this._hexToRgba(this.groupColor, 0.18)}), white`
+      : null;
     const isCompleted = state.featureStateService.isStateInCategory(
       this.feature.state,
       'Completed'
@@ -881,7 +907,7 @@ export class FeatureCardLit extends LitElement {
         data-id=${this.feature.id}
         role="listitem"
         draggable="false"
-        style="--project-color: ${projectColor}"
+        style="--project-color: ${projectColor}${cardBg ? `; background: ${cardBg}` : ''}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
         part="feature-card"

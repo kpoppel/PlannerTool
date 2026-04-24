@@ -12,8 +12,21 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Added
 ### Changed
 ### Fixed
-
 ---
+
+## [v3.6.0] - unreleased
+
+This is currently an experimental version looking at virtual summary grouping of tasks to communicate a set of tasks without further creation of work items alone serving the purpose of presentation grouping.  Plans are placed in swimlanes and cards packed on fewer lines when they are not overlapping.
+
+### Added
+- Plan Summary (Swimlane) mode: toggle in Sidebar View Options switches the board to a per-project swimlane layout where features render as individual bars or are merged into named summary group bars that shrink-wrap member date ranges.
+- `SummaryGroupService` — in-memory store for virtual summary groups; supports create, addMember, removeMember, dissolve, rename, and collapse/expand.
+- `SwimlaneLayout` — pure layout engine that packs feature bars and group bars into non-overlapping rows per swimlane project lane.
+- `SummaryGroupBar` LitElement — distinct bar component for summary groups with inline title editing, collapse/expand, member count badge, and drag-drop target support.
+- `SwimlaneLabels` LitElement — fixed left-column project name labels that scroll-sync vertically with the board.
+- `PlanSummaryEvents` event group in `EventRegistry` for mode changes, group CRUD, and layout updates.
+- Drag-to-merge: in swimlane mode, dragging a feature card onto another card merges them into a group; dragging onto an existing group bar joins that group.
+
 ## [v3.5.0] - 2026-04-22
 
 ### Added

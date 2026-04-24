@@ -13,6 +13,7 @@ import {
   StateFilterEvents,
   TimelineEvents,
   FeatureEvents,
+  PlanSummaryEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
@@ -30,6 +31,7 @@ export class SidebarLit extends LitElement {
     activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
+    planSummaryMode: { type: Boolean },
   };
 
   static styles = css`
@@ -954,6 +956,8 @@ export class SidebarLit extends LitElement {
     this._taskTypesInitialized = false;
     // Controls disabled by external components (plugins)
     this._disabledSidebar = {};
+    // Plan Summary mode toggle
+    this.planSummaryMode = false;
   }
 
   connectedCallback() {
@@ -1153,6 +1157,10 @@ export class SidebarLit extends LitElement {
     };
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
+    this._onPlanSummaryModeChanged = ({ active }) => {
+      this.planSummaryMode = !!active;
+    };
+    bus.on(PlanSummaryEvents.MODE_CHANGED, this._onPlanSummaryModeChanged);
     bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
       // Sync local _graphType when capacity mode changes
       this._graphType = mode || 'team';
@@ -1266,6 +1274,8 @@ export class SidebarLit extends LitElement {
       bus.off(StateFilterEvents.CHANGED, viewHandler);
       bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
     }
+    if (this._onPlanSummaryModeChanged)
+      bus.off(PlanSummaryEvents.MODE_CHANGED, this._onPlanSummaryModeChanged);
     if (this._recomputeDataFunnel) {
       bus.off(FeatureEvents.UPDATED, this._recomputeDataFunnel);
       bus.off(FilterEvents.CHANGED, this._recomputeDataFunnel);
@@ -1660,6 +1670,15 @@ export class SidebarLit extends LitElement {
     this.requestUpdate();
   }
 
+  _togglePlanSummaryMode(active) {
+    try {
+      state._viewService.setPlanSummaryMode(active);
+    } catch (e) {
+      console.warn('[Sidebar] togglePlanSummaryMode failed', e);
+    }
+    this.requestUpdate();
+  }
+
   _setFeatureSortMode(mode) {
     try {
       state._viewService.setFeatureSortMode(mode);
@@ -1837,6 +1856,27 @@ export class SidebarLit extends LitElement {
                     @click=${() => this._setGraphType('project')}
                   >
                     Project
+                  </button>
+                </div>
+              </div>
+
+              <div class="filter-dimension">
+                <div class="filter-dimension-title">Plan Overview</div>
+                <div class="segmented-group">
+                  <button
+                    type="button"
+                    class="segment-btn ${!this.planSummaryMode ? 'active' : ''}"
+                    @click=${() => this._togglePlanSummaryMode(false)}
+                  >
+                    Board
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${this.planSummaryMode ? 'active' : ''}"
+                    @click=${() => this._togglePlanSummaryMode(true)}
+                    title="Show one swimlane per plan with summary group bars"
+                  >
+                    Swimlanes
                   </button>
                 </div>
               </div>
