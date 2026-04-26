@@ -136,6 +136,7 @@ class FeatureBoard extends LitElement {
           .teams=${featureObj.teams}
           .condensed=${featureObj.condensed}
           .project=${featureObj.project}
+          .hideGhostTitle=${!!featureObj.hideGhostTitle}
           style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
         ></feature-card-lit>`
     )} `;
@@ -387,34 +388,114 @@ class FeatureBoard extends LitElement {
 
   // ---- Render features ----
 
+  /**
+   * Greedy interval-packing: place each bar in the first sub-row where it does
+   * not overlap any already-placed bar.  Returns an array of rows, each row
+   * being an array of { left, width, feature } objects.
+   *
+   * @param {{ left: number, width: number, feature: Object }[]} bars - sorted by left
+   * @returns {Array<Array<{ left: number, width: number, feature: Object }>>}
+   */
+  _packIntoRows(bars) {
+    const GAP = 4; // minimum horizontal gap between bars (px)
+    const rowEnds = []; // tracks rightmost edge of each row
+    const rows = [];
+    for (const bar of bars) {
+      const right = bar.left + bar.width;
+      let placed = false;
+      for (let r = 0; r < rowEnds.length; r++) {
+        if (bar.left >= rowEnds[r] + GAP) {
+          rows[r].push(bar);
+          rowEnds[r] = right;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rows.push([bar]);
+        rowEnds.push(right);
+      }
+    }
+    return rows;
+  }
+
   async renderFeatures() {
-    const sourceFeatures = state.getEffectiveFeatures();
-    const ordered = this._orderFeaturesHierarchically(
-      sourceFeatures,
-      state._viewService.featureSortMode
-    );
+    const rawFeatures = state.getEffectiveFeatures();
+    // Deduplicate by feature ID — getEffectiveFeatures() can return the same ID
+    // twice when a scenario overlay collides with a baseline entry, which would
+    // produce duplicate cards in the render list.
+    const seenIds = new Set();
+    const sourceFeatures = rawFeatures.filter((f) => {
+      const key = String(f.id);
+      if (seenIds.has(key)) return false;
+      seenIds.add(key);
+      return true;
+    });
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
+    const isPacked = state._viewService.packedMode;
 
-    const renderList = [];
-    let laneIndex = 0;
+    let renderList;
+    let totalHeight;
 
-    for (const feature of ordered) {
-      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-      const pos = computePosition(feature, months) || {};
-      feature._left = pos.left;
-      feature._width = pos.width;
-
-      renderList.push({
-        feature,
-        left: pos.left ?? feature._left ?? feature.left,
-        width: pos.width ?? feature._width ?? feature.width,
-        top: laneIndex * laneHeight(),
-        teams: state.teams,
-        condensed: state._viewService.condensedCards,
-        project: state.projects.find((p) => p.id === feature.project),
+    if (isPacked) {
+      // --- Packed mode: features with non-overlapping dates share a lane ---
+      // Order by date to maximise packing efficiency (earlier starts first)
+      const filtered = [];
+      for (const feature of sourceFeatures) {
+        if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+        // Unplanned features (no dates) cannot be positioned in packed mode
+        if (!feature.start || !feature.end) continue;
+        const pos = computePosition(feature, months);
+        if (!pos) continue;
+        filtered.push({ left: pos.left, width: pos.width, feature });
+      }
+      // Sort by start position ascending for greedy packing
+      filtered.sort((a, b) => a.left - b.left);
+      const rows = this._packIntoRows(filtered);
+      renderList = [];
+      rows.forEach((row, rowIndex) => {
+        const top = rowIndex * laneHeight();
+        for (const bar of row) {
+          renderList.push({
+            feature: bar.feature,
+            left: bar.left,
+            width: bar.width,
+            top,
+            teams: state.teams,
+            condensed: true, // packed always uses compact card height
+            hideGhostTitle: true, // ghost titles would overlap packed neighbours
+            project: state.projects.find((p) => p.id === bar.feature.project),
+          });
+        }
       });
-      laneIndex++;
+      totalHeight = rows.length * laneHeight();
+    } else {
+      // --- Normal / Compact mode: one lane per feature, sorted by rank or date ---
+      const ordered = this._orderFeaturesHierarchically(
+        sourceFeatures,
+        state._viewService.featureSortMode
+      );
+      renderList = [];
+      let laneIndex = 0;
+      for (const feature of ordered) {
+        if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+        const pos = computePosition(feature, months) || {};
+        feature._left = pos.left;
+        feature._width = pos.width;
+        renderList.push({
+          feature,
+          left: pos.left ?? feature._left ?? feature.left,
+          width: pos.width ?? feature._width ?? feature.width,
+          top: laneIndex * laneHeight(),
+          teams: state.teams,
+          condensed: state._viewService.condensedCards,
+          hideGhostTitle: false,
+          project: state.projects.find((p) => p.id === feature.project),
+        });
+        laneIndex++;
+      }
+      totalHeight = renderList.length * laneHeight();
     }
 
     this.features = renderList;
@@ -422,7 +503,6 @@ class FeatureBoard extends LitElement {
     // correct dimensions, allowing position:absolute overlays with inset:0 to
     // cover the full card area. Ensure we never shrink below the visible
     // scroll-container height so the background stripes always fill the screen.
-    const totalHeight = renderList.length * laneHeight();
     try {
       const sc = findInBoard('#scroll-container');
       const minH = sc && sc.clientHeight ? sc.clientHeight : 0;

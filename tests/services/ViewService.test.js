@@ -34,7 +34,7 @@ describe('ViewService', () => {
     viewService._showDependencies = false;
     viewService._showUnassignedCards = true;
     viewService._showUnplannedWork = true;
-    viewService._condensedCards = false;
+    viewService._displayMode = 'normal';
     viewService._capacityViewMode = 'team';
     viewService._featureSortMode = 'rank';
   });

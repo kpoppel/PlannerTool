@@ -23,8 +23,9 @@ export const DEFAULT_VIEW_OPTIONS = {
   showUnplannedWork: true, // Show features without dates
   showOnlyProjectHierarchy: false, // Show only features hierarchically linked to selected projects
 
-  // Display modes
-  condensedCards: false,
+  // Display modes: 'normal' | 'compact' | 'packed'
+  displayMode: 'normal',
+  condensedCards: false, // backward-compat alias (derived from displayMode)
   capacityViewMode: 'team', // 'team' | 'project'
   featureSortMode: 'rank', // 'rank' | 'date'
 

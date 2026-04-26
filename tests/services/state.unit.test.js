@@ -38,7 +38,7 @@ describe('State (unit)', () => {
     if (backup.hiddenEpic) restoredHiddenTypes.add('epic');
     if (backup.hiddenFeature) restoredHiddenTypes.add('feature');
     S._viewService._hiddenTypes = restoredHiddenTypes;
-    S._viewService._condensedCards = backup.condensedCards;
+    S._viewService._displayMode = backup.condensedCards ? 'compact' : 'normal';
     S._viewService._capacityViewMode = backup.capacityViewMode;
     S._viewService._featureSortMode = backup.featureSortMode;
     S._viewService._showDependencies = backup.showDependencies;

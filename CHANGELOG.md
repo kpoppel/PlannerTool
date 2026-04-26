@@ -14,6 +14,15 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.6.0] - unreleased
+
+### Added
+- Packed display mode: greedy interval-packing that places features with non-overlapping dates in the same swimlane, reducing the number of rows. Rank/date sort and ghost (overflow) titles are disabled in this mode.
+
+### Changed
+- Migration `0019_display_mode_field`: forward-migrates saved views and scenarios that use the legacy `condensedCards` boolean to the new `displayMode` string field.
+### Fixed
+
 ## [v3.5.0] - 2026-04-22
 
 ### Added

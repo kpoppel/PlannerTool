@@ -73,7 +73,11 @@ export class ViewService {
     this._showOnlyProjectHierarchy = false; // Show only features hierarchically linked to selected projects
 
     // Display modes
-    this._condensedCards = false;
+    // _displayMode: 'normal' | 'compact' | 'packed'
+    // 'normal'  – full card info, one lane per feature
+    // 'compact' – reduced card height, one lane per feature
+    // 'packed'  – compact height + greedy interval packing (multiple features per lane)
+    this._displayMode = 'normal';
     this._capacityViewMode = 'team'; // 'team' | 'project'
     this._featureSortMode = 'rank'; // 'rank' | 'date'
     //TODO: Wire this into the sidepanel:
@@ -248,23 +252,57 @@ export class ViewService {
   // ========== Display Modes ==========
 
   /**
-   * Get whether condensed card mode is enabled
-   * @returns {boolean}
+   * Get current display mode.
+   * @returns {'normal'|'compact'|'packed'}
    */
-  get condensedCards() {
-    return this._condensedCards;
+  get displayMode() {
+    return this._displayMode;
   }
 
   /**
-   * Set condensed card mode and emit change events
-   * @param {boolean} val - Whether to use condensed cards
+   * Set display mode and emit change events.
+   * @param {'normal'|'compact'|'packed'} mode
    */
-  setCondensedCards(val) {
-    this._condensedCards = !!val;
+  setDisplayMode(mode) {
+    if (mode !== 'normal' && mode !== 'compact' && mode !== 'packed') {
+      console.warn(`Invalid display mode: ${mode}, defaulting to 'normal'`);
+      mode = 'normal';
+    }
+    if (this._displayMode === mode) return;
+    this._displayMode = mode;
     if (!arguments[1]) {
-      this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
+      // Emit CONDENSED for backward compatibility (listeners re-render on display change)
+      this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
       this.bus.emit(FeatureEvents.UPDATED);
     }
+  }
+
+  /**
+   * Get whether condensed card mode is enabled (true for 'compact' and 'packed').
+   * Retained for backward compatibility.
+   * @returns {boolean}
+   */
+  get condensedCards() {
+    return this._displayMode !== 'normal';
+  }
+
+  /**
+   * Set condensed card mode (backward-compat shim).
+   * Maps to displayMode 'compact' (true) or 'normal' (false).
+   * Does NOT enter 'packed' mode — use setDisplayMode('packed') for that.
+   * @param {boolean} val
+   */
+  setCondensedCards(val) {
+    this.setDisplayMode(val ? 'compact' : 'normal', arguments[1]);
+  }
+
+  /**
+   * Get whether packed mode is active.
+   * In packed mode features with non-overlapping dates share a lane.
+   * @returns {boolean}
+   */
+  get packedMode() {
+    return this._displayMode === 'packed';
   }
 
   /**
@@ -331,7 +369,9 @@ export class ViewService {
   captureCurrentView() {
     return {
       capacityViewMode: this._capacityViewMode,
-      condensedCards: this._condensedCards,
+      displayMode: this._displayMode,
+      // condensedCards retained for backward compatibility
+      condensedCards: this.condensedCards,
       featureSortMode: this._featureSortMode,
       highlightFeatureRelationMode: this._highlightFeatureRelationMode,
       showUnassignedCards: this._showUnassignedCards,
@@ -355,8 +395,12 @@ export class ViewService {
   applyViewStateSilently(viewState) {
     if (!viewState) return;
     if (viewState.capacityViewMode) this._capacityViewMode = viewState.capacityViewMode;
-    if (typeof viewState.condensedCards !== 'undefined')
-      this._condensedCards = !!viewState.condensedCards;
+    // Restore displayMode; fall back to condensedCards boolean for older saved views
+    if (viewState.displayMode) {
+      this._displayMode = viewState.displayMode;
+    } else if (typeof viewState.condensedCards !== 'undefined') {
+      this._displayMode = viewState.condensedCards ? 'compact' : 'normal';
+    }
     if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
     if (typeof viewState.highlightFeatureRelationMode !== 'undefined')
       this._highlightFeatureRelationMode = !!viewState.highlightFeatureRelationMode;
@@ -397,7 +441,7 @@ export class ViewService {
         showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
       });
       this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
-      this.bus.emit(ViewEvents.CONDENSED, this._condensedCards);
+      this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
       this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);

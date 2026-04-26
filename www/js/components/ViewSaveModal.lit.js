@@ -105,7 +105,7 @@ export class ViewSaveModal extends LitElement {
       const vo = state._viewService.captureCurrentView();
       this.previewData.viewOptions = {
         timelineScale: vo.timelineScale || 'months',
-        condensedCards: vo.condensedCards ? 'Yes' : 'No',
+        condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
         sortMode: vo.featureSortMode || 'rank',
         showDependencies: vo.showDependencies ? 'Yes' : 'No',
       };
@@ -277,7 +277,7 @@ export class ViewSaveModal extends LitElement {
                         <strong>${this.previewData.viewOptions.timelineScale}</strong>
                       </li>
                       <li>
-                        Condensed Cards:
+                        Display Mode:
                         <strong>${this.previewData.viewOptions.condensedCards}</strong>
                       </li>
                       <li>
