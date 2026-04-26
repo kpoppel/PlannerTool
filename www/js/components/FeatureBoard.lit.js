@@ -796,7 +796,17 @@ export async function initBoard() {
   };
 
   const updateFeatures = (payload) => {
-    if (!board || !_boardReady || typeof board.updateCardsById !== 'function') return;
+    if (!board || !_boardReady || typeof board.renderFeatures !== 'function') return;
+    // In swimlane mode every feature date change must trigger a full re-layout
+    // because member date changes affect group bar spans (the group bar should
+    // always cover the union of its members' date ranges). updateCardsById only
+    // patches individual feature-card-lit elements via _cardMap and never
+    // recalculates group positions, so group bars would stay stale until the
+    // next full renderFeatures() call ("snapping" behaviour reported by users).
+    if (state._viewService?.planSummaryMode) {
+      board.renderFeatures();
+      return;
+    }
     const ids = payload?.ids;
     if (Array.isArray(ids) && ids.length > 0) {
       board.updateCardsById(ids);
