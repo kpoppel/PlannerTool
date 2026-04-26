@@ -37,6 +37,7 @@ Migrations `0021` (config → diskcache) and `0022` (people.yml → diskcache) m
 - Packed mode now triggers a full layout repack whenever a card is moved or resized, preventing cards from overlapping after a drag or resize operation.
 >>>>>>> 1ac7d2c (feat: enhance packed mode functionality and sidebar behavior)
 - Entering packed mode automatically unchecks and disables the sidebar Schedule → Unplanned filter (unplanned tasks cannot be displayed in packed mode). The filter is restored to its previous state when leaving packed mode.
+- Plan swimlanes: when two or more plans are selected the board automatically switches to swimlane mode. Each plan gets a coloured horizontal band with a sticky label column on the left. Features are sorted/packed independently per band. Expansion filters (Parent/Child, Dependencies, Team Allocated) each affect swimlane grouping — linked tasks follow their plan-ancestor, team-allocated tasks from unselected plans get their own team-coloured bands. Implemented as a pure `SwimlaneService.js` with full unit-test coverage.
 
 ### Changed
 - **All configuration stored in diskcache** — `projects`, `teams`, `people`, `cost_config`, `iterations`, `area_plan_map`, `global_settings`, and `ado_config` now live in the diskcache SQLite store instead of being read from YAML files on every request. `server_config.yml` remains YAML (it is read at startup before diskcache is available). This means config edits made through the admin UI are durable across restarts without touching any files on disk.

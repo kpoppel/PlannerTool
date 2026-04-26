@@ -16,6 +16,13 @@ import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
+import {
+  isSwimlaneMode,
+  buildSwimlaneList,
+  assignFeatureToSwimlane,
+  SWIMLANE_LABEL_WIDTH_PX,
+  SWIMLANE_BAND_GAP_PX,
+} from '../services/SwimlaneService.js';
 class FeatureBoard extends LitElement {
   static properties = {
     features: { type: Array },
@@ -26,6 +33,9 @@ class FeatureBoard extends LitElement {
     this.features = [];
     this._cardMap = new Map();
     this._boundHandlers = new Map();
+    // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
+    // Each entry: { id, name, color, type, topPx, heightPx }
+    this._swimlanes = [];
   }
 
   static styles = css`
@@ -46,12 +56,70 @@ class FeatureBoard extends LitElement {
       /* Scenario mode class propagated from initBoard; actual color is on #board-area */
     }
 
+    /* Swimlane background band — coloured translucent strip spanning full board width */
+    .swimlane-band {
+      position: absolute;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+      box-sizing: border-box;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
     }
 
-    .scroll-button {
-      width: 36px;
-      height: 36px;
-      border-radius: 18px;
+    /*
+     * Sticky label column — stays at the left edge of the viewport while the user
+     * scrolls the timeline horizontally, but scrolls vertically with the board.
+     *
+     * Only "left: 0" is specified (no "top") so stickiness applies in the horizontal
+     * direction only. Adding "top: 0" would pin the container to the viewport top,
+     * making absolute children appear at fixed viewport positions instead of their
+     * correct board positions.
+     *
+     * height:0 + overflow:visible means the container occupies no vertical space in
+     * the flow but its absolutely-positioned children are still rendered over the board.
+     */
+    .swimlane-labels {
+      position: sticky;
+      left: 0;
+      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
+      height: 0;
+      overflow: visible;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    /* Individual plan/team name label */
+    .swimlane-label {
+      position: absolute;
+      left: 0;
+      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: rgba(255, 255, 255, 0.9);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+      border-left: 4px solid;
+      /* Semi-transparent dark background for legibility over the board stripes */
+      background: rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(2px);
+    }
+
+    /* Expanded-plan labels (unselected projects pulled in by expansion) are dimmer */
+    .swimlane-label.type-expanded-plan {
+      opacity: 0.75;
+      font-weight: 600;
+    }
+
+    /* Team labels use italic to distinguish them from plan labels */
+    .swimlane-label.type-team {
+      font-style: italic;
+    }
   `;
 
   connectedCallback() {
@@ -124,22 +192,53 @@ class FeatureBoard extends LitElement {
     return Array.from(seen);
   }
 
+  _hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
   render() {
-    if (!this.features?.length) {
+    if (!this.features?.length && !this._swimlanes?.length) {
       return html`<slot></slot>`;
     }
-    return html`${this.features.map(
-      (featureObj) =>
-        html`<feature-card-lit
-          .feature=${featureObj.feature}
-          .bus=${bus}
-          .teams=${featureObj.teams}
-          .condensed=${featureObj.condensed}
-          .project=${featureObj.project}
-          .hideGhostTitle=${!!featureObj.hideGhostTitle}
-          style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
-        ></feature-card-lit>`
-    )} `;
+  // style="top:${s.topPx}px; height:${s.heightPx}px; background:${s.color}; opacity:0.15; border-top: 2px solid color-mix(in srgb, ${s.color} 50%, transparent);"
+
+    return html`
+      ${this._swimlanes.length
+        ? html`
+            ${this._swimlanes.map(
+              (s) => html`<div
+                class="swimlane-band"
+                style="top:${s.topPx}px; height:${s.heightPx}px; background: ${this._hexToRgba(s.color, 0.15)}; border-top: 2px solid ${this._hexToRgba(s.color, 0.3)};"
+                aria-hidden="true"
+              ></div>`
+            )}
+            <div class="swimlane-labels" aria-hidden="true">
+              ${this._swimlanes.map(
+                (s) => html`<div
+                  class="swimlane-label type-${s.type}"
+                  style="top:${s.topPx}px; height:${s.heightPx}px; border-left-color:${s.color};"
+                  title="${s.name}"
+                >${s.name}</div>`
+              )}
+            </div>
+          `
+        : ''}
+      ${this.features.map(
+        (featureObj) =>
+          html`<feature-card-lit
+            .feature=${featureObj.feature}
+            .bus=${bus}
+            .teams=${featureObj.teams}
+            .condensed=${featureObj.condensed}
+            .project=${featureObj.project}
+            .hideGhostTitle=${!!featureObj.hideGhostTitle}
+            style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
+          ></feature-card-lit>`
+      )}
+    `;
   }
 
   disconnectedCallback() {
@@ -434,68 +533,201 @@ class FeatureBoard extends LitElement {
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
     const isPacked = state._viewService.packedMode;
+    const expansionState = state.expansionState || {};
+    const swimlaneActive = isSwimlaneMode(state.projects, expansionState);
 
     let renderList;
     let totalHeight;
 
-    if (isPacked) {
-      // --- Packed mode: features with non-overlapping dates share a lane ---
-      // Order by date to maximise packing efficiency (earlier starts first)
-      const filtered = [];
+    if (swimlaneActive) {
+      // -----------------------------------------------------------------------
+      // Swimlane mode: group features per plan/team band and sort/pack each band
+      // independently. Bands are stacked vertically with a gap between them.
+      // -----------------------------------------------------------------------
+
+      // Build a lookup for parent-chain walking in assignFeatureToSwimlane.
+      // Use rawFeatures (pre-dedup, full set) so cross-project parent references resolve.
+      const allFeaturesById = new Map(rawFeatures.map((f) => [String(f.id), f]));
+
+      // Collect visible features (pass through the same filter as non-swimlane mode)
+      const visibleFeatures = [];
       for (const feature of sourceFeatures) {
         if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-        // Unplanned features (no dates) cannot be positioned in packed mode
-        if (!feature.start || !feature.end) continue;
-        const pos = computePosition(feature, months);
-        if (!pos) continue;
-        filtered.push({ left: pos.left, width: pos.width, feature });
+        if (isPacked && (!feature.start || !feature.end)) continue;
+        visibleFeatures.push(feature);
       }
-      // Sort by start position ascending for greedy packing
-      filtered.sort((a, b) => a.left - b.left);
-      const rows = this._packIntoRows(filtered);
-      renderList = [];
-      rows.forEach((row, rowIndex) => {
-        const top = rowIndex * laneHeight();
-        for (const bar of row) {
-          renderList.push({
-            feature: bar.feature,
-            left: bar.left,
-            width: bar.width,
-            top,
-            teams: state.teams,
-            condensed: true, // packed always uses compact card height
-            hideGhostTitle: true, // ghost titles would overlap packed neighbours
-            project: state.projects.find((p) => p.id === bar.feature.project),
-          });
-        }
-      });
-      totalHeight = rows.length * laneHeight();
-    } else {
-      // --- Normal / Compact mode: one lane per feature, sorted by rank or date ---
-      const ordered = this._orderFeaturesHierarchically(
-        sourceFeatures,
-        state._viewService.featureSortMode
+
+      const selectedProjects = state.projects;
+      const selectedTeams = state.teams;
+      const swimlanes = buildSwimlaneList(
+        selectedProjects,
+        selectedTeams,
+        expansionState,
+        visibleFeatures
       );
-      renderList = [];
-      let laneIndex = 0;
-      for (const feature of ordered) {
-        if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-        const pos = computePosition(feature, months) || {};
-        feature._left = pos.left;
-        feature._width = pos.width;
-        renderList.push({
+
+      const selectedProjectIds = new Set(
+        selectedProjects.filter((p) => p.selected).map((p) => p.id)
+      );
+      const selectedTeamIds = new Set(
+        selectedTeams.filter((t) => t.selected).map((t) => t.id)
+      );
+
+      // Group visible features into per-swimlane buckets
+      const buckets = new Map(swimlanes.map((s) => [s.id, []]));
+      for (const feature of visibleFeatures) {
+        const sid = assignFeatureToSwimlane(
           feature,
-          left: pos.left ?? feature._left ?? feature.left,
-          width: pos.width ?? feature._width ?? feature.width,
-          top: laneIndex * laneHeight(),
-          teams: state.teams,
-          condensed: state._viewService.condensedCards,
-          hideGhostTitle: false,
-          project: state.projects.find((p) => p.id === feature.project),
-        });
-        laneIndex++;
+          swimlanes,
+          allFeaturesById,
+          expansionState,
+          selectedProjectIds,
+          selectedTeamIds
+        );
+        const bucket = buckets.get(sid) ?? buckets.get(swimlanes[0]?.id);
+        if (bucket) bucket.push(feature);
       }
-      totalHeight = renderList.length * laneHeight();
+
+      // Render each swimlane band independently and accumulate vertical offsets
+      renderList = [];
+      let currentTop = 0;
+      const swimlaneGeometry = [];
+
+      for (const swimlane of swimlanes) {
+        const bucket = buckets.get(swimlane.id) || [];
+        const swimlaneTop = currentTop;
+        let swimlaneHeight = 0;
+
+        if (isPacked) {
+          // Per-swimlane greedy packing
+          const bars = [];
+          for (const feature of bucket) {
+            const pos = computePosition(feature, months);
+            if (!pos) continue;
+            bars.push({ left: pos.left, width: pos.width, feature });
+          }
+          bars.sort((a, b) => a.left - b.left);
+          const rows = this._packIntoRows(bars);
+          rows.forEach((row, rowIndex) => {
+            const top = swimlaneTop + rowIndex * laneHeight();
+            for (const bar of row) {
+              renderList.push({
+                feature: bar.feature,
+                left: bar.left,
+                width: bar.width,
+                top,
+                teams: state.teams,
+                condensed: true,
+                hideGhostTitle: true,
+                project: state.projects.find((p) => p.id === bar.feature.project),
+              });
+            }
+          });
+          swimlaneHeight = Math.max(rows.length, 1) * laneHeight();
+        } else {
+          // Per-swimlane hierarchical sort
+          const ordered = this._orderFeaturesHierarchically(
+            bucket,
+            state._viewService.featureSortMode
+          );
+          let laneIndex = 0;
+          for (const feature of ordered) {
+            const pos = computePosition(feature, months) || {};
+            renderList.push({
+              feature,
+              left: pos.left ?? feature._left ?? feature.left,
+              width: pos.width ?? feature._width ?? feature.width,
+              top: swimlaneTop + laneIndex * laneHeight(),
+              teams: state.teams,
+              condensed: state._viewService.condensedCards,
+              hideGhostTitle: false,
+              project: state.projects.find((p) => p.id === feature.project),
+            });
+            laneIndex++;
+          }
+          // Reserve at least one lane height even for empty swimlanes so the
+          // label and coloured band always render with a minimum visible height.
+          swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
+        }
+
+        // The band height includes the gap that visually separates this lane
+        // from the next one below it.
+        const bandHeightWithGap = swimlaneHeight + SWIMLANE_BAND_GAP_PX;
+        swimlaneGeometry.push({
+          ...swimlane,
+          topPx: swimlaneTop,
+          heightPx: bandHeightWithGap,
+        });
+        currentTop = swimlaneTop + bandHeightWithGap;
+      }
+
+      this._swimlanes = swimlaneGeometry;
+      totalHeight = currentTop;
+    } else {
+      // -----------------------------------------------------------------------
+      // Standard (non-swimlane) mode — unchanged from original implementation
+      // -----------------------------------------------------------------------
+      this._swimlanes = [];
+
+      if (isPacked) {
+        // --- Packed mode: features with non-overlapping dates share a lane ---
+        // Order by date to maximise packing efficiency (earlier starts first)
+        const filtered = [];
+        for (const feature of sourceFeatures) {
+          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+          // Unplanned features (no dates) cannot be positioned in packed mode
+          if (!feature.start || !feature.end) continue;
+          const pos = computePosition(feature, months);
+          if (!pos) continue;
+          filtered.push({ left: pos.left, width: pos.width, feature });
+        }
+        // Sort by start position ascending for greedy packing
+        filtered.sort((a, b) => a.left - b.left);
+        const rows = this._packIntoRows(filtered);
+        renderList = [];
+        rows.forEach((row, rowIndex) => {
+          const top = rowIndex * laneHeight();
+          for (const bar of row) {
+            renderList.push({
+              feature: bar.feature,
+              left: bar.left,
+              width: bar.width,
+              top,
+              teams: state.teams,
+              condensed: true, // packed always uses compact card height
+              hideGhostTitle: true, // ghost titles would overlap packed neighbours
+              project: state.projects.find((p) => p.id === bar.feature.project),
+            });
+          }
+        });
+        totalHeight = rows.length * laneHeight();
+      } else {
+        // --- Normal / Compact mode: one lane per feature, sorted by rank or date ---
+        const ordered = this._orderFeaturesHierarchically(
+          sourceFeatures,
+          state._viewService.featureSortMode
+        );
+        renderList = [];
+        let laneIndex = 0;
+        for (const feature of ordered) {
+          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+          const pos = computePosition(feature, months) || {};
+          feature._left = pos.left;
+          feature._width = pos.width;
+          renderList.push({
+            feature,
+            left: pos.left ?? feature._left ?? feature.left,
+            width: pos.width ?? feature._width ?? feature.width,
+            top: laneIndex * laneHeight(),
+            teams: state.teams,
+            condensed: state._viewService.condensedCards,
+            hideGhostTitle: false,
+            project: state.projects.find((p) => p.id === feature.project),
+          });
+          laneIndex++;
+        }
+        totalHeight = renderList.length * laneHeight();
+      }
     }
 
     this.features = renderList;
