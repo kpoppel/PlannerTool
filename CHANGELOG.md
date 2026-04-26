@@ -18,6 +18,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 ### Added
 - Packed display mode: greedy interval-packing that places features with non-overlapping dates in the same swimlane, reducing the number of rows. Rank/date sort and ghost (overflow) titles are disabled in this mode.
+- Plan swimlanes: when two or more plans are selected the board automatically switches to swimlane mode. Each plan gets a coloured horizontal band with a sticky label column on the left. Features are sorted/packed independently per band. Expansion filters (Parent/Child, Dependencies, Team Allocated) each affect swimlane grouping — linked tasks follow their plan-ancestor, team-allocated tasks from unselected plans get their own team-coloured bands. Implemented as a pure `SwimlaneService.js` with full unit-test coverage.
 
 ### Changed
 - Migration `0019_display_mode_field`: forward-migrates saved views and scenarios that use the legacy `condensedCards` boolean to the new `displayMode` string field.
