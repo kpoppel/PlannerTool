@@ -22,6 +22,9 @@ export class FeatureCardLit extends LitElement {
     condensed: { type: Boolean },
     selected: { type: Boolean },
     project: { type: Object },
+    /** When true, suppresses the ghost (overflow) title label.
+     *  Required in packed mode where multiple cards share a lane. */
+    hideGhostTitle: { type: Boolean },
   };
 
   static styles = css`
@@ -462,6 +465,7 @@ export class FeatureCardLit extends LitElement {
     this.condensed = false;
     this.selected = false;
     this.project = null;
+    this.hideGhostTitle = false;
     this._suppressClickUntil = 0;
     this._rootCard = null;
     this._titleEl = null;
@@ -515,7 +519,7 @@ export class FeatureCardLit extends LitElement {
         r.rootCard.classList.toggle('small-feature', r.isSmall);
         r.rootCard.classList.toggle('culled', r.isCulled);
         r.rootCard.classList.toggle('narrow', r.titleOverflows && !r.isSmall);
-        r.card.classList.toggle('ghost-visible', r.titleOverflows);
+        r.card.classList.toggle('ghost-visible', r.titleOverflows && !r.card.hideGhostTitle);
         r.card.classList.toggle('title-overflow', r.titleOverflows);
 
         if (r.titleOverflows) {

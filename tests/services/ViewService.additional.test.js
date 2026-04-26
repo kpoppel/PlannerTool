@@ -22,7 +22,7 @@ describe('ViewService additional coverage', () => {
     vs._showDependencies = false;
     vs._showUnassignedCards = true;
     vs._showUnplannedWork = true;
-    vs._condensedCards = false;
+    vs._displayMode = 'normal';
     vs._capacityViewMode = 'team';
     vs._featureSortMode = 'rank';
   });

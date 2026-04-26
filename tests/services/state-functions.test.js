@@ -25,11 +25,12 @@ describe('State small function coverage', () => {
     expect(filters.teams).to.deep.equal(['t2']);
 
     state._viewService._capacityViewMode = 'project';
-    state._viewService._condensedCards = true;
+    state._viewService._displayMode = 'compact'; // formerly _condensedCards = true
     state._viewService._featureSortMode = 'date';
     const view = state.captureCurrentView();
     expect(view.capacityViewMode).to.equal('project');
     expect(view.condensedCards).to.equal(true);
+    expect(view.displayMode).to.equal('compact');
     expect(view.featureSortMode).to.equal('date');
   });
 

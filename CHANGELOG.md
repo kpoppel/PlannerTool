@@ -29,7 +29,9 @@ Migrations `0021` (config → diskcache) and `0022` (people.yml → diskcache) m
 - **Pluggable backend system** — a `BackendRegistry` selects the active data source at startup from a priority-ordered list. Adding a new backend (e.g. Jira) now requires changes in one file only. Built-in backends: live Azure DevOps, static YAML/JSON file (offline mode), fixture replay (testing), and in-process data generator (demo mode).
 - **Configurable cache TTLs** — cache lifetimes are now per-domain and configurable in `server_config.yml` under `cache.ttls` (in minutes). Defaults: tasks 30 min, history 24 h, teams/plans 4 h, markers 2 h, iterations 8 h. Set to `0` for no expiry.
 - **Azure DevOps admin section** — the admin panel has a dedicated "Azure DevOps" page (previously mixed into "Server"). Organisation URL and all ADO-specific feature flags are edited there and stored separately from generic server settings.
+- Migration `0019_display_mode_field`: forward-migrates saved views and scenarios that use the legacy `condensedCards` boolean to the new `displayMode` string field.
 - **New migrations**: `0021` internalises all YAML config files into diskcache; `0022` migrates `people.yml` (including any external database file) into diskcache. Both are idempotent and support `--dry-run`.
+- Packed display mode: greedy interval-packing that places features with non-overlapping dates in the same swimlane, reducing the number of rows. Rank/date sort and ghost (overflow) titles are disabled in this mode.
 
 ### Changed
 - **All configuration stored in diskcache** — `projects`, `teams`, `people`, `cost_config`, `iterations`, `area_plan_map`, `global_settings`, and `ado_config` now live in the diskcache SQLite store instead of being read from YAML files on every request. `server_config.yml` remains YAML (it is read at startup before diskcache is available). This means config edits made through the admin UI are durable across restarts without touching any files on disk.

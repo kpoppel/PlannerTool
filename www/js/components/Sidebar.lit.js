@@ -485,6 +485,12 @@ export class SidebarLit extends LitElement {
       outline: 2px solid #5cc8ff;
       outline-offset: 1px;
     }
+    .segment-btn:disabled,
+    .segment-btn.disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
 
     /* Sidebar-specific chips and lists */
     .sidebar-chip {
@@ -1782,17 +1788,25 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${!state.condensedCards ? 'active' : ''}"
-                    @click=${() => state._viewService.setCondensedCards(false)}
+                    class="segment-btn ${state._viewService.displayMode === 'normal' ? 'active' : ''}"
+                    @click=${() => state._viewService.setDisplayMode('normal')}
                   >
                     Normal
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.condensedCards ? 'active' : ''}"
-                    @click=${() => state._viewService.setCondensedCards(true)}
+                    class="segment-btn ${state._viewService.displayMode === 'compact' ? 'active' : ''}"
+                    @click=${() => state._viewService.setDisplayMode('compact')}
                   >
                     Compact
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-btn ${state._viewService.displayMode === 'packed' ? 'active' : ''}"
+                    @click=${() => state._viewService.setDisplayMode('packed')}
+                    title="Pack cards with non-overlapping dates into the same lane"
+                  >
+                    Packed
                   </button>
                 </div>
               </div>
@@ -1802,19 +1816,21 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'rank' ?
+                    class="segment-btn ${state.featureSortMode === 'rank' && !state._viewService.packedMode ?
                       'active'
-                    : ''}"
-                    @click=${() => this._setFeatureSortMode('rank')}
+                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
+                    ?disabled=${state._viewService.packedMode}
+                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('rank')}
                   >
                     Rank
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'date' ?
+                    class="segment-btn ${state.featureSortMode === 'date' && !state._viewService.packedMode ?
                       'active'
-                    : ''}"
-                    @click=${() => this._setFeatureSortMode('date')}
+                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
+                    ?disabled=${state._viewService.packedMode}
+                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('date')}
                   >
                     Date
                   </button>
