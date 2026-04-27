@@ -522,6 +522,13 @@ class FeatureBoard extends LitElement {
   }
 
   async updateCardsById(ids = []) {
+    // In packed mode any date change can shift a card into an occupied lane.
+    // A full repack is required to keep the layout consistent.
+    if (state._viewService.packedMode) {
+      await this.renderFeatures();
+      return;
+    }
+
     const months = getTimelineMonths();
 
     for (const id of ids) {

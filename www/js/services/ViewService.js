@@ -269,10 +269,12 @@ export class ViewService {
       mode = 'normal';
     }
     if (this._displayMode === mode) return;
+    const oldMode = this._displayMode;
     this._displayMode = mode;
     if (!arguments[1]) {
       // Emit CONDENSED for backward compatibility (listeners re-render on display change)
       this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
+      this.bus.emit(ViewEvents.DISPLAY_MODE, { mode, oldMode });
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }

@@ -222,3 +222,116 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     );
   });
 });
+
+// ---- updateCardsById in packed mode triggers full rerender ----
+describe('FeatureBoard updateCardsById — packed mode triggers full rerender', () => {
+  let board;
+  let origDisplayMode;
+  let origComputePosition;
+  let origGetEffectiveFeatures;
+
+  beforeEach(async () => {
+    await customElements.whenDefined('feature-board');
+    board = document.createElement('feature-board');
+    document.body.appendChild(board);
+
+    origDisplayMode = state._viewService._displayMode;
+    origGetEffectiveFeatures = state.getEffectiveFeatures?.bind(state);
+
+    origComputePosition = boardUtils.computePosition;
+    Object.defineProperty(boardUtils, 'computePosition', {
+      configurable: true,
+      writable: true,
+      value: (feature) => {
+        if (!feature.start || !feature.end) return null;
+        return { left: 100, width: 200 };
+      },
+    });
+
+    state._projectTeamService.initFromBaseline([{ id: 'p1', selected: true }], []);
+    state.setProjectSelected('p1', true);
+    state._viewService.setShowOnlyProjectHierarchy(false);
+    state._viewService.setShowUnplannedWork(true);
+    state._viewService.setShowUnallocatedCards(true);
+    state._stateFilterService._selectedFeatureStateFilter = new Set(['Active']);
+  });
+
+  afterEach(() => {
+    board.remove();
+    state.getEffectiveFeatures = origGetEffectiveFeatures;
+    state._viewService._displayMode = origDisplayMode;
+    Object.defineProperty(boardUtils, 'computePosition', {
+      configurable: true,
+      writable: true,
+      value: origComputePosition,
+    });
+  });
+
+  function makeFeature(id, title = `Feature ${id}`) {
+    return {
+      id,
+      title,
+      type: 'feature',
+      start: '2025-01-01',
+      end: '2025-06-30',
+      project: 'p1',
+      state: 'Active',
+      capacity: [],
+    };
+  }
+
+  it('packed mode: updateCardsById triggers a full renderFeatures repack', async () => {
+    const f1 = makeFeature('repack-1');
+    const f2 = makeFeature('repack-2');
+    state.getEffectiveFeatures = () => [f1, f2];
+
+    state._viewService._displayMode = 'packed';
+
+    let renderFeaturesCallCount = 0;
+    const origRenderFeatures = board.renderFeatures.bind(board);
+    board.renderFeatures = async () => {
+      renderFeaturesCallCount++;
+      return origRenderFeatures();
+    };
+
+    await board.updateCardsById(['repack-1']);
+
+    expect(renderFeaturesCallCount).to.equal(
+      1,
+      'renderFeatures() must be called once when updateCardsById runs in packed mode'
+    );
+  });
+
+  it('normal mode: updateCardsById does NOT call renderFeatures', async () => {
+    state._viewService._displayMode = 'normal';
+
+    let renderFeaturesCallCount = 0;
+    board.renderFeatures = async () => {
+      renderFeaturesCallCount++;
+    };
+
+    // Ensure _cardMap is empty so there is nothing to update (no crash path)
+    await board.updateCardsById(['nonexistent-id']);
+
+    expect(renderFeaturesCallCount).to.equal(
+      0,
+      'renderFeatures() must NOT be called from updateCardsById in normal mode'
+    );
+  });
+
+  it('compact mode: updateCardsById does NOT call renderFeatures', async () => {
+    state._viewService._displayMode = 'compact';
+
+    let renderFeaturesCallCount = 0;
+    board.renderFeatures = async () => {
+      renderFeaturesCallCount++;
+    };
+
+    await board.updateCardsById(['nonexistent-id']);
+
+    expect(renderFeaturesCallCount).to.equal(
+      0,
+      'renderFeatures() must NOT be called from updateCardsById in compact mode'
+    );
+  });
+});

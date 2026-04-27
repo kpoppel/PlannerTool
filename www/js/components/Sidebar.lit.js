@@ -960,6 +960,8 @@ export class SidebarLit extends LitElement {
     this._taskTypesInitialized = false;
     // Controls disabled by external components (plugins)
     this._disabledSidebar = {};
+    // Snapshot of schedule.unplanned before entering packed mode, for restore on exit.
+    this._packedModeUnplannedSnapshot = undefined;
   }
 
   connectedCallback() {
@@ -1149,6 +1151,57 @@ export class SidebarLit extends LitElement {
     };
     bus.on(FilterEvents.CHANGED, this._onSidebarFilterChanged);
 
+    // When display mode changes to/from 'packed', disable or restore schedule.unplanned.
+    this._onDisplayModeChanged = ({ mode, oldMode } = {}) => {
+      if (mode === 'packed' && oldMode !== 'packed') {
+        // Snapshot the current unplanned state before disabling it.
+        const filters = state.taskFilterService?.getFilters() || {};
+        this._packedModeUnplannedSnapshot = filters.schedule?.unplanned ?? true;
+        // Uncheck unplanned: packed mode cannot display unplanned tasks.
+        if (state.taskFilterService) {
+          state.taskFilterService.setFilter('schedule', 'unplanned', false);
+          this.taskFilters = state.taskFilterService.getFilters();
+        }
+        // Disable the control so the user cannot re-enable it while in packed mode.
+        const existing = this._disabledSidebar || {};
+        const existingSchedule = (existing.taskFilters?.schedule || []).slice();
+        if (!existingSchedule.includes('unplanned')) existingSchedule.push('unplanned');
+        this._disabledSidebar = {
+          ...existing,
+          taskFilters: { ...(existing.taskFilters || {}), schedule: existingSchedule },
+        };
+        this.requestUpdate();
+      } else if (oldMode === 'packed' && mode !== 'packed') {
+        // Restore the snapshotted unplanned state.
+        if (this._packedModeUnplannedSnapshot !== undefined && state.taskFilterService) {
+          state.taskFilterService.setFilter(
+            'schedule',
+            'unplanned',
+            this._packedModeUnplannedSnapshot
+          );
+          this.taskFilters = state.taskFilterService.getFilters();
+        }
+        this._packedModeUnplannedSnapshot = undefined;
+        // Re-enable the schedule.unplanned control.
+        const existing = this._disabledSidebar || {};
+        const remainingSchedule = (existing.taskFilters?.schedule || []).filter(
+          (k) => k !== 'unplanned'
+        );
+        const newTaskFilters = { ...(existing.taskFilters || {}) };
+        if (remainingSchedule.length > 0) {
+          newTaskFilters.schedule = remainingSchedule;
+        } else {
+          delete newTaskFilters.schedule;
+        }
+        this._disabledSidebar = {
+          ...existing,
+          taskFilters: newTaskFilters,
+        };
+        this.requestUpdate();
+      }
+    };
+    bus.on(ViewEvents.DISPLAY_MODE, this._onDisplayModeChanged);
+
     this._onFeaturesForTypes = () => {
       this._computeAvailableTaskTypes();
     };
@@ -1286,6 +1339,8 @@ export class SidebarLit extends LitElement {
       bus.off(FilterEvents.CHANGED, this._onSidebarFilterChanged);
     if (this._onFeaturesForTypes)
       bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
+    if (this._onDisplayModeChanged)
+      bus.off(ViewEvents.DISPLAY_MODE, this._onDisplayModeChanged);
 
     this._collapsibleHandlers?.forEach((h) => h.el.removeEventListener('click', h.fn));
     this._collapsibleHandlers = null;

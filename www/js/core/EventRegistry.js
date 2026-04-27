@@ -89,6 +89,7 @@ export const ViewEvents = {
   CAPACITY_MODE: Symbol('view:capacityMode'),
   SORT_MODE: Symbol('view:sortMode'),
   HIGHLIGHT_RELATIONS: Symbol('view:highlightRelations'),
+  DISPLAY_MODE: Symbol('view:displayMode'), // { mode, oldMode } – emitted when displayMode changes
 };
 
 // Saved view management events

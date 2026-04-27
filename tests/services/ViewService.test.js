@@ -281,8 +281,11 @@ describe('ViewService', () => {
 
       viewService.setCondensedCards(true);
 
-      expect(emitCalls.length).to.equal(2);
+      expect(emitCalls.length).to.equal(3);
       expect(emitCalls.some((call) => call.event === ViewEvents.CONDENSED)).to.equal(
+        true
+      );
+      expect(emitCalls.some((call) => call.event === ViewEvents.DISPLAY_MODE)).to.equal(
         true
       );
       expect(emitCalls.some((call) => call.event === FeatureEvents.UPDATED)).to.equal(
