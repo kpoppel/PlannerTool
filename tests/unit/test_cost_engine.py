@@ -67,3 +67,72 @@ def test_calculate_detailed_single_team_allocation(cache_storage, fixtures_dir):
     assert out['internal_cost'] == 8123.0
     assert out['external_cost'] == 3046.5
     assert 'team-alpha' in out['teams']
+
+
+def test_multi_member_team_cost_does_not_scale_quadratically(cache_storage):
+    """When a team has N internal members the monthly cost must equal N*rate*hours_per_person,
+    NOT (N*rate)*(N*hours_per_person) which would be N^2 times too large.
+
+    Regression test for the Signal Processing case:
+      8 members, rate=64, site hours=116 → monthly cost = 8*64*116 = 59392
+      Feature 771 h at 30% cap → cost ≈ 771*64 = 49344 (not 394729)
+    """
+    N = 8
+    rate = 64
+    h = 116  # monthly site hours per internal person
+    config = {
+        'cost': {
+            'internal_cost': {'default_hourly_rate': rate},
+            'external_cost': {'default_hourly_rate': 0, 'external': {}},
+            'working_hours': {'HQ': {'internal': h, 'external': 0}},
+        },
+        'database': {
+            'people': [
+                {'name': f'Person{i}', 'team_name': 'Signal Processing', 'site': 'HQ', 'external': False}
+                for i in range(N)
+            ]
+        },
+    }
+    teams = engine._team_members(config, cache_storage=cache_storage)
+    team = teams['team-signal-processing']
+
+    assert team['internal_count'] == N
+    assert team['internal_hours_total'] == N * h  # 928
+    # Monthly cost must be N * rate * h, not (N*rate) * (N*h)
+    assert team['internal_monthly_cost_total'] == pytest.approx(N * rate * h)  # 59392, not 475136
+
+
+def test_calculate_cost_per_hour_equals_average_member_rate(cache_storage):
+    """For a uniform team, cost / allocated_hours must equal the per-member hourly rate.
+
+    This ensures the feature cost in the UI matches user expectation:
+      feature_cost = allocated_hours * per_member_rate
+    """
+    N = 8
+    rate = 64
+    h = 116
+    config = {
+        'cost': {
+            'internal_cost': {'default_hourly_rate': rate},
+            'external_cost': {'default_hourly_rate': 0, 'external': {}},
+            'working_hours': {'HQ': {'internal': h, 'external': 0}},
+        },
+        'database': {
+            'people': [
+                {'name': f'Person{i}', 'team_name': 'Signal Processing', 'site': 'HQ', 'external': False}
+                for i in range(N)
+            ]
+        },
+    }
+    # Span 2026-02-01 to 2026-04-24 (the real-world failing case)
+    result = engine.calculate(
+        config,
+        '2026-02-01', '2026-04-24',
+        [{'team': 'team-signal-processing', 'capacity': 30}],
+        cache_storage,
+    )
+    alloc_hours = result['internal_hours']
+    alloc_cost = result['internal_cost']
+    assert alloc_hours > 0
+    # cost / hours must equal per-member rate (64), not N*rate (512)
+    assert alloc_cost / alloc_hours == pytest.approx(rate, rel=1e-3)

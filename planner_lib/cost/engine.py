@@ -123,9 +123,10 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageBackend) -> Dict
             hrs = int(site_hours_map.get(site, {}).get("external", 0))
             entry["external_hourly_rate_total"] += rate_val
             entry["external_hours_total"] += hrs
-            # monthly cost will be computed after aggregation as
-            # external_hourly_rate_total * external_hours_total
+            # Accumulate per-person monthly cost: sum(rate_i * hours_i) is correct.
+            # Do NOT compute as sum(rates) * sum(hours) — that gives N^2 scaling.
             entry.setdefault("external_monthly_cost_total", 0.0)
+            entry["external_monthly_cost_total"] += rate_val * hrs
             # maintain per-site hourly totals so we can compute site monthly costs
             # maintain per-site aggregates for this team
             site_entry = entry['sites'].setdefault(site, {
@@ -140,15 +141,17 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageBackend) -> Dict
             site_entry['external_count'] += 1
             site_entry['external_hours_total'] += hrs
             site_entry['external_hourly_rate_total'] = site_entry.get('external_hourly_rate_total', 0.0) + rate_val
+            site_entry['external_monthly_cost_total'] += rate_val * hrs
         else:
             entry["internal_count"] += 1
             rate_val = float(cost_cfg.get("internal_cost", {}).get("default_hourly_rate", 0) or 0)
             hrs = int(site_hours_map.get(site, {}).get("internal", 0))
             entry["internal_hourly_rate_total"] += rate_val
             entry["internal_hours_total"] += hrs
-            # monthly cost will be computed after aggregation as
-            # internal_hourly_rate_total * internal_hours_total
+            # Accumulate per-person monthly cost: sum(rate_i * hours_i) is correct.
+            # Do NOT compute as sum(rates) * sum(hours) — that gives N^2 scaling.
             entry.setdefault("internal_monthly_cost_total", 0.0)
+            entry["internal_monthly_cost_total"] += rate_val * hrs
             # maintain per-site aggregates for this team
             site_entry = entry['sites'].setdefault(site, {
                 'internal_count': 0,
@@ -162,35 +165,24 @@ def _team_members(config: Dict[str, Any], cache_storage: StorageBackend) -> Dict
             site_entry['internal_count'] += 1
             site_entry['internal_hours_total'] += hrs
             site_entry['internal_hourly_rate_total'] = site_entry.get('internal_hourly_rate_total', 0.0) + rate_val
+            site_entry['internal_monthly_cost_total'] += rate_val * hrs
     
-    # After aggregating counts and hourly-rate totals, compute monthly cost
-    # as (hourly_rate_total * hours_total) so that the team-level monthly
-    # cost reflects the combined cost of all members for their available hours.
+    # Round already-accumulated per-person cost sums.
+    # monthly_cost was built as sum(rate_i * hours_i) during the loop above,
+    # which is the correct linear formula. Do NOT recompute here as
+    # sum(rates) * sum(hours) — that formula gives N^2 scaling for N members.
     for team_key, entry in res.items():
         try:
-            # internal
-            ihours = float(entry.get('internal_hours_total') or 0.0)
-            ihr_total = float(entry.get('internal_hourly_rate_total') or 0.0)
-            entry['internal_monthly_cost_total'] = round(ihr_total * ihours, 2)
-            # external
-            ehours = float(entry.get('external_hours_total') or 0.0)
-            ehr_total = float(entry.get('external_hourly_rate_total') or 0.0)
-            entry['external_monthly_cost_total'] = round(ehr_total * ehours, 2)
+            entry['internal_monthly_cost_total'] = round(entry.get('internal_monthly_cost_total', 0.0), 2)
+            entry['external_monthly_cost_total'] = round(entry.get('external_monthly_cost_total', 0.0), 2)
 
-            # per-site recalculation when hourly totals at site level exist
             sites = entry.get('sites', {}) or {}
             for site_key, sv in sites.items():
-                # internal site
-                s_ihours = float(sv.get('internal_hours_total') or 0.0)
-                s_ihr = float(sv.get('internal_hourly_rate_total') or 0.0)
-                sv['internal_monthly_cost_total'] = round(s_ihr * s_ihours, 2)
-                # external site
-                s_ehours = float(sv.get('external_hours_total') or 0.0)
-                s_ehr = float(sv.get('external_hourly_rate_total') or 0.0)
-                sv['external_monthly_cost_total'] = round(s_ehr * s_ehours, 2)
+                sv['internal_monthly_cost_total'] = round(sv.get('internal_monthly_cost_total', 0.0), 2)
+                sv['external_monthly_cost_total'] = round(sv.get('external_monthly_cost_total', 0.0), 2)
         except Exception:
             # if anything goes wrong, leave existing values as-is
-            logger.debug("Failed to compute derived monthly costs for team %s", team_key)
+            logger.debug("Failed to round monthly costs for team %s", team_key)
 
     # Cache the result
     try:

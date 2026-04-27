@@ -14,6 +14,14 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.5.1] - unreleased
+
+### Added
+### Changed
+### Fixed
+- Cost engine (`planner_lib/cost/engine.py`): fixed N² cost scaling bug in `_team_members()` where monthly cost was computed as `sum(rates) × sum(hours)` instead of `sum(rate_i × hours_i)`, causing costs to be overstated by a factor equal to team size (e.g. 8× for an 8-member team).
+- Cost plugin team tables had the Int/Ext row one cell skewed.
+
 ## [v3.5.0] - 2026-04-22
 
 ### Added
