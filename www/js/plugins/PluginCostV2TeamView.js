@@ -239,6 +239,7 @@ function renderTeamTable(component, team, monthKeys) {
             <tr>
               <th></th>
               <th></th>
+              <th></th>
               ${component.months.map(
                 () =>
                   html`<th class="numeric">Int</th>
