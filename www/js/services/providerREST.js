@@ -574,6 +574,83 @@ export class ProviderREST {
   }
 
   /**
+   * Fetch plan events, optionally filtered by plan.
+   * @param {string} [planId]
+   * @returns {Promise<Array<{id:string, date:string, title:string, plan_id:string}>>}
+   */
+  async getEvents(planId) {
+    try {
+      const url = planId ? `/api/events?plan_id=${encodeURIComponent(planId)}` : '/api/events';
+      const res = await this._fetch(url, { headers: this._headers() });
+      if (res && res.sessionExpired) return [];
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:getEvents error', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new plan event.
+   * @param {{date:string, title:string, plan_id:string}} data
+   */
+  async createEvent(data) {
+    try {
+      const res = await this._fetch('/api/events', {
+        method: 'POST',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res && res.sessionExpired) return null;
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:createEvent error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Update an existing plan event (partial).
+   * @param {string} eventId
+   * @param {{date?:string, title?:string, plan_id?:string}} data
+   */
+  async updateEvent(eventId, data) {
+    try {
+      const res = await this._fetch(`/api/events/${encodeURIComponent(eventId)}`, {
+        method: 'PUT',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res && res.sessionExpired) return null;
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:updateEvent error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a plan event.
+   * @param {string} eventId
+   */
+  async deleteEvent(eventId) {
+    try {
+      const res = await this._fetch(`/api/events/${encodeURIComponent(eventId)}`, {
+        method: 'DELETE',
+        headers: this._headers(),
+      });
+      if (res && res.sessionExpired) return false;
+      return res.ok;
+    } catch (err) {
+      console.error('providerREST:deleteEvent error', err);
+      return false;
+    }
+  }
+
+  /**
    * Fetch history entries for a given project.
    * @param {string} projectId
    * @param {{per_page?:number, invalidate_cache?:boolean}} [opts]

@@ -105,6 +105,7 @@ def _build_services(
     container.register_singleton("account_storage", storage_diskcache)
     container.register_singleton("scenarios_storage", storage_diskcache)
     container.register_singleton("views_storage", storage_diskcache)
+    container.register_singleton("events_storage", storage_diskcache)
 
     # --- Optional memory cache ---
     # (removed — diskcache handles memory via OS page cache automatically)
@@ -352,6 +353,7 @@ def _build_app(
     from planner_lib.cost.api import router as cost_router
     from planner_lib.server.api import router as server_router
     from planner_lib.admin.api import router as admin_router
+    from planner_lib.events.api import router as events_router
 
     app.include_router(session_router, prefix='/api')
     app.include_router(config_router, prefix='/api')
@@ -361,6 +363,7 @@ def _build_app(
     app.include_router(cost_router, prefix='/api')
     app.include_router(server_router, prefix='/api')
     app.include_router(admin_router, prefix='')
+    app.include_router(events_router, prefix='/api')
 
     from planner_lib.azure.api import browse_router as azure_browse_router
     app.include_router(azure_browse_router, prefix='/api/azure')

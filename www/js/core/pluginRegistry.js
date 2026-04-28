@@ -13,6 +13,7 @@ import PluginPlanHealth from '../plugins/PluginPlanHealth.js';
 import PluginHistory from '../plugins/PluginHistory.js';
 import PluginLinkEditor from '../plugins/PluginLinkEditor.js';
 import PluginDependencies from '../plugins/PluginDependencies.js';
+import PluginEventsPlugin from '../plugins/PluginEvents.js';
 
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
@@ -26,6 +27,7 @@ const PluginRegistry = {
   'plugin-history': PluginHistory,
   'plugin-link-editor': PluginLinkEditor,
   'plugin-dependencies': PluginDependencies,
+  'plugin-events': PluginEventsPlugin,
 };
 
 export default PluginRegistry;

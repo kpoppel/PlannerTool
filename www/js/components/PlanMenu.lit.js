@@ -4,6 +4,7 @@ import { bus } from '../core/EventBus.js';
 import { ProjectEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
 import { getIconTemplate } from '../services/IconService.js';
+import './EventsPanel.lit.js';
 
 /**
  * PlanMenu - Dropdown menu for Plans (Projects)
@@ -14,6 +15,7 @@ export class PlanMenuLit extends LitElement {
     projects: { type: Array },
     activeViewId: { type: String },
     activeViewData: { type: Object },
+    _eventsOpenPlanId: { type: String, state: true },
   };
 
   static styles = css`
@@ -154,13 +156,47 @@ export class PlanMenuLit extends LitElement {
       flex-direction: column;
       gap: 4px;
     }
+
+    .events-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border: none;
+      background: transparent;
+      color: #8ab4f8;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+      flex: 0 0 22px;
+    }
+
+    .events-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    .events-btn.active {
+      background: rgba(100, 160, 255, 0.25);
+      color: #a8d0ff;
+    }
   `;
+
+  static properties = {
+    projects: { type: Array },
+    activeViewId: { type: String },
+    activeViewData: { type: Object },
+    _eventsOpenPlanId: { type: String, state: true },
+  };
 
   constructor() {
     super();
     this.projects = [];
     this.activeViewId = null;
     this.activeViewData = null;
+    this._eventsOpenPlanId = null;
   }
 
   connectedCallback() {
@@ -218,16 +254,23 @@ export class PlanMenuLit extends LitElement {
     cp.openFor('project', projectId, rect);
   }
 
+  _toggleEventsPanel(e, planId) {
+    e.stopPropagation();
+    this._eventsOpenPlanId = this._eventsOpenPlanId === planId ? null : planId;
+  }
+
   _renderProjectsList(projects, taskTypes) {
     return html`${projects.map((project) => {
       const counts = state.allCountsForProject(project.id);
+      const eventsOpen = this._eventsOpenPlanId === project.id;
 
       return html`
         <li class="sidebar-list-item">
           <div
             class="chip sidebar-chip ${project.selected ? 'active' : ''}"
             @click=${(e) => {
-              if (!e.target.closest('.color-dot')) this._toggleProject(project.id);
+              if (!e.target.closest('.color-dot') && !e.target.closest('.events-btn'))
+                this._toggleProject(project.id);
             }}
             style="display:flex;align-items:stretch;gap:8px;width:100%;"
           >
@@ -244,9 +287,17 @@ export class PlanMenuLit extends LitElement {
               ${project.name}
             </div>
             <div style="margin-left:auto;display:inline-flex;gap:6px;align-items:center;">
+              <button
+                class="events-btn ${eventsOpen ? 'active' : ''}"
+                title="Manage events for this plan"
+                @click=${(e) => this._toggleEventsPanel(e, project.id)}
+              >🗓</button>
               ${taskTypes.map((t) => html`<span class="chip-badge" title="${t}">${counts.get(t.toLowerCase()) || 0}</span>`)}
             </div>
           </div>
+          ${eventsOpen
+            ? html`<events-panel .planId=${project.id}></events-panel>`
+            : ''}
         </li>
       `;
     })}`;

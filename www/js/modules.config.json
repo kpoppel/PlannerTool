@@ -56,7 +56,17 @@
       "dependencies": []
     },
     {
-      "id": "plugin-cost",
+      "id": "plugin-events",
+      "name": "Plan Events",
+      "version": "1.0.0",
+      "description": "Display locally-stored plan events on the timeline",
+      "enabled": true,
+      "activated": false,
+      "exclusive": false,
+      "mountPoint": "feature-board",
+      "dependencies": []
+    },
+    {
       "name": "Cost Analysis",
       "version": "1.0.0",
       "description": "Cost analysis plugin",

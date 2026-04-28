@@ -150,3 +150,8 @@ export const BoardEvents = {
   /** Fired by TimelineBoard once the board area is mounted and BCS is initialised. */
   READY: Symbol('board:ready'),
 };
+
+// Plan events (locally-stored events tied to a plan)
+export const PlanEventEvents = {
+  CHANGED: Symbol('planevents:changed'),
+};

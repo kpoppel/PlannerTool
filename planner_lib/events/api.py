@@ -1,0 +1,185 @@
+"""REST API endpoints for events.
+
+Endpoints:
+  GET    /api/events          — list all events (optional ?plan_id= filter)
+  GET    /api/events/{id}     — get a single event
+  POST   /api/events          — create a new event
+  PUT    /api/events/{id}     — update an existing event
+  DELETE /api/events/{id}     — delete an event
+
+All endpoints require an active session.
+"""
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, field_validator
+from typing import Optional
+
+from planner_lib.middleware import require_session
+from planner_lib.services.resolver import resolve_service
+from .event_store import (
+    list_events,
+    get_event,
+    create_event,
+    update_event,
+    delete_event,
+)
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
+class EventCreate(BaseModel):
+    date: str
+    title: str
+    plan_id: str
+
+    @field_validator("date")
+    @classmethod
+    def _validate_date(cls, v: str) -> str:
+        import re
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("date must be YYYY-MM-DD")
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("title must not be empty")
+        return v.strip()
+
+    @field_validator("plan_id")
+    @classmethod
+    def _validate_plan_id(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("plan_id must not be empty")
+        return v.strip()
+
+
+class EventUpdate(BaseModel):
+    date: Optional[str] = None
+    title: Optional[str] = None
+    plan_id: Optional[str] = None
+
+    @field_validator("date")
+    @classmethod
+    def _validate_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        import re
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("date must be YYYY-MM-DD")
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("title must not be empty")
+        return v.strip()
+
+    @field_validator("plan_id")
+    @classmethod
+    def _validate_plan_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("plan_id must not be empty")
+        return v.strip()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _storage(request: Request):
+    return resolve_service(request, "events_storage")
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@router.get("/events")
+@require_session
+async def api_events_list(request: Request):
+    """List all events. Optional ?plan_id= query parameter to filter by plan."""
+    plan_id = request.query_params.get("plan_id")
+    try:
+        return list_events(_storage(request), plan_id=plan_id)
+    except Exception as e:
+        logger.error("Error listing events: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/events/{event_id}")
+@require_session
+async def api_events_get(event_id: str, request: Request):
+    """Get a single event by ID."""
+    try:
+        return get_event(_storage(request), event_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Event not found")
+    except Exception as e:
+        logger.error("Error fetching event %s: %s", event_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/events", status_code=201)
+@require_session
+async def api_events_create(payload: EventCreate, request: Request):
+    """Create a new event."""
+    try:
+        return create_event(
+            _storage(request),
+            date=payload.date,
+            title=payload.title,
+            plan_id=payload.plan_id,
+        )
+    except Exception as e:
+        logger.error("Error creating event: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/events/{event_id}")
+@require_session
+async def api_events_update(event_id: str, payload: EventUpdate, request: Request):
+    """Update an existing event. Only supplied fields are changed."""
+    try:
+        return update_event(
+            _storage(request),
+            event_id=event_id,
+            date=payload.date,
+            title=payload.title,
+            plan_id=payload.plan_id,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Event not found")
+    except Exception as e:
+        logger.error("Error updating event %s: %s", event_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/events/{event_id}")
+@require_session
+async def api_events_delete(event_id: str, request: Request):
+    """Delete an event."""
+    try:
+        deleted = delete_event(_storage(request), event_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Event not found")
+        return {"ok": True, "id": event_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting event %s: %s", event_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -107,6 +107,25 @@ class DataService {
   async getMarkers() {
     return this.providers['rest'].getMarkers();
   }
+  /** @param {string} [planId] */
+  async getEvents(planId) {
+    return this.providers['rest'].getEvents(planId);
+  }
+  /** @param {{date:string, title:string, plan_id:string}} data */
+  async createEvent(data) {
+    return this.providers['rest'].createEvent(data);
+  }
+  /**
+   * @param {string} eventId
+   * @param {{date?:string, title?:string, plan_id?:string}} data
+   */
+  async updateEvent(eventId, data) {
+    return this.providers['rest'].updateEvent(eventId, data);
+  }
+  /** @param {string} eventId */
+  async deleteEvent(eventId) {
+    return this.providers['rest'].deleteEvent(eventId);
+  }
   async invalidateCache() {
     return this.providers['rest'].invalidateCache();
   }
