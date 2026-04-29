@@ -63,6 +63,21 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
     result = task_update_svc.update_tasks(payload or [], pat=pat)
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
+
+    # Write-through: invalidate the server cache whenever at least one item was
+    # written to ADO so that subsequent GET /tasks returns fresh data rather than
+    # stale cached values.  We invalidate even on partial errors because the
+    # successful items have already been persisted in ADO.
+    if result.get('updated', 0) > 0:
+        try:
+            coordinator = resolve_service(request, 'cache_coordinator')
+            coordinator.invalidate_all()
+            logger.debug("Cache invalidated after %d task update(s)", result['updated'])
+        except Exception as exc:
+            # Non-fatal: data is already in ADO; a manual refresh will still
+            # pick up the changes once the cache expires.
+            logger.warning("Failed to invalidate cache after task update: %s", exc)
+
     return result
 
 

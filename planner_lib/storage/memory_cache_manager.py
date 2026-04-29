@@ -402,10 +402,42 @@ class MemoryCacheManager:
         with self._lock:
             return self._total_size
     
+    def clear(self, namespace: str) -> int:
+        """Remove all entries for a given namespace from the in-memory store.
+
+        Does NOT touch the disk cache — callers that also want the disk cache
+        cleared must call the appropriate disk-cache invalidation method
+        separately (e.g. ``CacheManager.clear_all_caches()``).
+
+        Args:
+            namespace: The cache namespace to clear (e.g. 'azure_workitems').
+
+        Returns:
+            Number of entries removed.
+        """
+        with self._lock:
+            ns_data = self._data.pop(namespace, {})
+            count = len(ns_data)
+
+            # Recalculate freed size and remove associated metadata
+            for key in ns_data:
+                comp_key = self._composite_key(namespace, key)
+                meta = self._metadata.pop(comp_key, None)
+                if meta:
+                    self._total_size -= meta.size_bytes
+
+            if self._total_size < 0:
+                # Guard against rounding errors from size estimates
+                self._total_size = 0
+
+        if count:
+            logger.info(f"Memory cache clear: removed {count} entries from namespace '{namespace}'")
+        return count
+
     def flush_disk_writes(self) -> None:
         """Wait for all pending disk writes to complete."""
         self._write_queue.join()
-    
+
     def close(self) -> None:
         """Shutdown cache manager."""
         logger.info("Shutting down MemoryCacheManager")

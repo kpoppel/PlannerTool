@@ -14,6 +14,13 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.5.2] - unreleased
+
+### Fixed
+- After saving scenario changes to ADO (`POST /tasks`), the server-side Azure work-item cache is now immediately invalidated so subsequent reads return fresh data instead of stale cached values (fixes "baseline not updated after save / reload").
+- Added missing `clear(namespace)` method to `MemoryCacheManager`; its absence caused `invalidate_all_caches()` to raise `AttributeError` when the memory cache was enabled, leaving the in-memory tier stale even after a manual "Refresh Baseline".
+- `ScenarioMenu._onSaveToAzure` now calls `state.refreshBaseline()` automatically after publishing to ADO, keeping the client baseline in sync without requiring a separate manual refresh.
+
 ## [v3.5.1] - 2026-04-27
 
 ### Added

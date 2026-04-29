@@ -313,8 +313,18 @@ export class ScenarioMenuLit extends LitElement {
       const { openAzureDevopsModal } = await import('./modalHelpers.js');
       const selected = await openAzureDevopsModal({ overrides, state });
       if (selected?.length) {
-        await dataService.publishBaseline(selected);
-        console.log('[ScenarioMenu] Saved changes to Azure DevOps');
+        const result = await dataService.publishBaseline(selected);
+        console.log('[ScenarioMenu] Saved changes to Azure DevOps', result);
+
+        // Write-through: the server cache is already invalidated by POST /tasks,
+        // so refreshBaseline() fetches fresh ADO data and updates the client
+        // baseline.  This keeps the tool in sync without a manual page reload.
+        try {
+          await state.refreshBaseline();
+          console.log('[ScenarioMenu] Baseline refreshed after ADO save');
+        } catch (refreshErr) {
+          console.warn('[ScenarioMenu] Baseline refresh after ADO save failed:', refreshErr);
+        }
       }
     } catch (err) {
       console.error('[ScenarioMenu] Failed to save to Azure:', err);
