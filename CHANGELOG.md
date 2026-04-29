@@ -14,7 +14,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
-## [v3.5.2] - unreleased
+## [v3.5.2] - 2026-04-29
 
 ### Fixed
 - After saving scenario changes to ADO (`POST /tasks`), the server-side Azure work-item cache is now immediately invalidated so subsequent reads return fresh data instead of stale cached values (fixes "baseline not updated after save / reload").
