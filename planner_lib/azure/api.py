@@ -1,7 +1,7 @@
-"""Azure cache API endpoints.
+"""Cache API endpoints.
 
-This module provides REST API endpoints for cache management operations including
-loading cached data and triggering refreshes from Azure DevOps.
+Provides REST endpoints for cache management: inspecting, refreshing, and
+metrics for the CachingBackend memory+disk cache.
 """
 from fastapi import APIRouter, Request, Query, HTTPException, Response
 from typing import Optional
@@ -11,12 +11,22 @@ import logging
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
-from planner_lib.azure.caching import key_for_area as _key_for_area
+from planner_lib.storage.caching import key_for_area as _key_for_area
+
+# Namespace used by CachingBackend when storing DomainTask lists.
+_BACKEND_DOMAIN_NS = 'backend_domain'
+
+
+def _get_backend_memory_cache(request: Request):
+    """Return the MemoryCacheManager from CachingBackend, or None if not enabled."""
+    backend = resolve_service(request, 'backend')
+    return getattr(backend, '_memory_cache', None)
+
+
 
 router = APIRouter(tags=["cache"])
 browse_router = APIRouter(tags=["azure"])
 logger = logging.getLogger(__name__)
-
 
 
 def _get_all_configured_areas(request: Request) -> list:
@@ -90,8 +100,8 @@ async def cache_load(
     """
     azure_service = resolve_service(request, 'azure_client')
     
-    # Get memory cache from azure service
-    memory_cache = getattr(azure_service, '_memory_cache', None)
+    # Get memory cache from CachingBackend (sole owner of the memory tier).
+    memory_cache = _get_backend_memory_cache(request)
     if not memory_cache:
         raise HTTPException(
             status_code=503, 
@@ -100,7 +110,7 @@ async def cache_load(
     
     # Parse areas and include types
     area_list = areas.split(',') if areas else _get_all_configured_areas(request)
-    include_types = include.split(',') if include else ['work_items', 'teams', 'plans', 'markers', 'iterations']
+    include_types = include.split(',') if include else ['workitems']
     
     if not area_list:
         return {
@@ -112,38 +122,41 @@ async def cache_load(
             }
         }
     
-    # Read from memory cache
+    # Read from memory cache (backend_domain namespace, DomainTask format).
+    all_entries = memory_cache.get_all(_BACKEND_DOMAIN_NS)
     data = {}
     metadata = {"areas": {}, "timestamp": datetime.now(timezone.utc).isoformat()}
     
     for area_path in area_list:
-        area_key = _key_for_area(area_path)
+        area_key_prefix = _key_for_area(area_path)
         
-        if 'workitems' in include_types:
-            workitems = memory_cache.read('azure_workitems', area_key)
-            meta = memory_cache.get_metadata('azure_workitems', area_key)
+        # Find the first cached variant for this area (keys are area__types__states).
+        area_entries = {k: v for k, v in all_entries.items() if k.startswith(area_key_prefix)}
+        
+        if 'workitems' in include_types and area_entries:
+            # Return all task variants; most callers expect one entry per area.
+            first_key = next(iter(area_entries))
+            data.setdefault('workitems', {})[area_path] = area_entries[first_key]
             
-            if workitems:
-                data.setdefault('workitems', {})[area_path] = workitems
-            
+            meta = memory_cache.get_metadata(_BACKEND_DOMAIN_NS, first_key)
             if meta:
                 age_seconds = (datetime.now(timezone.utc) - meta.last_update).total_seconds()
                 metadata['areas'][area_path] = {
                     'age': int(age_seconds),
-                    'stale': meta.needs_refresh,  # Uses configured staleness threshold
+                    'stale': meta.needs_refresh,
                     'lastUpdate': meta.last_update.isoformat(),
                     'version': meta.version
                 }
             else:
-                # No metadata means no cache
                 metadata['areas'][area_path] = {
-                    'age': None,
-                    'stale': True,
-                    'lastUpdate': None,
-                    'version': 'v0'
+                    'age': None, 'stale': True, 'lastUpdate': None, 'version': 'v0'
                 }
+        else:
+            metadata['areas'][area_path] = {
+                'age': None, 'stale': True, 'lastUpdate': None, 'version': 'v0'
+            }
     
-    logger.info(f"Cache load: returned {len(data.get('workitems', {}))} areas")
+    logger.info("Cache load: returned %d areas", len(data.get('workitems', {})))
     return {"data": data, "metadata": metadata}
 
 
@@ -169,7 +182,7 @@ async def cache_refresh(
     """
     sid = get_session_id_from_request(request)
     session_mgr = resolve_service(request, 'session_manager')
-    azure_service = resolve_service(request, 'azure_client')
+    backend = resolve_service(request, 'backend')
     
     # Get user PAT from session
     pat = session_mgr.get_val(sid, 'pat')
@@ -179,13 +192,8 @@ async def cache_refresh(
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required'}
         )
     
-    # Get memory cache
-    memory_cache = getattr(azure_service, '_memory_cache', None)
-    if not memory_cache:
-        raise HTTPException(
-            status_code=503, 
-            detail={'error': 'cache_unavailable', 'message': 'Memory cache not enabled'}
-        )
+    # Memory cache is optional (disk-only cache still benefits from invalidate+refetch).
+    memory_cache = getattr(backend, '_memory_cache', None)
     
     # Parse areas
     area_list = areas.split(',') if areas else _get_all_configured_areas(request)
@@ -196,77 +204,68 @@ async def cache_refresh(
             detail={'error': 'no_areas', 'message': 'No areas specified or configured'}
         )
 
-    # Build per-area project config (task_types, include_states) so the refresh
-    # honours each project's configured type hierarchy rather than falling back
-    # to the hard-coded default ['epic', 'feature'].
     area_project_config = _get_area_project_config_map(request)
 
-    # Check if recently refreshed (debounce) or needs refresh based on staleness
+    # Debounce: if memory cache is present, skip areas refreshed < 30 s ago.
     recently_refreshed = []
-    needs_refresh = []
+    needs_refresh = list(area_list)
 
-    for area_path in area_list:
-        area_key = _key_for_area(area_path)
-        meta = memory_cache.get_metadata('azure_workitems', area_key)
-
-        if meta and not force:
-            age_seconds = (datetime.now(timezone.utc) - meta.last_update).total_seconds()
-            if age_seconds < 30:  # Recently refreshed (debounce to prevent rapid re-fetches)
+    if memory_cache and not force:
+        all_entries = memory_cache.get_all(_BACKEND_DOMAIN_NS)
+        needs_refresh = []
+        for area_path in area_list:
+            area_key_prefix = _key_for_area(area_path)
+            area_keys = [k for k in all_entries if k.startswith(area_key_prefix)]
+            recently = False
+            for k in area_keys:
+                meta = memory_cache.get_metadata(_BACKEND_DOMAIN_NS, k)
+                if meta:
+                    age = (datetime.now(timezone.utc) - meta.last_update).total_seconds()
+                    if age < 30:
+                        recently = True
+                        break
+            if recently:
                 recently_refreshed.append(area_path)
-            elif meta.needs_refresh:  # Stale based on configured threshold
+            else:
                 needs_refresh.append(area_path)
-            # else: fresh and not recently refreshed, don't add to either list
-        else:
-            needs_refresh.append(area_path)
 
-    # Return 304 if all areas recently refreshed
     if not needs_refresh and recently_refreshed:
-        logger.info(f"Cache refresh: 304 Not Modified (all areas recently refreshed)")
+        logger.info("Cache refresh: 304 Not Modified (all areas recently refreshed)")
         return Response(status_code=304)
 
-    # Refresh stale areas using user PAT
+    # Invalidate the backend cache so the next fetch goes to the inner backend.
+    backend.invalidate_cache()
+
+    # Re-fetch each area through CachingBackend (writes into both cache tiers).
+    from planner_lib.backend.port import BackendCredential
+    cred = BackendCredential(token=pat, user_id=sid)
+
     refreshed_data = {}
     errors = []
-
-    try:
-        with azure_service.connect(pat) as client:
-            for area_path in needs_refresh:
-                try:
-                    # Pass project-configured task_types and include_states so every
-                    # configured work item type hierarchy is fetched, not just the
-                    # built-in default ('epic', 'feature').
-                    proj_cfg = area_project_config.get(area_path, {})
-                    workitems = client.get_work_items(
-                        area_path,
-                        task_types=proj_cfg.get('task_types'),
-                        include_states=proj_cfg.get('include_states'),
-                    )
-                    refreshed_data[area_path] = workitems
-                    logger.info(f"Refreshed area '{area_path}' from Azure ({len(workitems)} items)")
-                except Exception as e:
-                    logger.error(f"Failed to refresh area '{area_path}': {e}")
-                    errors.append({
-                        'area': area_path,
-                        'error': str(e)
-                    })
-    except Exception as e:
-        logger.error(f"Failed to connect to Azure: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail={'error': 'azure_connection_failed', 'message': str(e)}
-        )
+    for area_path in needs_refresh:
+        proj_cfg = area_project_config.get(area_path, {})
+        try:
+            items = backend.fetch_tasks(
+                area_path,
+                task_types=proj_cfg.get('task_types'),
+                include_states=proj_cfg.get('include_states'),
+                credential=cred,
+            )
+            refreshed_data[area_path] = items
+            logger.info("Refreshed area '%s' (%d items)", area_path, len(items))
+        except Exception as e:
+            logger.error("Failed to refresh area '%s': %s", area_path, e)
+            errors.append({'area': area_path, 'error': str(e)})
     
     response = {
         "refreshed": list(refreshed_data.keys()),
         "skipped": recently_refreshed,
-        "data": {"workitems": refreshed_data},
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    
     if errors:
         response['errors'] = errors
     
-    logger.info(f"Cache refresh: {len(refreshed_data)} areas refreshed, {len(recently_refreshed)} skipped")
+    logger.info("Cache refresh: %d areas refreshed, %d skipped", len(refreshed_data), len(recently_refreshed))
     return response
 
 
@@ -284,8 +283,7 @@ async def cache_metrics(request: Request):
             }
         }
     """
-    azure_service = resolve_service(request, 'azure_client')
-    memory_cache = getattr(azure_service, '_memory_cache', None)
+    memory_cache = _get_backend_memory_cache(request)
     
     if not memory_cache:
         raise HTTPException(
@@ -293,16 +291,14 @@ async def cache_metrics(request: Request):
             detail={'error': 'cache_unavailable', 'message': 'Memory cache not enabled'}
         )
     
-    # Count entries
-    total_entries = sum(
-        len(memory_cache.get_all(ns)) 
-        for ns in ['azure_workitems', 'teams', 'plans', 'markers', 'iterations']
-    )
+    # Count entries in the domain cache namespace.
+    total_entries = len(memory_cache.get_all(_BACKEND_DOMAIN_NS))
     
     return {
         "memory_cache": {
             "total_size_mb": round(memory_cache.get_total_size() / (1024 * 1024), 2),
             "entry_count": total_entries,
+            "namespace": _BACKEND_DOMAIN_NS,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }

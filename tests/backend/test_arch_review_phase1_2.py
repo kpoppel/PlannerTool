@@ -239,21 +239,21 @@ def test_session_manager_raises_for_unknown_email_without_admin_marker():
 
 
 # ---------------------------------------------------------------------------
-# HistoryService in DI container
+# HistoryRepository in DI container (replaces old HistoryService)
 # ---------------------------------------------------------------------------
 
 
-def test_history_service_key_in_service_keys():
+def test_history_repository_key_in_service_keys():
     from planner_lib.services.container import ServiceKeys
-    assert hasattr(ServiceKeys, 'HISTORY_SERVICE')
-    assert ServiceKeys.HISTORY_SERVICE == 'history_service'
+    assert hasattr(ServiceKeys, 'HISTORY_REPOSITORY')
+    assert ServiceKeys.HISTORY_REPOSITORY == 'history_repository'
 
 
-def test_history_service_registered_in_app(app):
-    """The session-scoped app must have history_service in the container."""
+def test_history_repository_registered_in_app(app):
+    """The session-scoped app must have history_repository in the container."""
     container = app.state.container
-    history_svc = container.get('history_service')
-    assert history_svc is not None
+    history_repo = container.get('history_repository')
+    assert history_repo is not None
 
 
 # ---------------------------------------------------------------------------

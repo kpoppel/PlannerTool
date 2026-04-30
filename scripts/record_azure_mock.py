@@ -396,7 +396,7 @@ def _build_wiql(area_path: str, task_types: Optional[List[str]], include_states:
 # ---------------------------------------------------------------------------
 
 def record(data_dir: str, output_dir: str, with_history: bool, pat: str) -> None:
-    from planner_lib.azure.AzureNativeClient import AzureNativeClient
+    from planner_lib.azure.AzureClient import AzureClient
     from azure.devops.v7_1.work_item_tracking.models import Wiql
     try:
         from azure.devops.v7_1.work.models import TeamContext
@@ -418,8 +418,8 @@ def record(data_dir: str, output_dir: str, with_history: bool, pat: str) -> None
 
     anon = Anonymizer(org_name=org)
 
-    # Use AzureNativeClient to set up a real SDK Connection object
-    native = AzureNativeClient(organization_url=org, storage=_NullStorage(), cache_plans=False)
+    # Use AzureClient to set up a real SDK Connection object
+    native = AzureClient(organization_url=org, storage=_NullStorage(), cache_plans=False)
 
     manifest: Dict[str, Any] = {
         'organization': 'anonymous-org',

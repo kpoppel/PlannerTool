@@ -77,7 +77,7 @@ The System configuration editor now:
             'type': 'object',
             'title': 'Feature Flags',
             'properties': {
-                'enable_azure_cache': {
+                'enable_cache': {
                     'type': 'boolean',
                     'title': 'Enable Azure Cache',
                     'default': True

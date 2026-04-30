@@ -172,61 +172,17 @@ def test_azure_api_routers_have_no_internal_prefix():
 
 
 # ---------------------------------------------------------------------------
-# TaskUpdateService split (Phase 3)
+# TaskRepository split (replaces old TaskService/TaskUpdateService)
 # ---------------------------------------------------------------------------
 
 
-def test_task_service_has_no_update_logic():
-    """TaskService.update_tasks must delegate to TaskUpdateService (not contain its own logic).
-
-    The body of TaskService.update_tasks should be a one-liner that calls self._updater.
-    """
-    import ast
-    import textwrap
-    import inspect
-    from planner_lib.projects.task_service import TaskService
-
-    source = textwrap.dedent(inspect.getsource(TaskService.update_tasks))
-    tree = ast.parse(source)
-
-    # Count function calls inside update_tasks — delegation is a single call.
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
-    assert len(calls) == 1, (
-        "TaskService.update_tasks must contain exactly one call (the delegation to "
-        f"self._updater.update_tasks).  Found {len(calls)} call(s)."
-    )
+def test_task_repository_registered_in_app(app):
+    """TaskRepository must be available from the DI container."""
+    repo = app.state.container.get("task_repository")
+    assert repo is not None
 
 
-def test_task_update_service_registered_in_app(app):
-    """TaskUpdateService must be available from the DI container."""
-    svc = app.state.container.get("task_update_service")
-    assert svc is not None
-
-
-def test_task_update_service_has_update_tasks_method():
-    from planner_lib.projects.task_update_service import TaskUpdateService
-    assert callable(getattr(TaskUpdateService, "update_tasks", None))
-
-
-def test_task_service_composes_task_update_service():
-    """TaskService must create an internal TaskUpdateService composing the same dependencies."""
-    from planner_lib.projects.task_update_service import TaskUpdateService
-    from planner_lib.projects.task_service import TaskService
-
-    fake_storage = MagicMock()
-    fake_azure = MagicMock()
-    fake_team = MagicMock()
-    fake_capacity = MagicMock()
-    fake_project = MagicMock()
-
-    svc = TaskService(
-        storage_config=fake_storage,
-        project_service=fake_project,
-        team_service=fake_team,
-        capacity_service=fake_capacity,
-        azure_client=fake_azure,
-    )
-
-    assert isinstance(svc._updater, TaskUpdateService), (
-        "TaskService._updater must be a TaskUpdateService instance"
-    )
+def test_task_repository_has_read_and_write_methods():
+    from planner_lib.repository.task_repository import TaskRepository
+    assert callable(getattr(TaskRepository, "read", None))
+    assert callable(getattr(TaskRepository, "write", None))

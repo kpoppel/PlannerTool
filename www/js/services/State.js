@@ -591,7 +591,7 @@ class State {
   }
 
   async refreshBaseline() {
-    // Delegate to DataInitService
+    // Delegate to DataInitService (no cache invalidation — used after scenario push)
     const result = await this._dataInitService.refreshBaseline();
 
     // Sync to state properties
@@ -613,6 +613,40 @@ class State {
     this._scenarioEventService.emitScenarioActivated();
 
     // Recompute capacity metrics after refresh
+    this.recomputeCapacityMetrics();
+    bus.emit(CapacityEvents.UPDATED, {
+      dates: this.capacityDates,
+      teamDailyCapacity: this.teamDailyCapacity,
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
+      projectDailyCapacity: this.projectDailyCapacity,
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
+    });
+  }
+
+  /**
+   * Invalidate the server cache then reload the baseline.
+   * Use for explicit user-triggered refresh actions.
+   */
+  async invalidateAndRefreshBaseline() {
+    // Delegate invalidation to DataInitService, then follow the same
+    // post-processing path as refreshBaseline().
+    const result = await this._dataInitService.invalidateAndRefreshBaseline();
+
+    this.baselineProjects = result.baselineProjects;
+    this.baselineTeams = result.baselineTeams;
+    this.baselineFeatures = result.baselineFeatures;
+
+    if (this._featureService) {
+      this._featureService.setChildrenByParent(this.childrenByParent);
+    }
+
+    this._scenarioEventService.initDefaultScenario(() =>
+      this._projectTeamService.captureCurrentFilters()
+    );
+    this._scenarioEventService.emitScenarioList();
+    this._scenarioEventService.emitScenarioActivated();
+
     this.recomputeCapacityMetrics();
     bus.emit(CapacityEvents.UPDATED, {
       dates: this.capacityDates,

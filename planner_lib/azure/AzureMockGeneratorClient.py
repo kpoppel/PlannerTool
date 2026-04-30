@@ -62,7 +62,7 @@ except ImportError:
     _yaml = None  # type: ignore[assignment]
     _YAML_OK = False
 
-from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.AzureClient import AzureClient
 from planner_lib.azure.AzureMockClient import _MockClientsAccessor, _safe_key
 from planner_lib.storage.base import StorageBackend
 
@@ -1384,12 +1384,12 @@ class _GeneratedConnection:
 # ---------------------------------------------------------------------------
 
 
-class AzureMockGeneratorClient(AzureCachingClient):
-    """Extends ``AzureCachingClient`` with a fully generated Azure DevOps dataset.
+class AzureMockGeneratorClient(AzureClient):
+    """Extends ``AzureClient`` with a fully generated Azure DevOps dataset.
 
     Overrides only ``_connect_with_pat`` to install a ``_GeneratedConnection``
-    instead of the real SDK ``Connection``.  Every other method (caching,
-    revision-checking, normalisation) runs unchanged from ``AzureCachingClient``.
+    instead of the real SDK ``Connection``.  Every other method runs unchanged
+    from ``AzureClient``.
 
     Parameters
     ----------
@@ -1404,8 +1404,6 @@ class AzureMockGeneratorClient(AzureCachingClient):
         Optional overrides for the generator (see ``GeneratorConfig``).
         If this dict contains a ``persist_dir`` key, the generated data
         is written to that directory (relative to the working directory).
-    memory_cache:
-        Optional shared in-memory cache (passed through to the caching client).
     persist_dir:
         Directory path where generated ``sdk_*.json`` fixture files are
         written.  Mutations from ``update_work_item`` are also persisted
@@ -1419,10 +1417,9 @@ class AzureMockGeneratorClient(AzureCachingClient):
         storage: StorageBackend,
         data_dir: str = "data",
         config_dict: Optional[dict] = None,
-        memory_cache: Any = None,
         persist_dir: Optional[str] = None,
     ) -> None:
-        super().__init__(organization_url, storage=storage, memory_cache=memory_cache)
+        super().__init__(organization_url, storage=storage)
         self._data_dir = data_dir
         cfg = dict(config_dict) if config_dict else {}
         # persist_dir: explicit param wins over config_dict entry

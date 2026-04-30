@@ -2,10 +2,21 @@ from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
+from planner_lib.backend.port import BackendCredential
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _get_credential(request: Request, sid: str):
+    """Build a BackendCredential from the current session's PAT and email."""
+    session_mgr = resolve_service(request, 'session_manager')
+    pat = session_mgr.get_val(sid, 'pat')
+    email = session_mgr.get_val(sid, 'email') or ''
+    if not pat:
+        return None, email
+    return BackendCredential(token=pat, user_id=email), email
 
 
 @router.get('/teams')
@@ -25,16 +36,12 @@ async def api_projects(request: Request):
 @router.get('/tasks')
 @require_session
 async def api_tasks(request: Request):
-    # TODO: Should this support a list of projects?
     sid = get_session_id_from_request(request)
-    logger.debug("Fetching tasks for session for %s", sid)
-    task_svc = resolve_service(request, 'task_service')
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = session_mgr.get_val(sid, 'pat')
+    logger.debug("Fetching tasks for session %s", sid)
+    task_repo = resolve_service(request, 'task_repository')
+    credential, _email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    if project_id:
-        return task_svc.list_tasks(pat=pat, project_id=project_id)
-    return task_svc.list_tasks(pat=pat)
+    return task_repo.read(project_id=project_id or None, credential=credential)
 
 
 @router.get('/markers')
@@ -42,13 +49,10 @@ async def api_tasks(request: Request):
 async def api_markers(request: Request):
     sid = get_session_id_from_request(request)
     logger.debug("Fetching markers for session %s", sid)
-    task_svc = resolve_service(request, 'task_service')
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = session_mgr.get_val(sid, 'pat')
+    task_repo = resolve_service(request, 'task_repository')
+    _credential, email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    if project_id:
-        return task_svc.list_markers(pat=pat, project_id=project_id)
-    return task_svc.list_markers(pat=pat)
+    return task_repo.list_markers(project_id=project_id or None, user_id=email or None)
 
 
 @router.post('/tasks')
@@ -57,26 +61,18 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
     sid = get_session_id_from_request(request)
     logger.debug("Updating tasks for session %s: %d items", sid, len(payload or []))
 
-    task_update_svc = resolve_service(request, 'task_update_service')
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = session_mgr.get_val(sid, 'pat')
-    result = task_update_svc.update_tasks(payload or [], pat=pat)
+    task_repo = resolve_service(request, 'task_repository')
+    _credential, email = _get_credential(request, sid)
+    result = task_repo.write(payload or [], user_id=email)
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
 
-    # Write-through: invalidate the server cache whenever at least one item was
-    # written to ADO so that subsequent GET /tasks returns fresh data rather than
-    # stale cached values.  We invalidate even on partial errors because the
-    # successful items have already been persisted in ADO.
+    # The CachingBackend.write_task implementation already patches the in-memory
+    # and disk cache in-place for the affected tasks, so no full invalidation is
+    # needed here.  A full cache flush is only warranted on an explicit admin
+    # refresh (POST /api/cache/invalidate).
     if result.get('updated', 0) > 0:
-        try:
-            coordinator = resolve_service(request, 'cache_coordinator')
-            coordinator.invalidate_all()
-            logger.debug("Cache invalidated after %d task update(s)", result['updated'])
-        except Exception as exc:
-            # Non-fatal: data is already in ADO; a manual refresh will still
-            # pick up the changes once the cache expires.
-            logger.warning("Failed to invalidate cache after task update: %s", exc)
+        logger.debug("Write-through cache patch applied for %d task update(s)", result['updated'])
 
     return result
 
@@ -93,20 +89,19 @@ async def api_config_iterations(request: Request):
         JSON with flat list of iterations sorted by startDate
     """
     sid = get_session_id_from_request(request)
-    session_mgr = resolve_service(request, 'session_manager')
-    pat = session_mgr.get_val(sid, 'pat')
 
-    azure_client = resolve_service(request, 'azure_client')
     # Only require a PAT when talking to the live Azure DevOps endpoint.
     # Mock clients (fixture replay and synthetic generator) work without one.
+    azure_client = resolve_service(request, 'azure_client')
     pat_required = getattr(azure_client, 'requires_pat', True)
-    if pat_required and not pat:
+    credential, email = _get_credential(request, sid)
+    if pat_required and not credential:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
     project_filter = request.query_params.get('project')
-    task_svc = resolve_service(request, 'task_service')
+    task_repo = resolve_service(request, 'task_repository')
     try:
-        iterations = task_svc.list_iterations(pat, project_filter=project_filter)
+        iterations = task_repo.list_iterations(project_id=project_filter or None, user_id=email or None)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
     except Exception as e:
@@ -120,11 +115,10 @@ async def api_config_iterations(request: Request):
 @require_session
 async def api_cache_invalidate(request: Request):
     """Invalidate all Azure caches to force a fresh data fetch.
-    
+
     This clears all cached work items, teams, plans, markers, and iterations.
     The next data fetch will retrieve fresh data from Azure DevOps.
-    Also cleans up orphaned index entries.
-    
+
     Returns:
         JSON with status and count of cleared cache entries
     """
@@ -143,11 +137,11 @@ async def api_cache_invalidate(request: Request):
 @require_session
 async def api_history_tasks(request: Request):
     """Fetch task history for timeline visualization.
-    
+
     Returns revision history for work items, filtered to show only changes
     to start dates, end dates, and iteration paths. Results are paginated
     and deduplicated for efficient frontend rendering.
-    
+
     Query params:
         project: Optional project ID filter
         team: Optional team ID filter
@@ -156,88 +150,58 @@ async def api_history_tasks(request: Request):
         until: Optional end date filter (ISO format YYYY-MM-DD)
         page: Page number (1-indexed, default: 1)
         per_page: Items per page (default: 100, max: 500)
-        invalidate_cache: If 'true', clears cached history data before fetching (default: false)
-    
+
     Returns:
         JSON with pagination info and task history data:
         {
             "page": 1,
             "per_page": 100,
             "total": 123,
-            "tasks": [
-                {
-                    "task_id": 12345,
-                    "title": "Feature name",
-                    "plan_id": "plan_1",
-                    "history": [
-                        {
-                            "field": "start|end|iteration",
-                            "value": "2025-05-08",
-                            "changed_at": "2025-05-08T09:10:00Z",
-                            "changed_by": "alice"
-                        }
-                    ]
-                }
-            ]
+            "tasks": [...]
         }
     """
     try:
         sid = get_session_id_from_request(request)
         logger.debug("Fetching task history for session %s", sid)
-        
-        session_mgr = resolve_service(request, 'session_manager')
-        pat = session_mgr.get_val(sid, 'pat')
-        
-        if not pat:
+
+        credential, email = _get_credential(request, sid)
+        if not credential:
             raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
-        
+
         # Get query parameters
         project_id = request.query_params.get('project')
         team_id = request.query_params.get('team')
         plan_id = request.query_params.get('plan')
         since = request.query_params.get('since')
         until = request.query_params.get('until')
-        invalidate_cache = request.query_params.get('invalidate_cache', '').lower() == 'true'
-        
-        # Pagination parameters
+
         try:
             page = int(request.query_params.get('page', '1'))
         except ValueError:
             page = 1
-        
+
         try:
             per_page = min(int(request.query_params.get('per_page', '100')), 500)
         except ValueError:
             per_page = 100
-        
-        # Resolve services from DI container
-        history_svc = resolve_service(request, 'history_service')
-        task_svc = resolve_service(request, 'task_service')
-        azure_svc = resolve_service(request, 'azure_client')
-        
-        # Invalidate cache if requested
-        if invalidate_cache:
-            logger.info(f"Invalidating history cache for project={project_id}")
-            history_svc.invalidate_cache(azure_svc, project_id=project_id)
-        
-        result = history_svc.list_task_history(
-            pat=pat,
-            task_service=task_svc,
-            azure_client=azure_svc,
+
+        history_repo = resolve_service(request, 'history_repository')
+        task_repo = resolve_service(request, 'task_repository')
+
+        result = history_repo.read(
+            tasks=task_repo,
             project_id=project_id,
+            user_id=email,
             team_id=team_id,
             plan_id=plan_id,
             since=since,
             until=until,
             page=page,
-            per_page=per_page
+            per_page=per_page,
         )
-        
-        logger.debug(f"Returning {len(result.get('tasks', []))} tasks with history")
+
+        logger.debug("Returning %d tasks with history", len(result.get('tasks', [])))
         return result
-        
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception('Failed to fetch task history: %s', e)
-        raise HTTPException(status_code=500, detail="Internal server error")

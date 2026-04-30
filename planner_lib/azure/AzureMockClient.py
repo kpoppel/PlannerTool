@@ -30,7 +30,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.AzureClient import AzureClient
 from planner_lib.storage.base import StorageBackend as StorageProtocol
 
 logger = logging.getLogger(__name__)
@@ -638,14 +638,13 @@ class _PersistingMockClientsAccessor(_MockClientsAccessor):
 # AzureMockClient
 # ===========================================================================
 
-class AzureMockClient(AzureCachingClient):
-    """Extends ``AzureCachingClient`` with a mocked Azure DevOps SDK connection.
+class AzureMockClient(AzureClient):
+    """Extends ``AzureClient`` with a mocked Azure DevOps SDK connection.
 
     Overrides only ``_connect_with_pat`` to install a ``_MockConnection``
     instead of the real SDK ``Connection``.  Every other method
     (``get_work_items``, ``get_all_teams``, ``get_iterations``, etc.)
-    is inherited unchanged from ``AzureCachingClient`` — including all
-    caching, revision-checking, and normalisation logic.
+    is inherited unchanged from ``AzureClient``.
 
     Parameters
     ----------
@@ -661,10 +660,9 @@ class AzureMockClient(AzureCachingClient):
         organization_url: str,
         storage: StorageProtocol,
         fixture_dir: str = "data/azure_mock",
-        memory_cache: Any = None,
         persist_enabled: bool = False,
     ) -> None:
-        super().__init__(organization_url, storage=storage, memory_cache=memory_cache)
+        super().__init__(organization_url, storage=storage)
         self._fixture_dir = fixture_dir
         self._persist_enabled = persist_enabled
 

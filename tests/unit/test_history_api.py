@@ -6,27 +6,26 @@ from typing import Any
 from tests.helpers import register_service_on_client
 
 
-def _make_history_service_with_data():
-    """Create a mock history service with test data."""
-    class MockHistoryService:
-        def list_task_history(
+def _make_history_repository_with_data():
+    """Create a mock HistoryRepository with test data."""
+    class MockHistoryRepo:
+        def read(
             self,
-            pat,
-            task_service,
-            azure_client,
+            tasks,
             project_id=None,
+            user_id=None,
             team_id=None,
             plan_id=None,
             since=None,
             until=None,
             page=1,
-            per_page=100
+            per_page=100,
         ):
-            if not pat:
+            if not user_id:
                 return {'page': page, 'per_page': per_page, 'total': 0, 'tasks': []}
-            
+
             # Return sample history data
-            tasks = [
+            tasks_data = [
                 {
                     'task_id': 12345,
                     'title': 'Sample Feature',
@@ -53,40 +52,47 @@ def _make_history_service_with_data():
                     ]
                 }
             ]
-            
+
             # Apply filters
-            if project_id:
-                tasks = [t for t in tasks if True]  # Assume all match
             if plan_id:
-                tasks = [t for t in tasks if t['plan_id'] == plan_id]
+                tasks_data = [t for t in tasks_data if t['plan_id'] == plan_id]
             if since:
-                # Filter history entries
-                for task in tasks:
+                for task in tasks_data:
                     task['history'] = [
                         h for h in task['history']
                         if h.get('changed_at', '')[:10] >= since
                     ]
             if until:
-                for task in tasks:
+                for task in tasks_data:
                     task['history'] = [
                         h for h in task['history']
                         if h.get('changed_at', '')[:10] <= until
                     ]
-            
-            # Pagination
-            total = len(tasks)
+
+            total = len(tasks_data)
             start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
-            tasks = tasks[start_idx:end_idx]
-            
-            return {
-                'page': page,
-                'per_page': per_page,
-                'total': total,
-                'tasks': tasks
-            }
-    
-    return MockHistoryService()
+            tasks_data = tasks_data[start_idx: start_idx + per_page]
+
+            return {'page': page, 'per_page': per_page, 'total': total, 'tasks': tasks_data}
+
+    return MockHistoryRepo()
+
+
+def _make_task_repository():
+    class MockTaskRepo:
+        def read(self, project_id=None, credential=None):
+            return []
+
+        def write(self, updates, user_id=None):
+            return {'ok': True, 'updated': 0, 'errors': []}
+
+        def list_markers(self, project_id=None, user_id=None):
+            return []
+
+        def list_iterations(self, project_id=None, user_id=None):
+            return []
+
+    return MockTaskRepo()
 
 
 def _make_fake_session_manager():
@@ -104,6 +110,8 @@ def _make_fake_session_manager():
         def get_val(self, sid, key):
             if key == 'pat':
                 return 'test-token'
+            if key == 'email':
+                return 'test@example.com'
             return None
 
     return FakeSessionMgr()
@@ -111,31 +119,20 @@ def _make_fake_session_manager():
 
 def test_history_api_happy_path(client):
     """Test the history API endpoint successfully returns task history."""
-    history_svc = _make_history_service_with_data()
+    history_repo = _make_history_repository_with_data()
+    task_repo = _make_task_repository()
     session_mgr = _make_fake_session_manager()
-    
-    # Create mock services
-    class MockTaskService:
-        def list_tasks(self, pat=None, project_id=None):
-            return []
-    
-    class MockAzureClient:
-        pass
-    
-    # Register services
+
     register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_service', MockTaskService())
-    register_service_on_client(client, 'azure_client', MockAzureClient())
-    # Inject the mock history service directly into the DI container so the
-    # route handler resolves it instead of instantiating a new one.
-    register_service_on_client(client, 'history_service', history_svc)
-    
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'history_repository', history_repo)
+
     # Make the request
     r = client.get('/api/history/tasks', headers={'X-Session-Id': 'test-session'})
-    
+
     assert r.status_code == 200
     data = r.json()
-    
+
     assert 'tasks' in data
     assert 'page' in data
     assert 'per_page' in data
@@ -147,27 +144,19 @@ def test_history_api_happy_path(client):
 
 def test_history_api_with_project_filter(client):
     """Test the history API with project filter."""
-    history_svc = _make_history_service_with_data()
+    history_repo = _make_history_repository_with_data()
+    task_repo = _make_task_repository()
     session_mgr = _make_fake_session_manager()
-    
-    # Create mock services
-    class MockTaskService:
-        def list_tasks(self, pat=None, project_id=None):
-            return []
-    
-    class MockAzureClient:
-        pass
-    
+
     register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_service', MockTaskService())
-    register_service_on_client(client, 'azure_client', MockAzureClient())
-    register_service_on_client(client, 'history_service', history_svc)
-    
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'history_repository', history_repo)
+
     r = client.get(
         '/api/history/tasks?project=project-test',
         headers={'X-Session-Id': 'test-session'}
     )
-    
+
     assert r.status_code == 200
     data = r.json()
     assert 'tasks' in data
@@ -175,27 +164,19 @@ def test_history_api_with_project_filter(client):
 
 def test_history_api_with_plan_filter(client):
     """Test the history API with plan filter."""
-    history_svc = _make_history_service_with_data()
+    history_repo = _make_history_repository_with_data()
+    task_repo = _make_task_repository()
     session_mgr = _make_fake_session_manager()
-    
-    # Create mock services
-    class MockTaskService:
-        def list_tasks(self, pat=None, project_id=None):
-            return []
-    
-    class MockAzureClient:
-        pass
-    
+
     register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_service', MockTaskService())
-    register_service_on_client(client, 'azure_client', MockAzureClient())
-    register_service_on_client(client, 'history_service', history_svc)
-    
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'history_repository', history_repo)
+
     r = client.get(
         '/api/history/tasks?plan=plan_1',
         headers={'X-Session-Id': 'test-session'}
     )
-    
+
     assert r.status_code == 200
     data = r.json()
     assert data['tasks'][0]['plan_id'] == 'plan_1'
@@ -203,27 +184,19 @@ def test_history_api_with_plan_filter(client):
 
 def test_history_api_with_date_range(client):
     """Test the history API with date range filters."""
-    history_svc = _make_history_service_with_data()
+    history_repo = _make_history_repository_with_data()
+    task_repo = _make_task_repository()
     session_mgr = _make_fake_session_manager()
-    
-    # Create mock services
-    class MockTaskService:
-        def list_tasks(self, pat=None, project_id=None):
-            return []
-    
-    class MockAzureClient:
-        pass
-    
+
     register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_service', MockTaskService())
-    register_service_on_client(client, 'azure_client', MockAzureClient())
-    register_service_on_client(client, 'history_service', history_svc)
-    
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'history_repository', history_repo)
+
     r = client.get(
         '/api/history/tasks?since=2026-01-01&until=2026-12-31',
         headers={'X-Session-Id': 'test-session'}
     )
-    
+
     assert r.status_code == 200
     data = r.json()
     # Should only have history entries from 2026
@@ -235,27 +208,19 @@ def test_history_api_with_date_range(client):
 
 def test_history_api_pagination(client):
     """Test the history API pagination parameters."""
-    history_svc = _make_history_service_with_data()
+    history_repo = _make_history_repository_with_data()
+    task_repo = _make_task_repository()
     session_mgr = _make_fake_session_manager()
-    
-    # Create mock services
-    class MockTaskService:
-        def list_tasks(self, pat=None, project_id=None):
-            return []
-    
-    class MockAzureClient:
-        pass
-    
+
     register_service_on_client(client, 'session_manager', session_mgr)
-    register_service_on_client(client, 'task_service', MockTaskService())
-    register_service_on_client(client, 'azure_client', MockAzureClient())
-    register_service_on_client(client, 'history_service', history_svc)
-    
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'history_repository', history_repo)
+
     r = client.get(
         '/api/history/tasks?page=2&per_page=50',
         headers={'X-Session-Id': 'test-session'}
     )
-    
+
     assert r.status_code == 200
     data = r.json()
     assert data['page'] == 2
@@ -265,54 +230,27 @@ def test_history_api_pagination(client):
 def test_history_api_no_pat(client):
     """Test the history API without PAT returns 401."""
     from fastapi.testclient import TestClient
-    
+
     # Create a session manager that returns no PAT
     class NoPATSessionMgr:
         def exists(self, sid):
             return True
         def get_val(self, sid, key):
             return None
-    
+
     register_service_on_client(client, 'session_manager', NoPATSessionMgr())
-    
+
     # Create a client that doesn't raise server exceptions
     c = TestClient(client.app, raise_server_exceptions=False)
     r = c.get('/api/history/tasks', headers={'X-Session-Id': 'test-session'})
-    
+
     assert r.status_code == 401
 
 
 def test_history_service_deduplication():
-    """Test that history service deduplicates consecutive identical values."""
-    # Clean up mocked module if present
-    import sys
-    if 'planner_lib.projects.history_service' in sys.modules:
-        # Save and remove mock
-        old_module = sys.modules.pop('planner_lib.projects.history_service')
-    
-    # Now import the real module
-    from planner_lib.projects.history_service import HistoryService
-    
-    # Create a mock storage
-    class MockStorage:
-        def save(self, namespace: str, key: str, value: Any):
-            pass
-        def load(self, namespace: str, key: str):
-            return {}
-        def delete(self, namespace: str, key: str):
-            pass
-        def list_keys(self, namespace: str):
-            return []
-        def exists(self, namespace: str, key: str):
-            return False
-        def configure(self, **kwargs):
-            pass
-    
-    class MockAzureClient:
-        pass
-    
-    service = HistoryService(storage_config=MockStorage(), azure_client=MockAzureClient())
-    
+    """Test that history repository deduplicates consecutive identical values."""
+    from planner_lib.repository.history_repository import HistoryRepository
+
     # Test data with consecutive duplicates
     history = [
         {'field': 'start', 'value': '2025-01-01', 'changed_at': '2025-01-01T09:00:00Z'},
@@ -321,9 +259,9 @@ def test_history_service_deduplication():
         {'field': 'end', 'value': '2025-03-01', 'changed_at': '2025-03-01T09:00:00Z'},
         {'field': 'end', 'value': '2025-03-01', 'changed_at': '2025-03-02T09:00:00Z'},  # Duplicate
     ]
-    
-    result = service._deduplicate_history(history)
-    
+
+    result = HistoryRepository._deduplicate_history(history)
+
     # Should remove the duplicate entries
     assert len(result) == 3
     # Check that values are deduplicated per field
@@ -334,36 +272,9 @@ def test_history_service_deduplication():
 
 
 def test_history_service_pairing_hints():
-    """Test that history service adds pairing hints for simultaneous changes."""
-    # Clean up mocked module if present
-    import sys
-    if 'planner_lib.projects.history_service' in sys.modules:
-        # Save and remove mock
-        old_module = sys.modules.pop('planner_lib.projects.history_service')
-    
-    # Now import the real module
-    from planner_lib.projects.history_service import HistoryService
-    
-    # Create a mock storage
-    class MockStorage:
-        def save(self, namespace: str, key: str, value: Any):
-            pass
-        def load(self, namespace: str, key: str):
-            return {}
-        def delete(self, namespace: str, key: str):
-            pass
-        def list_keys(self, namespace: str):
-            return []
-        def exists(self, namespace: str, key: str):
-            return False
-        def configure(self, **kwargs):
-            pass
-    
-    class MockAzureClient:
-        pass
-    
-    service = HistoryService(storage_config=MockStorage(), azure_client=MockAzureClient())
-    
+    """Test that history repository adds pairing hints for simultaneous changes."""
+    from planner_lib.repository.history_repository import HistoryRepository
+
     # Test data with changes at similar times
     history = [
         {
@@ -385,9 +296,9 @@ def test_history_service_pairing_hints():
             'changed_by': 'bob'
         }
     ]
-    
-    result = service._compute_pairing_hints(history, delta_seconds=60)
-    
+
+    result = HistoryRepository._compute_pairing_hints(history, delta_seconds=60)
+
     # First two should have pair_id (same user, within time delta)
     assert 'pair_id' in result[0] or 'pair_id' in result[1]
     # Third should not have pair_id or have a different one

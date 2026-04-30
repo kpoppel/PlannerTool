@@ -5,9 +5,13 @@ to server_config.yml if they don't already exist.
 
 Behavior:
 - Adds `enable_memory_cache: true` to feature_flags if not present
-- Adds memory_cache configuration section with max_size_mb and staleness_seconds
+- Adds memory_cache configuration section with max_size_mb
 - Preserves existing configuration and formatting where possible
 - Supports `dry_run` and `backup`. When `backup` is True a `.bak` copy will be created.
+
+Note: `staleness_seconds` is no longer used; per-domain TTLs are now configured
+under `cache.ttls` (see CacheTTLConfig).  If the key exists in an existing
+config it is harmlessly ignored by the server.
 """
 
 MIGRATION_ID = '0016.add-memory-cache-config'
@@ -42,7 +46,7 @@ def upgrade(dry_run=False, backup=False):
     if dry_run:
         print("  Would add:")
         print("    - enable_memory_cache: true to feature_flags")
-        print("    - memory_cache section with max_size_mb and staleness_seconds")
+        print("    - memory_cache section with max_size_mb")
         return
 
     # Backup if requested
@@ -67,7 +71,6 @@ def upgrade(dry_run=False, backup=False):
     if 'memory_cache' not in data:
         data['memory_cache'] = {
             'max_size_mb': 50,
-            'staleness_seconds': 1800
         }
         modified = True
         print("  Added memory_cache configuration section")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional, Any
 from planner_lib.storage.base import StorageBackend
-from abc import ABC, abstractmethod
 import logging
 import re
 from contextlib import contextmanager
@@ -14,20 +13,26 @@ from planner_lib.azure.teams_plans import TeamPlanOperations
 from planner_lib.azure.markers import MarkersOperations
 
 
-class AzureClient(ABC):
-    """Base Azure client containing shared helpers and default SDK operations.
+class AzureClient:
+    """Azure client for live Azure DevOps operations.
 
-    This class uses composition to delegate operations to specialized modules:
+    Uses composition to delegate operations to specialised modules:
     - WorkItemOperations: work item queries and updates
     - TeamPlanOperations: team and plan queries
     - MarkersOperations: delivery plan markers
-    
-    Subclasses must implement `get_work_items` and `invalidate_work_items`.
+
+    Mock clients (AzureMockClient, AzureMockGeneratorClient) extend this class
+    and override only ``_connect_with_pat`` to inject a fake SDK connection.
+    Caching at the domain level is the responsibility of CachingBackend.
     """
 
     def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         self.organization_url = organization_url
         self._connected = False
+        # Simple in-memory runtime caches for plans/teams (avoid repeated API calls
+        # within the same process lifetime when cache_plans is True).
+        self._plans_cache: dict[str, list] = {}
+        self._teams_cache: dict[str, list] = {}
         self.conn: Optional[Any] = None
         # optional storage backend (may be used by caching client)
         self.storage = storage
@@ -195,20 +200,6 @@ class AzureClient(ABC):
         except Exception:
             return []
 
-    def get_all_teams(self, project: str) -> List[dict]:
-        """Return lightweight team dicts for the given project.
-
-        Delegates to TeamPlanOperations.
-        """
-        return self._team_plan_ops.get_all_teams(project)
-
-    def get_all_plans(self, project: str) -> List[dict]:
-        """Return lightweight plan dicts for the given project.
-
-        Delegates to TeamPlanOperations.
-        """
-        return self._team_plan_ops.get_all_plans(project)
-
     def get_markers_for_plan(self, project: str, plan_id: str) -> List[dict]:
         """Return markers for a single plan identified by `plan_id` in `project`.
 
@@ -346,16 +337,128 @@ class AzureClient(ABC):
         """
         return self._team_plan_ops.get_iterations(project, root_path=root_path, depth=depth)
 
-    # Abstract methods: subclass must implement these
-    @abstractmethod
     def get_work_items(
         self,
         area_path: str,
         task_types: Optional[List[str]] = None,
         include_states: Optional[List[str]] = None,
     ) -> List[dict]:
-        raise NotImplementedError()
+        """Fetch work items for an area path, delegating to WorkItemOperations."""
+        return self._work_item_ops.get_work_items(
+            area_path,
+            task_types=task_types,
+            include_states=include_states,
+        )
 
-    @abstractmethod
     def invalidate_work_items(self, work_item_ids: List[int]) -> None:
-        raise NotImplementedError()
+        """No-op: cache invalidation is handled by CachingBackend."""
+        return None
+
+    def get_all_teams(self, project: str) -> List[dict]:
+        """Fetch teams with optional in-memory caching."""
+        if self.cache_plans and self._teams_cache.get(project):
+            return self._teams_cache[project]
+        teams = self._team_plan_ops.get_all_teams(project)
+        if self.cache_plans:
+            self._teams_cache[project] = teams
+        return teams
+
+    def get_all_plans(self, project: str) -> List[dict]:
+        """Fetch plans with optional in-memory caching, including team membership via timeline API."""
+        if self.cache_plans and self._plans_cache.get(project):
+            return self._plans_cache[project]
+
+        if not self._connected:
+            raise RuntimeError(
+                "AzureClient is not connected. "
+                "Use 'with client.connect(pat):' to obtain a connected client."
+            )
+        assert self.conn is not None
+        work_client = self.conn.clients.get_work_client()
+
+        plans = work_client.get_plans(project=project)
+        items = getattr(plans, 'value', plans) or []
+        out: list = []
+
+        for p in items:
+            try:
+                plan_id = str(p.id)
+                plan_name = p.name
+            except Exception:
+                try:
+                    plan_id = str(getattr(p, 'id', ''))
+                    plan_name = str(p)
+                except Exception:
+                    continue
+
+            teams_for_plan: list = []
+            try:
+                if hasattr(work_client, 'get_delivery_timeline_data'):
+                    timeline = work_client.get_delivery_timeline_data(project, plan_id)
+                else:
+                    timeline = None
+            except Exception:
+                timeline = None
+
+            try:
+                seen_ids: set = set()
+                candidate_teams: list = []
+                if timeline is None:
+                    candidate_teams = []
+                elif hasattr(timeline, 'teams'):
+                    candidate_teams = getattr(timeline, 'teams') or []
+                elif isinstance(timeline, dict) and 'teams' in timeline:
+                    candidate_teams = timeline.get('teams', []) or []
+                else:
+                    rows = getattr(timeline, 'rows', None) or (
+                        timeline.get('rows') if isinstance(timeline, dict) else []
+                    ) or []
+                    candidate_teams = rows
+
+                for r in candidate_teams or []:
+                    team_id = None
+                    team_name = None
+                    if isinstance(r, dict):
+                        team_id = r.get('teamId') or r.get('id') or (r.get('team') or {}).get('id')
+                        team_name = r.get('teamName') or r.get('name') or (r.get('team') or {}).get('name')
+                    else:
+                        team_id = (
+                            getattr(r, 'teamId', None) or getattr(r, 'id', None) or
+                            (getattr(getattr(r, 'team', None), 'id', None)
+                             if getattr(r, 'team', None) is not None else None)
+                        )
+                        team_name = (
+                            getattr(r, 'teamName', None) or getattr(r, 'name', None) or
+                            (getattr(getattr(r, 'team', None), 'name', None)
+                             if getattr(r, 'team', None) is not None else None)
+                        )
+                    if team_id is None and not team_name:
+                        continue
+                    tid = str(team_id) if team_id is not None else str(team_name)
+                    if tid in seen_ids:
+                        continue
+                    seen_ids.add(tid)
+                    teams_for_plan.append({'id': tid, 'name': team_name or ''})
+            except Exception:
+                teams_for_plan = []
+
+            out.append({'id': plan_id, 'name': plan_name, 'teams': teams_for_plan})
+
+        if self.cache_plans:
+            self._plans_cache[project] = out
+        return out
+
+    def get_task_revision_history(
+        self,
+        work_item_id: int,
+        start_field: str = "Microsoft.VSTS.Scheduling.StartDate",
+        end_field: str = "Microsoft.VSTS.Scheduling.TargetDate",
+        iteration_field: str = "System.IterationPath",
+    ) -> List[dict]:
+        """Fetch revision history for a work item (no caching; always fresh)."""
+        return self._work_item_ops.get_task_revision_history(
+            work_item_id=work_item_id,
+            start_field=start_field,
+            end_field=end_field,
+            iteration_field=iteration_field,
+        )

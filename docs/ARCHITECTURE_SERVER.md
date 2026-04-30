@@ -78,7 +78,7 @@ Purpose: a concise overview of the backend server architecture and module respon
 - Example: `with azure_service.connect(pat) as client: client.get_work_items(...)`.
 
 **Feature Flags for Gradual Migration**
-- Configuration includes feature flags (e.g., `enable_azure_cache`, `cache_azure_plans`) that gate optional capabilities.
+- Configuration includes feature flags (e.g., `enable_cache`, `cache_azure_plans`) that gate optional capabilities.
 - Services check flags at runtime (not import time) so deployments can test new features gradually.
 - Goal: remove flags progressively as features stabilize.
 

@@ -98,9 +98,6 @@ def _build_services(
     )
     from planner_lib.people import PeopleService
     from planner_lib.azure import AzureService
-    from planner_lib.projects.task_service import TaskService
-    from planner_lib.projects.task_update_service import TaskUpdateService
-    from planner_lib.projects.history_service import HistoryService
     from planner_lib.cost.service import CostService
     from planner_lib.admin.service import AdminService
 
@@ -113,20 +110,23 @@ def _build_services(
     container.register_singleton("views_storage", storage_diskcache)
 
     # --- Optional memory cache ---
+    # enable_memory_cache is only meaningful as an addition to enable_cache.
+    # Without CachingBackend there is nothing to consult the memory tier.
     memory_cache = None
-    if feature_flags.get('enable_memory_cache', False):
+    if feature_flags.get('enable_cache', False) and feature_flags.get('enable_memory_cache', False):
         from planner_lib.storage.memory_cache_manager import MemoryCacheManager
         memory_cache_config = server_cfg.get('memory_cache', {})
         max_size_mb = memory_cache_config.get('max_size_mb', 50)
-        staleness_seconds = memory_cache_config.get('staleness_seconds', 1800)
         memory_cache = MemoryCacheManager(
-            disk_cache=storage_diskcache,
             size_limit_mb=max_size_mb,
-            staleness_seconds=staleness_seconds,
         )
-        logger.info("Memory cache initialized: %sMB limit, %ss staleness", max_size_mb, staleness_seconds)
+    elif feature_flags.get('enable_memory_cache', False):
+        logger.warning(
+            "Memory cache: enable_memory_cache is set but enable_cache is not "
+            "— memory cache requires CachingBackend and will be ignored"
+        )
     else:
-        logger.info("Memory cache disabled")
+        logger.info("Memory cache: disabled (enable_memory_cache not set)")
     container.register_singleton("memory_cache", memory_cache)
 
     # --- Accounts / session ---
@@ -161,30 +161,52 @@ def _build_services(
             server_cfg.get('azure_devops_organization'),
             storage_diskcache,
             feature_flags=feature_flags,
-            memory_cache=memory_cache,
         ))
 
-    # --- Tasks ---
-    container.register_factory("task_service",
-        lambda: TaskService(
-            storage_config=storage_yaml,
+    # --- New layered backend (BackendPort) ---
+    def _make_backend():
+        from planner_lib.backend.registry import build_active_backend
+        inner = build_active_backend(
+            feature_flags,
+            org_url=server_cfg.get('azure_devops_organization', ''),
+            storage=storage_diskcache,
+            team_service=container.get("team_service"),
+            capacity_service=container.get("capacity_service"),
+        )
+
+        if feature_flags.get('enable_cache', False):
+            from planner_lib.backend.caching import CachingBackend, CacheTTLConfig
+            ttl_config = CacheTTLConfig.from_config(
+                server_cfg.get('cache', {}).get('ttls', {})
+            )
+            return CachingBackend(inner=inner, storage=storage_diskcache, memory_cache=memory_cache, ttl_config=ttl_config)
+
+        return inner
+
+    container.register_factory("backend", _make_backend)
+
+    container.register_factory("credential_provider",
+        lambda: __import__(
+            'planner_lib.backend.credential', fromlist=['AccountManagerCredentialProvider']
+        ).AccountManagerCredentialProvider(container.get("account_manager")))
+
+    container.register_factory("task_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['TaskRepository']
+        ).TaskRepository(
+            backend=container.get("backend"),
             project_service=container.get("project_service"),
-            team_service=container.get("team_service"),
-            capacity_service=container.get("capacity_service"),
-            azure_client=container.get("azure_client"),
-            metadata_service=container.get("azure_project_metadata_service"),
+            credential_provider=container.get("credential_provider"),
+            storage=storage_yaml,
         ))
-    container.register_factory("task_update_service",
-        lambda: TaskUpdateService(
-            storage_config=storage_yaml,
-            team_service=container.get("team_service"),
-            capacity_service=container.get("capacity_service"),
-            azure_client=container.get("azure_client"),
-        ))
-    container.register_factory("history_service",
-        lambda: HistoryService(
-            storage_config=storage_yaml,
-            azure_client=container.get("azure_client"),
+
+    container.register_factory("history_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['HistoryRepository']
+        ).HistoryRepository(
+            backend=container.get("backend"),
+            credential_provider=container.get("credential_provider"),
+            storage=storage_yaml,
         ))
 
     # --- Cost ---
@@ -221,6 +243,7 @@ def _build_services(
         cc = CacheCoordinator()
         cc.register(container.get("azure_client"), "azure_client")
         cc.register(container.get("cost_service"), "cost_service")
+        cc.register(container.get("backend"), "backend")
         return cc
     container.register_factory("cache_coordinator", _make_cache_coordinator)
 
@@ -248,11 +271,21 @@ def _build_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if feature_flags.get('enable_memory_cache', False):
+        if memory_cache is not None:
             try:
-                from planner_lib.azure.warmup import CacheWarmupService
-                warmup_service = CacheWarmupService(memory_cache, storage_diskcache)
-                await warmup_service.warmup_async()
+                from planner_lib.storage.warmup import CacheWarmupService
+                backend = container.get("backend")
+                # Get CacheManager from backend (only CachingBackend has this method)
+                cache_manager = backend.get_cache_manager() if hasattr(backend, 'get_cache_manager') else None
+                if cache_manager:
+                    warmup_service = CacheWarmupService(
+                        memory_cache,
+                        cache_manager,
+                        ttl_for_key=backend.ttl_for_key if hasattr(backend, 'ttl_for_key') else None,
+                    )
+                    await warmup_service.warmup_async()
+                else:
+                    logger.warning("Backend does not support cache warmup (no CacheManager)")
             except Exception:
                 logger.exception('Failed to initialize cache warmup service')
         try:
@@ -320,10 +353,10 @@ def _build_app(
     from planner_lib.azure.api import browse_router as azure_browse_router
     app.include_router(azure_browse_router, prefix='/api/azure')
 
-    if feature_flags.get('enable_memory_cache', False):
+    if feature_flags.get('enable_cache', False):
         from planner_lib.azure.api import router as azure_cache_router
         app.include_router(azure_cache_router, prefix='/api/cache')
-        logger.info("Azure cache API endpoints registered at /api/cache/")
+        logger.info("Cache API endpoints registered at /api/cache/")
 
     return app
 
@@ -345,5 +378,33 @@ def create_app(config: Config) -> FastAPI:
     feature_flags = server_cfg.get('feature_flags', {})
 
     container = _build_services(config, storage_diskcache, storage_yaml, server_cfg, feature_flags, logger)
+
+    active_flags = [k for k, v in feature_flags.items() if v is True]
+    logger.info(
+        "Startup: data_dir='%s', storage=%s/%s, static_dir='%s'",
+        config.data_dir, config.config_storage_backend, config.storage_backend, config.static_dir,
+    )
+    logger.info(
+        "Startup: active feature_flags = %s",
+        active_flags if active_flags else '(none)',
+    )
+
+    # Log the cache composition up-front — the backend is a lazy factory so
+    # its own __init__ log only appears on the first request.  main.py owns the
+    # flag-based decision, so it is the right place for this summary.
+    from planner_lib.backend.registry import get_active_class
+    _active_backend_cls = get_active_class(feature_flags)
+    _cache_on = feature_flags.get('enable_cache', False)
+    if _cache_on:
+        _mem = 'memory+disk' if feature_flags.get('enable_memory_cache', False) else 'disk-only'
+        logger.info(
+            "Startup: cache=ON (%s), inner backend=%s",
+            _mem, _active_backend_cls.__name__,
+        )
+    else:
+        logger.info(
+            "Startup: cache=OFF, backend=%s (requests go directly to backend)",
+            _active_backend_cls.__name__,
+        )
 
     return _build_app(config, container, feature_flags, logger)

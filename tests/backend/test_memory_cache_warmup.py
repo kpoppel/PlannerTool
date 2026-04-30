@@ -25,16 +25,17 @@ def _make_app_with_memory_cache(tmp_path: Path):
     cfg_dir = tmp_path / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Enable memory cache via feature flag
+    # Enable memory cache via feature flags — both enable_cache and enable_memory_cache
+    # are required; enable_memory_cache alone is ignored (no CachingBackend to consult).
     (cfg_dir / "server_config.yml").write_text(
         yaml.safe_dump({
             "azure_devops_organization": "",
             "feature_flags": {
+                "enable_cache": True,
                 "enable_memory_cache": True,
             },
             "memory_cache": {
                 "max_size_mb": 10,
-                "staleness_seconds": 60,
             },
         }),
         encoding="utf-8",
@@ -54,11 +55,11 @@ def test_warmup_called_exactly_once_on_startup(tmp_path):
     async def fake_warmup_async(self):
         nonlocal warmup_call_count
         warmup_call_count += 1
-        from planner_lib.azure.warmup import WarmupStats
+        from planner_lib.storage.warmup import WarmupStats
         return WarmupStats(entries_loaded=0, bytes_loaded=0, duration_seconds=0.0, errors=[])
 
     with patch(
-        'planner_lib.azure.warmup.CacheWarmupService.warmup_async',
+        'planner_lib.storage.warmup.CacheWarmupService.warmup_async',
         new=fake_warmup_async,
     ):
         app = _make_app_with_memory_cache(tmp_path)

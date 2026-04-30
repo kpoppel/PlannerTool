@@ -3,7 +3,6 @@
 This module provides:
 - Module-level cache key helper functions (shared by client and API layers).
 - CacheManager: TTL-based cache with storage backend integration.
-- HistoryCacheManager: Typed wrapper for work item revision history cache.
 """
 from __future__ import annotations
 from typing import Optional, Any, List
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 NAMESPACE = 'azure_workitems'
 CACHE_TTL = timedelta(minutes=30)
-HISTORY_CACHE_TTL = timedelta(hours=24)  # History cache TTL - 24 hours
 
 
 def key_for_area(area_path: str) -> str:
@@ -61,11 +59,6 @@ def key_for_iterations(project: str, root_path: Optional[str] = None) -> str:
         safe_root = ''.join(c for c in safe_root if c.isalnum() or c in ('_', '-'))
         return f"iterations_{safe_proj}_{safe_root}"
     return f"iterations_{safe_proj}_all"
-
-
-def key_for_revision_history(work_item_id: int) -> str:
-    """Generate a cache key for work item revision history."""
-    return f"history_{work_item_id}"
 
 
 class CacheManager:
@@ -216,8 +209,12 @@ class CacheManager:
                 now = datetime.now(timezone.utc)
                 age = now - last_update
                 is_stale_result = age > ttl
-                
-                logger.debug(f"is_stale({key}): last_update={last_update}, now={now}, age={age}, ttl={ttl}, stale={is_stale_result}")
+                expiry = last_update + ttl
+                expiry_iso = expiry.isoformat()
+
+                logger.debug(
+                    f"is_stale({key}): last_update={last_update}, now={now}, age={age}, ttl={ttl}, expiry={expiry_iso}, stale={is_stale_result}"
+                )
                 return is_stale_result
             except Exception as e:
                 logger.debug(f"is_stale({key}): Exception {e} - returning True")
@@ -512,86 +509,4 @@ class CacheManager:
                 logger.info(f"Cleaned up {len(orphaned)} orphaned index entries: {orphaned}")
             
             return len(orphaned)
-
-
-class HistoryCacheManager:
-    """Typed cache manager for work item revision history.
-
-    Wraps a ``CacheManager`` with read/write methods that understand the
-    ``{data, metadata: {revision, timestamp}}`` envelope format and handle
-    TTL checking and staleness logging.
-
-    All cache keys are derived from module-level :func:`key_for_revision_history`.
-    """
-
-    def __init__(self, cache: CacheManager, ttl: timedelta = HISTORY_CACHE_TTL) -> None:
-        self._cache = cache
-        self._default_ttl = ttl
-
-    def write(
-        self,
-        work_item_id: int,
-        history: List[dict],
-        revision: int,
-        timestamp: Optional[datetime] = None,
-    ) -> None:
-        """Persist revision history for *work_item_id* with envelope metadata."""
-        key = key_for_revision_history(work_item_id)
-        ts = timestamp or datetime.now(timezone.utc)
-        entry = {
-            "data": history,
-            "metadata": {
-                "revision": revision,
-                "work_item_id": work_item_id,
-                "timestamp": ts.isoformat(),
-            },
-        }
-        self._cache.write(key, entry)
-        self._cache.update_timestamp(key)
-
-    def read(
-        self,
-        work_item_id: int,
-        ttl: Optional[timedelta] = None,
-    ) -> tuple[Optional[List[dict]], Optional[int], bool]:
-        """Read cached history for *work_item_id*.
-
-        Returns:
-            ``(history, revision, is_fresh)`` where *is_fresh* is ``True``
-            when the entry exists and is within TTL.  Returns
-            ``(None, None, False)`` on cache miss or corrupted entry.
-        """
-        effective_ttl = ttl if ttl is not None else self._default_ttl
-        key = key_for_revision_history(work_item_id)
-        cached = self._cache.read(key)
-
-        if cached is None:
-            return None, None, False
-
-        if not (isinstance(cached, dict) and "data" in cached and "metadata" in cached):
-            logger.warning("Invalid history cache format for work item %s, will refetch", work_item_id)
-            return None, None, False
-
-        history: List[dict] = cached["data"]
-        metadata: dict = cached["metadata"]
-        revision: Optional[int] = metadata.get("revision")
-        timestamp_str: Optional[str] = metadata.get("timestamp")
-
-        is_fresh = False
-        if timestamp_str:
-            try:
-                ts = datetime.fromisoformat(timestamp_str)
-                age = datetime.now(timezone.utc) - ts
-                is_fresh = age < effective_ttl
-                logger.debug(
-                    "History cache %s for %s (age=%s, ttl=%s)",
-                    "fresh" if is_fresh else "stale",
-                    work_item_id,
-                    age,
-                    effective_ttl,
-                )
-            except (ValueError, TypeError) as exc:
-                logger.warning("Invalid timestamp in history cache for %s: %s", work_item_id, exc)
-
-        return history, revision, is_fresh
 

@@ -15,24 +15,27 @@ from .interfaces import AzureServiceProtocol
 class AzureService(AzureServiceProtocol):
     """Azure service configured at app composition time.
 
-    The concrete client (caching or native) is created once in ``__init__``
-    based on feature flags rather than being re-created on every request.
-    Use ``with service.connect(pat) as client:`` to obtain a connected
-    client for the duration of a request; the SDK auth context is the only
-    thing that changes per-call.
+    One ``AzureClient`` instance is created in ``__init__`` and reused across
+    requests. Use ``with service.connect(pat) as client:`` to obtain a
+    connected client for the duration of a request.
+
+    Client selection (first match wins):
+    - ``use_azure_mock_generator``  → AzureMockGeneratorClient (synthetic data)
+    - ``use_azure_mock``            → AzureMockClient (fixture replay)
+    - (default)                     → AzureClient (live Azure DevOps)
+
+    Caching of domain objects is the responsibility of CachingBackend; the
+    azure layer no longer maintains a separate disk cache.
     """
 
-    def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict = None, memory_cache=None):
+    def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict = None):
         self.organization_url = organization_url
         self.storage = storage
         self.feature_flags = feature_flags or {}
-        self.memory_cache = memory_cache
-        # Build the concrete client once so CacheManager is not reconstructed
-        # on every call to connect().
         self._client = self._build_client()
 
     def _build_client(self):
-        """Construct the concrete client once based on current feature flags."""
+        """Construct the concrete client based on current feature flags."""
         # Generator mock: builds a coherent synthetic dataset from config files.
         if self.feature_flags.get("use_azure_mock_generator", False):
             from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
@@ -47,7 +50,6 @@ class AzureService(AzureServiceProtocol):
                 storage=self.storage,
                 data_dir=data_dir,
                 config_dict=cfg or None,
-                memory_cache=self.memory_cache,
                 persist_dir=persist_dir,
             )
 
@@ -60,19 +62,13 @@ class AzureService(AzureServiceProtocol):
                 self.organization_url,
                 storage=self.storage,
                 fixture_dir=fixture_dir,
-                memory_cache=self.memory_cache,
                 persist_enabled=persist_enabled,
             )
-        if self.feature_flags.get("enable_azure_cache", False):
-            from planner_lib.azure.AzureCachingClient import AzureCachingClient
-            return AzureCachingClient(
-                self.organization_url,
-                storage=self.storage,
-                memory_cache=self.memory_cache,
-            )
-        from planner_lib.azure.AzureNativeClient import AzureNativeClient
+
+        # Live client — all caching is handled by CachingBackend at the domain layer.
+        from planner_lib.azure.AzureClient import AzureClient
         cache_plans = bool(self.feature_flags.get('cache_azure_plans', True))
-        return AzureNativeClient(self.organization_url, storage=self.storage, cache_plans=cache_plans)
+        return AzureClient(self.organization_url, storage=self.storage, cache_plans=cache_plans)
 
     def connect(self, pat: str):
         """Return the concrete client's context-manager bound to `pat`.
@@ -85,8 +81,8 @@ class AzureService(AzureServiceProtocol):
     def requires_pat(self) -> bool:
         """Return True when a non-empty PAT is required to make API calls.
 
-        False for both mock clients (fixture replay and synthetic generator)
-        because they never contact the live Azure DevOps endpoint.
+        False for mock clients (fixture replay and synthetic generator) because
+        they never contact the live Azure DevOps endpoint.
         """
         from planner_lib.azure.AzureMockClient import AzureMockClient
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
@@ -97,28 +93,20 @@ class AzureService(AzureServiceProtocol):
         self._client = self._build_client()
 
     def invalidate_all_caches(self) -> dict:
-        """Invalidate all cached Azure data.
+        """No-op: the azure service layer no longer owns a disk cache.
 
-        Only effective when enable_azure_cache feature flag is enabled.
+        Domain-level caching is handled by CachingBackend; call
+        CacheCoordinator.invalidate_all() to invalidate the backend cache.
         """
-        if not self.feature_flags.get("enable_azure_cache", False):
-            logger.warning("Cache invalidation requested but enable_azure_cache is not enabled")
-            return {'ok': False, 'error': 'Caching not enabled', 'cleared': 0}
-        return self._client.invalidate_all_caches()
+        return {'ok': True, 'cleared': 0}
 
     def invalidate_cache(self) -> None:
-        """Satisfy the Invalidatable protocol — delegates to invalidate_all_caches()."""
+        """Satisfy the Invalidatable protocol."""
         self.invalidate_all_caches()
 
     def cleanup_orphaned_cache_keys(self) -> dict:
-        """Clean up orphaned cache index entries.
-
-        Only effective when enable_azure_cache feature flag is enabled.
-        """
-        if not self.feature_flags.get("enable_azure_cache", False):
-            logger.warning("Cache cleanup requested but enable_azure_cache is not enabled")
-            return {'ok': False, 'error': 'Caching not enabled', 'orphaned_cleaned': 0}
-        return self._client.cleanup_orphaned_cache_keys()
+        """No-op: the azure service layer no longer owns a disk cache index."""
+        return {'ok': True, 'orphaned_cleaned': 0}
 
 
 # `get_client()` removed: use `AzureService.connect(pat)` instead.

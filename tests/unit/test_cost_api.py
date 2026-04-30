@@ -39,14 +39,14 @@ def test_api_cost_post_with_features():
     assert any(p['id'] == 'project-1' for p in res['projects'])
 
 
-def test_api_cost_post_without_features_uses_task_service():
-    # task service returns tasks which are converted
+def test_api_cost_post_without_features_uses_task_repository():
+    # task repository returns tasks which are converted to features
     tasks = [
-        {'id': '10', 'project': 'project-A', 'start': None, 'end': None, 'capacity': [1,2], 'title':'T','type':'Feature','state':'Active'}
+        {'id': '10', 'project': 'project-A', 'start': None, 'end': None, 'capacity': [1,2], 'title':'T','type':'Feature','state':'Active','relations':[]}
     ]
-    task_svc = SimpleNamespace(list_tasks=lambda pat=None: tasks)
+    task_repo = SimpleNamespace(read=lambda credential=None: tasks)
     cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-A': {'10': {'internal_cost': 5}}}, 'project_types': {}})
-    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'task_service': task_svc, 'cost_service': cost_svc}.get(name))
+    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr(), 'task_repository': task_repo, 'cost_service': cost_svc}.get(name))
     req = make_request_with_container(container)
     res = asyncio.run(api_cost_post.__wrapped__(req, payload={}))
     assert isinstance(res, dict)

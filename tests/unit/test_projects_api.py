@@ -18,28 +18,57 @@ def _make_project_service(projects):
     return ProjectSvc()
 
 
-def _make_task_service():
-    class TaskSvc:
+def _make_task_repository():
+    """Lightweight TaskRepository stub for API tests."""
+    class TaskRepo:
         def __init__(self):
-            self.last_args = None
+            self.last_read_args = None
+            self.last_write_args = None
 
-        def list_tasks(self, pat=None, project_id=None):
-            self.last_args = dict(pat=pat, project_id=project_id)
+        def read(self, project_id=None, credential=None):
+            self.last_read_args = dict(project_id=project_id)
             if project_id:
                 return [{'id': 't-p-' + str(project_id)}]
             return [{'id': 't-all-1'}, {'id': 't-all-2'}]
 
-        def update_tasks(self, payload, pat=None):
-            self.last_args = dict(payload=payload, pat=pat)
-            if not payload:
-                return {'ok': True, 'updated': 0}
-            # If any item has error flag, return errors
-            for it in payload:
+        def write(self, updates, user_id=None):
+            self.last_write_args = dict(updates=updates, user_id=user_id)
+            if not updates:
+                return {'ok': True, 'updated': 0, 'errors': []}
+            for it in updates:
                 if it.get('error'):
-                    return {'ok': False, 'errors': ['bad item']}
-            return {'ok': True, 'updated': len(payload)}
+                    return {'ok': False, 'updated': 0, 'errors': ['bad item']}
+            return {'ok': True, 'updated': len(updates), 'errors': []}
 
-    return TaskSvc()
+        def list_markers(self, project_id=None, user_id=None):
+            return []
+
+        def list_iterations(self, project_id=None, user_id=None):
+            return []
+
+    return TaskRepo()
+
+
+def _make_session_mgr(pat='token', email='test@example.com'):
+    """Session manager stub that returns the given pat and email."""
+    class FakeSessionMgr:
+        def exists(self, sid):
+            return True
+
+        def get(self, sid):
+            return {'email': email, 'pat': pat}
+
+        def create(self, email_: str):
+            return 'test-session'
+
+        def get_val(self, sid, key):
+            if key == 'pat':
+                return pat
+            if key == 'email':
+                return email
+            return None
+
+    return FakeSessionMgr()
 
 
 def test_teams_happy_path(client):
@@ -72,23 +101,9 @@ def test_projects_happy_path(client):
 
 
 def test_tasks_list_and_project_param(client):
-    task_svc = _make_task_service()
-    register_service_on_client(client, 'task_service', task_svc)
-    # Provide a lightweight fake session manager for the test
-    class FakeSessionMgr:
-        def exists(self, sid):
-            return True
-
-        def get(self, sid):
-            return {'email': 'test@example.com', 'pat': 'token'}
-
-        def create(self, email: str):
-            return 'test-session'
-
-        def get_val(self, sid, key):
-            return 'token'
-
-    register_service_on_client(client, 'session_manager', FakeSessionMgr())
+    task_repo = _make_task_repository()
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
 
     r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 200
@@ -97,30 +112,14 @@ def test_tasks_list_and_project_param(client):
     r2 = client.get('/api/tasks?project=42', headers={'X-Session-Id': 'test-session'})
     assert r2.status_code == 200
     assert r2.json() == [{'id': 't-p-42'}]
-    # ensure the task service saw the project_id
-    assert task_svc.last_args['project_id'] == '42'
+    # ensure the repository saw the project_id
+    assert task_repo.last_read_args['project_id'] == '42'
 
 
 def test_tasks_update_success_and_errors(client):
-    task_svc = _make_task_service()
-    register_service_on_client(client, 'task_service', task_svc)
-    # POST /api/tasks routes to task_update_service; register the same mock so
-    # tests do not need a separate update-only stub.
-    register_service_on_client(client, 'task_update_service', task_svc)
-    class FakeSessionMgr:
-        def exists(self, sid):
-            return True
-
-        def get(self, sid):
-            return {'email': 'test@example.com', 'pat': 'token'}
-
-        def create(self, email: str):
-            return 'test-session'
-
-        def get_val(self, sid, key):
-            return 'token'
-
-    register_service_on_client(client, 'session_manager', FakeSessionMgr())
+    task_repo = _make_task_repository()
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
 
     # success
     payload = [{'id': 1}, {'id': 2}]
@@ -140,9 +139,10 @@ def test_tasks_update_success_and_errors(client):
 def test_tasks_missing_service_returns_500(client):
     container = getattr(client.app.state, 'container', None)
     if container is not None:
-        container._singletons.pop('task_service', None)
-        container._factories.pop('task_service', None)
+        container._singletons.pop('task_repository', None)
+        container._factories.pop('task_repository', None)
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
     r = c.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 500
+

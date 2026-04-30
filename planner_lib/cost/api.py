@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request, SESSION_COOKIE
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
+from planner_lib.backend.port import BackendCredential
 import logging
 
 router = APIRouter()
@@ -37,8 +38,9 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         scenario_id = (payload or {}).get('scenarioId') or (payload or {}).get('scenario_id') or (payload or {}).get('scenario')
 
         if features is None:
-            task_svc = resolve_service(request, 'task_service')
-            tasks = task_svc.list_tasks(pat=pat)
+            task_repo = resolve_service(request, 'task_repository')
+            cred = BackendCredential(token=pat, user_id=user_id) if pat else None
+            tasks = task_repo.read(credential=cred)
             features = []
             for t in (tasks or []):
                 capacity = t.get('capacity')
@@ -131,8 +133,11 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
 
         features = (payload or {}).get('features')
         if features is None:
-            task_svc = resolve_service(request, 'task_service')
-            tasks = task_svc.list_tasks(pat=ctx.get('pat'))
+            task_repo = resolve_service(request, 'task_repository')
+            _pat = ctx.get('pat')
+            _email = ctx.get('email') or ''
+            cred = BackendCredential(token=_pat, user_id=_email) if _pat else None
+            tasks = task_repo.read(credential=cred)
             features = []
             for t in (tasks or []):
                 features.append({
@@ -184,8 +189,9 @@ async def api_cost_get(request: Request):
     try:
         from planner_lib.cost import build_cost_schema
 
-        task_svc = resolve_service(request, 'task_service')
-        tasks = task_svc.list_tasks(pat=pat)
+        task_repo = resolve_service(request, 'task_repository')
+        cred = BackendCredential(token=pat, user_id=email) if pat else None
+        tasks = task_repo.read(credential=cred)
         features = []
         for t in tasks or []:
             features.append({

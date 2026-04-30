@@ -13,9 +13,29 @@ feature_flags:
   # Optional: Custom path for the mock fixture directory (default: data/azure_mock).
   # Only used when use_azure_mock is true.
   azure_mock_data_dir: data/azure_mock
+  # Optional: Persist mutations back to fixture files (default: false, only when use_azure_mock is true).
+  azure_mock_persist_enabled: false
+  # Optional: Use synthetic data generator instead of live Azure DevOps (default: false).
+  # Takes priority over use_azure_mock.
+  use_azure_mock_generator: false
+  # Optional: Persist generated data to disk (default: false, only when use_azure_mock_generator is true).
+  generator_persist_enabled: false
+  # Optional: Directory for persisted generator fixture files (default: data/azure_mock_generated).
+  # generator_persist_dir: data/azure_mock_generated
+  # Optional: Fine-grained generator overrides (only when use_azure_mock_generator is true).
+  # generator_config:
+  #   seed: 42
+  #   n_plans: 6
+  #   default_items_per_area: 20
+  # Optional: Use static file backend instead of live Azure DevOps (default: false).
+  # Load pre-translated DomainTask data from a YAML/JSON file.  Read-only; no Azure connection needed.
+  use_static_backend: false
+  # Optional: Path to the static data file (default: data/static_tasks.yml).
+  # Only used when use_static_backend is true.
+  static_data_path: data/static_tasks.yml
   # Optional: Enable Azure Cache (default: false)
-  enable_azure_cache: true
-  # Optional: Enable in-memory cache layer (default: false, requires enable_azure_cache: true)
+  enable_cache: true
+  # Optional: Enable in-memory cache layer (default: false, requires enable_cache: true)
   # When enabled, provides <1ms cache response times for hot data
   enable_memory_cache: true
   # Optional: Enable Brotli middleware for compression (default: false)
@@ -25,8 +45,16 @@ feature_flags:
 memory_cache:
   # Maximum memory cache size in MB (default: 50)
   max_size_mb: 50
-  # Cache staleness threshold in seconds (default: 1800 = 30 minutes)
-  # Data older than this is considered stale and will be refreshed on next access
-  staleness_seconds: 1800
+
+# Optional: Cache configuration (only used when enable_cache: true)
+cache:
+  # Per-domain TTL values in minutes.  Omit any key to use the built-in default.
+  ttls:
+    fetch_tasks: 30        # Work-item lists (default: 30 min). Changes frequently.
+    fetch_history: 1440    # Revision history (default: 24 h). Expensive to fetch, rarely changes.
+    fetch_teams: 240       # Team definitions (default: 4 h).  Rarely changes.
+    fetch_plans: 240       # Delivery-plan metadata (default: 4 h).  Rarely changes.
+    fetch_markers: 120     # Timeline markers (default: 2 h).  Occasionally changes.
+    fetch_iterations: 480  # Sprint/iteration definitions (default: 8 h).  Rarely changes mid-sprint.
 # Optional: Relative or absolute path to the database directory or full path and filename
 database_path: </path/to/database/directory/or/file.yaml>

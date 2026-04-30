@@ -1,13 +1,15 @@
-"""Tests for the ADO save → cache invalidation → baseline sync bug fix.
+"""Tests for the ADO save → cache sync behaviour.
 
-Three bugs:
-1. POST /tasks did not invalidate server-side cache after writing to ADO.
-2. MemoryCacheManager had no clear() method, so invalidate_all_caches() raised
-   AttributeError when memory cache was enabled, leaving stale data in memory.
-3. Client _onSaveToAzure did not trigger a baseline refresh after publishing.
+After a scenario push (POST /api/tasks), the server must NOT invalidate the
+entire cache.  Instead, CachingBackend.write_task patches only the affected
+DomainTask entries in-place (write-through patch).  A full cache invalidation
+is only warranted when the user explicitly requests a baseline refresh via
+the admin UI (POST /api/cache/invalidate).
 
-These tests cover bugs 1 and 2 (server-side, Python).  Bug 3 is covered by
-the JavaScript test suite (tests/services/ScenarioMenu.test.js).
+Concerns covered here:
+1. POST /api/tasks does NOT call coordinator.invalidate_all() after a write.
+   The CachingBackend handles the targeted patch internally.
+2. MemoryCacheManager has a clear() method (bug fix retained).
 """
 import pytest
 from unittest.mock import MagicMock, patch
@@ -21,27 +23,8 @@ from planner_lib.storage.memory_cache_manager import MemoryCacheManager
 # Bug 2: MemoryCacheManager.clear(namespace)
 # ---------------------------------------------------------------------------
 
-class _FakeDiskCache:
-    """Minimal disk-cache stub for MemoryCacheManager constructor."""
-
-    def __init__(self):
-        self._store = {}
-
-    def save(self, ns, key, val):
-        self._store.setdefault(ns, {})[key] = val
-
-    def load(self, ns, key):
-        return self._store.get(ns, {}).get(key)
-
-    def exists(self, ns, key):
-        return ns in self._store and key in self._store[ns]
-
-    def delete(self, ns, key):
-        self._store.get(ns, {}).pop(key, None)
-
-
 def _make_memory_cache():
-    return MemoryCacheManager(disk_cache=_FakeDiskCache(), size_limit_mb=10, staleness_seconds=300)
+    return MemoryCacheManager(size_limit_mb=10)
 
 
 def test_memory_cache_clear_removes_all_namespace_entries():
@@ -76,46 +59,30 @@ def test_memory_cache_clear_empty_namespace_returns_zero():
     assert count == 0
 
 
-def test_invalidate_all_caches_succeeds_with_memory_cache():
-    """AzureCachingClient.invalidate_all_caches() must not raise when memory
-    cache is present – verifies that clear() is callable."""
-    from planner_lib.azure.AzureCachingClient import AzureCachingClient
-
-    storage = MemoryStorage()
-    mc = _make_memory_cache()
-
-    client = AzureCachingClient('https://dev.azure.com/org', storage, memory_cache=mc)
-
-    # Pre-populate some entries so there is something to clear
-    mc.write('azure_workitems', 'some_area', [{'id': '1'}])
-    client._cache.write('some_area', [{'id': '1'}])
-    client._cache.update_timestamp('some_area')
-
-    # Should not raise AttributeError
-    result = client.invalidate_all_caches()
-
-    assert result.get('ok') is True
-    # memory_cleared should be non-negative (at least 1 item was present)
-    assert result.get('memory_cleared', -1) >= 0
-
-
 # ---------------------------------------------------------------------------
 # Bug 1: POST /tasks must invalidate server-side cache
 # ---------------------------------------------------------------------------
 
-def _make_task_update_svc(updated=2, errors=None):
-    svc = MagicMock()
-    svc.update_tasks.return_value = {
+def _make_task_repository(updated=2, errors=None):
+    """Lightweight TaskRepository stub that mimics write() return shape."""
+    from unittest.mock import MagicMock
+    repo = MagicMock()
+    repo.write.return_value = {
         'ok': not errors,
         'updated': updated,
         'errors': errors or [],
     }
-    return svc
+    return repo
 
 
 def _make_session_mgr():
     mgr = MagicMock()
-    mgr.get_val.return_value = 'fake-pat'
+    # get_val returns 'fake-pat' for 'pat' and 'test@example.com' for 'email'
+    def _get_val(sid, key):
+        if key == 'email':
+            return 'test@example.com'
+        return 'fake-pat'
+    mgr.get_val.side_effect = _get_val
     return mgr
 
 
@@ -129,16 +96,19 @@ def _make_cache_coordinator(ok=True):
     return coordinator
 
 
-def test_tasks_update_invalidates_cache_on_success(client):
-    """POST /api/tasks must call coordinator.invalidate_all() after a
-    successful task update so the server cache stays in sync with ADO."""
+def test_tasks_update_does_not_invalidate_cache_on_success(client):
+    """POST /api/tasks must NOT call coordinator.invalidate_all() after a write.
+
+    The CachingBackend.write_task implementation patches the affected task
+    entries in-place, so a full cache flush is unnecessary and wasteful.
+    """
     from tests.helpers import register_service_on_client
 
-    task_svc = _make_task_update_svc(updated=1)
+    task_repo = _make_task_repository(updated=1)
     coordinator = _make_cache_coordinator()
     session_mgr = _make_session_mgr()
 
-    register_service_on_client(client, 'task_update_service', task_svc)
+    register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)
     register_service_on_client(client, 'session_manager', session_mgr)
 
@@ -147,19 +117,20 @@ def test_tasks_update_invalidates_cache_on_success(client):
 
     assert r.status_code == 200
     assert r.json().get('ok') is True
-    coordinator.invalidate_all.assert_called_once()
+    coordinator.invalidate_all.assert_not_called()
 
 
-def test_tasks_update_invalidates_cache_even_with_partial_errors(client):
-    """Cache must be invalidated even when some items returned errors, because
-    the successful items were already written to ADO."""
+def test_tasks_update_does_not_invalidate_cache_with_partial_errors(client):
+    """Cache must NOT be fully invalidated even when some items have errors.
+    The write-through patch in CachingBackend handles already-successful items.
+    """
     from tests.helpers import register_service_on_client
 
-    task_svc = _make_task_update_svc(updated=1, errors=['99: bad state'])
+    task_repo = _make_task_repository(updated=1, errors=['99: bad state'])
     coordinator = _make_cache_coordinator()
     session_mgr = _make_session_mgr()
 
-    register_service_on_client(client, 'task_update_service', task_svc)
+    register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)
     register_service_on_client(client, 'session_manager', session_mgr)
 
@@ -167,8 +138,7 @@ def test_tasks_update_invalidates_cache_even_with_partial_errors(client):
     r = client.post('/api/tasks', json=payload, headers={'X-Session-Id': 'test-session'})
 
     assert r.status_code == 200
-    # Cache should still have been invalidated because item 42 was updated
-    coordinator.invalidate_all.assert_called_once()
+    coordinator.invalidate_all.assert_not_called()
 
 
 def test_tasks_update_skips_cache_invalidation_when_nothing_updated(client):
@@ -176,11 +146,11 @@ def test_tasks_update_skips_cache_invalidation_when_nothing_updated(client):
     invalidation should NOT be called — no point in a no-op round-trip."""
     from tests.helpers import register_service_on_client
 
-    task_svc = _make_task_update_svc(updated=0)
+    task_repo = _make_task_repository(updated=0)
     coordinator = _make_cache_coordinator()
     session_mgr = _make_session_mgr()
 
-    register_service_on_client(client, 'task_update_service', task_svc)
+    register_service_on_client(client, 'task_repository', task_repo)
     register_service_on_client(client, 'cache_coordinator', coordinator)
     register_service_on_client(client, 'session_manager', session_mgr)
 

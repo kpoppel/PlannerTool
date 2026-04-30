@@ -50,11 +50,13 @@ _SCHEMAS: dict[str, Any] = {
                 'type': 'object',
                 'title': 'Feature Flags',
                 'description': 'Toggle experimental or optional features',
+                # Non-backend feature flags only.  Backend-specific flags are
+                # injected at runtime by get_schema('system') via the BackendRegistry.
                 'properties': {
-                    'enable_azure_cache': {
+                    'enable_cache': {
                         'type': 'boolean',
-                        'title': 'Enable Azure Cache',
-                        'description': 'Cache Azure DevOps API responses',
+                        'title': 'Enable Cache',
+                        'description': 'Cache backend responses (works with all backend types, not only Azure DevOps)',
                         'default': True,
                     },
                     'enable_memory_cache': {
@@ -69,115 +71,11 @@ _SCHEMAS: dict[str, Any] = {
                         'description': 'Compress HTTP responses with Brotli',
                         'default': True,
                     },
-                    'use_azure_mock': {
-                        'type': 'boolean',
-                        'title': 'Use Azure Fixture Mock',
-                        'description': 'Replay pre-recorded Azure DevOps SDK responses from disk instead of calling the live API',
-                        'default': False,
-                    },
-                    'azure_mock_data_dir': {
-                        'type': 'string',
-                        'title': 'Fixture Mock Data Directory',
-                        'description': 'Path to the directory containing recorded fixture files (used when use_azure_mock is true)',
-                        'default': 'data/azure_mock',
-                        'x-showWhen': 'use_azure_mock',
-                    },
-                    'azure_mock_persist_enabled': {
-                        'type': 'boolean',
-                        'title': 'Persist Fixture Mutations',
-                        'description': (
-                            'Write every save-to-cloud mutation (dates, state, description, relations) '
-                            'back to the fixture files in azure_mock_data_dir. '
-                            'Allows testing write operations against anonymised fixture data.'
-                        ),
-                        'default': False,
-                        'x-showWhen': 'use_azure_mock',
-                    },
                     'stand_alone_mode': {
                         'type': 'boolean',
                         'title': 'Stand-alone Mode',
                         'description': 'Reserved for future use — enables fully offline operation without any Azure DevOps connectivity',
                         'default': False,
-                    },
-                    'use_azure_mock_generator': {
-                        'type': 'boolean',
-                        'title': 'Use Azure Synthetic Data Generator',
-                        'description': 'Generate a coherent synthetic dataset from config files instead of calling the live API (takes priority over use_azure_mock)',
-                        'default': False,
-                    },
-                    'generator_persist_enabled': {
-                        'type': 'boolean',
-                        'title': 'Persist Generated Data',
-                        'description': (
-                            'Write the generated dataset to disk and persist every save-to-cloud mutation. '
-                            'Requires a fixed seed (generator_config.seed) for reproducible results. '
-                            'Uses generator_persist_dir as the target; defaults to data/azure_mock_generated when not set.'
-                        ),
-                        'default': False,
-                        'x-showWhen': 'use_azure_mock_generator',
-                    },
-                    'generator_persist_dir': {
-                        'type': 'string',
-                        'title': 'Generator Persist Directory',
-                        'description': 'Directory for persisted fixture files (defaults to data/azure_mock_generated when generator_persist_enabled is true)',
-                        'x-showWhen': 'generator_persist_enabled',
-                    },
-                    'generator_config': {
-                        'type': 'object',
-                        'title': 'Synthetic Generator Configuration',
-                        'description': 'Fine-grained control over the synthetic data generator (used when use_azure_mock_generator is true)',
-                        'x-showWhen': 'use_azure_mock_generator',
-                        'properties': {
-                            'seed': {
-                                'type': 'integer',
-                                'title': 'Random Seed',
-                                'description': 'Fix the seed for reproducible datasets; omit for a random dataset each run',
-                            },
-                            'n_plans': {
-                                'type': 'integer',
-                                'title': 'Number of Plans',
-                                'default': 6,
-                                'minimum': 1,
-                            },
-                            'default_items_per_area': {
-                                'type': 'integer',
-                                'title': 'Default Items per Area Path',
-                                'default': 20,
-                                'minimum': 1,
-                            },
-                            'n_pis': {
-                                'type': 'integer',
-                                'title': 'Number of Program Increments',
-                                'default': 6,
-                                'minimum': 1,
-                            },
-                            'sprints_per_pi': {
-                                'type': 'integer',
-                                'title': 'Sprints per PI',
-                                'default': 4,
-                                'minimum': 1,
-                            },
-                            'revisions_min': {
-                                'type': 'integer',
-                                'title': 'Minimum Revisions per Item',
-                                'default': 2,
-                                'minimum': 1,
-                            },
-                            'revisions_max': {
-                                'type': 'integer',
-                                'title': 'Maximum Revisions per Item',
-                                'default': 12,
-                                'minimum': 1,
-                            },
-                            'people_per_team': {
-                                'type': 'integer',
-                                'title': 'People per Team (fallback)',
-                                'description': 'Used when no people.yml is available',
-                                'default': 7,
-                                'minimum': 1,
-                            },
-                        },
-                        'additionalProperties': True,
                     },
                 },
                 'additionalProperties': True,
@@ -196,13 +94,69 @@ _SCHEMAS: dict[str, Any] = {
                         'minimum': 10,
                         'maximum': 500,
                     },
-                    'staleness_seconds': {
-                        'type': 'integer',
-                        'title': 'Staleness Threshold (seconds)',
-                        'description': 'Time before cached data is marked stale and eligible for refresh',
-                        'default': 1800,
-                        'minimum': 60,
-                        'maximum': 86400,
+                },
+            },
+            'cache': {
+                'type': 'object',
+                'title': 'Cache Configuration',
+                'description': 'Settings for the disk-backed cache layer (when enable_cache is true)',
+                'x-showWhen': 'feature_flags.enable_cache',
+                'properties': {
+                    'ttls': {
+                        'type': 'object',
+                        'title': 'Cache TTLs (minutes)',
+                        'description': 'Per-domain cache time-to-live in minutes. '
+                                       'Omit a key to keep the built-in default.',
+                        'properties': {
+                            'fetch_tasks': {
+                                'type': 'integer',
+                                'title': 'Tasks TTL (minutes)',
+                                'description': 'Work-item lists. Changes frequently — keep short.',
+                                'default': 30,
+                                'minimum': 1,
+                                'maximum': 1440,
+                            },
+                            'fetch_history': {
+                                'type': 'integer',
+                                'title': 'History TTL (minutes)',
+                                'description': 'Work-item revision history. Expensive to fetch, rarely changes — keep long.',
+                                'default': 1440,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
+                            'fetch_teams': {
+                                'type': 'integer',
+                                'title': 'Teams TTL (minutes)',
+                                'description': 'Project team definitions. Rarely changes.',
+                                'default': 240,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
+                            'fetch_plans': {
+                                'type': 'integer',
+                                'title': 'Plans TTL (minutes)',
+                                'description': 'Delivery-plan metadata. Rarely changes.',
+                                'default': 240,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
+                            'fetch_markers': {
+                                'type': 'integer',
+                                'title': 'Markers TTL (minutes)',
+                                'description': 'Delivery-plan timeline markers. Occasionally changes.',
+                                'default': 120,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
+                            'fetch_iterations': {
+                                'type': 'integer',
+                                'title': 'Iterations TTL (minutes)',
+                                'description': 'Iteration / sprint definitions. Rarely changes mid-sprint.',
+                                'default': 480,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
+                        },
                     },
                 },
             },
@@ -441,11 +395,26 @@ _SCHEMAS: dict[str, Any] = {
 
 
 def get_schema(config_type: str) -> Optional[dict]:
-    """Return a *copy* of the JSON Schema dict for *config_type*, or ``None``."""
+    """Return a *copy* of the JSON Schema dict for *config_type*, or ``None``.
+
+    For the ``'system'`` type the schema's ``feature_flags.properties`` is
+    extended at call-time with backend-specific flags sourced from the
+    BackendRegistry.  This ensures the admin UI always reflects every registered
+    backend without requiring manual edits to this file.
+    """
+    import copy
+    if config_type == 'system':
+        schema = copy.deepcopy(_SCHEMAS['system'])
+        try:
+            from planner_lib.backend.registry import get_merged_schema
+            backend_flags = get_merged_schema()
+            schema['properties']['feature_flags']['properties'].update(backend_flags)
+        except Exception:
+            logger.warning("Failed to enrich system schema with backend registry flags", exc_info=True)
+        return schema
     schema = _SCHEMAS.get(config_type)
     if schema is None:
         return None
-    import copy
     return copy.deepcopy(schema)
 
 

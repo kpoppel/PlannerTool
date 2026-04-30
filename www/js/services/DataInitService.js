@@ -124,14 +124,10 @@ export class DataInitService {
    * @returns {Object} - Object containing refreshed baseline data
    */
   async refreshBaseline() {
-    // Invalidate server cache to force fresh data fetch
-    console.log('Invalidating server cache before refresh...');
-    try {
-      await this._dataService.invalidateCache();
-      console.log('Server cache invalidated successfully');
-    } catch (e) {
-      console.warn('Failed to invalidate server cache, proceeding with refresh:', e);
-    }
+    // Fetch fresh data from backend — the server cache is already up to date
+    // after a scenario push (write-through patch in CachingBackend).  A full
+    // cache invalidation is only needed when the user explicitly requests a
+    // baseline refresh via the admin UI (use invalidateAndRefreshBaseline() for that).
 
     // Fetch fresh data from backend
     const projects = await this._dataService.getProjects();
@@ -203,6 +199,23 @@ export class DataInitService {
     };
   }
 
+  /**
+   * Invalidate the server cache then refresh the baseline.
+   * Use this for explicit user-triggered refreshes (admin UI, manual sync button).
+   * For post-write refreshes after a scenario push, use refreshBaseline() instead —
+   * the server cache is already patched by the write-through mechanism.
+   * @returns {Object} - Object containing refreshed baseline data
+   */
+  async invalidateAndRefreshBaseline() {
+    console.log('Invalidating server cache before baseline refresh...');
+    try {
+      await this._dataService.invalidateCache();
+      console.log('Server cache invalidated successfully');
+    } catch (e) {
+      console.warn('Failed to invalidate server cache, proceeding with refresh:', e);
+    }
+    return this.refreshBaseline();
+  }
   /**
    * Build lookup maps for features
    * @private

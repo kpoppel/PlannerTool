@@ -45,6 +45,13 @@ OBSOLETE_MIGRATIONS = {
     '0013.projects-schema-v3-add-display-states': '3.2.0',  # Display states added
     '0014.projects-states-capitalize': '3.2.0',  # States capitalized
     '0015_migrate_pickle_to_diskcache': '3.2.0',  # Feature flags added
+    '0016.add-memory-cache-config': '3.5.0',      # Memory cache config added
+    '0017.encrypt-pats': '3.5.0',                 # PAT encryption added
+    '0018.permissions-field': '3.5.0',            # Permissions field added
+    # 0020.rename-enable-azure-cache-to-enable-cache is intentionally absent:
+    # it must run on all existing v3.5.x installations.  Add it here (with
+    # min_version '3.6.0') only after 3.6.0 has shipped so that fresh installs
+    # of 3.6.0+ skip it automatically.
 }
 
 

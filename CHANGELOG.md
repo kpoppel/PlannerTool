@@ -14,6 +14,32 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ### Fixed
 
 ---
+## [v3.5.3] - unreleased
+
+### Added
+- `BackendRegistry` (`planner_lib/backend/registry.py`): single source of truth for all `BackendPort` implementations. Each backend now declares `FEATURE_FLAG`, `config_schema()`, and `build_from_flags()` — adding or removing a backend only requires changes in the backend module and the registry's priority list.
+- `StaticBackend` feature flags (`use_static_backend`, `static_data_path`) are now surfaced in the admin UI system schema (previously missing).
+- `CachingBackend.get_cache_manager()` accessor method for TTL-aware cache warmup coordination.
+- `CacheTTLConfig` dataclass in `planner_lib/backend/caching.py`: per-domain TTL configuration with sensible defaults (tasks 30 min, history 24 h, teams/plans 4 h, markers 2 h, iterations 8 h). Configurable per-instance via `cache.ttls` in `server_config`.
+- Cache expiry timestamp logging: `CacheManager.is_stale()` now logs `expiry=<iso>` in DEBUG messages.
+
+### Changed
+- `_make_backend()` in `main.py` now delegates to `registry.build_active_backend()`, eliminating the manual `if/elif` chain.
+- `admin/schema.py` `get_schema('system')` now merges backend-specific feature-flag properties from `BackendRegistry.get_merged_schema()` at call-time, so backend schemas stay in sync with their implementations automatically.
+- Refactored Azure client/caching architecture to a clean layered design: `BackendPort` protocol, `CachingBackend` composition wrapper, `AzureDevOpsBackend` (replaces AzureClient/AzureCachingClient inheritance stack), `StaticBackend` for standalone mode, `MockFixtureBackend`/`MockGeneratorBackend` for demo/test modes, `AccountManagerCredentialProvider` for PAT handling, `TaskRepository`/`HistoryRepository` replacing `TaskService`/`HistoryService` as application-layer facades, all wired via the existing ServiceContainer DI pattern.
+
+### Fixed
+- **Cache architecture**: Fixed critical disconnection between memory cache and disk cache TTL logic. Previously, `MemoryCacheManager` had direct disk access and independent staleness checking, causing it to serve stale data even after disk cache TTL expired. Changes:
+  - `MemoryCacheManager` is now pure in-memory (no disk reference, no staleness logic)
+  - `CachingBackend._cached_call()` always checks `CacheManager.is_stale()` even when memory has data
+  - `CacheWarmupService` uses `CacheManager` (not direct disk access) and skips stale entries during warmup
+  - Single source of truth: `CacheManager` owns all TTL decisions for both cache tiers
+  - `CacheTTLConfig` provides per-domain TTLs; history data no longer expires every 30 minutes
+  - Removed `HistoryCacheManager` (was unused dead code — history TTL is now covered by `CacheTTLConfig.fetch_history`)
+  - Removed `staleness_seconds` from `memory_cache` config and `MemoryCacheManager` (TTL is owned by `CacheManager`)
+  - See `CACHE_ARCHITECTURE_ANALYSIS.md` for detailed analysis and architecture diagrams
+
+---
 ## [v3.5.2] - 2026-04-29
 
 ### Fixed

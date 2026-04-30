@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from planner_lib.storage import create_storage
-from planner_lib.azure.AzureCachingClient import AzureCachingClient
+from planner_lib.azure.AzureClient import AzureClient
 
 
 class FakeRelation:
@@ -140,7 +140,7 @@ def run_baseline_test(num_items=100, num_changed=10):
     storage = create_storage(backend='memory', serializer='pickle', accessor='dict')
     wit_client = InstrumentedWitClient(items_map, wiql_ids)
     
-    client = AzureCachingClient("https://dev.azure.com/org", storage=storage)
+    client = AzureClient("https://dev.azure.com/org", storage=storage)
     
     # Monkey-patch the connection
     client._connected = True
