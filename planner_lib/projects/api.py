@@ -22,15 +22,15 @@ def _get_credential(request: Request, sid: str):
 @router.get('/teams')
 @require_session
 async def api_teams(request: Request):
-    team_svc = resolve_service(request, 'team_service')
-    return team_svc.list_teams()
+    team_repo = resolve_service(request, 'team_repository')
+    return team_repo.list_teams()
 
 
 @router.get('/projects')
 @require_session
 async def api_projects(request: Request):
-    project_svc = resolve_service(request, 'project_service')
-    return project_svc.list_projects()
+    project_repo = resolve_service(request, 'project_repository')
+    return project_repo.list_projects()
 
 
 @router.get('/tasks')
@@ -49,10 +49,10 @@ async def api_tasks(request: Request):
 async def api_markers(request: Request):
     sid = get_session_id_from_request(request)
     logger.debug("Fetching markers for session %s", sid)
-    task_repo = resolve_service(request, 'task_repository')
+    plan_repo = resolve_service(request, 'plan_repository')
     _credential, email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    return task_repo.list_markers(project_id=project_id or None, user_id=email or None)
+    return plan_repo.list_markers(project_id=project_id or None, user_id=email or None)
 
 
 @router.post('/tasks')
@@ -99,9 +99,9 @@ async def api_config_iterations(request: Request):
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
     project_filter = request.query_params.get('project')
-    task_repo = resolve_service(request, 'task_repository')
+    iteration_repo = resolve_service(request, 'iteration_repository')
     try:
-        iterations = task_repo.list_iterations(project_id=project_filter or None, user_id=email or None)
+        iterations = iteration_repo.list_iterations(project_id=project_filter or None, user_id=email or None)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
     except Exception as e:
@@ -188,8 +188,11 @@ async def api_history_tasks(request: Request):
         history_repo = resolve_service(request, 'history_repository')
         task_repo = resolve_service(request, 'task_repository')
 
+        # Resolve tasks first — HistoryRepository always takes a plain list
+        task_list = task_repo.read(project_id=project_id, credential=credential)
+
         result = history_repo.read(
-            tasks=task_repo,
+            tasks=task_list,
             project_id=project_id,
             user_id=email,
             team_id=team_id,

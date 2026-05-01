@@ -85,7 +85,7 @@ def build_active_backend(feature_flags: Dict[str, Any], **services: Any) -> Any:
         The ``feature_flags`` dict from server_config.
     **services:
         Injected runtime services forwarded to ``build_from_flags()``:
-        ``org_url``, ``storage``, ``team_service``, ``capacity_service``.
+        ``org_url``, ``storage``, ``team_repository``, ``capacity_service``.
 
     Returns the constructed backend instance (not wrapped in CachingBackend —
     that is the caller's responsibility).
@@ -97,13 +97,13 @@ def build_active_backend(feature_flags: Dict[str, Any], **services: Any) -> Any:
 def get_merged_schema() -> Dict[str, Any]:
     """Return merged ``config_schema()`` properties from all registered backends.
 
-    The result is a flat dict of feature_flags property entries (one per
-    backend-specific flag).  It is injected into the admin UI's system-config
-    ``feature_flags.properties`` by ``planner_lib.admin.schema``.
+    The result is a flat dict of ADO feature_flags property entries (one per
+    backend-specific flag).  Used by ``get_ado_schema()`` to build the
+    ``ado_config.feature_flags`` sub-schema.
 
-    Non-backend feature flags (``enable_cache``, ``enable_memory_cache``,
-    ``enable_brotli_middleware``) are **not** included — they live in the static
-    portion of the system schema.
+    Generic feature flags (``enable_cache``, ``enable_memory_cache``,
+    ``enable_brotli_middleware``) are **not** included — they live in the
+    static portion of the system schema (``server_config``).
     """
     merged: Dict[str, Any] = {}
     for cls in _priority_backends():
@@ -111,3 +111,38 @@ def get_merged_schema() -> Dict[str, Any]:
         if callable(schema_fragment):
             merged.update(schema_fragment())
     return merged
+
+
+def get_ado_schema() -> Dict[str, Any]:
+    """Return the JSON Schema for the ``ado_config`` diskcache object.
+
+    ``organization_url`` is a fixed top-level property.  ADO backend
+    feature-flag sub-properties are collected from every registered
+    backend's ``config_schema()`` and nested under ``feature_flags``.
+
+    When a new backend (e.g. Jira) is registered via ``_priority_backends()``,
+    its ``config_schema()`` properties automatically appear here.
+    """
+    feature_flag_props = get_merged_schema()
+    return {
+        'type': 'object',
+        'title': 'Azure DevOps Configuration',
+        'description': (
+            'Settings specific to Azure DevOps connectivity and backend selection. '
+            'Stored in diskcache and updated via the admin interface.'
+        ),
+        'properties': {
+            'organization_url': {
+                'type': 'string',
+                'title': 'Azure DevOps Organization',
+                'description': 'Organization name (slug) in Azure DevOps (e.g. "MyCompany")',
+            },
+            'feature_flags': {
+                'type': 'object',
+                'title': 'Backend Feature Flags',
+                'description': 'Backend selection and ADO-specific options.',
+                'properties': feature_flag_props,
+                'additionalProperties': True,
+            },
+        },
+    }

@@ -298,7 +298,7 @@ def test_admin_service_delegates_get_config():
     svc = AdminService(
         account_storage=_Store(),
         config_storage=store,
-        project_service=MagicMock(),
+        project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),
     )
@@ -313,7 +313,7 @@ def test_admin_service_delegates_save_config():
     svc = AdminService(
         account_storage=_Store(),
         config_storage=store,
-        project_service=MagicMock(),
+        project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),
     )
@@ -330,7 +330,7 @@ def test_admin_service_config_manager_is_instance():
     svc = AdminService(
         account_storage=_Store(),
         config_storage=_Store(),
-        project_service=MagicMock(),
+        project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),
     )

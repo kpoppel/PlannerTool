@@ -224,6 +224,14 @@ class StaticBackend(BackendPort):
         data = self._load()
         return dict(data.get('_iterations', {}).get(project, {}))
 
+    def fetch_people(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ):
+        """Return people records from ``_people`` key in the static data file."""
+        data = self._load()
+        return list(data.get('_people', []))
+
     # ------------------------------------------------------------------
     # BackendPort: invalidate_cache
     # ------------------------------------------------------------------

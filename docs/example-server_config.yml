@@ -56,5 +56,6 @@ cache:
     fetch_plans: 240       # Delivery-plan metadata (default: 4 h).  Rarely changes.
     fetch_markers: 120     # Timeline markers (default: 2 h).  Occasionally changes.
     fetch_iterations: 480  # Sprint/iteration definitions (default: 8 h).  Rarely changes mid-sprint.
+    fetch_people: 60       # People / team-member data from people.yml (default: 1 h).
 # Optional: Relative or absolute path to the database directory or full path and filename
 database_path: </path/to/database/directory/or/file.yaml>

@@ -33,16 +33,25 @@ class DiskCacheStorage(StorageBackend):
         safe_key = key.replace("/", "_").replace("\\", "_")
         return f"{namespace}::{safe_key}"
 
-    def save(self, namespace: str, key: str, value: Any) -> None:
+    def save(self, namespace: str, key: str, value: Any, ttl_seconds=None) -> None:
         comp = self._composite_key(namespace, key)
-        # diskcache will persist the Python object (including bytes)
-        self._cache.set(comp, value)
+        # expire= is the diskcache TTL in seconds; None means no expiry.
+        self._cache.set(comp, value, expire=ttl_seconds)
 
     def load(self, namespace: str, key: str) -> Any:
         comp = self._composite_key(namespace, key)
         if comp not in self._cache:
             raise KeyError(key)
         return self._cache.get(comp)
+
+    def get_expire_time(self, namespace: str, key: str) -> Optional[float]:
+        """Return the absolute expiry timestamp for the entry, or None if no expiry.
+
+        Only available on DiskCacheStorage; falls back to None on other backends.
+        """
+        comp = self._composite_key(namespace, key)
+        _, expire_time = self._cache.get(comp, expire_time=True)
+        return expire_time
 
     def delete(self, namespace: str, key: str) -> None:
         comp = self._composite_key(namespace, key)

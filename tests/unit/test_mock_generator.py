@@ -768,7 +768,8 @@ class TestGeneratorPersistEnabled:
 
     def test_persist_enabled_in_schema(self):
         from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
+        # generator_persist_enabled is an ADO backend flag — lives in ado schema
+        schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
         assert 'generator_persist_enabled' in ff
         flag = ff['generator_persist_enabled']
@@ -779,7 +780,8 @@ class TestGeneratorPersistEnabled:
     def test_persist_dir_shown_when_enabled(self):
         """generator_persist_dir should only show when generator_persist_enabled is on."""
         from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
+        # generator_persist_dir is an ADO backend flag — lives in ado schema
+        schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
         assert ff['generator_persist_dir'].get('x-showWhen') == 'generator_persist_enabled'
 

@@ -53,18 +53,21 @@ def test_api_cost_post_without_features_uses_task_repository():
     assert any(p['id'] == 'project-A' for p in res['projects'])
 
 
-def test_api_cost_post_scenario_overrides(monkeypatch):
+def test_api_cost_post_scenario_overrides():
     # test that scenario overrides are applied
     features = [{'id': '7', 'project': 'project-X', 'start': '2020-01-01', 'end': '2020-01-10', 'capacity': []}]
     task_svc = SimpleNamespace(list_tasks=lambda pat=None: [])
     cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {'project-X': {'7': {'internal_cost': 1}}}, 'project_types': {}})
-    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr({'email': ''}), 'task_service': task_svc, 'cost_service': cost_svc}.get(name))
+    scenario_repo = SimpleNamespace(
+        get_scenario=lambda user_id, scenario_id: {'overrides': {'7': {'start': '2020-02-01', 'capacity': [3]}}}
+    )
+    container = SimpleNamespace(get=lambda name: {
+        'session_manager': SimpleSessionMgr({'email': ''}),
+        'task_service': task_svc,
+        'cost_service': cost_svc,
+        'scenario_repository': scenario_repo,
+    }.get(name))
     req = make_request_with_container(container)
-
-    # monkeypatch load_user_scenario to return overrides for id '7'
-    def fake_load_user_scenario(storage, user_id, scenario_id):
-        return {'overrides': {'7': {'start': '2020-02-01', 'capacity': [3]}}}
-    monkeypatch.setattr('planner_lib.scenarios.scenario_store.load_user_scenario', fake_load_user_scenario)
 
     res = asyncio.run(api_cost_post.__wrapped__(req, payload={'features': features, 'scenarioId': 's1'}))
     # ensure meta contains applied_overrides
@@ -73,12 +76,15 @@ def test_api_cost_post_scenario_overrides(monkeypatch):
 
 def test_api_cost_post_scenario_not_found(monkeypatch):
     cost_svc = SimpleNamespace(estimate_costs=lambda ctx: {'projects': {}, 'project_types': {}})
-    container = SimpleNamespace(get=lambda name: {'session_manager': SimpleSessionMgr({'email': ''}), 'cost_service': cost_svc}.get(name))
-    req = make_request_with_container(container)
-
-    def raise_key_error(storage, user_id, scenario_id):
+    def _raise(user_id, scenario_id):
         raise KeyError('not found')
-    monkeypatch.setattr('planner_lib.scenarios.scenario_store.load_user_scenario', raise_key_error)
+    scenario_repo = SimpleNamespace(get_scenario=_raise)
+    container = SimpleNamespace(get=lambda name: {
+        'session_manager': SimpleSessionMgr({'email': ''}),
+        'cost_service': cost_svc,
+        'scenario_repository': scenario_repo,
+    }.get(name))
+    req = make_request_with_container(container)
 
     with pytest.raises(HTTPException) as ei:
         asyncio.run(api_cost_post.__wrapped__(req, payload={'features': [], 'scenarioId': 'missing'}))
@@ -101,18 +107,16 @@ def test_api_cost_get_no_session_returns_schema():
 
 
 def test_api_cost_teams_aggregates():
-    # build storage that returns config and database
-    storage = SimpleNamespace()
-    def load(ns, key):
-        if ns == 'config' and key == 'cost_config':
-            return {'working_hours': {'HQ': {'internal': 10}}, 'internal_cost': {'default_hourly_rate': 20}, 'external_cost': {'external': {'Eve': 50}, 'default_hourly_rate': 30}}
-        if ns == 'config' and key == 'database':
-            return {'database': {'people': [{'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False}, {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True}]}}
-        raise KeyError
-    storage.load = load
-    # Provide people_service so api_cost_teams can fetch people
-    people_service = SimpleNamespace(get_people=lambda: [{'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False}, {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True}])
-    container = SimpleNamespace(get=lambda name: {'server_config_storage': storage, 'people_service': people_service}.get(name))
+    cost_cfg = {'working_hours': {'HQ': {'internal': 10}}, 'internal_cost': {'default_hourly_rate': 20}, 'external_cost': {'external': {'Eve': 50}, 'default_hourly_rate': 30}}
+    cost_svc = SimpleNamespace(get_cost_config=lambda: cost_cfg)
+    people_repo = SimpleNamespace(list_people=lambda: [
+        {'name': 'Alice', 'team_name': 'Dev', 'site': 'HQ', 'external': False},
+        {'name': 'Eve', 'team': 'Dev', 'site': 'HQ', 'external': True},
+    ])
+    container = SimpleNamespace(get=lambda name: {
+        'cost_service': cost_svc,
+        'people_repository': people_repo,
+    }.get(name))
     req = make_request_with_container(container)
     res = asyncio.run(api_cost_teams.__wrapped__(req))
     assert 'teams' in res

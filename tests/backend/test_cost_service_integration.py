@@ -16,7 +16,7 @@ def test_estimate_costs_empty():
             self.data = {}
         def load(self, namespace, key):
             return self.data.get((namespace, key))
-        def save(self, namespace, key, value):
+        def save(self, namespace, key, value, ttl_seconds=None):
             self.data[(namespace, key)] = value
         def delete(self, namespace, key):
             self.data.pop((namespace, key), None)
@@ -46,14 +46,14 @@ def test_estimate_costs_empty():
             return []
 
     class _DummyPeopleService:
-        def get_people(self):
+        def list_people(self):
             return cfg.get('database', {}).get('people', [])
 
     svc = cost_service_module.CostService(
         storage=_DummyStorage(), 
-        project_service=_DummyProjectService(), 
-        team_service=_DummyTeamService(),
-        people_service=_DummyPeopleService(),
+        project_repository=_DummyProjectService(), 
+        team_repository=_DummyTeamService(),
+        people_repository=_DummyPeopleService(),
         cache_storage=cache_storage
     )
     res = svc.estimate_costs(session={})
@@ -100,7 +100,7 @@ def test_estimate_costs_simple_feature(monkeypatch):
             self.data = {}
         def load(self, namespace, key):
             return self.data.get((namespace, key))
-        def save(self, namespace, key, value):
+        def save(self, namespace, key, value, ttl_seconds=None):
             self.data[(namespace, key)] = value
         def delete(self, namespace, key):
             self.data.pop((namespace, key), None)
@@ -132,14 +132,14 @@ def test_estimate_costs_simple_feature(monkeypatch):
             }]
 
     class _DummyPeopleService:
-        def get_people(self):
+        def list_people(self):
             return cfg.get('database', {}).get('people', [])
 
     svc = cost_service_module.CostService(
         storage=_DummyStorage(), 
-        project_service=_DummyProjectService(), 
-        team_service=_DummyTeamService(),
-        people_service=_DummyPeopleService(),
+        project_repository=_DummyProjectService(), 
+        team_repository=_DummyTeamService(),
+        people_repository=_DummyPeopleService(),
         cache_storage=cache_storage
     )
     res = svc.estimate_costs(session)
@@ -177,7 +177,7 @@ def test_engine_calculate_direct():
             self.data = {}
         def load(self, namespace, key):
             return self.data.get((namespace, key))
-        def save(self, namespace, key, value):
+        def save(self, namespace, key, value, ttl_seconds=None):
             self.data[(namespace, key)] = value
         def delete(self, namespace, key):
             self.data.pop((namespace, key), None)

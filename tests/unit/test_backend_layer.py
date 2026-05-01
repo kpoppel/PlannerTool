@@ -228,7 +228,7 @@ def test_task_repository_read_calls_backend():
     cred_provider = FakeCredentialProvider()
     storage = _make_storage()
 
-    repo = TaskRepository(backend, project_service, cred_provider, storage)
+    repo = TaskRepository(backend, project_service, cred_provider)
     result = repo.read()
 
     assert len(result) == 1
@@ -255,7 +255,7 @@ def test_task_repository_read_filters_by_project():
         {'id': 'project-a', 'name': 'PA', 'area_path': 'PA\\T'},
         {'id': 'project-b', 'name': 'PB', 'area_path': 'PB\\T'},
     ])
-    repo = TaskRepository(backend, project_service, FakeCredentialProvider(), _make_storage())
+    repo = TaskRepository(backend, project_service, FakeCredentialProvider())
     result = repo.read(project_id='project-a')
     assert len(result) == 1
     assert result[0]['id'] == '1'
@@ -273,7 +273,7 @@ def test_task_repository_write_delegates_to_backend():
     backend = FakeBackend({'P\\T': [task]})
     project_service = _make_project_service([{'id': 'p', 'name': 'P', 'area_path': 'P\\T'}])
     cred_provider = FakeCredentialProvider('user@test.com', 'tok')
-    repo = TaskRepository(backend, project_service, cred_provider, _make_storage())
+    repo = TaskRepository(backend, project_service, cred_provider)
 
     result = repo.write([{'id': 5, 'start': '2026-06-01'}], user_id='user@test.com')
 
@@ -288,7 +288,7 @@ def test_task_repository_write_returns_error_for_missing_credential():
     project_service = _make_project_service([])
     # Provider returns None for the user
     cred_provider = FakeCredentialProvider('other@test.com', 'tok')
-    repo = TaskRepository(backend, project_service, cred_provider, _make_storage())
+    repo = TaskRepository(backend, project_service, cred_provider)
 
     result = repo.write([{'id': 1}], user_id='unknown@test.com')
     assert result['updated'] == 0
@@ -301,7 +301,7 @@ def test_task_repository_refresh_calls_invalidate():
     backend = FakeBackend()
     project_service = _make_project_service([])
     cred_provider = FakeCredentialProvider()
-    repo = TaskRepository(backend, project_service, cred_provider, _make_storage())
+    repo = TaskRepository(backend, project_service, cred_provider)
 
     repo.refresh()
     assert backend.invalidate_cache_calls == 1
@@ -321,7 +321,6 @@ def test_history_repository_read_returns_paginated_results():
     backend = FakeBackend()
     backend.set_history(42, [entry])
     cred_provider = FakeCredentialProvider()
-    storage = _make_storage()
 
     tasks = [{'id': '42', 'title': 'Feature 42', 'plan_id': 'plan_1',
                'project': 'p', 'type': 'Feature', 'state': 'Active',
@@ -330,7 +329,7 @@ def test_history_repository_read_returns_paginated_results():
                'tags': [], 'areaPath': 'P\\T', 'url': None,
                '_inferred_start': False, '_inferred_end': False}]
 
-    repo = HistoryRepository(backend, cred_provider, storage)
+    repo = HistoryRepository(backend, cred_provider)
     result = repo.read(tasks=tasks, user_id='test@example.com')
 
     assert result['total'] == 1
@@ -346,7 +345,7 @@ def test_history_repository_read_no_user_returns_empty():
 
     backend = FakeBackend()
     cred_provider = FakeCredentialProvider()
-    repo = HistoryRepository(backend, cred_provider, _make_storage())
+    repo = HistoryRepository(backend, cred_provider)
     result = repo.read(tasks=[], user_id=None)
     assert result['total'] == 0
     assert result['tasks'] == []
@@ -357,7 +356,7 @@ def test_history_repository_deduplication():
 
     backend = FakeBackend()
     cred_provider = FakeCredentialProvider()
-    repo = HistoryRepository(backend, cred_provider, _make_storage())
+    repo = HistoryRepository(backend, cred_provider)
 
     history = [
         {'field': 'start', 'value': '2026-01-01', 'changed_at': '2026-01-01T09:00:00Z'},
@@ -373,7 +372,7 @@ def test_history_repository_pairing_hints():
 
     backend = FakeBackend()
     cred_provider = FakeCredentialProvider()
-    repo = HistoryRepository(backend, cred_provider, _make_storage())
+    repo = HistoryRepository(backend, cred_provider)
 
     history = [
         {'field': 'start', 'value': '2026-01-01',

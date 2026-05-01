@@ -1,30 +1,26 @@
 """HistoryRepository: application-layer facade for task revision history.
 
-Replaces HistoryService.  All I/O goes through the injected BackendPort.
+Provides the single authoritative source for work-item revision history,
+replacing the former HistoryService.
 
-Public API (mirrors the old HistoryService.list_task_history() signature):
+Public API:
 
-  read(task_service_or_tasks, project_id, user_id, ...) -> dict
-    Returns {'page', 'per_page', 'total', 'tasks'} with per-task history.
+  read(tasks, project_id, user_id, ...) -> dict
+    Returns ``{'page', 'per_page', 'total', 'tasks'}`` with per-task history.
 
-    The first argument accepts either a list of DomainTask (new style) or a
-    TaskRepository instance (for backward compat with callers that pass the
-    repository directly).
-
-Internal helpers (extracted from HistoryService; kept identical so existing
-tests remain valid):
-  _deduplicate_history()
-  _compute_pairing_hints()
+    ``tasks`` must be a ``List[DomainTask]``.  Callers that need to filter
+    by project should call ``TaskRepository.read(project_id=…)`` first and
+    pass the resulting list here.
 """
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from planner_lib.backend.port import BackendPort, BackendCredential
+from planner_lib.backend.port import HistoryBackend, BackendCredential
 from planner_lib.domain.tasks import DomainTask
-from planner_lib.domain.history import DomainHistoryEntry
+from planner_lib.domain.history import DomainHistoryEntry, DomainTaskHistory
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +31,14 @@ class HistoryRepository:
     Parameters
     ----------
     backend:
-        BackendPort implementation — fetch_history() is called per task.
+        BackendPort implementation — ``fetch_history()`` is called per task.
     credential_provider:
         CredentialProvider — provides ``get_credential(user_id)``.
-    storage:
-        StorageBackend — used to read project / field-mapping configuration.
     """
 
-    def __init__(self, backend: BackendPort, credential_provider, storage) -> None:
+    def __init__(self, backend: HistoryBackend, credential_provider) -> None:
         self._backend = backend
         self._credential_provider = credential_provider
-        self._storage = storage
         logger.info("HistoryRepository: initialised (backend=%s)", type(backend).__name__)
 
     # ------------------------------------------------------------------
@@ -54,7 +47,7 @@ class HistoryRepository:
 
     def read(
         self,
-        tasks: Union[List[DomainTask], 'TaskRepository'],  # noqa: F821
+        tasks: List[DomainTask],
         project_id: Optional[str] = None,
         user_id: Optional[str] = None,
         team_id: Optional[str] = None,
@@ -69,10 +62,11 @@ class HistoryRepository:
         Parameters
         ----------
         tasks:
-            A list of DomainTask dicts *or* a TaskRepository instance
-            (the repository's ``read(project_id)`` is called if needed).
+            Pre-resolved list of DomainTask dicts to fetch history for.
+            Callers should call ``TaskRepository.read(project_id=…)`` first
+            when a project filter is required.
         project_id, team_id, plan_id:
-            Optional filters applied before pagination.
+            Optional filters applied to *tasks* before pagination.
         since, until:
             ISO date strings for date-range filtering of history entries.
         page, per_page:
@@ -80,12 +74,6 @@ class HistoryRepository:
         user_id:
             Session-level user id for credential lookup.
         """
-        # Resolve task list
-        if hasattr(tasks, 'read'):
-            # tasks is a TaskRepository — call its read()
-            task_list = tasks.read(project_id=project_id)  # type: ignore[union-attr]
-        else:
-            task_list = list(tasks)
 
         if not user_id:
             logger.error("user_id is required for fetching history")
@@ -97,7 +85,7 @@ class HistoryRepository:
             return {'page': page, 'per_page': per_page, 'total': 0, 'tasks': []}
 
         # Apply filters
-        filtered = task_list
+        filtered = list(tasks)
         if plan_id:
             filtered = [t for t in filtered if t.get('plan_id') == plan_id]
 
@@ -156,10 +144,6 @@ class HistoryRepository:
                 })
 
         return {'page': page, 'per_page': per_page, 'total': total, 'tasks': result_tasks}
-
-    # ------------------------------------------------------------------
-    # History processing helpers (extracted from HistoryService; identical logic)
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _deduplicate_history(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

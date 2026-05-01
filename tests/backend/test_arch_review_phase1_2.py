@@ -70,7 +70,7 @@ def _make_admin_service(config_data=None):
     return AdminService(
         account_storage=account_storage,
         config_storage=config_storage,
-        project_service=None,
+        project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
     )
@@ -102,7 +102,7 @@ def test_admin_reload_config_calls_reload_on_reloadable_services():
     svc = AdminService(
         account_storage=MagicMock(),
         config_storage=config_storage,
-        project_service=None,
+        project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
         reloadable_services=[people],
@@ -130,7 +130,7 @@ def test_admin_reload_config_calls_invalidate_on_invalidatable_cost():
     svc = AdminService(
         account_storage=MagicMock(),
         config_storage=config_storage,
-        project_service=None,
+        project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
         reloadable_services=[cost],

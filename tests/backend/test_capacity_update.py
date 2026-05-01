@@ -1,26 +1,29 @@
-"""Test capacity annotation update functionality using service classes."""
+"""Test capacity annotation update functionality."""
 import pytest
 
-from planner_lib.projects.team_service import TeamService
+from planner_lib.repository.team_repository import TeamRepository
 from planner_lib.projects.capacity_service import CapacityService
 from planner_lib.util import slugify
 
 
-# Lightweight service instances for unit tests
-class FakeTeamService:
-    def id_to_short_name(self, team_id: str, cfg: dict) -> str | None:
-        # If no cfg provided, return the team_id unchanged (tests expect this)
-        if not cfg:
+# Lightweight fake TeamRepository for unit tests — avoids real storage.
+class FakeTeamRepository:
+    """TeamRepository stub: id_to_short_name looks up from an in-memory teams list."""
+
+    def __init__(self, teams: list = None):
+        self._teams = teams or []
+
+    def id_to_short_name(self, team_id: str) -> str | None:
+        if not self._teams:
             return team_id
-        teams_list = cfg.get("teams", [])
-        for tm in teams_list:
+        for tm in self._teams:
             if slugify(tm.get("name"), prefix="team-") == team_id:
                 return tm.get("short_name") or tm.get("name")
         return None
 
 
-team_service = FakeTeamService()
-cap_service = CapacityService(team_service)
+team_repository = FakeTeamRepository()
+cap_service = CapacityService(team_repository)
 
 
 def test_serialize_team_capacity():
@@ -29,11 +32,12 @@ def test_serialize_team_capacity():
         {"team": "team-frontend", "capacity": 80},
         {"team": "team-backend", "capacity": 60},
     ]
-    cfg = {"teams": [
+    teams = [
         {"name": "Frontend", "short_name": "team-frontend"},
         {"name": "Backend", "short_name": "team-backend"},
-    ]}
-    result = cap_service.serialize(capacity_list, cfg)
+    ]
+    svc = CapacityService(FakeTeamRepository(teams))
+    result = svc.serialize(capacity_list, cfg={})
     assert "[PlannerTool Team Capacity]" in result
     assert "team-frontend: 80" in result
     assert "team-backend: 60" in result
@@ -167,41 +171,31 @@ def test_round_trip():
 
 
 def test_map_team_id_to_short_name():
-    """Test mapping team ID to short_name."""
-    # Mock config with teams (schema v2)
-    cfg = {
-        "teams": [
-            {"name": "Architecture", "short_name": "Arch"},
-            {"name": "System Framework", "short_name": "SF"},
-            {"name": "Integration Team", "short_name": "INT"},
-        ]
-    }
-
-    # Use TeamService.id_to_short_name for mapping
-    assert team_service.id_to_short_name("team-architecture", cfg) == "Arch"
-    assert team_service.id_to_short_name("team-system-framework", cfg) == "SF"
-    assert team_service.id_to_short_name("team-integration-team", cfg) == "INT"
-
-    # Non-existent team should return None (no mapping)
-    assert team_service.id_to_short_name("team-unknown", cfg) is None
+    """Test mapping team ID to short_name via TeamRepository."""
+    teams = [
+        {"name": "Architecture", "short_name": "Arch"},
+        {"name": "System Framework", "short_name": "SF"},
+        {"name": "Integration Team", "short_name": "INT"},
+    ]
+    repo = FakeTeamRepository(teams)
+    assert repo.id_to_short_name("team-architecture") == "Arch"
+    assert repo.id_to_short_name("team-system-framework") == "SF"
+    assert repo.id_to_short_name("team-integration-team") == "INT"
+    assert repo.id_to_short_name("team-unknown") is None
 
 
 def test_serialize_with_mapping():
     """Test serializing with team ID to short_name mapping."""
-    cfg = {
-        "teams": [
-            {"name": "Architecture", "short_name": "Arch"},
-            {"name": "Frontend", "short_name": "FE"},
-        ]
-    }
-    
+    teams = [
+        {"name": "Architecture", "short_name": "Arch"},
+        {"name": "Frontend", "short_name": "FE"},
+    ]
+    svc = CapacityService(FakeTeamRepository(teams))
     capacity_list = [
         {"team": "team-architecture", "capacity": 90},
         {"team": "team-frontend", "capacity": 80},
     ]
-    
-    result = cap_service.serialize(capacity_list, cfg)
-    
+    result = svc.serialize(capacity_list, cfg={})
     assert "[PlannerTool Team Capacity]" in result
     assert "Arch: 90" in result
     assert "FE: 80" in result
@@ -211,21 +205,17 @@ def test_serialize_with_mapping():
 
 def test_update_description_with_mapping():
     """Test updating description with team ID to short_name mapping."""
-    cfg = {
-        "teams": [
-            {"name": "Architecture", "short_name": "Arch"},
-            {"name": "Backend", "short_name": "BE"},
-        ]
-    }
-    
+    teams = [
+        {"name": "Architecture", "short_name": "Arch"},
+        {"name": "Backend", "short_name": "BE"},
+    ]
+    svc = CapacityService(FakeTeamRepository(teams))
     description = "Work item description."
     capacity_list = [
         {"team": "team-architecture", "capacity": 100},
         {"team": "team-backend", "capacity": 50},
     ]
-    
-    result = cap_service.update_description(description, capacity_list, cfg)
-    
+    result = svc.update_description(description, capacity_list, {})
     assert "Arch: 100" in result
     assert "BE: 50" in result
     # Team IDs should not appear - only short names

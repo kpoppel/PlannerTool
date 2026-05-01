@@ -25,18 +25,12 @@ _SCHEMAS: dict[str, Any] = {
     'system': {
         'type': 'object',
         'title': 'Server Configuration',
-        'description': 'Core server settings and feature flags',
+        'description': 'Generic server settings and feature flags.  ADO-specific settings are in the Azure DevOps section.',
         'properties': {
             'server_name': {
                 'type': 'string',
                 'title': 'Server Name',
                 'description': 'Unique identifier for this server instance',
-                'minLength': 1,
-            },
-            'azure_devops_organization': {
-                'type': 'string',
-                'title': 'Azure DevOps Organization',
-                'description': 'Organization name in Azure DevOps',
                 'minLength': 1,
             },
             'log_level': {
@@ -49,21 +43,13 @@ _SCHEMAS: dict[str, Any] = {
             'feature_flags': {
                 'type': 'object',
                 'title': 'Feature Flags',
-                'description': 'Toggle experimental or optional features',
-                # Non-backend feature flags only.  Backend-specific flags are
-                # injected at runtime by get_schema('system') via the BackendRegistry.
+                'description': 'Toggle generic server features.  ADO backend flags live in the Azure DevOps section.',
                 'properties': {
                     'enable_cache': {
                         'type': 'boolean',
                         'title': 'Enable Cache',
-                        'description': 'Cache backend responses (works with all backend types, not only Azure DevOps)',
+                        'description': 'Cache backend responses (works with all backend types)',
                         'default': True,
-                    },
-                    'enable_memory_cache': {
-                        'type': 'boolean',
-                        'title': 'Enable Memory Cache',
-                        'description': 'Enable hot in-memory cache layer on top of the file-storage cache',
-                        'default': False,
                     },
                     'enable_brotli_middleware': {
                         'type': 'boolean',
@@ -74,27 +60,11 @@ _SCHEMAS: dict[str, Any] = {
                     'stand_alone_mode': {
                         'type': 'boolean',
                         'title': 'Stand-alone Mode',
-                        'description': 'Reserved for future use — enables fully offline operation without any Azure DevOps connectivity',
+                        'description': 'Reserved for future use — enables fully offline operation without any backend connectivity',
                         'default': False,
                     },
                 },
                 'additionalProperties': True,
-            },
-            'memory_cache': {
-                'type': 'object',
-                'title': 'Memory Cache Configuration',
-                'description': 'Settings for hot memory cache layer (when enable_memory_cache is true)',
-                'x-showWhen': 'feature_flags.enable_memory_cache',
-                'properties': {
-                    'max_size_mb': {
-                        'type': 'integer',
-                        'title': 'Max Cache Size (MB)',
-                        'description': 'Maximum memory allocated for cache in megabytes',
-                        'default': 50,
-                        'minimum': 10,
-                        'maximum': 500,
-                    },
-                },
             },
             'cache': {
                 'type': 'object',
@@ -156,12 +126,20 @@ _SCHEMAS: dict[str, Any] = {
                                 'minimum': 1,
                                 'maximum': 10080,
                             },
+                            'fetch_people': {
+                                'type': 'integer',
+                                'title': 'People TTL (minutes)',
+                                'description': 'People / team-member data from people.yml (default: 1 h). Changes on team roster updates.',
+                                'default': 60,
+                                'minimum': 1,
+                                'maximum': 10080,
+                            },
                         },
                     },
                 },
             },
         },
-        'required': ['server_name', 'azure_devops_organization'],
+        'required': ['server_name'],
     },
     'projects': {
         'type': 'object',
@@ -397,21 +375,24 @@ _SCHEMAS: dict[str, Any] = {
 def get_schema(config_type: str) -> Optional[dict]:
     """Return a *copy* of the JSON Schema dict for *config_type*, or ``None``.
 
-    For the ``'system'`` type the schema's ``feature_flags.properties`` is
-    extended at call-time with backend-specific flags sourced from the
-    BackendRegistry.  This ensures the admin UI always reflects every registered
-    backend without requiring manual edits to this file.
+    ``'ado'`` is built dynamically from the BackendRegistry so future backends
+    automatically appear in the Azure DevOps admin section.
     """
     import copy
-    if config_type == 'system':
-        schema = copy.deepcopy(_SCHEMAS['system'])
+    if config_type == 'ado':
         try:
-            from planner_lib.backend.registry import get_merged_schema
-            backend_flags = get_merged_schema()
-            schema['properties']['feature_flags']['properties'].update(backend_flags)
+            from planner_lib.backend.registry import get_ado_schema
+            return get_ado_schema()
         except Exception:
-            logger.warning("Failed to enrich system schema with backend registry flags", exc_info=True)
-        return schema
+            logger.warning('Failed to build ado schema from BackendRegistry', exc_info=True)
+            return None
+    if config_type == 'system':
+        # system schema is static — backend flags no longer injected here;
+        # they now live in the 'ado' schema.
+        schema = _SCHEMAS.get('system')
+        if schema is None:
+            return None
+        return copy.deepcopy(schema)
     schema = _SCHEMAS.get(config_type)
     if schema is None:
         return None

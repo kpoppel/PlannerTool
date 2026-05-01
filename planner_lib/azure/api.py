@@ -1,7 +1,7 @@
 """Cache API endpoints.
 
 Provides REST endpoints for cache management: inspecting, refreshing, and
-metrics for the CachingBackend memory+disk cache.
+metrics for the CachingBackend diskcache.
 """
 from fastapi import APIRouter, Request, Query, HTTPException, Response
 from typing import Optional
@@ -11,16 +11,15 @@ import logging
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
-from planner_lib.storage.caching import key_for_area as _key_for_area
 
-# Namespace used by CachingBackend when storing DomainTask lists.
+# Namespace used by CachingBackend when storing domain objects.
 _BACKEND_DOMAIN_NS = 'backend_domain'
 
 
-def _get_backend_memory_cache(request: Request):
-    """Return the MemoryCacheManager from CachingBackend, or None if not enabled."""
-    backend = resolve_service(request, 'backend')
-    return getattr(backend, '_memory_cache', None)
+def _area_key_prefix(area_path: str) -> str:
+    """Build the cache key prefix for an area path (matches CachingBackend key format)."""
+    safe = area_path.replace('\\', '__').replace('/', '__').replace(' ', '_')
+    return ''.join(c for c in safe if c.isalnum() or c in ('_', '-'))
 
 
 
@@ -32,8 +31,8 @@ logger = logging.getLogger(__name__)
 def _get_all_configured_areas(request: Request) -> list:
     """Get all configured area paths from projects config."""
     try:
-        project_service = resolve_service(request, 'project_service')
-        projects = project_service.list_projects()
+        project_repo = resolve_service(request, 'project_repository')
+        projects = project_repo.get_project_map()
 
         areas = []
         for project in projects:
@@ -54,8 +53,8 @@ def _get_area_project_config_map(request: Request) -> dict:
     hard-coded default ['epic', 'feature'].
     """
     try:
-        project_service = resolve_service(request, 'project_service')
-        projects = project_service.list_projects()
+        project_repo = resolve_service(request, 'project_repository')
+        projects = project_repo.get_project_map()
 
         config_map: dict = {}
         for project in projects:
@@ -80,38 +79,27 @@ async def cache_load(
     areas: Optional[str] = Query(None, description="Comma-separated area paths"),
     include: Optional[str] = Query("workitems", description="Data types to include")
 ):
-    """Load cached Azure data (instant response from memory).
-    
-    Returns all cached data for the requested areas. Always succeeds even if
-    data is stale. Includes metadata about cache age and staleness.
-    
+    """Load cached task data from diskcache for the requested areas.
+
+    Returns cached DomainTask lists directly from diskcache.  Always succeeds
+    even if data is stale — diskcache returns KeyError for expired keys, so
+    absent data is reported as a cache miss rather than an error.
+
     Query params:
-        areas: Comma-separated area paths (e.g., "Area\\Team1,Area\\Team2")
-        include: Data types to include (workitems,teams,plans,markers,iterations)
-    
-    Returns:
-        {
-            "data": {"workitems": {...}, "teams": [...], ...},
-            "metadata": {
-                "areas": {"Area\\Team1": {"age": 120, "stale": false, ...}},
-                "timestamp": "2026-03-16T10:30:00Z"
-            }
-        }
+        areas: Comma-separated area paths (e.g., "Area\\\\Team1,Area\\\\Team2")
+        include: Data types to include (workitems)
     """
-    azure_service = resolve_service(request, 'azure_client')
-    
-    # Get memory cache from CachingBackend (sole owner of the memory tier).
-    memory_cache = _get_backend_memory_cache(request)
-    if not memory_cache:
+    backend = resolve_service(request, 'backend')
+    storage = getattr(backend, '_storage', None)
+    if storage is None:
         raise HTTPException(
-            status_code=503, 
-            detail={'error': 'cache_unavailable', 'message': 'Memory cache not enabled'}
+            status_code=503,
+            detail={'error': 'cache_unavailable', 'message': 'Backend has no cache storage'}
         )
-    
-    # Parse areas and include types
+
     area_list = areas.split(',') if areas else _get_all_configured_areas(request)
     include_types = include.split(',') if include else ['workitems']
-    
+
     if not area_list:
         return {
             "data": {},
@@ -121,41 +109,25 @@ async def cache_load(
                 "warning": "No areas configured or specified"
             }
         }
-    
-    # Read from memory cache (backend_domain namespace, DomainTask format).
-    all_entries = memory_cache.get_all(_BACKEND_DOMAIN_NS)
-    data = {}
-    metadata = {"areas": {}, "timestamp": datetime.now(timezone.utc).isoformat()}
-    
-    for area_path in area_list:
-        area_key_prefix = _key_for_area(area_path)
-        
-        # Find the first cached variant for this area (keys are area__types__states).
-        area_entries = {k: v for k, v in all_entries.items() if k.startswith(area_key_prefix)}
-        
-        if 'workitems' in include_types and area_entries:
-            # Return all task variants; most callers expect one entry per area.
-            first_key = next(iter(area_entries))
-            data.setdefault('workitems', {})[area_path] = area_entries[first_key]
-            
-            meta = memory_cache.get_metadata(_BACKEND_DOMAIN_NS, first_key)
-            if meta:
-                age_seconds = (datetime.now(timezone.utc) - meta.last_update).total_seconds()
-                metadata['areas'][area_path] = {
-                    'age': int(age_seconds),
-                    'stale': meta.needs_refresh,
-                    'lastUpdate': meta.last_update.isoformat(),
-                    'version': meta.version
-                }
+
+    data: dict = {}
+    metadata: dict = {"areas": {}, "timestamp": datetime.now(timezone.utc).isoformat()}
+
+    if 'workitems' in include_types:
+        all_keys = list(storage.list_keys(_BACKEND_DOMAIN_NS))
+        for area_path in area_list:
+            prefix = _area_key_prefix(area_path)
+            matching = [k for k in all_keys if k.startswith(f'fetch_tasks__{prefix}')]
+            if matching:
+                try:
+                    value = storage.load(_BACKEND_DOMAIN_NS, matching[0])
+                    data.setdefault('workitems', {})[area_path] = value
+                    metadata['areas'][area_path] = {'cached': True}
+                except KeyError:
+                    metadata['areas'][area_path] = {'cached': False}
             else:
-                metadata['areas'][area_path] = {
-                    'age': None, 'stale': True, 'lastUpdate': None, 'version': 'v0'
-                }
-        else:
-            metadata['areas'][area_path] = {
-                'age': None, 'stale': True, 'lastUpdate': None, 'version': 'v0'
-            }
-    
+                metadata['areas'][area_path] = {'cached': False}
+
     logger.info("Cache load: returned %d areas", len(data.get('workitems', {})))
     return {"data": data, "metadata": metadata}
 
@@ -167,37 +139,27 @@ async def cache_refresh(
     areas: Optional[str] = Query(None, description="Comma-separated area paths"),
     force: bool = Query(False, description="Force refresh even if recently updated")
 ):
-    """Refresh Azure data from API using user PAT.
-    
-    Checks cache staleness and refreshes from Azure if needed. Returns 304 if
-    cache was recently refreshed (<30 seconds ago) unless force=true.
-    
+    """Invalidate cache and re-fetch task data from Azure.
+
+    Invalidates the backend diskcache entries, then re-fetches each area via
+    CachingBackend (which writes new data into diskcache with the configured TTL).
+
     Query params:
         areas: Comma-separated area paths to refresh
-        force: Force refresh even if recently updated
-    
-    Returns:
-        304 Not Modified - if cache recently refreshed
-        200 OK - with updated data and metadata
+        force: accepted for API compatibility; cache is always invalidated
     """
     sid = get_session_id_from_request(request)
     session_mgr = resolve_service(request, 'session_manager')
     backend = resolve_service(request, 'backend')
-    
-    # Get user PAT from session
+
     pat = session_mgr.get_val(sid, 'pat')
     if not pat:
         raise HTTPException(
-            status_code=401, 
+            status_code=401,
             detail={'error': 'missing_pat', 'message': 'Personal Access Token required'}
         )
-    
-    # Memory cache is optional (disk-only cache still benefits from invalidate+refetch).
-    memory_cache = getattr(backend, '_memory_cache', None)
-    
-    # Parse areas
-    area_list = areas.split(',') if areas else _get_all_configured_areas(request)
 
+    area_list = areas.split(',') if areas else _get_all_configured_areas(request)
     if not area_list:
         raise HTTPException(
             status_code=400,
@@ -206,43 +168,15 @@ async def cache_refresh(
 
     area_project_config = _get_area_project_config_map(request)
 
-    # Debounce: if memory cache is present, skip areas refreshed < 30 s ago.
-    recently_refreshed = []
-    needs_refresh = list(area_list)
-
-    if memory_cache and not force:
-        all_entries = memory_cache.get_all(_BACKEND_DOMAIN_NS)
-        needs_refresh = []
-        for area_path in area_list:
-            area_key_prefix = _key_for_area(area_path)
-            area_keys = [k for k in all_entries if k.startswith(area_key_prefix)]
-            recently = False
-            for k in area_keys:
-                meta = memory_cache.get_metadata(_BACKEND_DOMAIN_NS, k)
-                if meta:
-                    age = (datetime.now(timezone.utc) - meta.last_update).total_seconds()
-                    if age < 30:
-                        recently = True
-                        break
-            if recently:
-                recently_refreshed.append(area_path)
-            else:
-                needs_refresh.append(area_path)
-
-    if not needs_refresh and recently_refreshed:
-        logger.info("Cache refresh: 304 Not Modified (all areas recently refreshed)")
-        return Response(status_code=304)
-
-    # Invalidate the backend cache so the next fetch goes to the inner backend.
+    # Invalidate all cached task entries so the next fetch bypasses diskcache.
     backend.invalidate_cache()
 
-    # Re-fetch each area through CachingBackend (writes into both cache tiers).
     from planner_lib.backend.port import BackendCredential
     cred = BackendCredential(token=pat, user_id=sid)
 
-    refreshed_data = {}
-    errors = []
-    for area_path in needs_refresh:
+    refreshed: list = []
+    errors: list = []
+    for area_path in area_list:
         proj_cfg = area_project_config.get(area_path, {})
         try:
             items = backend.fetch_tasks(
@@ -251,53 +185,46 @@ async def cache_refresh(
                 include_states=proj_cfg.get('include_states'),
                 credential=cred,
             )
-            refreshed_data[area_path] = items
+            refreshed.append(area_path)
             logger.info("Refreshed area '%s' (%d items)", area_path, len(items))
-        except Exception as e:
-            logger.error("Failed to refresh area '%s': %s", area_path, e)
-            errors.append({'area': area_path, 'error': str(e)})
-    
-    response = {
-        "refreshed": list(refreshed_data.keys()),
-        "skipped": recently_refreshed,
+        except Exception as exc:
+            logger.error("Failed to refresh area '%s': %s", area_path, exc)
+            errors.append({'area': area_path, 'error': str(exc)})
+
+    response: dict = {
+        "refreshed": refreshed,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     if errors:
         response['errors'] = errors
-    
-    logger.info("Cache refresh: %d areas refreshed, %d skipped", len(refreshed_data), len(recently_refreshed))
+    logger.info("Cache refresh: %d areas refreshed", len(refreshed))
     return response
 
 
 @router.get("/metrics")
 @require_session
 async def cache_metrics(request: Request):
-    """Get cache performance metrics.
-    
-    Returns:
-        {
-            "memory_cache": {
-                "total_size_mb": 12.5,
-                "entry_count": 150,
-                ...
-            }
-        }
+    """Get cache storage metrics.
+
+    Returns disk volume and entry count from the diskcache backend.
     """
-    memory_cache = _get_backend_memory_cache(request)
-    
-    if not memory_cache:
+    backend = resolve_service(request, 'backend')
+    storage = getattr(backend, '_storage', None)
+    if storage is None:
         raise HTTPException(
-            status_code=503, 
-            detail={'error': 'cache_unavailable', 'message': 'Memory cache not enabled'}
+            status_code=503,
+            detail={'error': 'cache_unavailable', 'message': 'Backend has no cache storage'}
         )
-    
-    # Count entries in the domain cache namespace.
-    total_entries = len(memory_cache.get_all(_BACKEND_DOMAIN_NS))
-    
+
+    entry_count = sum(1 for _ in storage.list_keys(_BACKEND_DOMAIN_NS))
+    # diskcache Cache.volume() gives on-disk size in bytes; fall back gracefully.
+    raw_cache = getattr(storage, '_cache', None)
+    volume_bytes = raw_cache.volume() if raw_cache is not None else 0
+
     return {
-        "memory_cache": {
-            "total_size_mb": round(memory_cache.get_total_size() / (1024 * 1024), 2),
-            "entry_count": total_entries,
+        "diskcache": {
+            "total_size_mb": round(volume_bytes / (1024 * 1024), 2),
+            "entry_count": entry_count,
             "namespace": _BACKEND_DOMAIN_NS,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }

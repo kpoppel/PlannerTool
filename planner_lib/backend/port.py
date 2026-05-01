@@ -1,16 +1,68 @@
-"""BackendPort protocol and credential types.
+"""Backend protocols and credential types.
 
-BackendPort is the single interface that all backend implementations must
-satisfy.  Callers (CachingBackend, TaskRepository, HistoryRepository)
-depend only on this protocol — not on any concrete class.
+Each data domain is defined by its own ``@runtime_checkable`` Protocol.
+Backends only implement the protocols for the domains they own — empty stub
+methods are never required.
+
+Focused protocols
+-----------------
+  TaskBackend            — fetch_tasks, write_task, invalidate_cache
+  HistoryBackend         — fetch_history
+  TeamsBackend           — fetch_teams
+  PlansBackend           — fetch_plans, fetch_markers
+  IterationsBackend      — fetch_iterations
+  PeopleBackend          — fetch_people
+  ProjectConfigBackend   — fetch_projects, fetch_project_map
+  TeamConfigBackend      — fetch_config_teams
+  IterationConfigBackend — fetch_iterations_config
+  PlanConfigBackend      — fetch_area_plan_map
+  AdoConfigBackend       — fetch_ado_config, save_ado_config
+  ScenarioBackend        — fetch_scenarios, fetch_scenario, save_scenario, delete_scenario
+  ViewBackend            — fetch_views, fetch_view, save_view, delete_view
+
+BackendPort (composite)
+-----------------------
+  Alias for the full remote-data contract (TaskBackend + HistoryBackend +
+  TeamsBackend + PlansBackend + IterationsBackend).  Used by ADO-family
+  and mock backends.  Does NOT include PeopleBackend — people data lives
+  in local config, not in the remote work-item system.
+
+DI keys
+-------
+  ``backend``           → BackendPort implementation (AzureDevOpsBackend,
+                           MockFixtureBackend, StaticBackend, …).
+  ``config_backend``    → ConfigBackend backed by diskcache.  Implements
+                           PeopleBackend (via optional yaml_storage),
+                           ProjectConfigBackend, TeamConfigBackend,
+                           IterationConfigBackend, PlanConfigBackend,
+                           AdoConfigBackend.
+  ``user_data_backend`` → UserDataBackend backed by diskcache.  Implements
+                           ScenarioBackend, ViewBackend.
+
+Adding a new domain
+-------------------
+1. Define a new focused Protocol here (e.g. ``BudgetBackend``).
+2. Implement it in the backend(s) that own that data.
+3. Add the method to every *other* backend's ``fetch_*`` default — or simply
+   don't: ``CachingBackend`` only intercepts methods that the inner backend
+   actually has (checked via ``hasattr``), so unknown methods fail fast with
+   ``AttributeError`` rather than silently returning empty data.
+4. Register a new DI key (e.g. ``budget_backend``) and create a
+   ``BudgetRepository`` that depends on it.
+
+Adding a new external-data backend (e.g. Jira)
+-----------------------------------------------
+1. Create a new backend class implementing BackendPort.
+2. Define its config under ``AdoConfigBackend`` by analogy — or add a new
+   protocol (e.g. ``JiraConfigBackend``) and implement it in ConfigBackend.
+3. Return its config schema from ``config_schema()``.
+4. Register in ``BackendRegistry._priority_backends()``.
 
 Credential handling
 -------------------
-Operations that require a live backend call (cache miss, explicit
-refresh, writes) receive a BackendCredential.  Read operations that are
-satisfied by a cache hit never need a credential.  CredentialProvider
-is injected into the repository layer and queried only on the write /
-refresh path, keeping raw token strings out of the data model entirely.
+Operations that require a live backend call receive a BackendCredential.
+Cache-satisfied reads never need one.  Local-config backends (people, etc.)
+never require a credential at all.
 """
 from __future__ import annotations
 
@@ -19,6 +71,11 @@ from typing_extensions import TypedDict, Protocol, runtime_checkable
 
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
+from planner_lib.domain.people import DomainPerson
+from planner_lib.domain.projects import DomainProject
+from planner_lib.domain.teams import DomainTeam
+from planner_lib.domain.scenarios import DomainScenario
+from planner_lib.domain.views import DomainView
 
 
 # ---------------------------------------------------------------------------
@@ -45,25 +102,12 @@ class CredentialProvider(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# BackendPort
+# Focused single-domain protocols
 # ---------------------------------------------------------------------------
 
 @runtime_checkable
-class BackendPort(Protocol):
-    """The single interface every backend must implement.
-
-    Design notes
-    ------------
-    * ``credential`` is *optional* on read methods: a cache-backed wrapper
-      (CachingBackend) can satisfy a read from its hot/disk cache without
-      any credential.  If the cache is cold AND no credential is provided
-      the implementation MUST raise ``PermissionError``.
-    * Write / refresh methods always require a credential; implementations
-      should raise ``PermissionError`` when it is absent.
-    * All implementations return *enriched* domain dicts (DomainTask).
-      Backends that wrap raw ADO APIs apply the AzureAdapter translation
-      internally before returning.
-    """
+class TaskBackend(Protocol):
+    """Backend that can read and write work items (tasks)."""
 
     def fetch_tasks(
         self,
@@ -71,79 +115,223 @@ class BackendPort(Protocol):
         task_types: Optional[List[str]] = None,
         include_states: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
-    ) -> List[DomainTask]:
-        """Return enriched DomainTask list for *area_path*.
-
-        Cache-backed implementations return from cache when available
-        (credential not needed).  On a cache miss a credential IS required;
-        raise ``PermissionError`` when it is absent.
-        """
-        ...
+    ) -> List[DomainTask]: ...
 
     def write_task(
         self,
         task_id: int,
         updates: Dict[str, Any],
         credential: BackendCredential,
-    ) -> WriteResult:
-        """Persist *updates* for *task_id* to the backend.
+    ) -> WriteResult: ...
 
-        Always requires a credential.  Returns a WriteResult dict with
-        ``ok``, ``updated``, and ``errors`` keys.
-        """
-        ...
+    def invalidate_cache(self) -> Dict[str, Any]: ...
+
+
+@runtime_checkable
+class HistoryBackend(Protocol):
+    """Backend that can read work-item revision history."""
 
     def fetch_history(
         self,
         work_item_id: int,
         credential: Optional[BackendCredential] = None,
-    ) -> List[DomainHistoryEntry]:
-        """Return field-change history for *work_item_id* as DomainHistoryEntry list.
+    ) -> List[DomainHistoryEntry]: ...
 
-        Implementations may cache history entries.  A credential is required
-        only when a live backend call is needed (cold cache).
-        """
-        ...
+
+@runtime_checkable
+class TeamsBackend(Protocol):
+    """Backend that can read team definitions from the remote system."""
 
     def fetch_teams(
         self,
         project: str,
         credential: Optional[BackendCredential] = None,
-    ) -> List[Dict[str, Any]]:
-        """Return teams for *project* as a list of ``{id, name}`` dicts."""
-        ...
+    ) -> List[Dict[str, Any]]: ...
+
+
+@runtime_checkable
+class PlansBackend(Protocol):
+    """Backend that can read delivery plans and their timeline markers."""
 
     def fetch_plans(
         self,
         project: str,
         credential: Optional[BackendCredential] = None,
-    ) -> List[Dict[str, Any]]:
-        """Return delivery plans for *project* as a list of ``{id, name, teams}`` dicts."""
-        ...
+    ) -> List[Dict[str, Any]]: ...
 
     def fetch_markers(
         self,
         area_path: str,
         credential: Optional[BackendCredential] = None,
-    ) -> List[Dict[str, Any]]:
-        """Return delivery-plan markers for *area_path*."""
-        ...
+    ) -> List[Dict[str, Any]]: ...
+
+
+@runtime_checkable
+class IterationsBackend(Protocol):
+    """Backend that can read sprint / iteration data."""
 
     def fetch_iterations(
         self,
         project: str,
         root_paths: Optional[List[str]] = None,
         credential: Optional[BackendCredential] = None,
-    ) -> Dict[str, Any]:
-        """Return iteration metadata keyed by normalised iteration path.
+    ) -> Dict[str, Any]: ...
 
-        Returns a dict mapping iteration_path → ``{startDate, finishDate, name}``.
-        """
-        ...
 
-    def invalidate_cache(self) -> Dict[str, Any]:
-        """Invalidate all cached data; force fresh fetch on next read.
+@runtime_checkable
+class PeopleBackend(Protocol):
+    """Backend that can read people / team-member records.
 
-        Returns a summary dict.  No-op for backends without a cache.
-        """
-        ...
+    Implemented by LocalConfigBackend (reads from people.yml).
+    Remote work-item backends (ADO, Jira, mock) do NOT implement this —
+    people data is not stored in a remote work-item system.
+    """
+
+    def fetch_people(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[DomainPerson]: ...
+
+
+@runtime_checkable
+class ProjectConfigBackend(Protocol):
+    """Backend that serves locally-configured project definitions."""
+
+    def fetch_projects(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[DomainProject]: ...
+
+    def fetch_project_map(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[dict]: ...
+
+
+@runtime_checkable
+class TeamConfigBackend(Protocol):
+    """Backend that serves locally-configured team definitions."""
+
+    def fetch_config_teams(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[DomainTeam]: ...
+
+
+@runtime_checkable
+class IterationConfigBackend(Protocol):
+    """Backend that serves the local iterations.yml config dict."""
+
+    def fetch_iterations_config(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> dict: ...
+
+
+@runtime_checkable
+class PlanConfigBackend(Protocol):
+    """Backend that serves the local area_plan_map config dict."""
+
+    def fetch_area_plan_map(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> dict: ...
+
+
+@runtime_checkable
+class AdoConfigBackend(Protocol):
+    """Backend that stores and retrieves ADO-specific configuration.
+
+    The ADO config (``organization_url`` + ADO-specific feature flags) lives
+    in the ``config::ado_config`` diskcache key — separate from
+    ``server_config.yml`` which holds generic server settings only.
+
+    This protocol lets the admin layer treat ADO configuration like any other
+    config domain, and enables future backends (Jira, etc.) to register their
+    own analogous config protocol independently.
+    """
+
+    def fetch_ado_config(self) -> dict: ...
+
+    def save_ado_config(self, content: dict) -> None: ...
+
+
+@runtime_checkable
+class ScenarioBackend(Protocol):
+    """Backend that persists user-scoped scenarios."""
+
+    def fetch_scenarios(
+        self,
+        user_id: str,
+    ) -> List[DomainScenario]: ...
+
+    def fetch_scenario(
+        self,
+        user_id: str,
+        scenario_id: str,
+    ) -> DomainScenario: ...
+
+    def save_scenario(
+        self,
+        user_id: str,
+        scenario_id: Optional[str],
+        data: dict,
+    ) -> DomainScenario: ...
+
+    def delete_scenario(
+        self,
+        user_id: str,
+        scenario_id: str,
+    ) -> bool: ...
+
+
+@runtime_checkable
+class ViewBackend(Protocol):
+    """Backend that persists user-scoped UI views."""
+
+    def fetch_views(
+        self,
+        user_id: str,
+    ) -> List[DomainView]: ...
+
+    def fetch_view(
+        self,
+        user_id: str,
+        view_id: str,
+    ) -> DomainView: ...
+
+    def save_view(
+        self,
+        user_id: str,
+        view_id: Optional[str],
+        data: dict,
+    ) -> DomainView: ...
+
+    def delete_view(
+        self,
+        user_id: str,
+        view_id: str,
+    ) -> bool: ...
+
+
+# ---------------------------------------------------------------------------
+# BackendPort — composite remote-data contract
+# ---------------------------------------------------------------------------
+
+@runtime_checkable
+class BackendPort(TaskBackend, HistoryBackend, TeamsBackend, PlansBackend, IterationsBackend, Protocol):
+    """Full remote-data backend: owns tasks, history, teams, plans, iterations.
+
+    ADO-family backends (AzureDevOpsBackend, MockFixtureBackend,
+    MockGeneratorBackend) and self-contained demo backends (StaticBackend)
+    implement this composite protocol.
+
+    LocalConfigBackend does NOT implement BackendPort — it owns only the
+    ``PeopleBackend`` domain.  CachingBackend transparently mirrors the
+    capability of whichever inner backend it wraps, so:
+
+      isinstance(CachingBackend(AzureDevOpsBackend(…)), BackendPort) → True
+      isinstance(CachingBackend(LocalConfigBackend(…)), BackendPort)  → False
+      isinstance(CachingBackend(LocalConfigBackend(…)), PeopleBackend) → True
+    """
+    ...

@@ -51,6 +51,9 @@ class FakePeopleService:
     def get_people(self):
         return list(self._people)
 
+    def list_people(self):
+        return list(self._people)
+
 
 class FakeProjectService:
     def __init__(self, projects):
@@ -119,6 +122,10 @@ def fake_services(fixtures_dir, people, projects):
         'people_service': people_svc,
         'project_service': project_svc,
         'team_service': team_svc,
+        # Repository facades backed by the same service stubs
+        'people_repository': people_svc,
+        'team_repository': team_svc,
+        'project_repository': project_svc,
     }
 import pytest
 

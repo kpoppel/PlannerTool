@@ -9,7 +9,7 @@ class _TestCacheStorage:
         self.data = {}
     def load(self, namespace, key):
         return self.data.get((namespace, key))
-    def save(self, namespace, key, value):
+    def save(self, namespace, key, value, ttl_seconds=None):
         self.data[(namespace, key)] = value
     def delete(self, namespace, key):
         self.data.pop((namespace, key), None)

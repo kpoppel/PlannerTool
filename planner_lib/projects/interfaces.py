@@ -31,13 +31,3 @@ class CapacityServiceProtocol(Protocol):
 
     def update_description(self, description: str, capacity_list: List[dict], cfg: dict) -> str: ...
 
-
-@runtime_checkable
-class TaskServiceProtocol(Protocol):
-    """Protocol for `TaskService` public surface."""
-
-    def list_tasks(self, pat: str, project_id: Optional[str] = None) -> List[dict]: ...
-
-    def update_tasks(self, updates: List[dict], pat: str) -> dict: ...
-
-    def list_markers(self, pat: str, project_id: Optional[str] = None) -> List[dict]: ...

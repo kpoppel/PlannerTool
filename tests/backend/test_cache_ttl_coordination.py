@@ -1,167 +1,135 @@
-"""Integration test for cache TTL coordination.
+"""Tests for CachingBackend TTL coordination with diskcache.
 
-Verifies that memory cache respects CacheManager TTL decisions:
-- Fresh data in memory is served
-- Stale data in memory triggers refetch from backend
-- CacheManager is the single source of truth for TTL
+Verifies that CachingBackend:
+- Passes the correct ttl_seconds to storage.save() for each method
+- Serves from cache on a second call (no inner call)
+- Evicts fetch_tasks__* entries on write_task success
+- Re-fetches from inner after invalidate_cache()
 """
 import pytest
-from datetime import timedelta, datetime, timezone
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 from planner_lib.backend.caching import CachingBackend, CacheTTLConfig
-from planner_lib.storage.memory_cache_manager import MemoryCacheManager
-from planner_lib.storage.caching import CacheManager
 from planner_lib.storage.memory_backend import MemoryStorage
 
 
-def _ttl_config(minutes: float = 30) -> CacheTTLConfig:
-    """Return a uniform CacheTTLConfig for simpler test setup."""
+def _ttl_config(**overrides) -> CacheTTLConfig:
+    """Build a CacheTTLConfig where every field is the given number of minutes."""
+    minutes = overrides.pop('minutes', 30)
     td = timedelta(minutes=minutes)
-    return CacheTTLConfig(default=td, fetch_tasks=td, fetch_history=td,
-                          fetch_teams=td, fetch_plans=td, fetch_markers=td,
-                          fetch_iterations=td)
+    fields = {f: td for f in
+              ['default', 'fetch_tasks', 'fetch_history', 'fetch_teams',
+               'fetch_plans', 'fetch_markers', 'fetch_iterations', 'fetch_people']}
+    fields.update(overrides)
+    return CacheTTLConfig(**fields)
 
 
-def test_memory_cache_serves_fresh_data_respecting_cache_manager_ttl():
-    """When memory has data and CacheManager says it's fresh, serve from memory."""
-    # Setup
-    storage = MemoryStorage()
-    memory_cache = MemoryCacheManager(size_limit_mb=10)
-    
+class _TrackingSave(MemoryStorage):
+    """MemoryStorage that records the ttl_seconds passed to each save() call."""
+
+    def __init__(self):
+        super().__init__()
+        self.saved_ttls: dict = {}  # key → ttl_seconds
+
+    def save(self, namespace, key, value, ttl_seconds=None):
+        self.saved_ttls[key] = ttl_seconds
+        super().save(namespace, key, value, ttl_seconds=ttl_seconds)
+
+
+AREA = 'MyOrg\\TeamA'
+CRED = {'token': 'tok', 'user_id': 'u@example.com'}
+
+
+def test_fetch_tasks_saved_with_correct_ttl():
+    """storage.save() must receive ttl_seconds matching CacheTTLConfig.fetch_tasks."""
+    storage = _TrackingSave()
     inner = MagicMock()
-    inner.fetch_tasks.return_value = [{'id': 1, 'title': 'Initial task'}]
-    
-    backend = CachingBackend(
-        inner=inner,
-        storage=storage,
-        memory_cache=memory_cache,
-        ttl_config=_ttl_config(minutes=30)
-    )
-    
-    # First call: cache miss, populates both tiers
-    result1 = backend.fetch_tasks(area_path='test-area')
-    assert len(inner.fetch_tasks.call_args_list) == 1
-    assert result1[0]['title'] == 'Initial task'
-    
-    # Second call: memory has data and CacheManager says it's fresh
-    result2 = backend.fetch_tasks(area_path='test-area')
-    assert len(inner.fetch_tasks.call_args_list) == 1  # No additional backend call
-    assert result2[0]['title'] == 'Initial task'
+    inner.fetch_tasks.return_value = [{'id': '1'}]
+
+    ttl = _ttl_config(minutes=15)
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=ttl)
+    backend.fetch_tasks(AREA)
+
+    # Find the key that was saved for fetch_tasks
+    task_keys = [k for k in storage.saved_ttls if k.startswith('fetch_tasks__')]
+    assert task_keys, "expected at least one fetch_tasks__ key to be written"
+    assert storage.saved_ttls[task_keys[0]] == pytest.approx(15 * 60)
 
 
-def test_memory_cache_refetches_when_cache_manager_says_stale():
-    """When memory has data but CacheManager says it's stale, refetch from backend."""
-    # Setup
-    storage = MemoryStorage()
-    memory_cache = MemoryCacheManager(size_limit_mb=10)
-    cache_manager = CacheManager(storage, namespace='backend_domain')
-    
+def test_fetch_history_saved_with_correct_ttl():
+    """storage.save() must receive ttl_seconds matching CacheTTLConfig.fetch_history."""
+    storage = _TrackingSave()
     inner = MagicMock()
-    inner.fetch_tasks.return_value = [{'id': 1, 'title': 'Initial task'}]
-    
-    backend = CachingBackend(
-        inner=inner,
-        storage=storage,
-        memory_cache=memory_cache,
-        ttl_config=_ttl_config(minutes=1/60)  # ~1 second TTL
-    )
-    
-    # First call: populates cache
-    result1 = backend.fetch_tasks(area_path='test-area')
-    assert result1[0]['title'] == 'Initial task'
-    assert len(inner.fetch_tasks.call_args_list) == 1
-    
-    # Manually mark the cache entry as stale by setting an old timestamp
-    cache_keys = list(cache_manager.list_all_index_keys())
-    assert len(cache_keys) > 0
-    key = cache_keys[0]
-    
-    # Backdoor: set timestamp to past to simulate expiry
-    index = cache_manager._read_index()
-    old_timestamp = datetime.now(timezone.utc) - timedelta(minutes=10)
-    index[key]['last_update'] = old_timestamp.isoformat()
-    cache_manager._write_index(index)
-    
-    # Update backend to return different data
-    inner.fetch_tasks.return_value = [{'id': 1, 'title': 'Refreshed task'}]
-    
-    # Second call: memory has data but CacheManager says it's stale
-    result2 = backend.fetch_tasks(area_path='test-area')
-    
-    # Should have refetched from backend
-    assert len(inner.fetch_tasks.call_args_list) == 2
-    assert result2[0]['title'] == 'Refreshed task'
+    inner.fetch_history.return_value = []
+
+    ttl = _ttl_config()
+    ttl.fetch_history = timedelta(hours=6)
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=ttl)
+    backend.fetch_history(42)
+
+    hist_keys = [k for k in storage.saved_ttls if k.startswith('fetch_history__')]
+    assert hist_keys
+    assert storage.saved_ttls[hist_keys[0]] == pytest.approx(6 * 3600)
 
 
-def test_cache_warmup_skips_stale_entries():
-    """CacheWarmupService should skip stale entries during warmup."""
-    from planner_lib.storage.warmup import CacheWarmupService
-    
-    # Setup
+def test_second_call_is_cache_hit():
+    """A second fetch_tasks call with the same args must NOT call the inner backend."""
     storage = MemoryStorage()
-    memory_cache = MemoryCacheManager(size_limit_mb=10)
-    cache_manager = CacheManager(storage, namespace='backend_domain')
-    
-    # Populate cache with fresh and stale entries
-    cache_manager.write('fresh_key', [{'id': 1, 'title': 'Fresh'}])
-    cache_manager.update_timestamp('fresh_key')
-    
-    cache_manager.write('stale_key', [{'id': 2, 'title': 'Stale'}])
-    cache_manager.update_timestamp('stale_key')  # Initialize timestamp first
-    
-    # Manually set stale timestamp
-    index = cache_manager._read_index()
-    old_timestamp = datetime.now(timezone.utc) - timedelta(hours=10)
-    index['stale_key']['last_update'] = old_timestamp.isoformat()
-    cache_manager._write_index(index)
-    
-    # Warmup
-    warmup = CacheWarmupService(memory_cache, cache_manager)
-    stats = warmup.warmup(namespaces=['backend_domain'])
-    
-    # Should have loaded only the fresh entry
-    assert stats.entries_loaded == 1
-    assert stats.entries_skipped_stale == 1
-    
-    # Verify memory cache has fresh but not stale
-    assert memory_cache.read('backend_domain', 'fresh_key') is not None
-    assert memory_cache.read('backend_domain', 'stale_key') is None
-
-
-def test_cache_manager_is_authority_for_ttl():
-    """CacheManager.is_stale() is always consulted, even when memory has data."""
-    storage = MemoryStorage()
-    memory_cache = MemoryCacheManager(size_limit_mb=10)
-    cache_manager = CacheManager(storage, namespace='backend_domain')
-    
     inner = MagicMock()
-    inner.fetch_tasks.return_value = [{'id': 1, 'title': 'Task'}]
-    
-    backend = CachingBackend(
-        inner=inner,
-        storage=storage,
-        memory_cache=memory_cache,
-        ttl_config=_ttl_config(minutes=2/60)  # ~2 second TTL
-    )
-    
-    # Populate cache
-    backend.fetch_tasks(area_path='test-area')
-    
-    # Verify CacheManager has the entry with timestamp
-    keys = list(cache_manager.list_all_index_keys())
-    assert len(keys) > 0
-    
-    key = keys[0]
-    timestamp = cache_manager.get_timestamp(key)
-    assert timestamp is not None
-    
-    # Verify not stale yet
-    assert not cache_manager.is_stale(key, ttl=timedelta(seconds=2))
-    
-    # Wait for TTL to expire
-    import time
-    time.sleep(2.1)
-    
-    # Verify now stale
-    assert cache_manager.is_stale(key, ttl=timedelta(seconds=2))
+    inner.fetch_tasks.return_value = [{'id': '1'}]
+
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=_ttl_config())
+    backend.fetch_tasks(AREA)
+    backend.fetch_tasks(AREA)
+
+    assert inner.fetch_tasks.call_count == 1
+
+
+def test_different_args_are_separate_cache_keys():
+    """Different task_types arguments produce different cache keys."""
+    storage = MemoryStorage()
+    inner = MagicMock()
+    inner.fetch_tasks.return_value = []
+
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=_ttl_config())
+    backend.fetch_tasks(AREA, task_types=['Feature'])
+    backend.fetch_tasks(AREA, task_types=['Epic'])
+
+    assert inner.fetch_tasks.call_count == 2
+
+
+def test_write_task_patches_cache_keeps_it_hot():
+    """After write_task the cache stays warm; inner must NOT be called again."""
+    storage = MemoryStorage()
+    inner = MagicMock()
+    inner.fetch_tasks.return_value = [{'id': '1', 'state': 'Active'}]
+    inner.write_task.return_value = {'ok': True, 'updated': 1, 'errors': []}
+
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=_ttl_config())
+    backend.fetch_tasks(AREA)          # populate cache
+    assert inner.fetch_tasks.call_count == 1
+
+    backend.write_task(1, {'state': 'Closed'}, CRED)
+
+    tasks = backend.fetch_tasks(AREA)  # must be a cache HIT
+    assert inner.fetch_tasks.call_count == 1, "inner must not be called after write-through patch"
+    patched = next((t for t in tasks if str(t.get('id')) == '1'), None)
+    assert patched is not None
+    assert patched['state'] == 'Closed'
+
+
+def test_invalidate_cache_forces_refetch():
+    """After invalidate_cache(), the next fetch must call the inner backend."""
+    storage = MemoryStorage()
+    inner = MagicMock()
+    inner.fetch_tasks.return_value = [{'id': '1'}]
+
+    backend = CachingBackend(inner=inner, storage=storage, ttl_config=_ttl_config())
+    backend.fetch_tasks(AREA)
+    assert inner.fetch_tasks.call_count == 1
+
+    backend.invalidate_cache()
+
+    backend.fetch_tasks(AREA)
+    assert inner.fetch_tasks.call_count == 2

@@ -28,17 +28,23 @@ logger = logging.getLogger(__name__)
 class _MockBackendBase(BackendPort):
     """Shared helpers for both mock backends."""
 
-    def __init__(self, storage, team_service=None, capacity_service=None):
+    def __init__(self, storage, team_repository=None, capacity_service=None, local_backend=None):
         self._adapter = AzureAdapter()
-        self._team_service = team_service
+        self._team_repository = team_repository
         self._capacity_service = capacity_service
         self._storage = storage
+        self._config = local_backend
 
     def _build_type_canonical(self) -> Dict[str, str]:
         type_canonical: Dict[str, str] = {}
         try:
-            gs = self._storage.load('config', 'global_settings')
-            for level in (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else []):
+            if self._config is not None:
+                projects = self._config.fetch_projects()
+                hierarchy = (projects[0].get('task_type_hierarchy') or []) if projects else []
+            else:
+                gs = self._storage.load('config', 'global_settings')
+                hierarchy = (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else [])
+            for level in hierarchy:
                 for t in (level.get('types') or []):
                     type_canonical[str(t).lower()] = t
         except Exception:
@@ -52,10 +58,6 @@ class _MockBackendBase(BackendPort):
         iteration_map: Dict[str, Any],
     ) -> List[DomainTask]:
         type_canonical = self._build_type_canonical()
-        try:
-            cfg = self._storage.load('config', 'server_config') or {}
-        except Exception:
-            cfg = {}
         from planner_lib.util import slugify
         project_slug = slugify(
             area_path.split('\\')[0] if '\\' in area_path else
@@ -68,8 +70,7 @@ class _MockBackendBase(BackendPort):
                 task = self._adapter.to_domain(
                     raw_wi=raw_wi,
                     project_slug=project_slug,
-                    team_service=self._team_service or _NullTeamService(),
-                    server_config=cfg,
+                    team_repository=self._team_repository or _NullTeamRepository(),
                     type_canonical=type_canonical,
                     iteration_map=iteration_map,
                     capacity_service=self._capacity_service,
@@ -83,9 +84,9 @@ class _MockBackendBase(BackendPort):
         return {'ok': True, 'invalidated': [], 'errors': []}
 
 
-class _NullTeamService:
-    """Fallback when no team_service is provided — all team names map to None."""
-    def name_to_id(self, name: str, cfg: dict) -> Optional[str]:
+class _NullTeamRepository:
+    """Fallback when no team_repository is provided — all team names map to None."""
+    def name_to_id(self, name: str) -> Optional[str]:
         return None
 
 
@@ -156,7 +157,8 @@ class MockFixtureBackend(_MockBackendBase):
             organization_url=services.get('org_url', ''),
             storage=services['storage'],
             fixture_dir=feature_flags.get('azure_mock_data_dir', 'data/azure_mock'),
-            team_service=services.get('team_service'),
+            local_backend=services.get('config_backend'),
+            team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
             persist_enabled=bool(feature_flags.get('azure_mock_persist_enabled', False)),
         )
@@ -166,11 +168,12 @@ class MockFixtureBackend(_MockBackendBase):
         organization_url: str,
         storage,
         fixture_dir: str,
-        team_service=None,
+        team_repository=None,
         capacity_service=None,
+        local_backend=None,
         persist_enabled: bool = False,
     ) -> None:
-        super().__init__(storage, team_service, capacity_service)
+        super().__init__(storage, team_repository, capacity_service, local_backend)
         from planner_lib.azure.AzureMockClient import AzureMockClient
         logger.info(
             "MockFixtureBackend: initialised (fixture_dir=%r, persist_enabled=%s)",
@@ -426,7 +429,8 @@ class MockGeneratorBackend(_MockBackendBase):
             storage=services['storage'],
             data_dir=data_dir,
             config_dict=cfg_dict or None,
-            team_service=services.get('team_service'),
+            local_backend=services.get('config_backend'),
+            team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
             persist_dir=persist_dir,
         )
@@ -437,11 +441,12 @@ class MockGeneratorBackend(_MockBackendBase):
         storage,
         data_dir: str = 'data',
         config_dict: Optional[dict] = None,
-        team_service=None,
+        team_repository=None,
         capacity_service=None,
+        local_backend=None,
         persist_dir: Optional[str] = None,
     ) -> None:
-        super().__init__(storage, team_service, capacity_service)
+        super().__init__(storage, team_repository, capacity_service, local_backend)
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
         logger.info(
             "MockGeneratorBackend: initialised (data_dir=%r, persist_dir=%r)",

@@ -73,7 +73,7 @@ def _make_session_mgr(pat='token', email='test@example.com'):
 
 def test_teams_happy_path(client):
     svc = _make_team_service([{'id': 1, 'name': 'TeamA'}])
-    register_service_on_client(client, 'team_service', svc)
+    register_service_on_client(client, 'team_repository', svc)
     r = client.get('/api/teams', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 200
     assert r.json() == [{'id': 1, 'name': 'TeamA'}]
@@ -83,8 +83,8 @@ def test_teams_missing_service(client):
     # Ensure service is not present in the container (clear both singletons and factories)
     container = getattr(client.app.state, 'container', None)
     if container is not None:
-        container._singletons.pop('team_service', None)
-        container._factories.pop('team_service', None)
+        container._singletons.pop('team_repository', None)
+        container._factories.pop('team_repository', None)
     # Use a client that does not raise server exceptions so we can assert 500
     from fastapi.testclient import TestClient
     c = TestClient(client.app, raise_server_exceptions=False)
@@ -94,7 +94,7 @@ def test_teams_missing_service(client):
 
 def test_projects_happy_path(client):
     svc = _make_project_service([{'id': 'p1', 'name': 'Proj1'}])
-    register_service_on_client(client, 'project_service', svc)
+    register_service_on_client(client, 'project_repository', svc)
     r = client.get('/api/projects', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 200
     assert r.json() == [{'id': 'p1', 'name': 'Proj1'}]

@@ -2,7 +2,7 @@
 
 Covers: projects, global-settings, iterations, area-mappings (CRUD +
 refresh + toggle), teams, people (CRUD + inspect), schema, backup,
-restore, cost (CRUD + inspect), and system.
+restore, cost (CRUD + inspect), system, and ado (Azure DevOps config).
 """
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -401,8 +401,8 @@ async def admin_save_people(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('people', content)
         try:
-            people_service = resolve_service(request, 'people_service')
-            people_service.reload()
+            people_repo = resolve_service(request, 'people_repository')
+            people_repo.reload()
         except Exception as e:
             logger.warning('Failed to reload people service after save: %s', e)
         try:
@@ -424,9 +424,9 @@ async def admin_inspect_people(request: Request):
     """Inspect people data grouped by team; delegates to people_inspector."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        people_svc = resolve_service(request, 'people_service')
-        team_svc = resolve_service(request, 'team_service')
-        return people_inspector.inspect(admin_svc, people_svc, team_svc)
+        people_repo = resolve_service(request, 'people_repository')
+        team_repo = resolve_service(request, 'team_repository')
+        return people_inspector.inspect(admin_svc, people_repo, team_repo)
     except Exception as e:
         logger.exception('Failed to inspect people data: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -516,9 +516,9 @@ async def admin_inspect_cost(request: Request):
     """Inspect team/cost matching for debugging.  Delegates to cost_inspector."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        people_service = resolve_service(request, 'people_service')
-        team_service = resolve_service(request, 'team_service')
-        return cost_inspector.inspect(admin_svc, people_service, team_service)
+        people_repo = resolve_service(request, 'people_repository')
+        team_repo = resolve_service(request, 'team_repository')
+        return cost_inspector.inspect(admin_svc, people_repo, team_repo)
     except Exception as e:
         logger.exception('Failed to inspect cost configuration: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -581,4 +581,44 @@ async def admin_save_system(request: Request):
         return {'ok': True}
     except Exception as e:
         logger.exception('Failed to save system: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+# ---------------------------------------------------------------------------
+# Azure DevOps configuration (ado_config in diskcache)
+# ---------------------------------------------------------------------------
+
+@router.get('/admin/v1/ado')
+@require_admin_session
+async def admin_get_ado(request: Request):
+    """Return the Azure DevOps configuration (organization_url + ADO feature flags)."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        return {'content': admin_svc.get_config('ado_config', default={})}
+    except Exception as e:
+        logger.exception('Failed to load ADO config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/ado')
+@require_admin_session
+async def admin_save_ado(request: Request):
+    """Save Azure DevOps configuration; triggers a config reload on success."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+    content = payload.get('content')
+    if content is None:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        admin_svc.save_config('ado_config', content)
+        try:
+            admin_svc.reload_config()
+        except Exception as e:
+            logger.exception('Failed to reload configuration after saving ADO config: %s', e)
+        return {'ok': True}
+    except Exception as e:
+        logger.exception('Failed to save ADO config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

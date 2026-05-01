@@ -12,7 +12,7 @@ class InMemoryBackend:
     def __init__(self):
         self.store = {}
         self.backendsaved = []
-    def save(self, namespace, key, value):
+    def save(self, namespace, key, value, ttl_seconds=None):
         self.store[(namespace, key)] = value
     def load(self, namespace, key):
         k = (namespace, key)

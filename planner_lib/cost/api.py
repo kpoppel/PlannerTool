@@ -16,7 +16,6 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
     logger.debug("Calculating cost for session %s", sid)
     try:
         from planner_lib.cost import build_cost_schema
-        from planner_lib.scenarios.scenario_store import load_user_scenario
 
         session_manager = resolve_service(request, 'session_manager')
         ctx = session_manager.get(sid) or {}
@@ -61,7 +60,8 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         applied_overrides = None
         if scenario_id:
             try:
-                scen = load_user_scenario(resolve_optional_service(request, 'scenarios_storage'), user_id, scenario_id)
+                scenario_repo = resolve_service(request, 'scenario_repository')
+                scen = scenario_repo.get_scenario(user_id, scenario_id)
                 overrides = scen.get('overrides') if isinstance(scen, dict) else None
                 if overrides:
                     applied_overrides = {}
@@ -230,17 +230,12 @@ async def api_cost_teams(request: Request):
         from planner_lib.util import slugify
         from planner_lib.services.resolver import resolve_service
 
-        storage = resolve_service(request, 'server_config_storage')
-        people_service = resolve_service(request, 'people_service')
-        cost_cfg = {}
+        cost_svc = resolve_service(request, 'cost_service')
+        people_repo = resolve_service(request, 'people_repository')
+        cost_cfg = cost_svc.get_cost_config()
+
         try:
-            cost_cfg = storage.load('config', 'cost_config') or {}
-        except Exception:
-            cost_cfg = {}
-        
-        # Get people from PeopleService
-        try:
-            people = people_service.get_people()
+            people = people_repo.list_people()
         except Exception:
             people = []
 

@@ -27,7 +27,8 @@ class MemoryStorage(StorageBackend):
             if namespace in self._store and isinstance(self._store[namespace], dict):
                 self._store[namespace].pop(key, None)
 
-    def save(self, namespace: str, key: str, value: Any) -> None:
+    def save(self, namespace: str, key: str, value: Any, ttl_seconds=None) -> None:
+        # ttl_seconds is accepted for interface compatibility but ignored.
         if namespace not in self._store:
             self._store[namespace] = {}
         with self._lock:

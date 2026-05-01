@@ -1,7 +1,7 @@
 """CostInspector: debugging tool for team/cost data matching.
 
 Extracted from the ``admin_inspect_cost`` route handler in ``admin/api.py``.
-Provides a single ``inspect(admin_svc, people_service, team_service)`` function
+Provides a single ``inspect(admin_svc, people_repository, team_repository)`` function
 that returns a rich inspection dict without any HTTP dependency.
 """
 from __future__ import annotations
@@ -11,31 +11,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def inspect(admin_svc, people_service, team_service) -> dict:
+def inspect(admin_svc, people_repository, team_repository) -> dict:
     """Return a detailed cost-inspection report.
-
-    Computes:
-    - All teams defined in the people database
-    - All teams configured via team_service
-    - Matching status between the two sources
-    - Monthly cost and hours per team/member
-    - Teams only in config or only in the database
 
     Parameters
     ----------
     admin_svc:
         AdminService instance (provides config CRUD)
-    people_service:
-        PeopleService instance
-    team_service:
-        TeamService instance
+    people_repository:
+        PeopleRepository instance
+    team_repository:
+        TeamRepository instance (unused currently; teams are read from admin config)
     """
     from planner_lib.util import slugify
 
     # --- People config (for display) ---
     database_path = 'config/database.yaml'
     try:
-        people_cfg = people_service.get_config()
+        people_cfg = admin_svc.get_config('people') or {}
         database_path = people_cfg.get('database_file', database_path)
     except Exception as e:
         logger.warning("Failed to load people config: %s", e)
@@ -43,9 +36,9 @@ def inspect(admin_svc, people_service, team_service) -> dict:
     cost_cfg = admin_svc.get_config('cost_config') or {}
 
     try:
-        people = people_service.get_people()
+        people = people_repository.list_people()
     except Exception as e:
-        logger.warning("Failed to load people from service: %s", e)
+        logger.warning("Failed to load people from repository: %s", e)
         people = []
 
     # --- Configured teams ---

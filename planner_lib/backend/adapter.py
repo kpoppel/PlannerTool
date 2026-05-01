@@ -38,8 +38,7 @@ class AzureAdapter:
         self,
         raw_wi: Dict[str, Any],
         project_slug: str,
-        team_service,
-        server_config: Dict[str, Any],
+        team_repository,
         type_canonical: Dict[str, str],
         iteration_map: Dict[str, Any],
         capacity_service=None,
@@ -53,16 +52,14 @@ class AzureAdapter:
             planner-normalised field names (``startDate``, ``finishDate``, etc.).
         project_slug:
             The project identifier string (e.g. ``'project-my-team'``).
-        team_service:
-            TeamServiceProtocol instance used to map team display names to IDs.
-        server_config:
-            Full server_config dict (needed by capacity_service.parse()).
+        team_repository:
+            TeamRepository — used to map team display names to IDs.
         type_canonical:
             Dict mapping lowercased type string → canonical casing.
         iteration_map:
             Dict mapping normalised iteration path → ``{startDate, finishDate, name}``.
         capacity_service:
-            Optional CapacityServiceProtocol for parsing capacity from description.
+            Optional CapacityService for parsing capacity from description.
         """
         raw_type = raw_wi.get('type') or ''
         canonical_type = type_canonical.get(raw_type.lower(), raw_type)
@@ -73,7 +70,7 @@ class AzureAdapter:
             try:
                 parsed = capacity_service.parse(raw_wi.get('description'))
                 for entry in parsed:
-                    mapped = team_service.name_to_id(entry['team'], server_config)
+                    mapped = team_repository.name_to_id(entry['team'])
                     if mapped is None:
                         continue
                     filtered_capacity.append(

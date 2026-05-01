@@ -33,18 +33,20 @@ class AdminService:
         self,
         account_storage: StorageBackend,
         config_storage: StorageBackend,
-        project_service: Any,
+        project_repository: Any,
         account_manager: Any,
         azure_client: Any,
+        server_config_storage: Optional[StorageBackend] = None,
         views_storage: Optional[StorageBackend] = None,
         scenarios_storage: Optional[StorageBackend] = None,
         reloadable_services: Optional[list] = None,
     ) -> None:
-        self._project_service = project_service
+        self._project_service = project_repository  # internal alias kept for brevity
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
             config_storage=config_storage,
             account_storage=account_storage,
+            server_config_storage=server_config_storage,
             views_storage=views_storage,
             scenarios_storage=scenarios_storage,
         )
@@ -53,6 +55,7 @@ class AdminService:
         # Composed reload orchestrator: owns hot-reload coordination.
         self._reload_orchestrator = ReloadOrchestrator(
             config_storage=config_storage,
+            server_config_storage=server_config_storage,
             azure_client=azure_client,
             account_manager=account_manager,
             reloadable_services=reloadable_services or [],

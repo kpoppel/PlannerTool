@@ -3,11 +3,11 @@ from planner_lib.cost.service import CostService, build_cost_schema
 
 def test_cost_service_estimate(fake_services, cache_storage):
     storage = fake_services['storage']
-    people_service = fake_services['people_service']
-    project_service = fake_services['project_service']
-    team_service = fake_services['team_service']
+    people_repository = fake_services['people_repository']
+    project_repository = fake_services['project_repository']
+    team_repository = fake_services['team_repository']
 
-    svc = CostService(storage=storage, project_service=project_service, team_service=team_service, people_service=people_service, cache_storage=cache_storage)
+    svc = CostService(storage=storage, project_repository=project_repository, team_repository=team_repository, people_repository=people_repository, cache_storage=cache_storage)
 
     # Load session features from fixture
     import json, os

@@ -14,7 +14,7 @@ class InMemoryBackend(StorageBackend):
     def __init__(self):
         self._data = {}
 
-    def save(self, namespace: str, key: str, value):
+    def save(self, namespace: str, key: str, value, ttl_seconds=None):
         self._data.setdefault(namespace, {})[key] = value
 
     def load(self, namespace: str, key: str):

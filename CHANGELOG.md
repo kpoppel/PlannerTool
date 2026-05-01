@@ -5,13 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project should strive to adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Template:
+## [unreleased]
 
-## [v] - unreleased
+### Changed
+- **Config internalized into diskcache**: `ConfigBackend` now reads/writes directly to diskcache (peer of `UserDataBackend`) rather than wrapping YAML files with a `CachingBackend` layer. Migrated keys: `area_plan_map`, `cost_config`, `global_settings`, `iterations`, `projects`, `teams`. Run migration 0021 before starting the server.
+- **ADO config extracted**: `azure_devops_organization` and all ADO-specific feature flags (`use_azure_mock`, `use_azure_mock_generator`, `azure_mock_persist_enabled`, `generator_config`, `generator_persist_enabled`) moved from `server_config.yml` into a new `config::ado_config` diskcache key. `server_config.yml` now holds generic server settings only.
+- **`ConfigManager` dual-storage routing**: `server_config` is routed to YAML storage; all other config keys route to diskcache. New `server_config_storage` constructor parameter.
+- **`ReloadOrchestrator`**: reads `ado_config` from diskcache for ADO org URL + flags; merges with generic `server_config` feature_flags for the AzureService rebuild.
+- **Admin UI overhaul**: sidebar "System" renamed to "Server"; new "Azure DevOps" section backed by the `/admin/v1/ado` API and the `ado` JSON Schema (built dynamically from `BackendRegistry.get_ado_schema()`).
+- **`admin/schema.py`**: `system` schema no longer contains `azure_devops_organization` or ADO-specific feature flags; new `ado` schema type returns the full `ado_config` shape.
+- **`BackendRegistry`**: added `get_ado_schema()` function; `get_merged_schema()` docstring updated.
+- Backend architecture clean-up: replaced custom 3-class cache stack (`CacheManager`, `MemoryCacheManager`, `CacheWarmupService`) with native diskcache TTL (`expire=`), collapsing `CachingBackend` to ~170 lines; split `LocalConfigBackend` into read-only `ConfigBackend` and mutable `UserDataBackend`; narrowed repository protocol types to focused ISP protocols (`TaskBackend`, `HistoryBackend`, `PlansBackend`, `IterationsBackend`); renamed `local_backend` DI key/params to `config_backend`/`plan_config`/`iteration_config`; rewrote `docs/ARCHITECTURE_BACKEND_DATA.md`.
 
 ### Added
-### Changed
-### Fixed
+- Migration `0021_internalize_config_to_diskcache.py`: moves YAML config files into diskcache and extracts `ado_config`; supports `--dry-run` and `--backup`.
+- `AdoConfigBackend` protocol in `planner_lib/backend/port.py`: `fetch_ado_config()` / `save_ado_config()`.
+- `ConfigBackend.save_config()` and `save_config_raw()` write methods (admin write path).
+- New admin API endpoints: `GET /admin/v1/ado`, `POST /admin/v1/ado`.
+- New admin UI component: `www-admin/js/components/admin/AzureDevOps.lit.js`.
+
 
 ---
 ## [v3.5.3] - unreleased
@@ -22,6 +34,10 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - `CachingBackend.get_cache_manager()` accessor method for TTL-aware cache warmup coordination.
 - `CacheTTLConfig` dataclass in `planner_lib/backend/caching.py`: per-domain TTL configuration with sensible defaults (tasks 30 min, history 24 h, teams/plans 4 h, markers 2 h, iterations 8 h). Configurable per-instance via `cache.ttls` in `server_config`.
 - Cache expiry timestamp logging: `CacheManager.is_stale()` now logs `expiry=<iso>` in DEBUG messages.
+- `PlanRepository` (`planner_lib/repository/plan_repository.py`): new repository for delivery-plan markers, extracted from `TaskRepository`.
+- `IterationRepository` (`planner_lib/repository/iteration_repository.py`): new repository for sprint/iteration data, extracted from `TaskRepository`.
+- `PeopleRepository`, `TeamRepository`, `ProjectRepository` in `planner_lib/repository/`: canonical repository facades for config-backed data (people.yml, teams.yml, projects.yml). DI keys: `people_repository`, `team_repository`, `project_repository`.
+- Domain TypedDicts for all data models: `DomainMarker`, `DomainIteration`, `DomainTeam`, `DomainProject`, `DomainPerson` in `planner_lib/domain/`.
 
 ### Changed
 - `_make_backend()` in `main.py` now delegates to `registry.build_active_backend()`, eliminating the manual `if/elif` chain.
@@ -29,7 +45,7 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 - Refactored Azure client/caching architecture to a clean layered design: `BackendPort` protocol, `CachingBackend` composition wrapper, `AzureDevOpsBackend` (replaces AzureClient/AzureCachingClient inheritance stack), `StaticBackend` for standalone mode, `MockFixtureBackend`/`MockGeneratorBackend` for demo/test modes, `AccountManagerCredentialProvider` for PAT handling, `TaskRepository`/`HistoryRepository` replacing `TaskService`/`HistoryService` as application-layer facades, all wired via the existing ServiceContainer DI pattern.
 
 ### Fixed
-- **Cache architecture**: Fixed critical disconnection between memory cache and disk cache TTL logic. Previously, `MemoryCacheManager` had direct disk access and independent staleness checking, causing it to serve stale data even after disk cache TTL expired. Changes:
+- **Repository as single source of truth (review pass)**: `ScenarioRepository` and `ViewRepository` added; `scenarios/api.py` and `views/api.py` rewritten to use them. `cost/api.py:api_cost_teams` migrated from `people_service`/`server_config_storage` to `people_repository`/`cost_service.get_cost_config()`. `AzureDevOpsBackend`, `MockFixtureBackend`, `MockGeneratorBackend` now accept `local_backend` and use it for `_build_type_canonical()` (global_settings) and `_build_iteration_map()` (iterations.yml); dead `server_config` reads removed from `fetch_tasks`/`write_task`. `AzureAdapter.to_domain()` `server_config` parameter removed (was unused). `StateCategory` Literal type, `DomainScenario`, and `DomainView` TypedDicts added to domain layer. `LocalConfigBackend` now implements `ScenarioBackend` and `ViewBackend` (delegates to `user_storage`). — all YAML loading (people, projects, teams, iterations, area_plan_map) moves here so it is covered by the TTL cache. All five repositories (`ProjectRepository`, `TeamRepository`, `PeopleRepository`, `PlanRepository`, `IterationRepository`) drop their `StorageBackend` dependency entirely and delegate every read through `local_backend`. `CostService` and admin inspectors updated to depend on `PeopleRepository` instead of `PeopleService`. Deleted: `PeopleService`, `people/interfaces.py`, `ProjectService`, `TeamService`, `projects/interfaces.py`. `CapacityService` updated to accept `TeamRepository` (drops the `cfg` dict parameter from `id_to_short_name`/`serialize`). `AzureAdapter`, `AzureDevOpsBackend`, both mock backends, `AdminService`, `CostService`, and all API routers updated to depend on repositories instead of services. `task_repository.py` duplicate class body removed. — `TaskBackend`, `HistoryBackend`, `TeamsBackend`, `PlansBackend`, `IterationsBackend`, `PeopleBackend`. Each backend implements only the protocols it owns; no empty stubs required. `BackendPort` is now a composite of the five remote-data protocols. New `LocalConfigBackend` (`planner_lib/backend/local.py`) implements only `PeopleBackend`, is registered as DI key `local_backend`, and is wrapped by `CachingBackend` like every other backend. `CachingBackend.__getattribute__` guard changed from `hasattr(BackendPort, name)` to `name.startswith('fetch_') + hasattr(inner, name)` — CachingBackend now mirrors exactly the capability of its inner, and `isinstance(CachingBackend(LocalConfigBackend(…)), PeopleBackend)` returns True automatically. `PeopleRepository` now depends on `PeopleBackend` (DI: `local_backend`) instead of wrapping `PeopleService` directly, giving people data the same two-tier TTL cache as all other domain models. `fetch_people` TTL added to `CacheTTLConfig` (default 1 h).
   - `MemoryCacheManager` is now pure in-memory (no disk reference, no staleness logic)
   - `CachingBackend._cached_call()` always checks `CacheManager.is_stale()` even when memory has data
   - `CacheWarmupService` uses `CacheManager` (not direct disk access) and skips stale entries during warmup

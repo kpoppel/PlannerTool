@@ -47,7 +47,7 @@ class FileStorageBackend(StorageBackend):
             filename = f"{filename}{ext}"
         return ns / filename
 
-    def save(self, namespace: str, key: str, value: Any) -> None:
+    def save(self, namespace: str, key: str, value: Any, ttl_seconds=None) -> None:
         path = self._path_for(namespace, key)
         tmp = path.with_suffix(path.suffix + ".tmp")
         # Accept bytes/bytearray or str; write bytes to disk. Do not

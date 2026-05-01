@@ -92,11 +92,8 @@ def _build_services(
     from planner_lib.middleware.session import SessionManager
     from planner_lib.projects import (
         AzureProjectMetadataService,
-        ProjectService,
-        TeamService,
         CapacityService,
     )
-    from planner_lib.people import PeopleService
     from planner_lib.azure import AzureService
     from planner_lib.cost.service import CostService
     from planner_lib.admin.service import AdminService
@@ -110,24 +107,7 @@ def _build_services(
     container.register_singleton("views_storage", storage_diskcache)
 
     # --- Optional memory cache ---
-    # enable_memory_cache is only meaningful as an addition to enable_cache.
-    # Without CachingBackend there is nothing to consult the memory tier.
-    memory_cache = None
-    if feature_flags.get('enable_cache', False) and feature_flags.get('enable_memory_cache', False):
-        from planner_lib.storage.memory_cache_manager import MemoryCacheManager
-        memory_cache_config = server_cfg.get('memory_cache', {})
-        max_size_mb = memory_cache_config.get('max_size_mb', 50)
-        memory_cache = MemoryCacheManager(
-            size_limit_mb=max_size_mb,
-        )
-    elif feature_flags.get('enable_memory_cache', False):
-        logger.warning(
-            "Memory cache: enable_memory_cache is set but enable_cache is not "
-            "— memory cache requires CachingBackend and will be ignored"
-        )
-    else:
-        logger.info("Memory cache: disabled (enable_memory_cache not set)")
-    container.register_singleton("memory_cache", memory_cache)
+    # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
     container.register_factory("account_manager",
@@ -141,36 +121,45 @@ def _build_services(
     # --- Project domain ---
     container.register_factory("azure_project_metadata_service",
         lambda: AzureProjectMetadataService(cache=storage_diskcache))
-    container.register_factory("project_service",
-        lambda: ProjectService(
-            storage_config=storage_yaml,
-            metadata_service=container.get("azure_project_metadata_service"),
-        ))
-    container.register_factory("team_service",
-        lambda: TeamService(storage_config=storage_yaml))
-    container.register_factory("capacity_service",
-        lambda: CapacityService(team_service=container.get("team_service")))
 
-    # --- People ---
-    container.register_factory("people_service",
-        lambda: PeopleService(storage=storage_yaml, data_dir=config.data_dir))
+    container.register_factory("capacity_service",
+        lambda: CapacityService(team_repository=container.get("team_repository")))
+
+    # --- ConfigBackend (diskcache-backed, peer of UserDataBackend) ---
+    def _make_config_backend():
+        from planner_lib.backend.config import ConfigBackend
+        # ConfigBackend reads/writes directly to diskcache — no CachingBackend wrapper.
+        # yaml_storage is passed solely for fetch_people (people.yml not yet migrated).
+        return ConfigBackend(
+            storage=storage_diskcache,
+            yaml_storage=storage_yaml,
+            data_dir=config.data_dir,
+        )
+
+    container.register_factory("config_backend", _make_config_backend)
 
     # --- Azure ---
-    container.register_factory("azure_client",
-        lambda: AzureService(
-            server_cfg.get('azure_devops_organization'),
+    def _make_azure_client():
+        ado_cfg = container.get("config_backend").fetch_ado_config()
+        return AzureService(
+            ado_cfg.get('organization_url', ''),
             storage_diskcache,
-            feature_flags=feature_flags,
-        ))
+            feature_flags={**feature_flags, **ado_cfg.get('feature_flags', {})},
+        )
+
+    container.register_factory("azure_client", _make_azure_client)
 
     # --- New layered backend (BackendPort) ---
     def _make_backend():
         from planner_lib.backend.registry import build_active_backend
+        ado_cfg = container.get("config_backend").fetch_ado_config()
+        ado_flags = ado_cfg.get('feature_flags', {})
         inner = build_active_backend(
-            feature_flags,
-            org_url=server_cfg.get('azure_devops_organization', ''),
+            {**feature_flags, **ado_flags},
+            org_url=ado_cfg.get('organization_url', ''),
             storage=storage_diskcache,
-            team_service=container.get("team_service"),
+            config_backend=container.get("config_backend"),
+            team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
         )
 
@@ -179,11 +168,33 @@ def _build_services(
             ttl_config = CacheTTLConfig.from_config(
                 server_cfg.get('cache', {}).get('ttls', {})
             )
-            return CachingBackend(inner=inner, storage=storage_diskcache, memory_cache=memory_cache, ttl_config=ttl_config)
+            return CachingBackend(inner=inner, storage=storage_diskcache, ttl_config=ttl_config)
 
         return inner
 
     container.register_factory("backend", _make_backend)
+
+    def _make_user_data_backend():
+        from planner_lib.backend.user_data import UserDataBackend
+        # UserDataBackend is NEVER wrapped in CachingBackend — writes must be
+        # visible immediately; the diskcache storage is already persistent.
+        return UserDataBackend(storage=storage_diskcache)
+
+    container.register_factory("user_data_backend", _make_user_data_backend)
+
+    # project_repository and team_repository are backed by config_backend so
+    # they benefit from the TTL cache like every other repository.
+    container.register_factory("project_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['ProjectRepository']
+        ).ProjectRepository(
+            backend=container.get("config_backend"),
+            metadata_service=container.get("azure_project_metadata_service"),
+        ))
+    container.register_factory("team_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['TeamRepository']
+        ).TeamRepository(local_backend=container.get("config_backend")))
 
     container.register_factory("credential_provider",
         lambda: __import__(
@@ -195,9 +206,8 @@ def _build_services(
             'planner_lib.repository', fromlist=['TaskRepository']
         ).TaskRepository(
             backend=container.get("backend"),
-            project_service=container.get("project_service"),
+            project_repository=container.get("project_repository"),
             credential_provider=container.get("credential_provider"),
-            storage=storage_yaml,
         ))
 
     container.register_factory("history_repository",
@@ -206,16 +216,50 @@ def _build_services(
         ).HistoryRepository(
             backend=container.get("backend"),
             credential_provider=container.get("credential_provider"),
-            storage=storage_yaml,
         ))
+
+    container.register_factory("plan_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['PlanRepository']
+        ).PlanRepository(
+            backend=container.get("backend"),
+            project_repository=container.get("project_repository"),
+            credential_provider=container.get("credential_provider"),
+            plan_config=container.get("config_backend"),
+        ))
+
+    container.register_factory("iteration_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['IterationRepository']
+        ).IterationRepository(
+            backend=container.get("backend"),
+            project_repository=container.get("project_repository"),
+            credential_provider=container.get("credential_provider"),
+            iteration_config=container.get("config_backend"),
+        ))
+
+    container.register_factory("people_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['PeopleRepository']
+        ).PeopleRepository(backend=container.get("config_backend")))
+
+    container.register_factory("scenario_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['ScenarioRepository']
+        ).ScenarioRepository(backend=container.get("user_data_backend")))
+
+    container.register_factory("view_repository",
+        lambda: __import__(
+            'planner_lib.repository', fromlist=['ViewRepository']
+        ).ViewRepository(backend=container.get("user_data_backend")))
 
     # --- Cost ---
     container.register_factory("cost_service",
         lambda: CostService(
-            storage=storage_yaml,
-            people_service=container.get("people_service"),
-            project_service=container.get("project_service"),
-            team_service=container.get("team_service"),
+            storage=storage_diskcache,
+            people_repository=container.get("people_repository"),
+            project_repository=container.get("project_repository"),
+            team_repository=container.get("team_repository"),
             cache_storage=storage_diskcache,
         ))
 
@@ -223,17 +267,14 @@ def _build_services(
     container.register_factory("admin_service",
         lambda: AdminService(
             account_storage=storage_diskcache,
-            config_storage=storage_yaml,
-            project_service=container.get("project_service"),
+            config_storage=storage_diskcache,
+            server_config_storage=storage_yaml,
+            project_repository=container.get("project_repository"),
             account_manager=container.get("account_manager"),
             azure_client=container.get("azure_client"),
             views_storage=storage_diskcache,
             scenarios_storage=storage_diskcache,
             reloadable_services=[
-                container.get("people_service"),
-                container.get("team_service"),
-                container.get("project_service"),
-                container.get("capacity_service"),
                 container.get("cost_service"),
             ],
         ))
@@ -265,38 +306,18 @@ def _build_app(
     """Construct the FastAPI application: lifespan, middleware, routes."""
     from planner_lib.middleware import SessionMiddleware, access_denied_response
 
-    memory_cache = container.get("memory_cache")
+    memory_cache = None  # removed: MemoryCacheManager was eliminated; diskcache handles memory via OS page cache
     storage_diskcache = container.get("account_storage")  # same instance as cache backend
     session_manager = container.get("session_manager")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if memory_cache is not None:
-            try:
-                from planner_lib.storage.warmup import CacheWarmupService
-                backend = container.get("backend")
-                # Get CacheManager from backend (only CachingBackend has this method)
-                cache_manager = backend.get_cache_manager() if hasattr(backend, 'get_cache_manager') else None
-                if cache_manager:
-                    warmup_service = CacheWarmupService(
-                        memory_cache,
-                        cache_manager,
-                        ttl_for_key=backend.ttl_for_key if hasattr(backend, 'ttl_for_key') else None,
-                    )
-                    await warmup_service.warmup_async()
-                else:
-                    logger.warning("Backend does not support cache warmup (no CacheManager)")
-            except Exception:
-                logger.exception('Failed to initialize cache warmup service')
+        # diskcache handles memory (OS page cache via SQLite mmap) automatically;
+        # no warmup or memory cache manager is needed.
         try:
             yield
         finally:
-            if memory_cache is not None:
-                try:
-                    memory_cache.close()
-                    logger.info("Memory cache closed")
-                except Exception as e:
-                    logger.error(f"Error closing memory cache: {e}")
+            pass
 
     app = FastAPI(title="AZ Planner Server", lifespan=lifespan)
     app.state.container = container
@@ -396,10 +417,9 @@ def create_app(config: Config) -> FastAPI:
     _active_backend_cls = get_active_class(feature_flags)
     _cache_on = feature_flags.get('enable_cache', False)
     if _cache_on:
-        _mem = 'memory+disk' if feature_flags.get('enable_memory_cache', False) else 'disk-only'
         logger.info(
-            "Startup: cache=ON (%s), inner backend=%s",
-            _mem, _active_backend_cls.__name__,
+            "Startup: cache=ON (disk), inner backend=%s",
+            _active_backend_cls.__name__,
         )
     else:
         logger.info(

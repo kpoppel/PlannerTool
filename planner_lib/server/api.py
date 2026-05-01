@@ -24,16 +24,16 @@ def _deprecated_response(data) -> JSONResponse:
 @require_session
 async def api_config_projects(request):
     logger.warning("Deprecated endpoint /api/v1/server/projects called; use /api/projects")
-    project_svc = resolve_service(request, 'project_service')
-    return _deprecated_response(project_svc.list_projects())
+    project_repo = resolve_service(request, 'project_repository')
+    return _deprecated_response(project_repo.list_projects())
 
 
 @router.get('/v1/server/teams')
 @require_session
 async def api_config_teams(request):
     logger.warning("Deprecated endpoint /api/v1/server/teams called; use /api/teams")
-    team_svc = resolve_service(request, 'team_service')
-    return _deprecated_response(team_svc.list_teams())
+    team_repo = resolve_service(request, 'team_repository')
+    return _deprecated_response(team_repo.list_teams())
 
 
 @router.get('/v1/server/tasks')

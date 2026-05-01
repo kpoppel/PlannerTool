@@ -10,7 +10,7 @@ backend with a serializer for transparent serialization.
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 from .serializer import Serializer
 
 class StorageBackend(ABC):
@@ -20,9 +20,11 @@ class StorageBackend(ABC):
     """
 
     @abstractmethod
-    def save(self, namespace: str, key: str, value: Any) -> None:
+    def save(self, namespace: str, key: str, value: Any, ttl_seconds: Optional[float] = None) -> None:
         """Save `value` under `namespace` and `key`.
 
+        ttl_seconds: when provided, the entry expires after this many seconds.
+        Backends that do not support TTL (file, memory) silently ignore it.
         Implementations should create directories as needed and ensure
         atomic writes when possible.
         """
@@ -65,10 +67,10 @@ class SerializerBackend(StorageBackend):
         self._backend = backend
         self._serializer = serializer
 
-    def save(self, namespace: str, key: str, value: Any) -> None:
+    def save(self, namespace: str, key: str, value: Any, ttl_seconds: Optional[float] = None) -> None:
         data = self._serializer.dump(value)
         # backend must accept bytes (FileStorageBackend does)
-        self._backend.save(namespace, key, data)
+        self._backend.save(namespace, key, data, ttl_seconds=ttl_seconds)
 
     def load(self, namespace: str, key: str) -> Any:
         raw = self._backend.load(namespace, key)

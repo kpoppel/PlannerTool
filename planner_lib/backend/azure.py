@@ -68,7 +68,8 @@ class AzureDevOpsBackend(BackendPort):
         return cls(
             organization_url=services.get('org_url', ''),
             storage=services['storage'],
-            team_service=services.get('team_service'),
+            local_backend=services.get('config_backend'),
+            team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
         )
 
@@ -76,20 +77,22 @@ class AzureDevOpsBackend(BackendPort):
         self,
         organization_url: str,
         storage: StorageBackend,
-        team_service,
+        team_repository,
         capacity_service,
+        local_backend=None,
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
         # _conn provides connect(pat) context manager and all operation classes
         self._conn = AzureClient(organization_url, storage=storage)
         self._adapter = AzureAdapter()
-        self._team_service = team_service
+        self._team_repository = team_repository
         self._capacity_service = capacity_service
         self._storage = storage
+        self._config = local_backend
         logger.info(
-            "AzureDevOpsBackend: initialised (org_url=%r, team_service=%s, capacity_service=%s)",
+            "AzureDevOpsBackend: initialised (org_url=%r, team_repository=%s, capacity_service=%s)",
             organization_url,
-            type(team_service).__name__ if team_service is not None else 'None',
+            type(team_repository).__name__ if team_repository is not None else 'None',
             type(capacity_service).__name__ if capacity_service is not None else 'None',
         )
 
@@ -110,11 +113,17 @@ class AzureDevOpsBackend(BackendPort):
         return token
 
     def _build_type_canonical(self) -> Dict[str, str]:
-        """Build a lowercased-type → canonical-type map from global_settings."""
+        """Build a lowercased-type \u2192 canonical-type map from project task_type_hierarchy."""
         type_canonical: Dict[str, str] = {}
         try:
-            gs = self._storage.load('config', 'global_settings')
-            for level in (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else []):
+            if self._config is not None:
+                projects = self._config.fetch_projects()
+                # All projects share the same global hierarchy; take from first result
+                hierarchy = (projects[0].get('task_type_hierarchy') or []) if projects else []
+            else:
+                gs = self._storage.load('config', 'global_settings')
+                hierarchy = (gs.get('task_type_hierarchy', []) if isinstance(gs, dict) else [])
+            for level in hierarchy:
                 for t in (level.get('types') or []):
                     type_canonical[str(t).lower()] = t
         except Exception:
@@ -124,10 +133,12 @@ class AzureDevOpsBackend(BackendPort):
     def _build_iteration_map(self, client, azure_project: str) -> Dict[str, Any]:
         """Fetch and return a normalised iteration-path → dates map."""
         try:
-            iterations_config: dict = {}
-            if self._storage.exists('config', 'iterations'):
-                iterations_config = self._storage.load('config', 'iterations') or {}
-            project_overrides = iterations_config.get('project_overrides', {})
+            if self._config is not None:
+                iterations_config = self._config.fetch_iterations_config()
+            else:
+                iterations_config = (self._storage.load('config', 'iterations')
+                                     if self._storage.exists('config', 'iterations') else {})
+            project_overrides = (iterations_config or {}).get('project_overrides', {})
             raw_roots = project_overrides.get(
                 azure_project, iterations_config.get('default_roots', [])
             )
@@ -181,11 +192,6 @@ class AzureDevOpsBackend(BackendPort):
         """
         pat = self._require_credential(credential, 'fetch_tasks')
         type_canonical = self._build_type_canonical()
-        # Read server_config for capacity service (adapter needs it for team mapping)
-        try:
-            cfg = self._storage.load('config', 'server_config') or {}
-        except Exception:
-            cfg = {}
         # Derive the project slug from the area_path (first path segment, slugified)
         from planner_lib.util import slugify
         project_slug = slugify(
@@ -213,8 +219,7 @@ class AzureDevOpsBackend(BackendPort):
                     task = self._adapter.to_domain(
                         raw_wi=raw_wi,
                         project_slug=project_slug,
-                        team_service=self._team_service,
-                        server_config=cfg,
+                        team_repository=self._team_repository,
                         type_canonical=type_canonical,
                         iteration_map=iteration_map,
                         capacity_service=self._capacity_service,
@@ -239,11 +244,6 @@ class AzureDevOpsBackend(BackendPort):
     ) -> WriteResult:
         """Persist *updates* for *task_id* to ADO."""
         pat = self._require_credential(credential, 'write_task')
-        cfg = {}
-        try:
-            cfg = self._storage.load('config', 'server_config') or {}
-        except Exception:
-            pass
 
         errors: List[str] = []
         item_updated = False

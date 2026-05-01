@@ -4,9 +4,6 @@ from . import engine as _engine
 import logging
 from datetime import datetime, timezone
 from planner_lib.storage.base import StorageBackend
-from planner_lib.projects.project_service import ProjectServiceProtocol
-from planner_lib.projects.interfaces import TeamServiceProtocol
-from planner_lib.people.interfaces import PeopleServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +19,15 @@ class CostService:
     def __init__(
         self,
         storage: StorageBackend,
-        project_service: ProjectServiceProtocol,
-        team_service: TeamServiceProtocol,
-        people_service: PeopleServiceProtocol,
+        project_repository,
+        team_repository,
+        people_repository,
         cache_storage: StorageBackend,
     ):
-        # `storage` is the config/cost storage (yaml). `people_service` provides
-        # access to the people database with overrides. The `team_service`
-        # must be provided and will be used exclusively for configured
-        # teams lookup; there is no fallback to loading teams from storage.
-        # `cache_storage` is used for caching team rates computations.
         self._storage = storage
-        self._people_service = people_service
-        self._project_service = project_service
-        self._team_service = team_service
+        self._people_repository = people_repository
+        self._project_service = project_repository  # internal alias kept for brevity
+        self._team_service = team_repository         # internal alias kept for brevity
         self._cache_storage = cache_storage
         self._cfg = self._load_cfg()
 
@@ -47,12 +39,13 @@ class CostService:
         so they are visible rather than silently producing empty config.
         """
         try:
+            # cost_config lives in the diskcache config namespace after migration 0021.
             cost_cfg = self._storage.load("config", "cost_config") or {}
         except KeyError:
             cost_cfg = {}
         people = []
         try:
-            people = self._people_service.get_people()
+            people = self._people_repository.list_people()
         except KeyError:
             pass
         return {"cost": cost_cfg, "database": {"people": people}}
@@ -75,6 +68,10 @@ class CostService:
         self._cfg = self._load_cfg()
         self.invalidate_cache()
         logger.info("CostService: configuration reloaded")
+
+    def get_cost_config(self) -> dict:
+        """Return the raw cost_config dict (working_hours, external_cost, internal_cost, …)."""
+        return self._cfg.get("cost", {})
 
     def estimate_costs(self, session: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """Traverse features/tasks from a session-like dict and compute costs.

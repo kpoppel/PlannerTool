@@ -13,7 +13,7 @@ class FakeDiskCache:
     def _key(self, namespace, key):
         return f"{namespace}::{key}"
 
-    def save(self, namespace, key, value):
+    def save(self, namespace, key, value, ttl_seconds=None):
         self._store[self._key(namespace, key)] = value
 
     def load(self, namespace, key):

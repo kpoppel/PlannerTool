@@ -100,6 +100,7 @@ class TestCostInspector:
 
         people_svc = MagicMock()
         people_svc.get_people.return_value = list(people)
+        people_svc.list_people.return_value = list(people)
         people_svc.get_config.return_value = {'database_file': 'test.yaml'}
 
         team_svc = MagicMock()
@@ -181,6 +182,7 @@ class TestPeopleInspector:
 
         people_svc = MagicMock()
         people_svc.get_people.return_value = list(people)
+        people_svc.list_people.return_value = list(people)
 
         team_svc = MagicMock()
         team_svc.list_teams.return_value = []

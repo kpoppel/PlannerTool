@@ -1,7 +1,7 @@
 """PeopleInspector: debug view for team/people data matching.
 
 Extracted from the ``admin_inspect_people`` route handler in ``admin/api.py``.
-Provides a single ``inspect(admin_svc, people_service, team_service)`` function
+Provides a single ``inspect(admin_svc, people_repository, team_repository)`` function
 that returns a rich inspection dict without any HTTP dependency.
 """
 from __future__ import annotations
@@ -11,12 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def inspect(admin_svc, people_service, team_service) -> dict:
-    """Return a detailed people-inspection report.
-
-    Groups people by team, identifies configured/unmatched/excluded teams,
-    and highlights people with no team assignment.
-    """
+def inspect(admin_svc, people_repository, team_repository) -> dict:
+    """Return a detailed people-inspection report."""
     from planner_lib.util import slugify
 
     # --- Database path (display only) ---
@@ -29,9 +25,9 @@ def inspect(admin_svc, people_service, team_service) -> dict:
 
     # --- People ---
     try:
-        people = people_service.get_people()
+        people = people_repository.list_people()
     except Exception as e:
-        logger.warning("Failed to load people from service: %s", e)
+        logger.warning("Failed to load people from repository: %s", e)
         people = []
 
     # --- Configured teams ---

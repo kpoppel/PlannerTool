@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import pytest
+from typing import get_protocol_members
 
 from planner_lib.backend.port import BackendPort
 
@@ -98,7 +99,7 @@ def _make_caching_backend(tasks, tmp_path):
             except KeyError:
                 raise KeyError(key)
 
-        def save(self, ns, key, val):
+        def save(self, ns, key, val, ttl_seconds=None):
             self._store.setdefault(ns, {})[key] = val
 
         def exists(self, ns, key):
@@ -106,6 +107,9 @@ def _make_caching_backend(tasks, tmp_path):
 
         def delete(self, ns, key):
             self._store.get(ns, {}).pop(key, None)
+
+        def list_keys(self, ns):
+            return list(self._store.get(ns, {}).keys())
 
     return CachingBackend(inner=inner, storage=_MemStorage())
 
@@ -148,9 +152,18 @@ def backend(backend_factory):
 # ---------------------------------------------------------------------------
 
 def test_backend_satisfies_protocol(backend):
-    """Every backend must be a runtime-checkable BackendPort."""
-    assert isinstance(backend, BackendPort), (
-        f"{type(backend).__name__} does not satisfy BackendPort protocol"
+    """Every remote-data backend must implement all BackendPort methods.
+
+    We use structural checking (hasattr per method) rather than isinstance
+    because CachingBackend provides methods dynamically via __getattribute__,
+    which Python 3.12+ runtime_checkable Protocols do not see.
+    """
+    missing = [
+        m for m in get_protocol_members(BackendPort)
+        if not hasattr(backend, m)
+    ]
+    assert not missing, (
+        f"{type(backend).__name__} is missing BackendPort methods: {missing}"
     )
 
 

@@ -39,7 +39,7 @@ def _make_service(**kwargs):
     defaults = dict(
         account_storage=storage,
         config_storage=storage,
-        project_service=None,
+        project_repository=None,
         account_manager=None,
         azure_client=None,
     )

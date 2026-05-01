@@ -18,7 +18,6 @@ Example::
         backend=backend,
         project_service=...,
         credential_provider=cred_provider,
-        storage=...,
     )
 """
 from __future__ import annotations
@@ -54,6 +53,7 @@ class FakeBackend(BackendPort):
         self._teams: Dict[str, List[dict]] = {}
         self._plans: Dict[str, List[dict]] = {}
         self._iterations: Dict[str, Dict[str, Any]] = {}
+        self._people: list = []
         self._raise_on_write = raise_on_write
 
         # Interaction records
@@ -164,6 +164,12 @@ class FakeBackend(BackendPort):
     def invalidate_cache(self) -> Dict[str, Any]:
         self.invalidate_cache_calls += 1
         return {'ok': True, 'invalidated': [], 'errors': []}
+
+    def fetch_people(self, credential=None):
+        return list(self._people)
+
+    def set_people(self, people: list) -> None:
+        self._people = list(people)
 
 
 class FakeCredentialProvider:

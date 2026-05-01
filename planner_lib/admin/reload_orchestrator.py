@@ -4,6 +4,12 @@ This was previously inlined in AdminService.reload_config() which forced
 AdminService to accept references to every service in the application.
 Extracting it here keeps AdminService focused on its core role (config CRUD,
 account management) and makes the reload logic independently testable.
+
+Storage split
+-------------
+``config_storage`` (diskcache) holds all config keys except ``server_config``.
+``server_config_storage`` (YAML) holds ``server_config`` and ``ado_config`` is
+read from ``config_storage`` to refresh the AzureService org URL and ADO flags.
 """
 import logging
 from typing import Any, Optional
@@ -23,7 +29,7 @@ class ReloadOrchestrator:
     ``Reloadable``) have their ``invalidate_cache()`` called instead.
 
     The orchestrator also updates the ``AzureService`` runtime settings from
-    the freshly-loaded server config and rebuilds its concrete client when
+    the freshly-loaded ``ado_config`` and rebuilds its concrete client when
     feature flags change.
     """
 
@@ -33,16 +39,21 @@ class ReloadOrchestrator:
         azure_client: Any,
         account_manager: Any,
         reloadable_services: list,
+        server_config_storage: Optional[StorageBackend] = None,
     ) -> None:
         """
         Args:
-            config_storage: YAML storage used to re-read server_config.
+            config_storage: diskcache-backed storage holding all config keys
+                except server_config.
             azure_client: The AzureService instance whose settings are refreshed.
             account_manager: AccountManager used to refresh session credentials.
             reloadable_services: List of service instances to reload/invalidate.
                 Each service is tested for Reloadable / Invalidatable protocols.
+            server_config_storage: Optional YAML-backed storage for server_config.
+                Falls back to config_storage when not provided.
         """
         self._config_storage = config_storage
+        self._server_config_storage = server_config_storage or config_storage
         self._azure_client = azure_client
         self._account_manager = account_manager
         self._reloadable_services = reloadable_services
@@ -52,20 +63,19 @@ class ReloadOrchestrator:
 
         Returns ``{"ok": True}`` on success; raises on unexpected error.
         """
-        # Warm up storage reads for the keys touched by the admin UI.
-        for key in ('server_config', 'cost_config', 'database'):
-            try:
-                self._config_storage.load('config', key)
-            except Exception:
-                logger.debug('Config key not present: %s', key)
-
-        # Update azure_client runtime settings from the refreshed server config.
+        # Update azure_client runtime settings from ado_config (diskcache).
         try:
-            cfg = self._config_storage.load('config', 'server_config') or {}
+            ado_cfg = self._config_storage.load('config', 'ado_config') or {}
         except KeyError:
-            cfg = {}
-        self._azure_client.organization_url = cfg.get('azure_devops_organization')
-        self._azure_client.feature_flags = cfg.get('feature_flags') or {}
+            ado_cfg = {}
+        self._azure_client.organization_url = ado_cfg.get('organization_url') or ''
+        # Merge generic feature_flags (server_config) + ADO-specific flags (ado_config).
+        try:
+            server_cfg = self._server_config_storage.load('config', 'server_config') or {}
+        except KeyError:
+            server_cfg = {}
+        merged_flags = {**(server_cfg.get('feature_flags') or {}), **(ado_cfg.get('feature_flags') or {})}
+        self._azure_client.feature_flags = merged_flags
         # Rebuild the concrete client so feature-flag changes take effect.
         self._azure_client.rebuild_client()
 
