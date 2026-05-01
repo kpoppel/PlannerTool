@@ -128,13 +128,9 @@ def _build_services(
     # --- ConfigBackend (diskcache-backed, peer of UserDataBackend) ---
     def _make_config_backend():
         from planner_lib.backend.config import ConfigBackend
-        # ConfigBackend reads/writes directly to diskcache — no CachingBackend wrapper.
-        # yaml_storage is passed solely for fetch_people (people.yml not yet migrated).
-        return ConfigBackend(
-            storage=storage_diskcache,
-            yaml_storage=storage_yaml,
-            data_dir=config.data_dir,
-        )
+        # All config domains (including people after migration 0022) live in
+        # diskcache — no YAML fallback required.
+        return ConfigBackend(storage=storage_diskcache)
 
     container.register_factory("config_backend", _make_config_backend)
 
@@ -182,46 +178,49 @@ def _build_services(
 
     container.register_factory("user_data_backend", _make_user_data_backend)
 
+    # --- Repositories ---
+    # Named factory functions rather than __import__ lambdas for readability.
+    from planner_lib.repository import (
+        ProjectRepository,
+        TeamRepository,
+        TaskRepository,
+        HistoryRepository,
+        PlanRepository,
+        IterationRepository,
+        PeopleRepository,
+        ScenarioRepository,
+        ViewRepository,
+    )
+    from planner_lib.backend.credential import AccountManagerCredentialProvider
+
     # project_repository and team_repository are backed by config_backend so
     # they benefit from the TTL cache like every other repository.
     container.register_factory("project_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['ProjectRepository']
-        ).ProjectRepository(
+        lambda: ProjectRepository(
             backend=container.get("config_backend"),
             metadata_service=container.get("azure_project_metadata_service"),
         ))
     container.register_factory("team_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['TeamRepository']
-        ).TeamRepository(local_backend=container.get("config_backend")))
+        lambda: TeamRepository(local_backend=container.get("config_backend")))
 
     container.register_factory("credential_provider",
-        lambda: __import__(
-            'planner_lib.backend.credential', fromlist=['AccountManagerCredentialProvider']
-        ).AccountManagerCredentialProvider(container.get("account_manager")))
+        lambda: AccountManagerCredentialProvider(container.get("account_manager")))
 
     container.register_factory("task_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['TaskRepository']
-        ).TaskRepository(
+        lambda: TaskRepository(
             backend=container.get("backend"),
             project_repository=container.get("project_repository"),
             credential_provider=container.get("credential_provider"),
         ))
 
     container.register_factory("history_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['HistoryRepository']
-        ).HistoryRepository(
+        lambda: HistoryRepository(
             backend=container.get("backend"),
             credential_provider=container.get("credential_provider"),
         ))
 
     container.register_factory("plan_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['PlanRepository']
-        ).PlanRepository(
+        lambda: PlanRepository(
             backend=container.get("backend"),
             project_repository=container.get("project_repository"),
             credential_provider=container.get("credential_provider"),
@@ -229,9 +228,7 @@ def _build_services(
         ))
 
     container.register_factory("iteration_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['IterationRepository']
-        ).IterationRepository(
+        lambda: IterationRepository(
             backend=container.get("backend"),
             project_repository=container.get("project_repository"),
             credential_provider=container.get("credential_provider"),
@@ -239,19 +236,13 @@ def _build_services(
         ))
 
     container.register_factory("people_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['PeopleRepository']
-        ).PeopleRepository(backend=container.get("config_backend")))
+        lambda: PeopleRepository(backend=container.get("config_backend")))
 
     container.register_factory("scenario_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['ScenarioRepository']
-        ).ScenarioRepository(backend=container.get("user_data_backend")))
+        lambda: ScenarioRepository(backend=container.get("user_data_backend")))
 
     container.register_factory("view_repository",
-        lambda: __import__(
-            'planner_lib.repository', fromlist=['ViewRepository']
-        ).ViewRepository(backend=container.get("user_data_backend")))
+        lambda: ViewRepository(backend=container.get("user_data_backend")))
 
     # --- Cost ---
     container.register_factory("cost_service",

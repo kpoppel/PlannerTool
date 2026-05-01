@@ -4,9 +4,8 @@ Implements the focused config protocols; reads and writes go directly to the
 injected diskcache StorageBackend.  ConfigBackend is a peer of UserDataBackend:
 both operate directly on diskcache with no separate TTL-caching layer.
 
-People config (people.yml) is not yet migrated to diskcache; an optional
-``yaml_storage`` parameter is accepted solely for ``fetch_people`` until that
-migration is completed.
+People config (people.yml) is stored in diskcache after migration 0022.  The
+``config::people`` key holds a dict ``{database: {people: [...]}}``.
 
 Adding new config domains
 --------------------------
@@ -41,7 +40,6 @@ from planner_lib.domain.people import DomainPerson
 from planner_lib.domain.projects import DomainProject
 from planner_lib.domain.teams import DomainTeam
 from planner_lib.storage.base import StorageBackend
-from planner_lib.storage.serializer import YAMLSerializer
 from planner_lib.util import slugify
 
 logger = logging.getLogger(__name__)
@@ -61,75 +59,35 @@ class ConfigBackend(
     ----------
     storage:
         StorageBackend backed by diskcache — the authoritative store for all
-        config domains (projects, teams, cost_config, iterations,
-        area_plan_map, global_settings, ado_config).
-    yaml_storage:
-        Optional StorageBackend backed by YAML files — used solely for
-        ``fetch_people`` until people.yml is migrated to diskcache.
-    data_dir:
-        Base data directory — used to resolve a relative ``database_file``
-        path in people.yml.
+        config domains (people, projects, teams, cost_config, iterations,
+        area_plan_map, global_settings, ado_config).  Run migration 0022
+        to populate ``config::people`` before starting the server.
     """
 
     def __init__(
         self,
         storage: StorageBackend,
-        yaml_storage: Optional[StorageBackend] = None,
-        data_dir: str = "data",
     ) -> None:
         self._storage = storage
-        self._yaml_storage = yaml_storage
-        self._data_dir = Path(data_dir)
         logger.info("ConfigBackend: initialised (diskcache storage)")
 
     # ------------------------------------------------------------------
-    # PeopleBackend  (still YAML-backed until people migration)
+    # PeopleBackend  (diskcache-backed after migration 0022)
     # ------------------------------------------------------------------
 
     def fetch_people(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainPerson]:
-        """Return all people records from people.yml (+ optional database_file)."""
-        storage = self._yaml_storage
-        if storage is None:
-            logger.warning("ConfigBackend: yaml_storage not configured — fetch_people returning []")
+        """Return all people records from diskcache (populated by migration 0022)."""
+        if not self._storage.exists("config", "people"):
+            logger.warning(
+                "ConfigBackend: config::people not in diskcache — "
+                "run migration 0022 to populate it from people.yml"
+            )
             return []
-        if not storage.exists("config", "people"):
-            logger.warning("ConfigBackend: people config not found — returning []")
-            return []
-
-        cfg = storage.load("config", "people") or {}
-
-        people_from_file: List[dict] = []
-        database_file = cfg.get("database_file", "")
-        if database_file:
-            people_from_file = self._load_people_file(database_file)
-
-        overrides: List[dict] = (cfg.get("database") or {}).get("people") or []
-        people_map: Dict[str, dict] = {p["name"]: p for p in people_from_file if p.get("name")}
-        for p in overrides:
-            if p.get("name"):
-                people_map[p["name"]] = p
-
-        return list(people_map.values())
-
-    def _load_people_file(self, database_file: str) -> List[dict]:
-        path = Path(database_file)
-        if not path.is_absolute():
-            path = self._data_dir / path
-        if not path.exists():
-            logger.warning("ConfigBackend: database_file not found: %s", path)
-            return []
-        try:
-            serializer = YAMLSerializer()
-            with open(path, "r", encoding="utf-8") as fh:
-                data = serializer.load(fh.read().encode("utf-8"))
-            if isinstance(data, dict):
-                return (data.get("database") or {}).get("people") or []
-        except Exception as exc:
-            logger.error("ConfigBackend: failed to load %s: %s", path, exc)
-        return []
+        cfg = self._storage.load("config", "people") or {}
+        return (cfg.get("database") or {}).get("people") or []
 
     # ------------------------------------------------------------------
     # ProjectConfigBackend
