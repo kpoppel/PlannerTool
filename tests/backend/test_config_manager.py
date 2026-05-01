@@ -110,12 +110,38 @@ def test_get_backup_includes_config_keys():
     store = _Store()
     store.save('config', 'projects', [{'id': 'p1'}])
     store.save('config', 'teams', [{'id': 't1'}])
+    store.save('config', 'global_settings', {'task_type_hierarchy': []})
     cm = ConfigManager(config_storage=store, account_storage=_Store())
     bk = cm.get_backup()
     assert bk['config']['projects'] == [{'id': 'p1'}]
     assert bk['config']['teams'] == [{'id': 't1'}]
+    assert bk['config']['global_settings'] == {'task_type_hierarchy': []}
     # Missing keys are stored as None
     assert bk['config']['people'] is None
+
+
+def test_get_backup_covers_all_live_config_keys():
+    """Every key in CONFIG_KEYS must appear in the backup output (regression guard)."""
+    from planner_lib.admin.config_manager import ConfigManager
+    expected = {
+        "projects", "teams", "people", "cost_config",
+        "area_plan_map", "iterations", "global_settings", "ado_config", "server_config",
+    }
+    assert set(ConfigManager.CONFIG_KEYS) == expected, (
+        f"CONFIG_KEYS mismatch — backup would silently omit: "
+        f"{expected - set(ConfigManager.CONFIG_KEYS)}"
+    )
+
+
+def test_restore_backup_writes_global_settings():
+    """Restore must write global_settings back to diskcache."""
+    from planner_lib.admin.config_manager import ConfigManager
+    store = _Store()
+    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    data = {'config': {'global_settings': {'task_type_hierarchy': [{'level': 0}]}}}
+    result = cm.restore_backup(data)
+    assert result['ok'] is True
+    assert store.load('config', 'global_settings') == {'task_type_hierarchy': [{'level': 0}]}
 
 
 def test_get_backup_includes_accounts():

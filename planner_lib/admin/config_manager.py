@@ -41,7 +41,7 @@ class ConfigManager:
     # all other keys go to _config_storage (diskcache).
     CONFIG_KEYS = [
         "projects", "teams", "people", "cost_config",
-        "area_plan_map", "iterations", "ado_config", "server_config",
+        "area_plan_map", "iterations", "global_settings", "ado_config", "server_config",
     ]
 
     # Key that lives in YAML storage rather than diskcache.

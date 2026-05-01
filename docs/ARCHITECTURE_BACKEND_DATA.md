@@ -25,13 +25,11 @@ every `fetch_*` method via `__getattribute__`, and routes reads through
 `diskcache` with a per-method TTL.  The same protocol appears on both sides of
 the proxy; callers never need to know whether a cache is present.
 
-**ConfigBackend is diskcache-backed** — after migration 0021, `ConfigBackend`
-reads and writes all config keys (projects, teams, cost_config, iterations,
+**ConfigBackend is diskcache-backed** — after migrations 0021 and 0022, `ConfigBackend`
+reads and writes all config keys (projects, teams, people, cost_config, iterations,
 area_plan_map, global_settings, ado_config) directly to diskcache.  It is a
 peer of `UserDataBackend` — not wrapped in `CachingBackend`.  `server_config.yml`
-(generic server settings) remains human-editable YAML.  `people.yml` is also
-still YAML; `ConfigBackend` accepts an optional `yaml_storage` for `fetch_people`
-until that migration is done.
+(generic server settings) remains human-editable YAML.
 
 **UserDataBackend is never cached** — user mutations (scenarios, views) are
 written directly to `diskcache`.  Wrapping in `CachingBackend` would cause reads
@@ -74,7 +72,7 @@ To add a new data domain:
 ┌────────────────────────────▼─────────────────────────────────────────────┐
 │  Consumers                                                               │
 │                                                                          │
-│  REST API layer  planner_lib/projects/api.py (and other api.py modules) │
+│  REST API layer  planner_lib/projects/api.py (and other api.py modules)  │
 │  FastAPI router — session auth, query-param parsing, credential          │
 │  construction.  Returns domain types (auto-serialised to JSON).          │
 │                                                                          │
@@ -89,37 +87,37 @@ To add a new data domain:
 │  Each repository depends on exactly the focused protocol it needs.       │
 │  No repository imports a concrete backend class.                         │
 │                                                                          │
-│  TaskRepository(TaskBackend)           ← DI key: "backend"              │
-│  HistoryRepository(HistoryBackend)     ← DI key: "backend"              │
-│  PlanRepository(PlansBackend,          ← DI keys: "backend",            │
+│  TaskRepository(TaskBackend)           ← DI key: "backend"               │
+│  HistoryRepository(HistoryBackend)     ← DI key: "backend"               │
+│  PlanRepository(PlansBackend,          ← DI keys: "backend",             │
 │                 plan_config:PlanConfigBackend)          "config_backend" │
-│  IterationRepository(IterationsBackend,← DI keys: "backend",            │
+│  IterationRepository(IterationsBackend,← DI keys: "backend",             │
 │                 iteration_config:IterationConfigBackend)"config_backend" │
-│  PeopleRepository(PeopleBackend)       ← DI key: "config_backend"       │
-│  TeamRepository(TeamConfigBackend)     ← DI key: "config_backend"       │
-│  ProjectRepository(ProjectConfigBackend)← DI key: "config_backend"      │
-│  ScenarioRepository(ScenarioBackend)   ← DI key: "user_data_backend"    │
-│  ViewRepository(ViewBackend)           ← DI key: "user_data_backend"    │
+│  PeopleRepository(PeopleBackend)       ← DI key: "config_backend"        │
+│  TeamRepository(TeamConfigBackend)     ← DI key: "config_backend"        │
+│  ProjectRepository(ProjectConfigBackend)← DI key: "config_backend"       │
+│  ScenarioRepository(ScenarioBackend)   ← DI key: "user_data_backend"     │
+│  ViewRepository(ViewBackend)           ← DI key: "user_data_backend"     │
 └────────────────────────────────────────────────────────────────────────┬─┘
                                                                          │
                                                      domain types from any backend
-┌────────────────────────────────────────────────────▼────────────────────┐
+┌────────────────────────────────────────────────────▼─────────────────────┐
 │  diskcache (one shared SQLite instance)                                  │
 │  planner_lib/storage/diskcache_backend.py                                │
 │                                                                          │
 │  All domain objects land here regardless of their origin (ADO,           │
-│  YAML config, or user mutations).  Hot data is served directly from       │
+│  YAML config, or user mutations).  Hot data is served directly from      │
 │  SQLite's OS-page cache without extra in-process structures.             │
 │                                                                          │
 │  CachingBackend(inner, storage=diskcache) wraps any read-only source:    │
 │  – On fetch_* miss: call inner, store result in diskcache, return.       │
-│  – On fetch_* hit:  return from diskcache without touching inner.         │
+│  – On fetch_* hit:  return from diskcache without touching inner.        │
 │  – On write_task:   delegate to inner, patch task in every cached list   │
-│                     (diskcache is immediately consistent, TTL unchanged). │
+│                     (diskcache is immediately consistent, TTL unchanged).│
 │  – On invalidate:   delete all keys in the namespace.                    │
 └──────┬───────────────────────────────────────────────────────────┬───────┘
-       │ cache miss / explicit write                                │ user data
-┌──────▼──────────────────────────────────────────────────┐ ┌─────▼──────────┐
+       │ cache miss / explicit write                               │ user data
+┌──────▼───────────────────────────────────────────────────┐ ┌─────▼──────────┐
 │  Backing stores (fetched on cache miss only)             │ │ UserDataBackend│
 │                                                          │ │ (no cache wrap)│
 │  BackendRegistry selects one remote source:              │ │                │
@@ -129,9 +127,9 @@ To add a new data domain:
 │    MockGeneratorBackend — in-process data generator      │ │ No separate    │
 │                                                          │ │ TTL layer:     │
 │  ConfigBackend — reads/writes diskcache directly         │ │ diskcache IS   │
-│    (projects, teams, cost_config, iterations,            │ │ the store.     │
+│    (people, projects, teams, cost_config, iterations,    │ │ the store.     │
 │     area_plan_map, global_settings, ado_config)          │ │                │
-│    people.yml still YAML (via optional yaml_storage)     │ └────────────────┘
+│    people migrated to diskcache by migration 0022        │ └────────────────┘
 │  server_config.yml stays YAML (human-editable)           │
 └──────────────────────────────────────────────────────────┘
 ```
