@@ -32,10 +32,6 @@ Migrations `0021` (config → diskcache) and `0022` (people.yml → diskcache) m
 - Migration `0019_display_mode_field`: forward-migrates saved views and scenarios that use the legacy `condensedCards` boolean to the new `displayMode` string field.
 - **New migrations**: `0021` internalises all YAML config files into diskcache; `0022` migrates `people.yml` (including any external database file) into diskcache. Both are idempotent and support `--dry-run`.
 - Packed display mode: greedy interval-packing that places features with non-overlapping dates in the same swimlane, reducing the number of rows. Rank/date sort and ghost (overflow) titles are disabled in this mode.
-<<<<<<< HEAD
-=======
-- Packed mode now triggers a full layout repack whenever a card is moved or resized, preventing cards from overlapping after a drag or resize operation.
->>>>>>> 1ac7d2c (feat: enhance packed mode functionality and sidebar behavior)
 - Entering packed mode automatically unchecks and disables the sidebar Schedule → Unplanned filter (unplanned tasks cannot be displayed in packed mode). The filter is restored to its previous state when leaving packed mode.
 - Plan swimlanes: when two or more plans are selected the board automatically switches to swimlane mode. Each plan gets a coloured horizontal band with a sticky label column on the left. Features are sorted/packed independently per band. Expansion filters (Parent/Child, Dependencies, Team Allocated) each affect swimlane grouping — linked tasks follow their plan-ancestor, team-allocated tasks from unselected plans get their own team-coloured bands. Implemented as a pure `SwimlaneService.js` with full unit-test coverage.
 
