@@ -1,10 +1,13 @@
 /**
  * PluginEventsComponent - Displays locally-stored plan events as a timeline overlay.
  *
- * Events are rendered at the BOTTOM of the SVG board area (markers render at the top),
- * so both can be visible simultaneously without overlapping.
- * When two events land on the same or adjacent X positions the tags are stacked
- * upward from the bottom edge.
+ * Events are rendered at the TOP of the SVG board area (same zone as markers).
+ * When the markers plugin is also active, event tags are offset downward by one
+ * tag height + gap so the two rows do not overlap.
+ * Tags stack further downward for clustered dates on the same X position.
+ *
+ * The floating toolbar provides full per-plan event management (add / edit / delete)
+ * for every plan that is currently active in the plan filter.
  */
 import { html, css } from '../vendor/lit.js';
 import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
@@ -12,27 +15,48 @@ import { findInBoard } from '../components/board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
-import { TimelineEvents, ProjectEvents, PlanEventEvents } from '../core/EventRegistry.js';
+import {
+  TimelineEvents,
+  ProjectEvents,
+  PlanEventEvents,
+  PluginEvents,
+} from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-/** Minimum pixel gap between two tag centres before stacking upward. */
+/** Minimum pixel gap between two tag centres before stacking downward. */
 const TAG_CLUSTER_THRESHOLD = 60;
+const TAG_HEIGHT = 18;
 
 export class PluginEventsComponent extends OverlaySvgPlugin {
   static overlayClass = 'events-overlay-svg';
-  static zIndex = '124'; // Just below markers (125) so they share the same SVG layer stack
+  static zIndex = '124'; // just below markers (125)
 
   static properties = {
     events: { type: Array },
     loading: { type: Boolean },
+    _editId: { type: String, state: true },
+    _editDate: { type: String, state: true },
+    _editTitle: { type: String, state: true },
+    _editPlanId: { type: String, state: true },
+    _newDates: { type: Object, state: true },
+    _newTitles: { type: Object, state: true },
+    _saving: { type: Boolean, state: true },
   };
 
   constructor() {
     super();
     this.events = [];
     this.loading = false;
+    this._editId = null;
+    this._editDate = '';
+    this._editTitle = '';
+    this._editPlanId = '';
+    this._newDates = {};
+    this._newTitles = {};
+    this._saving = false;
   }
 
   static styles = css`
@@ -57,31 +81,19 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
       pointer-events: auto;
       z-index: 200;
-      min-width: 140px;
+      width: 300px;
+      max-height: 70vh;
+      overflow-y: auto;
+      box-sizing: border-box;
     }
 
     .toolbar-title {
       font-size: 12px;
       font-weight: 600;
       color: #666;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       text-transform: uppercase;
-    }
-
-    button {
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #fff;
-      cursor: pointer;
-      font-size: 13px;
-      width: 100%;
-      margin-bottom: 4px;
-    }
-
-    button:hover {
-      background: #f5f5f5;
-      border-color: #ccc;
+      padding-right: 24px;
     }
 
     .close-btn {
@@ -97,7 +109,6 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       font-size: 16px;
       cursor: pointer;
       border-radius: 4px;
-      margin: 0;
     }
 
     .close-btn:hover {
@@ -105,16 +116,192 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       background: #f0f0f0;
     }
 
-    .event-count {
-      font-size: 11px;
+    .loading-msg {
+      font-size: 12px;
+      color: #999;
+      padding: 4px 0 8px;
+    }
+
+    .no-plans-msg {
+      font-size: 12px;
+      color: #aaa;
+      padding: 4px 0;
+    }
+
+    /* ---- per-plan section ---- */
+
+    .plan-section {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+
+    .plan-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+
+    .plan-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .plan-color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: 0 0 10px;
+    }
+
+    .plan-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #333;
+      flex: 1;
+    }
+
+    .event-count-badge {
+      font-size: 10px;
       background: #e3f2fd;
       color: #1565c0;
-      padding: 2px 6px;
-      border-radius: 10px;
-      margin-top: 8px;
-      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 8px;
+    }
+
+    /* ---- event rows ---- */
+
+    .event-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 0;
+    }
+
+    .event-date {
+      font-size: 10px;
+      color: #888;
+      min-width: 74px;
+      flex: 0 0 74px;
+    }
+
+    .event-title {
+      font-size: 11px;
+      color: #333;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 1px 4px;
+      color: #aaa;
+      border-radius: 3px;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .icon-btn:hover { color: #333; background: #f0f0f0; }
+    .icon-btn.delete:hover { color: #c62828; }
+
+    /* ---- inline edit form ---- */
+
+    .edit-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 4px 0;
+    }
+
+    .edit-row input,
+    .edit-row select {
+      font-size: 11px;
+      padding: 3px 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .edit-row input:focus,
+    .edit-row select:focus {
+      outline: none;
+      border-color: #5481e6;
+    }
+
+    .edit-actions {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+
+    /* ---- buttons ---- */
+
+    .btn {
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 3px 8px;
+    }
+
+    .btn.save { background: #3a5aad; color: #fff; }
+    .btn.save:hover { background: #5481e6; }
+    .btn.save:disabled { background: #aaa; cursor: default; }
+    .btn.cancel { background: #f0f0f0; color: #555; }
+    .btn.cancel:hover { background: #e0e0e0; }
+
+    /* ---- add new event row ---- */
+
+    .add-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+    }
+
+    .add-row input {
+      font-size: 11px;
+      padding: 3px 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      box-sizing: border-box;
+    }
+
+    .add-row input[type='date'] { flex: 0 0 110px; }
+    .add-row input[type='text'] { flex: 1; min-width: 80px; }
+    .add-row input:focus { outline: none; border-color: #5481e6; }
+
+    .add-btn {
+      background: #3a5aad;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 3px 8px;
+      flex: 0 0 auto;
+    }
+
+    .add-btn:hover { background: #5481e6; }
+    .add-btn:disabled { background: #aaa; cursor: default; }
+
+    .empty-msg {
+      font-size: 11px;
+      color: #bbb;
+      font-style: italic;
+      padding: 2px 0;
     }
   `;
+
+  // ---------------------------------------------------------------------------
+  // Bus subscriptions
+  // ---------------------------------------------------------------------------
 
   _subscribeBusEvents() {
     this._timelineListener = () => this._scheduleRender();
@@ -123,11 +310,15 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       this.requestUpdate();
     };
     this._eventsChangedListener = () => this.refresh();
+    // Re-render SVG when markers plugin activates/deactivates (affects Y offset)
+    this._pluginStateListener = () => this._scheduleRender();
 
     bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
     bus.on(PlanEventEvents.CHANGED, this._eventsChangedListener);
+    bus.on(PluginEvents.ACTIVATED, this._pluginStateListener);
+    bus.on(PluginEvents.DEACTIVATED, this._pluginStateListener);
   }
 
   _unsubscribeBusEvents() {
@@ -135,11 +326,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       bus.off(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
-    if (this._selectionListener) {
-      bus.off(ProjectEvents.CHANGED, this._selectionListener);
-    }
-    if (this._eventsChangedListener) {
-      bus.off(PlanEventEvents.CHANGED, this._eventsChangedListener);
+    if (this._selectionListener) bus.off(ProjectEvents.CHANGED, this._selectionListener);
+    if (this._eventsChangedListener) bus.off(PlanEventEvents.CHANGED, this._eventsChangedListener);
+    if (this._pluginStateListener) {
+      bus.off(PluginEvents.ACTIVATED, this._pluginStateListener);
+      bus.off(PluginEvents.DEACTIVATED, this._pluginStateListener);
     }
   }
 
@@ -149,19 +340,9 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     }
   }
 
-  render() {
-    const count = this.events.length;
-    return html`
-      <div class="floating-toolbar">
-        <button class="close-btn" @click=${() => this.close()}>✕</button>
-        <div class="toolbar-title">Plan Events</div>
-        <button @click=${() => this.refresh()}>
-          ${this.loading ? 'Loading…' : 'Refresh'}
-        </button>
-        <span class="event-count">${count} event${count !== 1 ? 's' : ''}</span>
-      </div>
-    `;
-  }
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   async open() {
     super.open();
@@ -175,6 +356,178 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._renderSvg();
     this.requestUpdate();
   }
+
+  // ---------------------------------------------------------------------------
+  // CRUD helpers
+  // ---------------------------------------------------------------------------
+
+  _startEdit(ev) {
+    this._editId = ev.id;
+    this._editDate = ev.date;
+    this._editTitle = ev.title;
+    this._editPlanId = ev.plan_id;
+  }
+
+  _cancelEdit() {
+    this._editId = null;
+    this._editDate = '';
+    this._editTitle = '';
+    this._editPlanId = '';
+  }
+
+  async _saveEdit() {
+    if (!this._editDate || !this._editTitle || !this._editPlanId) return;
+    this._saving = true;
+    const updated = await dataService.updateEvent(this._editId, {
+      date: this._editDate,
+      title: this._editTitle,
+      plan_id: this._editPlanId,
+    });
+    if (updated) {
+      await this.refresh();
+      bus.emit(PlanEventEvents.CHANGED);
+      this._cancelEdit();
+    }
+    this._saving = false;
+  }
+
+  async _deleteEvent(eventId) {
+    await dataService.deleteEvent(eventId);
+    await this.refresh();
+    bus.emit(PlanEventEvents.CHANGED);
+  }
+
+  async _addEvent(planId) {
+    const date = this._newDates[planId] || '';
+    const title = this._newTitles[planId] || '';
+    if (!date || !title) return;
+    this._saving = true;
+    const created = await dataService.createEvent({ date, title, plan_id: planId });
+    if (created) {
+      this._newDates = { ...this._newDates, [planId]: '' };
+      this._newTitles = { ...this._newTitles, [planId]: '' };
+      await this.refresh();
+      bus.emit(PlanEventEvents.CHANGED);
+    }
+    this._saving = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toolbar render
+  // ---------------------------------------------------------------------------
+
+  _renderEventRow(ev) {
+    if (this._editId === ev.id) {
+      const plans = state.projects || [];
+      return html`
+        <div class="edit-row">
+          <input
+            type="date"
+            .value=${this._editDate}
+            @input=${(e) => (this._editDate = e.target.value)}
+          />
+          <input
+            type="text"
+            .value=${this._editTitle}
+            @input=${(e) => (this._editTitle = e.target.value)}
+          />
+          <select @change=${(e) => (this._editPlanId = e.target.value)}>
+            ${plans.map(
+              (p) =>
+                html`<option value=${p.id} ?selected=${p.id === this._editPlanId}
+                  >${p.name}</option
+                >`
+            )}
+          </select>
+          <div class="edit-actions">
+            <button class="btn cancel" @click=${this._cancelEdit}>Cancel</button>
+            <button class="btn save" ?disabled=${this._saving} @click=${this._saveEdit}>
+              Save
+            </button>
+          </div>
+        </div>
+      `;
+    }
+    return html`
+      <div class="event-row">
+        <span class="event-date">${ev.date}</span>
+        <span class="event-title" title=${ev.title}>${ev.title}</span>
+        <button class="icon-btn" title="Edit" @click=${() => this._startEdit(ev)}>✎</button>
+        <button
+          class="icon-btn delete"
+          title="Delete"
+          @click=${() => this._deleteEvent(ev.id)}
+        >✕</button>
+      </div>
+    `;
+  }
+
+  _renderPlanSection(plan) {
+    const planEvents = this.events.filter((ev) => ev.plan_id === plan.id);
+    const newDate = this._newDates[plan.id] || '';
+    const newTitle = this._newTitles[plan.id] || '';
+    return html`
+      <div class="plan-section">
+        <div class="plan-header">
+          <span class="plan-color-dot" style="background:${plan.color}"></span>
+          <span class="plan-name">${plan.name}</span>
+          <span class="event-count-badge">${planEvents.length}</span>
+        </div>
+
+        <div class="events-list">
+          ${planEvents.length === 0
+            ? html`<div class="empty-msg">No events</div>`
+            : planEvents.map((ev) => this._renderEventRow(ev))}
+        </div>
+
+        <div class="add-row">
+          <input
+            type="date"
+            .value=${newDate}
+            @input=${(e) => {
+              this._newDates = { ...this._newDates, [plan.id]: e.target.value };
+            }}
+            title="Event date"
+          />
+          <input
+            type="text"
+            placeholder="Title…"
+            .value=${newTitle}
+            @input=${(e) => {
+              this._newTitles = { ...this._newTitles, [plan.id]: e.target.value };
+            }}
+            @keydown=${(e) => e.key === 'Enter' && this._addEvent(plan.id)}
+            title="Event title"
+          />
+          <button
+            class="add-btn"
+            ?disabled=${this._saving || !newDate || !newTitle}
+            @click=${() => this._addEvent(plan.id)}
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  render() {
+    const selectedPlans = (state.projects || []).filter((p) => p.selected);
+    return html`
+      <div class="floating-toolbar">
+        <button class="close-btn" @click=${() => this.close()}>✕</button>
+        <div class="toolbar-title">Plan Events</div>
+        ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
+        ${selectedPlans.length === 0
+          ? html`<div class="no-plans-msg">No plans selected.</div>`
+          : selectedPlans.map((plan) => this._renderPlanSection(plan))}
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // SVG overlay
+  // ---------------------------------------------------------------------------
 
   _renderSvg() {
     if (!this.visible || !this._svgEl) return;
@@ -207,13 +560,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._svgEl.style.width = `${boardRect.width}px`;
     this._svgEl.style.height = `${boardRect.height}px`;
 
-    // Filter events to selected plans only
     const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
     if (!selectedProjects.length) return;
 
     const filteredEvents = this.events.filter((ev) => selectedProjects.includes(ev.plan_id));
 
-    // Resolve X positions, dropping events outside the visible timeline range
     const positioned = filteredEvents
       .map((ev) => {
         const x = this._calcX(new Date(ev.date), months, monthWidth);
@@ -221,15 +572,16 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       })
       .filter(Boolean);
 
-    // Sort by X so overlap detection is straightforward
     positioned.sort((a, b) => a.x - b.x);
 
-    // Track tag columns per X cluster for non-overlapping vertical stacking
-    // xStack: array of {maxX, rows} where rows = count of tags in this cluster
+    // Detect whether the markers overlay is active so event tags can be
+    // shifted down by one row to avoid overlap with the markers row.
+    const markersActive = pluginManager.get('plugin-markers')?.active ?? false;
+
+    // Track clusters to stack tags that land on the same X position
     const xStack = [];
 
     positioned.forEach(({ ev, x }) => {
-      // Find existing cluster within threshold
       let cluster = xStack.find((c) => Math.abs(c.maxX - x) < TAG_CLUSTER_THRESHOLD);
       if (!cluster) {
         cluster = { maxX: x, rows: 0 };
@@ -239,12 +591,12 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       const row = cluster.rows;
       cluster.rows++;
 
-      this._createEventTag(x, ev, boardRect.height, boardCoords.scrollY, row);
+      this._createEventTag(x, ev, boardRect.height, boardCoords.scrollY, row, markersActive);
     });
   }
 
   /**
-   * Convert a date to board-space X. Returns null for dates outside the timeline range.
+   * Convert a date to board-space X. Returns null for out-of-range dates.
    * @param {Date} date
    * @param {Date[]} months
    * @param {number} monthWidth
@@ -263,35 +615,39 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   /**
-   * Draw a single event: vertical dashed line + tag anchored to bottom of board.
-   * @param {number} x         Board-space X coordinate
+   * Draw a single event: vertical dashed line + tag anchored to top of board.
+   * Tag colour matches the plan colour.
+   *
+   * @param {number} x              Board-space X coordinate
    * @param {{id:string,date:string,title:string,plan_id:string}} ev
    * @param {number} boardHeight
-   * @param {number} scrollY   Current vertical scroll of the board
-   * @param {number} row       Stack row (0 = bottom-most, 1 = one above, …)
+   * @param {number} scrollY        Current vertical scroll of the board
+   * @param {number} row            Stack row (0 = nearest top, 1 = one below, …)
+   * @param {boolean} markersActive Whether the markers overlay is also visible
    */
-  _createEventTag(x, ev, boardHeight, scrollY, row) {
-    const color = '#1565c0';
-    const tagHeight = 18;
+  _createEventTag(x, ev, boardHeight, scrollY, row, markersActive) {
+    const plan = (state.projects || []).find((p) => p.id === ev.plan_id);
+    const color = plan?.color || '#1565c0';
+
     const tagPadding = 6;
     const label = ev.title.length > 16 ? ev.title.slice(0, 14) + '…' : ev.title;
     const labelWidth = label.length * 5.5;
     const tagWidth = labelWidth + tagPadding * 2;
 
-    // Tags stick to the visible BOTTOM of the board area.
-    // scrollY advances as the user scrolls down; the tag must move upward by scrollY
-    // to stay at a fixed screen position near the bottom edge of the viewport.
-    const bottomOffset = 5 + row * (tagHeight + 3);
-    const tagY = boardHeight - (scrollY ?? 0) - tagHeight - bottomOffset;
+    // Tags sit at the top of the board, scrollY-adjusted like markers.
+    // When markers are also active, shift events down by one tag height + gap
+    // so they occupy the row immediately below the markers row.
+    const markerOffset = markersActive ? TAG_HEIGHT + 4 : 0;
+    const tagY = (scrollY ?? 0) + 5 + markerOffset + row * (TAG_HEIGHT + 3);
 
-    // Vertical dashed line
+    // Vertical dashed line spanning the full board height
     const line = document.createElementNS(SVG_NS, 'line');
     line.setAttribute('x1', x);
     line.setAttribute('y1', 0);
     line.setAttribute('x2', x);
     line.setAttribute('y2', boardHeight);
     line.setAttribute('stroke', color);
-    line.setAttribute('opacity', '0.35');
+    line.setAttribute('opacity', '0.4');
     line.setAttribute('stroke-width', '1.5');
     line.setAttribute('stroke-dasharray', '3,5');
     line.style.pointerEvents = 'none';
@@ -307,7 +663,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     tagBg.setAttribute('x', x - tagWidth / 2);
     tagBg.setAttribute('y', tagY);
     tagBg.setAttribute('width', tagWidth);
-    tagBg.setAttribute('height', tagHeight);
+    tagBg.setAttribute('height', TAG_HEIGHT);
     tagBg.setAttribute('fill', color);
     tagBg.setAttribute('rx', '3');
     tagBg.setAttribute('opacity', '0.85');
@@ -323,9 +679,8 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     tagText.textContent = label;
     tagGroup.appendChild(tagText);
 
-    // Tooltip
+    // Tooltip on hover
     const titleEl = document.createElementNS(SVG_NS, 'title');
-    const plan = (state.projects || []).find((p) => p.id === ev.plan_id);
     const tooltipParts = [
       ev.title,
       plan ? `Plan: ${plan.name}` : '',
