@@ -477,6 +477,35 @@ export class AdminProviderREST {
     }
   }
 
+  async browseWikis(project) {
+    try {
+      const res = await this._fetch(`/api/azure/wikis?project=${encodeURIComponent(project)}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { wikis: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseWikis', err);
+      return { wikis: [], error: String(err) };
+    }
+  }
+
+  async browseWikiPages(project, wikiId) {
+    try {
+      const url = `/api/azure/wiki-pages?project=${encodeURIComponent(project)}&wiki_id=${encodeURIComponent(wikiId)}`;
+      const res = await this._fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return { pages: [], error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:browseWikiPages', err);
+      return { pages: [], error: String(err) };
+    }
+  }
+
   async getWorkItemMetadata(project) {
     try {
       const res = await this._fetch(`/api/azure/work-item-metadata?project=${encodeURIComponent(project)}`, {

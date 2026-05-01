@@ -389,7 +389,6 @@ _SCHEMAS: dict[str, Any] = {
                 'type': 'object',
                 'title': 'Azure DevOps Wiki Settings',
                 'description': 'Required when event_backend is "ado_wiki".',
-                'x-showWhen': 'event_backend == \'ado_wiki\'',
                 'properties': {
                     'project': {
                         'type': 'string',

@@ -176,6 +176,68 @@ class AzureClient:
                 names.append(str(p))
         return names
 
+    def get_wikis(self, project: str) -> List[dict]:
+        """Return all wikis for *project* as a list of ``{id, name, type}`` dicts.
+
+        Uses the v7.0 wiki client so the call works with the same credentials
+        and connection as all other ADO operations.
+        """
+        if not self._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        wiki_client = self.conn.clients_v7_0.get_wiki_client()
+        wikis = wiki_client.get_all_wikis(project=project)
+        result = []
+        for w in (wikis or []):
+            result.append({
+                'id':   getattr(w, 'id',   None) or '',
+                'name': getattr(w, 'name', None) or '',
+                'type': getattr(w, 'type', None) or '',
+            })
+        return result
+
+    def get_wiki_pages(self, project: str, wiki_id: str, top: int = 100) -> List[str]:
+        """Return a flat list of all page paths in *wiki_id*.
+
+        Uses ``get_page`` with ``recursion_level='full'`` on the root path to
+        walk the entire wiki tree.  ``top`` is retained as a parameter for
+        API compatibility but is no longer used; the full tree is always
+        returned.
+
+        Parameters
+        ----------
+        project:
+            Azure DevOps project name or GUID.
+        wiki_id:
+            Wiki name or GUID.
+        top:
+            Retained for backward-compatibility; ignored.
+        """
+        if not self._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+        assert self.conn is not None
+        wiki_client = self.conn.clients_v7_0.get_wiki_client()
+        response = wiki_client.get_page(
+            project=project,
+            wiki_identifier=wiki_id,
+            path='/',
+            recursion_level='full',
+        )
+        paths: List[str] = []
+
+        def _walk(page) -> None:
+            if page is None:
+                return
+            path = getattr(page, 'path', None)
+            if path:
+                paths.append(path)
+            for sub in (getattr(page, 'sub_pages', None) or []):
+                _walk(sub)
+
+        page = getattr(response, 'page', response)
+        _walk(page)
+        return sorted(paths)
+
     def get_area_paths(self, project: str, root_path: str = '/') -> List[str]:
         """ Fetch a list of areas paths given a root_path (default is all areas). 
             This is used by the setup wizard to list available areas.

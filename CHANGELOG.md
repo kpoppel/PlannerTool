@@ -23,7 +23,7 @@ This release is a major backend architecture overhaul. There are **no user-visib
 ```
 python3 scripts/migrate.py --apply
 ```
-Migrations `0021` (config → diskcache) and `0022` (people.yml → diskcache) must be applied on any existing installation.
+Migrations `0019` (display-mode-field), `0020` (rename flags), `0021` (config → diskcache) and `0022` (people.yml → diskcache) must be applied on any existing installation.
 
 ### Added
 - **Pluggable backend system** — a `BackendRegistry` selects the active data source at startup from a priority-ordered list. Adding a new backend (e.g. Jira) now requires changes in one file only. Built-in backends: live Azure DevOps, static YAML/JSON file (offline mode), fixture replay (testing), and in-process data generator (demo mode).
@@ -35,6 +35,9 @@ Migrations `0021` (config → diskcache) and `0022` (people.yml → diskcache) m
 - Packed display mode: greedy interval-packing that places features with non-overlapping dates in the same swimlane, reducing the number of rows. Rank/date sort and ghost (overflow) titles are disabled in this mode.
 - Entering packed mode automatically unchecks and disables the sidebar Schedule → Unplanned filter (unplanned tasks cannot be displayed in packed mode). The filter is restored to its previous state when leaving packed mode.
 - Plan swimlanes: when two or more plans are selected the board automatically switches to swimlane mode. Each plan gets a coloured horizontal band with a sticky label column on the left. Features are sorted/packed independently per band. Expansion filters (Parent/Child, Dependencies, Team Allocated) each affect swimlane grouping — linked tasks follow their plan-ancestor, team-allocated tasks from unselected plans get their own team-coloured bands. Implemented as a pure `SwimlaneService.js` with full unit-test coverage.
+- **Azure DevOps wiki event backend** — plan events (new plugin) can be persisted as a structured wiki page in ADO or on the server directly. Configuration via the admin-interface.
+- **Data Sources admin panel** — new *Data Sources* section in the admin UI shows all data domains and their current backends. Plan Events is selectable between local and ADO wiki; all others are locked and shown informational. ADO wiki sub-form features live project and wiki dropdowns (requires a PAT in session). A restart-required banner is shown when an alternative backend is selected.
+- `GET /api/azure/wikis?project=…` — browse endpoint listing all wikis in an ADO project (`AzureClient.get_wikis()`).
 
 ### Changed
 - **All configuration stored in diskcache** — `projects`, `teams`, `people`, `cost_config`, `iterations`, `area_plan_map`, `global_settings`, and `ado_config` now live in the diskcache SQLite store instead of being read from YAML files on every request. `server_config.yml` remains YAML (it is read at startup before diskcache is available). This means config edits made through the admin UI are durable across restarts without touching any files on disk.

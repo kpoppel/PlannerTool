@@ -283,6 +283,55 @@ async def azure_browse_area_paths(
     azure_svc = resolve_service(request, 'azure_client')
     with azure_svc.connect(pat) as client:
         area_paths = client.get_area_paths(project)
+
+
+@browse_router.get("/wikis")
+@require_session
+async def azure_browse_wikis(
+    request: Request,
+    project: str = Query(..., description="Azure DevOps project name"),
+):
+    """List all wikis in a given Azure DevOps project.
+
+    Query params:
+        project: Azure DevOps project name (required)
+
+    Returns:
+        { "wikis": [{"id": "...", "name": "MyProject.wiki", "type": "projectWiki"}, ...] }
+    """
+    session_mgr = resolve_service(request, 'session_manager')
+    pat = _get_pat_or_raise(request, session_mgr)
+    azure_svc = resolve_service(request, 'azure_client')
+    with azure_svc.connect(pat) as client:
+        wikis = client.get_wikis(project)
+    return {'wikis': wikis}
+
+
+@browse_router.get("/wiki-pages")
+@require_session
+async def azure_browse_wiki_pages(
+    request: Request,
+    project: str = Query(..., description="Azure DevOps project name"),
+    wiki_id: str = Query(..., description="Wiki name or GUID"),
+):
+    """Return a flat list of all page paths in a wiki.
+
+    Useful for selecting a parent page path when configuring the ADO wiki
+    event backend — the page need not exist yet, but its ancestors must.
+
+    Query params:
+        project: Azure DevOps project name (required)
+        wiki_id: Wiki name or GUID (required)
+
+    Returns:
+        { "pages": ["/Home", "/PlannerTool", "/PlannerTool/Events", ...] }
+    """
+    session_mgr = resolve_service(request, 'session_manager')
+    pat = _get_pat_or_raise(request, session_mgr)
+    azure_svc = resolve_service(request, 'azure_client')
+    with azure_svc.connect(pat) as client:
+        pages = client.get_wiki_pages(project, wiki_id)
+    return {'pages': pages}
     return {'area_paths': area_paths}
 
 
