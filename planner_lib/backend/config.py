@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 from planner_lib.backend.port import (
     AdoConfigBackend,
     BackendCredential,
+    EventConfigBackend,
     PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
@@ -47,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 class ConfigBackend(
     AdoConfigBackend,
+    EventConfigBackend,
     PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
@@ -193,6 +195,24 @@ class ConfigBackend(
     def save_ado_config(self, content: dict) -> None:
         """Persist ADO-specific config directly to diskcache."""
         self._storage.save("config", "ado_config", content)
+
+    # ------------------------------------------------------------------
+    # EventConfigBackend
+    # ------------------------------------------------------------------
+
+    def fetch_event_config(self) -> dict:
+        """Return the event-backend config dict.
+
+        Returns an empty dict when not yet configured (defaults to diskcache
+        backend — ``event_backend`` is treated as ``"local"`` when absent).
+        """
+        if not self._storage.exists("config", "event_config"):
+            return {}
+        return self._storage.load("config", "event_config") or {}
+
+    def save_event_config(self, content: dict) -> None:
+        """Persist event-backend config directly to diskcache."""
+        self._storage.save("config", "event_config", content)
 
     # ------------------------------------------------------------------
     # Admin write helpers

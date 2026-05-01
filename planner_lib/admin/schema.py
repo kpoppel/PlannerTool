@@ -364,6 +364,64 @@ _SCHEMAS: dict[str, Any] = {
         },
         'required': ['schema_version', 'working_hours', 'internal_cost', 'external_cost'],
     },
+    'events_config': {
+        'type': 'object',
+        'title': 'Event Backend Configuration',
+        'description': (
+            'Selects the storage backend for plan events. '
+            'Use "local" (default) to persist events in the PlannerTool diskcache database. '
+            'Use "ado_wiki" to persist events as a structured page in an Azure DevOps wiki — '
+            'events are then visible and linkable directly in ADO.'
+        ),
+        'properties': {
+            'event_backend': {
+                'type': 'string',
+                'title': 'Event Backend',
+                'description': 'Storage backend for plan events.',
+                'enum': ['local', 'ado_wiki'],
+                'enumNames': [
+                    'Local (PlannerTool database)',
+                    'Azure DevOps Wiki page',
+                ],
+                'default': 'local',
+            },
+            'ado_wiki': {
+                'type': 'object',
+                'title': 'Azure DevOps Wiki Settings',
+                'description': 'Required when event_backend is "ado_wiki".',
+                'x-showWhen': 'event_backend == \'ado_wiki\'',
+                'properties': {
+                    'project': {
+                        'type': 'string',
+                        'title': 'ADO Project',
+                        'description': 'Azure DevOps project name or GUID that owns the wiki.',
+                        'minLength': 1,
+                    },
+                    'wiki_id': {
+                        'type': 'string',
+                        'title': 'Wiki ID',
+                        'description': (
+                            'Wiki identifier — typically "<ProjectName>.wiki" '
+                            'for the project wiki, or the wiki GUID.'
+                        ),
+                        'minLength': 1,
+                    },
+                    'page_path': {
+                        'type': 'string',
+                        'title': 'Page Path',
+                        'description': (
+                            'Path to the wiki page that stores events, '
+                            'e.g. "/PlannerTool/Events".  The page is '
+                            'created automatically on first write.'
+                        ),
+                        'default': '/PlannerTool/Events',
+                        'minLength': 1,
+                    },
+                },
+                'required': ['project', 'wiki_id', 'page_path'],
+            },
+        },
+    },
 }
 
 
@@ -386,6 +444,11 @@ def get_schema(config_type: str) -> Optional[dict]:
         except Exception:
             logger.warning('Failed to build ado schema from BackendRegistry', exc_info=True)
             return None
+    if config_type == 'events_config' or config_type == 'eventsConfig':
+        schema = _SCHEMAS.get('events_config')
+        if schema is None:
+            return None
+        return copy.deepcopy(schema)
     if config_type == 'system':
         # system schema is static — backend flags no longer injected here;
         # they now live in the 'ado' schema.

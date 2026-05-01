@@ -145,6 +145,38 @@ export class AdminProviderREST {
     }
   }
 
+  async getEventsConfig() {
+    try {
+      const res = await this._fetch('/admin/v1/events-config', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    } catch (err) {
+      console.error('AdminProviderREST:getEventsConfig', err);
+      return null;
+    }
+  }
+
+  async saveEventsConfig(content) {
+    try {
+      const body = JSON.stringify({ content: content });
+      const res = await this._fetch('/admin/v1/events-config', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:saveEventsConfig', err);
+      return { ok: false, error: String(err) };
+    }
+  }
+
   async getTeams() {
     try {
       const res = await this._fetch('/admin/v1/teams', {

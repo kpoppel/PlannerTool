@@ -2,7 +2,8 @@
 
 Covers: projects, global-settings, iterations, area-mappings (CRUD +
 refresh + toggle), teams, people (CRUD + inspect), schema, backup,
-restore, cost (CRUD + inspect), system, and ado (Azure DevOps config).
+restore, cost (CRUD + inspect), system, ado (Azure DevOps config), and
+events-config (event backend selection).
 """
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -621,4 +622,44 @@ async def admin_save_ado(request: Request):
         return {'ok': True}
     except Exception as e:
         logger.exception('Failed to save ADO config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+# ---------------------------------------------------------------------------
+# Event backend configuration (events_config in diskcache)
+# ---------------------------------------------------------------------------
+
+@router.get('/admin/v1/events-config')
+@require_admin_session
+async def admin_get_events_config(request: Request):
+    """Return the event-backend configuration (backend selector + per-backend settings)."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        return {'content': admin_svc.get_config('event_config', default={})}
+    except Exception as e:
+        logger.exception('Failed to load events config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/events-config')
+@require_admin_session
+async def admin_save_events_config(request: Request):
+    """Save event-backend configuration; rebuilds the event_repository on success."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+    content = payload.get('content')
+    if content is None:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        admin_svc.save_config('event_config', content)
+        try:
+            admin_svc.reload_config()
+        except Exception as e:
+            logger.exception('Failed to reload configuration after saving events config: %s', e)
+        return {'ok': True}
+    except Exception as e:
+        logger.exception('Failed to save events config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

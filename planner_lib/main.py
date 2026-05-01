@@ -245,8 +245,65 @@ def _build_services(
     container.register_factory("view_repository",
         lambda: ViewRepository(backend=container.get("user_data_backend")))
 
+    def _make_event_backend():
+        """Select the EventBackend based on admin-configured event_config.
+
+        Default: diskcache-backed UserDataBackend (no credential required).
+        "ado_wiki": AzureWikiEventBackend persists events as an ADO wiki page.
+
+        Falls back to UserDataBackend with a logged error when the "ado_wiki"
+        configuration is incomplete (missing project, wiki_id, or org URL) so
+        the server starts successfully and events still work — the admin sees
+        a clear message in the log rather than a cryptic 500 on first use.
+        """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+
+        event_cfg = container.get("config_backend").fetch_event_config()
+        if event_cfg.get("event_backend") == "ado_wiki":
+            wiki_cfg = event_cfg.get("ado_wiki") or {}
+            project = wiki_cfg.get("project", "").strip()
+            wiki_id = wiki_cfg.get("wiki_id", "").strip()
+            page_path = wiki_cfg.get("page_path", "").strip() or "/PlannerTool/Events"
+
+            azure_client = container.get("azure_client")
+            org_url = getattr(azure_client, "organization_url", "") or ""
+
+            missing = [f for f, v in [
+                ("ado_wiki.project", project),
+                ("ado_wiki.wiki_id", wiki_id),
+                ("organization_url (ADO config)", org_url),
+            ] if not v]
+
+            if missing:
+                _log.error(
+                    "event_repository: 'ado_wiki' backend selected but required fields are "
+                    "missing or empty: %s.  Falling back to local diskcache backend until "
+                    "the Events Configuration is complete.",
+                    ", ".join(missing),
+                )
+                return container.get("user_data_backend")
+
+            from planner_lib.azure.wiki_events import AzureWikiEventBackend
+            _log.info(
+                "event_repository: using AzureWikiEventBackend "
+                "(project=%s, wiki=%s, path=%s)",
+                project, wiki_id, page_path,
+            )
+            return AzureWikiEventBackend(
+                azure_client=azure_client,
+                project=project,
+                wiki_id=wiki_id,
+                page_path=page_path,
+            )
+
+        return container.get("user_data_backend")
+
     container.register_factory("event_repository",
-        lambda: EventRepository(backend=container.get("user_data_backend")))
+        lambda: EventRepository(
+            backend=_make_event_backend(),
+            credential_provider=container.get("credential_provider"),
+        ))
 
     # --- Cost ---
     container.register_factory("cost_service",

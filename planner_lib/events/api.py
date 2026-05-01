@@ -19,6 +19,7 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from planner_lib.middleware import require_session
+from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
 
 router = APIRouter()
@@ -99,6 +100,16 @@ def _repo(request: Request):
     return resolve_service(request, "event_repository")
 
 
+def _user_id(request: Request) -> str:
+    """Return the email/user-id from the current session (empty string if not found)."""
+    try:
+        sid = get_session_id_from_request(request)
+        mgr = resolve_service(request, "session_manager")
+        return mgr.get_val(sid, "email") or ""
+    except Exception:
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -109,7 +120,7 @@ async def api_events_list(request: Request):
     """List all events. Optional ?plan_id= query parameter to filter by plan."""
     plan_id = request.query_params.get("plan_id")
     try:
-        return _repo(request).list_events(plan_id=plan_id)
+        return _repo(request).list_events(plan_id=plan_id, user_id=_user_id(request))
     except Exception as e:
         logger.error("Error listing events: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -120,7 +131,7 @@ async def api_events_list(request: Request):
 async def api_events_get(event_id: str, request: Request):
     """Get a single event by ID."""
     try:
-        return _repo(request).get_event(event_id)
+        return _repo(request).get_event(event_id, user_id=_user_id(request))
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
     except Exception as e:
@@ -141,6 +152,7 @@ async def api_events_create(request: Request, payload: dict = Body(default={})):
             date=data.date,
             title=data.title,
             plan_id=data.plan_id,
+            user_id=_user_id(request),
         )
     except Exception as e:
         logger.error("Error creating event: %s", e, exc_info=True)
@@ -161,6 +173,7 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
             date=data.date,
             title=data.title,
             plan_id=data.plan_id,
+            user_id=_user_id(request),
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -174,7 +187,7 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
 async def api_events_delete(event_id: str, request: Request):
     """Delete an event."""
     try:
-        deleted = _repo(request).delete_event(event_id)
+        deleted = _repo(request).delete_event(event_id, user_id=_user_id(request))
         if not deleted:
             raise HTTPException(status_code=404, detail="Event not found")
         return {"ok": True, "id": event_id}

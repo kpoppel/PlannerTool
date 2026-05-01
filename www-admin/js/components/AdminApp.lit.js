@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import './admin/GlobalSettings.lit.js';
 import './admin/AzureDevOps.lit.js';
+import './admin/Events.lit.js';
 
 export class AdminApp extends LitElement {
   static properties = {
@@ -87,6 +88,7 @@ export class AdminApp extends LitElement {
     this.sections = [
       'Server',
       'Azure DevOps',
+      'Events',
       'Users',
       'Global Project Settings',
       'Projects',
@@ -135,6 +137,8 @@ export class AdminApp extends LitElement {
         return html`<admin-system></admin-system>`;
       case 'Azure DevOps':
         return html`<admin-ado></admin-ado>`;
+      case 'Events':
+        return html`<admin-events></admin-events>`;
       case 'Users':
         return html`<admin-users></admin-users>`;
       case 'Global Project Settings':

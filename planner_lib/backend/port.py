@@ -17,9 +17,12 @@ Focused protocols
   IterationConfigBackend — fetch_iterations_config
   PlanConfigBackend      — fetch_area_plan_map
   AdoConfigBackend       — fetch_ado_config, save_ado_config
+  EventConfigBackend     — fetch_event_config, save_event_config
   ScenarioBackend        — fetch_scenarios, fetch_scenario, save_scenario, delete_scenario
   ViewBackend            — fetch_views, fetch_view, save_view, delete_view
   EventBackend           — fetch_events, fetch_event, create_event, update_event, delete_event
+                           (all methods accept an optional credential kwarg; the diskcache
+                           UserDataBackend ignores it; AzureWikiEventBackend requires it)
 
 BackendPort (composite)
 -----------------------
@@ -316,17 +319,40 @@ class ViewBackend(Protocol):
 
 
 @runtime_checkable
+@runtime_checkable
+class EventConfigBackend(Protocol):
+    """Backend that stores and retrieves event-backend configuration.
+
+    The event config (``backend`` selector + per-backend settings) lives in
+    the ``config::event_config`` diskcache key.  It is a peer of
+    ``AdoConfigBackend``: both are implemented by ``ConfigBackend``.
+    """
+
+    def fetch_event_config(self) -> dict: ...
+
+    def save_event_config(self, content: dict) -> None: ...
+
+
+@runtime_checkable
 class EventBackend(Protocol):
-    """Backend that persists plan-scoped events (application-global, not user-scoped)."""
+    """Backend that persists plan-scoped events (application-global, not user-scoped).
+
+    All methods accept an optional *credential* keyword argument.  The
+    diskcache implementation (``UserDataBackend``) ignores it; the ADO wiki
+    implementation (``AzureWikiEventBackend``) requires a non-None credential
+    and raises ``PermissionError`` when it is absent.
+    """
 
     def fetch_events(
         self,
         plan_id: Optional[str] = None,
+        credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]: ...
 
     def fetch_event(
         self,
         event_id: str,
+        credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
     def create_event(
@@ -334,6 +360,7 @@ class EventBackend(Protocol):
         date: str,
         title: str,
         plan_id: str,
+        credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
     def update_event(
@@ -342,11 +369,13 @@ class EventBackend(Protocol):
         date: Optional[str] = None,
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
+        credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
     def delete_event(
         self,
         event_id: str,
+        credential: Optional[BackendCredential] = None,
     ) -> bool: ...
 
 
