@@ -746,8 +746,8 @@ class TestStandAloneMode:
             storage=storage,
             feature_flags={"stand_alone_mode": True},
         )
-        from planner_lib.azure.AzureNativeClient import AzureNativeClient
-        assert isinstance(svc._client, AzureNativeClient)
+        from planner_lib.azure.AzureClient import AzureClient
+        assert isinstance(svc._client, AzureClient)
 
 
 class TestGeneratorPersistEnabled:

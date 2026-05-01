@@ -2,19 +2,10 @@ from types import SimpleNamespace
 import pytest
 
 from planner_lib.azure.AzureClient import AzureClient
-from planner_lib.azure.AzureNativeClient import AzureNativeClient
 
 
 class DummyStorage:
     pass
-
-
-class ConcreteAzure(AzureClient):
-    def get_work_items(self, area_path: str, task_types=None, include_states=None):
-        raise NotImplementedError()
-
-    def invalidate_work_items(self, work_item_ids):
-        raise NotImplementedError()
 
 
 def make_dummy_conn_for_projects():
@@ -24,7 +15,7 @@ def make_dummy_conn_for_projects():
 
 
 def test_api_url_to_ui_link_valid_and_invalid():
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     ui = c.api_url_to_ui_link('https://dev.azure.com/myorg/myproj/_apis/wit/workItems/123')
     assert ui.endswith('/_workitems/edit/123')
     with pytest.raises(ValueError):
@@ -32,7 +23,7 @@ def test_api_url_to_ui_link_valid_and_invalid():
 
 
 def test_sanitize_and_flatten_area_nodes():
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     node = SimpleNamespace(path='Area/Sub', children=[SimpleNamespace(name='Leaf')])
     flat = c._flatten_area_nodes(node)
     assert 'Area/Sub' in flat or 'Leaf' in flat
@@ -40,7 +31,7 @@ def test_sanitize_and_flatten_area_nodes():
 
 
 def test_safe_date():
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     assert c._safe_date(None) is None
     assert isinstance(c._safe_date('2020-01-01T12:00:00Z'), str)
 
@@ -52,7 +43,7 @@ def test_work_item_type_passthrough():
     items must reflect the raw value from System.WorkItemType — e.g. 'Feature',
     'User Story', 'Bug' — not a lowercased or remapped proxy like 'feature'.
     """
-    nc = AzureNativeClient('org', DummyStorage())
+    nc = AzureClient('org', DummyStorage())
 
     type_cases = [
         ('Feature', 'Feature'),
@@ -99,7 +90,7 @@ def test_work_item_type_passthrough():
 
 
 def test_get_projects_uses_connection():
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     c._connected = True
     c.conn = make_dummy_conn_for_projects()
     projs = c.get_projects()
@@ -108,7 +99,7 @@ def test_get_projects_uses_connection():
 
 def test_wit_client_query_by_wiql_calls_sdk():
     """wit_client property returns the SDK WIT client; callers use it directly."""
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
 
     class FakeWit:
         def query_by_wiql(self, q):
@@ -130,7 +121,7 @@ def test_wit_client_query_by_wiql_calls_sdk():
 
 
 def test_update_work_item_description_and_dates_require_connected():
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     with pytest.raises(RuntimeError):
         c.update_work_item_description(1, '<p>desc</p>')
     with pytest.raises(RuntimeError):
@@ -138,7 +129,7 @@ def test_update_work_item_description_and_dates_require_connected():
 
 
 def test_azure_native_client_get_work_items_parses_items():
-    nc = AzureNativeClient('org', DummyStorage())
+    nc = AzureClient('org', DummyStorage())
     # Build fake wit client
     class FakeItem:
         def __init__(self, i):
@@ -182,7 +173,7 @@ def _make_mapping(type_name, states_dict):
 
 
 def _make_area_path_client(team_ids, teams, backlog_config, wit_items=None):
-    """Build a ConcreteAzure whose internals are wired for area-path-metadata tests.
+    """Build a AzureClient whose internals are wired for area-path-metadata tests.
 
     Args:
         team_ids:      List of team ID strings returned by get_team_from_area_path.
@@ -190,7 +181,7 @@ def _make_area_path_client(team_ids, teams, backlog_config, wit_items=None):
         backlog_config: Object with .work_item_type_mapped_states.
         wit_items:     Optional list of work items for the WIQL-fallback path.
     """
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
 
     class FakeTeamPlanOps:
         def get_all_teams(self, project):
@@ -275,7 +266,7 @@ def test_area_path_metadata_falls_back_when_backlog_config_throws():
         def get_work_items(self, ids, fields=None):
             return []
 
-    c = ConcreteAzure('org', DummyStorage())
+    c = AzureClient('org', DummyStorage())
     c._team_plan_ops = FakeTeamPlanOps()
     c._connected = True
     c.conn = SimpleNamespace(
@@ -300,12 +291,12 @@ def test_area_path_metadata_falls_back_when_empty_mappings():
 
 
 def test_native_client_passes_task_types_to_wiql():
-    """AzureNativeClient.get_work_items must include configured task_types in the WIQL query.
+    """AzureClient.get_work_items must include configured task_types in the WIQL query.
 
     When task_types=['Story', 'Task'] is supplied the underlying WIQL query must
     contain those type strings and must NOT default to ['epic', 'feature'].
     """
-    nc = AzureNativeClient('org', DummyStorage())
+    nc = AzureClient('org', DummyStorage())
     captured_wiql = {}
 
     class FakeItem:
@@ -347,8 +338,8 @@ def test_native_client_passes_task_types_to_wiql():
 
 
 def test_native_client_defaults_task_types_when_none():
-    """When task_types is None AzureNativeClient should use the built-in default (epic, feature)."""
-    nc = AzureNativeClient('org', DummyStorage())
+    """When task_types is None AzureClient should use the built-in default (epic, feature)."""
+    nc = AzureClient('org', DummyStorage())
     captured_wiql = {}
 
     class FakeWit:
@@ -400,7 +391,8 @@ class TestAzureMockClientPersistence:
 
     def test_azure_mock_persist_enabled_in_schema(self):
         from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
+        # azure_mock_persist_enabled moved from 'system' to 'ado' (BackendRegistry-built)
+        schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
         assert 'azure_mock_persist_enabled' in ff, (
             "azure_mock_persist_enabled must appear in feature_flags schema"
@@ -412,7 +404,8 @@ class TestAzureMockClientPersistence:
     def test_azure_mock_persist_enabled_showwhen(self):
         """Flag should only be visible when use_azure_mock is on."""
         from planner_lib.admin.schema import get_schema
-        schema = get_schema('system')
+        # azure_mock_persist_enabled moved from 'system' to 'ado' (BackendRegistry-built)
+        schema = get_schema('ado')
         ff = schema['properties']['feature_flags']['properties']
         assert ff['azure_mock_persist_enabled'].get('x-showWhen') == 'use_azure_mock'
 
