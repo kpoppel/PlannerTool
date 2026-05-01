@@ -1,13 +1,12 @@
 """Unit tests for planner_lib.events.event_store.
 
 Uses a lightweight in-memory storage stub so no file system I/O is needed.
-The process-level register lock is patched to a no-op context manager because
-file-based locking is irrelevant for single-threaded unit tests.
+Concurrent-write safety is handled by diskcache in production; the unit
+tests use a single-threaded in-memory stub where no locking is needed.
 """
 from __future__ import annotations
 
 import pytest
-from contextlib import contextmanager
 from typing import Any, Dict, Iterable
 
 
@@ -42,16 +41,6 @@ class _Store:
 
     def configure(self, **options) -> None:
         pass
-
-
-@contextmanager
-def _noop_lock(*args, **kwargs):
-    yield
-
-
-@pytest.fixture(autouse=True)
-def patch_lock(monkeypatch):
-    monkeypatch.setattr('planner_lib.events.event_store._register_lock', _noop_lock)
 
 
 @pytest.fixture()

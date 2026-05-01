@@ -18,9 +18,9 @@ Adding new mutable user domains
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 
-from planner_lib.backend.port import ScenarioBackend, ViewBackend
+from planner_lib.backend.port import ScenarioBackend, ViewBackend, EventBackend
 from planner_lib.domain.scenarios import DomainScenario
 from planner_lib.domain.views import DomainView
 from planner_lib.storage.base import StorageBackend
@@ -28,7 +28,7 @@ from planner_lib.storage.base import StorageBackend
 logger = logging.getLogger(__name__)
 
 
-class UserDataBackend(ScenarioBackend, ViewBackend):
+class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
     """Backend for mutable per-user data stored in diskcache.
 
     Parameters
@@ -88,3 +88,38 @@ class UserDataBackend(ScenarioBackend, ViewBackend):
         """Delete a view; returns True when found and deleted."""
         from planner_lib.views.view_store import delete_user_view
         return delete_user_view(self._storage, user_id, view_id)
+
+    # ------------------------------------------------------------------
+    # EventBackend (plan-global, not user-scoped)
+    # ------------------------------------------------------------------
+
+    def fetch_events(self, plan_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return all events, optionally filtered by plan_id."""
+        from planner_lib.events.event_store import list_events
+        return list_events(self._storage, plan_id=plan_id)
+
+    def fetch_event(self, event_id: str) -> Dict[str, Any]:
+        """Return a single event (raises KeyError when not found)."""
+        from planner_lib.events.event_store import get_event
+        return get_event(self._storage, event_id)
+
+    def create_event(self, date: str, title: str, plan_id: str) -> Dict[str, Any]:
+        """Create a new event and return it."""
+        from planner_lib.events.event_store import create_event
+        return create_event(self._storage, date=date, title=title, plan_id=plan_id)
+
+    def update_event(
+        self,
+        event_id: str,
+        date: Optional[str] = None,
+        title: Optional[str] = None,
+        plan_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update fields on an existing event (raises KeyError when not found)."""
+        from planner_lib.events.event_store import update_event
+        return update_event(self._storage, event_id=event_id, date=date, title=title, plan_id=plan_id)
+
+    def delete_event(self, event_id: str) -> bool:
+        """Delete an event; returns True when found and deleted."""
+        from planner_lib.events.event_store import delete_event
+        return delete_event(self._storage, event_id)

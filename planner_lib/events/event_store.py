@@ -8,42 +8,18 @@ Events are application-global (not user-scoped) objects with:
 
 All events are persisted in a single register dict under the
 ``'events'`` namespace so they survive restarts and survive across
-sessions.  A process-level file lock guards concurrent writes.
+sessions.  Concurrent-write safety is provided by the diskcache storage
+backend (SQLite WAL mode); no additional file lock is needed.
 """
 from __future__ import annotations
 
-import os
 import uuid
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from planner_lib.storage.base import StorageBackend
 
 EVENTS_NS = "events"
 REGISTER_KEY = "event_register"
-LOCK_FILE = "event_register.lock"
-
-
-@contextmanager
-def _register_lock(data_dir: str = "data"):
-    base_dir = os.path.join(data_dir, EVENTS_NS)
-    os.makedirs(base_dir, exist_ok=True)
-    lock_path = os.path.join(base_dir, LOCK_FILE)
-    f = open(lock_path, "a+")
-    try:
-        try:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_EX)
-        except Exception:
-            pass
-        yield
-    finally:
-        try:
-            import fcntl
-            fcntl.flock(f, fcntl.LOCK_UN)
-        except Exception:
-            pass
-        f.close()
 
 
 def _load_register(storage: StorageBackend) -> Dict[str, Any]:
@@ -92,10 +68,9 @@ def create_event(
         "title": title,
         "plan_id": plan_id,
     }
-    with _register_lock():
-        reg = _load_register(storage)
-        reg[event_id] = event
-        _save_register(storage, reg)
+    reg = _load_register(storage)
+    reg[event_id] = event
+    _save_register(storage, reg)
     return event
 
 
@@ -107,28 +82,26 @@ def update_event(
     plan_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Update fields on an existing event; raises ``KeyError`` if not found."""
-    with _register_lock():
-        reg = _load_register(storage)
-        if event_id not in reg:
-            raise KeyError(event_id)
-        event = reg[event_id]
-        if date is not None:
-            event["date"] = date
-        if title is not None:
-            event["title"] = title
-        if plan_id is not None:
-            event["plan_id"] = plan_id
-        reg[event_id] = event
-        _save_register(storage, reg)
+    reg = _load_register(storage)
+    if event_id not in reg:
+        raise KeyError(event_id)
+    event = reg[event_id]
+    if date is not None:
+        event["date"] = date
+    if title is not None:
+        event["title"] = title
+    if plan_id is not None:
+        event["plan_id"] = plan_id
+    reg[event_id] = event
+    _save_register(storage, reg)
     return event
 
 
 def delete_event(storage: StorageBackend, event_id: str) -> bool:
     """Delete an event; returns ``True`` on success, ``False`` if not found."""
-    with _register_lock():
-        reg = _load_register(storage)
-        if event_id not in reg:
-            return False
-        del reg[event_id]
-        _save_register(storage, reg)
+    reg = _load_register(storage)
+    if event_id not in reg:
+        return False
+    del reg[event_id]
+    _save_register(storage, reg)
     return True

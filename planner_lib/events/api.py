@@ -13,19 +13,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from planner_lib.middleware import require_session
 from planner_lib.services.resolver import resolve_service
-from .event_store import (
-    list_events,
-    get_event,
-    create_event,
-    update_event,
-    delete_event,
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -101,8 +95,8 @@ class EventUpdate(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _storage(request: Request):
-    return resolve_service(request, "events_storage")
+def _repo(request: Request):
+    return resolve_service(request, "event_repository")
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +109,7 @@ async def api_events_list(request: Request):
     """List all events. Optional ?plan_id= query parameter to filter by plan."""
     plan_id = request.query_params.get("plan_id")
     try:
-        return list_events(_storage(request), plan_id=plan_id)
+        return _repo(request).list_events(plan_id=plan_id)
     except Exception as e:
         logger.error("Error listing events: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -126,7 +120,7 @@ async def api_events_list(request: Request):
 async def api_events_get(event_id: str, request: Request):
     """Get a single event by ID."""
     try:
-        return get_event(_storage(request), event_id)
+        return _repo(request).get_event(event_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
     except Exception as e:
@@ -136,14 +130,17 @@ async def api_events_get(event_id: str, request: Request):
 
 @router.post("/events", status_code=201)
 @require_session
-async def api_events_create(payload: EventCreate, request: Request):
+async def api_events_create(request: Request, payload: dict = Body(default={})):
     """Create a new event."""
     try:
-        return create_event(
-            _storage(request),
-            date=payload.date,
-            title=payload.title,
-            plan_id=payload.plan_id,
+        data = EventCreate.model_validate(payload)
+    except Exception as e:
+        raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
+    try:
+        return _repo(request).create_event(
+            date=data.date,
+            title=data.title,
+            plan_id=data.plan_id,
         )
     except Exception as e:
         logger.error("Error creating event: %s", e, exc_info=True)
@@ -152,15 +149,18 @@ async def api_events_create(payload: EventCreate, request: Request):
 
 @router.put("/events/{event_id}")
 @require_session
-async def api_events_update(event_id: str, payload: EventUpdate, request: Request):
+async def api_events_update(event_id: str, request: Request, payload: dict = Body(default={})):
     """Update an existing event. Only supplied fields are changed."""
     try:
-        return update_event(
-            _storage(request),
+        data = EventUpdate.model_validate(payload)
+    except Exception as e:
+        raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
+    try:
+        return _repo(request).update_event(
             event_id=event_id,
-            date=payload.date,
-            title=payload.title,
-            plan_id=payload.plan_id,
+            date=data.date,
+            title=data.title,
+            plan_id=data.plan_id,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -174,7 +174,7 @@ async def api_events_update(event_id: str, payload: EventUpdate, request: Reques
 async def api_events_delete(event_id: str, request: Request):
     """Delete an event."""
     try:
-        deleted = delete_event(_storage(request), event_id)
+        deleted = _repo(request).delete_event(event_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Event not found")
         return {"ok": True, "id": event_id}

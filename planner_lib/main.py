@@ -105,7 +105,6 @@ def _build_services(
     container.register_singleton("account_storage", storage_diskcache)
     container.register_singleton("scenarios_storage", storage_diskcache)
     container.register_singleton("views_storage", storage_diskcache)
-    container.register_singleton("events_storage", storage_diskcache)
 
     # --- Optional memory cache ---
     # (removed — diskcache handles memory via OS page cache automatically)
@@ -191,6 +190,7 @@ def _build_services(
         PeopleRepository,
         ScenarioRepository,
         ViewRepository,
+        EventRepository,
     )
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
@@ -244,6 +244,9 @@ def _build_services(
 
     container.register_factory("view_repository",
         lambda: ViewRepository(backend=container.get("user_data_backend")))
+
+    container.register_factory("event_repository",
+        lambda: EventRepository(backend=container.get("user_data_backend")))
 
     # --- Cost ---
     container.register_factory("cost_service",

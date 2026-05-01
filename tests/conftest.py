@@ -327,7 +327,7 @@ def isolate_storage(app):
         return
 
     # Known storage names registered in create_app
-    storage_names = ['server_config_storage', 'account_storage', 'scenarios_storage', 'events_storage']
+    storage_names = ['server_config_storage', 'account_storage', 'scenarios_storage']
     for name in storage_names:
         try:
             s = container.get(name)

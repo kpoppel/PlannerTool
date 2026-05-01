@@ -19,6 +19,7 @@ Focused protocols
   AdoConfigBackend       — fetch_ado_config, save_ado_config
   ScenarioBackend        — fetch_scenarios, fetch_scenario, save_scenario, delete_scenario
   ViewBackend            — fetch_views, fetch_view, save_view, delete_view
+  EventBackend           — fetch_events, fetch_event, create_event, update_event, delete_event
 
 BackendPort (composite)
 -----------------------
@@ -37,7 +38,7 @@ DI keys
                            IterationConfigBackend, PlanConfigBackend,
                            AdoConfigBackend.
   ``user_data_backend`` → UserDataBackend backed by diskcache.  Implements
-                           ScenarioBackend, ViewBackend.
+                           ScenarioBackend, ViewBackend, EventBackend.
 
 Adding a new domain
 -------------------
@@ -311,6 +312,41 @@ class ViewBackend(Protocol):
         self,
         user_id: str,
         view_id: str,
+    ) -> bool: ...
+
+
+@runtime_checkable
+class EventBackend(Protocol):
+    """Backend that persists plan-scoped events (application-global, not user-scoped)."""
+
+    def fetch_events(
+        self,
+        plan_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]: ...
+
+    def fetch_event(
+        self,
+        event_id: str,
+    ) -> Dict[str, Any]: ...
+
+    def create_event(
+        self,
+        date: str,
+        title: str,
+        plan_id: str,
+    ) -> Dict[str, Any]: ...
+
+    def update_event(
+        self,
+        event_id: str,
+        date: Optional[str] = None,
+        title: Optional[str] = None,
+        plan_id: Optional[str] = None,
+    ) -> Dict[str, Any]: ...
+
+    def delete_event(
+        self,
+        event_id: str,
     ) -> bool: ...
 
 
