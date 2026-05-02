@@ -210,6 +210,7 @@ class StaticBackend(BackendPort):
     def fetch_markers(
         self,
         area_path: str,
+        plan_id: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]:
         data = self._load()

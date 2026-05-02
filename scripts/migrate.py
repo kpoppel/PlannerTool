@@ -52,6 +52,8 @@ OBSOLETE_MIGRATIONS = {
     # it must run on all existing v3.5.x installations.  Add it here (with
     # min_version '3.6.0') only after 3.6.0 has shipped so that fresh installs
     # of 3.6.0+ skip it automatically.
+    # 0023.clean-ado-config-and-server-config is intentionally absent:
+    # it must run on all existing installations that were not yet cleaned up.
 }
 
 

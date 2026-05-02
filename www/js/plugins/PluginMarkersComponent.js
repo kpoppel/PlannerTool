@@ -19,6 +19,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     markers: { type: Array },
     loading: { type: Boolean },
     selectedColors: { type: Object },
+    selectedPlans: { type: Object },
   };
 
   constructor() {
@@ -26,6 +27,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     this.markers = [];
     this.loading = false;
     this.selectedColors = {}; // Map of color -> boolean
+    this.selectedPlans = {};  // Map of plan_id -> boolean
   }
 
   static styles = css`
@@ -108,29 +110,54 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       display: inline-block;
     }
 
-    .color-filters {
-      margin-top: 8px;
+    .plan-list {
+      margin-top: 10px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
+      flex-direction: column;
+      gap: 3px;
     }
 
-    .color-filter-btn {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #ccc;
-      border-radius: 3px;
+    .plan-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 4px;
+      border-radius: 4px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background 0.15s;
+      user-select: none;
     }
 
-    .color-filter-btn.selected {
-      border-color: #000;
-      box-shadow: 0 0 0 1px #000;
+    .plan-row:hover {
+      background: #f0f0f0;
     }
 
-    .color-filter-btn:hover {
-      transform: scale(1.1);
+    .plan-row.hidden {
+      opacity: 0.4;
+    }
+
+    .plan-swatch {
+      flex-shrink: 0;
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+
+    .plan-name {
+      font-size: 11px;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+
+    .plan-count {
+      margin-left: auto;
+      font-size: 10px;
+      color: #888;
+      flex-shrink: 0;
     }
   `;
 
@@ -159,7 +186,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
   }
 
   updated(changedProperties) {
-    if (changedProperties.has('markers') || changedProperties.has('selectedColors')) {
+    if (changedProperties.has('markers') || changedProperties.has('selectedColors') || changedProperties.has('selectedPlans')) {
       this._renderSvg();
     }
   }
@@ -200,10 +227,9 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
           // When no teams are selected, treat all teams as matching;
           // otherwise filter to selected teams (team-agnostic markers always pass)
           const teamMatch = !hasTeamSelection || !m.team_id || selectedTeams.includes(m.team_id);
-          // Check color filter
-          const markerColor = m.marker?.color || '#2196F3';
-          const colorMatch = this.selectedColors[markerColor] !== false;
-          return projectMatch && teamMatch && colorMatch;
+          // Check plan filter
+          const planMatch = this.selectedPlans[m.plan_id] !== false;
+          return projectMatch && teamMatch && planMatch;
         });
 
         // Deduplicate by plan_id + date + label
@@ -244,23 +270,20 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
                 </div>
               `
             : ''}
-            ${!this.loading && this._getUniqueColors().length > 0 ?
+            ${!this.loading && this._getPlansLegend().length > 0 ?
               html`
-                <div class="color-filters">
-                  ${this._getUniqueColors().map(
-                    (color) => html`
-                      <div
-                        class="color-filter-btn ${this.selectedColors[color] !== false ?
-                          'selected'
-                        : ''}"
-                        style="background-color: ${color}"
-                        @click="${() => this._toggleColor(color)}"
-                        title="${color}: ${this.selectedColors[color] !== false ?
-                          'Hide'
-                        : 'Show'}"
-                      ></div>
-                    `
-                  )}
+                <div class="plan-list">
+                  ${this._getPlansLegend().map((plan) => html`
+                    <div
+                      class="plan-row ${this.selectedPlans[plan.plan_id] === false ? 'hidden' : ''}"
+                      @click="${() => this._togglePlan(plan.plan_id)}"
+                      title="${this.selectedPlans[plan.plan_id] === false ? 'Show' : 'Hide'}: ${plan.plan_name}"
+                    >
+                      <div class="plan-swatch" style="background:${plan.color}"></div>
+                      <span class="plan-name">${plan.plan_name}</span>
+                      <span class="plan-count">${plan.count}</span>
+                    </div>
+                  `)}
                 </div>
               `
             : ''}
@@ -299,14 +322,47 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
   }
 
   _initializeColorSelection() {
-    const colors = this._getUniqueColors();
-    const newSelection = {};
-    colors.forEach((color) => {
-      // Keep existing selection state if color already exists
-      newSelection[color] =
-        this.selectedColors[color] !== undefined ? this.selectedColors[color] : true;
+    // Keep _getUniqueColors around in case other code uses it, but now we
+    // primarily track visibility per plan.
+    const legend = this._getPlansLegend();
+    const newPlans = {};
+    legend.forEach(({ plan_id }) => {
+      newPlans[plan_id] =
+        this.selectedPlans[plan_id] !== undefined ? this.selectedPlans[plan_id] : true;
     });
-    this.selectedColors = newSelection;
+    this.selectedPlans = newPlans;
+    // Keep selectedColors in sync for any legacy callers.
+    const newColors = {};
+    legend.forEach(({ color }) => {
+      newColors[color] = this.selectedColors[color] !== undefined ? this.selectedColors[color] : true;
+    });
+    this.selectedColors = newColors;
+  }
+
+  /**
+   * Return deduplicated list of plans with their representative color and marker count.
+   * @returns {{ plan_id: string, plan_name: string, color: string, count: number }[]}
+   */
+  _getPlansLegend() {
+    /** @type {Map<string, {plan_id:string, plan_name:string, color:string, count:number}>} */
+    const byPlan = new Map();
+    const seen = new Set();
+    for (const m of this.markers) {
+      if (!m.marker?.date) continue;
+      const dedupeKey = `${m.plan_id}:${m.marker.date}:${m.marker.label || m.marker.title || ''}`;
+      const isNew = !seen.has(dedupeKey);
+      seen.add(dedupeKey);
+      if (!byPlan.has(m.plan_id)) {
+        byPlan.set(m.plan_id, {
+          plan_id: m.plan_id,
+          plan_name: m.plan_name || m.plan_id || 'Unknown plan',
+          color: m.marker?.color || '#2196F3',
+          count: 0,
+        });
+      }
+      if (isNew) byPlan.get(m.plan_id).count++;
+    }
+    return Array.from(byPlan.values()).sort((a, b) => a.plan_name.localeCompare(b.plan_name));
   }
 
   _getUniqueColors() {
@@ -323,6 +379,12 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       ...this.selectedColors,
       [color]: !this.selectedColors[color],
     };
+  }
+
+  _togglePlan(planId) {
+    const current = this.selectedPlans[planId] !== false;
+    this.selectedPlans = { ...this.selectedPlans, [planId]: !current };
+    this._scheduleRender();
   }
 
   _renderSvg() {
@@ -368,7 +430,6 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       .map((p) => p.id);
     const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
 
-    const debugCount = 0;
     const filteredMarkers = this.markers.filter((markerEntry) => {
       // When no project is selected, show nothing
       const hasProjectSelection = selectedProjects.length > 0;
@@ -382,12 +443,11 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       // otherwise filter to selected teams (team-agnostic markers always pass)
       const teamMatch =
         !hasTeamSelection || !markerEntry.team_id || selectedTeams.includes(markerEntry.team_id);
-      // Check color filter
-      const markerColor = markerEntry.marker?.color || '#2196F3';
-      const colorMatch = this.selectedColors[markerColor] !== false;
+      // Plan visibility toggle
+      const planMatch = this.selectedPlans[markerEntry.plan_id] !== false;
 
       // Must match all criteria
-      return projectMatch && teamMatch && colorMatch;
+      return projectMatch && teamMatch && planMatch;
     });
 
     // Deduplicate markers by plan_id + date + label
@@ -404,22 +464,63 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     });
 
     let renderedCount = 0;
-    uniqueMarkers.forEach((markerEntry) => {
+
+    // ------------------------------------------------------------------
+    // Anti-overlap layout pass
+    // ------------------------------------------------------------------
+    // Assign a vertical "row" level to each marker so that labels whose
+    // rendered rectangles would overlap are stacked.  Level 0 sits just
+    // below the sticky header; level 1 is one tag-height lower, etc.
+    //
+    // Algorithm: greedy interval packing per row.
+    // Each row tracks the rightmost X edge of the last label placed there.
+    // We assign the first row whose tail does not overlap this label.
+    const TAG_HEIGHT = 18;
+    const TAG_PADDING = 6;
+
+    // Compute label width the same way _createMarker does.
+    const _labelWidth = (label) => label.length * 5.5 + TAG_PADDING * 2;
+
+    // Pre-compute X positions, skip out-of-range markers.
+    const markerLayouts = uniqueMarkers
+      .map((markerEntry) => {
+        const marker = markerEntry.marker;
+        const x = this._calcX(new Date(marker.date), months, monthWidth);
+        if (x === null) return null;
+        const label = marker.label || marker.title || 'Marker';
+        const w = _labelWidth(label);
+        return { markerEntry, x, label, w };
+      })
+      .filter(Boolean);
+
+    // Sort by X so greedy row assignment works left-to-right.
+    markerLayouts.sort((a, b) => a.x - b.x);
+
+    // rowTails[i] = rightmost edge already placed on row i.
+    const rowTails = [];
+    for (const layout of markerLayouts) {
+      const halfW = layout.w / 2;
+      const left  = layout.x - halfW;
+      const right = layout.x + halfW;
+      let row = rowTails.findIndex((tail) => tail <= left);
+      if (row === -1) row = rowTails.length; // open a new row
+      rowTails[row] = right;
+      layout.row = row;
+    }
+
+    for (const { markerEntry, x, label, row } of markerLayouts) {
       const marker = markerEntry.marker;
-
-      const x = this._calcX(new Date(marker.date), months, monthWidth);
-      if (x === null) return;
-
       this._createMarker(
         x,
-        marker.label || marker.title || 'Marker',
+        label,
         marker.color || '#2196F3',
         markerEntry,
         boardRect.height,
-        boardCoords.scrollY
+        boardCoords.scrollY,
+        row,
       );
       renderedCount++;
-    });
+    }
   }
 
   /**
@@ -438,7 +539,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     return (monthIndex + dayRatio) * monthWidth;
   }
 
-  _createMarker(x, label, color, markerEntry, boardHeight, scrollY) {
+  _createMarker(x, label, color, markerEntry, boardHeight, scrollY, row = 0) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
 
     // Vertical dashed line from top of board area to its bottom
@@ -457,6 +558,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     // Create compact tag that sticks to the top of the visible board area.
     // tagY is in board-area coordinates: scrollY offsets the tag so its
     // screen position stays constant just below the sticky timeline header.
+    // row > 0 shifts overlapping labels downward by one tag-height per level.
     const tagGroup = document.createElementNS(SVG_NS, 'g');
     tagGroup.setAttribute('class', 'marker-tag');
     tagGroup.style.cursor = 'pointer';
@@ -464,7 +566,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
 
     // Tag dimensions
     const tagHeight = 18;
-    const tagY = (scrollY ?? 0) + 5; // Offset by scrollY so tag sticks to visible top
+    const tagY = (scrollY ?? 0) + 5 + row * (tagHeight + 2); // stack rows downward
     const tagPadding = 6;
     const labelWidth = label.length * 5.5;
     const tagWidth = labelWidth + tagPadding * 2;

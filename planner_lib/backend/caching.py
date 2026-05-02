@@ -150,13 +150,31 @@ class CachingBackend:
                 def _cached_wrapper(*args, **kwargs):
                     key = make_key(name, args, {k: v for k, v in kwargs.items() if k != 'credential'})
                     try:
-                        return storage.load(_NAMESPACE, key)
+                        value = storage.load(_NAMESPACE, key)
+                        # Log time-to-expiry so operators can see staleness at a glance.
+                        if logger.isEnabledFor(logging.DEBUG):
+                            get_expire = getattr(storage, 'get_expire_time', None)
+                            if get_expire is not None:
+                                abs_exp = get_expire(_NAMESPACE, key)
+                                if abs_exp is not None:
+                                    remaining = max(0.0, abs_exp - time.time())
+                                    logger.debug(
+                                        'CachingBackend: cache HIT %s (expires in %.0fs)',
+                                        key, remaining,
+                                    )
+                                else:
+                                    logger.debug('CachingBackend: cache HIT %s (no expiry)', key)
+                        return value
                     except KeyError:
                         pass
                     result = inner_method(*args, **kwargs)
                     ttl = ttl_config.ttl_for(name)
                     ttl_seconds = ttl.total_seconds() if ttl is not None else None
                     storage.save(_NAMESPACE, key, result, ttl_seconds=ttl_seconds)
+                    logger.debug(
+                        'CachingBackend: cache MISS %s — fetched and stored (ttl=%s)',
+                        key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
+                    )
                     return result
 
                 return _cached_wrapper

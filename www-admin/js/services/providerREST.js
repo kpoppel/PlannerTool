@@ -449,9 +449,9 @@ export class AdminProviderREST {
 
   // --- Azure browse helpers (require PAT in session) ---
 
-  async browseAzureProjects() {
+  async browseAzureProjects(orgUrl) {
     try {
-      const res = await this._fetch('/api/azure/projects', {
+      const res = await this._fetch(`/api/azure/projects?org_url=${encodeURIComponent(orgUrl || '')}`, {
         method: 'GET',
         credentials: 'same-origin',
       });
@@ -477,12 +477,12 @@ export class AdminProviderREST {
     }
   }
 
-  async browseWikis(project) {
+  async browseWikis(project, orgUrl) {
     try {
-      const res = await this._fetch(`/api/azure/wikis?project=${encodeURIComponent(project)}`, {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
+      const res = await this._fetch(
+        `/api/azure/wikis?project=${encodeURIComponent(project)}&org_url=${encodeURIComponent(orgUrl || '')}`,
+        { method: 'GET', credentials: 'same-origin' },
+      );
       if (!res.ok) return { wikis: [], error: `HTTP ${res.status}` };
       return await res.json();
     } catch (err) {
@@ -491,13 +491,10 @@ export class AdminProviderREST {
     }
   }
 
-  async browseWikiPages(project, wikiId) {
+  async browseWikiPages(project, wikiId, orgUrl) {
     try {
-      const url = `/api/azure/wiki-pages?project=${encodeURIComponent(project)}&wiki_id=${encodeURIComponent(wikiId)}`;
-      const res = await this._fetch(url, {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
+      const url = `/api/azure/wiki-pages?project=${encodeURIComponent(project)}&wiki_id=${encodeURIComponent(wikiId)}&org_url=${encodeURIComponent(orgUrl || '')}`;
+      const res = await this._fetch(url, { method: 'GET', credentials: 'same-origin' });
       if (!res.ok) return { pages: [], error: `HTTP ${res.status}` };
       return await res.json();
     } catch (err) {

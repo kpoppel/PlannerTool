@@ -268,7 +268,7 @@ class MockFixtureBackend(_MockBackendBase):
         with self._client.connect('mock-pat') as client:
             return client.get_all_plans(project)
 
-    def fetch_markers(self, area_path: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
+    def fetch_markers(self, area_path: str, plan_id: Optional[str] = None, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
         return []
 
     def fetch_iterations(self, project: str, root_paths: Optional[List[str]] = None, credential: Optional[BackendCredential] = None) -> Dict[str, Any]:
@@ -536,7 +536,7 @@ class MockGeneratorBackend(_MockBackendBase):
         with self._client.connect('mock-pat') as client:
             return client.get_all_plans(project)
 
-    def fetch_markers(self, area_path: str, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
+    def fetch_markers(self, area_path: str, plan_id: Optional[str] = None, credential: Optional[BackendCredential] = None) -> List[Dict[str, Any]]:
         return []
 
     def fetch_iterations(self, project: str, root_paths: Optional[List[str]] = None, credential: Optional[BackendCredential] = None) -> Dict[str, Any]:

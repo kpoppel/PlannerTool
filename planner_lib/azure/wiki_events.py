@@ -32,7 +32,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential
 
@@ -48,9 +48,11 @@ class AzureWikiEventBackend:
 
     Parameters
     ----------
-    azure_client:
-        The ``AzureClient`` (or ``AzureService``) instance — used only to
-        build the SDK connection; no state is shared with the task layer.
+    organization_url:
+        Azure DevOps organization name or full URL, e.g. ``"MyCompany"`` or
+        ``"https://dev.azure.com/MyCompany"``.  Stored independently of the
+        work-item backend so that a mock or static task backend can coexist
+        with a live wiki event backend.
     project:
         ADO project name or ID.
     wiki_id:
@@ -63,12 +65,12 @@ class AzureWikiEventBackend:
 
     def __init__(
         self,
-        azure_client: Any,
+        organization_url: str,
         project: str,
         wiki_id: str,
         page_path: str = "/PlannerTool/Events",
     ) -> None:
-        self._azure_client = azure_client
+        self._organization_url = organization_url
         self._project = project
         self._wiki_id = wiki_id
         self._page_path = page_path
@@ -82,7 +84,7 @@ class AzureWikiEventBackend:
         from azure.devops.connection import Connection
         from msrest.authentication import BasicAuthentication
 
-        org_url = self._azure_client.organization_url
+        org_url = self._organization_url
         if not org_url:
             raise RuntimeError("Azure DevOps organization URL is not configured")
         if not self._project:

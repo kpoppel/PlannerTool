@@ -265,14 +265,14 @@ def _build_services(
             project = wiki_cfg.get("project", "").strip()
             wiki_id = wiki_cfg.get("wiki_id", "").strip()
             page_path = wiki_cfg.get("page_path", "").strip() or "/PlannerTool/Events"
-
-            azure_client = container.get("azure_client")
-            org_url = getattr(azure_client, "organization_url", "") or ""
+            # organization_url lives in events_config.ado_wiki so that the wiki
+            # event backend is independent of the work-item backend selection.
+            org_url = wiki_cfg.get("organization_url", "").strip()
 
             missing = [f for f, v in [
                 ("ado_wiki.project", project),
                 ("ado_wiki.wiki_id", wiki_id),
-                ("organization_url (ADO config)", org_url),
+                ("ado_wiki.organization_url", org_url),
             ] if not v]
 
             if missing:
@@ -291,7 +291,7 @@ def _build_services(
                 project, wiki_id, page_path,
             )
             return AzureWikiEventBackend(
-                azure_client=azure_client,
+                organization_url=org_url,
                 project=project,
                 wiki_id=wiki_id,
                 page_path=page_path,
@@ -327,6 +327,7 @@ def _build_services(
             views_storage=storage_diskcache,
             scenarios_storage=storage_diskcache,
             reloadable_services=[
+                container.get("backend"),
                 container.get("cost_service"),
             ],
         ))

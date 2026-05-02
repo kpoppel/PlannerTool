@@ -100,6 +100,9 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
   });
 
   it('epic ignores children when USE_PARENT_CAPACITY_GAP_FILLS is false', () => {
+    // Disable gap-filling so the epic's cost is computed purely as the sum
+    // of its children rather than prorating the epic's own metric.
+    disable('USE_PARENT_CAPACITY_GAP_FILLS');
     const cfg = { dataset_start: '2026-01-01', dataset_end: '2026-03-31' };
     const months = buildMonths(cfg);
     const epic = {
@@ -143,8 +146,9 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
     const res = buildProjects([epic], months, {});
     const project = res.projects[0];
     const featMap = Object.fromEntries(project.features.map((f) => [f.id, f]));
-    // Since gap fills default is false in config.js, epic internalTotal should be sum of children (200)
+    // With gap fills disabled the epic total equals the sum of its children (100 + 100 = 200).
     expect(featMap['100'].internalTotal).to.equal(200);
+    enable('USE_PARENT_CAPACITY_GAP_FILLS'); // restore default for subsequent tests
   });
 
   it('epic fills gaps when USE_PARENT_CAPACITY_GAP_FILLS is true', () => {

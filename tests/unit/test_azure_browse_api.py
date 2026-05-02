@@ -2,9 +2,14 @@
 
 These endpoints allow any authenticated user with a PAT to browse Azure DevOps
 projects, area paths, and work item metadata without requiring admin privileges.
+
+The browse-live endpoints (/projects, /wikis, /wiki-pages) build a fresh live
+AzureClient via _live_client_or_raise().  Tests patch that helper to inject
+a FakeAzureClient without making real ADO connections.
 """
 from contextlib import contextmanager
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -87,6 +92,18 @@ def _register_azure_services(client, pat='test-pat', inner_client=None):
         'session_manager': FakeSessionMgr(pat=pat),
         'azure_client': FakeAzureService(fake_client),
     })
+    return fake_client
+
+
+@contextmanager
+def _patch_live_client(fake_client):
+    """Patch _live_client_or_raise to yield fake_client instead of a real ADO connection."""
+    @contextmanager
+    def _fake_live(org_url, pat):
+        yield fake_client
+
+    with patch('planner_lib.azure.api._live_client_or_raise', side_effect=_fake_live):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +111,9 @@ def _register_azure_services(client, pat='test-pat', inner_client=None):
 # ---------------------------------------------------------------------------
 
 def test_browse_projects_returns_project_list(client):
-    _register_azure_services(client)
-    resp = client.get('/api/azure/projects')
+    fake_client = _register_azure_services(client)
+    with _patch_live_client(fake_client):
+        resp = client.get('/api/azure/projects?org_url=test-org')
     assert resp.status_code == 200
     data = resp.json()
     assert 'projects' in data
@@ -105,7 +123,7 @@ def test_browse_projects_returns_project_list(client):
 
 def test_browse_projects_missing_pat_returns_401(client):
     _register_azure_services(client, pat=None)
-    resp = client.get('/api/azure/projects', headers={'Accept': 'application/json'})
+    resp = client.get('/api/azure/projects?org_url=test-org', headers={'Accept': 'application/json'})
     assert resp.status_code == 401
     # access_denied_response puts the error dict directly at the root (not under 'detail')
     assert resp.json()['error'] == 'missing_pat'

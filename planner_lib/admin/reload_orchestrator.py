@@ -63,6 +63,10 @@ class ReloadOrchestrator:
 
         Returns ``{"ok": True}`` on success; raises on unexpected error.
         """
+        # Snapshot the active backend class *before* rebuilding so we can
+        # detect a backend-type switch and invalidate stale cached data.
+        old_backend_class = type(self._azure_client._client) if self._azure_client is not None else None
+
         # Update azure_client runtime settings from ado_config (diskcache).
         try:
             ado_cfg = self._config_storage.load('config', 'ado_config') or {}
@@ -78,6 +82,19 @@ class ReloadOrchestrator:
         self._azure_client.feature_flags = merged_flags
         # Rebuild the concrete client so feature-flag changes take effect.
         self._azure_client.rebuild_client()
+
+        new_backend_class = type(self._azure_client._client)
+        if old_backend_class is not None and new_backend_class is not old_backend_class:
+            logger.info(
+                'ReloadOrchestrator: ADO backend changed %s → %s; invalidating domain cache',
+                old_backend_class.__name__, new_backend_class.__name__,
+            )
+            for svc in self._reloadable_services:
+                if isinstance(svc, Invalidatable):
+                    try:
+                        svc.invalidate_cache()
+                    except Exception as exc:
+                        logger.warning('ReloadOrchestrator: invalidate_cache failed on %s: %s', type(svc).__name__, exc)
 
         # Reload / invalidate all registered services.
         for svc in self._reloadable_services:

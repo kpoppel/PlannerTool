@@ -248,18 +248,45 @@ def _get_pat_or_raise(request: Request, session_mgr) -> str:
     return pat
 
 
+def _live_client_or_raise(org_url: str, pat: str):
+    """Return a context-manager yielding a live AzureClient for *org_url* + *pat*.
+
+    Always uses the live ``AzureClient`` — never a mock.  This is intentional:
+    browse endpoints are used to configure live ADO resources (projects, wikis,
+    area paths) and must reach the real ADO REST API regardless of which
+    work-item backend is currently active.
+
+    Raises HTTP 400 when *org_url* is empty so the caller gets a clear message.
+    """
+    if not org_url or not org_url.strip():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                'error': 'missing_org_url',
+                'message': 'Organization URL is required. Set it in the Azure DevOps Wiki settings.',
+            },
+        )
+    from planner_lib.azure.AzureClient import AzureClient
+    return AzureClient(org_url.strip(), storage=None, cache_plans=False).connect(pat)
+
+
 @browse_router.get("/projects")
 @require_session
-async def azure_browse_projects(request: Request):
+async def azure_browse_projects(
+    request: Request,
+    org_url: str = Query(..., description="Azure DevOps organization name or URL"),
+):
     """List all Azure DevOps projects visible with the user's PAT.
+
+    Query params:
+        org_url: Azure DevOps organization name or full URL (required)
 
     Returns:
         { "projects": ["ProjectA", "ProjectB", ...] }
     """
     session_mgr = resolve_service(request, 'session_manager')
     pat = _get_pat_or_raise(request, session_mgr)
-    azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
+    with _live_client_or_raise(org_url, pat) as client:
         projects = client.get_projects()
     return {'projects': projects}
 
@@ -290,19 +317,20 @@ async def azure_browse_area_paths(
 async def azure_browse_wikis(
     request: Request,
     project: str = Query(..., description="Azure DevOps project name"),
+    org_url: str = Query(..., description="Azure DevOps organization name or URL"),
 ):
     """List all wikis in a given Azure DevOps project.
 
     Query params:
         project: Azure DevOps project name (required)
+        org_url:  Azure DevOps organization name or URL (required)
 
     Returns:
         { "wikis": [{"id": "...", "name": "MyProject.wiki", "type": "projectWiki"}, ...] }
     """
     session_mgr = resolve_service(request, 'session_manager')
     pat = _get_pat_or_raise(request, session_mgr)
-    azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
+    with _live_client_or_raise(org_url, pat) as client:
         wikis = client.get_wikis(project)
     return {'wikis': wikis}
 
@@ -313,26 +341,23 @@ async def azure_browse_wiki_pages(
     request: Request,
     project: str = Query(..., description="Azure DevOps project name"),
     wiki_id: str = Query(..., description="Wiki name or GUID"),
+    org_url: str = Query(..., description="Azure DevOps organization name or URL"),
 ):
     """Return a flat list of all page paths in a wiki.
-
-    Useful for selecting a parent page path when configuring the ADO wiki
-    event backend — the page need not exist yet, but its ancestors must.
 
     Query params:
         project: Azure DevOps project name (required)
         wiki_id: Wiki name or GUID (required)
+        org_url:  Azure DevOps organization name or URL (required)
 
     Returns:
         { "pages": ["/Home", "/PlannerTool", "/PlannerTool/Events", ...] }
     """
     session_mgr = resolve_service(request, 'session_manager')
     pat = _get_pat_or_raise(request, session_mgr)
-    azure_svc = resolve_service(request, 'azure_client')
-    with azure_svc.connect(pat) as client:
+    with _live_client_or_raise(org_url, pat) as client:
         pages = client.get_wiki_pages(project, wiki_id)
     return {'pages': pages}
-    return {'area_paths': area_paths}
 
 
 @browse_router.get("/work-item-metadata")

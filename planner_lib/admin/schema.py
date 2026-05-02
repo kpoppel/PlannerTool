@@ -66,78 +66,10 @@ _SCHEMAS: dict[str, Any] = {
                 },
                 'additionalProperties': True,
             },
-            'cache': {
-                'type': 'object',
-                'title': 'Cache Configuration',
-                'description': 'Settings for the disk-backed cache layer (when enable_cache is true)',
-                'x-showWhen': 'feature_flags.enable_cache',
-                'properties': {
-                    'ttls': {
-                        'type': 'object',
-                        'title': 'Cache TTLs (minutes)',
-                        'description': 'Per-domain cache time-to-live in minutes. '
-                                       'Omit a key to keep the built-in default.',
-                        'properties': {
-                            'fetch_tasks': {
-                                'type': 'integer',
-                                'title': 'Tasks TTL (minutes)',
-                                'description': 'Work-item lists. Changes frequently — keep short.',
-                                'default': 30,
-                                'minimum': 1,
-                                'maximum': 1440,
-                            },
-                            'fetch_history': {
-                                'type': 'integer',
-                                'title': 'History TTL (minutes)',
-                                'description': 'Work-item revision history. Expensive to fetch, rarely changes — keep long.',
-                                'default': 1440,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                            'fetch_teams': {
-                                'type': 'integer',
-                                'title': 'Teams TTL (minutes)',
-                                'description': 'Project team definitions. Rarely changes.',
-                                'default': 240,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                            'fetch_plans': {
-                                'type': 'integer',
-                                'title': 'Plans TTL (minutes)',
-                                'description': 'Delivery-plan metadata. Rarely changes.',
-                                'default': 240,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                            'fetch_markers': {
-                                'type': 'integer',
-                                'title': 'Markers TTL (minutes)',
-                                'description': 'Delivery-plan timeline markers. Occasionally changes.',
-                                'default': 120,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                            'fetch_iterations': {
-                                'type': 'integer',
-                                'title': 'Iterations TTL (minutes)',
-                                'description': 'Iteration / sprint definitions. Rarely changes mid-sprint.',
-                                'default': 480,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                            'fetch_people': {
-                                'type': 'integer',
-                                'title': 'People TTL (minutes)',
-                                'description': 'People / team-member data from people.yml (default: 1 h). Changes on team roster updates.',
-                                'default': 60,
-                                'minimum': 1,
-                                'maximum': 10080,
-                            },
-                        },
-                    },
-                },
-            },
+            # cache.ttls are managed from the Data Sources admin panel
+            # (each domain row owns its own TTL setting). The 'cache' object
+            # is still written back by that panel but is no longer surfaced
+            # in the Server schema.
         },
         'required': ['server_name'],
     },
@@ -390,6 +322,17 @@ _SCHEMAS: dict[str, Any] = {
                 'title': 'Azure DevOps Wiki Settings',
                 'description': 'Required when event_backend is "ado_wiki".',
                 'properties': {
+                    'organization_url': {
+                        'type': 'string',
+                        'title': 'Organization URL',
+                        'description': (
+                            'Azure DevOps organization name or URL '
+                            '(e.g. "MyCompany" or "https://dev.azure.com/MyCompany"). '
+                            'Stored here independently of the work-item backend so that '
+                            'a mock or static task backend can coexist with a live wiki.'
+                        ),
+                        'minLength': 1,
+                    },
                     'project': {
                         'type': 'string',
                         'title': 'ADO Project',
@@ -417,7 +360,7 @@ _SCHEMAS: dict[str, Any] = {
                         'minLength': 1,
                     },
                 },
-                'required': ['project', 'wiki_id', 'page_path'],
+                'required': ['organization_url', 'project', 'wiki_id', 'page_path'],
             },
         },
     },

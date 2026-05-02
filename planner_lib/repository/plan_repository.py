@@ -78,7 +78,7 @@ class PlanRepository:
                 if not isinstance(plan_info, dict) or not plan_info.get('enabled', False):
                     continue
                 try:
-                    raw_markers = self._backend.fetch_markers(area, credential=credential)
+                    raw_markers = self._backend.fetch_markers(area, plan_id=plan_id, credential=credential)
                     plan_name = plan_info.get('name')
                     project_slug = slugify(name, prefix='project-')
                     for m in raw_markers:

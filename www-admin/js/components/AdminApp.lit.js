@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import './admin/GlobalSettings.lit.js';
-import './admin/AzureDevOps.lit.js';
+// AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
 
 export class AdminApp extends LitElement {
@@ -87,7 +87,6 @@ export class AdminApp extends LitElement {
     this.activeSection = 'Server';
     this.sections = [
       'Server',
-      'Azure DevOps',
       'Data Sources',
       'Users',
       'Global Project Settings',
@@ -135,8 +134,6 @@ export class AdminApp extends LitElement {
     switch (this.activeSection) {
       case 'Server':
         return html`<admin-system></admin-system>`;
-      case 'Azure DevOps':
-        return html`<admin-ado></admin-ado>`;
       case 'Data Sources':
         return html`<admin-data-sources></admin-data-sources>`;
       case 'Users':

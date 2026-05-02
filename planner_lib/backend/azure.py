@@ -358,17 +358,18 @@ class AzureDevOpsBackend(BackendPort):
     def fetch_markers(
         self,
         area_path: str,
+        plan_id: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> List[Dict[str, Any]]:
         pat = self._require_credential(credential, 'fetch_markers')
-        # Markers are fetched per-plan; this method returns all markers for
-        # the given area path by looking up plans via the stored area_plan_map.
-        # The full plan-markers resolution lives in TaskRepository.list_markers().
-        # Here we expose the per-plan call that the repository orchestrates.
-        raise NotImplementedError(
-            "fetch_markers() on AzureDevOpsBackend is not used directly; "
-            "use TaskRepository.list_markers() instead."
-        )
+        with self._conn.connect(pat) as client:
+            if plan_id:
+                # Fast path: plan_id is known (from area_plan_map) — fetch directly
+                # without expensive plan-discovery + delivery-timeline traversal.
+                project = area_path.split('\\')[0] if '\\' in area_path else area_path.split('/')[0]
+                return client.get_markers_for_plan(project, plan_id)
+            # Slow fallback: discover plans from area path (admin UI / unknown plan_id).
+            return client.get_markers(area_path)
 
     def fetch_iterations(
         self,

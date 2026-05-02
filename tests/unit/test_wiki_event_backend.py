@@ -25,10 +25,8 @@ _PAGE_PATH = '/PlannerTool/Events'
 # ---------------------------------------------------------------------------
 
 def _make_backend(org=_ORG, project=_PROJECT, wiki_id=_WIKI_ID, page_path=_PAGE_PATH):
-    azure_client = MagicMock()
-    azure_client.organization_url = org
     return AzureWikiEventBackend(
-        azure_client=azure_client,
+        organization_url=org,
         project=project,
         wiki_id=wiki_id,
         page_path=page_path,
