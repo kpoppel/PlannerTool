@@ -16,7 +16,9 @@ Template - do not change :
 
 ## [v4.0.0] - unreleased
 
-This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. On the user side, several new features are added: packed view which oacks cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
+This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. The server was made async in several places, allowing multiple users to get responsiveness when accessing the tool concurrently.
+
+On the user side, several new features are added: packed view which oacks cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
 
 **Before upgrading**, run all pending migrations:
 ```
