@@ -674,3 +674,39 @@ async def admin_save_events_config(request: Request):
     except Exception as e:
         logger.exception('Failed to save events config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
+
+
+# ---------------------------------------------------------------------------
+# Groups backend configuration (groups_config in diskcache)
+# ---------------------------------------------------------------------------
+
+@router.get('/admin/v1/groups-config')
+@require_admin_session
+async def admin_get_groups_config(request: Request):
+    """Return the groups-backend configuration (backend selector + per-backend settings)."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        return {'content': admin_svc.get_config('groups_config', default={})}
+    except Exception as e:
+        logger.exception('Failed to load groups config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/groups-config')
+@require_admin_session
+async def admin_save_groups_config(request: Request):
+    """Save groups-backend configuration."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+    content = payload.get('content')
+    if content is None:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        admin_svc.save_config('groups_config', content)
+        return {'ok': True}
+    except Exception as e:
+        logger.exception('Failed to save groups config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')

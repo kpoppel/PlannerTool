@@ -335,6 +335,21 @@ class EventConfigBackend(Protocol):
 
 
 @runtime_checkable
+class GroupsConfigBackend(Protocol):
+    """Backend that stores and retrieves groups-backend configuration.
+
+    The groups config (``groups_backend`` selector + per-backend settings)
+    lives in the ``config::groups_config`` diskcache key.  Currently only
+    ``groups_backend: "local"`` is supported; a future ``ado_field`` option
+    will read group definitions from a custom ADO work-item field.
+    """
+
+    def fetch_groups_config(self) -> dict: ...
+
+    def save_groups_config(self, content: dict) -> None: ...
+
+
+@runtime_checkable
 class EventBackend(Protocol):
     """Backend that persists plan-scoped events (application-global, not user-scoped).
 

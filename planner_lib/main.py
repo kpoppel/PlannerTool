@@ -191,6 +191,7 @@ def _build_services(
         ScenarioRepository,
         ViewRepository,
         EventRepository,
+        GroupRepository,
     )
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
@@ -305,6 +306,30 @@ def _build_services(
             credential_provider=container.get("credential_provider"),
         ))
 
+    # --- Groups ---
+    def _make_group_repository():
+        """Groups always use the local diskcache backend.
+
+        A future AzureFieldGroupBackend can be selected via groups_config, but
+        for now only the local backend is implemented.  The config key is read
+        here so that when the ADO backend is added, main.py is the only file
+        that needs to change.
+        """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        groups_cfg = container.get("config_backend").fetch_groups_config()
+        backend_type = groups_cfg.get("groups_backend", "local")
+        if backend_type != "local":
+            _log.warning(
+                "group_repository: backend '%s' is not yet implemented; "
+                "falling back to local diskcache.",
+                backend_type,
+            )
+        from planner_lib.groups.local_backend import LocalGroupBackend
+        return GroupRepository(backend=LocalGroupBackend(storage=storage_diskcache))
+
+    container.register_factory("group_repository", _make_group_repository)
+
     # --- Cost ---
     container.register_factory("cost_service",
         lambda: CostService(
@@ -415,6 +440,7 @@ def _build_app(
     from planner_lib.server.api import router as server_router
     from planner_lib.admin.api import router as admin_router
     from planner_lib.events.api import router as events_router
+    from planner_lib.groups.api import router as groups_router
 
     app.include_router(session_router, prefix='/api')
     app.include_router(config_router, prefix='/api')
@@ -425,6 +451,7 @@ def _build_app(
     app.include_router(server_router, prefix='/api')
     app.include_router(admin_router, prefix='')
     app.include_router(events_router, prefix='/api')
+    app.include_router(groups_router, prefix='/api')
 
     from planner_lib.azure.api import browse_router as azure_browse_router
     app.include_router(azure_browse_router, prefix='/api/azure')

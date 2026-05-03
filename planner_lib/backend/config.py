@@ -31,6 +31,7 @@ from planner_lib.backend.port import (
     AdoConfigBackend,
     BackendCredential,
     EventConfigBackend,
+    GroupsConfigBackend,
     PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 class ConfigBackend(
     AdoConfigBackend,
     EventConfigBackend,
+    GroupsConfigBackend,
     PeopleBackend,
     ProjectConfigBackend,
     TeamConfigBackend,
@@ -213,6 +215,25 @@ class ConfigBackend(
     def save_event_config(self, content: dict) -> None:
         """Persist event-backend config directly to diskcache."""
         self._storage.save("config", "event_config", content)
+
+    # ------------------------------------------------------------------
+    # GroupsConfigBackend
+    # ------------------------------------------------------------------
+
+    def fetch_groups_config(self) -> dict:
+        """Return the groups-backend config dict.
+
+        Returns an empty dict when not yet configured (defaults to local
+        diskcache backend — ``groups_backend`` is treated as ``"local"``
+        when absent).
+        """
+        if not self._storage.exists("config", "groups_config"):
+            return {}
+        return self._storage.load("config", "groups_config") or {}
+
+    def save_groups_config(self, content: dict) -> None:
+        """Persist groups-backend config directly to diskcache."""
+        self._storage.save("config", "groups_config", content)
 
     # ------------------------------------------------------------------
     # Admin write helpers

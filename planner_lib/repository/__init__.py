@@ -16,6 +16,7 @@ Exports:
     ScenarioRepository     — persists user-saved planning scenarios
     ViewRepository         — persists user-saved UI views
     EventRepository        — persists plan-scoped events
+    GroupRepository        — persists plan-scoped task groups
 """
 from planner_lib.repository.task_repository import TaskRepository
 from planner_lib.repository.history_repository import HistoryRepository
@@ -27,6 +28,7 @@ from planner_lib.repository.project_repository import ProjectRepository
 from planner_lib.repository.scenario_repository import ScenarioRepository
 from planner_lib.repository.view_repository import ViewRepository
 from planner_lib.repository.event_repository import EventRepository
+from planner_lib.repository.group_repository import GroupRepository
 
 __all__ = [
     'TaskRepository',
@@ -39,4 +41,5 @@ __all__ = [
     'ScenarioRepository',
     'ViewRepository',
     'EventRepository',
+    'GroupRepository',
 ]
