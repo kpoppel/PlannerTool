@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
@@ -23,14 +25,14 @@ def _get_credential(request: Request, sid: str):
 @require_session
 async def api_teams(request: Request):
     team_repo = resolve_service(request, 'team_repository')
-    return team_repo.list_teams()
+    return await asyncio.to_thread(team_repo.list_teams)
 
 
 @router.get('/projects')
 @require_session
 async def api_projects(request: Request):
     project_repo = resolve_service(request, 'project_repository')
-    return project_repo.list_projects()
+    return await asyncio.to_thread(project_repo.list_projects)
 
 
 @router.get('/tasks')
@@ -41,7 +43,9 @@ async def api_tasks(request: Request):
     task_repo = resolve_service(request, 'task_repository')
     credential, _email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    return task_repo.read(project_id=project_id or None, credential=credential)
+    return await asyncio.to_thread(
+        task_repo.read, project_id=project_id or None, credential=credential
+    )
 
 
 @router.get('/markers')
@@ -52,7 +56,9 @@ async def api_markers(request: Request):
     plan_repo = resolve_service(request, 'plan_repository')
     _credential, email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    return plan_repo.list_markers(project_id=project_id or None, user_id=email or None)
+    return await asyncio.to_thread(
+        plan_repo.list_markers, project_id=project_id or None, user_id=email or None
+    )
 
 
 @router.post('/tasks')
@@ -63,7 +69,7 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
 
     task_repo = resolve_service(request, 'task_repository')
     _credential, email = _get_credential(request, sid)
-    result = task_repo.write(payload or [], user_id=email)
+    result = await asyncio.to_thread(task_repo.write, payload or [], user_id=email)
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
 
@@ -101,7 +107,11 @@ async def api_config_iterations(request: Request):
     project_filter = request.query_params.get('project')
     iteration_repo = resolve_service(request, 'iteration_repository')
     try:
-        iterations = iteration_repo.list_iterations(project_id=project_filter or None, user_id=email or None)
+        iterations = await asyncio.to_thread(
+            iteration_repo.list_iterations,
+            project_id=project_filter or None,
+            user_id=email or None,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
     except Exception as e:
@@ -125,7 +135,7 @@ async def api_cache_invalidate(request: Request):
     logger.info("Cache invalidation requested")
     try:
         coordinator = resolve_service(request, 'cache_coordinator')
-        result = coordinator.invalidate_all()
+        result = await asyncio.to_thread(coordinator.invalidate_all)
         logger.info("Cache invalidation completed: %s", result)
         return result
     except Exception as e:
@@ -189,9 +199,12 @@ async def api_history_tasks(request: Request):
         task_repo = resolve_service(request, 'task_repository')
 
         # Resolve tasks first — HistoryRepository always takes a plain list
-        task_list = task_repo.read(project_id=project_id, credential=credential)
+        task_list = await asyncio.to_thread(
+            task_repo.read, project_id=project_id, credential=credential
+        )
 
-        result = history_repo.read(
+        result = await asyncio.to_thread(
+            history_repo.read,
             tasks=task_list,
             project_id=project_id,
             user_id=email,

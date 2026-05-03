@@ -2,6 +2,8 @@
 
 Covers: users (GET/POST) and cache invalidation/cleanup.
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 import logging
 
@@ -97,7 +99,7 @@ async def admin_cache_invalidate(request: Request):
     logger.info('Cache invalidation requested')
     try:
         coordinator = resolve_service(request, 'cache_coordinator')
-        result = coordinator.invalidate_all()
+        result = await asyncio.to_thread(coordinator.invalidate_all)
         logger.info('Cache invalidation completed: %s', result)
         return result
     except Exception as e:
@@ -112,7 +114,7 @@ async def admin_cache_cleanup(request: Request):
     logger.info('Cache cleanup requested')
     try:
         azure_svc = resolve_service(request, 'azure_client')
-        result = azure_svc.cleanup_orphaned_cache_keys()
+        result = await asyncio.to_thread(azure_svc.cleanup_orphaned_cache_keys)
         logger.info('Cache cleanup completed: %s', result)
         return result
     except Exception as e:

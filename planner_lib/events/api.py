@@ -11,6 +11,7 @@ All endpoints require an active session.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Body, HTTPException, Request
@@ -120,7 +121,9 @@ async def api_events_list(request: Request):
     """List all events. Optional ?plan_id= query parameter to filter by plan."""
     plan_id = request.query_params.get("plan_id")
     try:
-        return _repo(request).list_events(plan_id=plan_id, user_id=_user_id(request))
+        return await asyncio.to_thread(
+            _repo(request).list_events, plan_id=plan_id, user_id=_user_id(request)
+        )
     except Exception as e:
         logger.error("Error listing events: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -131,7 +134,7 @@ async def api_events_list(request: Request):
 async def api_events_get(event_id: str, request: Request):
     """Get a single event by ID."""
     try:
-        return _repo(request).get_event(event_id, user_id=_user_id(request))
+        return await asyncio.to_thread(_repo(request).get_event, event_id, user_id=_user_id(request))
     except KeyError:
         raise HTTPException(status_code=404, detail="Event not found")
     except Exception as e:
@@ -148,7 +151,8 @@ async def api_events_create(request: Request, payload: dict = Body(default={})):
     except Exception as e:
         raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
     try:
-        return _repo(request).create_event(
+        return await asyncio.to_thread(
+            _repo(request).create_event,
             date=data.date,
             title=data.title,
             plan_id=data.plan_id,
@@ -168,7 +172,8 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
     except Exception as e:
         raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
     try:
-        return _repo(request).update_event(
+        return await asyncio.to_thread(
+            _repo(request).update_event,
             event_id=event_id,
             date=data.date,
             title=data.title,
@@ -187,7 +192,7 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
 async def api_events_delete(event_id: str, request: Request):
     """Delete an event."""
     try:
-        deleted = _repo(request).delete_event(event_id, user_id=_user_id(request))
+        deleted = await asyncio.to_thread(_repo(request).delete_event, event_id, user_id=_user_id(request))
         if not deleted:
             raise HTTPException(status_code=404, detail="Event not found")
         return {"ok": True, "id": event_id}

@@ -3,6 +3,8 @@
 Covers: setup-status, initial-setup, admin static files, admin UI root,
 admin check, and config reload.
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from pathlib import Path
@@ -104,7 +106,7 @@ async def api_admin_reload_config(request: Request):
     logger.debug('Reloading server and cost configuration for session %s', sid)
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        return admin_svc.reload_config(session_id=sid)
+        return await asyncio.to_thread(admin_svc.reload_config, session_id=sid)
     except Exception as e:
         logger.exception('Failed to reload configuration: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

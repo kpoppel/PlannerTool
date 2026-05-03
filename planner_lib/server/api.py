@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from planner_lib.middleware import require_session, get_session_id_from_request
@@ -25,7 +27,7 @@ def _deprecated_response(data) -> JSONResponse:
 async def api_config_projects(request):
     logger.warning("Deprecated endpoint /api/v1/server/projects called; use /api/projects")
     project_repo = resolve_service(request, 'project_repository')
-    return _deprecated_response(project_repo.list_projects())
+    return _deprecated_response(await asyncio.to_thread(project_repo.list_projects))
 
 
 @router.get('/v1/server/teams')
@@ -33,7 +35,7 @@ async def api_config_projects(request):
 async def api_config_teams(request):
     logger.warning("Deprecated endpoint /api/v1/server/teams called; use /api/teams")
     team_repo = resolve_service(request, 'team_repository')
-    return _deprecated_response(team_repo.list_teams())
+    return _deprecated_response(await asyncio.to_thread(team_repo.list_teams))
 
 
 @router.get('/v1/server/tasks')
@@ -48,7 +50,7 @@ async def api_config_tasks(request):
     if not pat:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
     cred = BackendCredential(token=pat, user_id=email)
-    return _deprecated_response(task_repo.read(credential=cred))
+    return _deprecated_response(await asyncio.to_thread(task_repo.read, credential=cred))
 
 
 @router.get('/health')

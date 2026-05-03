@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request, SESSION_COOKIE
@@ -39,7 +41,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         if features is None:
             task_repo = resolve_service(request, 'task_repository')
             cred = BackendCredential(token=pat, user_id=user_id) if pat else None
-            tasks = task_repo.read(credential=cred)
+            tasks = await asyncio.to_thread(task_repo.read, credential=cred)
             features = []
             for t in (tasks or []):
                 capacity = t.get('capacity')
@@ -61,7 +63,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
         if scenario_id:
             try:
                 scenario_repo = resolve_service(request, 'scenario_repository')
-                scen = scenario_repo.get_scenario(user_id, scenario_id)
+                scen = await asyncio.to_thread(scenario_repo.get_scenario, user_id, scenario_id)
                 overrides = scen.get('overrides') if isinstance(scen, dict) else None
                 if overrides:
                     applied_overrides = {}
@@ -99,7 +101,7 @@ async def api_cost_post(request: Request, payload: dict = Body(default={})):
             from planner_lib.cost import build_cost_schema
             return build_cost_schema({}, mode='schema', session_features=None)
 
-        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        result = await asyncio.to_thread(cost_svc.estimate_costs, ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
         if scenario_id:
@@ -137,7 +139,7 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
             _pat = ctx.get('pat')
             _email = ctx.get('email') or ''
             cred = BackendCredential(token=_pat, user_id=_email) if _pat else None
-            tasks = task_repo.read(credential=cred)
+            tasks = await asyncio.to_thread(task_repo.read, credential=cred)
             features = []
             for t in (tasks or []):
                 features.append({
@@ -152,7 +154,7 @@ async def api_cost_features_post(request: Request, payload: dict = Body(default=
         ctx['features'] = features
 
         cost_svc = resolve_service(request, 'cost_service')
-        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        result = await asyncio.to_thread(cost_svc.estimate_costs, ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
         return build_cost_schema(raw, mode='full', session_features=ctx.get('features'), project_types=project_types)
@@ -191,7 +193,7 @@ async def api_cost_get(request: Request):
 
         task_repo = resolve_service(request, 'task_repository')
         cred = BackendCredential(token=pat, user_id=email) if pat else None
-        tasks = task_repo.read(credential=cred)
+        tasks = await asyncio.to_thread(task_repo.read, credential=cred)
         features = []
         for t in tasks or []:
             features.append({
@@ -213,7 +215,7 @@ async def api_cost_get(request: Request):
             return build_cost_schema({}, mode='schema', session_features=None)
 
         cost_svc = resolve_service(request, 'cost_service')
-        result = cost_svc.estimate_costs(ctx) or {'projects': {}, 'project_types': {}}
+        result = await asyncio.to_thread(cost_svc.estimate_costs, ctx) or {'projects': {}, 'project_types': {}}
         raw = result.get('projects', {})
         project_types = result.get('project_types', {})
         return build_cost_schema(raw, mode='full', session_features=features, project_types=project_types)

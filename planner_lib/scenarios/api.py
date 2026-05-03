@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
@@ -20,9 +22,9 @@ async def api_scenario_get(request: Request):
     scenario_repo = resolve_service(request, 'scenario_repository')
     try:
         if scenario_id:
-            return scenario_repo.get_scenario(user_id, scenario_id)
+            return await asyncio.to_thread(scenario_repo.get_scenario, user_id, scenario_id)
         else:
-            return scenario_repo.list_scenarios(user_id)
+            return await asyncio.to_thread(scenario_repo.list_scenarios, user_id)
     except KeyError:
         raise HTTPException(status_code=404, detail='Scenario not found')
     except Exception as e:
@@ -48,17 +50,17 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
             if isinstance(data, dict) and data.get('readonly'):
                 raise HTTPException(status_code=400, detail='Cannot save readonly scenario')
             scenario_id = data.get('id') if isinstance(data, dict) else None
-            return scenario_repo.save_scenario(user_id, scenario_id, data)
+            return await asyncio.to_thread(scenario_repo.save_scenario, user_id, scenario_id, data)
         elif op == 'delete':
             if not isinstance(data, dict) or not data.get('id'):
                 raise HTTPException(status_code=400, detail='Missing scenario id for delete')
             try:
-                scenario = scenario_repo.get_scenario(user_id, data['id'])
+                scenario = await asyncio.to_thread(scenario_repo.get_scenario, user_id, data['id'])
                 if isinstance(scenario, dict) and scenario.get('readonly'):
                     raise HTTPException(status_code=400, detail='Cannot delete readonly scenario')
             except KeyError:
                 raise HTTPException(status_code=404, detail='Scenario not found')
-            if not scenario_repo.delete_scenario(user_id, data['id']):
+            if not await asyncio.to_thread(scenario_repo.delete_scenario, user_id, data['id']):
                 raise HTTPException(status_code=404, detail='Scenario not found')
             return {'ok': True, 'id': data['id']}
         else:

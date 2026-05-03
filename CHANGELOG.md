@@ -9,9 +9,6 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 
 Template - do not change :
 ## [unreleased]
-
-- Admin UI: moved ADO backend selection (org URL + backend type + sub-config) and cache TTLs from separate AzureDevOps/Server modules into the Data Sources panel; removed the AzureDevOps sidebar entry; split DataSources component into focused sub-modules (ado-row.js, plan-events-row.js, shared-styles.js)
-
 ### Added
 ### Changed
 ### Fixed
@@ -19,7 +16,7 @@ Template - do not change :
 
 ## [v4.0.0] - unreleased
 
-This release is a major backend architecture overhaul. There are **no user-visible feature changes** — the planner UI and all existing workflows behave identically. The changes modernise the server internals to make the codebase easier to extend, test, and operate.
+This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. On the user side, several new features are added: packed view which oacks cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
 
 **Before upgrading**, run all pending migrations:
 ```
@@ -48,6 +45,9 @@ After the migration, the data/config/*.yml files can be removed.
 - **Caching simplified** — the previous three-class cache stack (`CacheManager`, `MemoryCacheManager`, `CacheWarmupService`) is replaced by a single transparent `CachingBackend` wrapper that uses diskcache's native TTL. Hot data is served from SQLite's OS page cache without a separate in-process data structure. Cache write-through is immediate: saving a task patches every cached task list in-place so reads are always consistent without a round-trip to Azure.
 - Markers Plugin displays labels on separate lines now.  Toolbox lists the delivery plans from which the markers come.
 - Admin interface restructured around the domain data models and backend selections.
+- Admin UI: moved ADO backend selection (org URL + backend type + sub-config) and cache TTLs from separate AzureDevOps/Server modules into the Data Sources panel; removed the AzureDevOps sidebar entry; split DataSources component into focused sub-modules (ado-row.js, plan-events-row.js, shared-styles.js)
+- Backend: all route handlers now use `asyncio.to_thread()` for blocking I/O (ADO fetches, diskcache reads/writes, cost computation). Multiple users no longer queue behind a single slow request. Validated by new concurrent performance tests (`tests/backend/test_concurrent_performance.py`).
+
 
 ### Fixed
 - **Backup/restore covers all configuration** — `global_settings` was silently omitted from backup exports; the backup now captures all 9 config keys. A full backup from this version is sufficient to restore a server from scratch.

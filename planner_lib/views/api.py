@@ -1,4 +1,6 @@
 """REST API endpoints for view management."""
+import asyncio
+
 from fastapi import APIRouter, Request, Body, HTTPException
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
@@ -20,9 +22,9 @@ async def api_view_get(request: Request):
     view_repo = resolve_service(request, 'view_repository')
     try:
         if view_id:
-            return view_repo.get_view(user_id, view_id)
+            return await asyncio.to_thread(view_repo.get_view, user_id, view_id)
         else:
-            return view_repo.list_views(user_id)
+            return await asyncio.to_thread(view_repo.list_views, user_id)
     except KeyError:
         raise HTTPException(status_code=404, detail='View not found')
     except Exception as e:
@@ -48,13 +50,13 @@ async def api_view_post(request: Request, payload: dict = Body(default={})):
                 raise HTTPException(status_code=400, detail='View data must be an object')
             if not data.get('name'):
                 raise HTTPException(status_code=400, detail='View name is required')
-            meta = view_repo.save_view(user_id, data.get('id'), data)
+            meta = await asyncio.to_thread(view_repo.save_view, user_id, data.get('id'), data)
             logger.info("Saved view '%s' (id=%s) for user %s", data.get('name'), meta['id'], user_id)
             return meta
         elif op == 'delete':
             if not isinstance(data, dict) or not data.get('id'):
                 raise HTTPException(status_code=400, detail='Missing view id for delete')
-            if not view_repo.delete_view(user_id, data['id']):
+            if not await asyncio.to_thread(view_repo.delete_view, user_id, data['id']):
                 raise HTTPException(status_code=404, detail='View not found')
             return {'ok': True, 'id': data['id']}
         else:

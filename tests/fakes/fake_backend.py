@@ -172,6 +172,26 @@ class FakeBackend(BackendPort):
         self._people = list(people)
 
 
+class SlowFakeBackend(FakeBackend):
+    """FakeBackend variant that adds a configurable sleep to fetch_tasks().
+
+    Used by performance tests to simulate ADO network latency and verify
+    that route handlers do not block the event loop while waiting for
+    backend I/O.  The sleep is intentionally applied *before* the real
+    fetch so that concurrent event-loop tasks can interleave.
+    """
+
+    def __init__(self, delay: float = 0.1, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.delay = delay
+
+    def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+        import time
+        time.sleep(self.delay)
+        return super().fetch_tasks(area_path, task_types=task_types, include_states=include_states,
+                                   credential=credential, **kwargs)
+
+
 class FakeCredentialProvider:
     """Credential provider that always returns a fixed BackendCredential.
 

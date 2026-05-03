@@ -5,6 +5,8 @@ refresh + toggle), teams, people (CRUD + inspect), schema, backup,
 restore, cost (CRUD + inspect), system, ado (Azure DevOps config), and
 events-config (event backend selection).
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 import logging
@@ -192,7 +194,9 @@ async def admin_browse_iterations(request: Request):
 
         azure_svc = resolve_service(request, 'azure_client')
         with azure_svc.connect(pat) as client:
-            iterations = client.get_iterations(project, root_path=root_path, depth=depth)
+            iterations = await asyncio.to_thread(
+                client.get_iterations, project, root_path=root_path, depth=depth
+            )
 
         return {'iterations': iterations}
     except HTTPException:
@@ -256,7 +260,9 @@ async def admin_refresh_area_mapping(request: Request):
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
-            return area_mapping_service.refresh_single(area_path, pat, azure_svc, admin_svc)
+            return await asyncio.to_thread(
+                area_mapping_service.refresh_single, area_path, pat, azure_svc, admin_svc
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail={'error': 'invalid_request', 'message': str(e)})
     except HTTPException:
@@ -277,7 +283,9 @@ async def admin_refresh_all_area_mappings(request: Request):
         azure_svc = resolve_service(request, 'azure_client')
         admin_svc = resolve_service(request, 'admin_service')
         try:
-            return area_mapping_service.refresh_all(pat, azure_svc, admin_svc)
+            return await asyncio.to_thread(
+                area_mapping_service.refresh_all, pat, azure_svc, admin_svc
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail={'error': 'invalid_request', 'message': str(e)})
     except HTTPException:
@@ -427,7 +435,9 @@ async def admin_inspect_people(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         people_repo = resolve_service(request, 'people_repository')
         team_repo = resolve_service(request, 'team_repository')
-        return people_inspector.inspect(admin_svc, people_repo, team_repo)
+        return await asyncio.to_thread(
+            people_inspector.inspect, admin_svc, people_repo, team_repo
+        )
     except Exception as e:
         logger.exception('Failed to inspect people data: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -468,7 +478,7 @@ async def admin_get_backup(request: Request):
     """Return a backup snapshot of all configuration and data."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        return JSONResponse(content=admin_svc.get_backup())
+        return JSONResponse(content=await asyncio.to_thread(admin_svc.get_backup))
     except Exception as e:
         logger.exception('Failed to create backup: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -484,7 +494,7 @@ async def admin_restore_backup(request: Request):
         sid = _get_session_id_or_raise(request)
         session_mgr = resolve_service(request, 'session_manager')
         current_user_email = session_mgr.get_val(sid, 'email')
-        result = admin_svc.restore_backup(payload, current_user_email)
+        result = await asyncio.to_thread(admin_svc.restore_backup, payload, current_user_email)
         return JSONResponse(content=result)
     except ValueError as e:
         logger.info('Restore backup rejected: %s', e)
@@ -519,7 +529,9 @@ async def admin_inspect_cost(request: Request):
         admin_svc = resolve_service(request, 'admin_service')
         people_repo = resolve_service(request, 'people_repository')
         team_repo = resolve_service(request, 'team_repository')
-        return cost_inspector.inspect(admin_svc, people_repo, team_repo)
+        return await asyncio.to_thread(
+            cost_inspector.inspect, admin_svc, people_repo, team_repo
+        )
     except Exception as e:
         logger.exception('Failed to inspect cost configuration: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
