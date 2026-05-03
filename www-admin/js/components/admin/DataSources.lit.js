@@ -13,6 +13,7 @@ import {
   fetchWikiPages,
   renderPlanEventsRow,
 } from './datasources/plan-events-row.js';
+import { renderGroupsRow } from './datasources/groups-row.js';
 
 /**
  * DataSources — Admin panel for all data domains, backend choices, and cache TTLs.
@@ -235,6 +236,9 @@ export class DataSources extends LitElement {
     _savedAdoBackendType: { type: String,  state: true },
     _savedEventsBackend:  { type: String,  state: true },
 
+    // ---- Groups backend selection -------------------------------------
+    _groupsBackend:       { type: String,  state: true },
+
     // ---- UI state ------------------------------------------------------
     _validationErrors:    { type: Object,  state: true },
     _statusMsg:           { type: String,  state: true },
@@ -291,6 +295,8 @@ export class DataSources extends LitElement {
     this._savedAdoBackendType = 'ado_live';
     this._savedEventsBackend  = 'local';
 
+    this._groupsBackend       = 'local';
+
     this._validationErrors    = {};
     this._statusMsg           = '';
     this._statusType          = '';
@@ -308,11 +314,17 @@ export class DataSources extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      const [evtCfg, adoCfg, sysCfg] = await Promise.all([
+      const [evtCfg, adoCfg, sysCfg, grpCfg] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),
         adminProvider.getSystem(),
+        adminProvider.getGroupsConfig(),
       ]);
+
+      // ---- Groups -------------------------------------------------------
+      if (grpCfg) {
+        this._groupsBackend = grpCfg.groups_backend || 'local';
+      }
 
       // ---- Plan Events --------------------------------------------------
       if (evtCfg) {
@@ -442,6 +454,9 @@ export class DataSources extends LitElement {
         };
       }
       await adminProvider.saveEventsConfig(evtCfg);
+
+      // 1b. Save Groups config
+      await adminProvider.saveGroupsConfig({ groups_backend: this._groupsBackend });
 
       // 2. Save ADO config — backend selection + org URL + all sub-configs.
       // Sub-config values are always persisted (not just for the active backend)
@@ -580,6 +595,7 @@ export class DataSources extends LitElement {
               <td class="ttl-col">${this._ttlInput('fetch_teams')}</td>
             </tr>
             ${renderPlanEventsRow(this)}
+            ${renderGroupsRow(this)}
           </tbody>
         </table>
 

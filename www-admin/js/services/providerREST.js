@@ -177,6 +177,38 @@ export class AdminProviderREST {
     }
   }
 
+  async getGroupsConfig() {
+    try {
+      const res = await this._fetch('/admin/v1/groups-config', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    } catch (err) {
+      console.error('AdminProviderREST:getGroupsConfig', err);
+      return null;
+    }
+  }
+
+  async saveGroupsConfig(content) {
+    try {
+      const body = JSON.stringify({ content: content });
+      const res = await this._fetch('/admin/v1/groups-config', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body,
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:saveGroupsConfig', err);
+      return { ok: false, error: String(err) };
+    }
+  }
+
   async getTeams() {
     try {
       const res = await this._fetch('/admin/v1/teams', {
