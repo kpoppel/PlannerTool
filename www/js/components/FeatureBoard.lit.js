@@ -36,6 +36,7 @@ class FeatureBoard extends LitElement {
     // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
     // Each entry: { id, name, color, type, topPx, heightPx }
     this._swimlanes = [];
+    this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
   }
 
   static styles = css`
@@ -88,14 +89,23 @@ class FeatureBoard extends LitElement {
       pointer-events: none;
     }
 
-    /* Individual plan/team name label */
-    .swimlane-label {
+    .swimlane-label-slot {
       position: absolute;
       left: 0;
       width: ${SWIMLANE_LABEL_WIDTH_PX}px;
+      overflow: visible;
+    }
+
+    /* Individual plan/team name label */
+    .swimlane-label {
+      position: sticky;
+      left: 0;
+      top: calc(var(--swimlane-label-sticky-top, 24px) + 6px);
+      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
       display: flex;
       align-items: center;
-      padding-left: 10px;
+      min-height: 28px;
+      padding: 6px 8px 6px 10px;
       font-size: 0.72rem;
       font-weight: 700;
       letter-spacing: 0.03em;
@@ -108,6 +118,7 @@ class FeatureBoard extends LitElement {
       /* Semi-transparent dark background for legibility over the board stripes */
       background: rgba(0, 0, 0, 0.22);
       backdrop-filter: blur(2px);
+      transform: translateY(calc(-50% + 15px));
     }
 
     /* Expanded-plan labels (unselected projects pulled in by expansion) are dimmer */
@@ -127,6 +138,17 @@ class FeatureBoard extends LitElement {
     if (!this.hasAttribute('role')) {
       this.setAttribute('role', 'list');
     }
+    window.addEventListener('resize', this._handleViewportResize);
+    this._updateSwimlaneLabelStickyTop();
+  }
+
+  _updateSwimlaneLabelStickyTop() {
+    const scrollContainer = findInBoard('#scroll-container');
+    const stickyTop =
+      scrollContainer && scrollContainer.clientHeight ?
+        Math.round(scrollContainer.clientHeight / 2)
+      : 24;
+    this.style.setProperty('--swimlane-label-sticky-top', `${stickyTop}px`);
   }
 
   // Build and maintain connected feature sets (parent/child and relations)
@@ -218,10 +240,15 @@ class FeatureBoard extends LitElement {
             <div class="swimlane-labels" aria-hidden="true">
               ${this._swimlanes.map(
                 (s) => html`<div
-                  class="swimlane-label type-${s.type}"
-                  style="top:${s.topPx}px; height:${s.heightPx}px; border-left-color:${s.color};"
-                  title="${s.name}"
-                >${s.name}</div>`
+                  class="swimlane-label-slot"
+                  style="top:${s.topPx}px; height:${s.heightPx}px;"
+                >
+                  <div
+                    class="swimlane-label type-${s.type}"
+                    style="border-left-color:${s.color};"
+                    title="${s.name}"
+                  >${s.name}</div>
+                </div>`
               )}
             </div>
           `
@@ -243,6 +270,7 @@ class FeatureBoard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('resize', this._handleViewportResize);
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
@@ -519,6 +547,7 @@ class FeatureBoard extends LitElement {
   }
 
   async renderFeatures() {
+    this._updateSwimlaneLabelStickyTop();
     const rawFeatures = state.getEffectiveFeatures();
     // Deduplicate by feature ID — getEffectiveFeatures() can return the same ID
     // twice when a scenario overlay collides with a baseline entry, which would

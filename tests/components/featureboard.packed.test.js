@@ -221,6 +221,44 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       `Expected no duplicate feature IDs in compact mode render list, got: [${ids.join(', ')}]`
     );
   });
+
+  it('swimlane mode renders sticky label slots centered to the scroll viewport', async () => {
+    const timelineBoard = document.querySelector('timeline-board') || document.body;
+    const scrollContainer = document.createElement('div');
+    scrollContainer.id = 'scroll-container';
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      configurable: true,
+      value: 600,
+    });
+    timelineBoard.appendChild(scrollContainer);
+
+    state._projectTeamService.initFromBaseline(
+      [
+        { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
+        { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
+      ],
+      []
+    );
+    state.setProjectSelected('p1', true);
+    state.setProjectSelected('p2', true);
+    state.getEffectiveFeatures = () => [makeFeature('f1'), { ...makeFeature('f2'), project: 'p2' }];
+
+    try {
+      await board.renderFeatures();
+      await board.updateComplete;
+
+      expect(board.style.getPropertyValue('--swimlane-label-sticky-top')).to.equal('300px');
+
+      const labelSlot = board.shadowRoot.querySelector('.swimlane-label-slot');
+      const label = board.shadowRoot.querySelector('.swimlane-label');
+
+      expect(labelSlot).to.exist;
+      expect(label).to.exist;
+      expect(label.className).to.contain('type-plan');
+    } finally {
+      scrollContainer.remove();
+    }
+  });
 });
 
 // ---- updateCardsById in packed mode triggers full rerender ----
