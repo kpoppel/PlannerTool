@@ -45,11 +45,19 @@ export const SWIMLANE_BAND_GAP_PX = 8;
  *
  * @param {Array<{id:string, selected:boolean}>} projects   All loaded projects.
  * @param {{expandParentChild:boolean, expandRelations:boolean, expandTeamAllocated:boolean}|null} expansionState
+ * @param {Array<{type:'plan'|'expanded-plan'|'team'}>} [swimlanes] Optional precomputed swimlane descriptors.
  * @returns {boolean}
  */
-export function isSwimlaneMode(projects, expansionState) {
+export function isSwimlaneMode(projects, expansionState, swimlanes = []) {
   const selectedCount = (projects || []).filter((p) => p.selected).length;
-  return selectedCount >= 2 || !!(expansionState && expansionState.expandTeamAllocated);
+  const displayedPlanCount = (swimlanes || []).filter(
+    (s) => s.type === 'plan' || s.type === 'expanded-plan'
+  ).length;
+  return (
+    selectedCount >= 2 ||
+    displayedPlanCount >= 2 ||
+    !!(expansionState && expansionState.expandTeamAllocated)
+  );
 }
 
 /**

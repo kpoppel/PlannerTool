@@ -87,6 +87,21 @@ describe('isSwimlaneMode', () => {
     expect(isSwimlaneMode(projects, noExpansion)).toBe(false);
   });
 
+  it('returns true when displayed swimlanes include 2 plans via expansion', () => {
+    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', false)];
+    const swimlanes = [
+      { id: 'a', type: 'plan' },
+      { id: 'b', type: 'expanded-plan' },
+    ];
+    expect(isSwimlaneMode(projects, { ...noExpansion, expandParentChild: true }, swimlanes)).toBe(true);
+  });
+
+  it('returns false with one selected plan and no extra displayed plans', () => {
+    const projects = [mkProject('a', 'A', true), mkProject('b', 'B', false)];
+    const swimlanes = [{ id: 'a', type: 'plan' }];
+    expect(isSwimlaneMode(projects, noExpansion, swimlanes)).toBe(false);
+  });
+
   it('handles null/undefined gracefully', () => {
     expect(isSwimlaneMode(null, null)).toBe(false);
     expect(isSwimlaneMode(undefined, undefined)).toBe(false);

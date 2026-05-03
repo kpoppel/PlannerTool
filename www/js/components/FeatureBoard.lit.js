@@ -104,21 +104,103 @@ class FeatureBoard extends LitElement {
       width: ${SWIMLANE_LABEL_WIDTH_PX}px;
       display: flex;
       align-items: center;
+      gap: 6px;
       min-height: 28px;
       padding: 6px 8px 6px 10px;
       font-size: 0.72rem;
       font-weight: 700;
       letter-spacing: 0.03em;
       color: rgba(255, 255, 255, 0.9);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       box-sizing: border-box;
       border-left: 4px solid;
       /* Semi-transparent dark background for legibility over the board stripes */
       background: rgba(0, 0, 0, 0.22);
       backdrop-filter: blur(2px);
       transform: translateY(calc(-50% + 15px));
+      pointer-events: auto;
+    }
+
+    .swimlane-label-text {
+      min-width: 0;
+      flex: 1 1 auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .swimlane-origin-indicator {
+      flex: 0 0 auto;
+      padding: 1px 5px;
+      border-radius: 999px;
+      font-size: 0.62rem;
+      line-height: 1.2;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      cursor: help;
+      pointer-events: auto;
+    }
+
+    .swimlane-origin-wrap {
+      position: static;
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
+      pointer-events: auto;
+    }
+
+    .swimlane-origin-tooltip {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      display: none;
+      min-width: 170px;
+      max-width: 280px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(25, 26, 30, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(4px);
+      z-index: 40;
+      pointer-events: auto;
+    }
+
+    .swimlane-origin-wrap:hover .swimlane-origin-tooltip,
+    .swimlane-origin-wrap:focus-within .swimlane-origin-tooltip {
+      display: block;
+    }
+
+    .swimlane-origin-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 0.68rem;
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .swimlane-origin-item + .swimlane-origin-item {
+      margin-top: 4px;
+    }
+
+    .swimlane-origin-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      box-sizing: border-box;
+      flex: 0 0 auto;
+    }
+
+    .swimlane-origin-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* Expanded-plan labels (unselected projects pulled in by expansion) are dimmer */
@@ -247,7 +329,28 @@ class FeatureBoard extends LitElement {
                     class="swimlane-label type-${s.type}"
                     style="border-left-color:${s.color};"
                     title="${s.name}"
-                  >${s.name}</div>
+                  >
+                    <span class="swimlane-label-text">${s.name}</span>
+                    ${s.expansionOriginCount ?
+                      html`<span class="swimlane-origin-wrap">
+                        <span
+                          class="swimlane-origin-indicator"
+                          aria-label="${s.expansionOriginTooltip}"
+                        >+${s.expansionOriginCount}</span>
+                        <span class="swimlane-origin-tooltip" role="tooltip">
+                          ${(s.expansionOrigins || []).map(
+                            (origin) => html`<span class="swimlane-origin-item">
+                              <span
+                                class="swimlane-origin-swatch"
+                                style="background:${origin.color || '#888'};"
+                              ></span>
+                              <span class="swimlane-origin-name">${origin.name}</span>
+                            </span>`
+                          )}
+                        </span>
+                      </span>`
+                    : ''}
+                  </div>
                 </div>`
               )}
             </div>
@@ -563,7 +666,25 @@ class FeatureBoard extends LitElement {
     const months = getTimelineMonths();
     const isPacked = state._viewService.packedMode;
     const expansionState = state.expansionState || {};
-    const swimlaneActive = isSwimlaneMode(state.projects, expansionState);
+    const visibleFeatures = [];
+    for (const feature of sourceFeatures) {
+      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+      if (isPacked && (!feature.start || !feature.end)) continue;
+      visibleFeatures.push(feature);
+    }
+    const selectedProjects = state.projects;
+    const selectedTeams = state.teams;
+    const candidateSwimlanes = buildSwimlaneList(
+      selectedProjects,
+      selectedTeams,
+      expansionState,
+      visibleFeatures
+    );
+    const swimlaneActive = isSwimlaneMode(
+      selectedProjects,
+      expansionState,
+      candidateSwimlanes
+    );
 
     let renderList;
     let totalHeight;
@@ -578,22 +699,7 @@ class FeatureBoard extends LitElement {
       // Use rawFeatures (pre-dedup, full set) so cross-project parent references resolve.
       const allFeaturesById = new Map(rawFeatures.map((f) => [String(f.id), f]));
 
-      // Collect visible features (pass through the same filter as non-swimlane mode)
-      const visibleFeatures = [];
-      for (const feature of sourceFeatures) {
-        if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-        if (isPacked && (!feature.start || !feature.end)) continue;
-        visibleFeatures.push(feature);
-      }
-
-      const selectedProjects = state.projects;
-      const selectedTeams = state.teams;
-      const swimlanes = buildSwimlaneList(
-        selectedProjects,
-        selectedTeams,
-        expansionState,
-        visibleFeatures
-      );
+      const swimlanes = candidateSwimlanes;
 
       const selectedProjectIds = new Set(
         selectedProjects.filter((p) => p.selected).map((p) => p.id)
@@ -617,15 +723,83 @@ class FeatureBoard extends LitElement {
         if (bucket) bucket.push(feature);
       }
 
+      // Hide only empty expansion lanes; selected plan lanes remain visible even when empty.
+      const hiddenExpansionLanes = new Map(
+        swimlanes
+          .filter((s) => {
+            const isExpansion = s.type === 'expanded-plan' || s.type === 'team';
+            const isEmpty = (buckets.get(s.id) || []).length === 0;
+            return isExpansion && isEmpty;
+          })
+          .map((s) => [String(s.id), s])
+      );
+
+      const swimlanesToRender = swimlanes.filter(
+        (s) => s.type === 'plan' || !hiddenExpansionLanes.has(String(s.id))
+      );
+
       // Render each swimlane band independently and accumulate vertical offsets
       renderList = [];
       let currentTop = 0;
       const swimlaneGeometry = [];
 
-      for (const swimlane of swimlanes) {
+      for (const swimlane of swimlanesToRender) {
         const bucket = buckets.get(swimlane.id) || [];
         const swimlaneTop = currentTop;
         let swimlaneHeight = 0;
+        const planOrigins = new Map();
+        const teamOrigins = new Map();
+
+        for (const feature of bucket) {
+          const sourceProjectLane = hiddenExpansionLanes.get(String(feature.project));
+          if (
+            sourceProjectLane &&
+            sourceProjectLane.type === 'expanded-plan' &&
+            String(sourceProjectLane.id) !== String(swimlane.id)
+          ) {
+            planOrigins.set(String(sourceProjectLane.id), {
+              id: String(sourceProjectLane.id),
+              name: sourceProjectLane.name,
+              color: sourceProjectLane.color,
+              type: sourceProjectLane.type,
+            });
+          }
+          if (Array.isArray(feature.capacity)) {
+            for (const cap of feature.capacity) {
+              if (!cap?.team || !(cap.capacity > 0)) continue;
+              const sourceTeamLane = hiddenExpansionLanes.get(String(cap.team));
+              if (
+                sourceTeamLane &&
+                sourceTeamLane.type === 'team' &&
+                String(sourceTeamLane.id) !== String(swimlane.id)
+              ) {
+                teamOrigins.set(String(sourceTeamLane.id), {
+                  id: String(sourceTeamLane.id),
+                  name: sourceTeamLane.name,
+                  color: sourceTeamLane.color,
+                  type: sourceTeamLane.type,
+                });
+              }
+            }
+          }
+        }
+        const expansionOrigins = [...planOrigins.values(), ...teamOrigins.values()].sort(
+          (a, b) => String(a.name || '').localeCompare(String(b.name || ''))
+        );
+        const planOriginNames = expansionOrigins
+          .filter((o) => o.type === 'expanded-plan')
+          .map((o) => o.name);
+        const teamOriginNames = expansionOrigins
+          .filter((o) => o.type === 'team')
+          .map((o) => o.name);
+        const expansionOriginCount = expansionOrigins.length;
+        const tooltipParts = [];
+        if (planOriginNames.length > 0) {
+          tooltipParts.push(`Added plans: ${planOriginNames.join(', ')}`);
+        }
+        if (teamOriginNames.length > 0) {
+          tooltipParts.push(`Added teams: ${teamOriginNames.join(', ')}`);
+        }
 
         if (isPacked) {
           // Per-swimlane greedy packing
@@ -686,6 +860,9 @@ class FeatureBoard extends LitElement {
           ...swimlane,
           topPx: swimlaneTop,
           heightPx: bandHeightWithGap,
+          expansionOriginCount,
+          expansionOriginTooltip: tooltipParts.join(' | '),
+          expansionOrigins,
         });
         currentTop = swimlaneTop + bandHeightWithGap;
       }
