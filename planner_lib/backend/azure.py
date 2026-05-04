@@ -263,7 +263,7 @@ class AzureDevOpsBackend(BackendPort):
                 try:
                     current_desc = client.get_work_item_description(task_id)
                     new_desc = self._capacity_service.update_description(
-                        current_desc, updates['capacity'], cfg
+                        current_desc, updates['capacity'], None
                     )
                     client.update_work_item_description(task_id, new_desc)
                     item_updated = True

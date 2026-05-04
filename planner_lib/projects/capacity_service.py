@@ -73,11 +73,17 @@ class CapacityService:
         return "\n".join(lines)
 
     def update_description(self, description: str, capacity_list: List[dict], cfg: dict) -> str:
+        pattern = r"\[PlannerTool Team Capacity\].*?\[/PlannerTool Team Capacity\]"
+
+        # Empty capacity list: remove the block entirely if present
+        if not capacity_list:
+            description = re.sub(pattern, '', description, flags=re.S)
+            return description.rstrip('\n')
+
         # Serialize the new capacity block
         capacity_block = self.serialize(capacity_list, cfg)
 
         # Make the swap or append
-        pattern = r"\[PlannerTool Team Capacity\].*?\[/PlannerTool Team Capacity\]"
         if re.search(pattern, description, flags=re.S):
             description = re.sub(pattern, capacity_block, description, flags=re.S)
         else:
