@@ -82,9 +82,16 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       pointer-events: auto;
       z-index: 200;
       width: 300px;
+      box-sizing: border-box;
+    }
+
+    /* Inner scrollable content so header (with close) stays fixed */
+    .floating-content {
       max-height: 70vh;
       overflow-y: auto;
+      margin-top: 8px;
       box-sizing: border-box;
+      padding-right: 6px; /* avoid clipping scrollbars */
     }
 
     .toolbar-title {
@@ -350,9 +357,13 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   _handleClose() {
-    // Deactivate through the plugin manager so the toolbar indicator resets
-    const plugin = pluginManager.get('plugin-events');
-    if (plugin) plugin.deactivate();
+    // Deactivate via PluginManager to ensure global state and bus events
+    // are emitted so the ToolsMenu updates correctly.
+    try {
+      pluginManager.deactivate('plugin-events').catch((e) => console.warn(e));
+    } catch (e) {
+      console.warn('[PluginEvents] failed to deactivate plugin', e);
+    }
   }
 
   close() {
@@ -527,10 +538,12 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       <div class="floating-toolbar">
         <button class="close-btn" @click=${this._handleClose} title="Close">✕</button>
         <div class="toolbar-title">Plan Events</div>
-        ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
-        ${selectedPlans.length === 0
-          ? html`<div class="no-plans-msg">No plans selected.</div>`
-          : selectedPlans.map((plan) => this._renderPlanSection(plan))}
+        <div class="floating-content">
+          ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
+          ${selectedPlans.length === 0
+            ? html`<div class="no-plans-msg">No plans selected.</div>`
+            : selectedPlans.map((plan) => this._renderPlanSection(plan))}
+        </div>
       </div>
     `;
   }
