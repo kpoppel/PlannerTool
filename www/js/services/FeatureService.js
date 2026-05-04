@@ -450,6 +450,19 @@ export class FeatureService {
       return true;
     }
 
+    if (field === 'groupId') {
+      const ov = activeScenario.overrides[id] || {};
+      // null means "remove from any group" (ungrouped); store as-is so the
+      // override is distinguishable from "no override".
+      ov.groupId = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+
+      const idsToEmit = new Set([id]);
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+      return true;
+    }
+
     return false;
   }
 

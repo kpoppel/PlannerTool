@@ -1,0 +1,270 @@
+/**
+ * Tests for GroupService — plan-scoped group management.
+ * No DOM or Lit dependencies; runs cleanly in Vitest/jsdom.
+ *
+ * The dataService and bus modules are mocked so no network calls are made.
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Module mocks — must come before importing GroupService
+// ---------------------------------------------------------------------------
+
+vi.mock('../www/js/core/EventBus.js', () => ({
+  bus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
+}));
+
+vi.mock('../www/js/services/dataService.js', () => ({
+  dataService: {
+    listGroups: vi.fn(),
+    createGroup: vi.fn(),
+    updateGroup: vi.fn(),
+    deleteGroup: vi.fn(),
+  },
+}));
+
+import { GroupService } from '../www/js/services/GroupService.js';
+import { bus } from '../www/js/core/EventBus.js';
+import { dataService } from '../www/js/services/dataService.js';
+import { GroupEvents } from '../www/js/core/EventRegistry.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const mkGroup = (id, planId, name, color = '#4c8ef5', rank = 0) => ({
+  id, plan_id: planId, name, color, rank,
+});
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('GroupService', () => {
+  let svc;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    svc = new GroupService();
+  });
+
+  // ---- Read ----------------------------------------------------------------
+
+  describe('getGroupsForPlan', () => {
+    it('returns empty array when no groups loaded', () => {
+      expect(svc.getGroupsForPlan('plan-1')).toEqual([]);
+    });
+
+    it('returns cached groups after loadGroups', async () => {
+      const groups = [mkGroup('g1', 'plan-1', 'Alpha')];
+      dataService.listGroups.mockResolvedValue(groups);
+      await svc.loadGroups('plan-1');
+      expect(svc.getGroupsForPlan('plan-1')).toEqual(groups);
+    });
+  });
+
+  describe('getAllGroups', () => {
+    it('returns groups from all loaded plans', async () => {
+      dataService.listGroups.mockResolvedValueOnce([mkGroup('g1', 'p1', 'A')]);
+      dataService.listGroups.mockResolvedValueOnce([mkGroup('g2', 'p2', 'B')]);
+      await svc.loadGroups('p1');
+      await svc.loadGroups('p2');
+      expect(svc.getAllGroups()).toHaveLength(2);
+    });
+  });
+
+  describe('hasAnyGroups', () => {
+    it('returns false when no groups', () => {
+      expect(svc.hasAnyGroups()).toBe(false);
+    });
+
+    it('returns true when groups exist for any plan', async () => {
+      dataService.listGroups.mockResolvedValue([mkGroup('g1', 'p1', 'A')]);
+      await svc.loadGroups('p1');
+      expect(svc.hasAnyGroups()).toBe(true);
+    });
+
+    it('filters to specified planIds', async () => {
+      dataService.listGroups.mockResolvedValueOnce([mkGroup('g1', 'p1', 'A')]);
+      dataService.listGroups.mockResolvedValueOnce([]);
+      await svc.loadGroups('p1');
+      await svc.loadGroups('p2');
+      expect(svc.hasAnyGroups(['p1'])).toBe(true);
+      expect(svc.hasAnyGroups(['p2'])).toBe(false);
+    });
+  });
+
+  describe('getGroupById', () => {
+    it('finds a group by id across plans', async () => {
+      const group = mkGroup('g1', 'p1', 'Alpha');
+      dataService.listGroups.mockResolvedValue([group]);
+      await svc.loadGroups('p1');
+      expect(svc.getGroupById('g1')).toMatchObject({ id: 'g1', name: 'Alpha' });
+    });
+
+    it('returns null for unknown id', () => {
+      expect(svc.getGroupById('nonexistent')).toBeNull();
+    });
+  });
+
+  // ---- Load ----------------------------------------------------------------
+
+  describe('loadGroups', () => {
+    it('fetches groups and caches them', async () => {
+      const groups = [mkGroup('g1', 'p1', 'Alpha'), mkGroup('g2', 'p1', 'Beta')];
+      dataService.listGroups.mockResolvedValue(groups);
+      const result = await svc.loadGroups('p1');
+      expect(dataService.listGroups).toHaveBeenCalledWith('p1');
+      expect(result).toEqual(groups);
+      expect(svc.getGroupsForPlan('p1')).toEqual(groups);
+    });
+
+    it('emits GroupEvents.LOADED after fetch', async () => {
+      dataService.listGroups.mockResolvedValue([]);
+      await svc.loadGroups('p1');
+      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.LOADED, expect.objectContaining({ planId: 'p1' }));
+    });
+
+    it('returns empty array on error', async () => {
+      dataService.listGroups.mockRejectedValue(new Error('network'));
+      const result = await svc.loadGroups('p1');
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('evictPlan', () => {
+    it('removes cached groups for a plan', async () => {
+      dataService.listGroups.mockResolvedValue([mkGroup('g1', 'p1', 'A')]);
+      await svc.loadGroups('p1');
+      svc.evictPlan('p1');
+      expect(svc.getGroupsForPlan('p1')).toEqual([]);
+    });
+  });
+
+  // ---- Mutations -----------------------------------------------------------
+
+  describe('createGroup', () => {
+    it('creates a group and updates the cache', async () => {
+      const created = mkGroup('g-server', 'p1', 'New Group');
+      dataService.createGroup.mockResolvedValue(created);
+      const result = await svc.createGroup('p1', 'New Group', { color: '#4c8ef5' });
+      expect(result).toEqual(created);
+      expect(svc.getGroupsForPlan('p1')).toContain(created);
+    });
+
+    it('emits GroupEvents.CHANGED with op=created', async () => {
+      const created = mkGroup('g1', 'p1', 'A');
+      dataService.createGroup.mockResolvedValue(created);
+      await svc.createGroup('p1', 'A');
+      expect(bus.emit).toHaveBeenCalledWith(
+        GroupEvents.CHANGED,
+        expect.objectContaining({ op: 'created', group: created })
+      );
+    });
+
+    it('returns null when server returns null', async () => {
+      dataService.createGroup.mockResolvedValue(null);
+      const result = await svc.createGroup('p1', 'A');
+      expect(result).toBeNull();
+    });
+
+    it('returns null on error', async () => {
+      dataService.createGroup.mockRejectedValue(new Error('fail'));
+      const result = await svc.createGroup('p1', 'A');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('updateGroup', () => {
+    it('updates a group in the cache', async () => {
+      const original = mkGroup('g1', 'p1', 'Old Name');
+      const updated = { ...original, name: 'New Name' };
+      dataService.listGroups.mockResolvedValue([original]);
+      await svc.loadGroups('p1');
+      dataService.updateGroup.mockResolvedValue(updated);
+      const result = await svc.updateGroup('g1', { name: 'New Name' });
+      expect(result).toEqual(updated);
+      expect(svc.getGroupsForPlan('p1')[0].name).toBe('New Name');
+    });
+
+    it('emits GroupEvents.CHANGED with op=updated', async () => {
+      const original = mkGroup('g1', 'p1', 'A');
+      const updated = { ...original, name: 'B' };
+      dataService.listGroups.mockResolvedValue([original]);
+      await svc.loadGroups('p1');
+      dataService.updateGroup.mockResolvedValue(updated);
+      await svc.updateGroup('g1', { name: 'B' });
+      expect(bus.emit).toHaveBeenCalledWith(
+        GroupEvents.CHANGED,
+        expect.objectContaining({ op: 'updated' })
+      );
+    });
+
+    it('returns null on server error', async () => {
+      dataService.updateGroup.mockRejectedValue(new Error('fail'));
+      const result = await svc.updateGroup('g1', { name: 'X' });
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('deleteGroup', () => {
+    it('removes a group from the cache', async () => {
+      const group = mkGroup('g1', 'p1', 'A');
+      dataService.listGroups.mockResolvedValue([group]);
+      await svc.loadGroups('p1');
+      dataService.deleteGroup.mockResolvedValue(true);
+      const ok = await svc.deleteGroup('g1');
+      expect(ok).toBe(true);
+      expect(svc.getGroupsForPlan('p1')).toHaveLength(0);
+    });
+
+    it('emits GroupEvents.CHANGED with op=deleted', async () => {
+      const group = mkGroup('g1', 'p1', 'A');
+      dataService.listGroups.mockResolvedValue([group]);
+      await svc.loadGroups('p1');
+      dataService.deleteGroup.mockResolvedValue(true);
+      await svc.deleteGroup('g1');
+      expect(bus.emit).toHaveBeenCalledWith(
+        GroupEvents.CHANGED,
+        expect.objectContaining({ op: 'deleted', groupId: 'g1' })
+      );
+    });
+
+    it('returns false when server returns false', async () => {
+      dataService.deleteGroup.mockResolvedValue(false);
+      const ok = await svc.deleteGroup('g1');
+      expect(ok).toBe(false);
+    });
+
+    it('returns false on error', async () => {
+      dataService.deleteGroup.mockRejectedValue(new Error('fail'));
+      const ok = await svc.deleteGroup('g1');
+      expect(ok).toBe(false);
+    });
+  });
+
+  // ---- Assignment ----------------------------------------------------------
+
+  describe('assignFeature', () => {
+    it('calls state.updateFeatureField with groupId', () => {
+      const stateRef = { updateFeatureField: vi.fn() };
+      svc.assignFeature('f1', 'g1', stateRef);
+      expect(stateRef.updateFeatureField).toHaveBeenCalledWith('f1', 'groupId', 'g1');
+    });
+
+    it('stores null when ungrouping', () => {
+      const stateRef = { updateFeatureField: vi.fn() };
+      svc.assignFeature('f1', null, stateRef);
+      expect(stateRef.updateFeatureField).toHaveBeenCalledWith('f1', 'groupId', null);
+    });
+
+    it('emits GroupEvents.ASSIGNMENT_CHANGED', () => {
+      const stateRef = { updateFeatureField: vi.fn() };
+      svc.assignFeature('f1', 'g1', stateRef);
+      expect(bus.emit).toHaveBeenCalledWith(
+        GroupEvents.ASSIGNMENT_CHANGED,
+        expect.objectContaining({ featureId: 'f1', groupId: 'g1' })
+      );
+    });
+  });
+});

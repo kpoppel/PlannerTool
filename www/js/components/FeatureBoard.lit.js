@@ -9,6 +9,7 @@ import {
   ViewEvents,
   AppEvents,
   UIEvents,
+  GroupEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
@@ -23,6 +24,9 @@ import {
   SWIMLANE_LABEL_WIDTH_PX,
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
+import { groupService } from '../services/GroupService.js';
+import './FeatureGroup.lit.js';
+
 class FeatureBoard extends LitElement {
   static properties = {
     features: { type: Array },
@@ -36,6 +40,8 @@ class FeatureBoard extends LitElement {
     // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
     // Each entry: { id, name, color, type, topPx, heightPx }
     this._swimlanes = [];
+    // Set of group IDs the user has collapsed.
+    this._collapsedGroups = new Set();
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
   }
 
@@ -213,6 +219,10 @@ class FeatureBoard extends LitElement {
     .swimlane-label.type-team {
       font-style: italic;
     }
+
+    /* ---- Group pill ---- */
+
+    /*
   `;
 
   connectedCallback() {
@@ -307,7 +317,6 @@ class FeatureBoard extends LitElement {
     if (!this.features?.length && !this._swimlanes?.length) {
       return html`<slot></slot>`;
     }
-  // style="top:${s.topPx}px; height:${s.heightPx}px; background:${s.color}; opacity:0.15; border-top: 2px solid color-mix(in srgb, ${s.color} 50%, transparent);"
 
     return html`
       ${this._swimlanes.length
@@ -356,19 +365,50 @@ class FeatureBoard extends LitElement {
             </div>
           `
         : ''}
-      ${this.features.map(
-        (featureObj) =>
-          html`<feature-card-lit
-            .feature=${featureObj.feature}
-            .bus=${bus}
-            .teams=${featureObj.teams}
-            .condensed=${featureObj.condensed}
-            .project=${featureObj.project}
-            .hideGhostTitle=${!!featureObj.hideGhostTitle}
-            style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
-          ></feature-card-lit>`
-      )}
+      ${this.features.map((item) => {
+        if (item.isGroup) {
+          // Render as <feature-group> web component — it handles expand/collapse,
+          // right-click context, and its own visual styling.
+          return html`<feature-group
+            .group=${item.groupObj}
+            .start=${item.start}
+            .end=${item.end}
+            .featureCount=${item.featureCount}
+            .collapsed=${this._collapsedGroups.has(String(item.id))}
+            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${laneHeight()}px;"
+            @group-toggle=${this._onGroupToggle}
+            @group-context-menu=${this._onGroupContextMenuBubble}
+          ></feature-group>`;
+        }
+        return html`<feature-card-lit
+          .feature=${item.feature}
+          .bus=${bus}
+          .teams=${item.teams}
+          .condensed=${item.condensed}
+          .project=${item.project}
+          .hideGhostTitle=${!!item.hideGhostTitle}
+          style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px"
+        ></feature-card-lit>`;
+      })}
     `;
+  }
+
+  /** Handle expand/collapse from a <feature-group>. */
+  _onGroupToggle(e) {
+    const { groupId, collapsed } = e.detail;
+    if (collapsed) {
+      this._collapsedGroups.add(String(groupId));
+    } else {
+      this._collapsedGroups.delete(String(groupId));
+    }
+    // Re-layout: collapsed groups hide their children
+    this.renderFeatures();
+  }
+
+  /** Relay group-context-menu up (already composed, but re-dispatch for TimelineBoard). */
+  _onGroupContextMenuBubble(e) {
+    // Already composed=true from FeatureGroup, so it will reach TimelineBoard.
+    // Nothing extra needed — TimelineBoard listens on boardArea.
   }
 
   disconnectedCallback() {
@@ -908,31 +948,168 @@ class FeatureBoard extends LitElement {
         });
         totalHeight = rows.length * laneHeight();
       } else {
-        // --- Normal / Compact mode: one lane per feature, sorted by rank or date ---
+        // --- Normal / Compact mode ---
         const ordered = this._orderFeaturesHierarchically(
           sourceFeatures,
           state._viewService.featureSortMode
         );
         renderList = [];
         let laneIndex = 0;
-        for (const feature of ordered) {
-          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-          const pos = computePosition(feature, months) || {};
-          feature._left = pos.left;
-          feature._width = pos.width;
+
+        // When groups exist, interleave group pills with their features.
+        // Each group pill occupies one lane row, followed by its features.
+        // Features with no groupId (ungrouped) appear after all groups.
+        const allGroups = groupService.getAllGroups();
+
+        if (allGroups.length > 0) {
+          // Build a map of groupId → visible features in this group
+          const visibleFiltered = ordered.filter(
+            (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+          );
+          const featuresByGroup = new Map();
+          const ungroupedFeatures = [];
+
+          for (const feature of visibleFiltered) {
+            const gid = feature.groupId ?? null;
+            if (gid && featuresByGroup.has(String(gid))) {
+              featuresByGroup.get(String(gid)).push(feature);
+            } else if (gid && allGroups.some((g) => String(g.id) === String(gid))) {
+              featuresByGroup.set(String(gid), [feature]);
+            } else {
+              ungroupedFeatures.push(feature);
+            }
+          }
+
+          // Sort groups by earliest child start date, then by rank
+          const sortedGroups = [...allGroups].sort((a, b) => {
+            const aFeats = featuresByGroup.get(String(a.id)) || [];
+            const bFeats = featuresByGroup.get(String(b.id)) || [];
+            const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+            const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+            if (aStart && bStart) return aStart.localeCompare(bStart);
+            if (aStart) return -1;
+            if (bStart) return 1;
+            return (a.rank ?? 0) - (b.rank ?? 0);
+          });
+
+          // Helper: compute a pill position, falling back to today+1 month for
+          // groups with no dated content (e.g. newly-created empty groups).
+          const pillPosition = (start, end) => {
+            if (start && end) return computePosition({ start, end }, months);
+            const today = new Date();
+            const next = new Date(today);
+            next.setMonth(today.getMonth() + 1);
+            const fmt = (d) => d.toISOString().slice(0, 10);
+            return computePosition({ start: fmt(today), end: fmt(next) }, months);
+          };
+
+          for (const group of sortedGroups) {
+            const groupFeatures = featuresByGroup.get(String(group.id)) || [];
+            // Compute pill span from min/max of group's features
+            const starts = groupFeatures.map((f) => f.start).filter(Boolean).sort();
+            const ends = groupFeatures.map((f) => f.end).filter(Boolean).sort();
+            const pillStart = starts[0] || null;
+            const pillEnd = ends[ends.length - 1] || null;
+            const pos = pillPosition(pillStart, pillEnd);
+
+            const isCollapsed = this._collapsedGroups.has(String(group.id));
+
+            // Group pill row — rendered as <feature-group> component
+            renderList.push({
+              isGroup: true,
+              id: group.id,
+              groupObj: group,
+              name: group.name,
+              color: group.color || null,
+              left: pos ? pos.left : 0,
+              width: pos ? pos.width : 0,
+              top: laneIndex * laneHeight(),
+              start: pillStart,
+              end: pillEnd,
+              featureCount: groupFeatures.length,
+            });
+            laneIndex++;
+
+            // Feature rows within this group — skip when collapsed
+            if (!isCollapsed) {
+              for (const feature of groupFeatures) {
+                const fpos = computePosition(feature, months) || {};
+                renderList.push({
+                  feature,
+                  left: fpos.left ?? 0,
+                  width: fpos.width ?? 0,
+                  top: laneIndex * laneHeight(),
+                  teams: state.teams,
+                  condensed: state._viewService.condensedCards,
+                  hideGhostTitle: false,
+                  project: state.projects.find((p) => p.id === feature.project),
+                });
+                laneIndex++;
+              }
+            }
+          }
+
+          // Ungrouped features — show an "Ungrouped" pill header so the user
+          // can see which tasks haven't been assigned to a named group.
+          const isUngroupedCollapsed = this._collapsedGroups.has('__ungrouped__');
+          const uStarts = ungroupedFeatures.map((f) => f.start).filter(Boolean).sort();
+          const uEnds = ungroupedFeatures.map((f) => f.end).filter(Boolean).sort();
+          const uStart = uStarts[0] || null;
+          const uEnd = uEnds[uEnds.length - 1] || null;
+          const uPos = pillPosition(uStart, uEnd);
+
           renderList.push({
-            feature,
-            left: pos.left ?? feature._left ?? feature.left,
-            width: pos.width ?? feature._width ?? feature.width,
+            isGroup: true,
+            id: '__ungrouped__',
+            groupObj: { id: '__ungrouped__', name: 'Ungrouped', color: null },
+            name: 'Ungrouped',
+            color: null,
+            left: uPos ? uPos.left : 0,
+            width: uPos ? uPos.width : 0,
             top: laneIndex * laneHeight(),
-            teams: state.teams,
-            condensed: state._viewService.condensedCards,
-            hideGhostTitle: false,
-            project: state.projects.find((p) => p.id === feature.project),
+            start: uStart,
+            end: uEnd,
+            featureCount: ungroupedFeatures.length,
           });
           laneIndex++;
+
+          if (!isUngroupedCollapsed) {
+            for (const feature of ungroupedFeatures) {
+              const fpos = computePosition(feature, months) || {};
+              renderList.push({
+                feature,
+                left: fpos.left ?? 0,
+                width: fpos.width ?? 0,
+                top: laneIndex * laneHeight(),
+                teams: state.teams,
+                condensed: state._viewService.condensedCards,
+                hideGhostTitle: false,
+                project: state.projects.find((p) => p.id === feature.project),
+              });
+              laneIndex++;
+            }
+          }
+
+        } else {
+          // No groups — flat list as before
+          for (const feature of ordered) {
+            if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+            const pos = computePosition(feature, months) || {};
+            renderList.push({
+              feature,
+              left: pos.left ?? 0,
+              width: pos.width ?? 0,
+              top: laneIndex * laneHeight(),
+              teams: state.teams,
+              condensed: state._viewService.condensedCards,
+              hideGhostTitle: false,
+              project: state.projects.find((p) => p.id === feature.project),
+            });
+            laneIndex++;
+          }
         }
-        totalHeight = renderList.length * laneHeight();
+
+        totalHeight = laneIndex * laneHeight();
       }
     }
 
@@ -1111,6 +1288,22 @@ export async function initBoard() {
   bus.on(FilterEvents.CHANGED, renderFeatures);
   bus.on(ViewEvents.SORT_MODE, renderFeatures);
   bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
+  // Re-render whenever groups are loaded or mutated
+  bus.on(GroupEvents.LOADED, renderFeatures);
+  bus.on(GroupEvents.CHANGED, renderFeatures);
+  bus.on(GroupEvents.ASSIGNMENT_CHANGED, renderFeatures);
+
+  // Load groups for newly-selected plans whenever the project selection changes.
+  // GroupService caches by planId so repeated calls for already-loaded plans are cheap.
+  const loadGroupsForSelectedPlans = () => {
+    const selected = state.projects.filter((p) => p.selected);
+    for (const plan of selected) {
+      groupService.loadGroups(plan.id).catch((err) =>
+        console.warn('[initBoard] loadGroups failed for plan', plan.id, err)
+      );
+    }
+  };
+  bus.on(ProjectEvents.CHANGED, loadGroupsForSelectedPlans);
 
   // Connected-set handling: request, selection within set, and clear on details hide
   bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {
@@ -1152,6 +1345,7 @@ export async function initBoard() {
 
   bus.once(AppEvents.READY, () => {
     _boardReady = true;
+    loadGroupsForSelectedPlans();
     renderFeatures();
   });
 }

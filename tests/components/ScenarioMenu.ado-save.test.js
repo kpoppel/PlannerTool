@@ -23,12 +23,19 @@ vi.mock('../../www/js/services/State.js', () => ({
     getScenarios: () => [],
     scenarios: [],
     refreshBaseline: mockRefreshBaseline,
+    getPendingGroupChanges: vi.fn(() => []),
+    clearPendingGroupChanges: vi.fn(),
+    confirmGroupCreate: vi.fn(),
+    activeScenarioId: null,
   },
 }));
 
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     publishBaseline: mockPublishBaseline,
+    createGroup: vi.fn().mockResolvedValue(null),
+    updateGroup: vi.fn().mockResolvedValue(null),
+    deleteGroup: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -39,6 +46,12 @@ vi.mock('../../www/js/components/modalHelpers.js', () => ({
   openScenarioRenameModal: vi.fn(),
   openConfigModal: vi.fn(),
   openHelpModal: vi.fn(),
+}));
+
+vi.mock('../../www/js/services/GroupService.js', () => ({
+  groupService: {
+    replaceId: vi.fn(),
+  },
 }));
 
 vi.mock('../../www/js/core/EventBus.js', () => ({
@@ -95,7 +108,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     const scenario = { id: 'sc-1', overrides: { '42': { start: '2026-01-01' } } };
     const menu = makeMenu({ scenarios: [scenario] });
 
-    mockOpenAzureDevopsModal.mockResolvedValue([{ id: '42', start: '2026-01-01' }]);
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: '42', start: '2026-01-01' }], groupChanges: [] });
 
     await menu._onSaveToAzure(makeEvent(), scenario);
 
@@ -132,7 +145,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     const scenario = { id: 'sc-4', overrides: { '44': { state: 'Done' } } };
     const menu = makeMenu({ scenarios: [scenario] });
 
-    mockOpenAzureDevopsModal.mockResolvedValue([{ id: '44', state: 'Done' }]);
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: '44', state: 'Done' }], groupChanges: [] });
     mockPublishBaseline.mockResolvedValue({ ok: false, updated: 1, errors: ['99: bad'] });
 
     await menu._onSaveToAzure(makeEvent(), scenario);
@@ -147,7 +160,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     const scenario = { id: 'sc-5', overrides: { '45': { start: '2026-02-01' } } };
     const menu = makeMenu({ scenarios: [scenario] });
 
-    mockOpenAzureDevopsModal.mockResolvedValue([{ id: '45', start: '2026-02-01' }]);
+    mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: '45', start: '2026-02-01' }], groupChanges: [] });
     mockRefreshBaseline.mockRejectedValue(new Error('network error'));
 
     await expect(menu._onSaveToAzure(makeEvent(), scenario)).resolves.toBeUndefined();

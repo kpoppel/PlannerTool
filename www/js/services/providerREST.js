@@ -789,4 +789,87 @@ export class ProviderREST {
       return false;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Groups
+  // ---------------------------------------------------------------------------
+
+  /**
+   * List all groups, optionally filtered by plan_id.
+   * @param {string} [planId]
+   * @returns {Promise<Array>}
+   */
+  async listGroups(planId) {
+    try {
+      const qs = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
+      const res = await this._fetch(`/api/groups${qs}`, {
+        headers: this._headers(),
+      });
+      if (!res || !res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:listGroups error', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new group.
+   * @param {{ plan_id:string, name:string, color?:string, rank?:number }} payload
+   * @returns {Promise<object|null>}
+   */
+  async createGroup(payload) {
+    try {
+      const res = await this._fetch('/api/groups', {
+        method: 'POST',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload),
+      });
+      if (!res || !res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:createGroup error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Update an existing group.
+   * @param {string} groupId
+   * @param {{ name?:string, color?:string, rank?:number }} fields
+   * @returns {Promise<object|null>}
+   */
+  async updateGroup(groupId, fields) {
+    try {
+      const res = await this._fetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+        method: 'PUT',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(fields),
+      });
+      if (!res || !res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:updateGroup error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a group (server cascades sub-groups).
+   * @param {string} groupId
+   * @returns {Promise<boolean>}
+   */
+  async deleteGroup(groupId) {
+    try {
+      const res = await this._fetch(`/api/groups/${encodeURIComponent(groupId)}`, {
+        method: 'DELETE',
+        headers: this._headers(),
+      });
+      if (!res || !res.ok) return false;
+      return true;
+    } catch (err) {
+      console.error('providerREST:deleteGroup error', err);
+      return false;
+    }
+  }
 }

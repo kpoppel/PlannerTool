@@ -200,6 +200,24 @@ class DataService {
   async deleteView(id) {
     return this.providers['rest'].deleteView(id);
   }
+
+  // --- Group Management ---
+  /** @param {string} [planId] */
+  async listGroups(planId) {
+    return this.providers['rest'].listGroups(planId);
+  }
+  /** @param {{ plan_id:string, name:string, color?:string, rank?:number }} payload */
+  async createGroup(payload) {
+    return this.providers['rest'].createGroup(payload);
+  }
+  /** @param {string} groupId @param {{ name?:string, color?:string }} fields */
+  async updateGroup(groupId, fields) {
+    return this.providers['rest'].updateGroup(groupId, fields);
+  }
+  /** @param {string} groupId */
+  async deleteGroup(groupId) {
+    return this.providers['rest'].deleteGroup(groupId);
+  }
 }
 
 const providerMock = new ProviderMock();

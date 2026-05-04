@@ -98,6 +98,7 @@ export const openOnboardingModal = async (opts = { parent: document.body }) => {
 
 export const openAzureDevopsModal = async ({
   overrides = {},
+  pendingGroupChanges = [],
   state = null,
   parent = document.body,
 } = {}) => {
@@ -106,7 +107,7 @@ export const openAzureDevopsModal = async ({
     'azure-devops-modal',
     {
       parent,
-      attrs: { overrides, state },
+      attrs: { overrides, pendingGroupChanges, state },
     }
   );
   return new Promise((resolve) => {

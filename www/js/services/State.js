@@ -91,6 +91,11 @@ class State {
     // View management service
     this._viewManagementService = new ViewManagementService(bus, this, this._viewService);
 
+    // Pending group changes — group create/update/delete are deferred and only
+    // persisted to the server when the user accepts them through the save dialog.
+    // Shape: Array<{ type: 'create'|'update'|'delete', group?, groupId?, fields? }>
+    this._pendingGroupChanges = [];
+
     // Capacity metrics
     this.capacityDates = [];
     this.teamDailyCapacity = [];
@@ -1109,6 +1114,90 @@ class State {
 
   isScenarioUnsaved(scen) {
     return this._scenarioEventService.isScenarioUnsaved(scen);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pending group changes — deferred until user publishes via the save dialog
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Record a pending group change and mark the active scenario as unsaved.
+   * Duplicate deduplication:
+   *   create → then update  = fold into the create entry (update its fields)
+   *   create → then delete  = cancel both (nothing to persist on server)
+   *   update → then update  = keep only the latest update
+   *   delete replaces any prior update for the same groupId
+   * @param {{ type: 'create'|'update'|'delete', group?: object, groupId?: string, fields?: object }} op
+   */
+  addPendingGroupChange(op) {
+    const gid = op.group?.id ?? op.groupId;
+    const existing = this._pendingGroupChanges.findIndex(
+      (p) => (p.group?.id ?? p.groupId) === gid
+    );
+
+    if (existing !== -1) {
+      const prev = this._pendingGroupChanges[existing];
+      if (prev.type === 'create' && op.type === 'update') {
+        // Fold update into the pending create
+        this._pendingGroupChanges[existing] = {
+          ...prev,
+          group: { ...prev.group, ...op.fields },
+        };
+        this._markActiveScenarioChanged();
+        return;
+      }
+      if (prev.type === 'create' && op.type === 'delete') {
+        // Group never reached the server — cancel both ops
+        this._pendingGroupChanges.splice(existing, 1);
+        return;
+      }
+      // Replace any other prior entry for same group
+      this._pendingGroupChanges.splice(existing, 1);
+    }
+
+    this._pendingGroupChanges.push(op);
+    this._markActiveScenarioChanged();
+  }
+
+  /** Return a snapshot of all pending group changes. */
+  getPendingGroupChanges() {
+    return [...this._pendingGroupChanges];
+  }
+
+  /** Clear all pending group changes (call after they have been persisted). */
+  clearPendingGroupChanges() {
+    this._pendingGroupChanges = [];
+  }
+
+  /**
+   * After a group has been created on the server, swap the temp ID for the
+   * real server ID in both the pending change list and any feature overrides.
+   * @param {string} tempId
+   * @param {string} realId
+   */
+  confirmGroupCreate(tempId, realId) {
+    // Update pending changes list
+    for (const op of this._pendingGroupChanges) {
+      if (op.group?.id === tempId) op.group = { ...op.group, id: realId };
+      if (op.groupId === tempId) op.groupId = realId;
+    }
+    // Update feature overrides that reference the temp ID
+    const activeScen = this.scenarios.find((s) => s.id === this.activeScenarioId);
+    if (activeScen?.overrides) {
+      for (const ov of Object.values(activeScen.overrides)) {
+        if (ov.groupId === tempId) ov.groupId = realId;
+      }
+    }
+  }
+
+  /** Mark the active (non-readonly) scenario as having unsaved changes. */
+  _markActiveScenarioChanged() {
+    const active = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (active) active.isChanged = true;
+    // Re-emit scenario list so the ⚠️ badge updates in the menu
+    this._scenarioEventService.emitScenarioList();
   }
 
   async saveScenario(id) {

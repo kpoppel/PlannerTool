@@ -5,18 +5,25 @@ export class AzureDevopsModal extends LitElement {
   static properties = {
     overrides: { type: Object },
     state: { type: Object },
+    /** Array<{ type:'create'|'update'|'delete', group?, groupId?, groupName?, fields? }> */
+    pendingGroupChanges: { type: Array },
   };
 
   constructor() {
     super();
     this.overrides = {};
     this.state = null;
+    this.pendingGroupChanges = [];
     this._selected = new Set();
+    // Group change selections keyed by a stable key (index string)
+    this._selectedGroups = new Set();
   }
 
   firstUpdated() {
     // Start with no items selected by default for safety
     // User must explicitly check items they want to annotate
+    // Select all group changes by default since they're structural (not data edits)
+    (this.pendingGroupChanges || []).forEach((_, i) => this._selectedGroups.add(String(i)));
     // open the inner modal once rendered
     const inner =
       this.renderRoot ?
@@ -44,6 +51,26 @@ export class AzureDevopsModal extends LitElement {
     this.requestUpdate();
   }
 
+  _toggleAllGroups() {
+    const count = (this.pendingGroupChanges || []).length;
+    const anyUnchecked = Array.from({ length: count }, (_, i) => String(i)).some(
+      (k) => !this._selectedGroups.has(k)
+    );
+    if (anyUnchecked) {
+      Array.from({ length: count }, (_, i) => String(i)).forEach((k) => this._selectedGroups.add(k));
+    } else {
+      this._selectedGroups.clear();
+    }
+    this.requestUpdate();
+  }
+
+  _onGroupCheckboxChange(e) {
+    const idx = e.target.dataset.idx;
+    if (e.target.checked) this._selectedGroups.add(idx);
+    else this._selectedGroups.delete(idx);
+    this.requestUpdate();
+  }
+
   _onCheckboxChange(e) {
     const id = e.target.dataset.id;
     if (e.target.checked) this._selected.add(id);
@@ -54,8 +81,6 @@ export class AzureDevopsModal extends LitElement {
   _onSave() {
     const selected = Array.from(this._selected).map((id) => {
       const ov = this.overrides[id] || {};
-      // Only include keys that exist in the override so the backend can
-      // distinguish "explicit clear (null)" from "not provided (absent)".
       const out = { id };
       if ('start' in ov) out.start = ov.start;
       if ('end' in ov) out.end = ov.end;
@@ -64,9 +89,12 @@ export class AzureDevopsModal extends LitElement {
       if ('iterationPath' in ov) out.iterationPath = ov.iterationPath;
       return out;
     });
+    const selectedGroupChanges = (this.pendingGroupChanges || []).filter(
+      (_, i) => this._selectedGroups.has(String(i))
+    );
     this.dispatchEvent(
       new CustomEvent('azure-save', {
-        detail: selected,
+        detail: { features: selected, groupChanges: selectedGroupChanges },
         bubbles: true,
         composed: true,
       })
@@ -76,6 +104,52 @@ export class AzureDevopsModal extends LitElement {
 
   _onCancel() {
     this.remove();
+  }
+
+  /**
+   * Render the pending group changes (create/rename/delete) as a checklist
+   * so the user can decide which structural changes to persist.
+   */
+  _renderGroupChanges(changes) {
+    if (!changes || changes.length === 0) return '';
+    const opLabel = (op) => {
+      if (op.type === 'create') return html`<strong style="color:#0a7c42">+ Create</strong> group "<strong>${op.group?.name}</strong>"`;
+      if (op.type === 'update') return html`<strong style="color:#0078d4">✎ Rename</strong> group to "<strong>${op.fields?.name ?? '?'}</strong>"`;
+      if (op.type === 'delete') return html`<strong style="color:#c0392b">✕ Delete</strong> group "<strong>${op.groupName ?? op.groupId}</strong>"`;
+      return html`${op.type}`;
+    };
+    return html`
+      <div style="margin-top:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <strong style="font-size:13px;color:#333;">Group changes</strong>
+          <button type="button" @click=${this._toggleAllGroups} class="btn" style="font-size:12px;padding:4px 10px;">
+            Toggle All/None
+          </button>
+        </div>
+        <table class="scenario-annotate-table">
+          <thead>
+            <tr>
+              <th style="width:64px">Select</th>
+              <th>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${changes.map((op, i) => html`
+              <tr>
+                <td style="text-align:center;">
+                  <input
+                    type="checkbox"
+                    .checked=${this._selectedGroups.has(String(i))}
+                    data-idx=${i}
+                    @change=${this._onGroupCheckboxChange}
+                  />
+                </td>
+                <td style="font-size:13px;">${opLabel(op)}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
+      </div>`;
   }
 
   /**
@@ -200,6 +274,7 @@ export class AzureDevopsModal extends LitElement {
 
   render() {
     const allEntries = Object.entries(this.overrides || {});
+    const groupChanges = this.pendingGroupChanges || [];
 
     // Filter to only show features with actual changes (include state)
     const entries = allEntries.filter(([id, ov]) => {
@@ -236,7 +311,7 @@ export class AzureDevopsModal extends LitElement {
 
     return html`
       <modal-lit wide>
-        <div slot="header"><h3>Save to Azure DevOps</h3></div>
+        <div slot="header"><h3>Save changes</h3></div>
         <div>
           <style>
             p {
@@ -313,25 +388,28 @@ export class AzureDevopsModal extends LitElement {
               background: #e0e0e0;
             }
           </style>
-          <p>Select which items to annotate back to Azure DevOps:</p>
-          ${entries.length === 0 ?
+          ${entries.length === 0 && groupChanges.length === 0 ?
             html`<p style="color:#888;">No changes to save.</p>`
           : html`
-              <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-                <button type="button" @click=${this._toggleAll} class="btn">
-                  Toggle All/None
-                </button>
-              </div>
-              <div style="max-height:60vh;overflow-y:auto;padding-right:8px;">
-                ${this._renderTable(entries)}
-              </div>
+              ${entries.length > 0 ? html`
+                <p>Select which task changes to persist:</p>
+                <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+                  <button type="button" @click=${this._toggleAll} class="btn">
+                    Toggle All/None
+                  </button>
+                </div>
+                <div style="max-height:50vh;overflow-y:auto;padding-right:8px;">
+                  ${this._renderTable(entries)}
+                </div>
+              ` : ''}
+              ${this._renderGroupChanges(groupChanges)}
             `}
         </div>
         <div slot="footer" class="modal-footer">
           <button class="btn" @click=${this._onCancel}>Cancel</button>
-          ${entries.length > 0 ?
+          ${(entries.length > 0 || groupChanges.length > 0) ?
             html`<button class="btn primary" @click=${this._onSave}>
-              Save to Azure DevOps
+              Save
             </button>`
           : ''}
         </div>

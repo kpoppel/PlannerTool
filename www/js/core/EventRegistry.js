@@ -155,3 +155,13 @@ export const BoardEvents = {
 export const PlanEventEvents = {
   CHANGED: Symbol('planevents:changed'),
 };
+
+// Group events — fired by GroupService
+export const GroupEvents = {
+  /** Groups for one or more plans were fetched / refreshed from the server. */
+  LOADED: Symbol('group:loaded'),
+  /** A group was created, updated, or deleted (op: 'created'|'updated'|'deleted'). */
+  CHANGED: Symbol('group:changed'),
+  /** A feature's groupId assignment changed (featureId, groupId). */
+  ASSIGNMENT_CHANGED: Symbol('group:assignment-changed'),
+};

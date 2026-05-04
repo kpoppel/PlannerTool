@@ -779,8 +779,16 @@ export class FeatureCardLit extends LitElement {
     this.bus.emit(FeatureEvents.SELECTED, eff);
   }
 
-  _handleDoubleClick(e) {
-    const path = (e.composedPath && e.composedPath()) || [];
+  _handleContextMenu(e) {
+    e.preventDefault();
+    this.dispatchEvent(new CustomEvent('feature-context-menu', {
+      detail: { feature: this.feature, clientX: e.clientX, clientY: e.clientY },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  _handleDoubleClick(e) {    const path = (e.composedPath && e.composedPath()) || [];
     if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
     if (this.feature?.id) state.revertFeature(this.feature.id);
   }
@@ -888,6 +896,7 @@ export class FeatureCardLit extends LitElement {
         style="--project-color: ${projectColor}"
         @click=${this._handleClick}
         @dblclick=${this._handleDoubleClick}
+        @contextmenu=${this._handleContextMenu}
         part="feature-card"
       >
         ${this._renderTeamLoadRow()}
