@@ -349,6 +349,16 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     await this.refresh();
   }
 
+  _handleClose() {
+    // Deactivate through the plugin manager so the toolbar indicator resets
+    const plugin = pluginManager.get('plugin-events');
+    if (plugin) plugin.deactivate();
+  }
+
+  close() {
+    super.close();
+  }
+
   async refresh() {
     this.loading = true;
     this.events = (await dataService.getEvents()) || [];
@@ -515,7 +525,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const selectedPlans = (state.projects || []).filter((p) => p.selected);
     return html`
       <div class="floating-toolbar">
-        <button class="close-btn" @click=${() => this.close()}>✕</button>
+        <button class="close-btn" @click=${this._handleClose} title="Close">✕</button>
         <div class="toolbar-title">Plan Events</div>
         ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
         ${selectedPlans.length === 0
