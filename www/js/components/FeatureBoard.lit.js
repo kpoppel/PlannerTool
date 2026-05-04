@@ -1,4 +1,4 @@
-import { LitElement, html, css } from '../vendor/lit.js';
+import { LitElement, html } from '../vendor/lit.js';
 import {
   ProjectEvents,
   TeamEvents,
@@ -7,8 +7,6 @@ import {
   FilterEvents,
   ScenarioEvents,
   ViewEvents,
-  AppEvents,
-  UIEvents,
   GroupEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
@@ -21,11 +19,13 @@ import {
   isSwimlaneMode,
   buildSwimlaneList,
   assignFeatureToSwimlane,
-  SWIMLANE_LABEL_WIDTH_PX,
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
 import { groupService } from '../services/GroupService.js';
+import { featureBoardStyles } from './FeatureBoard.styles.js';
+import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
 import './FeatureGroup.lit.js';
+export { initBoard } from './FeatureBoard.init.js';
 
 class FeatureBoard extends LitElement {
   static properties = {
@@ -45,185 +45,7 @@ class FeatureBoard extends LitElement {
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
   }
 
-  static styles = css`
-    :host {
-      display: block;
-      /* No overflow — scroll is handled by the parent #scroll-container in TimelineBoard.
-         Width and height are set programmatically to the full content dimensions so that
-         plugin SVG overlays inside the shadow root can use position:absolute & inset:0. */
-      position: relative;
-      overflow: visible;
-      padding: 0;
-      /* No background — stripes are on #board-area which spans the full content width.
-         feature-board is transparent so the parent background shows through. */
-      background: transparent;
-    }
-
-    :host(.scenario-mode) {
-      /* Scenario mode class propagated from initBoard; actual color is on #board-area */
-    }
-
-    /* Swimlane background band — coloured translucent strip spanning full board width */
-    .swimlane-band {
-      position: absolute;
-      left: 0;
-      right: 0;
-      pointer-events: none;
-      box-sizing: border-box;
-      border-top: 1px solid rgba(255, 255, 255, 0.07);
-    }
-
-    /*
-     * Sticky label column — stays at the left edge of the viewport while the user
-     * scrolls the timeline horizontally, but scrolls vertically with the board.
-     *
-     * Only "left: 0" is specified (no "top") so stickiness applies in the horizontal
-     * direction only. Adding "top: 0" would pin the container to the viewport top,
-     * making absolute children appear at fixed viewport positions instead of their
-     * correct board positions.
-     *
-     * height:0 + overflow:visible means the container occupies no vertical space in
-     * the flow but its absolutely-positioned children are still rendered over the board.
-     */
-    .swimlane-labels {
-      position: sticky;
-      left: 0;
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      height: 0;
-      overflow: visible;
-      z-index: 20;
-      pointer-events: none;
-    }
-
-    .swimlane-label-slot {
-      position: absolute;
-      left: 0;
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      overflow: visible;
-    }
-
-    /* Individual plan/team name label */
-    .swimlane-label {
-      position: sticky;
-      left: 0;
-      top: calc(var(--swimlane-label-sticky-top, 24px) + 6px);
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 28px;
-      padding: 6px 8px 6px 10px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      color: rgba(255, 255, 255, 0.9);
-      box-sizing: border-box;
-      border-left: 4px solid;
-      /* Semi-transparent dark background for legibility over the board stripes */
-      background: rgba(0, 0, 0, 0.22);
-      backdrop-filter: blur(2px);
-      transform: translateY(calc(-50% + 15px));
-      pointer-events: auto;
-    }
-
-    .swimlane-label-text {
-      min-width: 0;
-      flex: 1 1 auto;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .swimlane-origin-indicator {
-      flex: 0 0 auto;
-      padding: 1px 5px;
-      border-radius: 999px;
-      font-size: 0.62rem;
-      line-height: 1.2;
-      font-weight: 700;
-      color: rgba(255, 255, 255, 0.92);
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      cursor: help;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-wrap {
-      position: static;
-      display: inline-flex;
-      align-items: center;
-      flex: 0 0 auto;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-tooltip {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      display: none;
-      min-width: 170px;
-      max-width: 280px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: rgba(25, 26, 30, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-      backdrop-filter: blur(4px);
-      z-index: 40;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-wrap:hover .swimlane-origin-tooltip,
-    .swimlane-origin-wrap:focus-within .swimlane-origin-tooltip {
-      display: block;
-    }
-
-    .swimlane-origin-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      color: rgba(255, 255, 255, 0.92);
-      font-size: 0.68rem;
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .swimlane-origin-item + .swimlane-origin-item {
-      margin-top: 4px;
-    }
-
-    .swimlane-origin-swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      box-sizing: border-box;
-      flex: 0 0 auto;
-    }
-
-    .swimlane-origin-name {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Expanded-plan labels (unselected projects pulled in by expansion) are dimmer */
-    .swimlane-label.type-expanded-plan {
-      opacity: 0.75;
-      font-weight: 600;
-    }
-
-    /* Team labels use italic to distinguish them from plan labels */
-    .swimlane-label.type-team {
-      font-style: italic;
-    }
-
-    /* ---- Group pill ---- */
-
-    /*
-  `;
+  static styles = featureBoardStyles;
 
   connectedCallback() {
     super.connectedCallback();
@@ -668,245 +490,6 @@ class FeatureBoard extends LitElement {
    * @param {{ left: number, width: number, feature: Object }[]} bars - sorted by left
    * @returns {Array<Array<{ left: number, width: number, feature: Object }>>}
    */
-  _packIntoRows(bars) {
-    const GAP = 4; // minimum horizontal gap between bars (px)
-    const rowEnds = []; // tracks rightmost edge of each row
-    const rows = [];
-    for (const bar of bars) {
-      const right = bar.left + bar.width;
-      let placed = false;
-      for (let r = 0; r < rowEnds.length; r++) {
-        if (bar.left >= rowEnds[r] + GAP) {
-          rows[r].push(bar);
-          rowEnds[r] = right;
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) {
-        rows.push([bar]);
-        rowEnds.push(right);
-      }
-    }
-    return rows;
-  }
-
-  /**
-   * Build render items (group pills + feature cards) using group tree layout.
-   *
-   * Works for a single plan's features + groups in both normal and packed modes.
-   * In packed mode features within each group are packed horizontally; in normal
-   * mode each feature occupies one lane row.
-   *
-   * @param {Array}   orderedFeatures  Visible features in sorted order
-   * @param {Array}   planGroups       Groups belonging to this plan (from groupService)
-   * @param {number}  topOffset        Starting y-position in px
-   * @param {Date[]}  months           Timeline months for computePosition
-   * @param {boolean} condensed        Use condensed (28px) card height
-   * @param {boolean} packed           Pack features horizontally within each group
-   * @param {string}  [planId]         Plan ID used to scope the Ungrouped pill collapse key.
-   *                                   Falls back to planGroups[0]?.plan_id when omitted.
-   * @returns {{ items: Array, totalHeight: number }}
-   */
-  _buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, planId) {
-    // Derive a stable plan-scoped key for the Ungrouped pill so that collapsing
-    // one plan's Ungrouped section does not affect another plan's section.
-    const ungroupedId = `__ungrouped__:${planId ?? planGroups[0]?.plan_id ?? 'unknown'}`;
-    const items = [];
-
-    // Map groupId → list of features belonging to that group
-    const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
-    const featuresByGroup = new Map();
-    const ungroupedFeatures = [];
-
-    for (const feature of orderedFeatures) {
-      const gid = feature.groupId ?? null;
-      if (gid && planGroupIds.has(String(gid))) {
-        if (!featuresByGroup.has(String(gid))) featuresByGroup.set(String(gid), []);
-        featuresByGroup.get(String(gid)).push(feature);
-      } else {
-        ungroupedFeatures.push(feature);
-      }
-    }
-
-    // Parent→children map for sub-group tree traversal
-    const childGroupsByParent = new Map();
-    for (const g of planGroups) {
-      if (g.parent_id && planGroupIds.has(String(g.parent_id))) {
-        const key = String(g.parent_id);
-        if (!childGroupsByParent.has(key)) childGroupsByParent.set(key, []);
-        childGroupsByParent.get(key).push(g);
-      }
-    }
-
-    /** Pill position, falling back to today+1 month for empty groups. */
-    const pillPosition = (start, end) => {
-      if (start && end) return computePosition({ start, end }, months);
-      const today = new Date();
-      const next = new Date(today);
-      next.setMonth(today.getMonth() + 1);
-      const fmt = (d) => d.toISOString().slice(0, 10);
-      return computePosition({ start: fmt(today), end: fmt(next) }, months);
-    };
-
-    /** Sort groups by earliest featured child start date, then rank. */
-    const sortGroupList = (groups) =>
-      [...groups].sort((a, b) => {
-        const aFeats = featuresByGroup.get(String(a.id)) || [];
-        const bFeats = featuresByGroup.get(String(b.id)) || [];
-        const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-        const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-        if (aStart && bStart) return aStart.localeCompare(bStart);
-        if (aStart) return -1;
-        if (bStart) return 1;
-        return (a.rank ?? 0) - (b.rank ?? 0);
-      });
-
-    let rowTop = topOffset;
-
-    /** Add feature cards for a list of features (flat or packed). */
-    const addFeatureRows = (features) => {
-      if (packed) {
-        // Pack features horizontally — skip unplanned (no dates)
-        const bars = features
-          .filter((f) => f.start && f.end)
-          .map((f) => {
-            const p = computePosition(f, months);
-            return p ? { left: p.left, width: p.width, feature: f } : null;
-          })
-          .filter(Boolean)
-          .sort((a, b) => a.left - b.left);
-        const rows = this._packIntoRows(bars);
-        rows.forEach((row, rowIndex) => {
-          const top = rowTop + rowIndex * laneHeight();
-          for (const bar of row) {
-            items.push({
-              feature: bar.feature,
-              left: bar.left,
-              width: bar.width,
-              top,
-              teams: state.teams,
-              condensed: true,
-              hideGhostTitle: true,
-              project: state.projects.find((p) => p.id === bar.feature.project),
-            });
-          }
-        });
-        rowTop += Math.max(rows.length, 0) * laneHeight();
-      } else {
-        for (const feature of features) {
-          const fpos = computePosition(feature, months) || {};
-          items.push({
-            feature,
-            left: fpos.left ?? 0,
-            width: fpos.width ?? 0,
-            top: rowTop,
-            teams: state.teams,
-            condensed,
-            hideGhostTitle: false,
-            project: state.projects.find((p) => p.id === feature.project),
-          });
-          rowTop += laneHeight();
-        }
-      }
-    };
-
-    /**
-     * Recursively render groups and their sub-groups depth-first.
-     * @param {Array}   groupList
-     * @param {number}  depth
-     * @param {boolean} parentCollapsed
-     */
-    const renderGroupTree = (groupList, depth, parentCollapsed) => {
-      for (const group of sortGroupList(groupList)) {
-        // Aggregate dates from this group and all descendants for the pill span
-        const collectDates = (gid) => {
-          const direct = featuresByGroup.get(String(gid)) || [];
-          const starts = direct.map((f) => f.start).filter(Boolean);
-          const ends = direct.map((f) => f.end).filter(Boolean);
-          for (const child of (childGroupsByParent.get(String(gid)) || [])) {
-            const sub = collectDates(child.id);
-            starts.push(...sub.starts);
-            ends.push(...sub.ends);
-          }
-          return { starts, ends };
-        };
-        const { starts, ends } = collectDates(group.id);
-        starts.sort();
-        ends.sort();
-        const pillStart = starts[0] || null;
-        const pillEnd = ends[ends.length - 1] || null;
-        const pos = pillPosition(pillStart, pillEnd);
-
-        const isCollapsed = this._collapsedGroups.has(String(group.id));
-        const groupFeatures = featuresByGroup.get(String(group.id)) || [];
-
-        if (!parentCollapsed) {
-          items.push({
-            isGroup: true,
-            id: group.id,
-            groupObj: group,
-            name: group.name,
-            color: group.color || null,
-            left: pos ? pos.left : 0,
-            width: pos ? pos.width : 0,
-            top: rowTop,
-            start: pillStart,
-            end: pillEnd,
-            featureCount: groupFeatures.length,
-            depth,
-          });
-          rowTop += 28;
-        }
-
-        if (!isCollapsed && !parentCollapsed) {
-          addFeatureRows(groupFeatures);
-        }
-
-        // Recurse into sub-groups
-        const children = childGroupsByParent.get(String(group.id)) || [];
-        if (children.length > 0) {
-          renderGroupTree(children, depth + 1, parentCollapsed || isCollapsed);
-        }
-      }
-    };
-
-    // Render all top-level groups
-    const topLevelGroups = planGroups.filter(
-      (g) => !g.parent_id || !planGroupIds.has(String(g.parent_id))
-    );
-    renderGroupTree(topLevelGroups, 0, false);
-
-    // "Ungrouped" section — always shown so users can see unassigned features
-    const isUngroupedCollapsed = this._collapsedGroups.has(ungroupedId);
-    const uStarts = ungroupedFeatures.map((f) => f.start).filter(Boolean).sort();
-    const uEnds = ungroupedFeatures.map((f) => f.end).filter(Boolean).sort();
-    const uStart = uStarts[0] || null;
-    const uEnd = uEnds[uEnds.length - 1] || null;
-    const uPos = pillPosition(uStart, uEnd);
-
-    items.push({
-      isGroup: true,
-      id: ungroupedId,
-      groupObj: { id: ungroupedId, name: 'Ungrouped', color: null },
-      name: 'Ungrouped',
-      color: null,
-      left: uPos ? uPos.left : 0,
-      width: uPos ? uPos.width : 0,
-      top: rowTop,
-      start: uStart,
-      end: uEnd,
-      featureCount: ungroupedFeatures.length,
-    });
-    rowTop += 28;
-
-    if (!isUngroupedCollapsed) {
-      addFeatureRows(ungroupedFeatures);
-    }
-
-    return { items, totalHeight: rowTop - topOffset };
-  }
-
   async renderFeatures() {
     this._updateSwimlaneLabelStickyTop();
     const rawFeatures = state.getEffectiveFeatures();
@@ -1070,9 +653,9 @@ class FeatureBoard extends LitElement {
             bucket,
             state._viewService.featureSortMode
           );
-          const { items: groupItems, totalHeight: gHeight } = this._buildGroupBandItems(
+          const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            state._viewService.condensedCards, isPacked, String(swimlane.id)
+            state._viewService.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -1085,7 +668,7 @@ class FeatureBoard extends LitElement {
             bars.push({ left: pos.left, width: pos.width, feature });
           }
           bars.sort((a, b) => a.left - b.left);
-          const rows = this._packIntoRows(bars);
+          const rows = packIntoRows(bars);
           rows.forEach((row, rowIndex) => {
             const top = swimlaneTop + rowIndex * laneHeight();
             for (const bar of row) {
@@ -1167,9 +750,9 @@ class FeatureBoard extends LitElement {
         const visibleFiltered = ordered.filter(
           (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
         );
-        const { items: groupItems, totalHeight: gHeight } = this._buildGroupBandItems(
+        const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
           visibleFiltered, allGroups, 0, months,
-          state._viewService.condensedCards, isPacked,
+          state._viewService.condensedCards, isPacked, this._collapsedGroups,
           selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
         );
         renderList = groupItems;
@@ -1187,7 +770,7 @@ class FeatureBoard extends LitElement {
         }
         // Sort by start position ascending for greedy packing
         filtered.sort((a, b) => a.left - b.left);
-        const rows = this._packIntoRows(filtered);
+        const rows = packIntoRows(filtered);
         rows.forEach((row, rowIndex) => {
           const top = rowIndex * laneHeight();
           for (const bar of row) {
@@ -1354,130 +937,3 @@ class FeatureBoard extends LitElement {
 }
 
 customElements.define('feature-board', FeatureBoard);
-
-export async function initBoard() {
-  const board = findInBoard('feature-board');
-  if (!board) {
-    console.warn('feature-board element not found');
-    return;
-  }
-
-  let _boardReady = false;
-  const renderFeatures = () => {
-    if (!board || !_boardReady) return;
-    if (typeof board.renderFeatures === 'function') board.renderFeatures();
-  };
-
-  const updateFeatures = (payload) => {
-    if (!board || !_boardReady || typeof board.updateCardsById !== 'function') return;
-    const ids = payload?.ids;
-    if (Array.isArray(ids) && ids.length > 0) {
-      board.updateCardsById(ids);
-    } else {
-      board.renderFeatures();
-    }
-  };
-
-  const handleScenarioActivation = ({ scenarioId }) => {
-    if (!board) return;
-    const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
-    // Apply scenario-mode class on #board-area (the background container) so
-    // the correct stripe colour is shown.
-    const boardArea = findInBoard('#board-area');
-    if (activeScenario && !activeScenario.readonly) {
-      board.classList.add('scenario-mode');
-      boardArea?.classList.add('scenario-mode');
-    } else {
-      board.classList.remove('scenario-mode');
-      boardArea?.classList.remove('scenario-mode');
-    }
-  };
-
-  bus.on(ProjectEvents.CHANGED, renderFeatures);
-  bus.on(TeamEvents.CHANGED, renderFeatures);
-  bus.on(TimelineEvents.MONTHS, renderFeatures);
-  bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures);
-  bus.on(FeatureEvents.UPDATED, updateFeatures);
-  bus.on(FilterEvents.CHANGED, renderFeatures);
-  bus.on(ViewEvents.SORT_MODE, renderFeatures);
-  bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
-  // Re-render whenever groups are loaded or mutated
-  bus.on(GroupEvents.LOADED, renderFeatures);
-  bus.on(GroupEvents.CHANGED, renderFeatures);
-  bus.on(GroupEvents.ASSIGNMENT_CHANGED, renderFeatures);
-
-  // Load groups for newly-selected plans whenever the project selection changes.
-  // We only fetch plans that are NOT already in the local cache.  Skipping
-  // already-loaded plans is intentional: it prevents the fetch from overwriting
-  // locally-created (pending / unsaved) groups that have not yet been persisted
-  // to the server.  When a plan is deselected its cache entry is evicted so
-  // the next selection always triggers a fresh fetch.
-  const loadGroupsForSelectedPlans = () => {
-    const selected = state.projects.filter((p) => p.selected);
-    for (const plan of selected) {
-      if (!groupService.hasPlanLoaded(plan.id)) {
-        groupService.loadGroups(plan.id).catch((err) =>
-          console.warn('[initBoard] loadGroups failed for plan', plan.id, err)
-        );
-      }
-    }
-  };
-  // Evict the cache for plans that become de-selected so the next time the plan
-  // is selected its groups are fetched fresh from the server.
-  const evictDeselectedPlans = () => {
-    const selectedIds = new Set(state.projects.filter((p) => p.selected).map((p) => String(p.id)));
-    for (const plan of state.projects) {
-      if (!selectedIds.has(String(plan.id)) && groupService.hasPlanLoaded(plan.id)) {
-        groupService.evictPlan(plan.id);
-      }
-    }
-  };
-  bus.on(ProjectEvents.CHANGED, () => {
-    evictDeselectedPlans();
-    loadGroupsForSelectedPlans();
-  });
-
-  // Connected-set handling: request, selection within set, and clear on details hide
-  bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {
-    if (!board) return;
-    const set = board._computeConnectedSet(feature);
-    board._connectedSet = set;
-    board._connectedPrimary = String(feature.id);
-    board._connectedCurrent = String(feature.id);
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: set,
-      primary: board._connectedPrimary,
-      current: board._connectedCurrent,
-    });
-  });
-
-  bus.on(FeatureEvents.SELECTED_IN_CONNECTED_SET, (feature) => {
-    if (!board || !board._connectedSet || board._connectedSet.length === 0) return;
-    const id = String(feature.id);
-    board._connectedCurrent = id;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: board._connectedSet,
-      primary: board._connectedPrimary,
-      current: board._connectedCurrent,
-    });
-    bus.emit(FeatureEvents.SELECTED, feature);
-  });
-
-  bus.on(UIEvents.DETAILS_HIDE, () => {
-    if (!board) return;
-    board._connectedSet = [];
-    board._connectedPrimary = null;
-    board._connectedCurrent = null;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: [],
-      primary: null,
-      current: null,
-    });
-  });
-
-  bus.once(AppEvents.READY, () => {
-    _boardReady = true;
-    loadGroupsForSelectedPlans();
-    renderFeatures();
-  });
-}
