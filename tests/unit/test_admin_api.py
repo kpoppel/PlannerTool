@@ -150,7 +150,7 @@ def test_admin_get_projects_and_bytes():
     assert res['content'] == ''
 
 
-def test_admin_save_projects_success_and_invalid_json():
+def test_admin_save_projects_success_and_invalid_payload():
     storage = FakeStorage()
     admin_svc = FakeAdminService(storage)
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
@@ -167,7 +167,7 @@ def test_admin_save_projects_success_and_invalid_json():
 
     # valid content
     content_obj = {'a': 1}
-    payload = {'content': json.dumps(content_obj)}
+    payload = {'content': content_obj}
     req = Req(payload)
     res = asyncio.run(admin_api.admin_save_projects.__wrapped__(req))
     assert res['ok']
@@ -179,8 +179,8 @@ def test_admin_save_projects_success_and_invalid_json():
         asyncio.run(admin_api.admin_save_projects.__wrapped__(req2))
     assert ei.value.status_code == 400
 
-    # invalid json
-    req3 = Req({'content': '{not json'})
+    # invalid content type
+    req3 = Req({'content': '{"a":1}'})
     with pytest.raises(HTTPException) as ei2:
         asyncio.run(admin_api.admin_save_projects.__wrapped__(req3))
     assert ei2.value.status_code == 400

@@ -50,8 +50,8 @@ After the migration, the data/config/*.yml files can be removed.
 - Admin UI: moved ADO backend selection (org URL + backend type + sub-config) and cache TTLs from separate AzureDevOps/Server modules into the Data Sources panel; removed the AzureDevOps sidebar entry; split DataSources component into focused sub-modules (ado-row.js, plan-events-row.js, shared-styles.js)
 - Backend: all route handlers now use `asyncio.to_thread()` for blocking I/O (ADO fetches, diskcache reads/writes, cost computation). Multiple users no longer queue behind a single slow request. Validated by new concurrent performance tests (`tests/backend/test_concurrent_performance.py`).
 
-
 ### Fixed
+- Admin save-projects endpoint now enforces the admin UI payload contract (`content` must be a JSON object/array), fixing save failures caused by string parsing assumptions.
 - **Backup/restore covers all configuration** — `global_settings` was silently omitted from backup exports; the backup now captures all 9 config keys. A full backup from this version is sufficient to restore a server from scratch.
 - **People data fully in diskcache** — `people.yml` and any external `database_file` are merged and stored in diskcache by migration 0022. The server no longer reads from `people.yml` at runtime.
 - **Cost engine accuracy** — team cost calculation was computing `sum(rates) × sum(hours)` instead of `sum(rate × hours per person)`, overstating costs by a factor equal to team size for multi-person teams. Now fixed and regression-tested.

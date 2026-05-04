@@ -10,7 +10,6 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 import logging
-import json
 
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
@@ -82,15 +81,15 @@ async def admin_save_projects(request: Request):
     """Save edited projects configuration; creates a timestamped backup first."""
     try:
         payload = await request.json()
-        content = payload.get('content', '')
-        if not content:
+        content = payload.get('content', None)
+        if content is None:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
-        try:
-            parsed = json.loads(content)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail={'error': 'invalid_json', 'message': 'Content is not valid JSON'})
+
+        if not isinstance(content, (dict, list)):
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Unsupported content type'})
+
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('projects', parsed)
+        admin_svc.save_config('projects', content)
         return {'ok': True}
     except HTTPException:
         raise
