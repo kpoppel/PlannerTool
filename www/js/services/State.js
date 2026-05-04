@@ -25,7 +25,7 @@ import {
   TeamEvents,
   FilterEvents,
   CapacityEvents,
-  //DataEvents,
+  DataEvents,
   //TimelineEvents,
   //ConfigEvents,
   //StateFilterEvents,
@@ -95,6 +95,31 @@ class State {
     // persisted to the server when the user accepts them through the save dialog.
     // Shape: Array<{ type: 'create'|'update'|'delete', group?, groupId?, fields? }>
     this._pendingGroupChanges = [];
+
+    // On page load, scenarios are fetched from the backend and broadcast via
+    // SCENARIOS_DATA.  Restore any pending group ops that were saved alongside
+    // the then-active scenario so the ⚠️ badge and cloud-save modal work
+    // correctly without requiring the user to re-create groups.
+    bus.on(DataEvents.SCENARIOS_DATA, () => {
+      const activeId = this._getScenarioManager().activeScenarioId;
+      const activeScen = this._scenarioEventService.getScenarioById(activeId);
+      if (Array.isArray(activeScen?.pendingGroupChanges) && activeScen.pendingGroupChanges.length > 0) {
+        this._pendingGroupChanges = [...activeScen.pendingGroupChanges];
+        // Re-hydrate GroupService cache with locally-created groups.
+        import('../services/GroupService.js').then(({ groupService }) => {
+          groupService.clearTempGroups();
+          for (const op of this._pendingGroupChanges) {
+            if (op.type === 'create' && op.group) {
+              groupService.addLocal(op.group.plan_id, op.group);
+            } else if (op.type === 'update' && op.groupId && op.fields) {
+              groupService.updateLocal(op.groupId, op.fields);
+            } else if (op.type === 'delete' && op.groupId) {
+              groupService.removeLocal(op.groupId);
+            }
+          }
+        });
+      }
+    });
 
     // Capacity metrics
     this.capacityDates = [];
@@ -1054,6 +1079,35 @@ class State {
       totalOrgDailyCapacity: this.totalOrgDailyCapacity,
     });
     bus.emit(FeatureEvents.UPDATED);
+
+    // Discard any pending group ops from the previous scenario — they are
+    // scenario-local and must not bleed into the newly activated one.
+    // Then restore the pending ops that were saved with the newly active scenario.
+    this._pendingGroupChanges = [];
+    const newScen = this._scenarioEventService.getScenarioById(
+      this._getScenarioManager().activeScenarioId
+    );
+
+    // Strip all temp groups (tmp_* IDs) that were injected by the previous
+    // scenario, then replay only the new scenario's pending creates on top of
+    // the server-persisted groups already in the cache.  This is the exact
+    // analogue of how feature-date overrides are per-scenario: the baseline
+    // cache (server groups) is shared, but scenario-local mutations are not.
+    import('../services/GroupService.js').then(({ groupService }) => {
+      groupService.clearTempGroups();
+      if (Array.isArray(newScen?.pendingGroupChanges) && newScen.pendingGroupChanges.length > 0) {
+        this._pendingGroupChanges = [...newScen.pendingGroupChanges];
+        for (const op of this._pendingGroupChanges) {
+          if (op.type === 'create' && op.group) {
+            groupService.addLocal(op.group.plan_id, op.group);
+          } else if (op.type === 'update' && op.groupId && op.fields) {
+            groupService.updateLocal(op.groupId, op.fields);
+          } else if (op.type === 'delete' && op.groupId) {
+            groupService.removeLocal(op.groupId);
+          }
+        }
+      }
+    });
   }
 
   renameScenario(id, newName) {
@@ -1203,13 +1257,21 @@ class State {
   async saveScenario(id) {
     const scen = this._scenarioEventService.getScenarioById(id);
     if (!scen) return;
-    // Persist via provider
+    // Persist via provider — includes overrides (which may contain groupId
+    // references to temp IDs; those are resolved when the user later publishes
+    // via the "Save changes" modal, not here).
+    // pendingGroupChanges is saved alongside the scenario so that structural
+    // group ops (create/rename/delete) survive page reloads and can still be
+    // published later via the cloud save modal.
     await dataService.saveScenario({
       id: scen.id,
       name: scen.name,
       overrides: scen.overrides,
       filters: scen.filters,
       view: scen.view,
+      pendingGroupChanges: this._pendingGroupChanges.length > 0
+        ? [...this._pendingGroupChanges]
+        : undefined,
     });
     this._scenarioEventService.markScenarioSaved(scen.id);
     this._scenarioEventService.emitScenarioUpdated(scen.id, { type: 'saved' });

@@ -66,6 +66,8 @@ export class FeatureGroup extends LitElement {
       cursor: pointer;
       user-select: none;
       transition: filter 120ms ease, transform 80ms ease;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+      padding: 6px 10px; /* give the pill some horizontal breathing room */
     }
 
     .group-card:hover {
@@ -84,9 +86,10 @@ export class FeatureGroup extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+      color: #ffffff;
       transition: transform 200ms ease;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.22);
     }
 
     :host([collapsed]) .chevron {
@@ -100,7 +103,8 @@ export class FeatureGroup extends LitElement {
       font-size: 0.78rem;
       font-weight: 700;
       letter-spacing: 0.03em;
-      color: rgba(255, 255, 255, 0.95);
+      color: #ffffff;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.25);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -109,15 +113,16 @@ export class FeatureGroup extends LitElement {
     /* Feature count badge */
     .badge {
       flex: 0 0 auto;
-      padding: 1px 7px;
-      margin: 0 6px 0 4px;
+      padding: 2px 8px;
+      margin: 0 6px 0 6px;
       border-radius: 999px;
       font-size: 0.65rem;
       font-weight: 700;
-      background: rgba(255, 255, 255, 0.18);
-      color: rgba(255, 255, 255, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
       white-space: nowrap;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.18);
     }
 
     /* Date span on the right */
@@ -125,8 +130,9 @@ export class FeatureGroup extends LitElement {
       flex: 0 0 auto;
       padding-right: 14px;
       font-size: 0.65rem;
-      color: rgba(255, 255, 255, 0.5);
+      color: rgba(255, 255, 255, 0.95);
       white-space: nowrap;
+      text-shadow: 0 1px 0 rgba(0,0,0,0.18);
     }
   `;
 
@@ -182,8 +188,10 @@ export class FeatureGroup extends LitElement {
     if (!this.group) return html``;
 
     const color = this.group.color || '#78909c';
-    const bg = this._rgba(color, 0.22);
-    const border = `1.5px solid ${this._rgba(color, 0.6)}`;
+    // Use an opaque background color so the pill reads strongly on the board.
+    // The border uses a nearly-opaque rgba derived from the same colour.
+    const bg = color;
+    const border = `1.5px solid ${this._rgba(color, 0.9)}`;
 
     const dateSpan = (this.start && this.end)
       ? `${this._fmtDate(this.start)} – ${this._fmtDate(this.end)}`

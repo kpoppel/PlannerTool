@@ -189,6 +189,12 @@ export class FeatureService {
         override.iterationPath !== featureBase.iterationPath
       )
         changedFields.push('iterationPath');
+      // Support groupId override detection
+      if (
+        'groupId' in override &&
+        (override.groupId ?? null) !== (featureBase.groupId ?? null)
+      )
+        changedFields.push('groupId');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }

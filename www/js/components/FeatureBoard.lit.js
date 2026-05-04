@@ -366,6 +366,7 @@ class FeatureBoard extends LitElement {
           `
         : ''}
       ${this.features.map((item) => {
+        const itemHeight = item.isGroup ? 28 : laneHeight();
         if (item.isGroup) {
           // Render as <feature-group> web component — it handles expand/collapse,
           // right-click context, and its own visual styling.
@@ -375,7 +376,7 @@ class FeatureBoard extends LitElement {
             .end=${item.end}
             .featureCount=${item.featureCount}
             .collapsed=${this._collapsedGroups.has(String(item.id))}
-            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${laneHeight()}px;"
+            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
             @group-toggle=${this._onGroupToggle}
             @group-context-menu=${this._onGroupContextMenuBubble}
           ></feature-group>`;
@@ -387,7 +388,7 @@ class FeatureBoard extends LitElement {
           .condensed=${item.condensed}
           .project=${item.project}
           .hideGhostTitle=${!!item.hideGhostTitle}
-          style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px"
+          style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
         ></feature-card-lit>`;
       })}
     `;
@@ -1003,6 +1004,9 @@ class FeatureBoard extends LitElement {
             return computePosition({ start: fmt(today), end: fmt(next) }, months);
           };
 
+          // Use per-row heights: groups always occupy 28px, features use laneHeight().
+          // This avoids tall empty lanes when a group-only row exists in expanded mode.
+          let rowTop = laneIndex * laneHeight();
           for (const group of sortedGroups) {
             const groupFeatures = featuresByGroup.get(String(group.id)) || [];
             // Compute pill span from min/max of group's features
@@ -1014,7 +1018,7 @@ class FeatureBoard extends LitElement {
 
             const isCollapsed = this._collapsedGroups.has(String(group.id));
 
-            // Group pill row — rendered as <feature-group> component
+            // Group pill row — 28px height
             renderList.push({
               isGroup: true,
               id: group.id,
@@ -1023,12 +1027,12 @@ class FeatureBoard extends LitElement {
               color: group.color || null,
               left: pos ? pos.left : 0,
               width: pos ? pos.width : 0,
-              top: laneIndex * laneHeight(),
+              top: rowTop,
               start: pillStart,
               end: pillEnd,
               featureCount: groupFeatures.length,
             });
-            laneIndex++;
+            rowTop += 28;
 
             // Feature rows within this group — skip when collapsed
             if (!isCollapsed) {
@@ -1038,13 +1042,13 @@ class FeatureBoard extends LitElement {
                   feature,
                   left: fpos.left ?? 0,
                   width: fpos.width ?? 0,
-                  top: laneIndex * laneHeight(),
+                  top: rowTop,
                   teams: state.teams,
                   condensed: state._viewService.condensedCards,
                   hideGhostTitle: false,
                   project: state.projects.find((p) => p.id === feature.project),
                 });
-                laneIndex++;
+                rowTop += laneHeight();
               }
             }
           }
@@ -1066,12 +1070,12 @@ class FeatureBoard extends LitElement {
             color: null,
             left: uPos ? uPos.left : 0,
             width: uPos ? uPos.width : 0,
-            top: laneIndex * laneHeight(),
+            top: rowTop,
             start: uStart,
             end: uEnd,
             featureCount: ungroupedFeatures.length,
           });
-          laneIndex++;
+          rowTop += 28;
 
           if (!isUngroupedCollapsed) {
             for (const feature of ungroupedFeatures) {
@@ -1080,15 +1084,17 @@ class FeatureBoard extends LitElement {
                 feature,
                 left: fpos.left ?? 0,
                 width: fpos.width ?? 0,
-                top: laneIndex * laneHeight(),
+                top: rowTop,
                 teams: state.teams,
                 condensed: state._viewService.condensedCards,
                 hideGhostTitle: false,
                 project: state.projects.find((p) => p.id === feature.project),
               });
-              laneIndex++;
+              rowTop += laneHeight();
             }
           }
+          // Update laneIndex to approximate number of lanes for compatibility
+          laneIndex = Math.ceil(rowTop / Math.max(1, laneHeight()));
 
         } else {
           // No groups — flat list as before

@@ -225,6 +225,24 @@ export class GroupService {
   }
 
   /**
+   * Remove all locally-created (temp) groups from every plan's cache.
+   * Temp groups have IDs that start with 'tmp_'.  Call this when switching
+   * scenarios so groups from a previous scenario don't bleed into the next one.
+   * Emits a single GroupEvents.CHANGED so the board re-renders.
+   */
+  clearTempGroups() {
+    let changed = false;
+    for (const [planId, list] of this._groupsByPlan.entries()) {
+      const filtered = list.filter((g) => !String(g.id).startsWith('tmp_'));
+      if (filtered.length !== list.length) {
+        this._groupsByPlan.set(planId, filtered);
+        changed = true;
+      }
+    }
+    if (changed) bus.emit(GroupEvents.CHANGED, { op: 'cleared' });
+  }
+
+  /**
    * Swap a temporary local ID for the real server-assigned ID after creation.
    * Updates the cache entry in place.
    * @param {string} tempId
