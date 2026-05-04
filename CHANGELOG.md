@@ -16,6 +16,8 @@ Template - do not change :
 
 ## [v4.0.0] - unreleased
 
+- fix: groups now show for all selected plans in multi-plan (swimlane) mode; standard mode scoped to selected plans only; plan cache evicted on deselect; hasPlanLoaded prevents reloading cached (pending) groups
+- feat: groups displayed in all modes — swimlane (2+ plans), packed, and single-plan normal; pack-per-group in packed mode; extracted _buildGroupBandItems reusable helper
 - feat: sub-group support — right-click a group pill to add a nested sub-group; group tree renders recursively with depth-based indentation; GroupService.removeLocal/deleteGroup cascade sub-group deletion
 - feat: "Update group" replaces "Rename group" — inline form allows editing name, color, and parent group (cycle-safe parent selector)
 

@@ -691,6 +691,222 @@ class FeatureBoard extends LitElement {
     return rows;
   }
 
+  /**
+   * Build render items (group pills + feature cards) using group tree layout.
+   *
+   * Works for a single plan's features + groups in both normal and packed modes.
+   * In packed mode features within each group are packed horizontally; in normal
+   * mode each feature occupies one lane row.
+   *
+   * @param {Array}   orderedFeatures  Visible features in sorted order
+   * @param {Array}   planGroups       Groups belonging to this plan (from groupService)
+   * @param {number}  topOffset        Starting y-position in px
+   * @param {Date[]}  months           Timeline months for computePosition
+   * @param {boolean} condensed        Use condensed (28px) card height
+   * @param {boolean} packed           Pack features horizontally within each group
+   * @param {string}  [planId]         Plan ID used to scope the Ungrouped pill collapse key.
+   *                                   Falls back to planGroups[0]?.plan_id when omitted.
+   * @returns {{ items: Array, totalHeight: number }}
+   */
+  _buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, planId) {
+    // Derive a stable plan-scoped key for the Ungrouped pill so that collapsing
+    // one plan's Ungrouped section does not affect another plan's section.
+    const ungroupedId = `__ungrouped__:${planId ?? planGroups[0]?.plan_id ?? 'unknown'}`;
+    const items = [];
+
+    // Map groupId → list of features belonging to that group
+    const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
+    const featuresByGroup = new Map();
+    const ungroupedFeatures = [];
+
+    for (const feature of orderedFeatures) {
+      const gid = feature.groupId ?? null;
+      if (gid && planGroupIds.has(String(gid))) {
+        if (!featuresByGroup.has(String(gid))) featuresByGroup.set(String(gid), []);
+        featuresByGroup.get(String(gid)).push(feature);
+      } else {
+        ungroupedFeatures.push(feature);
+      }
+    }
+
+    // Parent→children map for sub-group tree traversal
+    const childGroupsByParent = new Map();
+    for (const g of planGroups) {
+      if (g.parent_id && planGroupIds.has(String(g.parent_id))) {
+        const key = String(g.parent_id);
+        if (!childGroupsByParent.has(key)) childGroupsByParent.set(key, []);
+        childGroupsByParent.get(key).push(g);
+      }
+    }
+
+    /** Pill position, falling back to today+1 month for empty groups. */
+    const pillPosition = (start, end) => {
+      if (start && end) return computePosition({ start, end }, months);
+      const today = new Date();
+      const next = new Date(today);
+      next.setMonth(today.getMonth() + 1);
+      const fmt = (d) => d.toISOString().slice(0, 10);
+      return computePosition({ start: fmt(today), end: fmt(next) }, months);
+    };
+
+    /** Sort groups by earliest featured child start date, then rank. */
+    const sortGroupList = (groups) =>
+      [...groups].sort((a, b) => {
+        const aFeats = featuresByGroup.get(String(a.id)) || [];
+        const bFeats = featuresByGroup.get(String(b.id)) || [];
+        const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+        const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+        if (aStart && bStart) return aStart.localeCompare(bStart);
+        if (aStart) return -1;
+        if (bStart) return 1;
+        return (a.rank ?? 0) - (b.rank ?? 0);
+      });
+
+    let rowTop = topOffset;
+
+    /** Add feature cards for a list of features (flat or packed). */
+    const addFeatureRows = (features) => {
+      if (packed) {
+        // Pack features horizontally — skip unplanned (no dates)
+        const bars = features
+          .filter((f) => f.start && f.end)
+          .map((f) => {
+            const p = computePosition(f, months);
+            return p ? { left: p.left, width: p.width, feature: f } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.left - b.left);
+        const rows = this._packIntoRows(bars);
+        rows.forEach((row, rowIndex) => {
+          const top = rowTop + rowIndex * laneHeight();
+          for (const bar of row) {
+            items.push({
+              feature: bar.feature,
+              left: bar.left,
+              width: bar.width,
+              top,
+              teams: state.teams,
+              condensed: true,
+              hideGhostTitle: true,
+              project: state.projects.find((p) => p.id === bar.feature.project),
+            });
+          }
+        });
+        rowTop += Math.max(rows.length, 0) * laneHeight();
+      } else {
+        for (const feature of features) {
+          const fpos = computePosition(feature, months) || {};
+          items.push({
+            feature,
+            left: fpos.left ?? 0,
+            width: fpos.width ?? 0,
+            top: rowTop,
+            teams: state.teams,
+            condensed,
+            hideGhostTitle: false,
+            project: state.projects.find((p) => p.id === feature.project),
+          });
+          rowTop += laneHeight();
+        }
+      }
+    };
+
+    /**
+     * Recursively render groups and their sub-groups depth-first.
+     * @param {Array}   groupList
+     * @param {number}  depth
+     * @param {boolean} parentCollapsed
+     */
+    const renderGroupTree = (groupList, depth, parentCollapsed) => {
+      for (const group of sortGroupList(groupList)) {
+        // Aggregate dates from this group and all descendants for the pill span
+        const collectDates = (gid) => {
+          const direct = featuresByGroup.get(String(gid)) || [];
+          const starts = direct.map((f) => f.start).filter(Boolean);
+          const ends = direct.map((f) => f.end).filter(Boolean);
+          for (const child of (childGroupsByParent.get(String(gid)) || [])) {
+            const sub = collectDates(child.id);
+            starts.push(...sub.starts);
+            ends.push(...sub.ends);
+          }
+          return { starts, ends };
+        };
+        const { starts, ends } = collectDates(group.id);
+        starts.sort();
+        ends.sort();
+        const pillStart = starts[0] || null;
+        const pillEnd = ends[ends.length - 1] || null;
+        const pos = pillPosition(pillStart, pillEnd);
+
+        const isCollapsed = this._collapsedGroups.has(String(group.id));
+        const groupFeatures = featuresByGroup.get(String(group.id)) || [];
+
+        if (!parentCollapsed) {
+          items.push({
+            isGroup: true,
+            id: group.id,
+            groupObj: group,
+            name: group.name,
+            color: group.color || null,
+            left: pos ? pos.left : 0,
+            width: pos ? pos.width : 0,
+            top: rowTop,
+            start: pillStart,
+            end: pillEnd,
+            featureCount: groupFeatures.length,
+            depth,
+          });
+          rowTop += 28;
+        }
+
+        if (!isCollapsed && !parentCollapsed) {
+          addFeatureRows(groupFeatures);
+        }
+
+        // Recurse into sub-groups
+        const children = childGroupsByParent.get(String(group.id)) || [];
+        if (children.length > 0) {
+          renderGroupTree(children, depth + 1, parentCollapsed || isCollapsed);
+        }
+      }
+    };
+
+    // Render all top-level groups
+    const topLevelGroups = planGroups.filter(
+      (g) => !g.parent_id || !planGroupIds.has(String(g.parent_id))
+    );
+    renderGroupTree(topLevelGroups, 0, false);
+
+    // "Ungrouped" section — always shown so users can see unassigned features
+    const isUngroupedCollapsed = this._collapsedGroups.has(ungroupedId);
+    const uStarts = ungroupedFeatures.map((f) => f.start).filter(Boolean).sort();
+    const uEnds = ungroupedFeatures.map((f) => f.end).filter(Boolean).sort();
+    const uStart = uStarts[0] || null;
+    const uEnd = uEnds[uEnds.length - 1] || null;
+    const uPos = pillPosition(uStart, uEnd);
+
+    items.push({
+      isGroup: true,
+      id: ungroupedId,
+      groupObj: { id: ungroupedId, name: 'Ungrouped', color: null },
+      name: 'Ungrouped',
+      color: null,
+      left: uPos ? uPos.left : 0,
+      width: uPos ? uPos.width : 0,
+      top: rowTop,
+      start: uStart,
+      end: uEnd,
+      featureCount: ungroupedFeatures.length,
+    });
+    rowTop += 28;
+
+    if (!isUngroupedCollapsed) {
+      addFeatureRows(ungroupedFeatures);
+    }
+
+    return { items, totalHeight: rowTop - topOffset };
+  }
+
   async renderFeatures() {
     this._updateSwimlaneLabelStickyTop();
     const rawFeatures = state.getEffectiveFeatures();
@@ -843,8 +1059,25 @@ class FeatureBoard extends LitElement {
           tooltipParts.push(`Added teams: ${teamOriginNames.join(', ')}`);
         }
 
-        if (isPacked) {
-          // Per-swimlane greedy packing
+        // Use group layout for plan/expanded-plan swimlanes that have groups.
+        const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
+          ? groupService.getGroupsForPlan(String(swimlane.id))
+          : [];
+
+        if (planGroups.length > 0) {
+          // Group-aware layout: group pills + packed or flat features per group
+          const orderedBucket = this._orderFeaturesHierarchically(
+            bucket,
+            state._viewService.featureSortMode
+          );
+          const { items: groupItems, totalHeight: gHeight } = this._buildGroupBandItems(
+            orderedBucket, planGroups, swimlaneTop, months,
+            state._viewService.condensedCards, isPacked, String(swimlane.id)
+          );
+          renderList.push(...groupItems);
+          swimlaneHeight = Math.max(gHeight, laneHeight());
+        } else if (isPacked) {
+          // Per-swimlane greedy packing (no groups)
           const bars = [];
           for (const feature of bucket) {
             const pos = computePosition(feature, months);
@@ -870,7 +1103,7 @@ class FeatureBoard extends LitElement {
           });
           swimlaneHeight = Math.max(rows.length, 1) * laneHeight();
         } else {
-          // Per-swimlane hierarchical sort
+          // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
             bucket,
             state._viewService.featureSortMode
@@ -890,8 +1123,7 @@ class FeatureBoard extends LitElement {
             });
             laneIndex++;
           }
-          // Reserve at least one lane height even for empty swimlanes so the
-          // label and coloured band always render with a minimum visible height.
+          // Reserve at least one lane height even for empty swimlanes.
           swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
         }
 
@@ -913,13 +1145,37 @@ class FeatureBoard extends LitElement {
       totalHeight = currentTop;
     } else {
       // -----------------------------------------------------------------------
-      // Standard (non-swimlane) mode — unchanged from original implementation
+      // Standard (non-swimlane) mode
       // -----------------------------------------------------------------------
       this._swimlanes = [];
 
-      if (isPacked) {
+      // Order features once; used by both group and flat paths.
+      const ordered = this._orderFeaturesHierarchically(
+        sourceFeatures,
+        state._viewService.featureSortMode
+      );
+      // Scope groups to the currently-selected plans only.  getAllGroups()
+      // returns groups from ALL cached plans (including stale entries from plans
+      // no longer selected), which would show empty group pills from other plans.
+      const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
+      const allGroups = selectedPlanIds.flatMap((id) => groupService.getGroupsForPlan(id));
+      renderList = [];
+
+      if (allGroups.length > 0) {
+        // Group-aware layout — handles both packed and normal modes.
+        // Filter to only visible features first.
+        const visibleFiltered = ordered.filter(
+          (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+        );
+        const { items: groupItems, totalHeight: gHeight } = this._buildGroupBandItems(
+          visibleFiltered, allGroups, 0, months,
+          state._viewService.condensedCards, isPacked,
+          selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
+        );
+        renderList = groupItems;
+        totalHeight = gHeight;
+      } else if (isPacked) {
         // --- Packed mode: features with non-overlapping dates share a lane ---
-        // Order by date to maximise packing efficiency (earlier starts first)
         const filtered = [];
         for (const feature of sourceFeatures) {
           if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
@@ -932,7 +1188,6 @@ class FeatureBoard extends LitElement {
         // Sort by start position ascending for greedy packing
         filtered.sort((a, b) => a.left - b.left);
         const rows = this._packIntoRows(filtered);
-        renderList = [];
         rows.forEach((row, rowIndex) => {
           const top = rowIndex * laneHeight();
           for (const bar of row) {
@@ -950,228 +1205,23 @@ class FeatureBoard extends LitElement {
         });
         totalHeight = rows.length * laneHeight();
       } else {
-        // --- Normal / Compact mode ---
-        const ordered = this._orderFeaturesHierarchically(
-          sourceFeatures,
-          state._viewService.featureSortMode
-        );
-        renderList = [];
+        // --- Normal / Compact mode: one lane per feature, no groups ---
         let laneIndex = 0;
-
-        // When groups exist, interleave group pills with their features.
-        // Each group pill occupies one lane row, followed by its features.
-        // Features with no groupId (ungrouped) appear after all groups.
-        const allGroups = groupService.getAllGroups();
-
-        if (allGroups.length > 0) {
-          // Build a map of groupId → visible features in this group
-          const visibleFiltered = ordered.filter(
-            (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
-          );
-          const featuresByGroup = new Map();
-          const ungroupedFeatures = [];
-
-          for (const feature of visibleFiltered) {
-            const gid = feature.groupId ?? null;
-            if (gid && featuresByGroup.has(String(gid))) {
-              featuresByGroup.get(String(gid)).push(feature);
-            } else if (gid && allGroups.some((g) => String(g.id) === String(gid))) {
-              featuresByGroup.set(String(gid), [feature]);
-            } else {
-              ungroupedFeatures.push(feature);
-            }
-          }
-
-          // Build a parent→children map for sub-group tree rendering.
-          const childGroupsByParent = new Map();
-          const allGroupIds = new Set(allGroups.map((g) => String(g.id)));
-          for (const g of allGroups) {
-            // Only treat parent_id as valid if the parent actually exists in this plan.
-            if (g.parent_id && allGroupIds.has(String(g.parent_id))) {
-              const key = String(g.parent_id);
-              if (!childGroupsByParent.has(key)) childGroupsByParent.set(key, []);
-              childGroupsByParent.get(key).push(g);
-            }
-          }
-
-          /**
-           * Sort a list of groups by earliest featured child start date, then rank.
-           * @param {Array} groups
-           * @returns {Array}
-           */
-          const sortGroupList = (groups) =>
-            [...groups].sort((a, b) => {
-              const aFeats = featuresByGroup.get(String(a.id)) || [];
-              const bFeats = featuresByGroup.get(String(b.id)) || [];
-              const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-              const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-              if (aStart && bStart) return aStart.localeCompare(bStart);
-              if (aStart) return -1;
-              if (bStart) return 1;
-              return (a.rank ?? 0) - (b.rank ?? 0);
-            });
-
-          // Helper: compute a pill position, falling back to today+1 month for
-          // groups with no dated content (e.g. newly-created empty groups).
-          const pillPosition = (start, end) => {
-            if (start && end) return computePosition({ start, end }, months);
-            const today = new Date();
-            const next = new Date(today);
-            next.setMonth(today.getMonth() + 1);
-            const fmt = (d) => d.toISOString().slice(0, 10);
-            return computePosition({ start: fmt(today), end: fmt(next) }, months);
-          };
-
-          // Use per-row heights: groups always occupy 28px, features use laneHeight().
-          let rowTop = laneIndex * laneHeight();
-
-          /**
-           * Recursively render a list of groups and their sub-groups.
-           * Modifies renderList and rowTop via closure.
-           * @param {Array}  groupList  Groups to render at this level.
-           * @param {number} depth      Nesting depth (0 = top-level).
-           * @param {boolean} parentCollapsed  Whether the parent group is collapsed.
-           */
-          const renderGroupTree = (groupList, depth, parentCollapsed) => {
-            const sorted = sortGroupList(groupList);
-            for (const group of sorted) {
-              // Aggregate dates from both direct features and all descendant features
-              // so the pill always spans the full extent of the sub-tree.
-              const collectDates = (gid) => {
-                const direct = featuresByGroup.get(String(gid)) || [];
-                const starts = direct.map((f) => f.start).filter(Boolean);
-                const ends   = direct.map((f) => f.end).filter(Boolean);
-                for (const child of (childGroupsByParent.get(String(gid)) || [])) {
-                  const sub = collectDates(child.id);
-                  starts.push(...sub.starts);
-                  ends.push(...sub.ends);
-                }
-                return { starts, ends };
-              };
-              const { starts, ends } = collectDates(group.id);
-              starts.sort();
-              ends.sort();
-              const pillStart = starts[0] || null;
-              const pillEnd   = ends[ends.length - 1] || null;
-              const pos = pillPosition(pillStart, pillEnd);
-
-              const isCollapsed = this._collapsedGroups.has(String(group.id));
-              const groupFeatures = featuresByGroup.get(String(group.id)) || [];
-
-              if (!parentCollapsed) {
-                // Group pill row — 28px height
-                renderList.push({
-                  isGroup: true,
-                  id: group.id,
-                  groupObj: group,
-                  name: group.name,
-                  color: group.color || null,
-                  left: pos ? pos.left : 0,
-                  width: pos ? pos.width : 0,
-                  top: rowTop,
-                  start: pillStart,
-                  end: pillEnd,
-                  featureCount: groupFeatures.length,
-                  depth,
-                });
-                rowTop += 28;
-              }
-
-              // Feature rows within this group — skip when this group or any
-              // ancestor is collapsed.
-              if (!isCollapsed && !parentCollapsed) {
-                for (const feature of groupFeatures) {
-                  const fpos = computePosition(feature, months) || {};
-                  renderList.push({
-                    feature,
-                    left: fpos.left ?? 0,
-                    width: fpos.width ?? 0,
-                    top: rowTop,
-                    teams: state.teams,
-                    condensed: state._viewService.condensedCards,
-                    hideGhostTitle: false,
-                    project: state.projects.find((p) => p.id === feature.project),
-                  });
-                  rowTop += laneHeight();
-                }
-              }
-
-              // Recursively render sub-groups directly after this group's features.
-              const children = childGroupsByParent.get(String(group.id)) || [];
-              if (children.length > 0) {
-                renderGroupTree(children, depth + 1, parentCollapsed || isCollapsed);
-              }
-            }
-          };
-
-          // Top-level groups: those with no parent_id, or whose parent doesn't exist
-          const topLevelGroups = allGroups.filter(
-            (g) => !g.parent_id || !allGroupIds.has(String(g.parent_id))
-          );
-          renderGroupTree(topLevelGroups, 0, false);
-
-          // Ungrouped features — show an "Ungrouped" pill header so the user
-          // can see which tasks haven't been assigned to a named group.
-          const isUngroupedCollapsed = this._collapsedGroups.has('__ungrouped__');
-          const uStarts = ungroupedFeatures.map((f) => f.start).filter(Boolean).sort();
-          const uEnds = ungroupedFeatures.map((f) => f.end).filter(Boolean).sort();
-          const uStart = uStarts[0] || null;
-          const uEnd = uEnds[uEnds.length - 1] || null;
-          const uPos = pillPosition(uStart, uEnd);
-
+        for (const feature of ordered) {
+          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+          const pos = computePosition(feature, months) || {};
           renderList.push({
-            isGroup: true,
-            id: '__ungrouped__',
-            groupObj: { id: '__ungrouped__', name: 'Ungrouped', color: null },
-            name: 'Ungrouped',
-            color: null,
-            left: uPos ? uPos.left : 0,
-            width: uPos ? uPos.width : 0,
-            top: rowTop,
-            start: uStart,
-            end: uEnd,
-            featureCount: ungroupedFeatures.length,
+            feature,
+            left: pos.left ?? 0,
+            width: pos.width ?? 0,
+            top: laneIndex * laneHeight(),
+            teams: state.teams,
+            condensed: state._viewService.condensedCards,
+            hideGhostTitle: false,
+            project: state.projects.find((p) => p.id === feature.project),
           });
-          rowTop += 28;
-
-          if (!isUngroupedCollapsed) {
-            for (const feature of ungroupedFeatures) {
-              const fpos = computePosition(feature, months) || {};
-              renderList.push({
-                feature,
-                left: fpos.left ?? 0,
-                width: fpos.width ?? 0,
-                top: rowTop,
-                teams: state.teams,
-                condensed: state._viewService.condensedCards,
-                hideGhostTitle: false,
-                project: state.projects.find((p) => p.id === feature.project),
-              });
-              rowTop += laneHeight();
-            }
-          }
-          // Update laneIndex to approximate number of lanes for compatibility
-          laneIndex = Math.ceil(rowTop / Math.max(1, laneHeight()));
-
-        } else {
-          // No groups — flat list as before
-          for (const feature of ordered) {
-            if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
-            const pos = computePosition(feature, months) || {};
-            renderList.push({
-              feature,
-              left: pos.left ?? 0,
-              width: pos.width ?? 0,
-              top: laneIndex * laneHeight(),
-              teams: state.teams,
-              condensed: state._viewService.condensedCards,
-              hideGhostTitle: false,
-              project: state.projects.find((p) => p.id === feature.project),
-            });
-            laneIndex++;
-          }
+          laneIndex++;
         }
-
         totalHeight = laneIndex * laneHeight();
       }
     }
@@ -1357,16 +1407,35 @@ export async function initBoard() {
   bus.on(GroupEvents.ASSIGNMENT_CHANGED, renderFeatures);
 
   // Load groups for newly-selected plans whenever the project selection changes.
-  // GroupService caches by planId so repeated calls for already-loaded plans are cheap.
+  // We only fetch plans that are NOT already in the local cache.  Skipping
+  // already-loaded plans is intentional: it prevents the fetch from overwriting
+  // locally-created (pending / unsaved) groups that have not yet been persisted
+  // to the server.  When a plan is deselected its cache entry is evicted so
+  // the next selection always triggers a fresh fetch.
   const loadGroupsForSelectedPlans = () => {
     const selected = state.projects.filter((p) => p.selected);
     for (const plan of selected) {
-      groupService.loadGroups(plan.id).catch((err) =>
-        console.warn('[initBoard] loadGroups failed for plan', plan.id, err)
-      );
+      if (!groupService.hasPlanLoaded(plan.id)) {
+        groupService.loadGroups(plan.id).catch((err) =>
+          console.warn('[initBoard] loadGroups failed for plan', plan.id, err)
+        );
+      }
     }
   };
-  bus.on(ProjectEvents.CHANGED, loadGroupsForSelectedPlans);
+  // Evict the cache for plans that become de-selected so the next time the plan
+  // is selected its groups are fetched fresh from the server.
+  const evictDeselectedPlans = () => {
+    const selectedIds = new Set(state.projects.filter((p) => p.selected).map((p) => String(p.id)));
+    for (const plan of state.projects) {
+      if (!selectedIds.has(String(plan.id)) && groupService.hasPlanLoaded(plan.id)) {
+        groupService.evictPlan(plan.id);
+      }
+    }
+  };
+  bus.on(ProjectEvents.CHANGED, () => {
+    evictDeselectedPlans();
+    loadGroupsForSelectedPlans();
+  });
 
   // Connected-set handling: request, selection within set, and clear on details hide
   bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {

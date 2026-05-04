@@ -48,6 +48,30 @@ describe('GroupService', () => {
     svc = new GroupService();
   });
 
+  describe('hasPlanLoaded', () => {
+    it('returns false before any load', () => {
+      expect(svc.hasPlanLoaded('p1')).toBe(false);
+    });
+
+    it('returns true after loadGroups (even when empty)', async () => {
+      dataService.listGroups.mockResolvedValue([]);
+      await svc.loadGroups('p1');
+      expect(svc.hasPlanLoaded('p1')).toBe(true);
+    });
+
+    it('returns true after addLocal', () => {
+      svc.addLocal('p1', mkGroup('g1', 'p1', 'A'));
+      expect(svc.hasPlanLoaded('p1')).toBe(true);
+    });
+
+    it('returns false after evictPlan', async () => {
+      dataService.listGroups.mockResolvedValue([mkGroup('g1', 'p1', 'A')]);
+      await svc.loadGroups('p1');
+      svc.evictPlan('p1');
+      expect(svc.hasPlanLoaded('p1')).toBe(false);
+    });
+  });
+
   // ---- Read ----------------------------------------------------------------
 
   describe('getGroupsForPlan', () => {

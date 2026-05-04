@@ -36,6 +36,17 @@ export class GroupService {
     return this._groupsByPlan.get(String(planId)) || [];
   }
 
+  /**
+   * Return true if the plan's groups have been loaded into the cache at least
+   * once (even if the plan has zero groups).  Use this to distinguish
+   * "never fetched" from "fetched and empty".
+   * @param {string|number} planId
+   * @returns {boolean}
+   */
+  hasPlanLoaded(planId) {
+    return this._groupsByPlan.has(String(planId));
+  }
+
   /** Return all cached groups across all loaded plans. */
   getAllGroups() {
     const out = [];

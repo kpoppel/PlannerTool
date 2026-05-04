@@ -127,7 +127,7 @@ class TimelineBoard extends LitElement {
     this._onGroupContextMenu = (e) => {
       e.stopPropagation();
       // The synthetic "Ungrouped" band is not a real persisted group — skip menu.
-      if (e.detail.group?.id === '__ungrouped__') return;
+      if (String(e.detail.group?.id || '').startsWith('__ungrouped__')) return;
       GroupContextMenu.show({
         type: 'group',
         group: e.detail.group,
