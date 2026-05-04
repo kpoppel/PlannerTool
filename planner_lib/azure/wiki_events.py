@@ -176,19 +176,35 @@ class AzureWikiEventBackend:
         ]
 
         if events:
-            lines += [
-                "| Date | Title | Plan |",
-                "|------|-------|------|",
-            ]
-            for ev in sorted(events.values(), key=lambda e: e.get("date", "")):
-                lines.append(
-                    f"| {ev.get('date', '')} | {ev.get('title', '')} | {ev.get('plan_id', '')} |"
+            # Group events by plan_id, preserving insertion order per group
+            plans: dict[str, list] = {}
+            for ev in events.values():
+                pid = ev.get("plan_id", "")
+                plans.setdefault(pid, []).append(ev)
+
+            # Render one table per plan, plans sorted alphabetically by plan_id
+            for plan_id in sorted(plans.keys()):
+                plan_events = sorted(
+                    plans[plan_id],
+                    key=lambda e: e.get("date", ""),
+                    reverse=True,  # newest first
                 )
+                lines += [
+                    f"## {plan_id}",
+                    "",
+                    "| Date | Title |",
+                    "|------|-------|",
+                ]
+                for ev in plan_events:
+                    lines.append(
+                        f"| {ev.get('date', '')} | {ev.get('title', '')} |"
+                    )
+                lines.append("")
         else:
             lines.append("*No events configured.*")
+            lines.append("")
 
         lines += [
-            "",
             "<!-- planner-tool-events",
             json.dumps(events, indent=2),
             "-->",
