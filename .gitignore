@@ -38,7 +38,7 @@ Thumbs.db
 
 # Configutation files
 deployment/
-data*/
+data/
 instances.yml
 .encryption_key
 
