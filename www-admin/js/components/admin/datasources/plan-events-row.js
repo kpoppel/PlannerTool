@@ -53,6 +53,52 @@ export async function fetchProjects(comp) {
 }
 
 /**
+ * Handle organization URL typing in the ADO wiki sub-form.
+ *
+ * This only updates the local field value. Project assistance is reloaded on
+ * field commit (change/blur), not on every keystroke.
+ * @param {DataSources} comp
+ * @param {string} value
+ */
+export function onWikiOrgUrlInput(comp, value) {
+  if (comp._wikiOrgUrlAppliedTrimmed === undefined) {
+    comp._wikiOrgUrlAppliedTrimmed = String(comp._wikiOrgUrl || '').trim();
+  }
+  comp._wikiOrgUrl = String(value || '');
+}
+
+/**
+ * Commit organization URL edits on field change/blur.
+ *
+ * Resets dependent selections (project/wiki/page) when the committed org has
+ * changed and reloads projects using the committed value.
+ * @param {DataSources} comp
+ */
+export function onWikiOrgUrlCommit(comp) {
+  const nextTrimmed = String(comp._wikiOrgUrl || '').trim();
+  const appliedTrimmed = comp._wikiOrgUrlAppliedTrimmed !== undefined
+    ? String(comp._wikiOrgUrlAppliedTrimmed)
+    : nextTrimmed;
+
+  // Avoid unnecessary resets/reloads when only whitespace differs.
+  if (appliedTrimmed === nextTrimmed) return;
+
+  comp._wikiProject = '';
+  comp._wikiId = '';
+  comp._wikiPages = [];
+  comp._wikis = [];
+  comp._projects = [];
+  comp._projectsError = '';
+  comp._wikisError = '';
+  comp._wikiPagesError = '';
+  comp._wikiOrgUrlAppliedTrimmed = nextTrimmed;
+
+  if (nextTrimmed) {
+    fetchProjects(comp);
+  }
+}
+
+/**
  * Fetch wikis for the given ADO project.
  * Auto-selects the wiki if only one is available; fetches pages when a wiki
  * is already selected.
@@ -167,7 +213,8 @@ function _renderWikiSubForm(comp, errs) {
           class=${errs.evtOrgUrl ? 'error' : ''}
           .value=${comp._wikiOrgUrl}
           placeholder="e.g. MyCompany"
-          @input=${(e) => { comp._wikiOrgUrl = e.target.value; }}
+          @input=${(e) => { onWikiOrgUrlInput(comp, e.target.value); }}
+          @change=${() => { onWikiOrgUrlCommit(comp); }}
         />
         ${errs.evtOrgUrl ? html`<div class="error-msg">${errs.evtOrgUrl}</div>` : ''}
       </div>
