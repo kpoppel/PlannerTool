@@ -17,6 +17,7 @@ Template - do not change :
 ## [v4.0.0] - unreleased
 
 - feat: sub-group support — right-click a group pill to add a nested sub-group; group tree renders recursively with depth-based indentation; GroupService.removeLocal/deleteGroup cascade sub-group deletion
+- feat: "Update group" replaces "Rename group" — inline form allows editing name, color, and parent group (cycle-safe parent selector)
 
 This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. The server was made async in several places, allowing multiple users to get responsiveness when accessing the tool concurrently.
 
