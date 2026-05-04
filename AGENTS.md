@@ -35,6 +35,9 @@ General
 
 - Prefer clear, small commits with focused scope. Write concise commit messages describing "why".
 - Use English for identifiers, comments and commit messages. Keep comments factual and short.
+- Do not ever create fallback paths. Every change is in control and backwards compatibility must be handled by upgrading by running the `scripts/migrate-py` migration.
+- Only create try/catch paths if and only if there is a real failure path warranting this.
+- Update the `CHANGELOG.md` file with a single line high level description of the change.  Do not change the template section. If there is a section `[vX.Y.Z] - unreleased` update this section. If no such section. _copy_ the template first to create a new varsioned but unlreleased section.
 
 JavaScript / frontend
 
