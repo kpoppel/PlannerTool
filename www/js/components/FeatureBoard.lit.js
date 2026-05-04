@@ -376,6 +376,7 @@ class FeatureBoard extends LitElement {
             .end=${item.end}
             .featureCount=${item.featureCount}
             .collapsed=${this._collapsedGroups.has(String(item.id))}
+            .depth=${item.depth ?? 0}
             style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
             @group-toggle=${this._onGroupToggle}
             @group-context-menu=${this._onGroupContextMenuBubble}
@@ -981,17 +982,34 @@ class FeatureBoard extends LitElement {
             }
           }
 
-          // Sort groups by earliest child start date, then by rank
-          const sortedGroups = [...allGroups].sort((a, b) => {
-            const aFeats = featuresByGroup.get(String(a.id)) || [];
-            const bFeats = featuresByGroup.get(String(b.id)) || [];
-            const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-            const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
-            if (aStart && bStart) return aStart.localeCompare(bStart);
-            if (aStart) return -1;
-            if (bStart) return 1;
-            return (a.rank ?? 0) - (b.rank ?? 0);
-          });
+          // Build a parent→children map for sub-group tree rendering.
+          const childGroupsByParent = new Map();
+          const allGroupIds = new Set(allGroups.map((g) => String(g.id)));
+          for (const g of allGroups) {
+            // Only treat parent_id as valid if the parent actually exists in this plan.
+            if (g.parent_id && allGroupIds.has(String(g.parent_id))) {
+              const key = String(g.parent_id);
+              if (!childGroupsByParent.has(key)) childGroupsByParent.set(key, []);
+              childGroupsByParent.get(key).push(g);
+            }
+          }
+
+          /**
+           * Sort a list of groups by earliest featured child start date, then rank.
+           * @param {Array} groups
+           * @returns {Array}
+           */
+          const sortGroupList = (groups) =>
+            [...groups].sort((a, b) => {
+              const aFeats = featuresByGroup.get(String(a.id)) || [];
+              const bFeats = featuresByGroup.get(String(b.id)) || [];
+              const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+              const bStart = bFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
+              if (aStart && bStart) return aStart.localeCompare(bStart);
+              if (aStart) return -1;
+              if (bStart) return 1;
+              return (a.rank ?? 0) - (b.rank ?? 0);
+            });
 
           // Helper: compute a pill position, falling back to today+1 month for
           // groups with no dated content (e.g. newly-created empty groups).
@@ -1005,53 +1023,92 @@ class FeatureBoard extends LitElement {
           };
 
           // Use per-row heights: groups always occupy 28px, features use laneHeight().
-          // This avoids tall empty lanes when a group-only row exists in expanded mode.
           let rowTop = laneIndex * laneHeight();
-          for (const group of sortedGroups) {
-            const groupFeatures = featuresByGroup.get(String(group.id)) || [];
-            // Compute pill span from min/max of group's features
-            const starts = groupFeatures.map((f) => f.start).filter(Boolean).sort();
-            const ends = groupFeatures.map((f) => f.end).filter(Boolean).sort();
-            const pillStart = starts[0] || null;
-            const pillEnd = ends[ends.length - 1] || null;
-            const pos = pillPosition(pillStart, pillEnd);
 
-            const isCollapsed = this._collapsedGroups.has(String(group.id));
+          /**
+           * Recursively render a list of groups and their sub-groups.
+           * Modifies renderList and rowTop via closure.
+           * @param {Array}  groupList  Groups to render at this level.
+           * @param {number} depth      Nesting depth (0 = top-level).
+           * @param {boolean} parentCollapsed  Whether the parent group is collapsed.
+           */
+          const renderGroupTree = (groupList, depth, parentCollapsed) => {
+            const sorted = sortGroupList(groupList);
+            for (const group of sorted) {
+              // Aggregate dates from both direct features and all descendant features
+              // so the pill always spans the full extent of the sub-tree.
+              const collectDates = (gid) => {
+                const direct = featuresByGroup.get(String(gid)) || [];
+                const starts = direct.map((f) => f.start).filter(Boolean);
+                const ends   = direct.map((f) => f.end).filter(Boolean);
+                for (const child of (childGroupsByParent.get(String(gid)) || [])) {
+                  const sub = collectDates(child.id);
+                  starts.push(...sub.starts);
+                  ends.push(...sub.ends);
+                }
+                return { starts, ends };
+              };
+              const { starts, ends } = collectDates(group.id);
+              starts.sort();
+              ends.sort();
+              const pillStart = starts[0] || null;
+              const pillEnd   = ends[ends.length - 1] || null;
+              const pos = pillPosition(pillStart, pillEnd);
 
-            // Group pill row — 28px height
-            renderList.push({
-              isGroup: true,
-              id: group.id,
-              groupObj: group,
-              name: group.name,
-              color: group.color || null,
-              left: pos ? pos.left : 0,
-              width: pos ? pos.width : 0,
-              top: rowTop,
-              start: pillStart,
-              end: pillEnd,
-              featureCount: groupFeatures.length,
-            });
-            rowTop += 28;
+              const isCollapsed = this._collapsedGroups.has(String(group.id));
+              const groupFeatures = featuresByGroup.get(String(group.id)) || [];
 
-            // Feature rows within this group — skip when collapsed
-            if (!isCollapsed) {
-              for (const feature of groupFeatures) {
-                const fpos = computePosition(feature, months) || {};
+              if (!parentCollapsed) {
+                // Group pill row — 28px height
                 renderList.push({
-                  feature,
-                  left: fpos.left ?? 0,
-                  width: fpos.width ?? 0,
+                  isGroup: true,
+                  id: group.id,
+                  groupObj: group,
+                  name: group.name,
+                  color: group.color || null,
+                  left: pos ? pos.left : 0,
+                  width: pos ? pos.width : 0,
                   top: rowTop,
-                  teams: state.teams,
-                  condensed: state._viewService.condensedCards,
-                  hideGhostTitle: false,
-                  project: state.projects.find((p) => p.id === feature.project),
+                  start: pillStart,
+                  end: pillEnd,
+                  featureCount: groupFeatures.length,
+                  depth,
                 });
-                rowTop += laneHeight();
+                rowTop += 28;
+              }
+
+              // Feature rows within this group — skip when this group or any
+              // ancestor is collapsed.
+              if (!isCollapsed && !parentCollapsed) {
+                for (const feature of groupFeatures) {
+                  const fpos = computePosition(feature, months) || {};
+                  renderList.push({
+                    feature,
+                    left: fpos.left ?? 0,
+                    width: fpos.width ?? 0,
+                    top: rowTop,
+                    teams: state.teams,
+                    condensed: state._viewService.condensedCards,
+                    hideGhostTitle: false,
+                    project: state.projects.find((p) => p.id === feature.project),
+                  });
+                  rowTop += laneHeight();
+                }
+              }
+
+              // Recursively render sub-groups directly after this group's features.
+              const children = childGroupsByParent.get(String(group.id)) || [];
+              if (children.length > 0) {
+                renderGroupTree(children, depth + 1, parentCollapsed || isCollapsed);
               }
             }
-          }
+          };
+
+          // Top-level groups: those with no parent_id, or whose parent doesn't exist
+          const topLevelGroups = allGroups.filter(
+            (g) => !g.parent_id || !allGroupIds.has(String(g.parent_id))
+          );
+          renderGroupTree(topLevelGroups, 0, false);
 
           // Ungrouped features — show an "Ungrouped" pill header so the user
           // can see which tasks haven't been assigned to a named group.

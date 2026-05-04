@@ -160,7 +160,19 @@ export class GroupService {
       for (const [planId, list] of this._groupsByPlan.entries()) {
         const idx = list.findIndex((g) => String(g.id) === String(groupId));
         if (idx !== -1) {
-          this._groupsByPlan.set(planId, list.filter((g) => String(g.id) !== String(groupId)));
+          // Cascade: collect the deleted group and all its descendants.
+          const toRemove = new Set([String(groupId)]);
+          let changed = true;
+          while (changed) {
+            changed = false;
+            for (const g of list) {
+              if (g.parent_id && toRemove.has(String(g.parent_id)) && !toRemove.has(String(g.id))) {
+                toRemove.add(String(g.id));
+                changed = true;
+              }
+            }
+          }
+          this._groupsByPlan.set(planId, list.filter((g) => !toRemove.has(String(g.id))));
           break;
         }
       }
@@ -211,13 +223,27 @@ export class GroupService {
 
   /**
    * Remove a group from the local cache without hitting the server.
+   * Also removes any sub-groups (groups whose parent_id matches the deleted group),
+   * mirroring the cascade the server applies on deletion.
    * @param {string} groupId
    */
   removeLocal(groupId) {
     for (const [planId, list] of this._groupsByPlan.entries()) {
       const idx = list.findIndex((g) => String(g.id) === String(groupId));
       if (idx !== -1) {
-        this._groupsByPlan.set(planId, list.filter((g) => String(g.id) !== String(groupId)));
+        // Collect all descendant IDs (recursive cascade).
+        const toRemove = new Set([String(groupId)]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const g of list) {
+            if (g.parent_id && toRemove.has(String(g.parent_id)) && !toRemove.has(String(g.id))) {
+              toRemove.add(String(g.id));
+              changed = true;
+            }
+          }
+        }
+        this._groupsByPlan.set(planId, list.filter((g) => !toRemove.has(String(g.id))));
         bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
         return;
       }

@@ -267,4 +267,99 @@ describe('GroupService', () => {
       );
     });
   });
+
+  // ---- Sub-groups (parent_id) ---------------------------------------------
+
+  describe('sub-groups via addLocal', () => {
+    it('addLocal stores a sub-group with parent_id', () => {
+      const parent = mkGroup('g-parent', 'p1', 'Parent');
+      const child  = { ...mkGroup('g-child', 'p1', 'Child'), parent_id: 'g-parent' };
+      svc.addLocal('p1', parent);
+      svc.addLocal('p1', child);
+      const groups = svc.getGroupsForPlan('p1');
+      expect(groups).toHaveLength(2);
+      const childGroup = groups.find((g) => g.id === 'g-child');
+      expect(childGroup).toBeDefined();
+      expect(childGroup.parent_id).toBe('g-parent');
+    });
+
+    it('getGroupById finds a sub-group by id', () => {
+      const child = { ...mkGroup('g-child', 'p1', 'Child'), parent_id: 'g-parent' };
+      svc.addLocal('p1', child);
+      expect(svc.getGroupById('g-child')).toMatchObject({ id: 'g-child', parent_id: 'g-parent' });
+    });
+
+    it('removeLocal removes a group and its sub-groups', () => {
+      const parent = mkGroup('g-parent', 'p1', 'Parent');
+      const child  = { ...mkGroup('g-child', 'p1', 'Child'), parent_id: 'g-parent' };
+      svc.addLocal('p1', parent);
+      svc.addLocal('p1', child);
+      svc.removeLocal('g-parent');
+      // Both parent and child should be gone
+      expect(svc.getGroupsForPlan('p1')).toHaveLength(0);
+    });
+
+    it('deleteGroup (server) cascades removal of sub-groups from cache', async () => {
+      const parent = mkGroup('g-parent', 'p1', 'Parent');
+      const child  = { ...mkGroup('g-child', 'p1', 'Child'), parent_id: 'g-parent' };
+      dataService.listGroups.mockResolvedValue([parent, child]);
+      await svc.loadGroups('p1');
+      dataService.deleteGroup.mockResolvedValue(true);
+      await svc.deleteGroup('g-parent');
+      expect(svc.getGroupsForPlan('p1')).toHaveLength(0);
+    });
+  });
+
+  // ---- Group tree topology helpers ----------------------------------------
+
+  describe('group tree topology', () => {
+    /**
+     * Local helper: given a flat array of groups, build the parent→children
+     * map the same way FeatureBoard does.
+     */
+    const buildChildMap = (groups) => {
+      const ids = new Set(groups.map((g) => String(g.id)));
+      const map = new Map();
+      for (const g of groups) {
+        if (g.parent_id && ids.has(String(g.parent_id))) {
+          const key = String(g.parent_id);
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(g);
+        }
+      }
+      return map;
+    };
+
+    it('top-level groups have no parent_id (or orphan parent)', () => {
+      const groups = [
+        mkGroup('g1', 'p1', 'Root'),
+        { ...mkGroup('g2', 'p1', 'Child'), parent_id: 'g1' },
+        { ...mkGroup('g3', 'p1', 'OrphanChild'), parent_id: 'nonexistent' },
+      ];
+      const ids = new Set(groups.map((g) => String(g.id)));
+      const topLevel = groups.filter((g) => !g.parent_id || !ids.has(String(g.parent_id)));
+      expect(topLevel.map((g) => g.id)).toEqual(expect.arrayContaining(['g1', 'g3']));
+      expect(topLevel.map((g) => g.id)).not.toContain('g2');
+    });
+
+    it('buildChildMap correctly maps parent to direct children only', () => {
+      const groups = [
+        mkGroup('g1', 'p1', 'Root'),
+        { ...mkGroup('g2', 'p1', 'Child'), parent_id: 'g1' },
+        { ...mkGroup('g3', 'p1', 'Grandchild'), parent_id: 'g2' },
+      ];
+      const map = buildChildMap(groups);
+      expect(map.get('g1')).toHaveLength(1);
+      expect(map.get('g1')[0].id).toBe('g2');
+      expect(map.get('g2')).toHaveLength(1);
+      expect(map.get('g2')[0].id).toBe('g3');
+      expect(map.has('g3')).toBe(false);
+    });
+
+    it('handles groups with no children gracefully', () => {
+      const groups = [mkGroup('g1', 'p1', 'Leaf')];
+      const map = buildChildMap(groups);
+      expect(map.size).toBe(0);
+    });
+  });
 });

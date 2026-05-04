@@ -43,6 +43,8 @@ class GroupContextMenu extends LitElement {
     _name:    { state: true },
     _color:   { state: true },
     _showCreate: { state: true },
+    /** Parent group id when creating a sub-group (null = top-level). */
+    _parentId: { state: true },
   };
 
   static styles = css`
@@ -138,6 +140,7 @@ class GroupContextMenu extends LitElement {
     this._name = '';
     this._color = GROUP_COLORS[0];
     this._showCreate = false;
+    this._parentId = null;
     this._onOutsideClick = this._onOutsideClick.bind(this);
   }
 
@@ -175,6 +178,7 @@ class GroupContextMenu extends LitElement {
     this._name = '';
     this._color = GROUP_COLORS[0];
     this._showCreate = false;
+    this._parentId = null;
     this._open = true;
     // Close on any outside click
     setTimeout(() => document.addEventListener('click', this._onOutsideClick, { once: true }), 0);
@@ -194,19 +198,28 @@ class GroupContextMenu extends LitElement {
   // Board background actions
   // ---------------------------------------------------------------------------
 
-  _startCreateGroup() {
+  _startCreateGroup(parentId = null) {
+    this._parentId = parentId;
     this._showCreate = true;
   }
 
   async _saveNewGroup() {
     const name = (this._name || '').trim();
     if (!name) return;
-    const planId = this._config?.planId;
+    // planId comes from board-background config or from the parent group's plan_id
+    const planId = this._config?.planId ?? this._config?.group?.plan_id;
     if (!planId) return;
     // Generate a temporary local ID — swapped for the real server ID when the
     // user accepts the changes through the save dialog.
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const group = { id: tempId, plan_id: planId, name, color: this._color, rank: Date.now() };
+    const group = {
+      id: tempId,
+      plan_id: planId,
+      name,
+      color: this._color,
+      rank: Date.now(),
+      ...(this._parentId ? { parent_id: this._parentId } : {}),
+    };
     groupService.addLocal(planId, group);
     state.addPendingGroupChange({ type: 'create', group });
     this._close();
@@ -231,15 +244,34 @@ class GroupContextMenu extends LitElement {
   _deleteGroup() {
     const group = this._config?.group;
     if (!group) return;
-    if (!window.confirm(`Delete group "${group.name}"? Features will become ungrouped.`)) return;
+    // Detect sub-groups so we can warn the user.
+    const planGroups = groupService.getGroupsForPlan(group.plan_id || '');
+    const subGroups = planGroups.filter((g) => String(g.parent_id) === String(group.id));
+    const subMsg = subGroups.length > 0
+      ? `\nThis will also delete ${subGroups.length} sub-group(s).`
+      : '';
+    if (!window.confirm(`Delete group "${group.name}"? Features will become ungrouped.${subMsg}`)) return;
     this._close();
-    // Clear group assignment from all features in this group
+    // Collect all groups to remove (parent + sub-groups, recursively)
+    const toRemove = new Set([String(group.id)]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const g of planGroups) {
+        if (g.parent_id && toRemove.has(String(g.parent_id)) && !toRemove.has(String(g.id))) {
+          toRemove.add(String(g.id));
+          changed = true;
+        }
+      }
+    }
+    // Clear group assignment from all features belonging to any removed group.
     const features = (state.getEffectiveFeatures() || []).filter(
-      (f) => String(f.groupId) === String(group.id)
+      (f) => f.groupId && toRemove.has(String(f.groupId))
     );
     for (const f of features) {
       groupService.assignFeature(f.id, null, state);
     }
+    // removeLocal cascades sub-group removal automatically.
     groupService.removeLocal(group.id);
     state.addPendingGroupChange({ type: 'delete', groupId: group.id, groupName: group.name });
   }
@@ -336,7 +368,40 @@ class GroupContextMenu extends LitElement {
   _renderGroupMenu() {
     const group = this._config?.group;
     if (!group) return html``;
+
+    if (this._showCreate) {
+      const parentLabel = `sub-group of "${group.name}"`;
+      return html`
+        <div class="create-form">
+          <div style="font-size:0.75rem; color:#555; margin-bottom:2px;">New ${parentLabel}</div>
+          <input
+            type="text"
+            placeholder="Sub-group name"
+            .value=${this._name}
+            @input=${(e) => { this._name = e.target.value; }}
+            @keydown=${(e) => { if (e.key === 'Enter') this._saveNewGroup(); if (e.key === 'Escape') this._close(); }}
+            autofocus
+          />
+          <div class="swatch-row">
+            ${GROUP_COLORS.map((c) => html`
+              <button
+                class="swatch ${this._color === c ? 'selected' : ''}"
+                style="background:${c}"
+                @click=${() => { this._color = c; }}
+                title="${c}"
+              ></button>
+            `)}
+          </div>
+          <div class="create-actions">
+            <button class="btn" @click=${this._close.bind(this)}>Cancel</button>
+            <button class="btn primary" @click=${this._saveNewGroup.bind(this)}>Create</button>
+          </div>
+        </div>
+      `;
+    }
+
     return html`
+      <button class="menu-item" @click=${() => this._startCreateGroup(group.id)}>➕ Add sub-group</button>
       <button class="menu-item" @click=${this._renameGroup.bind(this)}>✏️ Rename group</button>
       <div class="menu-separator"></div>
       <button class="menu-item danger" @click=${this._deleteGroup.bind(this)}>🗑 Delete group</button>

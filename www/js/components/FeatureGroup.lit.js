@@ -33,6 +33,12 @@ export class FeatureGroup extends LitElement {
     end:          { type: String },
     featureCount: { type: Number },
     collapsed:    { type: Boolean, reflect: true },
+    /**
+     * Nesting depth (0 = top-level group, 1 = sub-group, etc.).
+     * Used for visual indentation: sub-groups are visually inset on the
+     * left and rendered slightly smaller so hierarchy is immediately clear.
+     */
+    depth:        { type: Number },
   };
 
   constructor() {
@@ -42,6 +48,7 @@ export class FeatureGroup extends LitElement {
     this.end = null;
     this.featureCount = 0;
     this.collapsed = false;
+    this.depth = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -188,28 +195,34 @@ export class FeatureGroup extends LitElement {
     if (!this.group) return html``;
 
     const color = this.group.color || '#78909c';
-    // Use an opaque background color so the pill reads strongly on the board.
-    // The border uses a nearly-opaque rgba derived from the same colour.
-    const bg = color;
+    const depth = this.depth ?? 0;
+    // Sub-groups use a semi-transparent fill so they're visually subordinate.
+    // Top-level groups are fully opaque.
+    const bg = depth === 0 ? color : this._rgba(color, 0.72);
     const border = `1.5px solid ${this._rgba(color, 0.9)}`;
 
+    // Each depth level adds a left indent inside the pill (the absolute position
+    // on the board stays date-driven, so this is purely a visual inset).
+    const INDENT_PX = 14;
+    const leftInset = depth * INDENT_PX;
+
     const dateSpan = (this.start && this.end)
-      ? `${this._fmtDate(this.start)} – ${this._fmtDate(this.end)}`
+      ? `${this._fmtDate(this.start)} \u2013 ${this._fmtDate(this.end)}`
       : '';
 
     return html`
       <div
         class="group-card"
         part="group-card"
-        style="background:${bg}; border:${border};"
+        style="background:${bg}; border:${border}; margin-left:${leftInset}px; font-size:${depth > 0 ? '0.72rem' : '0.78rem'};"
         @click=${this._onToggle}
         @contextmenu=${this._onContextMenu}
         role="button"
         aria-expanded=${!this.collapsed}
         aria-label="${this.group.name} group, ${this.featureCount} items"
-        title="${this.group.name}${dateSpan ? ' · ' + dateSpan : ''}"
+        title="${this.group.name}${dateSpan ? ' \u00b7 ' + dateSpan : ''}"
       >
-        <span class="chevron" aria-hidden="true">▾</span>
+        <span class="chevron" aria-hidden="true">\u25be</span>
         <span class="group-name">${this.group.name}</span>
         ${this.featureCount > 0
           ? html`<span class="badge">${this.featureCount}</span>`
