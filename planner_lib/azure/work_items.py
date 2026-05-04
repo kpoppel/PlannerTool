@@ -211,11 +211,18 @@ class WorkItemOperations:
         wit = self.client.wit_client
 
         ops = []
-        # Use "replace" so the PATCH works for both setting and clearing (null) values.
+        # Use "remove" to clear a field (None value); "replace" to set a new value.
+        # ADO rejects op:replace with a null value, so we must use op:remove to clear.
         if start is not _UNSET:
-            ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
+            if start is None:
+                ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate"})
+            else:
+                ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.StartDate", "value": start})
         if end is not _UNSET:
-            ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
+            if end is None:
+                ops.append({"op": "remove", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate"})
+            else:
+                ops.append({"op": "replace", "path": "/fields/Microsoft.VSTS.Scheduling.TargetDate", "value": end})
 
         if not ops:
             return None
@@ -230,7 +237,8 @@ class WorkItemOperations:
 
         Args:
             work_item_id:   Work item ID
-            iteration_path: New ``System.IterationPath`` value, or None to clear.
+            iteration_path: New ``System.IterationPath`` value, or None to reset
+                            to the project root iteration.
 
         Returns:
             Azure SDK response object.
@@ -240,6 +248,12 @@ class WorkItemOperations:
 
         assert self.client.conn is not None
         wit = self.client.wit_client
+
+        if iteration_path is None:
+            # System.IterationPath is required in ADO — reset to the project root
+            # (project name only), which is ADO's equivalent of "no sprint assigned".
+            work_item = wit.get_work_item(id=work_item_id, fields=["System.TeamProject"])
+            iteration_path = work_item.fields.get("System.TeamProject", "")
 
         ops = [{"op": "replace", "path": "/fields/System.IterationPath", "value": iteration_path}]
         try:
