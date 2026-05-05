@@ -296,6 +296,7 @@ def _build_services(
                 project=project,
                 wiki_id=wiki_id,
                 page_path=page_path,
+                project_repository=container.get("project_repository"),
             )
 
         return container.get("user_data_backend")

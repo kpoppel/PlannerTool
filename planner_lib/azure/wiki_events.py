@@ -32,7 +32,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential
 
@@ -68,12 +68,16 @@ class AzureWikiEventBackend:
         organization_url: str,
         project: str,
         wiki_id: str,
+        project_repository: Any,
         page_path: str = "/PlannerTool/Events",
     ) -> None:
         self._organization_url = organization_url
         self._project = project
         self._wiki_id = wiki_id
         self._page_path = page_path
+        # Required ProjectRepository injected via DI so the backend can
+        # resolve human-readable plan names from plan IDs when rendering.
+        self._project_repository = project_repository
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -182,6 +186,16 @@ class AzureWikiEventBackend:
                 pid = ev.get("plan_id", "")
                 plans.setdefault(pid, []).append(ev)
 
+            # Build a mapping of plan_id -> human-readable name from the
+            # injected ProjectRepository. This backend requires the
+            # repository so name resolution is authoritative.
+            id_to_name: dict[str, str] = {}
+            for p in self._project_repository.get_project_map():
+                pid = p.get("id")
+                name = p.get("name") or ""
+                if pid:
+                    id_to_name[pid] = name
+
             # Render one table per plan, plans sorted alphabetically by plan_id
             for plan_id in sorted(plans.keys()):
                 plan_events = sorted(
@@ -189,8 +203,8 @@ class AzureWikiEventBackend:
                     key=lambda e: e.get("date", ""),
                     reverse=True,  # newest first
                 )
-                heading = re.sub(r'^project-', '', plan_id)
-                heading = heading[:1].upper() + heading[1:] if heading else plan_id
+                # Use the authoritative project name from the repository.
+                heading = id_to_name.get(plan_id, plan_id)
                 lines += [
                     f"## {heading}",
                     "",

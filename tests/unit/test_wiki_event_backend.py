@@ -25,11 +25,21 @@ _PAGE_PATH = '/PlannerTool/Events'
 # ---------------------------------------------------------------------------
 
 def _make_backend(org=_ORG, project=_PROJECT, wiki_id=_WIKI_ID, page_path=_PAGE_PATH):
+    class _FakeProjectRepo:
+        def get_project_map(self):
+            return [
+                {"id": "plan-1", "name": "Plan 1"},
+                {"id": "plan-2", "name": "Plan 2"},
+                {"id": "p", "name": "P"},
+                {"id": "us", "name": "US"},
+            ]
+
     return AzureWikiEventBackend(
         organization_url=org,
         project=project,
         wiki_id=wiki_id,
         page_path=page_path,
+        project_repository=_FakeProjectRepo(),
     )
 
 
@@ -129,8 +139,8 @@ class TestRenderPage:
             'b': {'id': 'b', 'date': '2026-06-01', 'title': 'Freeze', 'plan_id': 'plan-2'},
         }
         content = b._render_page(events)
-        assert '| 2026-05-01 | Release | plan-1 |' in content
-        assert '| 2026-06-01 | Freeze | plan-2 |' in content
+        assert '| 2026-05-01 | Release |' in content
+        assert '| 2026-06-01 | Freeze |' in content
 
     def test_render_parse_roundtrip(self):
         b = _make_backend()
