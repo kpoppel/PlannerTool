@@ -44,6 +44,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     _newDates: { type: Object, state: true },
     _newTitles: { type: Object, state: true },
     _saving: { type: Boolean, state: true },
+    _addOpenPlanIds: { type: Object, state: true },
   };
 
   constructor() {
@@ -57,6 +58,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._newDates = {};
     this._newTitles = {};
     this._saving = false;
+    this._addOpenPlanIds = {}; // tracks which plan add-rows are expanded
   }
 
   static styles = css`
@@ -175,6 +177,29 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       color: #1565c0;
       padding: 1px 5px;
       border-radius: 8px;
+    }
+
+    .add-toggle-btn {
+      background: transparent;
+      border: 1px solid #aaa;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 14px;
+      color: #666;
+      flex: 0 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .add-toggle-btn:hover {
+      background: #e3f2fd;
+      border-color: #5481e6;
+      color: #1565c0;
     }
 
     /* ---- event rows ---- */
@@ -427,6 +452,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     if (created) {
       this._newDates = { ...this._newDates, [planId]: '' };
       this._newTitles = { ...this._newTitles, [planId]: '' };
+      this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
       await this.refresh();
       bus.emit(PlanEventEvents.CHANGED);
     }
@@ -484,14 +510,24 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   _renderPlanSection(plan) {
-    const planEvents = this.events.filter((ev) => ev.plan_id === plan.id);
+    const planEvents = this.events
+      .filter((ev) => ev.plan_id === plan.id)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)); // newest first
     const newDate = this._newDates[plan.id] || '';
     const newTitle = this._newTitles[plan.id] || '';
+    const addOpen = !!this._addOpenPlanIds[plan.id];
     return html`
       <div class="plan-section">
         <div class="plan-header">
           <span class="plan-color-dot" style="background:${plan.color}"></span>
           <span class="plan-name">${plan.name}</span>
+          <button
+            class="add-toggle-btn"
+            title="Add event"
+            @click=${() => {
+              this._addOpenPlanIds = { ...this._addOpenPlanIds, [plan.id]: !addOpen };
+            }}
+          >+</button>
           <span class="event-count-badge">${planEvents.length}</span>
         </div>
 
@@ -501,33 +537,34 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
             : planEvents.map((ev) => this._renderEventRow(ev))}
         </div>
 
-        <div class="add-row">
-          <input
-            type="date"
-            .value=${newDate}
-            @input=${(e) => {
-              this._newDates = { ...this._newDates, [plan.id]: e.target.value };
-            }}
-            title="Event date"
-          />
-          <input
-            type="text"
-            placeholder="Title…"
-            .value=${newTitle}
-            @input=${(e) => {
-              this._newTitles = { ...this._newTitles, [plan.id]: e.target.value };
-            }}
-            @keydown=${(e) => e.key === 'Enter' && this._addEvent(plan.id)}
-            title="Event title"
-          />
-          <button
-            class="add-btn"
-            ?disabled=${this._saving || !newDate || !newTitle}
-            @click=${() => this._addEvent(plan.id)}
-          >
-            Add
-          </button>
-        </div>
+        ${addOpen ? html`
+          <div class="add-row">
+            <input
+              type="date"
+              .value=${newDate}
+              @input=${(e) => {
+                this._newDates = { ...this._newDates, [plan.id]: e.target.value };
+              }}
+              title="Event date"
+            />
+            <input
+              type="text"
+              placeholder="Title…"
+              .value=${newTitle}
+              @input=${(e) => {
+                this._newTitles = { ...this._newTitles, [plan.id]: e.target.value };
+              }}
+              @keydown=${(e) => e.key === 'Enter' && this._addEvent(plan.id)}
+              title="Event title"
+            />
+            <button
+              class="add-btn"
+              ?disabled=${this._saving || !newDate || !newTitle}
+              @click=${() => this._addEvent(plan.id)}
+            >
+              Add
+            </button>
+          </div>` : ''}
       </div>
     `;
   }
