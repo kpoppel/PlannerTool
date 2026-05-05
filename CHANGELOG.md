@@ -14,10 +14,12 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.0.1] - unreleased
+## [v4.0.1] - 2026-05-06
 
 ### Added
 ### Changed
+- Improvements to help documentation.
+
 ### Fixed
 - Admin interface project module would not load project config helper
 - Events wiki used project ID for headings in tables. Must use the project name instead.
