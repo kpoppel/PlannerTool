@@ -189,8 +189,10 @@ class AzureWikiEventBackend:
                     key=lambda e: e.get("date", ""),
                     reverse=True,  # newest first
                 )
+                heading = re.sub(r'^project-', '', plan_id)
+                heading = heading[:1].upper() + heading[1:] if heading else plan_id
                 lines += [
-                    f"## {plan_id}",
+                    f"## {heading}",
                     "",
                     "| Date | Title |",
                     "|------|-------|",
