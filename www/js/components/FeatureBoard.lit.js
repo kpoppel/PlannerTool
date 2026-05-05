@@ -710,8 +710,8 @@ class FeatureBoard extends LitElement {
             const pos = computePosition(feature, months) || {};
             renderList.push({
               feature,
-              left: pos.left ?? feature._left ?? feature.left,
-              width: pos.width ?? feature._width ?? feature.width,
+              left: pos.left ?? 0,
+              width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * laneHeight(),
               teams: state.teams,
               condensed: state._viewService.condensedCards,
@@ -809,8 +809,8 @@ class FeatureBoard extends LitElement {
           const pos = computePosition(feature, months) || {};
           renderList.push({
               feature,
-              left: pos.left ?? feature._left ?? feature.left,
-              width: pos.width ?? feature._width ?? feature.width,
+              left: pos.left ?? 0,
+              width: pos.width ?? 0,
               top: this._overlayOffset + laneIndex * laneHeight(),
             teams: state.teams,
             condensed: state._viewService.condensedCards,
