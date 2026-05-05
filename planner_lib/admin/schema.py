@@ -324,12 +324,10 @@ _SCHEMAS: dict[str, Any] = {
                 'properties': {
                     'organization_url': {
                         'type': 'string',
-                        'title': 'Organization URL',
+                        'title': 'Organization Name',
                         'description': (
-                            'Azure DevOps organization name or URL '
-                            '(e.g. "MyCompany" or "https://dev.azure.com/MyCompany"). '
-                            'Stored here independently of the work-item backend so that '
-                            'a mock or static task backend can coexist with a live wiki.'
+                            'Azure DevOps organization name (e.g. "MyCompany"). '
+                            'This is usually the same as the task ADO backend but can be a different organization.'
                         ),
                         'minLength': 1,
                     },

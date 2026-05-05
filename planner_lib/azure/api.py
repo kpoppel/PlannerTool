@@ -263,7 +263,7 @@ def _live_client_or_raise(org_url: str, pat: str):
             status_code=400,
             detail={
                 'error': 'missing_org_url',
-                'message': 'Organization URL is required. Set it in the Azure DevOps Wiki settings.',
+                'message': 'Organization Name is required. Set it in the Azure DevOps Wiki settings.',
             },
         )
     from planner_lib.azure.AzureClient import AzureClient

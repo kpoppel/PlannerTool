@@ -407,7 +407,7 @@ export class DataSources extends LitElement {
 
     // ADO backend validation
     if (this._adoBackendType === 'ado_live' && !this._orgUrl.trim())
-      errs.orgUrl = 'Organization URL is required for Live ADO backend';
+      errs.orgUrl = 'Organization Name is required for Live ADO backend';
     if (this._adoBackendType === 'ado_mock_fixture' && !this._fixtureDir.trim())
       errs.fixtureDir = 'Fixture data directory is required';
     if (this._adoBackendType === 'ado_static' && !this._staticDataPath.trim())
@@ -415,7 +415,7 @@ export class DataSources extends LitElement {
 
     // Plan Events validation
     if (this._eventsBackend === 'ado_wiki') {
-      if (!this._wikiOrgUrl.trim())   errs.evtOrgUrl   = 'Organization URL is required';
+      if (!this._wikiOrgUrl.trim())   errs.evtOrgUrl   = 'Organization Name is required';
       if (!this._wikiProject.trim()) errs.evtProject  = 'ADO Project is required';
       if (!this._wikiId.trim())      errs.evtWikiId   = 'Wiki ID is required';
       if (!this._wikiPagePath.trim()) errs.evtPagePath = 'Page Path is required';

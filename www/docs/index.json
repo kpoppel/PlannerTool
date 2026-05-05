@@ -1,8 +1,7 @@
 [
   { "title": "Introduction", "file": "intro.md", "tags": ["overview","help"] },
-  { "title": "Getting Started", "file": "getting_started.md", "tags": ["overview","help"] },
+  { "title": "Getting Started", "file": "getting_started.md", "tags": ["config", "setup", "overview","help"] },
   { "title": "Quick Usage", "file": "usage.md", "tags": ["howto","examples"] },
-  { "title": "Configuration", "file": "configuration.md", "tags": ["config","setup"] },
   { "title": "Best Practices", "file": "best_practices.md", "tags": ["azure","best-practices"] },
   { "title": "Top Menu & View Options", "file": "topmenu.md", "tags": ["topmenu","view"] },
   { "title": "Sidebar (Filters & Options)", "file": "sidebar.md", "tags": ["sidebar","filters"] },

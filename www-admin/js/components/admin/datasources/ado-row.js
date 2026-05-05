@@ -100,8 +100,8 @@ export function renderAdoSubForm(comp, type, errs) {
     return html`
       <div class="sub-form">
         <div class="field full">
-          <label>Organization URL *</label>
-          <div class="desc">Azure DevOps organization name or URL (e.g. "MyCompany" or "https://dev.azure.com/MyCompany").</div>
+          <label>Organization Name *</label>
+          <div class="desc">Azure DevOps organization name (e.g. "MyCompany").</div>
           <input type="text"
             class=${errs.orgUrl ? 'error' : ''}
             .value=${comp._orgUrl}

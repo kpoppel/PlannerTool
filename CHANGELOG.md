@@ -8,11 +8,19 @@ and this project should strive to adhere to [Semantic Versioning](https://semver
 ---
 
 Template - do not change :
-## [unreleased]
+## [v] - unreleased
 ### Added
 ### Changed
 ### Fixed
 ---
+
+## [v4.0.1] - unreleased
+
+### Added
+### Changed
+### Fixed
+- Admin interface project module would not load project config helper
+- Events wiki used project ID for headings in tables. Must use the project name instead.
 
 ## [v4.0.0] - 2026-05-05
 

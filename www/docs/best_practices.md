@@ -4,13 +4,24 @@ This page describes recommended conventions and practices for using Azure DevOps
 
 ## Purpose
 
-PlannerTool reads work items from Azure DevOps and interprets states, types, area paths and links.
-The tool adds consistent conventions in Azure DevOps to produce more useful planning results. While
-Azure DevOps exert a 'no rules' policy for what can be linked where this tool is an opinionated
-frontend strengthening the hierarchical relation to planning and helping division of concerns without
-the need for multiple dashboards or queries to be useful.
+PlannerTool reads work items from Azure DevOps (or other backends to come) and interprets states, types, area paths and links.
+The tool adds consistent conventions on top of Azure DevOps to produce more useful planning results. While Azure DevOps exert a 'no rules' policy for what can be linked where this tool is an opinionated frontend strengthening the hierarchical relation to planning and helping division of concerns without the need for multiple dashboards or queries to be useful. The tool does not try to replace ADO, but wants to treat ADO as just a database you store things on, while keeping data consistent so you _can_ visit ADO and use it without this tool.
 
 Below you find guidance on the target conventions supported by the tool.
+
+## Hierarchy guidance
+
+Use hierarchy to express delivery scope and team ownership:
+
+- Epics: high-level product deliveries spanning multiple teams.
+- Features/Enablers: team-level deliverables that contribute to an Epic.
+- Stories/Tasks/Bugs: team execution items under Features.
+
+Using the hierarchy makes is clear where responsibility lies and whom to work with to understand scope and acceptance of work.
+
+Do not:
+- Mix semantic levels. It is possible but not encouraged. For example, make an Epic a child of another Epic in a different plan.
+- Use task types as buckets for holding work.  Make every hierachy level count towards actual work needing to be done. This tool considers it bad practice to host "--- next Sprint below here ---" or "Candidates for next release" type buckets. These are logical  groups, not work to scope, plan and complete in itself.
 
 ## Use of states
 
@@ -38,28 +49,21 @@ Another set of states could be this:
 Guidance:
 - Avoid using state transitions for unrelated metadata (labels, ad-hoc flags) — keep states focused.
 
-## Hierarchy guidance
-
-Use hierarchy to express delivery scope and team ownership:
-
-- Epics: high-level product deliveries spanning multiple teams.
-- Features/Enablers: team-level deliverables that contribute to an Epic.
-- Stories/Tasks/Bugs: team execution items under Features.
-
-Do not mix semantic levels (for example, make an Epic a child of another Epic in a different product path).
-The PlannerTool is not intended to work with tasks below the "Feature" level. Azure DevOps have sprint boards
-which does the job just fine.
-
 ## Area path recommendations
 
-- Use one area path per product to group Epics for that product.
-- Use separate area/backlog paths for team backlogs when teams need independent planning.
-- Prefer a stable area structure; frequent reparenting reduces the usefulness of historical planning data.
+- Use one area path/plan per product to group Epics for that product.
+- Use separate area/backlog paths/plans for team backlogs when teams need independent planning.
+- Prefer a stable area/plan structure; frequent reparenting reduces the usefulness of historical planning data.
 
 ## Capacity and allocations
 
-- Record capacity allocations as team percentages per work item when teams share work.
-- For long-running items, avoid large mid-item spikes; split those into separate items to model capacity accurately.
+This tool considers team capacity in percent.  Not man-hours, FTEs, Story Points, or Velocity.  Experience tells that engineers clearly are eternal optimists, and that _any_ estimate given in directly translatable numbers _will_ be misused by people who does not understand that development is messy, evolving, and emergent.
+
+This tool selects a method of allocating a _percentage_ of a team to a task as a netural measure of how much effort a team of any size would need to set aside, given the team is stable in size.  Using this measure naturally gives a team some slack to absorb emergent development challenges while at the same time allowing planners to work with a measure of capacity as a _derived_ number, given a team size, and a company defined standard number for active project hours per month.
+
+So:
+- Record capacity allocations as team percentages per work item when teams share work.  Multiple teams can allocate effort on a task.
+- For long-running items, avoid large mid-item spikes; split those into separate items to model capacity more accurately.
 - Prefer to target effort at well defined time scales:
   - Epics (cross team effort) should be preferred to run its lifecycle over maximum 3 months
   - Features/Enablers (single team) should be preferred to run its lifecycle over maximum 1 month.
@@ -72,7 +76,3 @@ wildly varying tasks.  The team can stop trying to estimate work and just count 
 
 - Keep states, types and area paths documented in your team handbook so everyone follows the same conventions.
 - Use PlannerTool's filters and scenarios to validate conventions before pushing changes back to Azure DevOps.
-
-## Further reading
-
-See the Configuration and Scenarios pages in this Help index for steps on connecting PlannerTool and saving scenarios.

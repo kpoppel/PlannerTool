@@ -207,8 +207,8 @@ function _renderWikiSubForm(comp, errs) {
   return html`
     <div class="sub-form">
       <div class="field full">
-        <label>Organization URL *</label>
-        <div class="desc">Azure DevOps organization name or URL (e.g. "MyCompany" or "https://dev.azure.com/MyCompany"). Stored here independently of the work-item backend.</div>
+        <label>Organization Name *</label>
+        <div class="desc">Azure DevOps organization name (e.g. "MyCompany"). Typically the same as the task ADO backend.</div>
         <input type="text"
           class=${errs.evtOrgUrl ? 'error' : ''}
           .value=${comp._wikiOrgUrl}
