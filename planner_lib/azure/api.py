@@ -310,6 +310,7 @@ async def azure_browse_area_paths(
     azure_svc = resolve_service(request, 'azure_client')
     with azure_svc.connect(pat) as client:
         area_paths = client.get_area_paths(project)
+    return {'area_paths': area_paths}
 
 
 @browse_router.get("/wikis")

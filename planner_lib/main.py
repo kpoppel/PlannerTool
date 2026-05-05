@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple, cast
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
@@ -423,7 +423,10 @@ def _build_app(
     async def http_exception_handler(request, exc):
         if exc.status_code == 401:
             return access_denied_response(request, exc.detail)
-        raise exc
+        # For non-401 HTTP exceptions, return the error detail as JSON
+        # so clients receive the intended status code and payload
+        detail = exc.detail if hasattr(exc, 'detail') else {'error': 'http_error'}
+        return JSONResponse(status_code=exc.status_code, content=detail)
 
     @app.exception_handler(StarletteHTTPException)
     async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):

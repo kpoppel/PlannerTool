@@ -474,7 +474,10 @@ export class AdminProjects extends BaseConfigComponent {
     this._azureProjects = [];
     this._azureAreaPaths = [];
     this._selectedAzureProject = '';
-    const result = await adminProvider.browseAzureProjects();
+    // Resolve organization URL from saved ADO config and pass it explicitly
+    const adoCfg = await adminProvider.getAdo();
+    const org = (adoCfg && adoCfg.organization_url) || '';
+    const result = await adminProvider.browseAzureProjects(org);
     this._azureBrowseLoading = false;
     if (result.error) {
       this._azureBrowseError = result.error;
