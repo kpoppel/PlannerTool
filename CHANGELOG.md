@@ -16,6 +16,12 @@ Template - do not change :
 
 ## [v4.0.0] - unreleased
 
+- refactor: split FeatureBoard.lit.js (1483→939 lines) and GroupContextMenu.lit.js (533→452 lines) by extracting CSS, group layout, and init wiring into focused modules
+- fix: groups now show for all selected plans in multi-plan (swimlane) mode; standard mode scoped to selected plans only; plan cache evicted on deselect; hasPlanLoaded prevents reloading cached (pending) groups
+- feat: groups displayed in all modes — swimlane (2+ plans), packed, and single-plan normal; pack-per-group in packed mode; extracted _buildGroupBandItems reusable helper
+- feat: sub-group support — right-click a group pill to add a nested sub-group; group tree renders recursively with depth-based indentation; GroupService.removeLocal/deleteGroup cascade sub-group deletion
+- feat: "Update group" replaces "Rename group" — inline form allows editing name, color, and parent group (cycle-safe parent selector)
+
 This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. The server was made async in several places, allowing multiple users to get responsiveness when accessing the tool concurrently.
 
 On the user side, several new features are added: packed view which oacks cards on the same line (on cost of reducing title view), plan swimlanes makes it easier to identify the cards belonging to a specific plan. This feature changes the dynamic of sorting by rank and date as this happens per plan now.
@@ -28,6 +34,7 @@ Migrations `0019` (display-mode-field), `0020` (rename flags), `0021` (config �
 After the migration, the data/config/*.yml files can be removed.
 
 ### Added
+- **Work item vertical offset** — feature cards are automatically pushed down by the overlay row height when markers or events plugins are active, preventing tag overlap with the topmost cards.
 - **Pluggable backend system** — a `BackendRegistry` selects the active data source at startup from a priority-ordered list. Adding a new backend (e.g. Jira) now requires changes in one file only. Built-in backends: live Azure DevOps, static YAML/JSON file (offline mode), fixture replay (testing), and in-process data generator (demo mode).
 - **Configurable cache TTLs** — cache lifetimes are now per-domain and configurable in `server_config.yml` under `cache.ttls` (in minutes). Defaults: tasks 30 min, history 24 h, teams/plans 4 h, markers 2 h, iterations 8 h. Set to `0` for no expiry.
 - **Plan events** — `EventBackend` protocol, `UserDataBackend` implementation, and `EventRepository` follow the same repository pattern as scenarios/views. REST API at `/api/events` (CRUD, filterable by `plan_id`).

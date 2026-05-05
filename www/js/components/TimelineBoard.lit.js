@@ -69,6 +69,11 @@ class TimelineBoard extends LitElement {
       const mod_f = await import('./FeatureBoard.lit.js');
       await mod_f.initBoard();
 
+      // Mount the singleton group context menu and wire up right-click handlers.
+      const { GroupContextMenu } = await import('./GroupContextMenu.lit.js');
+      GroupContextMenu.init();
+      this._initGroupContextMenu(GroupContextMenu);
+
       // Position today-line once months are available, and re-position on scale changes
       this._onMonthsUpdated = (months) => this._positionTodayLine(months);
       bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
@@ -82,6 +87,9 @@ class TimelineBoard extends LitElement {
   disconnectedCallback() {
     const scroll = this.shadowRoot?.querySelector('#scroll-container');
     if (scroll) scroll.removeEventListener('mousedown', this._onMouseDown);
+    if (scroll && this._onBoardContextMenu) scroll.removeEventListener('contextmenu', this._onBoardContextMenu);
+    if (this._boardArea && this._onGroupContextMenu) this._boardArea.removeEventListener('group-context-menu', this._onGroupContextMenu);
+    if (this._boardArea && this._onFeatureContextMenu) this._boardArea.removeEventListener('feature-context-menu', this._onFeatureContextMenu);
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
     document.removeEventListener('mousemove', this._onProximityMove);
@@ -91,8 +99,58 @@ class TimelineBoard extends LitElement {
     super.disconnectedCallback();
   }
 
-  _positionTodayLine(months) {
-    const line = this.shadowRoot?.querySelector('#today-line');
+  // ---------------------------------------------------------------------------
+  // Group context menu wiring
+  // ---------------------------------------------------------------------------
+
+  _initGroupContextMenu(GroupContextMenu) {
+    const scroll = this.shadowRoot?.querySelector('#scroll-container');
+    const boardArea = this.shadowRoot?.querySelector('#board-area');
+    this._boardArea = boardArea;
+
+    // Right-click on the board background (not on a feature card or group pill)
+    this._onBoardContextMenu = (e) => {
+      // feature-card-lit and feature-group both call e.preventDefault() in their
+      // own contextmenu handlers.  Event retargeting at shadow-DOM boundaries means
+      // e.target is the shadow-host (feature-board), not the inner element, so
+      // closest() checks are unreliable here.  Checking defaultPrevented is the
+      // correct way to detect that an inner handler already claimed this event.
+      if (e.defaultPrevented) return;
+      e.preventDefault();
+      const selectedPlans = state.projects.filter((p) => p.selected);
+      const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
+      GroupContextMenu.show({ type: 'board', planId, clientX: e.clientX, clientY: e.clientY });
+    };
+    if (scroll) scroll.addEventListener('contextmenu', this._onBoardContextMenu);
+
+    // group-context-menu bubbles up from FeatureBoard (right-click on group pill)
+    this._onGroupContextMenu = (e) => {
+      e.stopPropagation();
+      // The synthetic "Ungrouped" band is not a real persisted group — skip menu.
+      if (String(e.detail.group?.id || '').startsWith('__ungrouped__')) return;
+      GroupContextMenu.show({
+        type: 'group',
+        group: e.detail.group,
+        clientX: e.detail.clientX,
+        clientY: e.detail.clientY,
+      });
+    };
+    if (boardArea) boardArea.addEventListener('group-context-menu', this._onGroupContextMenu);
+
+    // feature-context-menu bubbles up from FeatureCard (right-click on a feature card)
+    this._onFeatureContextMenu = (e) => {
+      e.stopPropagation();
+      GroupContextMenu.show({
+        type: 'feature',
+        feature: e.detail.feature,
+        clientX: e.detail.clientX,
+        clientY: e.detail.clientY,
+      });
+    };
+    if (boardArea) boardArea.addEventListener('feature-context-menu', this._onFeatureContextMenu);
+  }
+
+  _positionTodayLine(months) {    const line = this.shadowRoot?.querySelector('#today-line');
     if (!line) return;
     const x = calcTodayX(months);
     if (x === null) {

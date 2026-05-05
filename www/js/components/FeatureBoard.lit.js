@@ -1,4 +1,4 @@
-import { LitElement, html, css } from '../vendor/lit.js';
+import { LitElement, html } from '../vendor/lit.js';
 import {
   ProjectEvents,
   TeamEvents,
@@ -7,8 +7,10 @@ import {
   FilterEvents,
   ScenarioEvents,
   ViewEvents,
+  GroupEvents,
   AppEvents,
   UIEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
@@ -20,9 +22,14 @@ import {
   isSwimlaneMode,
   buildSwimlaneList,
   assignFeatureToSwimlane,
-  SWIMLANE_LABEL_WIDTH_PX,
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
+import { groupService } from '../services/GroupService.js';
+import { featureBoardStyles } from './FeatureBoard.styles.js';
+import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
+import './FeatureGroup.lit.js';
+export { initBoard } from './FeatureBoard.init.js';
+
 class FeatureBoard extends LitElement {
   static properties = {
     features: { type: Array },
@@ -36,184 +43,13 @@ class FeatureBoard extends LitElement {
     // Swimlane geometry — populated by renderFeatures() when swimlane mode is active.
     // Each entry: { id, name, color, type, topPx, heightPx }
     this._swimlanes = [];
+    // Set of group IDs the user has collapsed.
+    this._collapsedGroups = new Set();
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
+    this._overlayOffset = 0;
   }
 
-  static styles = css`
-    :host {
-      display: block;
-      /* No overflow — scroll is handled by the parent #scroll-container in TimelineBoard.
-         Width and height are set programmatically to the full content dimensions so that
-         plugin SVG overlays inside the shadow root can use position:absolute & inset:0. */
-      position: relative;
-      overflow: visible;
-      padding: 0;
-      /* No background — stripes are on #board-area which spans the full content width.
-         feature-board is transparent so the parent background shows through. */
-      background: transparent;
-    }
-
-    :host(.scenario-mode) {
-      /* Scenario mode class propagated from initBoard; actual color is on #board-area */
-    }
-
-    /* Swimlane background band — coloured translucent strip spanning full board width */
-    .swimlane-band {
-      position: absolute;
-      left: 0;
-      right: 0;
-      pointer-events: none;
-      box-sizing: border-box;
-      border-top: 1px solid rgba(255, 255, 255, 0.07);
-    }
-
-    /*
-     * Sticky label column — stays at the left edge of the viewport while the user
-     * scrolls the timeline horizontally, but scrolls vertically with the board.
-     *
-     * Only "left: 0" is specified (no "top") so stickiness applies in the horizontal
-     * direction only. Adding "top: 0" would pin the container to the viewport top,
-     * making absolute children appear at fixed viewport positions instead of their
-     * correct board positions.
-     *
-     * height:0 + overflow:visible means the container occupies no vertical space in
-     * the flow but its absolutely-positioned children are still rendered over the board.
-     */
-    .swimlane-labels {
-      position: sticky;
-      left: 0;
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      height: 0;
-      overflow: visible;
-      z-index: 20;
-      pointer-events: none;
-    }
-
-    .swimlane-label-slot {
-      position: absolute;
-      left: 0;
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      overflow: visible;
-    }
-
-    /* Individual plan/team name label */
-    .swimlane-label {
-      position: sticky;
-      left: 0;
-      top: calc(var(--swimlane-label-sticky-top, 24px) + 6px);
-      width: ${SWIMLANE_LABEL_WIDTH_PX}px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-height: 28px;
-      padding: 6px 8px 6px 10px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      color: rgba(255, 255, 255, 0.9);
-      box-sizing: border-box;
-      border-left: 4px solid;
-      /* Semi-transparent dark background for legibility over the board stripes */
-      background: rgba(0, 0, 0, 0.22);
-      backdrop-filter: blur(2px);
-      transform: translateY(calc(-50% + 15px));
-      pointer-events: auto;
-    }
-
-    .swimlane-label-text {
-      min-width: 0;
-      flex: 1 1 auto;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .swimlane-origin-indicator {
-      flex: 0 0 auto;
-      padding: 1px 5px;
-      border-radius: 999px;
-      font-size: 0.62rem;
-      line-height: 1.2;
-      font-weight: 700;
-      color: rgba(255, 255, 255, 0.92);
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      cursor: help;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-wrap {
-      position: static;
-      display: inline-flex;
-      align-items: center;
-      flex: 0 0 auto;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-tooltip {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      display: none;
-      min-width: 170px;
-      max-width: 280px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: rgba(25, 26, 30, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-      backdrop-filter: blur(4px);
-      z-index: 40;
-      pointer-events: auto;
-    }
-
-    .swimlane-origin-wrap:hover .swimlane-origin-tooltip,
-    .swimlane-origin-wrap:focus-within .swimlane-origin-tooltip {
-      display: block;
-    }
-
-    .swimlane-origin-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      color: rgba(255, 255, 255, 0.92);
-      font-size: 0.68rem;
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .swimlane-origin-item + .swimlane-origin-item {
-      margin-top: 4px;
-    }
-
-    .swimlane-origin-swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      box-sizing: border-box;
-      flex: 0 0 auto;
-    }
-
-    .swimlane-origin-name {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    /* Expanded-plan labels (unselected projects pulled in by expansion) are dimmer */
-    .swimlane-label.type-expanded-plan {
-      opacity: 0.75;
-      font-weight: 600;
-    }
-
-    /* Team labels use italic to distinguish them from plan labels */
-    .swimlane-label.type-team {
-      font-style: italic;
-    }
-  `;
+  static styles = featureBoardStyles;
 
   connectedCallback() {
     super.connectedCallback();
@@ -222,6 +58,13 @@ class FeatureBoard extends LitElement {
     }
     window.addEventListener('resize', this._handleViewportResize);
     this._updateSwimlaneLabelStickyTop();
+    this._onOverlayOffsetChanged = ({ offset }) => {
+      if (offset !== this._overlayOffset) {
+        this._overlayOffset = offset;
+        this.renderFeatures();
+      }
+    };
+    bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
   }
 
   _updateSwimlaneLabelStickyTop() {
@@ -307,7 +150,6 @@ class FeatureBoard extends LitElement {
     if (!this.features?.length && !this._swimlanes?.length) {
       return html`<slot></slot>`;
     }
-  // style="top:${s.topPx}px; height:${s.heightPx}px; background:${s.color}; opacity:0.15; border-top: 2px solid color-mix(in srgb, ${s.color} 50%, transparent);"
 
     return html`
       ${this._swimlanes.length
@@ -356,24 +198,60 @@ class FeatureBoard extends LitElement {
             </div>
           `
         : ''}
-      ${this.features.map(
-        (featureObj) =>
-          html`<feature-card-lit
-            .feature=${featureObj.feature}
-            .bus=${bus}
-            .teams=${featureObj.teams}
-            .condensed=${featureObj.condensed}
-            .project=${featureObj.project}
-            .hideGhostTitle=${!!featureObj.hideGhostTitle}
-            style="position:absolute; left:${featureObj.left}px; top:${featureObj.top}px; width:${featureObj.width}px"
-          ></feature-card-lit>`
-      )}
+      ${this.features.map((item) => {
+        const itemHeight = item.isGroup ? 28 : laneHeight();
+        if (item.isGroup) {
+          // Render as <feature-group> web component — it handles expand/collapse,
+          // right-click context, and its own visual styling.
+          return html`<feature-group
+            .group=${item.groupObj}
+            .start=${item.start}
+            .end=${item.end}
+            .featureCount=${item.featureCount}
+            .collapsed=${this._collapsedGroups.has(String(item.id))}
+            .depth=${item.depth ?? 0}
+            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
+            @group-toggle=${this._onGroupToggle}
+            @group-context-menu=${this._onGroupContextMenuBubble}
+          ></feature-group>`;
+        }
+        return html`<feature-card-lit
+          .feature=${item.feature}
+          .bus=${bus}
+          .teams=${item.teams}
+          .condensed=${item.condensed}
+          .project=${item.project}
+          .hideGhostTitle=${!!item.hideGhostTitle}
+          style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
+        ></feature-card-lit>`;
+      })}
     `;
+  }
+
+  /** Handle expand/collapse from a <feature-group>. */
+  _onGroupToggle(e) {
+    const { groupId, collapsed } = e.detail;
+    if (collapsed) {
+      this._collapsedGroups.add(String(groupId));
+    } else {
+      this._collapsedGroups.delete(String(groupId));
+    }
+    // Re-layout: collapsed groups hide their children
+    this.renderFeatures();
+  }
+
+  /** Relay group-context-menu up (already composed, but re-dispatch for TimelineBoard). */
+  _onGroupContextMenuBubble(e) {
+    // Already composed=true from FeatureGroup, so it will reach TimelineBoard.
+    // Nothing extra needed — TimelineBoard listens on boardArea.
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleViewportResize);
+    if (this._onOverlayOffsetChanged) {
+      bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    }
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
@@ -626,29 +504,6 @@ class FeatureBoard extends LitElement {
    * @param {{ left: number, width: number, feature: Object }[]} bars - sorted by left
    * @returns {Array<Array<{ left: number, width: number, feature: Object }>>}
    */
-  _packIntoRows(bars) {
-    const GAP = 4; // minimum horizontal gap between bars (px)
-    const rowEnds = []; // tracks rightmost edge of each row
-    const rows = [];
-    for (const bar of bars) {
-      const right = bar.left + bar.width;
-      let placed = false;
-      for (let r = 0; r < rowEnds.length; r++) {
-        if (bar.left >= rowEnds[r] + GAP) {
-          rows[r].push(bar);
-          rowEnds[r] = right;
-          placed = true;
-          break;
-        }
-      }
-      if (!placed) {
-        rows.push([bar]);
-        rowEnds.push(right);
-      }
-    }
-    return rows;
-  }
-
   async renderFeatures() {
     this._updateSwimlaneLabelStickyTop();
     const rawFeatures = state.getEffectiveFeatures();
@@ -740,7 +595,7 @@ class FeatureBoard extends LitElement {
 
       // Render each swimlane band independently and accumulate vertical offsets
       renderList = [];
-      let currentTop = 0;
+      let currentTop = this._overlayOffset;
       const swimlaneGeometry = [];
 
       for (const swimlane of swimlanesToRender) {
@@ -801,8 +656,25 @@ class FeatureBoard extends LitElement {
           tooltipParts.push(`Added teams: ${teamOriginNames.join(', ')}`);
         }
 
-        if (isPacked) {
-          // Per-swimlane greedy packing
+        // Use group layout for plan/expanded-plan swimlanes that have groups.
+        const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
+          ? groupService.getGroupsForPlan(String(swimlane.id))
+          : [];
+
+        if (planGroups.length > 0) {
+          // Group-aware layout: group pills + packed or flat features per group
+          const orderedBucket = this._orderFeaturesHierarchically(
+            bucket,
+            state._viewService.featureSortMode
+          );
+          const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
+            orderedBucket, planGroups, swimlaneTop, months,
+            state._viewService.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
+          );
+          renderList.push(...groupItems);
+          swimlaneHeight = Math.max(gHeight, laneHeight());
+        } else if (isPacked) {
+          // Per-swimlane greedy packing (no groups)
           const bars = [];
           for (const feature of bucket) {
             const pos = computePosition(feature, months);
@@ -810,7 +682,7 @@ class FeatureBoard extends LitElement {
             bars.push({ left: pos.left, width: pos.width, feature });
           }
           bars.sort((a, b) => a.left - b.left);
-          const rows = this._packIntoRows(bars);
+          const rows = packIntoRows(bars);
           rows.forEach((row, rowIndex) => {
             const top = swimlaneTop + rowIndex * laneHeight();
             for (const bar of row) {
@@ -828,7 +700,7 @@ class FeatureBoard extends LitElement {
           });
           swimlaneHeight = Math.max(rows.length, 1) * laneHeight();
         } else {
-          // Per-swimlane hierarchical sort
+          // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
             bucket,
             state._viewService.featureSortMode
@@ -838,8 +710,8 @@ class FeatureBoard extends LitElement {
             const pos = computePosition(feature, months) || {};
             renderList.push({
               feature,
-              left: pos.left ?? feature._left ?? feature.left,
-              width: pos.width ?? feature._width ?? feature.width,
+              left: pos.left ?? 0,
+              width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * laneHeight(),
               teams: state.teams,
               condensed: state._viewService.condensedCards,
@@ -848,8 +720,7 @@ class FeatureBoard extends LitElement {
             });
             laneIndex++;
           }
-          // Reserve at least one lane height even for empty swimlanes so the
-          // label and coloured band always render with a minimum visible height.
+          // Reserve at least one lane height even for empty swimlanes.
           swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
         }
 
@@ -871,13 +742,37 @@ class FeatureBoard extends LitElement {
       totalHeight = currentTop;
     } else {
       // -----------------------------------------------------------------------
-      // Standard (non-swimlane) mode — unchanged from original implementation
+      // Standard (non-swimlane) mode
       // -----------------------------------------------------------------------
       this._swimlanes = [];
 
-      if (isPacked) {
+      // Order features once; used by both group and flat paths.
+      const ordered = this._orderFeaturesHierarchically(
+        sourceFeatures,
+        state._viewService.featureSortMode
+      );
+      // Scope groups to the currently-selected plans only.  getAllGroups()
+      // returns groups from ALL cached plans (including stale entries from plans
+      // no longer selected), which would show empty group pills from other plans.
+      const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
+      const allGroups = selectedPlanIds.flatMap((id) => groupService.getGroupsForPlan(id));
+      renderList = [];
+
+      if (allGroups.length > 0) {
+        // Group-aware layout — handles both packed and normal modes.
+        // Filter to only visible features first.
+        const visibleFiltered = ordered.filter(
+          (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+        );
+        const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
+          visibleFiltered, allGroups, 0, months,
+          state._viewService.condensedCards, isPacked, this._collapsedGroups,
+          selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
+        );
+        renderList = groupItems;
+        totalHeight = gHeight;
+      } else if (isPacked) {
         // --- Packed mode: features with non-overlapping dates share a lane ---
-        // Order by date to maximise packing efficiency (earlier starts first)
         const filtered = [];
         for (const feature of sourceFeatures) {
           if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
@@ -889,10 +784,9 @@ class FeatureBoard extends LitElement {
         }
         // Sort by start position ascending for greedy packing
         filtered.sort((a, b) => a.left - b.left);
-        const rows = this._packIntoRows(filtered);
-        renderList = [];
+        const rows = packIntoRows(filtered);
         rows.forEach((row, rowIndex) => {
-          const top = rowIndex * laneHeight();
+          const top = this._overlayOffset + rowIndex * laneHeight();
           for (const bar of row) {
             renderList.push({
               feature: bar.feature,
@@ -906,25 +800,18 @@ class FeatureBoard extends LitElement {
             });
           }
         });
-        totalHeight = rows.length * laneHeight();
+        totalHeight = rows.length * laneHeight() + this._overlayOffset;
       } else {
-        // --- Normal / Compact mode: one lane per feature, sorted by rank or date ---
-        const ordered = this._orderFeaturesHierarchically(
-          sourceFeatures,
-          state._viewService.featureSortMode
-        );
-        renderList = [];
+        // --- Normal / Compact mode: one lane per feature, no groups ---
         let laneIndex = 0;
         for (const feature of ordered) {
           if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
           const pos = computePosition(feature, months) || {};
-          feature._left = pos.left;
-          feature._width = pos.width;
           renderList.push({
-            feature,
-            left: pos.left ?? feature._left ?? feature.left,
-            width: pos.width ?? feature._width ?? feature.width,
-            top: laneIndex * laneHeight(),
+              feature,
+              left: pos.left ?? 0,
+              width: pos.width ?? 0,
+              top: this._overlayOffset + laneIndex * laneHeight(),
             teams: state.teams,
             condensed: state._viewService.condensedCards,
             hideGhostTitle: false,
@@ -932,7 +819,7 @@ class FeatureBoard extends LitElement {
           });
           laneIndex++;
         }
-        totalHeight = renderList.length * laneHeight();
+          totalHeight = renderList.length * laneHeight() + this._overlayOffset;
       }
     }
 
@@ -1064,94 +951,3 @@ class FeatureBoard extends LitElement {
 }
 
 customElements.define('feature-board', FeatureBoard);
-
-export async function initBoard() {
-  const board = findInBoard('feature-board');
-  if (!board) {
-    console.warn('feature-board element not found');
-    return;
-  }
-
-  let _boardReady = false;
-  const renderFeatures = () => {
-    if (!board || !_boardReady) return;
-    if (typeof board.renderFeatures === 'function') board.renderFeatures();
-  };
-
-  const updateFeatures = (payload) => {
-    if (!board || !_boardReady || typeof board.updateCardsById !== 'function') return;
-    const ids = payload?.ids;
-    if (Array.isArray(ids) && ids.length > 0) {
-      board.updateCardsById(ids);
-    } else {
-      board.renderFeatures();
-    }
-  };
-
-  const handleScenarioActivation = ({ scenarioId }) => {
-    if (!board) return;
-    const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
-    // Apply scenario-mode class on #board-area (the background container) so
-    // the correct stripe colour is shown.
-    const boardArea = findInBoard('#board-area');
-    if (activeScenario && !activeScenario.readonly) {
-      board.classList.add('scenario-mode');
-      boardArea?.classList.add('scenario-mode');
-    } else {
-      board.classList.remove('scenario-mode');
-      boardArea?.classList.remove('scenario-mode');
-    }
-  };
-
-  bus.on(ProjectEvents.CHANGED, renderFeatures);
-  bus.on(TeamEvents.CHANGED, renderFeatures);
-  bus.on(TimelineEvents.MONTHS, renderFeatures);
-  bus.on(TimelineEvents.SCALE_CHANGED, renderFeatures);
-  bus.on(FeatureEvents.UPDATED, updateFeatures);
-  bus.on(FilterEvents.CHANGED, renderFeatures);
-  bus.on(ViewEvents.SORT_MODE, renderFeatures);
-  bus.on(ScenarioEvents.ACTIVATED, handleScenarioActivation);
-
-  // Connected-set handling: request, selection within set, and clear on details hide
-  bus.on(FeatureEvents.REQUEST_CONNECTED_SET, (feature) => {
-    if (!board) return;
-    const set = board._computeConnectedSet(feature);
-    board._connectedSet = set;
-    board._connectedPrimary = String(feature.id);
-    board._connectedCurrent = String(feature.id);
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: set,
-      primary: board._connectedPrimary,
-      current: board._connectedCurrent,
-    });
-  });
-
-  bus.on(FeatureEvents.SELECTED_IN_CONNECTED_SET, (feature) => {
-    if (!board || !board._connectedSet || board._connectedSet.length === 0) return;
-    const id = String(feature.id);
-    board._connectedCurrent = id;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: board._connectedSet,
-      primary: board._connectedPrimary,
-      current: board._connectedCurrent,
-    });
-    bus.emit(FeatureEvents.SELECTED, feature);
-  });
-
-  bus.on(UIEvents.DETAILS_HIDE, () => {
-    if (!board) return;
-    board._connectedSet = [];
-    board._connectedPrimary = null;
-    board._connectedCurrent = null;
-    bus.emit(FeatureEvents.CONNECTED_SET_UPDATED, {
-      ids: [],
-      primary: null,
-      current: null,
-    });
-  });
-
-  bus.once(AppEvents.READY, () => {
-    _boardReady = true;
-    renderFeatures();
-  });
-}

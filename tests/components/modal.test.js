@@ -91,8 +91,9 @@ describe('Modal Consolidated Tests', () => {
     await new Promise((r) => setTimeout(r, 50));
     saveBtn.click();
     const res = await prom;
-    expect(res).to.be.an('array');
-    expect(res[0]).to.deep.include({
+    expect(res).to.be.an('object');
+    expect(res.features).to.be.an('array');
+    expect(res.features[0]).to.deep.include({
       id: 'f1',
       start: '2025-01-01',
       end: '2025-01-02',
@@ -154,10 +155,11 @@ describe('Modal Consolidated Tests', () => {
     const res = await prom;
 
     // Should only return f1 and f3, not f2
-    expect(res).to.be.an('array');
-    expect(res).to.have.lengthOf(2);
-    expect(res.find((item) => item.id === 'f1')).to.exist;
-    expect(res.find((item) => item.id === 'f3')).to.exist;
-    expect(res.find((item) => item.id === 'f2')).to.not.exist;
+    expect(res).to.be.an('object');
+    expect(res.features).to.be.an('array');
+    expect(res.features).to.have.lengthOf(2);
+    expect(res.features.find((item) => item.id === 'f1')).to.exist;
+    expect(res.features.find((item) => item.id === 'f3')).to.exist;
+    expect(res.features.find((item) => item.id === 'f2')).to.not.exist;
   });
 });

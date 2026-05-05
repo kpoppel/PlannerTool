@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
+import { groupService } from '../services/GroupService.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
 
@@ -301,35 +302,70 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveToAzure(e, scenario) {
     e.stopPropagation();
     try {
-      // Get full scenario data from state to ensure we have the complete overrides object
       const fullScenarios = state.getScenarios?.() || state.scenarios || [];
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
-      const overrideEntries = Object.entries(overrides);
-      if (overrideEntries.length === 0) {
-        console.log('[ScenarioMenu] No changes to save to Azure');
+      const pendingGroupChanges = state.getPendingGroupChanges();
+      const hasFeatureChanges = Object.keys(overrides).length > 0;
+      const hasGroupChanges = pendingGroupChanges.length > 0;
+
+      if (!hasFeatureChanges && !hasGroupChanges) {
+        console.log('[ScenarioMenu] No changes to save');
         return;
       }
 
       const { openAzureDevopsModal } = await import('./modalHelpers.js');
-      const selected = await openAzureDevopsModal({ overrides, state });
-      if (selected?.length) {
-        const result = await dataService.publishBaseline(selected);
-        console.log('[ScenarioMenu] Saved changes to Azure DevOps', result);
+      const result = await openAzureDevopsModal({ overrides, pendingGroupChanges, state });
+      if (!result) return; // user cancelled
 
-        // Write-through: the server cache is already invalidated by POST /tasks,
-        // so refreshBaseline() fetches fresh ADO data and updates the client
-        // baseline.  This keeps the tool in sync without a manual page reload.
+      const { features = [], groupChanges = [] } = result;
+
+      // 1. Persist accepted group changes (create → POST, update → PUT, delete → DELETE).
+      //    Temp IDs are swapped for real server IDs as each group is created.
+      for (const op of groupChanges) {
+        if (op.type === 'create' && op.group) {
+          const payload = {
+            plan_id: op.group.plan_id,
+            name: op.group.name,
+            color: op.group.color,
+            rank: op.group.rank ?? 0,
+          };
+          const created = await dataService.createGroup(payload);
+          if (created) {
+            // Swap temp → real ID everywhere (GroupService cache + State overrides)
+            state.confirmGroupCreate(op.group.id, created.id);
+            groupService.replaceId(op.group.id, created.id);
+          }
+        } else if (op.type === 'update' && op.groupId) {
+          await dataService.updateGroup(op.groupId, op.fields || {});
+        } else if (op.type === 'delete' && op.groupId) {
+          await dataService.deleteGroup(op.groupId);
+        }
+      }
+
+      if (groupChanges.length > 0) {
+        state.clearPendingGroupChanges();
+        console.log('[ScenarioMenu] Persisted group changes', groupChanges);
+      }
+
+      // 2. Persist accepted feature overrides.
+      if (features.length > 0) {
+        await dataService.publishBaseline(features);
+        console.log('[ScenarioMenu] Saved feature changes', features);
+      }
+
+      // 3. Refresh baseline so the board reflects the now-persisted state.
+      if (features.length > 0 || groupChanges.length > 0) {
         try {
           await state.refreshBaseline();
-          console.log('[ScenarioMenu] Baseline refreshed after ADO save');
+          console.log('[ScenarioMenu] Baseline refreshed after save');
         } catch (refreshErr) {
-          console.warn('[ScenarioMenu] Baseline refresh after ADO save failed:', refreshErr);
+          console.warn('[ScenarioMenu] Baseline refresh failed:', refreshErr);
         }
       }
     } catch (err) {
-      console.error('[ScenarioMenu] Failed to save to Azure:', err);
+      console.error('[ScenarioMenu] Failed to save:', err);
     }
   }
 
@@ -380,7 +416,8 @@ export class ScenarioMenuLit extends LitElement {
                       </button>
                       ${(
                         (s.overrides && Object.keys(s.overrides).length > 0) ||
-                        s.overridesCount > 0
+                        s.overridesCount > 0 ||
+                        (s.id === state.activeScenarioId && state.getPendingGroupChanges?.().length > 0)
                       ) ?
                         html`
                           <button

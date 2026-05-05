@@ -149,9 +149,25 @@ export const BoardEvents = {
   SCROLL: Symbol('board:scroll'),
   /** Fired by TimelineBoard once the board area is mounted and BCS is initialised. */
   READY: Symbol('board:ready'),
+  /**
+   * Fired by overlay plugins (markers, events) after each SVG render with the
+   * pixel clearance FeatureBoard must add above its first card row.
+   * Payload: { offset: number }  (0 when the plugin is inactive or shows nothing)
+   */
+  OVERLAY_OFFSET_CHANGED: Symbol('board:overlay-offset-changed'),
 };
 
 // Plan events (locally-stored events tied to a plan)
 export const PlanEventEvents = {
   CHANGED: Symbol('planevents:changed'),
+};
+
+// Group events — fired by GroupService
+export const GroupEvents = {
+  /** Groups for one or more plans were fetched / refreshed from the server. */
+  LOADED: Symbol('group:loaded'),
+  /** A group was created, updated, or deleted (op: 'created'|'updated'|'deleted'). */
+  CHANGED: Symbol('group:changed'),
+  /** A feature's groupId assignment changed (featureId, groupId). */
+  ASSIGNMENT_CHANGED: Symbol('group:assignment-changed'),
 };

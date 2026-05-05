@@ -20,6 +20,7 @@ import {
   ProjectEvents,
   PlanEventEvents,
   PluginEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
@@ -392,6 +393,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   close() {
+    bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
     super.close();
   }
 
@@ -599,7 +601,10 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
     this._svgEl.innerHTML = '';
 
-    if (!this.events.length) return;
+    if (!this.events.length) {
+      bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
+      return;
+    }
 
     const board = findInBoard('feature-board');
     const brClient = board.getBoundingClientRect();
@@ -612,7 +617,10 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
 
-    if (!months?.length) return;
+    if (!months?.length) {
+      bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
+      return;
+    }
 
     this._svgEl.setAttribute('width', boardRect.width);
     this._svgEl.setAttribute('height', boardRect.height);
@@ -621,7 +629,10 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._svgEl.style.height = `${boardRect.height}px`;
 
     const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
-    if (!selectedProjects.length) return;
+    if (!selectedProjects.length) {
+      bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
+      return;
+    }
 
     const filteredEvents = this.events.filter((ev) => selectedProjects.includes(ev.plan_id));
 
@@ -652,6 +663,13 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       cluster.rows++;
 
       this._createEventTag(x, ev, boardRect.height, boardCoords.scrollY, row, markersActive);
+    });
+
+    // Broadcast the clearance FeatureBoard needs so its first card row does not
+    // overlap with event tags. Formula: 5px top gap + N rows × (18px tag + 3px gap) + 4px margin.
+    const maxEventRows = xStack.reduce((max, c) => Math.max(max, c.rows), 0);
+    bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, {
+      offset: maxEventRows === 0 ? 0 : 6 + maxEventRows * 21,
     });
   }
 
