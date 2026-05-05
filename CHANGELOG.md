@@ -14,13 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.0.0] - unreleased
-
-- refactor: split FeatureBoard.lit.js (1483→939 lines) and GroupContextMenu.lit.js (533→452 lines) by extracting CSS, group layout, and init wiring into focused modules
-- fix: groups now show for all selected plans in multi-plan (swimlane) mode; standard mode scoped to selected plans only; plan cache evicted on deselect; hasPlanLoaded prevents reloading cached (pending) groups
-- feat: groups displayed in all modes — swimlane (2+ plans), packed, and single-plan normal; pack-per-group in packed mode; extracted _buildGroupBandItems reusable helper
-- feat: sub-group support — right-click a group pill to add a nested sub-group; group tree renders recursively with depth-based indentation; GroupService.removeLocal/deleteGroup cascade sub-group deletion
-- feat: "Update group" replaces "Rename group" — inline form allows editing name, color, and parent group (cycle-safe parent selector)
+## [v4.0.0] - 2026-05-05
 
 This release is a major backend architecture overhaul. The changes modernise the server internals to make the codebase easier to extend, test, and operate. The server was made async in several places, allowing multiple users to get responsiveness when accessing the tool concurrently.
 
@@ -56,6 +50,8 @@ After the migration, the data/config/*.yml files can be removed.
 - Admin interface restructured around the domain data models and backend selections.
 - Admin UI: moved ADO backend selection (org URL + backend type + sub-config) and cache TTLs from separate AzureDevOps/Server modules into the Data Sources panel; removed the AzureDevOps sidebar entry; split DataSources component into focused sub-modules (ado-row.js, plan-events-row.js, shared-styles.js)
 - Backend: all route handlers now use `asyncio.to_thread()` for blocking I/O (ADO fetches, diskcache reads/writes, cost computation). Multiple users no longer queue behind a single slow request. Validated by new concurrent performance tests (`tests/backend/test_concurrent_performance.py`).
+- refactor: split FeatureBoard.lit.js (1483→939 lines) and GroupContextMenu.lit.js (533→452 lines) by extracting CSS, group layout, and init wiring into focused modules
+- feat: group and sub-group support — right-click a group pill to add a nested sub-group; group tree renders recursively with depth-based indentation; GroupService.removeLocal/deleteGroup cascade sub-group deletion
 
 ### Fixed
 - Admin save-projects endpoint now enforces the admin UI payload contract (`content` must be a JSON object/array), fixing save failures caused by string parsing assumptions.
