@@ -808,16 +808,10 @@ class FeatureBoard extends LitElement {
           if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
           const pos = computePosition(feature, months) || {};
           renderList.push({
-            feature,
-<<<<<<< HEAD
-            left: pos.left ?? 0,
-            width: pos.width ?? 0,
-            top: laneIndex * laneHeight(),
-=======
-            left: pos.left ?? feature._left ?? feature.left,
-            width: pos.width ?? feature._width ?? feature.width,
-            top: this._overlayOffset + laneIndex * laneHeight(),
->>>>>>> 52d3b2c (Improved the rendering of work items, so that visible markers or events do not obscure the top-most work items.)
+              feature,
+              left: pos.left ?? feature._left ?? feature.left,
+              width: pos.width ?? feature._width ?? feature.width,
+              top: this._overlayOffset + laneIndex * laneHeight(),
             teams: state.teams,
             condensed: state._viewService.condensedCards,
             hideGhostTitle: false,
@@ -825,11 +819,7 @@ class FeatureBoard extends LitElement {
           });
           laneIndex++;
         }
-<<<<<<< HEAD
-        totalHeight = laneIndex * laneHeight();
-=======
-        totalHeight = renderList.length * laneHeight() + this._overlayOffset;
->>>>>>> 52d3b2c (Improved the rendering of work items, so that visible markers or events do not obscure the top-most work items.)
+          totalHeight = renderList.length * laneHeight() + this._overlayOffset;
       }
     }
 
