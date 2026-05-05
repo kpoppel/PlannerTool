@@ -34,6 +34,7 @@ Migrations `0019` (display-mode-field), `0020` (rename flags), `0021` (config �
 After the migration, the data/config/*.yml files can be removed.
 
 ### Added
+- **Work item vertical offset** — feature cards are automatically pushed down by the overlay row height when markers or events plugins are active, preventing tag overlap with the topmost cards.
 - **Pluggable backend system** — a `BackendRegistry` selects the active data source at startup from a priority-ordered list. Adding a new backend (e.g. Jira) now requires changes in one file only. Built-in backends: live Azure DevOps, static YAML/JSON file (offline mode), fixture replay (testing), and in-process data generator (demo mode).
 - **Configurable cache TTLs** — cache lifetimes are now per-domain and configurable in `server_config.yml` under `cache.ttls` (in minutes). Defaults: tasks 30 min, history 24 h, teams/plans 4 h, markers 2 h, iterations 8 h. Set to `0` for no expiry.
 - **Plan events** — `EventBackend` protocol, `UserDataBackend` implementation, and `EventRepository` follow the same repository pattern as scenarios/views. REST API at `/api/events` (CRUD, filterable by `plan_id`).

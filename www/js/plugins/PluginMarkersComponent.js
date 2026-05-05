@@ -7,7 +7,7 @@ import { findInBoard } from '../components/board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
-import { TimelineEvents, ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
+import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
@@ -304,6 +304,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
   }
 
   close() {
+    bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
     super.close();
   }
 
@@ -400,7 +401,10 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     this._svgEl.innerHTML = '';
 
     // If no markers loaded yet, nothing more to do
-    if (!this.markers.length) return;
+    if (!this.markers.length) {
+      bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
+      return;
+    }
 
     const board = findInBoard('feature-board');
     const brClient = board.getBoundingClientRect();
@@ -413,7 +417,10 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     const monthWidth = TIMELINE_CONFIG.monthWidth;
     const months = getTimelineMonths();
 
-    if (!months?.length) return;
+    if (!months?.length) {
+      bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
+      return;
+    }
 
     // Size SVG to viewport only
     this._svgEl.setAttribute('width', boardRect.width);
@@ -521,6 +528,13 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
       );
       renderedCount++;
     }
+
+    // Broadcast the clearance FeatureBoard needs so its first card row does not
+    // overlap with marker tags. Formula: 5px top gap + N rows × (18px tag + 2px gap) + 4px margin.
+    const usedRows = rowTails.length;
+    bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, {
+      offset: usedRows === 0 ? 0 : 7 + usedRows * 20,
+    });
   }
 
   /**

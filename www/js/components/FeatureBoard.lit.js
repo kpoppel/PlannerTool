@@ -8,6 +8,9 @@ import {
   ScenarioEvents,
   ViewEvents,
   GroupEvents,
+  AppEvents,
+  UIEvents,
+  BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
@@ -43,6 +46,7 @@ class FeatureBoard extends LitElement {
     // Set of group IDs the user has collapsed.
     this._collapsedGroups = new Set();
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
+    this._overlayOffset = 0;
   }
 
   static styles = featureBoardStyles;
@@ -54,6 +58,13 @@ class FeatureBoard extends LitElement {
     }
     window.addEventListener('resize', this._handleViewportResize);
     this._updateSwimlaneLabelStickyTop();
+    this._onOverlayOffsetChanged = ({ offset }) => {
+      if (offset !== this._overlayOffset) {
+        this._overlayOffset = offset;
+        this.renderFeatures();
+      }
+    };
+    bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
   }
 
   _updateSwimlaneLabelStickyTop() {
@@ -238,6 +249,9 @@ class FeatureBoard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('resize', this._handleViewportResize);
+    if (this._onOverlayOffsetChanged) {
+      bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    }
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
@@ -581,7 +595,7 @@ class FeatureBoard extends LitElement {
 
       // Render each swimlane band independently and accumulate vertical offsets
       renderList = [];
-      let currentTop = 0;
+      let currentTop = this._overlayOffset;
       const swimlaneGeometry = [];
 
       for (const swimlane of swimlanesToRender) {
@@ -772,7 +786,7 @@ class FeatureBoard extends LitElement {
         filtered.sort((a, b) => a.left - b.left);
         const rows = packIntoRows(filtered);
         rows.forEach((row, rowIndex) => {
-          const top = rowIndex * laneHeight();
+          const top = this._overlayOffset + rowIndex * laneHeight();
           for (const bar of row) {
             renderList.push({
               feature: bar.feature,
@@ -786,7 +800,7 @@ class FeatureBoard extends LitElement {
             });
           }
         });
-        totalHeight = rows.length * laneHeight();
+        totalHeight = rows.length * laneHeight() + this._overlayOffset;
       } else {
         // --- Normal / Compact mode: one lane per feature, no groups ---
         let laneIndex = 0;
@@ -795,9 +809,15 @@ class FeatureBoard extends LitElement {
           const pos = computePosition(feature, months) || {};
           renderList.push({
             feature,
+<<<<<<< HEAD
             left: pos.left ?? 0,
             width: pos.width ?? 0,
             top: laneIndex * laneHeight(),
+=======
+            left: pos.left ?? feature._left ?? feature.left,
+            width: pos.width ?? feature._width ?? feature.width,
+            top: this._overlayOffset + laneIndex * laneHeight(),
+>>>>>>> 52d3b2c (Improved the rendering of work items, so that visible markers or events do not obscure the top-most work items.)
             teams: state.teams,
             condensed: state._viewService.condensedCards,
             hideGhostTitle: false,
@@ -805,7 +825,11 @@ class FeatureBoard extends LitElement {
           });
           laneIndex++;
         }
+<<<<<<< HEAD
         totalHeight = laneIndex * laneHeight();
+=======
+        totalHeight = renderList.length * laneHeight() + this._overlayOffset;
+>>>>>>> 52d3b2c (Improved the rendering of work items, so that visible markers or events do not obscure the top-most work items.)
       }
     }
 
