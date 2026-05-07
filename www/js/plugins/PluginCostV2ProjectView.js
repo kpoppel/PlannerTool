@@ -34,6 +34,7 @@ function getTeamLabel(component, teamKey) {
 
 function formatPlainNumber(component, val) {
   const n = typeof val === 'number' ? val : Number(val || 0);
+  if (n === 0) return '';
   // Display plain integer numbers without thousand separators.
   return String(Math.round(n));
 }
@@ -224,49 +225,26 @@ function renderProjectTable(component, project, monthKeys) {
 function buildTeamMonthAllocations(component, features, monthKeys) {
   const teamAllocations = new Map();
 
-  // Avoid double-counting when the same feature appears multiple times
-  // in the expanded dataset (e.g., present under multiple projects).
-  const seenFeatures = new Set();
-  // Track seen contribution keys to avoid adding the same feature->team->month
-  // multiple times (shape: `${team}|${fid}|${metricType}|${direction}|${mKey}`).
-  const seenContrib = new Set();
-  // Precompute set of feature ids present in the expanded dataset so we only
-  // skip parent features when their children are actually included in the
-  // dataset (i.e. when children are authoritative). This allows epics to be
-  // counted when the sidebar selection includes only epics and no children.
-  const featureIdSet = new Set((features || []).map((f) => String(f && f.id)));
+  // Build hierarchy to know which features are roots (no parent in dataset).
+  // Only root effective allocations are summed so ancestors and descendants
+  // are never double-counted.
+  const { roots, childrenMap } = buildTaskTree(
+    features,
+    state.childrenByParent || new Map()
+  );
 
-  for (const feature of features) {
-    const fid = String(feature.id);
-    const childrenMap = state.childrenByParent;
-    const childrenList = childrenMap.get(Number(fid));
-    // Only skip the parent if at least one child is present in our expanded dataset
-    const hasChildInDataset =
-      Array.isArray(childrenList) &&
-      childrenList.some((cid) => featureIdSet.has(String(cid)));
+  // Per-team, per-feature rollup (respects the "children are authoritative for
+  // their covered teams; uncovered teams keep the parent's own allocation" rule).
+  const byTeam = _buildByTeam(features, childrenMap, monthKeys);
 
-    if (hasChildInDataset) continue;
+  // Sum only the effective allocations of root features.
+  // Roots already embed their entire subtree, so summing at this level avoids
+  // double-counting ancestors + descendants.
+  for (const rootId of roots) {
+    const featureTeams = byTeam.get(String(rootId));
+    if (!featureTeams) continue;
 
-    if (fid && seenFeatures.has(fid)) continue;
-    if (fid) seenFeatures.add(fid);
-    const serversideTeams =
-      feature && feature.metrics && feature.metrics.teams ? feature.metrics.teams : null;
-    if (!serversideTeams) continue; // do not compute client-side allocations
-
-    for (const teamName of Object.keys(serversideTeams)) {
-      const t = serversideTeams[teamName] || {};
-      // DEBUG: trace processing of features and teams to investigate any discrepancies
-      if (false) {
-        if (teamName === 'team-architecture') {
-          console.debug('[PluginCostV2][DBG][client][trace] processing feature', {
-            fid,
-            teamName,
-            c_internal: t.cost && t.cost.internal,
-            h_internal: t.hours && t.hours.internal,
-          });
-        }
-      }
-
+    for (const [teamName, alloc] of featureTeams.entries()) {
       if (!teamAllocations.has(teamName)) {
         teamAllocations.set(teamName, {
           cost: { internal: new Map(), external: new Map() },
@@ -275,91 +253,28 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
           totalHours: 0,
         });
       }
-      const teamData = teamAllocations.get(teamName);
-      const c_internal = (t.cost && t.cost.internal) || {};
-      const c_external = (t.cost && t.cost.external) || {};
-      const h_internal = (t.hours && t.hours.internal) || {};
-      const h_external = (t.hours && t.hours.external) || {};
-      for (const [mKey, val] of Object.entries(c_internal)) {
-        const key = `${teamName}|${fid}|cost|internal|${mKey}`;
-        if (seenContrib.has(key)) {
-          if (teamName === 'team-architecture')
-            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          continue;
-        }
-        seenContrib.add(key);
-        teamData.cost.internal.set(
-          mKey,
-          (teamData.cost.internal.get(mKey) || 0) + Number(val || 0)
-        );
-      }
-      for (const [mKey, val] of Object.entries(c_external)) {
-        const key = `${teamName}|${fid}|cost|external|${mKey}`;
-        if (seenContrib.has(key)) {
-          if (teamName === 'team-architecture')
-            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          continue;
-        }
-        seenContrib.add(key);
-        teamData.cost.external.set(
-          mKey,
-          (teamData.cost.external.get(mKey) || 0) + Number(val || 0)
-        );
-      }
-      for (const [mKey, val] of Object.entries(h_internal)) {
-        const key = `${teamName}|${fid}|hours|internal|${mKey}`;
-        if (seenContrib.has(key)) {
-          if (teamName === 'team-architecture')
-            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          continue;
-        }
-        seenContrib.add(key);
-        teamData.hours.internal.set(
-          mKey,
-          (teamData.hours.internal.get(mKey) || 0) + Number(val || 0)
-        );
-      }
-      for (const [mKey, val] of Object.entries(h_external)) {
-        const key = `${teamName}|${fid}|hours|external|${mKey}`;
-        if (seenContrib.has(key)) {
-          if (teamName === 'team-architecture')
-            console.debug('[PluginCostV2][DBG][client][trace] skip duplicate', key);
-          continue;
-        }
-        seenContrib.add(key);
-        teamData.hours.external.set(
-          mKey,
-          (teamData.hours.external.get(mKey) || 0) + Number(val || 0)
-        );
-      }
+      const td = teamAllocations.get(teamName);
+      for (const [mk, v] of alloc.cost.internal.entries())
+        td.cost.internal.set(mk, (td.cost.internal.get(mk) || 0) + v);
+      for (const [mk, v] of alloc.cost.external.entries())
+        td.cost.external.set(mk, (td.cost.external.get(mk) || 0) + v);
+      for (const [mk, v] of alloc.hours.internal.entries())
+        td.hours.internal.set(mk, (td.hours.internal.get(mk) || 0) + v);
+      for (const [mk, v] of alloc.hours.external.entries())
+        td.hours.external.set(mk, (td.hours.external.get(mk) || 0) + v);
     }
   }
 
-  for (const [teamName, teamData] of teamAllocations.entries()) {
+  // Compute window-only totals
+  for (const [, teamData] of teamAllocations.entries()) {
     teamData.totalCost = 0;
     teamData.totalHours = 0;
-    // Only sum months within the display window so the Sum column matches per-column values
     for (const mKey of monthKeys) {
       teamData.totalCost +=
         (teamData.cost.internal.get(mKey) || 0) + (teamData.cost.external.get(mKey) || 0);
       teamData.totalHours +=
         (teamData.hours.internal.get(mKey) || 0) +
         (teamData.hours.external.get(mKey) || 0);
-    }
-    // DEBUG: One-off detailed debug to inspect map contents vs totals
-    if (false) {
-      if (teamName === 'team-architecture') {
-        const toObj = (m) =>
-          m instanceof Map ? Object.fromEntries(Array.from(m.entries())) : m || {};
-        console.debug('[PluginCostV2][DBG][client][detailed] team-architecture maps', {
-          cost_internal: toObj(teamData.cost.internal),
-          cost_external: toObj(teamData.cost.external),
-          hours_internal: toObj(teamData.hours.internal),
-          hours_external: toObj(teamData.hours.external),
-          totalCost: teamData.totalCost,
-          totalHours: teamData.totalHours,
-        });
-      }
     }
   }
 
@@ -427,38 +342,94 @@ function renderProjectSummaryTable(
   // Pair index to ensure Hours+Cost rows are styled as a unit across the table
   let pairIndex = 0;
   const pairClass = () => (pairIndex++ % 2 === 0 ? 'alt' : '');
-  // Prefer server-provided per-site totals when available (server should centralize calculation)
-  let siteTotals = {};
-  const projectTotals = projectData && projectData.totals ? projectData.totals : null;
 
-  // External per-site totals (optional shape from server if provided)
-  let externalSiteTotals = {};
-  if (projectTotals) {
-    externalSiteTotals =
-      projectTotals.external_sites ||
-      projectTotals.sites_external ||
-      projectTotals.externalSites ||
-      {};
-  }
-  if (projectTotals && projectTotals.sites) {
-    // Expecting shape: { sites: { SITE_NAME: { hours: { mKey: value }, cost: { mKey: value } } } }
-    for (const siteName of Object.keys(projectTotals.sites)) {
-      const raw = projectTotals.sites[siteName] || {};
-      const hoursMap = new Map();
-      const costMap = new Map();
-      // raw.hours and raw.cost may be objects keyed by monthKey
-      if (raw.hours && typeof raw.hours === 'object') {
-        for (const k of Object.keys(raw.hours)) hoursMap.set(k, raw.hours[k] || 0);
+  // Compute per-site internal breakdown client-side from rolled-up teamAllocations
+  // and costTeams membership. This is always consistent with the team table because
+  // both use the same teamAllocations object (which already applied the per-team
+  // rollup rule). We no longer rely on projectTotals.sites from the server because
+  // that was computed with a different (stale) skip-parent rule.
+  const siteTotals = {};
+  const externalSiteTotals = {};
+
+  // Build team → site membership maps from costTeams
+  const teamSiteInternal = new Map(); // teamId → { site → fractionOfTeamHours }
+  const teamSiteExternal = new Map(); // teamId → { site → fractionOfTeamHours }
+  const rawCostTeams =
+    component.costTeams && Array.isArray(component.costTeams.teams) ?
+      component.costTeams.teams
+    : Array.isArray(component.costTeams) ? component.costTeams
+    : [];
+
+  for (const team of rawCostTeams) {
+    if (!team) continue;
+    const teamId = team.id || team.name;
+    if (!teamId) continue;
+    const members = Array.isArray(team.members) ? team.members : [];
+
+    // Internal site hours
+    const intSiteHours = {};
+    let intTotalHours = 0;
+    for (const m of members) {
+      if (m && !m.external && m.site) {
+        const h = Number(m.hours_per_month || 0);
+        intSiteHours[m.site] = (intSiteHours[m.site] || 0) + h;
+        intTotalHours += h;
       }
-      if (raw.cost && typeof raw.cost === 'object') {
-        for (const k of Object.keys(raw.cost)) costMap.set(k, raw.cost[k] || 0);
-      }
-      siteTotals[siteName] = { hours: hoursMap, cost: costMap };
     }
-  } else {
-    // No server-provided per-site totals: do not compute client-side site allocations.
-    // Per requirement, when the server omits site totals there's nothing to show.
-    siteTotals = {};
+    if (intTotalHours > 0) {
+      const fracs = {};
+      for (const [site, h] of Object.entries(intSiteHours))
+        fracs[site] = h / intTotalHours;
+      teamSiteInternal.set(teamId, fracs);
+    }
+
+    // External site hours
+    const extSiteHours = {};
+    let extTotalHours = 0;
+    for (const m of members) {
+      if (m && m.external && m.site) {
+        const h = Number(m.hours_per_month || 0);
+        extSiteHours[m.site] = (extSiteHours[m.site] || 0) + h;
+        extTotalHours += h;
+      }
+    }
+    if (extTotalHours > 0) {
+      const fracs = {};
+      for (const [site, h] of Object.entries(extSiteHours))
+        fracs[site] = h / extTotalHours;
+      teamSiteExternal.set(teamId, fracs);
+    }
+  }
+
+  // Distribute each team's rolled-up monthly hours/cost across sites
+  for (const [teamId, teamData] of teamAllocations.entries()) {
+    // Internal sites
+    const intFracs = teamSiteInternal.get(teamId) || {};
+    for (const [site, frac] of Object.entries(intFracs)) {
+      if (!siteTotals[site]) siteTotals[site] = { hours: new Map(), cost: new Map() };
+      for (const mKey of monthKeys) {
+        const h = (teamData.hours.internal.get(mKey) || 0) * frac;
+        const c = (teamData.cost.internal.get(mKey) || 0) * frac;
+        siteTotals[site].hours.set(mKey, (siteTotals[site].hours.get(mKey) || 0) + h);
+        siteTotals[site].cost.set(mKey, (siteTotals[site].cost.get(mKey) || 0) + c);
+      }
+    }
+    // External sites
+    const extFracs = teamSiteExternal.get(teamId) || {};
+    for (const [site, frac] of Object.entries(extFracs)) {
+      if (!externalSiteTotals[site])
+        externalSiteTotals[site] = { hours: new Map(), cost: new Map() };
+      for (const mKey of monthKeys) {
+        const h = (teamData.hours.external.get(mKey) || 0) * frac;
+        const c = (teamData.cost.external.get(mKey) || 0) * frac;
+        externalSiteTotals[site].hours.set(
+          mKey, (externalSiteTotals[site].hours.get(mKey) || 0) + h
+        );
+        externalSiteTotals[site].cost.set(
+          mKey, (externalSiteTotals[site].cost.get(mKey) || 0) + c
+        );
+      }
+    }
   }
 
   return html`
@@ -522,19 +493,13 @@ function renderProjectSummaryTable(
           <td colspan="${component.months.length + 2}">External</td>
         </tr>
         ${(() => {
-          // If server provides per-site external totals, render them as pairs
+          // If any external sites computed, render them as pairs
           const keys = Object.keys(externalSiteTotals || {});
           if (keys.length > 0) {
             return html`${keys.sort().map((site) => {
               const cls = pairClass();
-              const raw = externalSiteTotals[site] || {};
-              const hoursMap = new Map();
-              const costMap = new Map();
-              if (raw.hours && typeof raw.hours === 'object')
-                for (const k of Object.keys(raw.hours))
-                  hoursMap.set(k, raw.hours[k] || 0);
-              if (raw.cost && typeof raw.cost === 'object')
-                for (const k of Object.keys(raw.cost)) costMap.set(k, raw.cost[k] || 0);
+              const hoursMap = externalSiteTotals[site].hours;
+              const costMap = externalSiteTotals[site].cost;
               return html`
                 <tr class="site-pair ${cls}">
                   <td>${site} Hours</td>
@@ -772,29 +737,22 @@ function flattenTree(ids, childrenMap, featureMap, depth, result) {
 }
 
 /**
- * Compute effective (rolled-up) data maps for the feature list.
+ * Shared bottom-up per-team rollup.
  *
- * Rules applied bottom-up per team:
- * - Leaf feature: display own server-provided metrics for each team.
- * - Parent feature: if any child in the dataset carries allocations for a team,
- *   that team's displayed value is the sum of children's effective values (not
- *   the parent's own). Teams allocated only at the parent level (no child
- *   coverage) keep the parent's own allocation.
- *
- * This means Epic-level estimates are replaced by their children wherever
- * children provide detail, while teams only specified at Epic level are
- * still respected as-is.
+ * Returns Map<featureId, Map<teamName, alloc>> where each alloc is restricted to
+ * monthKeys.  Rules (post-order, per team):
+ *  - Leaf: own server per-team data (or flat metrics when no teams breakdown).
+ *  - Parent: for each team it owns, if any direct child in the dataset covers
+ *    that team → sum children's effective allocations; otherwise keep own.
+ *    Teams only present in children (not owned by parent) are passed through.
  *
  * @param {Array<Object>} features
- * @param {Map<string, Array<string>>} childrenMap  from buildTaskTree
+ * @param {Map<string,Array<string>>} childrenMap  from buildTaskTree
  * @param {Array<string>} monthKeys  display-window month keys
- * @returns {Map<string, {cost: {internal: Map, external: Map}, hours: {internal: Map, external: Map}}>}
+ * @returns {Map<string, Map<string, {cost:{internal:Map,external:Map},hours:{internal:Map,external:Map}}>>}
  */
-function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
+function _buildByTeam(features, childrenMap, monthKeys) {
   const featureMap = new Map(features.map((f) => [String(f.id), f]));
-
-  // byTeam: featureId → teamName → {cost:{internal:Map,external:Map}, hours:{...}}
-  const byTeam = new Map();
 
   const mkAlloc = () => ({
     cost: { internal: new Map(), external: new Map() },
@@ -808,7 +766,6 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
           dst[kind][dir].set(mk, (dst[kind][dir].get(mk) || 0) + v);
   };
 
-  // Extract one team's alloc from server data, restricted to display monthKeys
   const fromServerTeam = (teamData) => {
     const alloc = mkAlloc();
     for (const kind of ['cost', 'hours'])
@@ -820,7 +777,6 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
     return alloc;
   };
 
-  // Fallback when no per-team data: build alloc from flat totals
   const fromFlatMetrics = (metrics) => {
     const alloc = mkAlloc();
     for (const kind of ['cost', 'hours']) {
@@ -840,7 +796,8 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
     return alloc;
   };
 
-  // Post-order DFS: leaves before parents so rollup is available when needed
+  const byTeam = new Map();
+
   function processNode(fid) {
     if (byTeam.has(fid)) return;
     const feature = featureMap.get(fid);
@@ -854,7 +811,6 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
     const teamResult = new Map();
 
     if (children.length === 0) {
-      // Leaf: use own per-team data, or flat metrics when no per-team breakdown
       if (hasOwnTeams) {
         for (const [teamName, teamData] of Object.entries(ownTeams))
           teamResult.set(teamName, fromServerTeam(teamData));
@@ -862,7 +818,6 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
         teamResult.set('__flat__', fromFlatMetrics(feature.metrics));
       }
     } else {
-      // Which teams does at least one direct child cover?
       const childCoveredTeams = new Set();
       for (const cid of children) {
         const ct = (featureMap.get(cid)?.metrics?.teams) || {};
@@ -872,7 +827,6 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
       if (hasOwnTeams) {
         for (const [teamName, teamData] of Object.entries(ownTeams)) {
           if (childCoveredTeams.has(teamName)) {
-            // Sum children's effective contribution for this team
             const merged = mkAlloc();
             for (const cid of children) {
               const a = byTeam.get(cid)?.get(teamName);
@@ -880,26 +834,20 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
             }
             teamResult.set(teamName, merged);
           } else {
-            // No child covers this team — use own allocation
             teamResult.set(teamName, fromServerTeam(teamData));
           }
         }
       }
 
       // Pass through teams that children have but the parent doesn't own
-      const allChildTeams = new Set();
       for (const cid of children) {
         const cm = byTeam.get(cid);
-        if (cm) for (const t of cm.keys()) allChildTeams.add(t);
-      }
-      for (const teamName of allChildTeams) {
-        if (teamResult.has(teamName)) continue;
-        const merged = mkAlloc();
-        for (const cid of children) {
-          const a = byTeam.get(cid)?.get(teamName);
-          if (a) addAllocs(merged, a);
+        if (!cm) continue;
+        for (const [teamName, alloc] of cm.entries()) {
+          if (teamResult.has(teamName)) continue;
+          if (!teamResult.has(teamName)) teamResult.set(teamName, mkAlloc());
+          addAllocs(teamResult.get(teamName), alloc);
         }
-        teamResult.set(teamName, merged);
       }
     }
 
@@ -907,14 +855,30 @@ function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
   }
 
   for (const f of features) processNode(String(f.id));
+  return byTeam;
+}
 
-  // Aggregate all per-team allocs into a single totals dataMap per feature
+/**
+ * Compute effective (rolled-up) dataMap per feature for the feature list.
+ * Delegates rollup to _buildByTeam and aggregates all teams into one map.
+ */
+function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
+  const byTeam = _buildByTeam(features, childrenMap, monthKeys);
+
+  const mkAlloc = () => ({
+    cost: { internal: new Map(), external: new Map() },
+    hours: { internal: new Map(), external: new Map() },
+  });
+  const addAllocs = (dst, src) => {
+    for (const kind of ['cost', 'hours'])
+      for (const dir of ['internal', 'external'])
+        for (const [mk, v] of src[kind][dir].entries())
+          dst[kind][dir].set(mk, (dst[kind][dir].get(mk) || 0) + v);
+  };
+
   const result = new Map();
   for (const [fid, teamMap] of byTeam.entries()) {
-    const dataMap = {
-      cost: { internal: new Map(), external: new Map() },
-      hours: { internal: new Map(), external: new Map() },
-    };
+    const dataMap = mkAlloc();
     for (const alloc of teamMap.values()) addAllocs(dataMap, alloc);
     result.set(fid, dataMap);
   }

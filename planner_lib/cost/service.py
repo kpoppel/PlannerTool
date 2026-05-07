@@ -204,94 +204,111 @@ class CostService:
         # Additionally compute per-project per-site monthly totals so the
         # frontend can present site-level internal breakdown directly.
         team_aggregates = _engine._team_members(self._cfg, cache_storage=self._cache_storage)
-        # Debug: log specific team aggregates for investigation
-        try:
-            logger.debug("[DBG] team_aggregates['team-architecture'] = %s", team_aggregates.get('team-architecture'))
-        except Exception:
-            pass
         project_sites: Dict[str, Dict[str, Dict[str, Dict[str, float]]]] = {}
-        # Determine which features are parents (have children) so we can
-        # treat children as authoritative and skip parent entries when
-        # computing per-project site totals. This mirrors the client-side
-        # behavior that only counts leaf features.
-        parent_has_children = set()
+
+        # Build parent→children set from the payload relations so we can apply
+        # the same per-team rollup rule as the client:
+        #   - children are authoritative for the teams they cover
+        #   - a parent keeps its own allocation for teams no child covers
+        # (Previously we skipped whole parents, losing their team-only allocations.)
+        children_by_parent: Dict[str, list] = {}
         for ftmp in features:
             rels = ftmp.get('relations') or []
             if isinstance(rels, list):
                 for rel in rels:
                     if isinstance(rel, dict) and rel.get('type') == 'Parent':
-                        parent_id = rel.get('id')
-                        if parent_id is not None:
-                            parent_has_children.add(str(parent_id))
+                        parent_id = str(rel.get('id')) if rel.get('id') is not None else None
+                        child_id = str(ftmp.get('id')) if ftmp.get('id') is not None else None
+                        if parent_id and child_id:
+                            children_by_parent.setdefault(parent_id, []).append(child_id)
 
-        # Track which features have already been counted per project to
-        # avoid duplicate allocations when the same feature appears multiple
-        # times in the dataset (e.g., via relations or multiple mappings).
+        # Build feature lookup and determine which teams each feature's *children*
+        # cover so we can decide: covered team → use children's allocation,
+        # uncovered team → use own allocation.
+        features_by_id: Dict[str, dict] = {str(f.get('id')): f for f in features if f.get('id') is not None}
+
+        def child_covered_teams(fid_s: str) -> set:
+            """Return the set of team keys covered by any direct child."""
+            covered: set = set()
+            for cid in children_by_parent.get(fid_s, []):
+                child = features_by_id.get(cid)
+                if not child:
+                    continue
+                for cap_entry in (child.get('capacity') or []):
+                    t = cap_entry.get('team')
+                    if t:
+                        covered.add(t)
+            return covered
+
         seen_per_project: Dict[str, set] = {}
 
-        for f in features:
-                fid = f.get('id')
-                fid_s = str(fid) if fid is not None else None
-                # Skip parent features — children are authoritative
-                if fid_s and fid_s in parent_has_children:
-                    continue
-                project_id = f.get('project')
-                start = f.get('start')
-                end = f.get('end')
-                capacity = f.get('capacity', []) or []
-                # Determine target projects same as above logic
-                target_projects = []
-                if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
-                    target_projects.append(project_id)
-                relations = f.get('relations', [])
-                if isinstance(relations, list):
-                    for rel in relations:
-                        if isinstance(rel, dict) and rel.get('type') == 'Parent':
-                            parent_id = str(rel.get('id', ''))
-                            parent_proj = workitem_to_project.get(parent_id)
-                            if parent_proj and parent_proj != project_id:
-                                target_projects.append(parent_proj)
+        def _add_team_sites(proj_sites: dict, start: str, end: str, team_key: str, cap: float) -> None:
+            """Accumulate site-level hours/cost for one team allocation."""
+            team_summary = team_aggregates.get(team_key)
+            if not team_summary or not team_summary.get('internal_hours_total'):
+                return
+            month_buckets = _engine._allocate_months(start, end, int(team_summary.get('internal_hours_total') or 0))
+            sites_info = team_summary.get('sites', {}) or {}
+            denom = sum((sv.get('internal_hours_total', 0) or 0) for sv in sites_info.values()) or float(team_summary.get('internal_hours_total') or 1)
+            team_cost_per_hour = 0.0
+            if team_summary.get('internal_hours_total'):
+                team_cost_per_hour = float(team_summary.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(team_summary.get('internal_hours_total')))
+            for m_k, base_hours in (month_buckets or {}).items():
+                alloc_hours_team = base_hours * cap
+                for site, sv in sites_info.items():
+                    site_hours_share = (sv.get('internal_hours_total', 0) or 0) / denom if denom else 0
+                    site_hours = alloc_hours_team * site_hours_share
+                    site_cost_per_hour = (
+                        float(sv.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(sv.get('internal_hours_total')))
+                        if sv.get('internal_hours_total')
+                        else team_cost_per_hour
+                    )
+                    site_cost = site_hours * site_cost_per_hour
+                    site_entry = proj_sites.setdefault(site, {'hours': {}, 'cost': {}})
+                    site_entry['hours'][m_k] = site_entry['hours'].get(m_k, 0.0) + round(site_hours, 2)
+                    site_entry['cost'][m_k] = site_entry['cost'].get(m_k, 0.0) + round(site_cost, 2)
 
-                for target_project_id in target_projects:
-                    # ensure we only count each feature once per project
-                    seen = seen_per_project.setdefault(target_project_id, set())
-                    if fid_s and fid_s in seen:
+        for f in features:
+            fid = f.get('id')
+            fid_s = str(fid) if fid is not None else None
+            project_id = f.get('project')
+            start = f.get('start')
+            end = f.get('end')
+            capacity = f.get('capacity', []) or []
+
+            target_projects = []
+            if project_id and (not isinstance(allowed_projects, set) or not allowed_projects or project_id in allowed_projects):
+                target_projects.append(project_id)
+            relations = f.get('relations', [])
+            if isinstance(relations, list):
+                for rel in relations:
+                    if isinstance(rel, dict) and rel.get('type') == 'Parent':
+                        parent_id = str(rel.get('id', ''))
+                        parent_proj = workitem_to_project.get(parent_id)
+                        if parent_proj and parent_proj != project_id:
+                            target_projects.append(parent_proj)
+
+            for target_project_id in target_projects:
+                seen = seen_per_project.setdefault(target_project_id, set())
+                if fid_s and fid_s in seen:
+                    continue
+                if fid_s:
+                    seen.add(fid_s)
+                proj_sites = project_sites.setdefault(target_project_id, {})
+
+                # Per-team rollup: for teams this feature owns, only use this
+                # feature's own allocation if no child covers that team.
+                covered = child_covered_teams(fid_s) if fid_s else set()
+                for team in capacity:
+                    team_key = team.get('team')
+                    if not team_key or team_key not in team_aggregates:
                         continue
-                    if fid_s:
-                        seen.add(fid_s)
-                    proj_sites = project_sites.setdefault(target_project_id, {})
-                    for team in (capacity or []):
-                        team_key = team.get('team')
-                        cap = float(team.get('capacity', 0)) / 100.0
-                        if not team_key or team_key not in team_aggregates:
-                            continue
-                        team_summary = team_aggregates[team_key]
-                        # only consider internal site breakdown here
-                        if not team_summary.get('internal_hours_total'):
-                            continue
-                        # allocate base hours per month for the team over the span
-                        month_buckets = _engine._allocate_months(start, end, int(team_summary.get('internal_hours_total') or 0))
-                        # gather per-site info inside team
-                        sites_info = team_summary.get('sites', {}) or {}
-                        denom = sum((sv.get('internal_hours_total', 0) or 0) for sv in sites_info.values()) or float(team_summary.get('internal_hours_total') or 1)
-                        for m_k, base_hours in (month_buckets or {}).items():
-                            alloc_hours_team = base_hours * cap
-                            # cost per hour for the team average
-                            team_cost_per_hour = 0.0
-                            if team_summary.get('internal_hours_total'):
-                                team_cost_per_hour = float(team_summary.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(team_summary.get('internal_hours_total')))
-                            for site, sv in sites_info.items():
-                                site_hours_share = (sv.get('internal_hours_total', 0) or 0) / denom if denom else 0
-                                site_hours = alloc_hours_team * site_hours_share
-                                # prefer site-specific cost per hour when available
-                                if sv.get('internal_hours_total'):
-                                    site_cost_per_hour = float(sv.get('internal_monthly_cost_total', 0.0)) / max(1.0, float(sv.get('internal_hours_total')))
-                                else:
-                                    site_cost_per_hour = team_cost_per_hour
-                                site_cost = site_hours * site_cost_per_hour
-                                site_entry = proj_sites.setdefault(site, {'hours': {}, 'cost': {}})
-                                site_entry['hours'][m_k] = site_entry['hours'].get(m_k, 0.0) + round(site_hours, 2)
-                                site_entry['cost'][m_k] = site_entry['cost'].get(m_k, 0.0) + round(site_cost, 2)
+                    cap = float(team.get('capacity', 0)) / 100.0
+                    if team_key in covered:
+                        # A child will contribute this team's hours — skip here
+                        continue
+                    _add_team_sites(proj_sites, start, end, team_key, cap)
+
         # NOTE: intentionally do not swallow exceptions here — let errors
         # propagate so issues are visible and cannot be silently ignored.
 

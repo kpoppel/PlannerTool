@@ -188,12 +188,12 @@ function renderTasksInProjectTable(component, features) {
               <td class="numeric">${feature.end || ''}</td>
               <td class="numeric">${teamsLabel}</td>
               <td class="numeric">
-                ${totalCost.toLocaleString(undefined, {
+                ${totalCost > 0 ? totalCost.toLocaleString(undefined, {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
-                })}
+                }) : ''}
               </td>
-              <td class="numeric">${Math.round(totalHours)}</td>
+              <td class="numeric">${Math.round(totalHours) > 0 ? Math.round(totalHours) : ''}</td>
             </tr>
           `;
         })}

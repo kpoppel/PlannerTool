@@ -136,15 +136,15 @@ function renderTeamTable(component, team, monthKeys) {
   }
 
   const formatValue = (val) => {
+    const n = typeof val === 'number' ? val : Number(val || 0);
+    if (n === 0) return '';
     if (component.viewMode === 'hours') {
-      return typeof val === 'number' ? val.toFixed(0) : '0';
+      return Math.round(n).toString();
     }
-    return typeof val === 'number' ?
-        val.toLocaleString(undefined, {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0,
-        })
-      : '0';
+    return n.toLocaleString(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
   };
 
   const featureAllocations = teamFeatures

@@ -435,4 +435,198 @@ describe('PluginCostV2 Project View deeper branches', () => {
     expect(sums[0]).to.equal('500'); // 200 (Team A from child) + 300 (Team B own)
     expect(sums[1]).to.equal('200'); // child own
   });
+
+  // ---- Project summary / team-month table rollup tests ----
+
+  function mkMultiTeamFeature(id, title, teamsObj) {
+    // teamsObj: { teamName: costInternalValue }
+    return {
+      id: String(id),
+      title,
+      start: '2026-01-01',
+      end: '2026-01-31',
+      metrics: {
+        teams: Object.fromEntries(
+          Object.entries(teamsObj).map(([t, c]) => [
+            t,
+            {
+              cost: { internal: { '2026-01': c }, external: {} },
+              hours: { internal: { '2026-01': c / 10 }, external: {} },
+            },
+          ])
+        ),
+      },
+    };
+  }
+
+  function renderTeamsView(features, parentId, childIds) {
+    state._dataInitService.childrenByParent = new Map([[parentId, childIds.map(String)]]);
+    return {
+      months: [new Date('2026-01-01')],
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'teams' },
+      viewMode: 'cost',
+      data: { projects: { p1: { id: 'p1', features } } },
+      costTeams: { teams: [] },
+    };
+  }
+
+  it('team table: Team A shows child value when child covers it (no double-count)', () => {
+    // Epic: Team A 500, Team B 300. Child: Team A 200.
+    // Expected Team A total = 200 (child), Team B total = 300 (own).
+    const parent = mkMultiTeamFeature(500, 'Epic', { 'team-alpha': 500, 'team-beta': 300 });
+    const child = mkMultiTeamFeature(501, 'Feature', { 'team-alpha': 200 });
+
+    const comp = renderTeamsView([parent, child], 500, [501]);
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    const rows = Array.from(container.querySelectorAll('tbody tr')).filter(
+      (r) => r.cells && r.cells.length > 1 && !r.classList.contains('totals-row')
+    );
+    // Collect text from first numeric cell per row as the per-month value
+    const teamRows = rows.filter((r) => r.querySelector('td.team-header'));
+    const teamNames = teamRows.map((r) => r.querySelector('td.team-header').textContent.trim());
+    const teamValues = teamRows.map((r) => {
+      const numCells = r.querySelectorAll('td.numeric');
+      return numCells[0] ? numCells[0].textContent.trim() : '0';
+    });
+
+    const alphaIdx = teamNames.findIndex((n) => n.toLowerCase().includes('alpha'));
+    const betaIdx = teamNames.findIndex((n) => n.toLowerCase().includes('beta'));
+
+    expect(alphaIdx, 'team-alpha row not found').to.be.greaterThan(-1);
+    expect(betaIdx, 'team-beta row not found').to.be.greaterThan(-1);
+
+    // Team Alpha: child's 200, not parent's 500
+    expect(teamValues[alphaIdx]).to.equal('200');
+    // Team Beta: parent own 300 (no child covers it)
+    expect(teamValues[betaIdx]).to.equal('300');
+  });
+
+  it('team table: no double-counting when parent has no children', () => {
+    // Single leaf feature: Team A 400. Should be 400.
+    const leaf = mkMultiTeamFeature(600, 'Leaf', { 'team-alpha': 400 });
+    state._dataInitService.childrenByParent = new Map();
+
+    const comp = {
+      months: [new Date('2026-01-01')],
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'teams' },
+      viewMode: 'cost',
+      data: { projects: { p1: { id: 'p1', features: [leaf] } } },
+      costTeams: { teams: [] },
+    };
+
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    const teamRows = Array.from(container.querySelectorAll('tbody tr')).filter((r) =>
+      r.querySelector('td.team-header')
+    );
+    expect(teamRows.length).to.equal(1);
+    const numCells = teamRows[0].querySelectorAll('td.numeric');
+    // First numeric cell = Jan 2026 internal = 400
+    expect(numCells[0].textContent.trim()).to.equal('400');
+  });
+
+  it('project summary Totals row matches rollup (no double-count parent+child)', () => {
+    // Epic: Team A 500. Child: Team A 200.
+    // Summary "Totals: Cost" should be 200 (from child), not 700 (200+500).
+    const parent = mkMultiTeamFeature(700, 'Epic', { 'team-alpha': 500 });
+    const child = mkMultiTeamFeature(701, 'Feature', { 'team-alpha': 200 });
+
+    const comp = renderTeamsView([parent, child], 700, [701]);
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    // Find the summary-table "Cost" row under the "Totals" group-header
+    const summaryTable = container.querySelector('.summary-table');
+    expect(summaryTable, 'summary-table not found').to.be.ok;
+
+    // Look for the Cost row (second group row in Totals section)
+    const rows = Array.from(summaryTable.querySelectorAll('tbody tr'));
+    const costRow = rows.find(
+      (r) => r.querySelector('td.metric') && r.querySelector('td.metric').textContent.trim() === 'Cost'
+    );
+    expect(costRow, 'Cost row not found in summary table').to.be.ok;
+
+    const sumCell = costRow.querySelector('td.sum-column');
+    expect(sumCell, 'sum-column not found').to.be.ok;
+    // Must be 200 (child), not 700 (parent 500 + child 200)
+    expect(sumCell.textContent.trim()).to.equal('200');
+  });
+
+  it('summary table Internal site rows use rolled-up allocations (not stale server sites)', () => {
+    // Epic has Team A (ERL team). Child has Team B (LY team).
+    // Old logic: skips parent entirely → ERL = 0 (wrong).
+    // New logic: parent's Team A has no child covering it → kept → ERL = parent's hours.
+    const parent = mkMultiTeamFeature(800, 'Epic', { 'team-alpha': 400 });
+    const child = mkMultiTeamFeature(801, 'Feature', { 'team-beta': 200 });
+
+    state._dataInitService.childrenByParent = new Map([[800, ['801']]]);
+
+    const comp = {
+      months: [new Date('2026-01-01')],
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      expandedProjects: new Set(['p1']),
+      projectViewSelection: {},
+      viewMode: 'cost',
+      data: {
+        projects: {
+          p1: {
+            id: 'p1',
+            features: [parent, child],
+            // Server provided stale site totals (computed with old skip-parent rule)
+            totals: { sites: { ERL: { hours: { '2026-01': 0 }, cost: { '2026-01': 0 } } } },
+          },
+        },
+      },
+      // costTeams: team-alpha has ERL internal members, team-beta has LY internal members
+      costTeams: {
+        teams: [
+          {
+            id: 'team-alpha',
+            name: 'Team Alpha',
+            members: [
+              { site: 'ERL', external: false, hours_per_month: 160, hourly_rate: 100 },
+            ],
+          },
+          {
+            id: 'team-beta',
+            name: 'Team Beta',
+            members: [
+              { site: 'LY', external: false, hours_per_month: 160, hourly_rate: 80 },
+            ],
+          },
+        ],
+      },
+    };
+
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    const summaryTable = container.querySelector('.summary-table');
+    expect(summaryTable, 'summary-table not found').to.be.ok;
+    const rows = Array.from(summaryTable.querySelectorAll('tbody tr'));
+
+    // ERL Hours row must show non-zero (parent's Team A allocation, not server's stale 0)
+    const erlHoursRow = rows.find(
+      (r) => r.querySelector('td') && r.querySelector('td').textContent.trim() === 'ERL Hours'
+    );
+    expect(erlHoursRow, 'ERL Hours row not found').to.be.ok;
+    const erlHoursSum = erlHoursRow.querySelector('td.sum-column');
+    expect(erlHoursSum, 'ERL Hours sum-column not found').to.be.ok;
+    // team-alpha (ERL, 400h) is kept from parent since no child covers it
+    expect(Number(erlHoursSum.textContent.trim())).to.be.greaterThan(0);
+  });
 });
