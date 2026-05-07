@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.0.2] - unreleased
+## [v4.0.2] - 2026-05-07
 
 ### Changed
 - Cost Plugin V2: Calculations made only in selected time window. Warning if features extend beyond the window.
