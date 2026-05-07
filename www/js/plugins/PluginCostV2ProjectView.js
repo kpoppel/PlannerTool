@@ -771,6 +771,156 @@ function flattenTree(ids, childrenMap, featureMap, depth, result) {
   return result;
 }
 
+/**
+ * Compute effective (rolled-up) data maps for the feature list.
+ *
+ * Rules applied bottom-up per team:
+ * - Leaf feature: display own server-provided metrics for each team.
+ * - Parent feature: if any child in the dataset carries allocations for a team,
+ *   that team's displayed value is the sum of children's effective values (not
+ *   the parent's own). Teams allocated only at the parent level (no child
+ *   coverage) keep the parent's own allocation.
+ *
+ * This means Epic-level estimates are replaced by their children wherever
+ * children provide detail, while teams only specified at Epic level are
+ * still respected as-is.
+ *
+ * @param {Array<Object>} features
+ * @param {Map<string, Array<string>>} childrenMap  from buildTaskTree
+ * @param {Array<string>} monthKeys  display-window month keys
+ * @returns {Map<string, {cost: {internal: Map, external: Map}, hours: {internal: Map, external: Map}}>}
+ */
+function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
+  const featureMap = new Map(features.map((f) => [String(f.id), f]));
+
+  // byTeam: featureId → teamName → {cost:{internal:Map,external:Map}, hours:{...}}
+  const byTeam = new Map();
+
+  const mkAlloc = () => ({
+    cost: { internal: new Map(), external: new Map() },
+    hours: { internal: new Map(), external: new Map() },
+  });
+
+  const addAllocs = (dst, src) => {
+    for (const kind of ['cost', 'hours'])
+      for (const dir of ['internal', 'external'])
+        for (const [mk, v] of src[kind][dir].entries())
+          dst[kind][dir].set(mk, (dst[kind][dir].get(mk) || 0) + v);
+  };
+
+  // Extract one team's alloc from server data, restricted to display monthKeys
+  const fromServerTeam = (teamData) => {
+    const alloc = mkAlloc();
+    for (const kind of ['cost', 'hours'])
+      for (const dir of ['internal', 'external']) {
+        const obj = (teamData[kind] && teamData[kind][dir]) || {};
+        for (const mk of monthKeys)
+          if (obj[mk] != null) alloc[kind][dir].set(mk, Number(obj[mk]));
+      }
+    return alloc;
+  };
+
+  // Fallback when no per-team data: build alloc from flat totals
+  const fromFlatMetrics = (metrics) => {
+    const alloc = mkAlloc();
+    for (const kind of ['cost', 'hours']) {
+      const intObj =
+        (metrics.internal && metrics.internal[kind]) ||
+        (metrics[kind] && metrics[kind].internal) ||
+        {};
+      const extObj =
+        (metrics.external && metrics.external[kind]) ||
+        (metrics[kind] && metrics[kind].external) ||
+        {};
+      for (const mk of monthKeys) {
+        if (intObj[mk] != null) alloc[kind].internal.set(mk, Number(intObj[mk]));
+        if (extObj[mk] != null) alloc[kind].external.set(mk, Number(extObj[mk]));
+      }
+    }
+    return alloc;
+  };
+
+  // Post-order DFS: leaves before parents so rollup is available when needed
+  function processNode(fid) {
+    if (byTeam.has(fid)) return;
+    const feature = featureMap.get(fid);
+    if (!feature) { byTeam.set(fid, new Map()); return; }
+
+    const children = (childrenMap.get(fid) || []).map(String);
+    for (const cid of children) processNode(cid);
+
+    const ownTeams = (feature.metrics && feature.metrics.teams) || {};
+    const hasOwnTeams = Object.keys(ownTeams).length > 0;
+    const teamResult = new Map();
+
+    if (children.length === 0) {
+      // Leaf: use own per-team data, or flat metrics when no per-team breakdown
+      if (hasOwnTeams) {
+        for (const [teamName, teamData] of Object.entries(ownTeams))
+          teamResult.set(teamName, fromServerTeam(teamData));
+      } else if (feature.metrics) {
+        teamResult.set('__flat__', fromFlatMetrics(feature.metrics));
+      }
+    } else {
+      // Which teams does at least one direct child cover?
+      const childCoveredTeams = new Set();
+      for (const cid of children) {
+        const ct = (featureMap.get(cid)?.metrics?.teams) || {};
+        for (const t of Object.keys(ct)) childCoveredTeams.add(t);
+      }
+
+      if (hasOwnTeams) {
+        for (const [teamName, teamData] of Object.entries(ownTeams)) {
+          if (childCoveredTeams.has(teamName)) {
+            // Sum children's effective contribution for this team
+            const merged = mkAlloc();
+            for (const cid of children) {
+              const a = byTeam.get(cid)?.get(teamName);
+              if (a) addAllocs(merged, a);
+            }
+            teamResult.set(teamName, merged);
+          } else {
+            // No child covers this team — use own allocation
+            teamResult.set(teamName, fromServerTeam(teamData));
+          }
+        }
+      }
+
+      // Pass through teams that children have but the parent doesn't own
+      const allChildTeams = new Set();
+      for (const cid of children) {
+        const cm = byTeam.get(cid);
+        if (cm) for (const t of cm.keys()) allChildTeams.add(t);
+      }
+      for (const teamName of allChildTeams) {
+        if (teamResult.has(teamName)) continue;
+        const merged = mkAlloc();
+        for (const cid of children) {
+          const a = byTeam.get(cid)?.get(teamName);
+          if (a) addAllocs(merged, a);
+        }
+        teamResult.set(teamName, merged);
+      }
+    }
+
+    byTeam.set(fid, teamResult);
+  }
+
+  for (const f of features) processNode(String(f.id));
+
+  // Aggregate all per-team allocs into a single totals dataMap per feature
+  const result = new Map();
+  for (const [fid, teamMap] of byTeam.entries()) {
+    const dataMap = {
+      cost: { internal: new Map(), external: new Map() },
+      hours: { internal: new Map(), external: new Map() },
+    };
+    for (const alloc of teamMap.values()) addAllocs(dataMap, alloc);
+    result.set(fid, dataMap);
+  }
+  return result;
+}
+
 function renderFeatureList(component, features, monthKeys) {
   const formatValue = (val) => formatPlainNumber(component, val);
 
@@ -781,6 +931,9 @@ function renderFeatureList(component, features, monthKeys) {
     state.childrenByParent || new Map()
   );
   const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
+
+  // Compute rolled-up effective metrics once for all features before rendering.
+  const effectiveDataMaps = computeEffectiveDataMaps(features, childrenMap, monthKeys);
 
   return html`
     <table>
@@ -806,31 +959,11 @@ function renderFeatureList(component, features, monthKeys) {
       </thead>
       <tbody>
         ${orderedFeatures.map(({ feature, depth }) => {
-          const metrics = feature && feature.metrics ? feature.metrics : null;
-          const dataMap = {
+          // Use rolled-up effective dataMap; fall back to empty maps if unavailable.
+          const dataMap = effectiveDataMaps.get(String(feature.id)) || {
             cost: { internal: new Map(), external: new Map() },
             hours: { internal: new Map(), external: new Map() },
           };
-
-          if (metrics) {
-            // prefer shapes: metrics.internal.cost, metrics.internal.hours or metrics.cost, metrics.hours
-            const fill = (kind) => {
-              const internalObj =
-                (metrics.internal && metrics.internal[kind]) ||
-                (metrics[kind] && metrics[kind].internal) ||
-                {};
-              const externalObj =
-                (metrics.external && metrics.external[kind]) ||
-                (metrics[kind] && metrics[kind].external) ||
-                {};
-              for (const [k, v] of Object.entries(internalObj || {}))
-                dataMap[kind].internal.set(k, Number(v || 0));
-              for (const [k, v] of Object.entries(externalObj || {}))
-                dataMap[kind].external.set(k, Number(v || 0));
-            };
-            fill('cost');
-            fill('hours');
-          }
 
           const curMap = component.viewMode === 'cost' ? dataMap.cost : dataMap.hours;
           // Only sum months in the display window; the map may include server data

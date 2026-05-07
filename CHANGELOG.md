@@ -19,6 +19,7 @@ Template - do not change :
 ### Changed
 - Cost Plugin V2: Calculations made only in selected time window. Warning if features extend beyond the window.
 - Cost Plugin V2: Hierarchical relation kept in the tables.
+- Cost Plugin V2 Plan View feature list: parent rows now show rolled-up children costs per team; teams only allocated at the parent level (no child coverage) retain their own allocation.
 ### Fixed
 
 ## [v4.0.1] - 2026-05-06

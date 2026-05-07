@@ -329,4 +329,110 @@ describe('PluginCostV2 Project View deeper branches', () => {
     // Child (second row) must have strictly greater indentation than parent (first row)
     expect(paddings[1]).to.be.greaterThan(paddings[0]);
   });
+
+  // ---- Rollup tests ----
+
+  it('rolls up child team cost into parent row (parent own cost is replaced)', () => {
+    // Epic has Team A: 500. Child Feature has Team A: 200.
+    // Displayed parent sum must be 200 (child), not 500 (own).
+    const mk = (id, title, teams) => ({
+      id: String(id),
+      title,
+      start: '2026-01-01',
+      end: '2026-01-31',
+      metrics: {
+        teams: Object.fromEntries(
+          Object.entries(teams).map(([t, c]) => [
+            t,
+            {
+              cost: { internal: { '2026-01': c }, external: {} },
+              hours: { internal: {}, external: {} },
+            },
+          ])
+        ),
+      },
+    });
+
+    const parent = mk('300', 'Epic A', { 'team-alpha': 500 });
+    const child = mk('301', 'Feature A', { 'team-alpha': 200 });
+
+    state._dataInitService.childrenByParent = new Map([[300, ['301']]]);
+
+    const comp = {
+      months: [new Date('2026-01-01')],
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'features' },
+      viewMode: 'cost',
+      data: { projects: { p1: { id: 'p1', features: [parent, child] } } },
+      costTeams: { teams: [] },
+    };
+
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    const featureRows = Array.from(container.querySelectorAll('tbody tr')).filter((r) =>
+      r.querySelector('td[data-depth]')
+    );
+    expect(featureRows.length).to.equal(2);
+    const sums = featureRows.map(
+      (r) => r.querySelector('.sum-column') && r.querySelector('.sum-column').textContent.trim()
+    );
+    expect(sums[0]).to.equal('200'); // parent rolled up from child, not own 500
+    expect(sums[1]).to.equal('200'); // child own
+  });
+
+  it('keeps own allocation for teams not covered by any child', () => {
+    // Epic has Team A: 500 and Team B: 300. Child only has Team A: 200.
+    // Parent displayed sum = Team A (child) 200 + Team B (own) 300 = 500.
+    const mk = (id, title, teams) => ({
+      id: String(id),
+      title,
+      start: '2026-01-01',
+      end: '2026-01-31',
+      metrics: {
+        teams: Object.fromEntries(
+          Object.entries(teams).map(([t, c]) => [
+            t,
+            {
+              cost: { internal: { '2026-01': c }, external: {} },
+              hours: { internal: {}, external: {} },
+            },
+          ])
+        ),
+      },
+    });
+
+    const parent = mk('400', 'Epic B', { 'team-alpha': 500, 'team-beta': 300 });
+    const child = mk('401', 'Feature B', { 'team-alpha': 200 });
+
+    state._dataInitService.childrenByParent = new Map([[400, ['401']]]);
+
+    const comp = {
+      months: [new Date('2026-01-01')],
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      expandedProjects: new Set(['p1']),
+      projectViewSelection: { p1: 'features' },
+      viewMode: 'cost',
+      data: { projects: { p1: { id: 'p1', features: [parent, child] } } },
+      costTeams: { teams: [] },
+    };
+
+    const res = renderProjectView(comp);
+    const container = document.createElement('div');
+    render(res, container);
+
+    const featureRows = Array.from(container.querySelectorAll('tbody tr')).filter((r) =>
+      r.querySelector('td[data-depth]')
+    );
+    expect(featureRows.length).to.equal(2);
+    const sums = featureRows.map(
+      (r) => r.querySelector('.sum-column') && r.querySelector('.sum-column').textContent.trim()
+    );
+    expect(sums[0]).to.equal('500'); // 200 (Team A from child) + 300 (Team B own)
+    expect(sums[1]).to.equal('200'); // child own
+  });
 });
