@@ -14,6 +14,13 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.0.2] - unreleased
+### Added
+### Changed
+- Cost Plugin V2: Calculations made only in selected time window. Warning if features extend beyond the window.
+- Cost Plugin V2: Hierarchical relation kept in the tables.
+### Fixed
+
 ## [v4.0.1] - 2026-05-06
 
 ### Added
@@ -23,6 +30,7 @@ Template - do not change :
 ### Fixed
 - Admin interface project module would not load project config helper
 - Events wiki used project ID for headings in tables. Must use the project name instead.
+- PluginCostV2 Plan View: cost/hours sums in "Features in Project" and team tables now only count months within the selected display period; features whose dates extend outside the window are flagged with ◀/▶ indicators and a banner warning is shown.
 
 ## [v4.0.0] - 2026-05-05
 

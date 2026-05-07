@@ -426,6 +426,18 @@ export class PluginCostV2Component extends LitElement {
       height: 16px;
       display: block;
     }
+    /* Clip-window indicators: shown on features whose dates extend outside the selected period */
+    .clip-warning {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 4px;
+      font-size: 10px;
+      color: #e65100;
+      cursor: default;
+      vertical-align: middle;
+      opacity: 0.8;
+    }
     /* Team Members summary grid for consistent alignment */
     .team-summary {
       display: flex;

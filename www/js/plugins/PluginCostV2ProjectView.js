@@ -1,7 +1,6 @@
 import { html } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
-import { expandDataset } from './PluginCostV2Calculator.js';
+import { monthLabel, monthKey, expandDataset, buildTaskTree } from './PluginCostV2Calculator.js';
 import { getIconTemplate } from '../services/IconService.js';
 
 function getTeamLabel(component, teamKey) {
@@ -101,6 +100,20 @@ function renderProjectTable(component, project, monthKeys) {
 
   const isExpanded = component.expandedProjects.has(project.id);
 
+  // Count features whose dates extend outside the selected display window so we
+  // can warn the user that the shown sums cover only the selected period.
+  const windowStart = component.startDate || null;
+  const windowEnd = component.endDate || null;
+  const clippedCount = expandedFeatures.filter((f) => {
+    if (!f) return false;
+    const fs = f.start ? String(f.start).slice(0, 10) : null;
+    const fe = f.end ? String(f.end).slice(0, 10) : null;
+    return (
+      (fs && windowStart && fs < windowStart) ||
+      (fe && windowEnd && fe > windowEnd)
+    );
+  }).length;
+
   return html`
     <div style="margin-bottom: 32px;">
       ${(() => {
@@ -133,6 +146,14 @@ function renderProjectTable(component, project, monthKeys) {
             </div>`
           : '';
       })()}
+      ${clippedCount > 0 ?
+        html`<div
+          style="margin-bottom:8px;padding:8px;border-radius:6px;background:#fff3e0;border:1px solid #ffe0b2;color:#e65100;font-size:13px;"
+        >
+          ⚠ ${clippedCount} feature${clippedCount > 1 ? 's extend' : ' extends'}
+          beyond the selected display period. Sums reflect the selected window only.
+        </div>`
+      : ''}
       <div
         class="project-header expandable"
         @click="${() => component.toggleProject(project.id)}"
@@ -317,10 +338,14 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
   for (const [teamName, teamData] of teamAllocations.entries()) {
     teamData.totalCost = 0;
     teamData.totalHours = 0;
-    for (const val of teamData.cost.internal.values()) teamData.totalCost += val;
-    for (const val of teamData.cost.external.values()) teamData.totalCost += val;
-    for (const val of teamData.hours.internal.values()) teamData.totalHours += val;
-    for (const val of teamData.hours.external.values()) teamData.totalHours += val;
+    // Only sum months within the display window so the Sum column matches per-column values
+    for (const mKey of monthKeys) {
+      teamData.totalCost +=
+        (teamData.cost.internal.get(mKey) || 0) + (teamData.cost.external.get(mKey) || 0);
+      teamData.totalHours +=
+        (teamData.hours.internal.get(mKey) || 0) +
+        (teamData.hours.external.get(mKey) || 0);
+    }
     // DEBUG: One-off detailed debug to inspect map contents vs totals
     if (false) {
       if (teamName === 'team-architecture') {
@@ -395,7 +420,9 @@ function renderProjectSummaryTable(
     });
   }
 
-  const sum = (map) => Array.from(map.values()).reduce((a, b) => a + b, 0);
+  // Only sum the months inside the display window; the map may contain server data
+  // for months outside the selected period which must not be included in the totals.
+  const sum = (map) => monthKeys.reduce((a, mKey) => a + (map.get(mKey) || 0), 0);
 
   // Pair index to ensure Hours+Cost rows are styled as a unit across the table
   let pairIndex = 0;
@@ -722,8 +749,38 @@ function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {
   `;
 }
 
+/**
+ * Flatten the feature hierarchy into a depth-annotated list using DFS pre-order
+ * so that each parent immediately precedes its children in the rendered table.
+ *
+ * @param {Array<string>} ids - Feature IDs at the current level
+ * @param {Map<string, Array<string>>} childrenMap - From buildTaskTree
+ * @param {Map<string, Object>} featureMap - id -> feature object
+ * @param {number} depth - Current nesting level
+ * @param {Array<{feature: Object, depth: number}>} result - Accumulator
+ * @returns {Array<{feature: Object, depth: number}>}
+ */
+function flattenTree(ids, childrenMap, featureMap, depth, result) {
+  for (const id of ids) {
+    const feature = featureMap.get(String(id));
+    if (!feature) continue;
+    result.push({ feature, depth });
+    const children = childrenMap.get(String(id)) || [];
+    flattenTree(children, childrenMap, featureMap, depth + 1, result);
+  }
+  return result;
+}
+
 function renderFeatureList(component, features, monthKeys) {
   const formatValue = (val) => formatPlainNumber(component, val);
+
+  // Build hierarchy so parents always precede their children.
+  const featureMap = new Map(features.map((f) => [String(f.id), f]));
+  const { roots, childrenMap } = buildTaskTree(
+    features,
+    state.childrenByParent || new Map()
+  );
+  const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
 
   return html`
     <table>
@@ -748,7 +805,7 @@ function renderFeatureList(component, features, monthKeys) {
         </tr>
       </thead>
       <tbody>
-        ${features.map((feature) => {
+        ${orderedFeatures.map(({ feature, depth }) => {
           const metrics = feature && feature.metrics ? feature.metrics : null;
           const dataMap = {
             cost: { internal: new Map(), external: new Map() },
@@ -776,16 +833,34 @@ function renderFeatureList(component, features, monthKeys) {
           }
 
           const curMap = component.viewMode === 'cost' ? dataMap.cost : dataMap.hours;
+          // Only sum months in the display window; the map may include server data
+          // for months outside the selected period.
           let total = 0;
-          for (const val of curMap.internal.values()) total += val;
-          for (const val of curMap.external.values()) total += val;
+          for (const mKey of monthKeys) {
+            total +=
+              (curMap.internal.get(mKey) || 0) + (curMap.external.get(mKey) || 0);
+          }
+
+          // Clip detection: flag features whose dates extend outside the display window
+          const featureStart = feature.start ? String(feature.start).slice(0, 10) : null;
+          const featureEnd = feature.end ? String(feature.end).slice(0, 10) : null;
+          const headClipped =
+            featureStart && component.startDate && featureStart < component.startDate;
+          const tailClipped =
+            featureEnd && component.endDate && featureEnd > component.endDate;
 
           return html`
             <tr>
-              <td style="text-align:center;">
+              <td style="text-align:center; white-space:nowrap;">
+                ${headClipped ?
+                  html`<span class="clip-warning" title="Starts ${featureStart} — before display window start (${component.startDate})">◀</span>`
+                : ''}
                 <span class="type-icon ${(feature.type || '').toLowerCase()}" title="${feature.type || 'Task'}">${getIconTemplate(feature.type)}</span>
+                ${tailClipped ?
+                  html`<span class="clip-warning" title="Ends ${featureEnd} — after display window end (${component.endDate})">▶</span>`
+                : ''}
               </td>
-              <td style="vertical-align:top;">
+              <td style="vertical-align:top; padding-left:${8 + depth * 20}px;" data-depth="${depth}">
                 ${feature.title || feature.name || feature.id}
               </td>
               ${monthKeys.map((mKey) => {
