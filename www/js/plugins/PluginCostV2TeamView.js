@@ -1,7 +1,8 @@
 import { html } from '../vendor/lit.js';
-import { monthLabel, monthKey } from './PluginCostV2Calculator.js';
+import { monthLabel, monthKey, buildTaskTree, buildByTeam, flattenTree } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { renderCountingBanner, renderClipBanner } from './PluginCostV2Shared.js';
 
 export function renderTeamView(component) {
   if (!component.data || !component.data.projects) {
@@ -25,12 +26,21 @@ export function renderTeamView(component) {
 
   const monthKeys = component.months.map((m) => monthKey(m));
 
+  // Collect all unique features across projects for the clip banner
+  const allFeatures = Object.values(component.data.projects || {}).flatMap(
+    (p) => p.features || []
+  );
+
   // Ensure expandedTeams set exists on component; default to expanded
   if (!component._expandedTeams)
     component._expandedTeams = new Set(selectedTeams.map((t) => `team-${t.id}`));
 
   return html`
-    <div>${selectedTeams.map((team) => renderTeamTable(component, team, monthKeys))}</div>
+    <div>
+      ${renderCountingBanner()}
+      ${renderClipBanner(allFeatures, component.startDate, component.endDate)}
+      ${selectedTeams.map((team) => renderTeamTable(component, team, monthKeys))}
+    </div>
   `;
 }
 
@@ -79,34 +89,54 @@ function renderTeamTable(component, team, monthKeys) {
   }
   const allFeatures = Array.from(featureById.values());
 
-  // Count features that have a non-zero allocation for this team (scenario-aware)
+  // Build full hierarchy: childrenMap for buildByTeam, parentMap for root detection
+  const { childrenMap, parentMap } = buildTaskTree(
+    allFeatures,
+    state.childrenByParent || new Map()
+  );
+
+  // Hierarchy-aware, window-restricted per-team rollup across all features
+  const byTeam = buildByTeam(allFeatures, childrenMap, monthKeys);
+
+  // Filter to features assigned to this team (capacity-based, same as before)
   const teamFeaturesRaw = allFeatures.filter(
     (f) =>
       f.capacity &&
       f.capacity.some((c) => String(c.team) === teamId && Number(c.capacity) > 0)
   );
 
-  // At this point features are already deduplicated across projects; use
-  // the filtered list directly.
-  let teamFeatures = teamFeaturesRaw;
-
   // Additional dedupe: if multiple features share the same title and project,
   // treat them as duplicates (helps when backend returns near-duplicates).
   const seenTitleProject = new Set();
-  const finalFeatures = [];
-  for (const f of teamFeatures) {
+  const teamFeatures = [];
+  for (const f of teamFeaturesRaw) {
     const title = (f.title || f.name || '').toString().trim().toLowerCase();
-    // Find project name for this feature (fallback to feature.project)
     const proj = Object.values(component.data.projects || {}).find((p) =>
       (p.features || []).some((ff) => String(ff.id) === String(f.id))
     );
     const projectName = proj ? proj.name : f.project || '';
-    const key = title ? `${title}::${projectName}` : `id::${String(f.id)}`;
-    if (seenTitleProject.has(key)) continue;
-    seenTitleProject.add(key);
-    finalFeatures.push(f);
+    const dedupKey = title ? `${title}::${projectName}` : `id::${String(f.id)}`;
+    if (seenTitleProject.has(dedupKey)) continue;
+    seenTitleProject.add(dedupKey);
+    teamFeatures.push(f);
   }
-  teamFeatures = finalFeatures;
+
+  // Build DFS-ordered display list (parents precede their children)
+  const teamFeatureSet = new Set(teamFeatures.map((f) => String(f.id)));
+  const teamChildrenMap = new Map();
+  for (const f of teamFeatures) {
+    const fid = String(f.id);
+    const children = (childrenMap.get(fid) || []).filter((cid) => teamFeatureSet.has(cid));
+    if (children.length > 0) teamChildrenMap.set(fid, children);
+  }
+  const teamRootIds = teamFeatures
+    .filter((f) => {
+      const pid = parentMap.get(String(f.id));
+      return !pid || !teamFeatureSet.has(pid);
+    })
+    .map((f) => String(f.id));
+  const teamFeatureMap = new Map(teamFeatures.map((f) => [String(f.id), f]));
+  const orderedTeamFeatures = flattenTree(teamRootIds, teamChildrenMap, teamFeatureMap, 0, []);
 
   const key = `team-${String(team.id)}`;
   const isExpanded = component._expandedTeams && component._expandedTeams.has(key);
@@ -147,65 +177,38 @@ function renderTeamTable(component, team, monthKeys) {
     });
   };
 
-  const featureAllocations = teamFeatures
-    .map((feature) => {
-      const serversideTeams =
-        feature && feature.metrics && feature.metrics.teams ?
-          feature.metrics.teams
-        : null;
-      // Only use server-provided team buckets. If absent, skip client computation.
-      if (!serversideTeams || !serversideTeams[teamId]) return null;
-
-      const t = serversideTeams[teamId];
-      const teamAllocation = {
-        cost: { internal: new Map(), external: new Map() },
-        hours: { internal: new Map(), external: new Map() },
-      };
-
-      const h_internal = (t.hours && t.hours.internal) || {};
-      const h_external = (t.hours && t.hours.external) || {};
-      const c_internal = (t.cost && t.cost.internal) || {};
-      const c_external = (t.cost && t.cost.external) || {};
-      for (const [mKey, val] of Object.entries(c_internal))
-        teamAllocation.cost.internal.set(mKey, Number(val || 0));
-      for (const [mKey, val] of Object.entries(c_external))
-        teamAllocation.cost.external.set(mKey, Number(val || 0));
-      for (const [mKey, val] of Object.entries(h_internal))
-        teamAllocation.hours.internal.set(mKey, Number(val || 0));
-      for (const [mKey, val] of Object.entries(h_external))
-        teamAllocation.hours.external.set(mKey, Number(val || 0));
-
-      return { feature, allocation: teamAllocation };
+  // Build per-feature allocations from the hierarchy-aware buildByTeam result
+  const featureAllocations = orderedTeamFeatures
+    .map(({ feature, depth }) => {
+      const featureTeams = byTeam.get(String(feature.id));
+      const alloc = featureTeams?.get(teamId);
+      if (!alloc) return null;
+      return { feature, depth, allocation: alloc };
     })
     .filter((x) => x !== null);
 
+  // Team totals: sum only root contributors to avoid double-counting parent + children
   const teamTotals = {
     cost: { internal: new Map(), external: new Map() },
     hours: { internal: new Map(), external: new Map() },
     totalCost: 0,
     totalHours: 0,
   };
-
-  for (const { allocation } of featureAllocations) {
-    for (const [mKey, val] of allocation.cost.internal.entries()) {
-      const current = teamTotals.cost.internal.get(mKey) || 0;
-      teamTotals.cost.internal.set(mKey, current + val);
-      teamTotals.totalCost += val;
-    }
-    for (const [mKey, val] of allocation.cost.external.entries()) {
-      const current = teamTotals.cost.external.get(mKey) || 0;
-      teamTotals.cost.external.set(mKey, current + val);
-      teamTotals.totalCost += val;
-    }
-    for (const [mKey, val] of allocation.hours.internal.entries()) {
-      const current = teamTotals.hours.internal.get(mKey) || 0;
-      teamTotals.hours.internal.set(mKey, current + val);
-      teamTotals.totalHours += val;
-    }
-    for (const [mKey, val] of allocation.hours.external.entries()) {
-      const current = teamTotals.hours.external.get(mKey) || 0;
-      teamTotals.hours.external.set(mKey, current + val);
-      teamTotals.totalHours += val;
+  for (const rootId of teamRootIds) {
+    const featureTeams = byTeam.get(rootId);
+    const alloc = featureTeams?.get(teamId);
+    if (!alloc) continue;
+    for (const mKey of monthKeys) {
+      const ci = alloc.cost.internal.get(mKey) || 0;
+      const ce = alloc.cost.external.get(mKey) || 0;
+      const hi = alloc.hours.internal.get(mKey) || 0;
+      const he = alloc.hours.external.get(mKey) || 0;
+      teamTotals.cost.internal.set(mKey, (teamTotals.cost.internal.get(mKey) || 0) + ci);
+      teamTotals.cost.external.set(mKey, (teamTotals.cost.external.get(mKey) || 0) + ce);
+      teamTotals.hours.internal.set(mKey, (teamTotals.hours.internal.get(mKey) || 0) + hi);
+      teamTotals.hours.external.set(mKey, (teamTotals.hours.external.get(mKey) || 0) + he);
+      teamTotals.totalCost += ci + ce;
+      teamTotals.totalHours += hi + he;
     }
   }
 
@@ -249,27 +252,46 @@ function renderTeamTable(component, team, monthKeys) {
             </tr>
           </thead>
           <tbody>
-            ${featureAllocations.map(({ feature, allocation }) => {
+            ${featureAllocations.map(({ feature, depth, allocation }) => {
               const dataMap =
                 component.viewMode === 'cost' ? allocation.cost : allocation.hours;
+              // Window-restricted total (maps already keyed to monthKeys only)
               let total = 0;
-              for (const val of dataMap.internal.values()) total += val;
-              for (const val of dataMap.external.values()) total += val;
+              for (const mKey of monthKeys) {
+                total +=
+                  (dataMap.internal.get(mKey) || 0) + (dataMap.external.get(mKey) || 0);
+              }
 
               const projectData = Object.values(component.data.projects || {}).find((p) =>
                 (p.features || []).some((f) => String(f.id) === String(feature.id))
               );
               const projectName = projectData ? projectData.name : feature.project || '-';
 
+              // Clip detection
+              const featureStart = feature.start ? String(feature.start).slice(0, 10) : null;
+              const featureEnd = feature.end ? String(feature.end).slice(0, 10) : null;
+              const headClipped =
+                featureStart && component.startDate && featureStart < component.startDate;
+              const tailClipped =
+                featureEnd && component.endDate && featureEnd > component.endDate;
+
               const ft = (feature.type || '').toString().toLowerCase();
               const iconTemplate = getIconTemplate(ft);
 
               return html`
                 <tr>
-                  <td style="text-align:center;">
-                    <span class="type-icon">${iconTemplate}</span>
+                  <td style="text-align:center; white-space:nowrap;">
+                    ${headClipped ?
+                      html`<span class="clip-warning" title="Starts ${featureStart} — before display window">◀</span>`
+                    : ''}
+                    <span class="type-icon ${ft}" title="${feature.type || 'Task'}">${iconTemplate}</span>
+                    ${tailClipped ?
+                      html`<span class="clip-warning" title="Ends ${featureEnd} — after display window">▶</span>`
+                    : ''}
                   </td>
-                  <td>${feature.title || feature.name || feature.id}</td>
+                  <td style="padding-left:${8 + depth * 20}px;">
+                    ${feature.title || feature.name || feature.id}
+                  </td>
                   <td style="font-size:11px; color:#666;">${projectName}</td>
                   ${monthKeys.map((mKey) => {
                     const intVal = dataMap.internal.get(mKey) || 0;
@@ -279,12 +301,12 @@ function renderTeamTable(component, team, monthKeys) {
                       <td class="numeric">${formatValue(extVal)}</td>
                     `;
                   })}
-                  <td class="numeric">${formatValue(total)}</td>
+                  <td class="numeric sum-column">${formatValue(total)}</td>
                 </tr>
               `;
             })}
             <tr class="totals-row">
-              <td colspan="2"><strong>Team Total</strong></td>
+              <td colspan="3"><strong>Team Total</strong></td>
               ${monthKeys.map((mKey) => {
                 const dataMap =
                   component.viewMode === 'cost' ? teamTotals.cost : teamTotals.hours;
@@ -299,7 +321,7 @@ function renderTeamTable(component, team, monthKeys) {
                   </td>
                 `;
               })}
-              <td class="numeric">
+              <td class="numeric sum-column">
                 <strong
                   >${formatValue(
                     component.viewMode === 'cost' ?

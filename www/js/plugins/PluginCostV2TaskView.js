@@ -1,11 +1,15 @@
 import { html } from '../vendor/lit.js';
 import {
   buildTaskTree,
+  flattenTree,
+  computeEffectiveDataMaps,
+  monthKey,
   calculateBudgetDeviation,
   hasSignificantDeviation,
 } from './PluginCostV2Calculator.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { renderCountingBanner, renderClipBanner } from './PluginCostV2Shared.js';
 
 export function renderTaskView(component) {
   if (!component.data || !component.data.projects) {
@@ -61,6 +65,8 @@ export function renderTaskView(component) {
 
   return html`
     <div>
+      ${renderCountingBanner()}
+      ${renderClipBanner(allFeatures, component.startDate, component.endDate)}
       ${selectedProjects.map((project) => {
         const key = `project-${String(project.id)}`;
         const isExpanded = component._expandedSections.has(key);
@@ -99,17 +105,38 @@ function renderTasksInProjectTable(component, features) {
     </div>`;
   }
 
-  // const formatValue = (val) => {
-  //   const n = typeof val === 'number' ? val : Number(val || 0);
-  //   return String(Math.round(n));
-  // };
+  const monthKeys = component.months.map((m) => monthKey(m));
 
-  // Build project name lookup
-  const projects = component.data.projects || {};
-  const projectNames = {};
-  for (const pid of Object.keys(projects)) {
-    projectNames[String(projects[pid].id)] = projects[pid].name;
+  // Build hierarchy for DFS pre-order display and hierarchy-aware rollup
+  const featureMap = new Map(features.map((f) => [String(f.id), f]));
+  const { roots, childrenMap } = buildTaskTree(
+    features,
+    state.childrenByParent || new Map()
+  );
+  const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
+
+  // Rolled-up, window-restricted metrics per feature
+  const effectiveDataMaps = computeEffectiveDataMaps(features, childrenMap, monthKeys);
+
+  // Resolve team id/slug to friendly name using component.costTeams (built once)
+  const costTeamsList =
+    component && component.costTeams ?
+      Array.isArray(component.costTeams.teams) ? component.costTeams.teams
+      : Array.isArray(component.costTeams) ? component.costTeams
+      : []
+    : [];
+  const teamNameByKey = {};
+  for (const tt of costTeamsList) {
+    if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
+    if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
+    if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
   }
+
+  const formatValue = (n) => {
+    const v = typeof n === 'number' ? n : Number(n || 0);
+    if (v === 0) return '';
+    return String(Math.round(v));
+  };
 
   return html`
     <table>
@@ -119,81 +146,65 @@ function renderTasksInProjectTable(component, features) {
           <th>Task</th>
           <th class="numeric">Start</th>
           <th class="numeric">End</th>
-          <th class="numeric">Teams</th>
+          <th>Teams</th>
           <th class="numeric">Cost</th>
           <th class="numeric">Hours</th>
         </tr>
       </thead>
       <tbody>
-        ${features.map((feature) => {
-          const metrics = feature.metrics || null;
+        ${orderedFeatures.map(({ feature, depth }) => {
+          // Use rolled-up, window-restricted dataMap
+          const dataMap = effectiveDataMaps.get(String(feature.id)) || {
+            cost: { internal: new Map(), external: new Map() },
+            hours: { internal: new Map(), external: new Map() },
+          };
           let totalCost = 0;
           let totalHours = 0;
-          if (metrics) {
-            const c_internal =
-              (metrics.internal && metrics.internal.cost) ||
-              (metrics.cost && metrics.cost.internal) ||
-              {};
-            const c_external =
-              (metrics.external && metrics.external.cost) ||
-              (metrics.cost && metrics.cost.external) ||
-              {};
-            const h_internal =
-              (metrics.internal && metrics.internal.hours) ||
-              (metrics.hours && metrics.hours.internal) ||
-              {};
-            const h_external =
-              (metrics.external && metrics.external.hours) ||
-              (metrics.hours && metrics.hours.external) ||
-              {};
-            for (const v of Object.values(c_internal)) totalCost += Number(v || 0);
-            for (const v of Object.values(c_external)) totalCost += Number(v || 0);
-            for (const v of Object.values(h_internal)) totalHours += Number(v || 0);
-            for (const v of Object.values(h_external)) totalHours += Number(v || 0);
+          for (const mKey of monthKeys) {
+            totalCost +=
+              (dataMap.cost.internal.get(mKey) || 0) +
+              (dataMap.cost.external.get(mKey) || 0);
+            totalHours +=
+              (dataMap.hours.internal.get(mKey) || 0) +
+              (dataMap.hours.external.get(mKey) || 0);
           }
 
           const teams =
             Array.isArray(feature.capacity) ?
               feature.capacity.map((c) => String(c.team)).filter(Boolean)
             : [];
-          // Resolve team id/slug to friendly name using component.costTeams
-          const costTeamsList =
-            component && component.costTeams ?
-              Array.isArray(component.costTeams.teams) ? component.costTeams.teams
-              : Array.isArray(component.costTeams) ? component.costTeams
-              : []
-            : [];
-          const teamNameByKey = {};
-          for (const tt of costTeamsList) {
-            if (tt.id != null) teamNameByKey[String(tt.id)] = tt.name || tt.id;
-            if (tt.slug) teamNameByKey[String(tt.slug)] = tt.name || tt.slug;
-            if (tt.name) teamNameByKey[String(tt.name)] = tt.name;
-          }
           const teamsLabel = teams.map((t) => teamNameByKey[t] || t).join(', ');
+
+          // Clip detection: flag features whose dates extend outside the display window
+          const featureStart = feature.start ? String(feature.start).slice(0, 10) : null;
+          const featureEnd = feature.end ? String(feature.end).slice(0, 10) : null;
+          const headClipped =
+            featureStart && component.startDate && featureStart < component.startDate;
+          const tailClipped =
+            featureEnd && component.endDate && featureEnd > component.endDate;
 
           const ft = (feature.type || '').toString().toLowerCase();
           const iconTemplate = getIconTemplate(ft);
 
           return html`
             <tr>
-              <td style="text-align:center;">
-                <span class="type-icon">${iconTemplate}</span>
+              <td style="text-align:center; white-space:nowrap;">
+                ${headClipped ?
+                  html`<span class="clip-warning" title="Starts ${featureStart} — before display window">◀</span>`
+                : ''}
+                <span class="type-icon ${ft}" title="${feature.type || 'Task'}">${iconTemplate}</span>
+                ${tailClipped ?
+                  html`<span class="clip-warning" title="Ends ${featureEnd} — after display window">▶</span>`
+                : ''}
               </td>
-              <td style="vertical-align:top;">
-                <div style="max-width:60%;">
-                  ${feature.title || feature.name || feature.id}
-                </div>
+              <td style="padding-left:${8 + depth * 20}px;">
+                ${feature.title || feature.name || feature.id}
               </td>
               <td class="numeric">${feature.start || ''}</td>
               <td class="numeric">${feature.end || ''}</td>
-              <td class="numeric">${teamsLabel}</td>
-              <td class="numeric">
-                ${totalCost > 0 ? totalCost.toLocaleString(undefined, {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                }) : ''}
-              </td>
-              <td class="numeric">${Math.round(totalHours) > 0 ? Math.round(totalHours) : ''}</td>
+              <td>${teamsLabel}</td>
+              <td class="numeric">${formatValue(totalCost)}</td>
+              <td class="numeric">${formatValue(totalHours)}</td>
             </tr>
           `;
         })}

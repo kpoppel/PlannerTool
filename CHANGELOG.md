@@ -15,15 +15,15 @@ Template - do not change :
 ---
 
 ## [v4.0.2] - unreleased
-### Added
+
 ### Changed
 - Cost Plugin V2: Calculations made only in selected time window. Warning if features extend beyond the window.
+- Cost Plugin V2: Task View and Team View now use hierarchy-aware rollup (buildByTeam), DFS feature ordering, window-restricted sums, and clip indicators for out-of-window dates; shared utilities (flattenTree, buildByTeam, computeEffectiveDataMaps) moved to PluginCostV2Calculator.
 - Cost Plugin V2: Hierarchical relation kept in the tables.
 - Cost Plugin V2 Plan View feature list: parent rows now show rolled-up children costs per team; teams only allocated at the parent level (no child coverage) retain their own allocation.
 - Cost Plugin V2 Plan View project/team summary tables: replaced blunt "skip whole parent" rule with per-team rollup; team totals now match feature-list totals and parents no longer lose allocations for teams not covered by any child.
 - Cost Plugin V2 Plan View Internal site breakdown: now computed client-side from rolled-up team allocations and costTeams membership so site rows (e.g. ERL, LY) are always consistent with the team table; stale server-side projectTotals.sites is no longer used.
 - Backend cost service: server-side per-project site totals now apply the same per-team rollup rule (skip a parent team only if a child actually covers that specific team), matching the client-side rollup logic.
-### Fixed
 
 ## [v4.0.1] - 2026-05-06
 

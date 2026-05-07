@@ -10,6 +10,9 @@ import {
   calculateBudgetDeviation,
   hasSignificantDeviation,
   allocateToMonths,
+  flattenTree,
+  buildByTeam,
+  computeEffectiveDataMaps,
 } from '../../www/js/plugins/PluginCostV2Calculator.js';
 
 describe('PluginCostV2Calculator', () => {
@@ -252,6 +255,198 @@ describe('PluginCostV2Calculator', () => {
 
       expect(result.cost.internal.size).to.equal(0);
       expect(result.cost.external.size).to.equal(0);
+    });
+  });
+
+  describe('flattenTree', () => {
+    it('should return features in DFS pre-order with depths', () => {
+      const childrenMap = new Map([['1', ['2', '3']], ['2', ['4']]]);
+      const featureMap = new Map([
+        ['1', { id: '1', title: 'Root' }],
+        ['2', { id: '2', title: 'Child A' }],
+        ['3', { id: '3', title: 'Child B' }],
+        ['4', { id: '4', title: 'Grandchild' }],
+      ]);
+
+      const result = flattenTree(['1'], childrenMap, featureMap, 0, []);
+
+      expect(result.map((r) => r.feature.id)).to.deep.equal(['1', '2', '4', '3']);
+      expect(result[0].depth).to.equal(0);
+      expect(result[1].depth).to.equal(1);
+      expect(result[2].depth).to.equal(2);
+      expect(result[3].depth).to.equal(1);
+    });
+
+    it('should skip unknown feature ids', () => {
+      const result = flattenTree(['99'], new Map(), new Map(), 0, []);
+      expect(result).to.have.length(0);
+    });
+
+    it('should handle multiple root ids', () => {
+      const featureMap = new Map([
+        ['1', { id: '1', title: 'A' }],
+        ['2', { id: '2', title: 'B' }],
+      ]);
+      const result = flattenTree(['1', '2'], new Map(), featureMap, 0, []);
+      expect(result).to.have.length(2);
+      expect(result[0].feature.id).to.equal('1');
+      expect(result[1].feature.id).to.equal('2');
+    });
+  });
+
+  describe('buildByTeam', () => {
+    const monthKeys = ['2026-01', '2026-02'];
+
+    it('should return leaf own allocation for a leaf with no children', () => {
+      const features = [
+        {
+          id: '1',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 100, '2026-02': 200 }, external: {} },
+                hours: { internal: { '2026-01': 10, '2026-02': 20 }, external: {} },
+              },
+            },
+          },
+        },
+      ];
+      const childrenMap = new Map();
+      const result = buildByTeam(features, childrenMap, monthKeys);
+
+      const teamA = result.get('1')?.get('team-a');
+      expect(teamA).to.exist;
+      expect(teamA.cost.internal.get('2026-01')).to.equal(100);
+      expect(teamA.cost.internal.get('2026-02')).to.equal(200);
+      expect(teamA.hours.internal.get('2026-01')).to.equal(10);
+    });
+
+    it('should restrict to display window monthKeys only', () => {
+      const features = [
+        {
+          id: '1',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2025-12': 999, '2026-01': 100 }, external: {} },
+                hours: { internal: { '2025-12': 99, '2026-01': 10 }, external: {} },
+              },
+            },
+          },
+        },
+      ];
+      const result = buildByTeam(features, new Map(), ['2026-01']);
+      const teamA = result.get('1')?.get('team-a');
+      expect(teamA.cost.internal.has('2025-12')).to.be.false;
+      expect(teamA.cost.internal.get('2026-01')).to.equal(100);
+    });
+
+    it('parent uses children sum when children cover the same team', () => {
+      const features = [
+        {
+          id: 'parent',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 500 }, external: {} },
+                hours: { internal: { '2026-01': 50 }, external: {} },
+              },
+            },
+          },
+        },
+        {
+          id: 'child1',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 60 }, external: {} },
+                hours: { internal: { '2026-01': 6 }, external: {} },
+              },
+            },
+          },
+        },
+        {
+          id: 'child2',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 40 }, external: {} },
+                hours: { internal: { '2026-01': 4 }, external: {} },
+              },
+            },
+          },
+        },
+      ];
+      const childrenMap = new Map([['parent', ['child1', 'child2']]]);
+      const result = buildByTeam(features, childrenMap, ['2026-01']);
+
+      const parentAlloc = result.get('parent')?.get('team-a');
+      // Parent should use children's sum (60 + 40 = 100), not its own 500
+      expect(parentAlloc.cost.internal.get('2026-01')).to.equal(100);
+    });
+
+    it('parent keeps own allocation when children do NOT cover that team', () => {
+      const features = [
+        {
+          id: 'parent',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 500 }, external: {} },
+                hours: { internal: {}, external: {} },
+              },
+            },
+          },
+        },
+        {
+          id: 'child1',
+          metrics: {
+            teams: {
+              'team-b': {
+                cost: { internal: { '2026-01': 60 }, external: {} },
+                hours: { internal: {}, external: {} },
+              },
+            },
+          },
+        },
+      ];
+      const childrenMap = new Map([['parent', ['child1']]]);
+      const result = buildByTeam(features, childrenMap, ['2026-01']);
+
+      const parentAllocA = result.get('parent')?.get('team-a');
+      // team-a not covered by child → parent keeps own
+      expect(parentAllocA.cost.internal.get('2026-01')).to.equal(500);
+    });
+  });
+
+  describe('computeEffectiveDataMaps', () => {
+    it('should aggregate all teams into one combined map per feature', () => {
+      const features = [
+        {
+          id: '1',
+          metrics: {
+            teams: {
+              'team-a': {
+                cost: { internal: { '2026-01': 100 }, external: { '2026-01': 50 } },
+                hours: { internal: { '2026-01': 10 }, external: { '2026-01': 5 } },
+              },
+              'team-b': {
+                cost: { internal: { '2026-01': 200 }, external: {} },
+                hours: { internal: { '2026-01': 20 }, external: {} },
+              },
+            },
+          },
+        },
+      ];
+      const result = computeEffectiveDataMaps(features, new Map(), ['2026-01']);
+
+      const dataMap = result.get('1');
+      expect(dataMap).to.exist;
+      // team-a internal + team-b internal = 300
+      expect(dataMap.cost.internal.get('2026-01')).to.equal(300);
+      // only team-a external = 50
+      expect(dataMap.cost.external.get('2026-01')).to.equal(50);
+      expect(dataMap.hours.internal.get('2026-01')).to.equal(30);
     });
   });
 });
