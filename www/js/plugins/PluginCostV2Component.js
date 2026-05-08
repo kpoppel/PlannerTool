@@ -58,8 +58,10 @@ export class PluginCostV2Component extends LitElement {
     // Default date range: current year
     const now = new Date();
     const year = now.getFullYear();
-    this.startDate = `${year}-01-01`;
-    this.endDate = `${year}-12-31`;
+    this._defaultStartDate = `${year}-01-01`;
+    this._defaultEndDate = `${year}-12-31`;
+    this.startDate = this._defaultStartDate;
+    this.endDate = this._defaultEndDate;
 
     this.months = [];
     this._unsubscribes = [];
@@ -475,9 +477,39 @@ export class PluginCostV2Component extends LitElement {
 
   open() {
     this.setAttribute('visible', '');
+    this._persistPluginState();
     this.loadData();
     // Ensure sidebar disabled state is applied when plugin UI opens
     this._applySidebarDisabled();
+  }
+
+  _persistPluginState() {
+    const snapshot = {
+      startDate: this.startDate,
+      endDate: this.endDate,
+    };
+
+    state.pluginStateService.update('plugin-cost-v2', snapshot, { saveToView: true });
+  }
+
+  _applyPluginState(pluginState) {
+    const nextStartDate = pluginState && pluginState.startDate ?
+      pluginState.startDate
+    : this._defaultStartDate;
+    const nextEndDate = pluginState && pluginState.endDate ?
+      pluginState.endDate
+    : this._defaultEndDate;
+    const changed = this.startDate !== nextStartDate || this.endDate !== nextEndDate;
+
+    if (!changed) return;
+
+    this.startDate = nextStartDate;
+    this.endDate = nextEndDate;
+    this.requestUpdate();
+
+    if (this.hasAttribute('visible')) {
+      this.loadData();
+    }
   }
 
   // Apply the sidebar disabled configuration
@@ -544,6 +576,11 @@ export class PluginCostV2Component extends LitElement {
     );
     this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
     this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(
+      state.pluginStateService.subscribe('plugin-cost-v2', (pluginState) => {
+        this._applyPluginState(pluginState);
+      })
+    );
     // Signal sidebar which controls are not relevant while this plugin is active
     this._applySidebarDisabled();
   }
@@ -797,6 +834,7 @@ export class PluginCostV2Component extends LitElement {
   }
 
   handleDateChange() {
+    this._persistPluginState();
     // Rebuild months and reload data
     this.loadData();
   }

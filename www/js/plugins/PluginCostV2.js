@@ -9,6 +9,7 @@
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
+import { state } from '../services/State.js';
 
 class PluginCostV2 {
   constructor(id = 'plugin-cost-v2', config = {}) {
@@ -74,6 +75,12 @@ class PluginCostV2 {
     }
     this._el.style.display = 'flex';
 
+    // Restore persisted plugin state (if any) before opening so the component
+    // loads data for the same window the user selected previously.
+    const ps = state.pluginStateService.get(this.id) || {};
+    if (ps.startDate) this._el.startDate = ps.startDate;
+    if (ps.endDate) this._el.endDate = ps.endDate;
+
     // Open the plugin UI; component handles its own data loading
     if (this._el && typeof this._el.open === 'function') this._el.open();
     this.active = true;
@@ -81,7 +88,15 @@ class PluginCostV2 {
   }
 
   async deactivate() {
-    if (this._el && typeof this._el.close === 'function') this._el.close();
+    // Persist the currently-selected date range into the PluginStateService
+    const s = {
+      startDate: this._el.startDate,
+      endDate: this._el.endDate,
+    };
+    state.pluginStateService.set(this.id, s, { saveToView: true });
+
+
+    this._el.close();
     // Restore timeline-board visibility
     const timelineBoard = document.querySelector('timeline-board');
     if (timelineBoard) {

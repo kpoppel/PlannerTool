@@ -14,6 +14,17 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.0.3] - unreleased
+### Added
+### Changed
+- Plugins have a place to persist state in an active session.
+- Saving a view will also persist plugin state for plugins which use the new session state service.
+- Plugin Cost V2 now syncs its state using the plugin state and view data.
+
+### Fixed
+- Fix failing tests for packed mode.
+
+
 ## [v4.0.2] - 2026-05-07
 
 ### Changed

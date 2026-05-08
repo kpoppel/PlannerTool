@@ -334,6 +334,14 @@ export class ViewManagementService {
         }
       }
 
+      // Restore plugin state included in the saved view (if any)
+      try {
+          const pluginState = response.viewOptions?.pluginState || {};
+          await this._state.pluginStateService.restoreFromView(pluginState);
+      } catch (e) {
+        console.warn('[ViewManagementService] Failed to restore plugin state from view', e);
+      }
+
       this._activeViewId = viewId;
       this._saveLastViewId(viewId);
       this._emitViewActivated();
@@ -593,6 +601,19 @@ export class ViewManagementService {
       this._state.teams.forEach((team) => {
         snapshot.teams[team.id] = team.selected;
       });
+    }
+
+    // Capture plugin state for views if available
+    try {
+      if (this._state && this._state.pluginStateService) {
+        const pluginMap = this._state.pluginStateService.captureForView();
+        if (pluginMap && Object.keys(pluginMap).length > 0) {
+          snapshot.viewOptions = snapshot.viewOptions || {};
+          snapshot.viewOptions.pluginState = pluginMap;
+        }
+      }
+    } catch (e) {
+      console.warn('[ViewManagementService] Failed to capture plugin state for view', e);
     }
 
     return snapshot;

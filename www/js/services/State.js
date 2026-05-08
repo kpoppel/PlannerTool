@@ -16,6 +16,7 @@ import { ProjectTeamService } from './ProjectTeamService.js';
 import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
 import { ViewManagementService } from './ViewManagementService.js';
+import { PluginStateService } from './PluginStateService.js';
 // Re-export color constants for backward compatibility
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
@@ -90,6 +91,8 @@ class State {
 
     // View management service
     this._viewManagementService = new ViewManagementService(bus, this, this._viewService);
+    // Plugin state service (in-memory session store for plugin UI state)
+    this._pluginStateService = new PluginStateService(bus, dataService);
 
     // Pending group changes — group create/update/delete are deferred and only
     // persisted to the server when the user accepts them through the save dialog.
@@ -257,6 +260,10 @@ class State {
   }
   get savedViews() {
     return this._viewManagementService.getViews();
+  }
+  // PluginStateService properties
+  get pluginStateService() {
+    return this._pluginStateService;
   }
   get activeViewId() {
     return this._viewManagementService.getActiveViewId();
@@ -604,6 +611,9 @@ class State {
     // Emit scenario events before loading views
     this._scenarioEventService.emitScenarioList();
     this._scenarioEventService.emitScenarioActivated();
+
+    // Initialize plugin state service so plugins can read state during view load/restore
+    await this._pluginStateService.init();
 
     // Load saved views
     await this._viewManagementService.loadViews();

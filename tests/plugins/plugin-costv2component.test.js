@@ -1,11 +1,18 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import sinon from 'sinon';
 import { PluginCostV2Component } from '../../www/js/plugins/PluginCostV2Component.js';
+import { state } from '../../www/js/services/State.js';
 
 describe('PluginCostV2Component', () => {
   let el;
+  let originalPluginStateService;
   beforeEach(async () => {
+    originalPluginStateService = state._pluginStateService;
     el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+  });
+
+  afterEach(() => {
+    state._pluginStateService = originalPluginStateService;
   });
 
   it('renders toolbar and default view', () => {
@@ -67,6 +74,53 @@ describe('PluginCostV2Component', () => {
     startInput.dispatchEvent(new Event('change'));
     await el.updateComplete;
     expect(el.startDate).to.equal('2025-01-01');
+  });
+
+  it('persists date range into pluginStateService while still open', () => {
+    const updateStub = sinon.stub();
+    const loadDataStub = sinon.stub(el, 'loadData');
+    state._pluginStateService = { update: updateStub };
+
+    el.startDate = '2026-03-01';
+    el.endDate = '2026-04-30';
+    el.handleDateChange();
+
+    expect(updateStub.calledOnce).to.be.true;
+    expect(updateStub.firstCall.args[0]).to.equal('plugin-cost-v2');
+    expect(updateStub.firstCall.args[1]).to.deep.equal({
+      startDate: '2026-03-01',
+      endDate: '2026-04-30',
+    });
+    expect(updateStub.firstCall.args[2]).to.deep.equal({ saveToView: true });
+    loadDataStub.restore();
+  });
+
+  it('applies restored plugin state while already open', async () => {
+    let subscriber;
+    const unsubscribe = sinon.stub();
+
+    el.remove();
+    state._pluginStateService = {
+      subscribe: (pluginId, cb) => {
+        expect(pluginId).to.equal('plugin-cost-v2');
+        subscriber = cb;
+        return unsubscribe;
+      },
+    };
+
+    el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+    const loadDataStub = sinon.stub(el, 'loadData');
+    el.setAttribute('visible', '');
+
+    subscriber({
+      startDate: '2026-06-01',
+      endDate: '2026-08-31',
+    });
+
+    expect(el.startDate).to.equal('2026-06-01');
+    expect(el.endDate).to.equal('2026-08-31');
+    expect(loadDataStub.calledOnce).to.be.true;
+    loadDataStub.restore();
   });
 
   it('calls _closeClicked when close button is clicked', async () => {

@@ -2,6 +2,7 @@ import { expect, vi, beforeEach, afterEach, describe, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server.js';
 import '../../www-admin/js/components/admin/Projects.lit.js';
+import { setMetadata } from '../../www-admin/js/services/azureMetadataCache.js';
 
 describe('admin-projects', () => {
   let comp;
@@ -141,6 +142,10 @@ describe('admin-projects', () => {
         ],
       };
       await comp.updateComplete;
+
+      // Ensure any previously-cached metadata for this Azure project is cleared
+      // so the component performs the fetch and the error path is exercised.
+      setMetadata('MyProj', null);
 
       comp.editProject(0);
       await new Promise((r) => setTimeout(r, 50));

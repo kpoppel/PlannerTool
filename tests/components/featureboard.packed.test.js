@@ -8,6 +8,7 @@
  */
 import { fixture, html, expect } from '@open-wc/testing';
 import * as boardUtils from '../../www/js/components/board-utils.js';
+import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { state } from '../../www/js/services/State.js';
 
@@ -25,57 +26,57 @@ describe('FeatureBoard._packIntoRows', () => {
   }
 
   it('returns an empty array for no bars', () => {
-    const rows = el._packIntoRows([]);
+    const rows = packIntoRows([]);
     expect(rows).to.deep.equal([]);
   });
 
   it('places a single bar in its own row', () => {
-    const rows = el._packIntoRows([bar(0, 100)]);
+    const rows = packIntoRows([bar(0, 100)]);
     expect(rows).to.have.length(1);
     expect(rows[0]).to.have.length(1);
   });
 
   it('non-overlapping bars (with gap) share a single row', () => {
     // bar1 ends at 100, bar2 starts at 110 (gap = 10 >= GAP=4)
-    const rows = el._packIntoRows([bar(0, 100), bar(110, 100)]);
+    const rows = packIntoRows([bar(0, 100), bar(110, 100)]);
     expect(rows).to.have.length(1);
     expect(rows[0]).to.have.length(2);
   });
 
   it('overlapping bars go into separate rows', () => {
     // bar1: 0-100, bar2: 50-150 — clearly overlapping
-    const rows = el._packIntoRows([bar(0, 100), bar(50, 100)]);
+    const rows = packIntoRows([bar(0, 100), bar(50, 100)]);
     expect(rows).to.have.length(2);
   });
 
   it('bars exactly at the gap boundary are packed into the same row', () => {
     // GAP = 4: bar1 ends at 100, bar2 starts at 104 (= 100 + 4) — just fits
-    const rows = el._packIntoRows([bar(0, 100), bar(104, 50)]);
+    const rows = packIntoRows([bar(0, 100), bar(104, 50)]);
     expect(rows).to.have.length(1);
   });
 
   it('bars just inside the gap are placed in a new row', () => {
     // bar1 ends at 100, bar2 starts at 103 (= 100 + 3, not enough gap)
-    const rows = el._packIntoRows([bar(0, 100), bar(103, 50)]);
+    const rows = packIntoRows([bar(0, 100), bar(103, 50)]);
     expect(rows).to.have.length(2);
   });
 
   it('three non-overlapping bars pack into one row', () => {
-    const rows = el._packIntoRows([bar(0, 50), bar(60, 50), bar(120, 50)]);
+    const rows = packIntoRows([bar(0, 50), bar(60, 50), bar(120, 50)]);
     expect(rows).to.have.length(1);
     expect(rows[0]).to.have.length(3);
   });
 
   it('fills multiple rows greedily', () => {
     // All bars overlap each other
-    const rows = el._packIntoRows([bar(0, 200), bar(10, 200), bar(20, 200)]);
+    const rows = packIntoRows([bar(0, 200), bar(10, 200), bar(20, 200)]);
     expect(rows).to.have.length(3);
     rows.forEach((row) => expect(row).to.have.length(1));
   });
 
   it('packs bars into the first available row (greedy strategy)', () => {
     // Row 0 has bar(0, 50). Row 1 has bar(10, 200). bar(60, 50) fits in row 0.
-    const rows = el._packIntoRows([bar(0, 50), bar(10, 200), bar(60, 50)]);
+    const rows = packIntoRows([bar(0, 50), bar(10, 200), bar(60, 50)]);
     // bar(0,50) → row 0; bar(10,200) overlaps row 0 → row 1;
     // bar(60,50): row 0 ends at 50, 60 >= 50+4 → fits in row 0
     expect(rows).to.have.length(2);
@@ -90,7 +91,7 @@ describe('FeatureBoard._packIntoRows', () => {
       { left: 0, width: 100, feature: f1 },
       { left: 200, width: 100, feature: f2 },
     ];
-    const rows = el._packIntoRows(bars);
+    const rows = packIntoRows(bars);
     expect(rows[0][0].feature).to.equal(f1);
     expect(rows[0][1].feature).to.equal(f2);
   });
