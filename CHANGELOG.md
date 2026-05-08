@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.0.3] - unreleased
+## [v4.0.3] - 2026-05-08
 ### Added
 ### Changed
 - Plugins have a place to persist state in an active session.
