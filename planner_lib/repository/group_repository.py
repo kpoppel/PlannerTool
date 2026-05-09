@@ -47,6 +47,7 @@ class GroupRepository:
         parent_id: Optional[str] = None,
         color: Optional[str] = None,
         rank: int = 0,
+        members: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Create a new group and return it (including generated id)."""
         return self._backend.create_group(
@@ -55,6 +56,7 @@ class GroupRepository:
             parent_id=parent_id,
             color=color,
             rank=rank,
+            members=members,
         )
 
     def update_group(
@@ -65,6 +67,7 @@ class GroupRepository:
         color: Optional[str] = None,
         rank: Optional[int] = None,
         plan_id: Optional[str] = None,
+        members: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Update fields on an existing group (raises KeyError when not found)."""
         return self._backend.update_group(
@@ -74,6 +77,7 @@ class GroupRepository:
             color=color,
             rank=rank,
             plan_id=plan_id,
+            members=members,
         )
 
     def delete_group(self, group_id: str) -> bool:

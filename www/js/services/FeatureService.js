@@ -189,12 +189,6 @@ export class FeatureService {
         override.iterationPath !== featureBase.iterationPath
       )
         changedFields.push('iterationPath');
-      // Support groupId override detection
-      if (
-        'groupId' in override &&
-        (override.groupId ?? null) !== (featureBase.groupId ?? null)
-      )
-        changedFields.push('groupId');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -452,19 +446,6 @@ export class FeatureService {
 
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
-      return true;
-    }
-
-    if (field === 'groupId') {
-      const ov = activeScenario.overrides[id] || {};
-      // null means "remove from any group" (ungrouped); store as-is so the
-      // override is distinguishable from "no override".
-      ov.groupId = value;
-      activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
-
-      const idsToEmit = new Set([id]);
       bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
       return true;
     }

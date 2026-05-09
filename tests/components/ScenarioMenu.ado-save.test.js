@@ -26,6 +26,7 @@ vi.mock('../../www/js/services/State.js', () => ({
     getPendingGroupChanges: vi.fn(() => []),
     clearPendingGroupChanges: vi.fn(),
     confirmGroupCreate: vi.fn(),
+    saveScenario: vi.fn().mockResolvedValue(undefined),
     activeScenarioId: null,
   },
 }));
@@ -36,6 +37,7 @@ vi.mock('../../www/js/services/dataService.js', () => ({
     createGroup: vi.fn().mockResolvedValue(null),
     updateGroup: vi.fn().mockResolvedValue(null),
     deleteGroup: vi.fn().mockResolvedValue(true),
+    listGroups: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -51,6 +53,8 @@ vi.mock('../../www/js/components/modalHelpers.js', () => ({
 vi.mock('../../www/js/services/GroupService.js', () => ({
   groupService: {
     replaceId: vi.fn(),
+    evictPlan: vi.fn(),
+    loadGroups: vi.fn().mockResolvedValue([]),
   },
 }));
 

@@ -73,6 +73,7 @@ def create_group(
     parent_id: Optional[str] = None,
     color: Optional[str] = None,
     rank: int = 0,
+    members: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Create a new group and return it (including generated ``id``)."""
     group_id = uuid.uuid4().hex
@@ -86,6 +87,8 @@ def create_group(
         group["parent_id"] = parent_id
     if color is not None:
         group["color"] = color
+    if members is not None:
+        group["members"] = list(members)
     reg = _load_register(storage)
     reg[group_id] = group
     _save_register(storage, reg)
@@ -100,10 +103,13 @@ def update_group(
     color: Optional[str] = None,
     rank: Optional[int] = None,
     plan_id: Optional[str] = None,
+    members: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Update fields on an existing group; raises ``KeyError`` if not found.
 
     Pass ``color=""`` (empty string) or ``color=None`` to clear the color.
+    Pass ``members=[]`` to clear the members list.
+    Pass ``members=None`` to leave the existing members list unchanged.
     """
     reg = _load_register(storage)
     if group_id not in reg:
@@ -119,6 +125,8 @@ def update_group(
         group["rank"] = rank
     if plan_id is not None:
         group["plan_id"] = plan_id
+    if members is not None:
+        group["members"] = list(members)
     reg[group_id] = group
     _save_register(storage, reg)
     return group

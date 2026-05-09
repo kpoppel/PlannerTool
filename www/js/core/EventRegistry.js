@@ -166,8 +166,6 @@ export const PlanEventEvents = {
 export const GroupEvents = {
   /** Groups for one or more plans were fetched / refreshed from the server. */
   LOADED: Symbol('group:loaded'),
-  /** A group was created, updated, or deleted (op: 'created'|'updated'|'deleted'). */
+  /** A group was created, updated, deleted, or its members changed. */
   CHANGED: Symbol('group:changed'),
-  /** A feature's groupId assignment changed (featureId, groupId). */
-  ASSIGNMENT_CHANGED: Symbol('group:assignment-changed'),
 };

@@ -71,19 +71,29 @@ export function buildGroupBandItems(
   const items = [];
 
   // featuresByGroup: groupId → features in that group
+  // Membership is determined by group.members (list of task IDs on the group)
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
   const featuresByGroup = new Map();
-  const ungroupedFeatures = [];
 
-  for (const feature of orderedFeatures) {
-    const gid = feature.groupId ?? null;
-    if (gid && planGroupIds.has(String(gid))) {
-      if (!featuresByGroup.has(String(gid))) featuresByGroup.set(String(gid), []);
-      featuresByGroup.get(String(gid)).push(feature);
-    } else {
-      ungroupedFeatures.push(feature);
-    }
+  // Index features by id for O(1) lookup
+  const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
+
+  // Populate featuresByGroup from group.members lists
+  for (const group of planGroups) {
+    const members = group.members || [];
+    const groupFeatures = members
+      .map((taskId) => featureById.get(String(taskId)))
+      .filter(Boolean);
+    featuresByGroup.set(String(group.id), groupFeatures);
   }
+
+  // Ungrouped: features not in any group's members list
+  const allGroupedIds = new Set(
+    planGroups.flatMap((g) => (g.members || []).map(String))
+  );
+  const ungroupedFeatures = orderedFeatures.filter(
+    (f) => !allGroupedIds.has(String(f.id))
+  );
 
   // Parent → direct children map for sub-group tree traversal
   const childGroupsByParent = new Map();

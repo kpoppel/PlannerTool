@@ -78,7 +78,6 @@ export async function initBoard() {
   // Re-render whenever groups are loaded or mutated
   bus.on(GroupEvents.LOADED, renderFeatures);
   bus.on(GroupEvents.CHANGED, renderFeatures);
-  bus.on(GroupEvents.ASSIGNMENT_CHANGED, renderFeatures);
 
   // Load groups for newly-selected plans whenever the project selection changes.
   // We only fetch plans that are NOT already in the local cache.  Skipping

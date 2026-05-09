@@ -658,7 +658,7 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? groupService.getGroupsForPlan(String(swimlane.id))
+          ? groupService.getEffectiveGroups(String(swimlane.id), state.getActiveScenario())
           : [];
 
         if (planGroups.length > 0) {
@@ -755,7 +755,8 @@ class FeatureBoard extends LitElement {
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
       const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
-      const allGroups = selectedPlanIds.flatMap((id) => groupService.getGroupsForPlan(id));
+      const activeScenario = state.getActiveScenario();
+      const allGroups = selectedPlanIds.flatMap((id) => groupService.getEffectiveGroups(id, activeScenario));
       renderList = [];
 
       if (allGroups.length > 0) {

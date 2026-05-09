@@ -267,31 +267,6 @@ describe('GroupService', () => {
     });
   });
 
-  // ---- Assignment ----------------------------------------------------------
-
-  describe('assignFeature', () => {
-    it('calls state.updateFeatureField with groupId', () => {
-      const stateRef = { updateFeatureField: vi.fn() };
-      svc.assignFeature('f1', 'g1', stateRef);
-      expect(stateRef.updateFeatureField).toHaveBeenCalledWith('f1', 'groupId', 'g1');
-    });
-
-    it('stores null when ungrouping', () => {
-      const stateRef = { updateFeatureField: vi.fn() };
-      svc.assignFeature('f1', null, stateRef);
-      expect(stateRef.updateFeatureField).toHaveBeenCalledWith('f1', 'groupId', null);
-    });
-
-    it('emits GroupEvents.ASSIGNMENT_CHANGED', () => {
-      const stateRef = { updateFeatureField: vi.fn() };
-      svc.assignFeature('f1', 'g1', stateRef);
-      expect(bus.emit).toHaveBeenCalledWith(
-        GroupEvents.ASSIGNMENT_CHANGED,
-        expect.objectContaining({ featureId: 'f1', groupId: 'g1' })
-      );
-    });
-  });
-
   // ---- Sub-groups (parent_id) ---------------------------------------------
 
   describe('sub-groups via addLocal', () => {

@@ -13,6 +13,25 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+## [v4.0.4] - unreleased
+### Added
+- Groups now carry a `members: [taskId, ...]` list — membership is stored on the group, not on each feature
+- `scenario.scenarioGroups` field: groups created inside a scenario live here until promoted to baseline on publish
+- `scenario.groupOverrides` field: per-scenario overrides for baseline group fields (members, name, color, deleted flag)
+- `GroupService.getEffectiveGroups(planId, scenario)` — merges baseline groups + scenario-local groups + per-scenario overrides
+- `GroupService.addMemberToGroup / removeMemberFromGroup` — member assignment via group.members model
+- `State.createGroupInScenario / updateGroupInScenario / deleteGroupInScenario / setGroupMembersOverride` — scenario-aware group management
+- `State.getActiveScenario()` — returns the currently active scenario object
+- `scripts/migrations/0024_groups_members_and_pending_changes.py` — migration that reconstructs `group.members` from old `feature.groupId` overrides and converts `scenario.pendingGroupChanges` to `scenario.scenarioGroups` / `scenario.groupOverrides`
+### Changed
+- `groupBandLayout.buildGroupBandItems` now reads feature membership from `group.members` (not `feature.groupId`)
+- `FeatureBoard` now calls `getEffectiveGroups` instead of `getGroupsForPlan` so scenario-local and overridden groups are visible on the board
+- `GroupContextMenu` uses the new `state.createGroupInScenario`, `updateGroupInScenario`, `deleteGroupInScenario`, and `groupService.addMemberToGroup/removeMemberFromGroup`
+- `ScenarioMenu` save flow now promotes `scenario.scenarioGroups` to baseline (POST with members), applies `groupOverrides` updates (PUT), and handles deleted groups
+- `State.saveScenario` persists `scenarioGroups` and `groupOverrides` alongside scenario data
+- Save modal (AzureDevopsModal): replaced per-row checkboxes with clickable-cell selection — changed cells are pre-selected (yellow); click a cell to exclude it from save, click a column header to toggle the whole column
+### Fixed
+- Group ID lifecycle: after committing pending group creates via the save modal, the scenario is now flushed to disk with real server UUIDs replacing stale temp IDs
 
 ## [v4.0.4] - unreleased
 ### Added

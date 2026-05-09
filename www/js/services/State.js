@@ -27,6 +27,7 @@ import {
   FilterEvents,
   CapacityEvents,
   DataEvents,
+  GroupEvents,
   //TimelineEvents,
   //ConfigEvents,
   //StateFilterEvents,
@@ -94,33 +95,15 @@ class State {
     // Plugin state service (in-memory session store for plugin UI state)
     this._pluginStateService = new PluginStateService(bus, dataService);
 
-    // Pending group changes — group create/update/delete are deferred and only
-    // persisted to the server when the user accepts them through the save dialog.
-    // Shape: Array<{ type: 'create'|'update'|'delete', group?, groupId?, fields? }>
-    this._pendingGroupChanges = [];
-
     // On page load, scenarios are fetched from the backend and broadcast via
-    // SCENARIOS_DATA.  Restore any pending group ops that were saved alongside
-    // the then-active scenario so the ⚠️ badge and cloud-save modal work
-    // correctly without requiring the user to re-create groups.
+    // SCENARIOS_DATA.  Emit GroupEvents.CHANGED so the board re-renders with
+    // any scenario-local groups (scenario.scenarioGroups) that were saved.
     bus.on(DataEvents.SCENARIOS_DATA, () => {
       const activeId = this._getScenarioManager().activeScenarioId;
       const activeScen = this._scenarioEventService.getScenarioById(activeId);
-      if (Array.isArray(activeScen?.pendingGroupChanges) && activeScen.pendingGroupChanges.length > 0) {
-        this._pendingGroupChanges = [...activeScen.pendingGroupChanges];
-        // Re-hydrate GroupService cache with locally-created groups.
-        import('../services/GroupService.js').then(({ groupService }) => {
-          groupService.clearTempGroups();
-          for (const op of this._pendingGroupChanges) {
-            if (op.type === 'create' && op.group) {
-              groupService.addLocal(op.group.plan_id, op.group);
-            } else if (op.type === 'update' && op.groupId && op.fields) {
-              groupService.updateLocal(op.groupId, op.fields);
-            } else if (op.type === 'delete' && op.groupId) {
-              groupService.removeLocal(op.groupId);
-            }
-          }
-        });
+      if ((activeScen?.scenarioGroups || []).length > 0 ||
+          Object.keys(activeScen?.groupOverrides || {}).length > 0) {
+        bus.emit(GroupEvents.CHANGED, { op: 'restored' });
       }
     });
 
@@ -1090,34 +1073,9 @@ class State {
     });
     bus.emit(FeatureEvents.UPDATED);
 
-    // Discard any pending group ops from the previous scenario — they are
-    // scenario-local and must not bleed into the newly activated one.
-    // Then restore the pending ops that were saved with the newly active scenario.
-    this._pendingGroupChanges = [];
-    const newScen = this._scenarioEventService.getScenarioById(
-      this._getScenarioManager().activeScenarioId
-    );
-
-    // Strip all temp groups (tmp_* IDs) that were injected by the previous
-    // scenario, then replay only the new scenario's pending creates on top of
-    // the server-persisted groups already in the cache.  This is the exact
-    // analogue of how feature-date overrides are per-scenario: the baseline
-    // cache (server groups) is shared, but scenario-local mutations are not.
-    import('../services/GroupService.js').then(({ groupService }) => {
-      groupService.clearTempGroups();
-      if (Array.isArray(newScen?.pendingGroupChanges) && newScen.pendingGroupChanges.length > 0) {
-        this._pendingGroupChanges = [...newScen.pendingGroupChanges];
-        for (const op of this._pendingGroupChanges) {
-          if (op.type === 'create' && op.group) {
-            groupService.addLocal(op.group.plan_id, op.group);
-          } else if (op.type === 'update' && op.groupId && op.fields) {
-            groupService.updateLocal(op.groupId, op.fields);
-          } else if (op.type === 'delete' && op.groupId) {
-            groupService.removeLocal(op.groupId);
-          }
-        }
-      }
-    });
+    // Re-render board with the new scenario's effective groups.
+    // getEffectiveGroups reads scenario.scenarioGroups and groupOverrides directly.
+    bus.emit(GroupEvents.CHANGED, { op: 'scenarioSwitched' });
   }
 
   renameScenario(id, newName) {
@@ -1181,77 +1139,221 @@ class State {
   }
 
   // ---------------------------------------------------------------------------
-  // Pending group changes — deferred until user publishes via the save dialog
+  // Pending group changes — derived from scenario.scenarioGroups + groupOverrides
   // ---------------------------------------------------------------------------
 
   /**
-   * Record a pending group change and mark the active scenario as unsaved.
-   * Duplicate deduplication:
-   *   create → then update  = fold into the create entry (update its fields)
-   *   create → then delete  = cancel both (nothing to persist on server)
-   *   update → then update  = keep only the latest update
-   *   delete replaces any prior update for the same groupId
-   * @param {{ type: 'create'|'update'|'delete', group?: object, groupId?: string, fields?: object }} op
+   * Return a snapshot of all pending group changes for the active scenario.
+   *
+   * Shape: Array<{ type: 'create'|'update'|'delete', group?, groupId?, fields? }>
+   *
+   * Creates come from scenario.scenarioGroups (groups not yet promoted to baseline).
+   * Updates/deletes come from scenario.groupOverrides entries.
+   *
+   * @returns {Array}
    */
-  addPendingGroupChange(op) {
-    const gid = op.group?.id ?? op.groupId;
-    const existing = this._pendingGroupChanges.findIndex(
-      (p) => (p.group?.id ?? p.groupId) === gid
-    );
+  getPendingGroupChanges() {
+    const activeScen = this.getActiveScenario();
+    const ops = [];
 
-    if (existing !== -1) {
-      const prev = this._pendingGroupChanges[existing];
-      if (prev.type === 'create' && op.type === 'update') {
-        // Fold update into the pending create
-        this._pendingGroupChanges[existing] = {
-          ...prev,
-          group: { ...prev.group, ...op.fields },
-        };
-        this._markActiveScenarioChanged();
-        return;
-      }
-      if (prev.type === 'create' && op.type === 'delete') {
-        // Group never reached the server — cancel both ops
-        this._pendingGroupChanges.splice(existing, 1);
-        return;
-      }
-      // Replace any other prior entry for same group
-      this._pendingGroupChanges.splice(existing, 1);
+    // Creates: groups in scenario.scenarioGroups
+    for (const g of (activeScen?.scenarioGroups || [])) {
+      ops.push({ type: 'create', group: g });
     }
 
-    this._pendingGroupChanges.push(op);
-    this._markActiveScenarioChanged();
+    // Deletes/updates from groupOverrides
+    for (const [groupId, ov] of Object.entries(activeScen?.groupOverrides || {})) {
+      if (ov._deleted) {
+        ops.push({ type: 'delete', groupId });
+      } else {
+        const { _deleted, memberDeltas, ...fields } = ov;
+        const hasFields = Object.keys(fields).length > 0;
+        const hasDeltas = memberDeltas?.length > 0;
+        if (hasFields || hasDeltas) {
+          ops.push({ type: 'update', groupId, fields: hasFields ? fields : undefined, memberDeltas: hasDeltas ? memberDeltas : undefined });
+        }
+      }
+    }
+
+    return ops;
   }
 
-  /** Return a snapshot of all pending group changes. */
-  getPendingGroupChanges() {
-    return [...this._pendingGroupChanges];
-  }
-
-  /** Clear all pending group changes (call after they have been persisted). */
+  /**
+   * Clear all pending group changes for the active scenario.
+   * Removes scenarioGroups that have been promoted and clears groupOverrides.
+   * Called by ScenarioMenu after changes have been persisted to the server.
+   */
   clearPendingGroupChanges() {
-    this._pendingGroupChanges = [];
+    const activeScen = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (!activeScen) return;
+    activeScen.scenarioGroups = [];
+    activeScen.groupOverrides = {};
   }
 
   /**
    * After a group has been created on the server, swap the temp ID for the
-   * real server ID in both the pending change list and any feature overrides.
+   * real server ID in scenario.scenarioGroups.
    * @param {string} tempId
    * @param {string} realId
    */
   confirmGroupCreate(tempId, realId) {
-    // Update pending changes list
-    for (const op of this._pendingGroupChanges) {
-      if (op.group?.id === tempId) op.group = { ...op.group, id: realId };
-      if (op.groupId === tempId) op.groupId = realId;
-    }
-    // Update feature overrides that reference the temp ID
     const activeScen = this.scenarios.find((s) => s.id === this.activeScenarioId);
-    if (activeScen?.overrides) {
-      for (const ov of Object.values(activeScen.overrides)) {
-        if (ov.groupId === tempId) ov.groupId = realId;
+    if (activeScen?.scenarioGroups) {
+      for (const g of activeScen.scenarioGroups) {
+        if (g.id === tempId) g.id = realId;
       }
     }
+  }
+
+  /**
+   * Return the currently active (non-null) scenario object, or null.
+   * @returns {object|null}
+   */
+  getActiveScenario() {
+    const id = this.activeScenarioId;
+    if (!id) return null;
+    return this.scenarios.find((s) => s.id === id) || null;
+  }
+
+  /**
+   * Create a new group inside the active scenario (no server call yet).
+   * The group is stored in scenario.scenarioGroups until the user publishes.
+   * @param {string} planId
+   * @param {string} name
+   * @param {string} [color]
+   * @param {string|null} [parentId]
+   * @returns {object|null} The created group, or null if no active scenario.
+   */
+  createGroupInScenario(planId, name, color = null, parentId = null) {
+    const activeScen = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (!activeScen) return null;
+
+    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const group = {
+      id: tempId,
+      plan_id: String(planId),
+      name,
+      rank: Date.now(),
+      members: [],
+      ...(color ? { color } : {}),
+      ...(parentId ? { parent_id: parentId } : {}),
+    };
+
+    if (!activeScen.scenarioGroups) activeScen.scenarioGroups = [];
+    activeScen.scenarioGroups.push(group);
+    this._markActiveScenarioChanged();
+    bus.emit(GroupEvents.CHANGED, { op: 'created', group });
+    return group;
+  }
+
+  /**
+   * Update a group in the active scenario.
+   * - Scenario-local groups (in scenarioGroups): updated in-place.
+   * - Baseline groups: override stored in scenario.groupOverrides.
+   * @param {string} groupId
+   * @param {{ name?: string, color?: string, rank?: number, parent_id?: string }} fields
+   * @returns {object|null} Updated group, or null if not found.
+   */
+  updateGroupInScenario(groupId, fields) {
+    const activeScen = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (!activeScen) return null;
+
+    // Check scenario-local groups first
+    const sgIdx = (activeScen.scenarioGroups || []).findIndex(
+      (g) => String(g.id) === String(groupId)
+    );
+    if (sgIdx !== -1) {
+      activeScen.scenarioGroups[sgIdx] = {
+        ...activeScen.scenarioGroups[sgIdx],
+        ...fields,
+      };
+      this._markActiveScenarioChanged();
+      bus.emit(GroupEvents.CHANGED, { op: 'updated', group: activeScen.scenarioGroups[sgIdx] });
+      return activeScen.scenarioGroups[sgIdx];
+    }
+
+    // Baseline group — store as group override
+    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
+    activeScen.groupOverrides[String(groupId)] = {
+      ...(activeScen.groupOverrides[String(groupId)] || {}),
+      ...fields,
+    };
+    this._markActiveScenarioChanged();
+    bus.emit(GroupEvents.CHANGED, { op: 'updated', groupId, fields });
+    return activeScen.groupOverrides[String(groupId)];
+  }
+
+  /**
+   * Delete a group in the active scenario.
+   * - Scenario-local groups: removed from scenarioGroups.
+   * - Baseline groups: marked deleted in groupOverrides.
+   * @param {string} groupId
+   */
+  deleteGroupInScenario(groupId) {
+    const activeScen = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (!activeScen) return;
+
+    // Check scenario-local groups first (and cascade sub-groups)
+    const sgList = activeScen.scenarioGroups || [];
+    const toRemove = new Set([String(groupId)]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const g of sgList) {
+        if (g.parent_id && toRemove.has(String(g.parent_id)) && !toRemove.has(String(g.id))) {
+          toRemove.add(String(g.id));
+          changed = true;
+        }
+      }
+    }
+    const hadLocal = sgList.some((g) => toRemove.has(String(g.id)));
+    if (hadLocal) {
+      activeScen.scenarioGroups = sgList.filter((g) => !toRemove.has(String(g.id)));
+      this._markActiveScenarioChanged();
+      bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
+      return;
+    }
+
+    // Baseline group — mark as deleted in groupOverrides
+    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
+    activeScen.groupOverrides[String(groupId)] = {
+      ...(activeScen.groupOverrides[String(groupId)] || {}),
+      _deleted: true,
+    };
+    this._markActiveScenarioChanged();
+    bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
+  }
+
+  /**
+   * Record a single member add/remove delta for a baseline group.
+   * Stored in scenario.groupOverrides[groupId].memberDeltas as an array of
+   * { taskId, op: 'add'|'remove' } entries (last write per taskId wins).
+   * @param {string} groupId
+   * @param {string} taskId
+   * @param {'add'|'remove'} op
+   */
+  applyGroupMemberDelta(groupId, taskId, op) {
+    const activeScen = this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    );
+    if (!activeScen) return;
+    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
+    const ov = activeScen.groupOverrides[String(groupId)] || {};
+    const deltas = (ov.memberDeltas || []).filter(
+      (d) => String(d.taskId) !== String(taskId)  // last write wins
+    );
+    deltas.push({ taskId: String(taskId), op });
+    activeScen.groupOverrides[String(groupId)] = { ...ov, memberDeltas: deltas };
+    this._markActiveScenarioChanged();
+    bus.emit(GroupEvents.CHANGED, { op: 'memberDelta', groupId, taskId, delta: op });
   }
 
   /** Mark the active (non-readonly) scenario as having unsaved changes. */
@@ -1267,20 +1369,19 @@ class State {
   async saveScenario(id) {
     const scen = this._scenarioEventService.getScenarioById(id);
     if (!scen) return;
-    // Persist via provider — includes overrides (which may contain groupId
-    // references to temp IDs; those are resolved when the user later publishes
-    // via the "Save changes" modal, not here).
-    // pendingGroupChanges is saved alongside the scenario so that structural
-    // group ops (create/rename/delete) survive page reloads and can still be
-    // published later via the cloud save modal.
+    // Persist via provider.  Includes:
+    //   - overrides: feature-level scenario overrides
+    //   - scenarioGroups: groups created in this scenario (promoted to baseline on publish)
+    //   - groupOverrides: per-scenario overrides for baseline groups (members, name, color, deleted)
     await dataService.saveScenario({
       id: scen.id,
       name: scen.name,
       overrides: scen.overrides,
       filters: scen.filters,
       view: scen.view,
-      pendingGroupChanges: this._pendingGroupChanges.length > 0
-        ? [...this._pendingGroupChanges]
+      scenarioGroups: (scen.scenarioGroups || []).length > 0 ? [...scen.scenarioGroups] : undefined,
+      groupOverrides: scen.groupOverrides && Object.keys(scen.groupOverrides).length > 0
+        ? { ...scen.groupOverrides }
         : undefined,
     });
     this._scenarioEventService.markScenarioSaved(scen.id);

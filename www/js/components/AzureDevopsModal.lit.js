@@ -2,6 +2,36 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { groupService } from '../services/GroupService.js';
 
+/** Field names supported in feature-override rows, in display order. */
+const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath'];
+
+/** Maps a field name to the boolean changed-flag property on a computed row. */
+const CHANGED_KEY = {
+  start: 'startChanged',
+  end: 'endChanged',
+  capacity: 'capacityChanged',
+  state: 'stateChanged',
+  iterationPath: 'iterationChanged',
+};
+
+/** Human-readable column label for each field. */
+const FIELD_LABEL = {
+  start: 'Start',
+  end: 'End',
+  capacity: 'Capacity',
+  state: 'State',
+  iterationPath: 'Iteration',
+};
+
+/**
+ * A group op is "structural" when it creates, deletes, or renames a group.
+ * Pure member-delta ops are handled as per-task rows instead.
+ * @param {object} op
+ */
+const isStructuralOp = (op) =>
+  op.type === 'create' || op.type === 'delete' ||
+  (op.type === 'update' && op.fields && Object.keys(op.fields).length > 0);
+
 export class AzureDevopsModal extends LitElement {
   static properties = {
     overrides: { type: Object },
@@ -19,10 +49,9 @@ export class AzureDevopsModal extends LitElement {
   }
 
   firstUpdated() {
-    // Feature overrides: unchecked by default — user explicitly picks what to persist.
-    // Group structural ops: pre-selected since they are always intentional.
-    (this.pendingGroupChanges || []).forEach((_, i) => this._selected.add(`grp_${i}`));
-    // open the inner modal once rendered
+    // All cells start deselected — the user selects what to persist via
+    // cell clicks, column header clicks, or the Toggle All button.
+    // Open the inner modal once rendered.
     const inner =
       this.renderRoot ?
         this.renderRoot.querySelector('modal-lit')
@@ -41,41 +70,207 @@ export class AzureDevopsModal extends LitElement {
     return `${f || '—'} \u2192 ${t}`;
   }
 
-  _toggleAll(allKeys) {
-    const anyUnchecked = allKeys.some((k) => !this._selected.has(k));
-    if (anyUnchecked) allKeys.forEach((k) => this._selected.add(k));
+  _toggleAll(enrichedRows, groupOps, orphanDeltaRows) {
+    const allKeys = [
+      // Feature field cells
+      ...enrichedRows.flatMap((r) =>
+        FIELDS.filter((f) => r[CHANGED_KEY[f]]).map((f) => `${r.id}:${f}`)
+      ),
+      // Inline group-change cells on feature rows
+      ...enrichedRows.filter((r) => r.groupDelta).map((r) => r.groupDelta.key),
+      // Structural op rows — use original groupOps index
+      ...(groupOps || []).flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
+      // Orphan member-only rows (tasks with group change but no field changes)
+      ...(orphanDeltaRows || []).map((d) => d.key),
+    ];
+    const anyUnselected = allKeys.some((k) => !this._selected.has(k));
+    if (anyUnselected) allKeys.forEach((k) => this._selected.add(k));
     else allKeys.forEach((k) => this._selected.delete(k));
     this.requestUpdate();
   }
 
-  _onCheckboxChange(e) {
-    const id = e.target.dataset.id;
-    if (e.target.checked) this._selected.add(id);
-    else this._selected.delete(id);
+  /** Toggle a single feature cell between selected and deselected. */
+  _onCellClick(featureId, field) {
+    const key = `${featureId}:${field}`;
+    if (this._selected.has(key)) this._selected.delete(key);
+    else this._selected.add(key);
     this.requestUpdate();
   }
 
+  _onColumnHeaderClick(field, enrichedRows, groupOps, orphanDeltaRows) {
+    const featureKeys = enrichedRows
+      .filter((r) => r[CHANGED_KEY[field]])
+      .map((r) => `${r.id}:${field}`);
+    // Group column covers inline group cells on feature rows, structural ops, and orphan rows.
+    const grpKeys = field === 'groupId'
+      ? [
+          ...enrichedRows.filter((r) => r.groupDelta).map((r) => r.groupDelta.key),
+          ...(groupOps || []).flatMap((op, i) => isStructuralOp(op) ? [`grp_${i}`] : []),
+          ...(orphanDeltaRows || []).map((d) => d.key),
+        ]
+      : [];
+    const keys = [...featureKeys, ...grpKeys];
+    if (!keys.length) return;
+    const allOn = keys.every((k) => this._selected.has(k));
+    if (allOn) keys.forEach((k) => this._selected.delete(k));
+    else keys.forEach((k) => this._selected.add(k));
+    this.requestUpdate();
+  }
+
+  /**
+   * Toggle a group-op or member-delta key with cascading for create ops:
+   *
+   *  Structural create key selected ON  → also select all its member keys
+   *  Structural create key selected OFF → also deselect all its member keys
+   *  Member key selected ON (create op) → also select the structural create key
+   *  Member key selected OFF            → leave structural key unchanged
+   *    (valid to create a group without one of its original members)
+   *
+   *  Delete ops are atomic: one structural key, no individual member keys.
+   */
+  _onGrpCellClick(key) {
+    const groupOps = this.pendingGroupChanges || [];
+    const adding = !this._selected.has(key);
+
+    const structuralMatch = key.match(/^grp_(\d+)$/);
+    const memberMatch     = key.match(/^grp_(\d+)_t_(.+)$/);
+
+    if (structuralMatch) {
+      const i  = Number(structuralMatch[1]);
+      const op = groupOps[i];
+      if (op?.type === 'create') {
+        const memberKeys = (op.group?.members || []).map((t) => `grp_${i}_t_${t}`);
+        if (adding) {
+          // Selecting the create row does NOT auto-select members —
+          // each member assignment is chosen independently.
+          this._selected.add(key);
+        } else {
+          // Deselecting the create row deselects all members (can't assign to a deleted group).
+          this._selected.delete(key);
+          memberKeys.forEach((k) => this._selected.delete(k));
+        }
+        this.requestUpdate();
+        return;
+      }
+    } else if (memberMatch) {
+      const i  = Number(memberMatch[1]);
+      const op = groupOps[i];
+      if (op?.type === 'create' && adding) {
+        // Can't assign to a group that isn't being created.
+        this._selected.add(key);
+        this._selected.add(`grp_${i}`);
+        this.requestUpdate();
+        return;
+      }
+    }
+
+    // Default simple toggle (delete, update-field, update-member-delta deselect).
+    if (adding) this._selected.add(key);
+    else this._selected.delete(key);
+    this.requestUpdate();
+  }
+
+  /**
+   * Resolve a group id to a display name.
+   * Checks the GroupService cache first, then create-ops in groupOps.
+   */
+  _resolveGroupName(id, groupOps) {
+    if (!id) return '—';
+    const sid = String(id);
+    const fromCache = groupService.getGroupById(sid)?.name;
+    if (fromCache) return fromCache;
+    const fromPending = (groupOps || [])
+      .find((op) => op.group?.id && String(op.group.id) === sid)?.group?.name;
+    if (fromPending) return fromPending;
+    return sid.length > 12 ? `${sid.slice(0, 8)}…` : sid;
+  }
+
+  /**
+   * Build lookup structures for group changes across all group ops.
+   *
+   * Returns:
+   *   taskGroupMap   — Map<taskId, {opIdx, change, groupName, key}>
+   *                    First pending group change per task (for inline display on feature rows).
+   *   orphanDeltaRows — [{taskId, opIdx, change, groupName, key}]
+   *                    Group changes for tasks with NO other field-change row.
+   *
+   * Key conventions (all use original groupOps index i):
+   *   create members  → grp_${i}_t_${taskId}  (individual; selecting auto-implies the create)
+   *   memberDeltas    → grp_${i}_t_${taskId}  (independent)
+   *
+   * @param {Array}     groupOps   Full pendingGroupChanges array.
+   * @param {Set<string>} featureSet  Task IDs that already have a field-change row.
+   */
+  _buildGroupChangeMaps(groupOps, featureSet) {
+    const taskGroupMap = new Map();
+    for (const [i, op] of (groupOps || []).entries()) {
+      const groupName = op.group?.name ?? this._resolveGroupName(op.groupId, groupOps);
+      if (op.type === 'create') {
+        for (const taskId of (op.group?.members || []).map(String)) {
+          if (!taskGroupMap.has(taskId))
+            taskGroupMap.set(taskId, { opIdx: i, change: 'add', groupName, key: `grp_${i}_t_${taskId}` });
+        }
+      } else if (op.memberDeltas?.length) {
+        for (const { taskId, op: change } of op.memberDeltas) {
+          const tid = String(taskId);
+          if (!taskGroupMap.has(tid))
+            taskGroupMap.set(tid, { opIdx: i, change, groupName, key: `grp_${i}_t_${tid}` });
+        }
+      }
+    }
+    const orphanDeltaRows = [];
+    for (const [taskId, delta] of taskGroupMap.entries()) {
+      if (!(featureSet || new Set()).has(taskId))
+        orphanDeltaRows.push({ taskId, ...delta });
+    }
+    return { taskGroupMap, orphanDeltaRows };
+  }
+
   _onSave() {
-    // Feature overrides: keys are plain feature IDs (group op keys are prefixed 'grp_')
-    const selected = Array.from(this._selected)
-      .filter((k) => !k.startsWith('grp_'))
-      .map((id) => {
-        const ov = this.overrides[id] || {};
-        const out = { id };
-        if ('start' in ov) out.start = ov.start;
-        if ('end' in ov) out.end = ov.end;
-        if (ov.capacity) out.capacity = ov.capacity;
-        if (ov.state) out.state = ov.state;
-        if ('iterationPath' in ov) out.iterationPath = ov.iterationPath;
-        if ('groupId' in ov) out.groupId = ov.groupId;
-        return out;
-      });
-    const selectedGroupChanges = (this.pendingGroupChanges || []).filter(
-      (_, i) => this._selected.has(`grp_${i}`)
-    );
+    // Feature overrides: only selected fields.
+    const featuresOut = [];
+    for (const [id, ov] of Object.entries(this.overrides || {})) {
+      if (!ov || typeof ov !== 'object') continue;
+      const out = { id };
+      let hasField = false;
+      if (this._selected.has(`${id}:start`) && 'start' in ov) { out.start = ov.start; hasField = true; }
+      if (this._selected.has(`${id}:end`) && 'end' in ov) { out.end = ov.end; hasField = true; }
+      if (this._selected.has(`${id}:capacity`) && ov.capacity) { out.capacity = ov.capacity; hasField = true; }
+      if (this._selected.has(`${id}:state`) && ov.state) { out.state = ov.state; hasField = true; }
+      if (this._selected.has(`${id}:iterationPath`) && 'iterationPath' in ov) { out.iterationPath = ov.iterationPath; hasField = true; }
+      if (hasField) featuresOut.push(out);
+    }
+
+    // Group changes — each op type handled independently by original index.
+    const groupChanges = (this.pendingGroupChanges || []).reduce((acc, op, i) => {
+      if (op.type === 'create') {
+        // Structural key must be selected — selecting any member auto-selects it (cascade).
+        if (!this._selected.has(`grp_${i}`)) return acc;
+        const selectedMembers = (op.group?.members || []).map(String)
+          .filter((taskId) => this._selected.has(`grp_${i}_t_${taskId}`));
+        acc.push({ ...op, group: { ...op.group, members: selectedMembers } });
+      } else if (op.type === 'delete' && this._selected.has(`grp_${i}`)) {
+        acc.push(op);
+      } else if (op.type === 'update') {
+        // Fields (name/color) and member deltas are independently selectable.
+        const fieldsSel = op.fields && this._selected.has(`grp_${i}`);
+        const selectedDeltas = (op.memberDeltas || []).filter(
+          ({ taskId }) => this._selected.has(`grp_${i}_t_${taskId}`)
+        );
+        if (fieldsSel || selectedDeltas.length > 0) {
+          const out = { ...op };
+          if (!fieldsSel) delete out.fields;
+          if (selectedDeltas.length > 0) out.memberDeltas = selectedDeltas;
+          else delete out.memberDeltas;
+          acc.push(out);
+        }
+      }
+      return acc;
+    }, []);
+
     this.dispatchEvent(
       new CustomEvent('azure-save', {
-        detail: { features: selected, groupChanges: selectedGroupChanges },
+        detail: { features: featuresOut, groupChanges },
         bubbles: true,
         composed: true,
       })
@@ -87,220 +282,236 @@ export class AzureDevopsModal extends LitElement {
     this.remove();
   }
 
+  // ---------------------------------------------------------------------------
+  // Row data computation
+  // ---------------------------------------------------------------------------
+
   /**
-   * Build per-row change metadata and render the table.
-   * Columns with no changes across all rows are hidden entirely.
-   * Cells that did not change within a row are dimmed.
+   * Compute per-row change metadata from raw override entries.
+   * Invalid (non-object) entries are silently filtered out.
+   * @param {Array<[string, object]>} entries - [id, override] pairs
+   * @returns {Array<object>} rows with change flags and display data
    */
-  _renderTable(entries, groupOps) {
+  _computeRows(entries) {
     const normDate = (v) => v || null;
+    return entries
+      .filter(([, ov]) => ov && typeof ov === 'object')
+      .map(([id, ov]) => {
+        const base =
+          this.state && this.state.baselineFeatures ?
+            this.state.baselineFeatures.find((f) => f.id === id) || {}
+          : {};
+        const origStart = base.start || '';
+        const origEnd = base.end || '';
+        const origCapacity = base.capacity || [];
+        const origState = base.state || '';
+        const origIterationPath = base.iterationPath || '';
+        const startChanged = 'start' in ov && normDate(ov.start) !== normDate(origStart);
+        const endChanged = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
+        const capacityChanged =
+          ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
+        const stateChanged = ov.state && ov.state !== origState;
+        const iterationChanged =
+          'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
 
-    // Resolve a groupId to a display name using the GroupService cache.
-    const groupName = (id) =>
-      id ? (groupService.getGroupById(String(id))?.name ?? String(id)) : '—';
-
-    // Build row data with per-cell change flags
-    const rows = entries.map(([id, ov]) => {
-      const base =
-        this.state && this.state.baselineFeatures ?
-          this.state.baselineFeatures.find((f) => f.id === id) || {}
-        : {};
-      const origStart = base.start || '';
-      const origEnd = base.end || '';
-      const origCapacity = base.capacity || [];
-      const origState = base.state || '';
-      const origIterationPath = base.iterationPath || '';
-      const origGroupId = base.groupId ?? null;
-
-      const startChanged = 'start' in ov && normDate(ov.start) !== normDate(origStart);
-      const endChanged = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
-      const capacityChanged =
-        ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
-      const stateChanged = ov.state && ov.state !== origState;
-      const iterationChanged =
-        'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
-      const groupIdChanged =
-        'groupId' in ov && (ov.groupId ?? null) !== origGroupId;
-
-      // Format capacity diff
-      let capacityContent = '';
-      if (capacityChanged) {
-        const teams = this.state?.teams || [];
-        const origMap = new Map(origCapacity.map((c) => [c.team, c.capacity]));
-        const newMap = new Map(ov.capacity.map((c) => [c.team, c.capacity]));
-        const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
-        const changes = [];
-        for (const teamId of allTeams) {
-          const origVal = origMap.get(teamId);
-          const newVal = newMap.get(teamId);
-          if (origVal === newVal) continue;
-          const name = teams.find((t) => t.id === teamId)?.name || teamId;
-          if (origVal === undefined)
-            changes.push(html`<div><strong>${name}:</strong> +${newVal}%</div>`);
-          else if (newVal === undefined)
-            changes.push(html`<div><strong>${name}:</strong> ${origVal}% → removed</div>`);
-          else
-            changes.push(html`<div><strong>${name}:</strong> ${origVal}% → ${newVal}%</div>`);
+        // Format capacity diff for display
+        let capacityContent = '';
+        if (capacityChanged) {
+          const teams = this.state?.teams || [];
+          const origMap = new Map(origCapacity.map((c) => [c.team, c.capacity]));
+          const newMap = new Map(ov.capacity.map((c) => [c.team, c.capacity]));
+          const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
+          const changes = [];
+          for (const teamId of allTeams) {
+            const origVal = origMap.get(teamId);
+            const newVal = newMap.get(teamId);
+            if (origVal === newVal) continue;
+            const name = teams.find((t) => t.id === teamId)?.name || teamId;
+            if (origVal === undefined)
+              changes.push(html`<div><strong>${name}:</strong> +${newVal}%</div>`);
+            else if (newVal === undefined)
+              changes.push(html`<div><strong>${name}:</strong> ${origVal}% → removed</div>`);
+            else
+              changes.push(html`<div><strong>${name}:</strong> ${origVal}% → ${newVal}%</div>`);
+          }
+          capacityContent = html`${changes}`;
         }
-        capacityContent = html`${changes}`;
-      }
 
-      return {
-        id, ov,
-        origStart, origEnd, origState, origIterationPath, origGroupId,
-        startChanged, endChanged, capacityChanged, stateChanged, iterationChanged, groupIdChanged,
-        capacityContent,
-      };
-    });
+        return {
+          id, ov,
+          origStart, origEnd, origState, origIterationPath,
+          startChanged, endChanged, capacityChanged, stateChanged, iterationChanged,
+          capacityContent,
+        };
+      });
+  }
 
-    // Only show columns that have at least one changed cell across all rows
-    const showStart     = rows.some((r) => r.startChanged);
-    const showEnd       = rows.some((r) => r.endChanged);
-    const showCapacity  = rows.some((r) => r.capacityChanged);
-    const showState     = rows.some((r) => r.stateChanged);
-    const showIteration = rows.some((r) => r.iterationChanged);
-    const showGroup     = rows.some((r) => r.groupIdChanged) || (groupOps && groupOps.length > 0);
+  /**
+   * @param {Array} enrichedRows   Feature rows enriched with .groupDelta
+   * @param {Array} groupOps       Full pendingGroupChanges (original indices for grp_${i} keys)
+   * @param {Array} orphanDeltaRows Tasks with only a group change (no field-change row)
+   * @param {object} showCols
+   */
+  _renderTable(enrichedRows, groupOps, orphanDeltaRows, showCols) {
+    const { showStart, showEnd, showCapacity, showState, showIteration, showGroup } = showCols;
 
-    // Number of detail columns after "Title" — used for colspan on group op rows.
-    const detailCols = [showStart, showEnd, showCapacity, showState, showIteration, showGroup]
-      .filter(Boolean).length;
+    // Clickable changed cell for feature fields.
+    const tdFeature = (changed, featureId, field, content) => {
+      if (!changed) return html`<td class="unchanged">${content}</td>`;
+      const key = `${featureId}:${field}`;
+      const sel = this._selected.has(key);
+      return html`<td
+        class=${sel ? 'changed' : 'changed skipped'}
+        @click=${() => this._onCellClick(featureId, field)}
+        title=${sel ? 'Click to exclude from this save' : 'Click to include in this save'}
+      >${content}</td>`;
+    };
 
-    // Helper: render a table cell styled by whether its value changed
-    const td = (changed, content) =>
-      html`<td class=${changed ? 'changed' : 'unchanged'}>${content}</td>`;
+    // Column header — clickable when the column has toggleable cells.
+    const colHeader = (field, shown) => {
+      if (!shown) return '';
+      const hasCells = enrichedRows.some((r) => r[CHANGED_KEY[field]]);
+      const label = FIELD_LABEL[field];
+      return hasCells
+        ? html`<th class="col-header" @click=${() => this._onColumnHeaderClick(field, enrichedRows, groupOps, orphanDeltaRows)} title="Click to toggle ${label} column">${label}</th>`
+        : html`<th>${label}</th>`;
+    };
+
+    // Blank filler cells used in structural-op and orphan rows.
+    const blankCells = html`
+      ${showStart     ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showEnd       ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showCapacity  ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showState     ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showIteration ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+    `;
+
+    // Shared helper: render a group-assignment cell (feature rows and orphan rows).
+    const tdGroupDelta = (key, change, groupName) => {
+      const groupLabel = change === 'add'
+        ? html`— → <strong>${groupName}</strong>`
+        : html`<strong>${groupName}</strong> → —`;
+      const sel = this._selected.has(key);
+      return html`<td
+        class=${sel ? 'changed' : 'changed skipped'}
+        @click=${() => this._onGrpCellClick(key)}
+        title=${sel ? 'Click to exclude from this save' : 'Click to include in this save'}
+      ><span style="font-size:0.9em;">${groupLabel}</span></td>`;
+    };
 
     return html`
       <table class="scenario-annotate-table">
         <thead>
           <tr>
-            <th style="width:64px">Select</th>
             <th>Title</th>
-            ${showStart     ? html`<th>Start</th>`     : ''}
-            ${showEnd       ? html`<th>End</th>`       : ''}
-            ${showCapacity  ? html`<th>Capacity</th>`  : ''}
-            ${showState     ? html`<th>State</th>`     : ''}
-            ${showIteration ? html`<th>Iteration</th>` : ''}
-            ${showGroup     ? html`<th>Group</th>`     : ''}
+            ${colHeader('start', showStart)}
+            ${colHeader('end', showEnd)}
+            ${colHeader('capacity', showCapacity)}
+            ${colHeader('state', showState)}
+            ${colHeader('iterationPath', showIteration)}
+            ${showGroup ? html`<th class="col-header"
+              @click=${() => this._onColumnHeaderClick('groupId', enrichedRows, groupOps, orphanDeltaRows)}
+              title="Click to toggle Group column">Group</th>` : ''}
           </tr>
         </thead>
         <tbody>
-          ${rows.map((r) => html`
+          ${enrichedRows.map((r) => html`
             <tr>
-              <td>
-                <input
-                  type="checkbox"
-                  .checked=${this._selected.has(r.id)}
-                  data-id=${r.id}
-                  @change=${this._onCheckboxChange}
-                />
-              </td>
               <td>${this.state ? this.state.getFeatureTitleById(r.id) : r.id}</td>
-              ${showStart ? td(r.startChanged,
+              ${showStart ? tdFeature(r.startChanged, r.id, 'start',
                   this._formatRange(r.origStart, r.ov.start)) : ''}
-              ${showEnd ? td(r.endChanged,
+              ${showEnd ? tdFeature(r.endChanged, r.id, 'end',
                   this._formatRange(r.origEnd, r.ov.end)) : ''}
-              ${showCapacity ? td(r.capacityChanged,
-                  r.capacityChanged ?
-                    html`<span style="font-size:0.9em;line-height:1.4;">${r.capacityContent}</span>`
-                  : html`<span style="font-size:0.9em;">—</span>`) : ''}
-              ${showState ? td(r.stateChanged,
-                  r.stateChanged ?
-                    html`<span style="font-size:0.9em;">${r.origState || '—'} → <strong>${r.ov.state}</strong></span>`
-                  : html`<span style="font-size:0.9em;">${r.origState || '—'}</span>`) : ''}
-              ${showIteration ? td(r.iterationChanged,
-                  r.iterationChanged ?
-                    html`<span style="font-size:0.9em;">
-                      ${r.origIterationPath || '—'} →
-                      <strong>${r.ov.iterationPath || html`<em style="color:#c0392b">(cleared)</em>`}</strong>
-                    </span>`
-                  : html`<span style="font-size:0.9em;">${r.origIterationPath || '—'}</span>`) : ''}
-              ${showGroup ? td(r.groupIdChanged,
-                  r.groupIdChanged ?
-                    html`<span style="font-size:0.9em;">${groupName(r.origGroupId)} → <strong>${groupName(r.ov.groupId)}</strong></span>`
-                  : html`<span style="font-size:0.9em;">${groupName(r.origGroupId)}</span>`) : ''}
+              ${showCapacity ? tdFeature(r.capacityChanged, r.id, 'capacity',
+                  r.capacityChanged
+                    ? html`<span style="font-size:0.9em;line-height:1.4;">${r.capacityContent}</span>`
+                    : html`<span style="font-size:0.9em;">—</span>`) : ''}
+              ${showState ? tdFeature(r.stateChanged, r.id, 'state',
+                  r.stateChanged
+                    ? html`<span style="font-size:0.9em;">${r.origState || '—'} → <strong>${r.ov.state}</strong></span>`
+                    : html`<span style="font-size:0.9em;">${r.origState || '—'}</span>`) : ''}
+              ${showIteration ? tdFeature(r.iterationChanged, r.id, 'iterationPath',
+                  r.iterationChanged
+                    ? html`<span style="font-size:0.9em;">
+                        ${r.origIterationPath || '—'} →
+                        <strong>${r.ov.iterationPath || html`<em style="color:#c0392b">(cleared)</em>`}</strong>
+                      </span>`
+                    : html`<span style="font-size:0.9em;">${r.origIterationPath || '—'}</span>`) : ''}
+              ${showGroup
+                ? (r.groupDelta
+                    ? tdGroupDelta(r.groupDelta.key, r.groupDelta.change, r.groupDelta.groupName)
+                    : html`<td class="unchanged"><span style="color:#999">—</span></td>`)
+                : ''}
             </tr>
           `)}
-          ${(groupOps || []).map((op, i) => {
-            const key = `grp_${i}`;
-            const planId = op.group?.plan_id || op.planId;
-            const planName = planId
-              ? (this.state?.projects?.find((p) => String(p.id) === String(planId))?.name ?? planId)
-              : '';
-            const grpName = op.group?.name ?? op.groupName ?? op.groupId ?? '?';
-            const itemLabel = planName ? `Group '${grpName}' in ${planName}` : `Group '${grpName}'`;
-            const actionLabel =
-              op.type === 'create' ? html`<span style="color:#0a7c42;font-weight:600;">created</span>` :
-              op.type === 'delete' ? html`<span style="color:#c0392b;font-weight:600;">deleted</span>` :
-              html`renamed to '<strong>${op.fields?.name ?? '?'}</strong>'`;
-
-            return html`
+          ${
+            (groupOps || []).flatMap((op, i) => {
+              if (!isStructuralOp(op)) return [];
+              const resolvedGroup = op.group
+                ?? (op.groupId ? groupService.getGroupById(String(op.groupId)) : null);
+              const planId = resolvedGroup?.plan_id || op.planId;
+              const planName = planId
+                ? (this.state?.projects?.find((p) => String(p.id) === String(planId))?.name ?? planId)
+                : '';
+              const grpName = op.group?.name ?? this._resolveGroupName(op.groupId, groupOps);
+              const itemLabel = planName
+                ? `Group '${grpName}' in ${planName}`
+                : `Group '${grpName}'`;
+              const actionLabel =
+                op.type === 'create' ? html`<span style="color:#0a7c42;font-weight:600;">created</span>` :
+                op.type === 'delete' ? html`<span style="color:#c0392b;font-weight:600;">deleted</span>` :
+                html`renamed to '<strong>${op.fields?.name ?? '?'}</strong>'`;
+              const key = `grp_${i}`;
+              const sel = this._selected.has(key);
+              return [html`
+                <tr>
+                  <td>${itemLabel}</td>
+                  ${blankCells}
+                  ${showGroup ? html`<td
+                    class=${sel ? 'changed' : 'changed skipped'}
+                    @click=${() => this._onGrpCellClick(key)}
+                    title=${sel ? 'Click to exclude from this save' : 'Click to include in this save'}
+                  >${actionLabel}</td>` : ''}
+                </tr>`];
+            })
+          }
+          ${
+            /* Orphan rows: tasks with only a group change (no feature-field row above) */
+            (orphanDeltaRows || []).map((d) => html`
               <tr>
-                <td>
-                  <input
-                    type="checkbox"
-                    .checked=${this._selected.has(key)}
-                    data-id=${key}
-                    @change=${this._onCheckboxChange}
-                  />
-                </td>
-                <td>${itemLabel}</td>
-                ${showStart ? td(false, html`<span style="color:#999">—</span>`) : ''}
-                ${showEnd ? td(false, html`<span style="color:#999">—</span>`) : ''}
-                ${showCapacity ? td(false, html`<span style="color:#999">—</span>`) : ''}
-                ${showState ? td(false, html`<span style="color:#999">—</span>`) : ''}
-                ${showIteration ? td(false, html`<span style="color:#999">—</span>`) : ''}
-                ${showGroup ? td(true, actionLabel) : ''}
-              </tr>`;
-          })}
+                <td>${this.state ? this.state.getFeatureTitleById(d.taskId) : d.taskId}</td>
+                ${blankCells}
+                ${showGroup ? tdGroupDelta(d.key, d.change, d.groupName) : ''}
+              </tr>
+            `)
+          }
         </tbody>
       </table>`;
   }
 
   render() {
-    const allEntries = Object.entries(this.overrides || {});
     const groupOps = this.pendingGroupChanges || [];
 
-    // Filter to only show features with actual changes (include state)
-    const entries = allEntries.filter(([id, ov]) => {
-      const baseFeature =
-        this.state && this.state.baselineFeatures ?
-          this.state.baselineFeatures.find((f) => f.id === id) || {}
-        : {};
-      const origStart = baseFeature.start || '';
-      const origEnd = baseFeature.end || '';
-      const origCapacity = baseFeature.capacity || [];
-      const origState = baseFeature.state || '';
+    // Compute feature-field rows.
+    const allRows = this._computeRows(Object.entries(this.overrides || {}));
+    const featureRows = allRows.filter((r) =>
+      r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged
+    );
+    const featureSet = new Set(featureRows.map((r) => r.id));
 
-      const origIterationPath = baseFeature.iterationPath || '';
+    // Build group-change maps; enrich feature rows with inline group delta.
+    const { taskGroupMap, orphanDeltaRows } = this._buildGroupChangeMaps(groupOps, featureSet);
+    const enrichedRows = featureRows.map((r) => ({ ...r, groupDelta: taskGroupMap.get(r.id) || null }));
 
-      // Guard: override entries from test fixtures or legacy data may not be
-      // plain objects — bail out early to avoid TypeError from 'in' operator.
-      if (!ov || typeof ov !== 'object') return false;
+    const showStart     = enrichedRows.some((r) => r.startChanged);
+    const showEnd       = enrichedRows.some((r) => r.endChanged);
+    const showCapacity  = enrichedRows.some((r) => r.capacityChanged);
+    const showState     = enrichedRows.some((r) => r.stateChanged);
+    const showIteration = enrichedRows.some((r) => r.iterationChanged);
+    const showGroup     = groupOps.length > 0;
+    const showCols = { showStart, showEnd, showCapacity, showState, showIteration, showGroup };
 
-      // Normalise null/undefined/empty as "no value" when comparing dates.
-      // This ensures cleared dates (null) are detected as a change from a
-      // previously set date, and avoids false positives when both sides have
-      // no date.
-      const normDate = (v) => v || null;
-      const hasStartChange = 'start' in ov && normDate(ov.start) !== normDate(origStart);
-      const hasEndChange = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
-      const hasCapacityChange =
-        ov.capacity && JSON.stringify(ov.capacity) !== JSON.stringify(origCapacity);
-      const hasStateChange = ov.state && ov.state !== origState;
-      const hasIterationChange =
-        'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
-      const hasGroupChange =
-        'groupId' in ov && (ov.groupId ?? null) !== (baseFeature.groupId ?? null);
-
-      return hasStartChange || hasEndChange || hasCapacityChange || hasStateChange || hasIterationChange || hasGroupChange;
-    });
-
-    const hasAny = entries.length > 0 || groupOps.length > 0;
-    // All selectable keys: feature IDs + group op keys (grp_0, grp_1, ...)
-    const allKeys = [
-      ...entries.map(([id]) => id),
-      ...groupOps.map((_, i) => `grp_${i}`),
-    ];
+    const hasAny = enrichedRows.length > 0 || groupOps.length > 0;
 
     return html`
       <modal-lit wide>
@@ -311,6 +522,12 @@ export class AzureDevopsModal extends LitElement {
               margin: 0 0 16px 0;
               color: #333;
               font-size: 14px;
+            }
+            p.instruction {
+              font-size: 12px;
+              color: #666;
+              margin: 0 0 8px 0;
+              font-style: italic;
             }
             .scenario-annotate-table {
               width: 100%;
@@ -331,6 +548,13 @@ export class AzureDevopsModal extends LitElement {
               border: 1px solid #ddd;
               border-bottom: 2px solid #bbb;
             }
+            .scenario-annotate-table th.col-header {
+              cursor: pointer;
+              user-select: none;
+            }
+            .scenario-annotate-table th.col-header:hover {
+              background: #e8e8e8;
+            }
             .scenario-annotate-table td {
               padding: 10px 12px;
               border: 1px solid #ddd;
@@ -342,10 +566,22 @@ export class AzureDevopsModal extends LitElement {
               color: #bbb;
               font-style: italic;
             }
-            /* Changed cells get a subtle left accent so they stand out */
+            /* Changed and selected for persistence — yellow accent */
             .scenario-annotate-table td.changed {
               background: #fffbe6;
               border-left: 3px solid #e6a817;
+              cursor: pointer;
+            }
+            /* Changed but deselected — will not be persisted this save */
+            .scenario-annotate-table td.changed.skipped {
+              background: #f0f0f0;
+              border-left: 3px solid #bbb;
+              color: #999;
+              text-decoration: line-through;
+              cursor: pointer;
+            }
+            .scenario-annotate-table td.changed:hover {
+              filter: brightness(0.96);
             }
             .scenario-annotate-table tbody tr {
               background: #fff;
@@ -360,9 +596,6 @@ export class AzureDevopsModal extends LitElement {
               cursor: pointer;
               width: 16px;
               height: 16px;
-            }
-            .scenario-annotate-table td:first-child {
-              text-align: center;
             }
             .scenario-annotate-table strong {
               color: #000;
@@ -385,13 +618,14 @@ export class AzureDevopsModal extends LitElement {
             html`<p style="color:#888;">No changes to save.</p>`
           : html`
               <p>Select which changes to persist:</p>
+              <p class="instruction">All cells start deselected. Click a cell to include it in this save; click again to exclude. Click a column header to toggle the whole column.</p>
               <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-                <button type="button" @click=${() => this._toggleAll(allKeys)} class="btn">
+                <button type="button" @click=${() => this._toggleAll(enrichedRows, groupOps, orphanDeltaRows)} class="btn">
                   Toggle All/None
                 </button>
               </div>
               <div style="max-height:60vh;overflow-y:auto;padding-right:8px;">
-                ${this._renderTable(entries, groupOps)}
+                ${this._renderTable(enrichedRows, groupOps, orphanDeltaRows, showCols)}
               </div>
             `}
         </div>

@@ -321,32 +321,117 @@ export class ScenarioMenuLit extends LitElement {
 
       const { features = [], groupChanges = [] } = result;
 
-      // 1. Persist accepted group changes (create → POST, update → PUT, delete → DELETE).
-      //    Temp IDs are swapped for real server IDs as each group is created.
+      // 1. Persist accepted group changes.
+      //    - create (from scenario.scenarioGroups): POST → get real ID → swap temp → remove from scenarioGroups
+      //    - update (baseline group fields): PUT /api/groups/{id}
+      //    - update with members (from groupOverrides): included in PUT payload
+      //    - delete: DELETE /api/groups/{id} → remove from groupOverrides
+      const affectedPlanIds = new Set();
       for (const op of groupChanges) {
         if (op.type === 'create' && op.group) {
+          const allMembers = (op.group.members || []).map(String);
+          const committedMembers = new Set((op.group.members || []).map(String));
+          // op.group.members is already the filtered (selected) list from _onSave.
+          // We need to know which members were in the original scenarioGroups entry
+          // but NOT committed, so we can keep them as pending memberDeltas.
+          const activeScen = state.getActiveScenario();
+          const originalEntry = (activeScen?.scenarioGroups || [])
+            .find((g) => String(g.id) === String(op.group.id));
+          const allOriginalMembers = (originalEntry?.members || []).map(String);
+
           const payload = {
             plan_id: op.group.plan_id,
             name: op.group.name,
-            color: op.group.color,
+            color: op.group.color || null,
             rank: op.group.rank ?? 0,
+            members: allMembers,
           };
           const created = await dataService.createGroup(payload);
           if (created) {
-            // Swap temp → real ID everywhere (GroupService cache + State overrides)
-            state.confirmGroupCreate(op.group.id, created.id);
-            groupService.replaceId(op.group.id, created.id);
+            const realId = String(created.id);
+            // Swap temp → real ID in scenario data and GroupService cache.
+            state.confirmGroupCreate(op.group.id, realId);
+            // Remove this group from scenarioGroups (now baseline).
+            if (activeScen?.scenarioGroups) {
+              activeScen.scenarioGroups = activeScen.scenarioGroups.filter(
+                (g) => String(g.id) !== realId && String(g.id) !== String(op.group.id)
+              );
+            }
+            // Any members that were in the scenario group but NOT committed stay
+            // pending as memberDeltas against the now-real group.
+            const uncommittedMembers = allOriginalMembers.filter(
+              (tid) => !committedMembers.has(tid)
+            );
+            if (uncommittedMembers.length > 0) {
+              if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
+              const ov = activeScen.groupOverrides[realId] || {};
+              const existingDeltas = ov.memberDeltas || [];
+              const existingSet = new Set(existingDeltas.map((d) => d.taskId));
+              for (const tid of uncommittedMembers) {
+                if (!existingSet.has(tid))
+                  existingDeltas.push({ taskId: tid, op: 'add' });
+              }
+              activeScen.groupOverrides[realId] = { ...ov, memberDeltas: existingDeltas };
+            }
+            if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
           }
         } else if (op.type === 'update' && op.groupId) {
-          await dataService.updateGroup(op.groupId, op.fields || {});
+          const activeScen = state.getActiveScenario();
+          const updatePayload = { ...(op.fields || {}) };
+
+          // Apply any committed member deltas to compute the new full members list.
+          if (op.memberDeltas?.length) {
+            const baseGroup = groupService.getGroupById(op.groupId);
+            const baseMembers = new Set((baseGroup?.members || []).map(String));
+            for (const { taskId, op: delta } of op.memberDeltas) {
+              if (delta === 'add') baseMembers.add(String(taskId));
+              else baseMembers.delete(String(taskId));
+            }
+            updatePayload.members = [...baseMembers];
+          }
+
+          await dataService.updateGroup(op.groupId, updatePayload);
+
+          // Remove only the committed deltas from groupOverrides; leave others.
+          if (activeScen?.groupOverrides?.[op.groupId]) {
+            const ov = activeScen.groupOverrides[op.groupId];
+            if (op.memberDeltas?.length) {
+              const committed = new Set(op.memberDeltas.map((d) => String(d.taskId)));
+              ov.memberDeltas = (ov.memberDeltas || []).filter(
+                (d) => !committed.has(String(d.taskId))
+              );
+            }
+            // Remove the entire override entry if nothing remains.
+            const { _deleted, memberDeltas: rem, ...rest } = ov;
+            if (!_deleted && (!rem || rem.length === 0) && Object.keys(rest).length === 0) {
+              delete activeScen.groupOverrides[op.groupId];
+            }
+          }
+
+          const g = groupService.getGroupById(op.groupId);
+          if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
           await dataService.deleteGroup(op.groupId);
+          const activeScen = state.getActiveScenario();
+          if (activeScen?.groupOverrides?.[op.groupId]) {
+            delete activeScen.groupOverrides[op.groupId];
+          }
+          const g = groupService.getGroupById(op.groupId);
+          if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         }
       }
 
       if (groupChanges.length > 0) {
-        state.clearPendingGroupChanges();
         console.log('[ScenarioMenu] Persisted group changes', groupChanges);
+
+        // Evict and reload GroupService cache for affected plans so the board
+        // sees the authoritative server state (real UUIDs, up-to-date members/names).
+        for (const planId of affectedPlanIds) {
+          groupService.evictPlan(planId);
+          groupService.loadGroups(planId).catch((err) =>
+            console.warn('[ScenarioMenu] group reload failed for plan', planId, err)
+          );
+        }
       }
 
       // 2. Persist accepted feature overrides.
@@ -355,7 +440,15 @@ export class ScenarioMenuLit extends LitElement {
         console.log('[ScenarioMenu] Saved feature changes', features);
       }
 
-      // 3. Refresh baseline so the board reflects the now-persisted state.
+      // 3. Save the scenario to disk whenever anything was committed so the
+      //    stored overrides and pendingGroupChanges reflect the new state.
+      //    This prevents stale temp IDs, already-deleted groups, and already-
+      //    committed overrides from reappearing after a page reload.
+      if (features.length > 0 || groupChanges.length > 0) {
+        await state.saveScenario(scenario.id);
+      }
+
+      // 4. Refresh baseline so the board reflects the now-persisted state.
       if (features.length > 0 || groupChanges.length > 0) {
         try {
           await state.refreshBaseline();
@@ -414,11 +507,12 @@ export class ScenarioMenuLit extends LitElement {
                       >
                         💾
                       </button>
-                      ${(
-                        (s.overrides && Object.keys(s.overrides).length > 0) ||
-                        s.overridesCount > 0 ||
-                        (s.id === state.activeScenarioId && state.getPendingGroupChanges?.().length > 0)
-                      ) ?
+                      ${s.id === this.activeScenarioId &&
+                        (
+                          (s.overrides && Object.keys(s.overrides).length > 0) ||
+                          s.overridesCount > 0 ||
+                          state.getPendingGroupChanges?.().length > 0
+                        ) ?
                         html`
                           <button
                             type="button"

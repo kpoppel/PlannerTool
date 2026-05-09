@@ -65,12 +65,9 @@ describe('Modal Consolidated Tests', () => {
     };
     const { openAzureDevopsModal } =
       await import('../../www/js/components/modalHelpers.js');
-    const prom = (async () => {
-      const p = openAzureDevopsModal({ overrides, state: s });
-      return p;
-    })();
+    const prom = openAzureDevopsModal({ overrides, state: s });
     const start = Date.now();
-    let saveBtn, checkboxes, modalEl, root;
+    let saveBtn, modalEl, root;
     while (Date.now() - start < 500) {
       modalEl = document.querySelector('azure-devops-modal');
       if (modalEl) {
@@ -78,17 +75,18 @@ describe('Modal Consolidated Tests', () => {
         saveBtn = Array.from(root.querySelectorAll('button')).find((b) =>
           /Save/i.test(b.textContent)
         );
-        checkboxes = Array.from(root.querySelectorAll('input[type="checkbox"][data-id]'));
       }
-      if (saveBtn && checkboxes && checkboxes.length > 0) break;
+      if (saveBtn) break;
       await new Promise((r) => setTimeout(r, 10));
     }
     expect(saveBtn).to.exist;
-    // Check the first checkbox (items start unchecked by default now)
-    expect(checkboxes[0].checked).to.be.false;
-    checkboxes[0].checked = true;
-    checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 50));
+    // All cells start deselected — click Toggle All to select everything, then Save.
+    const toggleBtn = Array.from(root.querySelectorAll('button')).find((b) =>
+      /Toggle/i.test(b.textContent)
+    );
+    expect(toggleBtn).to.exist;
+    toggleBtn.click();
+    await new Promise((r) => setTimeout(r, 20));
     saveBtn.click();
     const res = await prom;
     expect(res).to.be.an('object');
@@ -100,7 +98,7 @@ describe('Modal Consolidated Tests', () => {
     });
   });
 
-  it('openSaveToAzureModal only returns checked items', async () => {
+  it('openSaveToAzureModal only returns items whose cells are selected', async () => {
     const overrides = {
       f1: { start: '2025-01-01', end: '2025-01-02' },
       f2: { start: '2025-02-01', end: '2025-02-15' },
@@ -116,45 +114,46 @@ describe('Modal Consolidated Tests', () => {
     };
     const { openAzureDevopsModal } =
       await import('../../www/js/components/modalHelpers.js');
-    const prom = (async () => {
-      const p = openAzureDevopsModal({ overrides, state: s });
-      return p;
-    })();
+    const prom = openAzureDevopsModal({ overrides, state: s });
 
-    // Wait for modal to appear and get checkboxes
+    // Wait for modal to appear with 3 feature rows
     const start = Date.now();
-    let checkboxes, saveBtn, modalEl, root;
+    let featureRows, saveBtn, modalEl, root;
     while (Date.now() - start < 500) {
       modalEl = document.querySelector('azure-devops-modal');
       if (modalEl) {
         root = modalEl.renderRoot || modalEl.shadowRoot || modalEl;
-        checkboxes = Array.from(root.querySelectorAll('input[type="checkbox"][data-id]'));
+        featureRows = Array.from(root.querySelectorAll('tbody tr'));
         saveBtn = Array.from(root.querySelectorAll('button')).find((b) =>
           /Save/i.test(b.textContent)
         );
       }
-      if (checkboxes && checkboxes.length === 3 && saveBtn) break;
+      if (saveBtn && featureRows && featureRows.length === 3) break;
       await new Promise((r) => setTimeout(r, 10));
     }
 
-    expect(checkboxes).to.have.lengthOf(3);
-    // All items should start unchecked
-    expect(checkboxes[0].checked).to.be.false;
-    expect(checkboxes[1].checked).to.be.false;
-    expect(checkboxes[2].checked).to.be.false;
+    expect(featureRows).to.have.lengthOf(3);
+    expect(saveBtn).to.exist;
 
-    // Check items 1 and 3 only
-    checkboxes[0].checked = true;
-    checkboxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-    checkboxes[2].checked = true;
-    checkboxes[2].dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 50)); // Wait for state update
+    // All cells start deselected. Click changed cells on f1 and f3 rows to include them;
+    // leave f2 untouched so it is excluded from the save payload.
+    for (const targetId of ['f1', 'f3']) {
+      const row = featureRows.find((r) =>
+        r.querySelector('td')?.textContent?.includes(`Title-${targetId}`)
+      );
+      expect(row).to.exist;
+      const changedCells = Array.from(row.querySelectorAll('td.changed'));
+      expect(changedCells.length).to.be.greaterThan(0);
+      for (const cell of changedCells) {
+        cell.click();
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
 
-    // Click save
+    // Click save — f1 and f3 should be returned, f2 excluded
     saveBtn.click();
     const res = await prom;
 
-    // Should only return f1 and f3, not f2
     expect(res).to.be.an('object');
     expect(res.features).to.be.an('array');
     expect(res.features).to.have.lengthOf(2);

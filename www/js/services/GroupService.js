@@ -5,14 +5,13 @@
  * Mutations (create / update / delete) go to the REST API and update the
  * local cache on success.
  *
- * Group assignment (which feature belongs to which group) is stored as a
- * scenario override (feature.groupId) via State.updateFeatureField so it
- * participates in the normal scenario save / annotate flow.
+ * Group membership is stored on the group: `group.members = [taskId, ...]`.
+ * Per-scenario membership overrides are stored in `scenario.groupOverrides`.
+ * Scenario-local groups (not yet promoted to baseline) live in `scenario.scenarioGroups`.
  *
  * Events emitted on the global bus:
- *   GroupEvents.LOADED            — groups for a plan fetched / refreshed
- *   GroupEvents.CHANGED           — group created / updated / deleted
- *   GroupEvents.ASSIGNMENT_CHANGED — feature groupId override changed
+ *   GroupEvents.LOADED   — groups for a plan fetched / refreshed
+ *   GroupEvents.CHANGED  — group created / updated / deleted / membership changed
  *
  * Singleton exported as `groupService`.
  */
@@ -72,6 +71,131 @@ export class GroupService {
       if (found) return found;
     }
     return null;
+  }
+
+  /**
+   * Return the effective groups for a plan, merging:
+   *   1. Baseline groups from the server cache
+   *   2. scenario.groupOverrides[groupId].members — per-scenario member overrides for baseline groups
+   *   3. scenario.scenarioGroups — locally-created groups not yet promoted to baseline
+   *
+   * This is the authoritative read API for any code that needs to know "which
+   * groups exist for this plan right now, with scenario-specific membership".
+   *
+   * The baseline cache is not mutated — overrides produce new group objects.
+   *
+   * @param {string|number} planId
+   * @param {object|null} scenario  Active scenario (may be null/undefined)
+   * @returns {Array} Effective groups sorted by (rank, name)
+   */
+  getEffectiveGroups(planId, scenario) {
+    const key = String(planId);
+    const baselineGroups = this._groupsByPlan.get(key) || [];
+    const groupOverrides = scenario?.groupOverrides || {};
+    const scenarioGroups = (scenario?.scenarioGroups || []).filter(
+      (g) => String(g.plan_id) === key
+    );
+
+    // Apply group overrides to baseline groups (non-destructively).
+    // Groups marked as deleted are excluded.
+    const effective = baselineGroups
+      .filter((g) => !groupOverrides[String(g.id)]?._deleted)
+      .map((g) => {
+        const ov = groupOverrides[String(g.id)];
+        if (!ov) return g;
+        // Apply scalar field overrides (name, color, etc) then reconstruct members from deltas.
+        const { _deleted, memberDeltas, ...fields } = ov;
+        let members = g.members || [];
+        if (memberDeltas?.length) {
+          const memberSet = new Set(members.map(String));
+          for (const { taskId, op } of memberDeltas) {
+            if (op === 'add') memberSet.add(String(taskId));
+            else memberSet.delete(String(taskId));
+          }
+          members = [...memberSet];
+        }
+        return { ...g, ...fields, members };
+      });
+
+    // Append scenario-local groups (already scoped to planId by filter above).
+    return [...effective, ...scenarioGroups];
+  }
+
+  /**
+   * Add a task to a group's member list.
+   *
+   * For scenario-local groups (id starts with 'tmp_' or found in scenarioGroups):
+   *   updates members in-place on the scenarioGroups entry.
+   * For baseline groups:
+   *   calls stateRef.setGroupMembersOverride to record the change as a scenario override.
+   *
+   * @param {string} groupId
+   * @param {string} taskId
+   * @param {{ getActiveScenario: () => object, setGroupMembersOverride?: (id:string, members:string[]) => void }} stateRef
+   */
+  addMemberToGroup(groupId, taskId, stateRef) {
+    const scenario = stateRef?.getActiveScenario?.();
+    if (!scenario) return;
+
+    // Check scenario-local groups first
+    const sgIdx = (scenario.scenarioGroups || []).findIndex(
+      (g) => String(g.id) === String(groupId)
+    );
+    if (sgIdx !== -1) {
+      const sg = scenario.scenarioGroups[sgIdx];
+      if (!Array.isArray(sg.members)) sg.members = [];
+      if (!sg.members.includes(String(taskId))) {
+        sg.members = [...sg.members, String(taskId)];
+      }
+      bus.emit(GroupEvents.CHANGED, { op: 'memberAdded', groupId, taskId });
+      return;
+    }
+
+    // Baseline group — record as a delta in groupOverrides
+    const baseGroup = this.getGroupById(groupId);
+    if (baseGroup) {
+      // Idempotency: skip if already a member (check effective state)
+      const effMembers = (scenario.groupOverrides?.[groupId]?.memberDeltas || [])
+        .reduce((set, d) => {
+          if (d.op === 'add') set.add(String(d.taskId));
+          else set.delete(String(d.taskId));
+          return set;
+        }, new Set((baseGroup.members || []).map(String)));
+      if (!effMembers.has(String(taskId))) {
+        stateRef.applyGroupMemberDelta?.(String(groupId), String(taskId), 'add');
+        bus.emit(GroupEvents.CHANGED, { op: 'memberAdded', groupId, taskId });
+      }
+    }
+  }
+
+  /**
+   * Remove a task from a group's member list.
+   *
+   * @param {string} groupId
+   * @param {string} taskId
+   * @param {{ getActiveScenario: () => object, setGroupMembersOverride?: (id:string, members:string[]) => void }} stateRef
+   */
+  removeMemberFromGroup(groupId, taskId, stateRef) {
+    const scenario = stateRef?.getActiveScenario?.();
+    if (!scenario) return;
+
+    // Check scenario-local groups first
+    const sgIdx = (scenario.scenarioGroups || []).findIndex(
+      (g) => String(g.id) === String(groupId)
+    );
+    if (sgIdx !== -1) {
+      const sg = scenario.scenarioGroups[sgIdx];
+      sg.members = (sg.members || []).filter((m) => String(m) !== String(taskId));
+      bus.emit(GroupEvents.CHANGED, { op: 'memberRemoved', groupId, taskId });
+      return;
+    }
+
+    // Baseline group — record as a delta in groupOverrides
+    const baseGroup = this.getGroupById(groupId);
+    if (baseGroup) {
+      stateRef.applyGroupMemberDelta?.(String(groupId), String(taskId), 'remove');
+      bus.emit(GroupEvents.CHANGED, { op: 'memberRemoved', groupId, taskId });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -296,19 +420,6 @@ export class GroupService {
     }
   }
 
-  /**
-   * Assign a feature to a group (or remove it from all groups when groupId is null).
-   * Stored as a scenario override via State.updateFeatureField so it participates
-   * in the normal save flow.
-   *
-   * @param {string} featureId
-   * @param {string|null} groupId  null = ungrouped
-   * @param {import('./State.js').State} stateRef
-   */
-  assignFeature(featureId, groupId, stateRef) {
-    stateRef.updateFeatureField(featureId, 'groupId', groupId ?? null);
-    bus.emit(GroupEvents.ASSIGNMENT_CHANGED, { featureId, groupId: groupId ?? null });
-  }
 }
 
 export const groupService = new GroupService();

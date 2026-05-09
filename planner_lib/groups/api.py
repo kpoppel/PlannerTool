@@ -17,7 +17,7 @@ import logging
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import List, Optional
 
 from planner_lib.middleware import require_session
 from planner_lib.services.resolver import resolve_service
@@ -36,6 +36,7 @@ class GroupCreate(BaseModel):
     parent_id: Optional[str] = None
     color: Optional[str] = None
     rank: int = 0
+    members: Optional[List[str]] = None
 
     @field_validator("plan_id")
     @classmethod
@@ -61,6 +62,15 @@ class GroupCreate(BaseModel):
             raise ValueError("color must be a hex string starting with '#'")
         return v or None
 
+    @field_validator("members")
+    @classmethod
+    def _validate_members(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        if not isinstance(v, list) or not all(isinstance(m, str) for m in v):
+            raise ValueError("members must be a list of strings")
+        return v
+
 
 class GroupUpdate(BaseModel):
     name: Optional[str] = None
@@ -68,6 +78,7 @@ class GroupUpdate(BaseModel):
     color: Optional[str] = None
     rank: Optional[int] = None
     plan_id: Optional[str] = None
+    members: Optional[List[str]] = None
 
     @field_validator("name")
     @classmethod
@@ -87,6 +98,15 @@ class GroupUpdate(BaseModel):
         # Allow empty string to clear color
         if v and not v.startswith("#"):
             raise ValueError("color must be a hex string starting with '#'")
+        return v
+
+    @field_validator("members")
+    @classmethod
+    def _validate_members(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        if not isinstance(v, list) or not all(isinstance(m, str) for m in v):
+            raise ValueError("members must be a list of strings")
         return v
 
 
@@ -143,6 +163,7 @@ async def api_groups_create(request: Request, payload: dict = Body(default={})):
             parent_id=data.parent_id,
             color=data.color,
             rank=data.rank,
+            members=data.members,
         )
     except Exception as e:
         logger.error("Error creating group: %s", e, exc_info=True)
@@ -166,6 +187,7 @@ async def api_groups_update(group_id: str, request: Request, payload: dict = Bod
             color=data.color,
             rank=data.rank,
             plan_id=data.plan_id,
+            members=data.members,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Group not found")
