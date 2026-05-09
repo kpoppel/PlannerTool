@@ -232,13 +232,12 @@ export class AzureDevopsModal extends LitElement {
     for (const [id, ov] of Object.entries(this.overrides || {})) {
       if (!ov || typeof ov !== 'object') continue;
       const out = { id };
-      let hasField = false;
-      if (this._selected.has(`${id}:start`) && 'start' in ov) { out.start = ov.start; hasField = true; }
-      if (this._selected.has(`${id}:end`) && 'end' in ov) { out.end = ov.end; hasField = true; }
-      if (this._selected.has(`${id}:capacity`) && ov.capacity) { out.capacity = ov.capacity; hasField = true; }
-      if (this._selected.has(`${id}:state`) && ov.state) { out.state = ov.state; hasField = true; }
-      if (this._selected.has(`${id}:iterationPath`) && 'iterationPath' in ov) { out.iterationPath = ov.iterationPath; hasField = true; }
-      if (hasField) featuresOut.push(out);
+      for (const field of FIELDS) {
+        if (this._selected.has(`${id}:${field}`) && field in ov) {
+          out[field] = ov[field];
+        }
+      }
+      if (Object.keys(out).length > 1) featuresOut.push(out);
     }
 
     // Group changes — each op type handled independently by original index.
@@ -297,10 +296,7 @@ export class AzureDevopsModal extends LitElement {
     return entries
       .filter(([, ov]) => ov && typeof ov === 'object')
       .map(([id, ov]) => {
-        const base =
-          this.state && this.state.baselineFeatures ?
-            this.state.baselineFeatures.find((f) => f.id === id) || {}
-          : {};
+        const base = this.state?.baselineFeatures?.find((f) => f.id === id) || {};
         const origStart = base.start || '';
         const origEnd = base.end || '';
         const origCapacity = base.capacity || [];

@@ -201,11 +201,6 @@ export class FeatureGroup extends LitElement {
     const bg = depth === 0 ? color : this._rgba(color, 0.72);
     const border = `1.5px solid ${this._rgba(color, 0.9)}`;
 
-    // Each depth level adds a left indent inside the pill (the absolute position
-    // on the board stays date-driven, so this is purely a visual inset).
-    const INDENT_PX = 14;
-    const leftInset = depth * INDENT_PX;
-
     const dateSpan = (this.start && this.end)
       ? `${this._fmtDate(this.start)} \u2013 ${this._fmtDate(this.end)}`
       : '';
@@ -214,7 +209,7 @@ export class FeatureGroup extends LitElement {
       <div
         class="group-card"
         part="group-card"
-        style="background:${bg}; border:${border}; margin-left:${leftInset}px; font-size:${depth > 0 ? '0.72rem' : '0.78rem'};"
+        style="background:${bg}; border:${border}; font-size:${depth > 0 ? '0.72rem' : '0.78rem'};"
         @click=${this._onToggle}
         @contextmenu=${this._onContextMenu}
         role="button"

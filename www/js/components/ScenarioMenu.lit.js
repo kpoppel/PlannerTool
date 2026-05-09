@@ -329,27 +329,27 @@ export class ScenarioMenuLit extends LitElement {
       const affectedPlanIds = new Set();
       for (const op of groupChanges) {
         if (op.type === 'create' && op.group) {
-          const allMembers = (op.group.members || []).map(String);
+          // op.group is the original scenarioGroups entry; op.group.members is already
+          // the filtered (selected) list produced by _onSave in the modal.
           const committedMembers = new Set((op.group.members || []).map(String));
-          // op.group.members is already the filtered (selected) list from _onSave.
-          // We need to know which members were in the original scenarioGroups entry
-          // but NOT committed, so we can keep them as pending memberDeltas.
+          // All members originally in the scenario group, including any that were
+          // deselected in the modal and therefore not in committedMembers.
           const activeScen = state.getActiveScenario();
-          const originalEntry = (activeScen?.scenarioGroups || [])
-            .find((g) => String(g.id) === String(op.group.id));
-          const allOriginalMembers = (originalEntry?.members || []).map(String);
+          const originalMembers = (
+            (activeScen?.scenarioGroups || []).find((g) => String(g.id) === String(op.group.id))
+              ?.members || []
+          ).map(String);
 
           const payload = {
             plan_id: op.group.plan_id,
             name: op.group.name,
             color: op.group.color || null,
             rank: op.group.rank ?? 0,
-            members: allMembers,
+            members: [...committedMembers],
           };
           const created = await dataService.createGroup(payload);
           if (created) {
             const realId = String(created.id);
-            // Swap temp → real ID in scenario data and GroupService cache.
             state.confirmGroupCreate(op.group.id, realId);
             // Remove this group from scenarioGroups (now baseline).
             if (activeScen?.scenarioGroups) {
@@ -357,19 +357,16 @@ export class ScenarioMenuLit extends LitElement {
                 (g) => String(g.id) !== realId && String(g.id) !== String(op.group.id)
               );
             }
-            // Any members that were in the scenario group but NOT committed stay
-            // pending as memberDeltas against the now-real group.
-            const uncommittedMembers = allOriginalMembers.filter(
-              (tid) => !committedMembers.has(tid)
-            );
+            // Members that were in the scenario group but NOT committed stay pending
+            // as memberDeltas against the now-real group.
+            const uncommittedMembers = originalMembers.filter((tid) => !committedMembers.has(tid));
             if (uncommittedMembers.length > 0) {
               if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
               const ov = activeScen.groupOverrides[realId] || {};
               const existingDeltas = ov.memberDeltas || [];
               const existingSet = new Set(existingDeltas.map((d) => d.taskId));
               for (const tid of uncommittedMembers) {
-                if (!existingSet.has(tid))
-                  existingDeltas.push({ taskId: tid, op: 'add' });
+                if (!existingSet.has(tid)) existingDeltas.push({ taskId: tid, op: 'add' });
               }
               activeScen.groupOverrides[realId] = { ...ov, memberDeltas: existingDeltas };
             }

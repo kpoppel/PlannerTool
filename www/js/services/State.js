@@ -1170,7 +1170,12 @@ class State {
         const hasFields = Object.keys(fields).length > 0;
         const hasDeltas = memberDeltas?.length > 0;
         if (hasFields || hasDeltas) {
-          ops.push({ type: 'update', groupId, fields: hasFields ? fields : undefined, memberDeltas: hasDeltas ? memberDeltas : undefined });
+          ops.push({
+            type: 'update',
+            groupId,
+            ...(hasFields && { fields }),
+            ...(hasDeltas && { memberDeltas }),
+          });
         }
       }
     }
@@ -1184,9 +1189,7 @@ class State {
    * Called by ScenarioMenu after changes have been persisted to the server.
    */
   clearPendingGroupChanges() {
-    const activeScen = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const activeScen = this._getActiveWritableScenario();
     if (!activeScen) return;
     activeScen.scenarioGroups = [];
     activeScen.groupOverrides = {};
@@ -1199,22 +1202,27 @@ class State {
    * @param {string} realId
    */
   confirmGroupCreate(tempId, realId) {
-    const activeScen = this.scenarios.find((s) => s.id === this.activeScenarioId);
-    if (activeScen?.scenarioGroups) {
-      for (const g of activeScen.scenarioGroups) {
-        if (g.id === tempId) g.id = realId;
-      }
+    const sg = this.getActiveScenario()?.scenarioGroups;
+    if (sg) {
+      const g = sg.find((g) => g.id === tempId);
+      if (g) g.id = realId;
     }
   }
 
-  /**
-   * Return the currently active (non-null) scenario object, or null.
+  /** Return the currently active (non-null) scenario object, or null.
    * @returns {object|null}
    */
   getActiveScenario() {
     const id = this.activeScenarioId;
     if (!id) return null;
     return this.scenarios.find((s) => s.id === id) || null;
+  }
+
+  /** Return the active writable (non-readonly) scenario, or null. */
+  _getActiveWritableScenario() {
+    return this.scenarios.find(
+      (s) => s.id === this.activeScenarioId && !s.readonly
+    ) || null;
   }
 
   /**
@@ -1227,9 +1235,7 @@ class State {
    * @returns {object|null} The created group, or null if no active scenario.
    */
   createGroupInScenario(planId, name, color = null, parentId = null) {
-    const activeScen = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const activeScen = this._getActiveWritableScenario();
     if (!activeScen) return null;
 
     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1239,8 +1245,8 @@ class State {
       name,
       rank: Date.now(),
       members: [],
-      ...(color ? { color } : {}),
-      ...(parentId ? { parent_id: parentId } : {}),
+      color: color || null,
+      parent_id: parentId || null,
     };
 
     if (!activeScen.scenarioGroups) activeScen.scenarioGroups = [];
@@ -1259,9 +1265,7 @@ class State {
    * @returns {object|null} Updated group, or null if not found.
    */
   updateGroupInScenario(groupId, fields) {
-    const activeScen = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const activeScen = this._getActiveWritableScenario();
     if (!activeScen) return null;
 
     // Check scenario-local groups first
@@ -1296,9 +1300,7 @@ class State {
    * @param {string} groupId
    */
   deleteGroupInScenario(groupId) {
-    const activeScen = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const activeScen = this._getActiveWritableScenario();
     if (!activeScen) return;
 
     // Check scenario-local groups first (and cascade sub-groups)
@@ -1341,9 +1343,7 @@ class State {
    * @param {'add'|'remove'} op
    */
   applyGroupMemberDelta(groupId, taskId, op) {
-    const activeScen = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const activeScen = this._getActiveWritableScenario();
     if (!activeScen) return;
     if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
     const ov = activeScen.groupOverrides[String(groupId)] || {};
@@ -1358,9 +1358,7 @@ class State {
 
   /** Mark the active (non-readonly) scenario as having unsaved changes. */
   _markActiveScenarioChanged() {
-    const active = this.scenarios.find(
-      (s) => s.id === this.activeScenarioId && !s.readonly
-    );
+    const active = this._getActiveWritableScenario();
     if (active) active.isChanged = true;
     // Re-emit scenario list so the ⚠️ badge updates in the menu
     this._scenarioEventService.emitScenarioList();
