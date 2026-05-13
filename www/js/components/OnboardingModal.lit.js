@@ -104,8 +104,8 @@ export class OnboardingModal extends LitElement {
                 "https://dev.azure.com/&lt;YourOrg&gt;/_usersSettings/tokens"
               </div>
               <div class="step">
-                2. Create a new token and give it <em>Work Items</em> scope (Read, Write,
-                manage). Set expiry to 1 year and save the token securely.
+                2. Create a new token and give it <em>Work Items</em> (Read, Write,
+                Manage) and <em>Wiki</em> (Read, Write) scope only. Set expiry to 1 year and save the token securely.
               </div>
               <div class="step">
                 3. Click the Gear in the lower left to open Configuration, enter your

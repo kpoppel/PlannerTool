@@ -31,7 +31,7 @@ When you are logged into Azure devops do as follows:
 1. Click the "User Settings" button next to your profile image.
 2. Select "Personal access tokens".
 3. Generate a token by clicking "+ New token".
-4. Give it a name "PlannerTool", and assign minimum the Task management and Wiki permission read/write scope to it.
+4. Give it a name "PlannerTool", and assign only the **Work Items** (Read, Write, Manage) and **Wiki** (Read, Write) permission scopes.
 5. Set the expiry date to as far in the future it is allowed.
 6. Save the token and copy the string to a safe place.
 
