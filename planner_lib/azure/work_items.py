@@ -70,12 +70,15 @@ class WorkItemOperations:
         self, 
         area_path: str, 
         task_types: Optional[List[str]] = None,
-        include_states: Optional[List[str]] = None
+        include_states: Optional[List[str]] = None,
     ) -> List[dict]:
         """Fetch work items for a given area path.
         
         This implementation fetches work items based on the configured task types
-        and states, or uses defaults if not specified.
+        and states, or uses defaults if not specified.  All ADO field values are
+        returned — standard fields are exposed as named keys, and any remaining
+        fields (custom, extension, or otherwise) are collected under a 'fields'
+        dict keyed by ADO field reference name.
         
         Args:
             area_path: Azure DevOps area path
@@ -141,6 +144,24 @@ class WorkItemOperations:
         task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
         task_ids = [int(t) for t in task_ids if t is not None]
         logger.debug(f"Found {len(task_ids)} work items for area '{area_path}'")
+
+        # Standard fields already promoted to named top-level keys.  All other
+        # fields returned by ADO (custom, extension, process-template) are
+        # collected into the 'fields' dict so plugins can access them without
+        # requiring any per-project configuration.
+        _STANDARD_FIELD_NAMES = frozenset({
+            'System.Id',
+            'System.WorkItemType',
+            'System.Title',
+            'System.AssignedTo',
+            'System.State',
+            'System.Tags',
+            'System.Description',
+            'Microsoft.VSTS.Scheduling.StartDate',
+            'Microsoft.VSTS.Scheduling.TargetDate',
+            'System.AreaPath',
+            'System.IterationPath',
+        })
         
         # Fetch work items in batches
         ret = []
@@ -150,7 +171,9 @@ class WorkItemOperations:
                 yield lst[i:i+n]
         
         for batch in chunks(task_ids, 200):
-            items = wit_client.get_work_items(batch, expand="relations")
+            # expand="All" returns both relations and all field values including
+            # custom / process-template fields not in the default set.
+            items = wit_client.get_work_items(batch, expand="All")
             for item in items or []:
                 try:
                     # Process relations
@@ -169,8 +192,17 @@ class WorkItemOperations:
                     assignedTo = assigned.get("displayName") if isinstance(assigned, dict) and "displayName" in assigned else ""
                     
                     url = self.api_url_to_ui_link(getattr(item, "url", ""))
-                    
-                    ret.append({
+
+                    # Collect all non-standard field values so plugins (e.g. the
+                    # 2-D board) can use fields like Priority, ProductType, etc.
+                    # without requiring any per-project configuration.
+                    extra_values = {
+                        k: v
+                        for k, v in item.fields.items()
+                        if k not in _STANDARD_FIELD_NAMES and v is not None
+                    } or None
+
+                    entry = {
                         "id": str(item.id),
                         "type": item.fields.get("System.WorkItemType") or "",
                         "title": item.fields.get("System.Title"),
@@ -184,7 +216,10 @@ class WorkItemOperations:
                         "iterationPath": item.fields.get("System.IterationPath"),
                         "relations": relation_map,
                         "url": url,
-                    })
+                    }
+                    if extra_values:
+                        entry["fields"] = extra_values
+                    ret.append(entry)
                 except Exception as e:
                     logger.exception(f"Error processing item {getattr(item, 'id', '?')}: {e}")
         

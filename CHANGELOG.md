@@ -18,6 +18,10 @@ Template - do not change :
 ### Added
 - Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
 - Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
+- XY Board plugin: display features in a scrollable X/Y field intersection table with plugin-controlled selectors, multi-value field support, and persisted settings.
+- Backend: added `extra_fields` support — projects.yml can now list ADO field reference names (e.g. `Microsoft.VSTS.Common.Priority`) to fetch per project; values are included in each task's `fields` dict, cached with the rest of task data, and surfaced to plugins via the `/api/tasks` endpoint.
+
+NOTE: Very early implementation of this plugin.
 
 ### Changed
 - removed legacy backup account format support

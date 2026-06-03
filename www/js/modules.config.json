@@ -133,6 +133,18 @@
       "exclusive": true,
       "mountPoint": "feature-board",
       "dependencies": []
+    },
+    {
+      "id": "plugin-xy-board",
+      "name": "XY Board",
+      "version": "1.0.0",
+      "description": "Display features in an X/Y field intersection table",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "fullscreen": true,
+      "mountPoint": "app",
+      "dependencies": []
     }
   ]
 }

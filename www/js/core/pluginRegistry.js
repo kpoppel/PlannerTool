@@ -14,6 +14,7 @@ import PluginHistory from '../plugins/PluginHistory.js';
 import PluginLinkEditor from '../plugins/PluginLinkEditor.js';
 import PluginDependencies from '../plugins/PluginDependencies.js';
 import PluginEventsPlugin from '../plugins/PluginEvents.js';
+import PluginXYBoard from '../plugins/PluginXYBoard.js';
 
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
@@ -28,6 +29,7 @@ const PluginRegistry = {
   'plugin-link-editor': PluginLinkEditor,
   'plugin-dependencies': PluginDependencies,
   'plugin-events': PluginEventsPlugin,
+  'plugin-xy-board': PluginXYBoard,
 };
 
 export default PluginRegistry;

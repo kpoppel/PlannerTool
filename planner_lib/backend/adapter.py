@@ -113,6 +113,12 @@ class AzureAdapter:
             'areaPath': raw_wi.get('areaPath'),
             'url': raw_wi.get('url'),
         }
+        # Extra ADO field values (e.g. Priority, ProductType) fetched when
+        # extra_fields is configured in projects.yml.  Only include when
+        # present and non-empty to keep the task dict compact.
+        extra = raw_wi.get('fields')
+        if extra:
+            task['fields'] = extra
         if inferred_start:
             task['_inferred_start'] = True
         if inferred_end:

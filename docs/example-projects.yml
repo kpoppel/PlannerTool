@@ -22,6 +22,3 @@ project_map:
   - bug
   - sub-task
   # NOTE: task_type_hierarchy is a server-wide global setting stored in
-  # data/config/global_settings.yml, NOT per-project.
-  # Edit it via the admin "Global Settings" tab.
-- ...

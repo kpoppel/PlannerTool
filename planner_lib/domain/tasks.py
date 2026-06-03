@@ -11,7 +11,7 @@ any changes.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from typing_extensions import TypedDict, NotRequired
 
 
@@ -49,6 +49,10 @@ class DomainTask(TypedDict):
     tags: NotRequired[Optional[str]]
     areaPath: NotRequired[Optional[str]]
     url: NotRequired[Optional[str]]
+    # Extra ADO field values fetched via project-level extra_fields config.
+    # Keys are ADO field reference names (e.g. 'Microsoft.VSTS.Common.Priority').
+    # Only present when extra_fields are configured and the work item has values.
+    fields: NotRequired[Optional[Dict[str, Any]]]
     # Set when start/end were inferred from iteration dates rather than
     # explicit ADO field values.
     _inferred_start: NotRequired[bool]
