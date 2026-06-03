@@ -126,6 +126,24 @@ class DataService {
   async deleteEvent(eventId) {
     return this.providers['rest'].deleteEvent(eventId);
   }
+  async getEventCategories() {
+    return this.providers['rest'].getEventCategories();
+  }
+  /** @param {{name: string, is_special?: boolean}} data */
+  async createEventCategory(data) {
+    return this.providers['rest'].createEventCategory(data);
+  }
+  /**
+   * @param {string} categoryId
+   * @param {{name?: string, is_special?: boolean}} data
+   */
+  async updateEventCategory(categoryId, data) {
+    return this.providers['rest'].updateEventCategory(categoryId, data);
+  }
+  /** @param {string} categoryId */
+  async deleteEventCategory(categoryId) {
+    return this.providers['rest'].deleteEventCategory(categoryId);
+  }
   async invalidateCache() {
     return this.providers['rest'].invalidateCache();
   }

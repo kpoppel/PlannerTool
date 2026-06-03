@@ -1,11 +1,16 @@
-"""REST API endpoints for events.
+"""REST API endpoints for events and event categories.
 
 Endpoints:
-  GET    /api/events          — list all events (optional ?plan_id= filter)
-  GET    /api/events/{id}     — get a single event
-  POST   /api/events          — create a new event
-  PUT    /api/events/{id}     — update an existing event
-  DELETE /api/events/{id}     — delete an event
+  GET    /api/events                — list all events (optional ?plan_id= filter)
+  GET    /api/events/{id}           — get a single event
+  POST   /api/events                — create a new event
+  PUT    /api/events/{id}           — update an existing event
+  DELETE /api/events/{id}           — delete an event
+
+  GET    /api/event-categories      — list all categories
+  POST   /api/event-categories      — create a category
+  PUT    /api/event-categories/{id} — update a category
+  DELETE /api/event-categories/{id} — delete a category
 
 All endpoints require an active session.
 """
@@ -28,13 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Request / response models
+# Request / response models — events
 # ---------------------------------------------------------------------------
 
 class EventCreate(BaseModel):
     date: str
     title: str
     plan_id: str
+    category: str = ''
 
     @field_validator("date")
     @classmethod
@@ -63,6 +69,7 @@ class EventUpdate(BaseModel):
     date: Optional[str] = None
     title: Optional[str] = None
     plan_id: Optional[str] = None
+    category: Optional[str] = None
 
     @field_validator("date")
     @classmethod
@@ -94,6 +101,36 @@ class EventUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Request / response models — categories
+# ---------------------------------------------------------------------------
+
+class CategoryCreate(BaseModel):
+    name: str
+    is_special: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must not be empty")
+        return v.strip()
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    is_special: Optional[bool] = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not v.strip():
+            raise ValueError("name must not be empty")
+        return v.strip()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -112,7 +149,7 @@ def _user_id(request: Request) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Event routes
 # ---------------------------------------------------------------------------
 
 @router.get("/events")
@@ -156,6 +193,7 @@ async def api_events_create(request: Request, payload: dict = Body(default={})):
             date=data.date,
             title=data.title,
             plan_id=data.plan_id,
+            category=data.category,
             user_id=_user_id(request),
         )
     except Exception as e:
@@ -178,6 +216,7 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
             date=data.date,
             title=data.title,
             plan_id=data.plan_id,
+            category=data.category,
             user_id=_user_id(request),
         )
     except KeyError:
@@ -200,4 +239,80 @@ async def api_events_delete(event_id: str, request: Request):
         raise
     except Exception as e:
         logger.error("Error deleting event %s: %s", event_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---------------------------------------------------------------------------
+# Category routes
+# ---------------------------------------------------------------------------
+
+@router.get("/event-categories")
+@require_session
+async def api_categories_list(request: Request):
+    """List all event categories."""
+    try:
+        return await asyncio.to_thread(_repo(request).list_categories, user_id=_user_id(request))
+    except Exception as e:
+        logger.error("Error listing categories: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/event-categories", status_code=201)
+@require_session
+async def api_categories_create(request: Request, payload: dict = Body(default={})):
+    """Create a new event category."""
+    try:
+        data = CategoryCreate.model_validate(payload)
+    except Exception as e:
+        raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
+    try:
+        return await asyncio.to_thread(
+            _repo(request).create_category,
+            name=data.name,
+            is_special=data.is_special,
+            user_id=_user_id(request),
+        )
+    except Exception as e:
+        logger.error("Error creating category: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/event-categories/{category_id}")
+@require_session
+async def api_categories_update(category_id: str, request: Request, payload: dict = Body(default={})):
+    """Update an existing event category. Only supplied fields are changed."""
+    try:
+        data = CategoryUpdate.model_validate(payload)
+    except Exception as e:
+        raise RequestValidationError(errors=getattr(e, 'errors', lambda: [{'msg': str(e)}])())
+    try:
+        return await asyncio.to_thread(
+            _repo(request).update_category,
+            category_id=category_id,
+            name=data.name,
+            is_special=data.is_special,
+            user_id=_user_id(request),
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Category not found")
+    except Exception as e:
+        logger.error("Error updating category %s: %s", category_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/event-categories/{category_id}")
+@require_session
+async def api_categories_delete(category_id: str, request: Request):
+    """Delete an event category."""
+    try:
+        deleted = await asyncio.to_thread(
+            _repo(request).delete_category, category_id, user_id=_user_id(request)
+        )
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Category not found")
+        return {"ok": True, "id": category_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting category %s: %s", category_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

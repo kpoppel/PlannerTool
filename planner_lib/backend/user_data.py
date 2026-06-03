@@ -116,11 +116,12 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         date: str,
         title: str,
         plan_id: str,
+        category: str = '',
         credential: Optional[BackendCredential] = None,  # ignored
     ) -> Dict[str, Any]:
         """Create a new event and return it."""
         from planner_lib.events.event_store import create_event
-        return create_event(self._storage, date=date, title=title, plan_id=plan_id)
+        return create_event(self._storage, date=date, title=title, plan_id=plan_id, category=category)
 
     def update_event(
         self,
@@ -128,11 +129,12 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         date: Optional[str] = None,
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
+        category: Optional[str] = None,
         credential: Optional[BackendCredential] = None,  # ignored
     ) -> Dict[str, Any]:
         """Update fields on an existing event (raises KeyError when not found)."""
         from planner_lib.events.event_store import update_event
-        return update_event(self._storage, event_id=event_id, date=date, title=title, plan_id=plan_id)
+        return update_event(self._storage, event_id=event_id, date=date, title=title, plan_id=plan_id, category=category)
 
     def delete_event(
         self,
@@ -142,3 +144,41 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         """Delete an event; returns True when found and deleted."""
         from planner_lib.events.event_store import delete_event
         return delete_event(self._storage, event_id)
+
+    def fetch_categories(
+        self,
+        credential: Optional[BackendCredential] = None,  # ignored
+    ) -> List[Dict[str, Any]]:
+        """Return all event categories."""
+        from planner_lib.events.category_store import list_categories
+        return list_categories(self._storage)
+
+    def create_category(
+        self,
+        name: str,
+        is_special: bool = False,
+        credential: Optional[BackendCredential] = None,  # ignored
+    ) -> Dict[str, Any]:
+        """Create a new event category and return it."""
+        from planner_lib.events.category_store import create_category
+        return create_category(self._storage, name=name, is_special=is_special)
+
+    def update_category(
+        self,
+        category_id: str,
+        name: Optional[str] = None,
+        is_special: Optional[bool] = None,
+        credential: Optional[BackendCredential] = None,  # ignored
+    ) -> Dict[str, Any]:
+        """Update fields on an existing category (raises KeyError when not found)."""
+        from planner_lib.events.category_store import update_category
+        return update_category(self._storage, category_id=category_id, name=name, is_special=is_special)
+
+    def delete_category(
+        self,
+        category_id: str,
+        credential: Optional[BackendCredential] = None,  # ignored
+    ) -> bool:
+        """Delete a category; returns True when found and deleted."""
+        from planner_lib.events.category_store import delete_category
+        return delete_category(self._storage, category_id)

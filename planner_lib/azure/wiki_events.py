@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 # Delimiter used to embed the JSON register inside the wiki page content.
 _DATA_START = "<!-- planner-tool-events"
 _DATA_END = "-->"
+_CAT_DATA_START = "<!-- planner-tool-categories"
+_CAT_DATA_END = "-->"
 
 
 class AzureWikiEventBackend:
@@ -109,10 +111,10 @@ class AzureWikiEventBackend:
         )
         return conn.clients_v7_0.get_wiki_client()
 
-    def _read_page(self, wiki_client) -> tuple[dict, str]:
-        """Fetch the wiki page and return ``(events_dict, etag)``.
+    def _read_page(self, wiki_client) -> tuple[dict, dict, str]:
+        """Fetch the wiki page and return ``(events_dict, categories_dict, etag)``.
 
-        Returns an empty register and a sentinel ETag of ``"-1"`` when the
+        Returns empty registers and a sentinel ETag of ``"-1"`` when the
         page does not yet exist.
         """
         try:
@@ -124,20 +126,20 @@ class AzureWikiEventBackend:
             )
             content = (resp.page.content or "") if resp.page else ""
             etag = resp.eTag or "-1"
-            return self._parse_events(content), etag
+            return self._parse_events(content), self._parse_categories(content), etag
         except Exception as exc:
             logger.debug(
                 "wiki_events: page '%s' not found or unreadable (%s) — treating as empty",
                 self._page_path,
                 exc,
             )
-            return {}, "-1"
+            return {}, {}, "-1"
 
-    def _write_page(self, wiki_client, events: dict, etag: str) -> None:
-        """Write the updated events dict back to the wiki page."""
+    def _write_page(self, wiki_client, events: dict, categories: dict, etag: str) -> None:
+        """Write the updated events and categories dicts back to the wiki page."""
         from azure.devops.v7_0.wiki.models import WikiPageCreateOrUpdateParameters
 
-        content = self._render_page(events)
+        content = self._render_page(events, categories)
         params = WikiPageCreateOrUpdateParameters(content=content)
         # version="-1" means "create" (page does not yet exist)
         version = None if etag == "-1" else etag
@@ -149,6 +151,25 @@ class AzureWikiEventBackend:
             version=version,
             comment="Updated by PlannerTool",
         )
+
+    def _parse_categories(self, content: str) -> dict:
+        """Extract the categories register from wiki page *content*.
+
+        Returns an empty dict when the content has no embedded JSON block or
+        when the JSON is malformed.
+        """
+        start = content.find(_CAT_DATA_START)
+        if start == -1:
+            return {}
+        end = content.find(_CAT_DATA_END, start + len(_CAT_DATA_START))
+        if end == -1:
+            return {}
+        raw = content[start + len(_CAT_DATA_START):end].strip()
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("wiki_events: could not decode embedded categories JSON in '%s'", self._page_path)
+            return {}
 
     def _parse_events(self, content: str) -> dict:
         """Extract the events register from wiki page *content*.
@@ -169,8 +190,8 @@ class AzureWikiEventBackend:
             logger.warning("wiki_events: could not decode embedded JSON in '%s'", self._page_path)
             return {}
 
-    def _render_page(self, events: dict) -> str:
-        """Render *events* dict into the wiki page Markdown + data block."""
+    def _render_page(self, events: dict, categories: dict) -> str:
+        """Render *events* and *categories* dicts into the wiki page Markdown + data blocks."""
         lines: List[str] = [
             "# PlannerTool Events",
             "",
@@ -208,12 +229,12 @@ class AzureWikiEventBackend:
                 lines += [
                     f"## {heading}",
                     "",
-                    "| Date | Title |",
-                    "|------|-------|",
+                    "| Date | Title | Category |",
+                    "|------|-------|----------|",
                 ]
                 for ev in plan_events:
                     lines.append(
-                        f"| {ev.get('date', '')} | {ev.get('title', '')} |"
+                        f"| {ev.get('date', '')} | {ev.get('title', '')} | {ev.get('category', '')} |"
                     )
                 lines.append("")
         else:
@@ -223,6 +244,10 @@ class AzureWikiEventBackend:
         lines += [
             "<!-- planner-tool-events",
             json.dumps(events, indent=2),
+            "-->",
+            "",
+            "<!-- planner-tool-categories",
+            json.dumps(categories, indent=2),
             "-->",
         ]
         return "\n".join(lines)
@@ -247,7 +272,7 @@ class AzureWikiEventBackend:
         """Return all events, optionally filtered by *plan_id*."""
         cred = self._require_credential(credential)
         wiki_client = self._get_wiki_client(cred)
-        events, _etag = self._read_page(wiki_client)
+        events, _categories, _etag = self._read_page(wiki_client)
         result = list(events.values())
         if plan_id is not None:
             result = [e for e in result if e.get("plan_id") == plan_id]
@@ -261,7 +286,7 @@ class AzureWikiEventBackend:
         """Return a single event by ID; raises ``KeyError`` when not found."""
         cred = self._require_credential(credential)
         wiki_client = self._get_wiki_client(cred)
-        events, _etag = self._read_page(wiki_client)
+        events, _categories, _etag = self._read_page(wiki_client)
         if event_id not in events:
             raise KeyError(event_id)
         return events[event_id]
@@ -271,21 +296,23 @@ class AzureWikiEventBackend:
         date: str,
         title: str,
         plan_id: str,
+        category: str = '',
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         """Create a new event, persist it, and return it (including generated id)."""
         cred = self._require_credential(credential)
         wiki_client = self._get_wiki_client(cred)
-        events, etag = self._read_page(wiki_client)
+        events, categories, etag = self._read_page(wiki_client)
         event_id = uuid.uuid4().hex
         event: Dict[str, Any] = {
             "id": event_id,
             "date": date,
             "title": title,
             "plan_id": plan_id,
+            "category": category,
         }
         events[event_id] = event
-        self._write_page(wiki_client, events, etag)
+        self._write_page(wiki_client, events, categories, etag)
         return event
 
     def update_event(
@@ -294,12 +321,13 @@ class AzureWikiEventBackend:
         date: Optional[str] = None,
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
+        category: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         """Update fields on an existing event; raises ``KeyError`` when not found."""
         cred = self._require_credential(credential)
         wiki_client = self._get_wiki_client(cred)
-        events, etag = self._read_page(wiki_client)
+        events, categories, etag = self._read_page(wiki_client)
         if event_id not in events:
             raise KeyError(event_id)
         event = events[event_id]
@@ -309,8 +337,10 @@ class AzureWikiEventBackend:
             event["title"] = title
         if plan_id is not None:
             event["plan_id"] = plan_id
+        if category is not None:
+            event["category"] = category
         events[event_id] = event
-        self._write_page(wiki_client, events, etag)
+        self._write_page(wiki_client, events, categories, etag)
         return event
 
     def delete_event(
@@ -321,9 +351,78 @@ class AzureWikiEventBackend:
         """Delete an event; returns ``True`` when found and deleted, ``False`` otherwise."""
         cred = self._require_credential(credential)
         wiki_client = self._get_wiki_client(cred)
-        events, etag = self._read_page(wiki_client)
+        events, categories, etag = self._read_page(wiki_client)
         if event_id not in events:
             return False
         del events[event_id]
-        self._write_page(wiki_client, events, etag)
+        self._write_page(wiki_client, events, categories, etag)
+        return True
+
+    def fetch_categories(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return all event categories."""
+        cred = self._require_credential(credential)
+        wiki_client = self._get_wiki_client(cred)
+        _events, categories, _etag = self._read_page(wiki_client)
+        return list(categories.values())
+
+    def create_category(
+        self,
+        name: str,
+        is_special: bool = False,
+        credential: Optional[BackendCredential] = None,
+    ) -> Dict[str, Any]:
+        """Create a new category, persist it, and return it."""
+        cred = self._require_credential(credential)
+        wiki_client = self._get_wiki_client(cred)
+        events, categories, etag = self._read_page(wiki_client)
+        if is_special:
+            for cat in categories.values():
+                cat["is_special"] = False
+        cat_id = uuid.uuid4().hex
+        category: Dict[str, Any] = {"id": cat_id, "name": name, "is_special": is_special}
+        categories[cat_id] = category
+        self._write_page(wiki_client, events, categories, etag)
+        return category
+
+    def update_category(
+        self,
+        category_id: str,
+        name: Optional[str] = None,
+        is_special: Optional[bool] = None,
+        credential: Optional[BackendCredential] = None,
+    ) -> Dict[str, Any]:
+        """Update fields on an existing category; raises ``KeyError`` when not found."""
+        cred = self._require_credential(credential)
+        wiki_client = self._get_wiki_client(cred)
+        events, categories, etag = self._read_page(wiki_client)
+        if category_id not in categories:
+            raise KeyError(category_id)
+        if is_special is True:
+            for cat in categories.values():
+                cat["is_special"] = False
+        category = categories[category_id]
+        if name is not None:
+            category["name"] = name
+        if is_special is not None:
+            category["is_special"] = is_special
+        categories[category_id] = category
+        self._write_page(wiki_client, events, categories, etag)
+        return category
+
+    def delete_category(
+        self,
+        category_id: str,
+        credential: Optional[BackendCredential] = None,
+    ) -> bool:
+        """Delete a category; returns ``True`` when found and deleted, ``False`` otherwise."""
+        cred = self._require_credential(credential)
+        wiki_client = self._get_wiki_client(cred)
+        events, categories, etag = self._read_page(wiki_client)
+        if category_id not in categories:
+            return False
+        del categories[category_id]
+        self._write_page(wiki_client, events, categories, etag)
         return True

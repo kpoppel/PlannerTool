@@ -651,6 +651,81 @@ export class ProviderREST {
   }
 
   /**
+   * Fetch all event categories.
+   * @returns {Promise<Array>}
+   */
+  async getEventCategories() {
+    try {
+      const res = await this._fetch('/api/event-categories', { headers: this._headers() });
+      if (res && res.sessionExpired) return [];
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:getEventCategories error', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new event category.
+   * @param {{name: string, is_special?: boolean}} data
+   */
+  async createEventCategory(data) {
+    try {
+      const res = await this._fetch('/api/event-categories', {
+        method: 'POST',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res && res.sessionExpired) return null;
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:createEventCategory error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Update an existing event category.
+   * @param {string} categoryId
+   * @param {{name?: string, is_special?: boolean}} data
+   */
+  async updateEventCategory(categoryId, data) {
+    try {
+      const res = await this._fetch(`/api/event-categories/${encodeURIComponent(categoryId)}`, {
+        method: 'PUT',
+        headers: { ...this._headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res && res.sessionExpired) return null;
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('providerREST:updateEventCategory error', err);
+      return null;
+    }
+  }
+
+  /**
+   * Delete an event category.
+   * @param {string} categoryId
+   */
+  async deleteEventCategory(categoryId) {
+    try {
+      const res = await this._fetch(`/api/event-categories/${encodeURIComponent(categoryId)}`, {
+        method: 'DELETE',
+        headers: this._headers(),
+      });
+      if (res && res.sessionExpired) return false;
+      return res.ok;
+    } catch (err) {
+      console.error('providerREST:deleteEventCategory error', err);
+      return false;
+    }
+  }
+
+  /**
    * Fetch history entries for a given project.
    * @param {string} projectId
    * @param {{per_page?:number, invalidate_cache?:boolean}} [opts]

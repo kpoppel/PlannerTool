@@ -152,6 +152,31 @@ def test_create_event_invalid_payload(client, payload, expected_status):
 
 
 # ---------------------------------------------------------------------------
+# Category field
+# ---------------------------------------------------------------------------
+
+def test_create_event_default_category_is_empty(client):
+    resp = client.post('/api/events', json=_VALID_EVENT, headers=_HEADERS)
+    assert resp.status_code == 201
+    assert resp.json()['category'] == ''
+
+
+@pytest.mark.parametrize('category', ['Q', 'Bundle', 'Other', 'MyCustomCat'])
+def test_create_event_valid_categories(client, category):
+    payload = {**_VALID_EVENT, 'category': category}
+    resp = client.post('/api/events', json=payload, headers=_HEADERS)
+    assert resp.status_code == 201
+    assert resp.json()['category'] == category
+
+
+def test_update_event_category(client):
+    created = client.post('/api/events', json={**_VALID_EVENT, 'category': 'Other'}, headers=_HEADERS).json()
+    resp = client.put(f'/api/events/{created["id"]}', json={'category': 'Q'}, headers=_HEADERS)
+    assert resp.status_code == 200
+    assert resp.json()['category'] == 'Q'
+
+
+# ---------------------------------------------------------------------------
 # Input validation (update)
 # ---------------------------------------------------------------------------
 
