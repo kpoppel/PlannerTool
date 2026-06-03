@@ -12,13 +12,16 @@ export class EventsPanel extends LitElement {
   static properties = {
     planId: { type: String },
     events: { type: Array },
+    categories: { type: Array },
     loading: { type: Boolean },
     _editId: { type: String, state: true },
     _editDate: { type: String, state: true },
     _editTitle: { type: String, state: true },
     _editPlanId: { type: String, state: true },
+    _editCategory: { type: String, state: true },
     _newDate: { type: String, state: true },
     _newTitle: { type: String, state: true },
+    _newCategory: { type: String, state: true },
     _saving: { type: Boolean, state: true },
   };
 
@@ -204,13 +207,16 @@ export class EventsPanel extends LitElement {
     super();
     this.planId = null;
     this.events = [];
+    this.categories = [];
     this.loading = false;
     this._editId = null;
     this._editDate = '';
     this._editTitle = '';
     this._editPlanId = '';
+    this._editCategory = '';
     this._newDate = '';
     this._newTitle = '';
+    this._newCategory = '';
     this._saving = false;
   }
 
@@ -221,7 +227,12 @@ export class EventsPanel extends LitElement {
 
   async _load() {
     this.loading = true;
-    this.events = (await dataService.getEvents(this.planId)) || [];
+    const [events, categories] = await Promise.all([
+      dataService.getEvents(this.planId),
+      dataService.getEventCategories(),
+    ]);
+    this.events = events || [];
+    this.categories = categories || [];
     this.loading = false;
   }
 
@@ -230,6 +241,7 @@ export class EventsPanel extends LitElement {
     this._editDate = ev.date;
     this._editTitle = ev.title;
     this._editPlanId = ev.plan_id;
+    this._editCategory = ev.category || '';
   }
 
   _cancelEdit() {
@@ -237,6 +249,7 @@ export class EventsPanel extends LitElement {
     this._editDate = '';
     this._editTitle = '';
     this._editPlanId = '';
+    this._editCategory = '';
   }
 
   async _saveEdit() {
@@ -246,6 +259,7 @@ export class EventsPanel extends LitElement {
       date: this._editDate,
       title: this._editTitle,
       plan_id: this._editPlanId,
+      category: this._editCategory,
     });
     if (updated) {
       await this._load();
@@ -268,12 +282,14 @@ export class EventsPanel extends LitElement {
       date: this._newDate,
       title: this._newTitle,
       plan_id: this.planId,
+      category: this._newCategory,
     });
     if (created) {
       await this._load();
       bus.emit(PlanEventEvents.CHANGED);
       this._newDate = '';
       this._newTitle = '';
+      this._newCategory = '';
     }
     this._saving = false;
   }
@@ -300,6 +316,11 @@ export class EventsPanel extends LitElement {
           >
             ${plans.map(
               (p) => html`<option value=${p.id} ?selected=${p.id === this._editPlanId}>${p.name}</option>`
+            )}
+          </select>
+          <select @change=${(e) => (this._editCategory = e.target.value)}>
+            ${this.categories.map(
+              (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._editCategory}>${cat.name}</option>`
             )}
           </select>
           <div class="edit-actions">
@@ -345,6 +366,11 @@ export class EventsPanel extends LitElement {
             @keydown=${(e) => e.key === 'Enter' && this._addEvent()}
             title="Event title"
           />
+          <select @change=${(e) => (this._newCategory = e.target.value)}>
+            ${this.categories.map(
+              (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._newCategory}>${cat.name}</option>`
+            )}
+          </select>
           <div class="add-actions">
             <button class="btn" ?disabled=${this._saving || !this._newDate || !this._newTitle} @click=${this._addEvent}>
               Add event

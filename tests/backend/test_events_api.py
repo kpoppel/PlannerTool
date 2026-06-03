@@ -50,10 +50,8 @@ def test_get_event_by_id(client):
 
 
 def test_get_missing_event_returns_404(client):
-    from fastapi.exceptions import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        client.get('/api/events/no-such-id', headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.get('/api/events/no-such-id', headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 def test_update_event_date(client):
@@ -93,13 +91,11 @@ def test_update_event_plan_id(client):
 
 
 def test_update_missing_event_returns_404(client):
-    from fastapi.exceptions import HTTPException
     created = client.post('/api/events', json=_VALID_EVENT, headers=_HEADERS).json()
     # Delete it first so the ID is gone, then try to update
     client.delete(f'/api/events/{created["id"]}', headers=_HEADERS)
-    with pytest.raises(HTTPException) as exc_info:
-        client.put(f'/api/events/{created["id"]}', json={'title': 'X'}, headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.put(f'/api/events/{created["id"]}', json={'title': 'X'}, headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 def test_delete_event(client):
@@ -113,10 +109,8 @@ def test_delete_event(client):
 
 
 def test_delete_missing_event_returns_404(client):
-    from fastapi.exceptions import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        client.delete('/api/events/no-such-id', headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.delete('/api/events/no-such-id', headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +149,31 @@ def test_list_events_filtered_by_plan_id(client):
 def test_create_event_invalid_payload(client, payload, expected_status):
     resp = client.post('/api/events', json=payload, headers=_HEADERS)
     assert resp.status_code == expected_status
+
+
+# ---------------------------------------------------------------------------
+# Category field
+# ---------------------------------------------------------------------------
+
+def test_create_event_default_category_is_empty(client):
+    resp = client.post('/api/events', json=_VALID_EVENT, headers=_HEADERS)
+    assert resp.status_code == 201
+    assert resp.json()['category'] == ''
+
+
+@pytest.mark.parametrize('category', ['Q', 'Bundle', 'Other', 'MyCustomCat'])
+def test_create_event_valid_categories(client, category):
+    payload = {**_VALID_EVENT, 'category': category}
+    resp = client.post('/api/events', json=payload, headers=_HEADERS)
+    assert resp.status_code == 201
+    assert resp.json()['category'] == category
+
+
+def test_update_event_category(client):
+    created = client.post('/api/events', json={**_VALID_EVENT, 'category': 'Other'}, headers=_HEADERS).json()
+    resp = client.put(f'/api/events/{created["id"]}', json={'category': 'Q'}, headers=_HEADERS)
+    assert resp.status_code == 200
+    assert resp.json()['category'] == 'Q'
 
 
 # ---------------------------------------------------------------------------

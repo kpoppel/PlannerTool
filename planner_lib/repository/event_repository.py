@@ -74,6 +74,7 @@ class EventRepository:
         date: str,
         title: str,
         plan_id: str,
+        category: str = '',
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new event and return it (including generated id)."""
@@ -81,6 +82,7 @@ class EventRepository:
             date=date,
             title=title,
             plan_id=plan_id,
+            category=category,
             credential=self._get_credential(user_id),
         )
 
@@ -90,6 +92,7 @@ class EventRepository:
         date: Optional[str] = None,
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
+        category: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Update fields on an existing event (raises KeyError when not found)."""
@@ -98,6 +101,7 @@ class EventRepository:
             date=date,
             title=title,
             plan_id=plan_id,
+            category=category,
             credential=self._get_credential(user_id),
         )
 
@@ -109,5 +113,51 @@ class EventRepository:
         """Delete an event. Returns True when found and deleted."""
         return self._backend.delete_event(
             event_id,
+            credential=self._get_credential(user_id),
+        )
+
+    def list_categories(
+        self,
+        user_id: Optional[str] = None,
+    ) -> list:
+        """Return all event categories."""
+        return self._backend.fetch_categories(credential=self._get_credential(user_id))
+
+    def create_category(
+        self,
+        name: str,
+        is_special: bool = False,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a new event category and return it."""
+        return self._backend.create_category(
+            name=name,
+            is_special=is_special,
+            credential=self._get_credential(user_id),
+        )
+
+    def update_category(
+        self,
+        category_id: str,
+        name: Optional[str] = None,
+        is_special: Optional[bool] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Update fields on an existing category (raises KeyError when not found)."""
+        return self._backend.update_category(
+            category_id=category_id,
+            name=name,
+            is_special=is_special,
+            credential=self._get_credential(user_id),
+        )
+
+    def delete_category(
+        self,
+        category_id: str,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """Delete a category. Returns True when found and deleted."""
+        return self._backend.delete_category(
+            category_id,
             credential=self._get_credential(user_id),
         )

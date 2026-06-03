@@ -376,6 +376,7 @@ class EventBackend(Protocol):
         date: str,
         title: str,
         plan_id: str,
+        category: str = '',
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
@@ -385,12 +386,39 @@ class EventBackend(Protocol):
         date: Optional[str] = None,
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
+        category: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
     def delete_event(
         self,
         event_id: str,
+        credential: Optional[BackendCredential] = None,
+    ) -> bool: ...
+
+    def fetch_categories(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[Dict[str, Any]]: ...
+
+    def create_category(
+        self,
+        name: str,
+        is_special: bool = False,
+        credential: Optional[BackendCredential] = None,
+    ) -> Dict[str, Any]: ...
+
+    def update_category(
+        self,
+        category_id: str,
+        name: Optional[str] = None,
+        is_special: Optional[bool] = None,
+        credential: Optional[BackendCredential] = None,
+    ) -> Dict[str, Any]: ...
+
+    def delete_category(
+        self,
+        category_id: str,
         credential: Optional[BackendCredential] = None,
     ) -> bool: ...
 

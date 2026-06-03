@@ -37,29 +37,45 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   static properties = {
     events: { type: Array },
+    categories: { type: Array },
     loading: { type: Boolean },
     _editId: { type: String, state: true },
     _editDate: { type: String, state: true },
     _editTitle: { type: String, state: true },
     _editPlanId: { type: String, state: true },
+    _editCategory: { type: String, state: true },
     _newDates: { type: Object, state: true },
     _newTitles: { type: Object, state: true },
+    _newCategories: { type: Object, state: true },
     _saving: { type: Boolean, state: true },
     _addOpenPlanIds: { type: Object, state: true },
+    _hiddenCategories: { type: Object, state: true },
+    _editCatId: { type: String, state: true },
+    _editCatName: { type: String, state: true },
+    _newCatName: { type: String, state: true },
+    _catSaving: { type: Boolean, state: true },
   };
 
   constructor() {
     super();
     this.events = [];
+    this.categories = [];
     this.loading = false;
     this._editId = null;
     this._editDate = '';
     this._editTitle = '';
     this._editPlanId = '';
+    this._editCategory = '';
     this._newDates = {};
     this._newTitles = {};
+    this._newCategories = {};
     this._saving = false;
     this._addOpenPlanIds = {}; // tracks which plan add-rows are expanded
+    this._hiddenCategories = {};
+    this._editCatId = null;
+    this._editCatName = '';
+    this._newCatName = '';
+    this._catSaving = false;
   }
 
   static styles = css`
@@ -330,6 +346,82 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       font-style: italic;
       padding: 2px 0;
     }
+
+    .section-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      padding: 4px 0 2px;
+      border-bottom: 1px solid #eee;
+      margin-bottom: 4px;
+    }
+
+    .section-subtitle {
+      font-size: 10px;
+      font-weight: 400;
+      color: #999;
+      text-transform: none;
+      margin-left: 4px;
+    }
+
+    .cat-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 0;
+    }
+
+    .cat-name {
+      font-size: 11px;
+      color: #333;
+      flex: 1;
+    }
+
+    .star-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 1px 4px;
+      font-size: 13px;
+      line-height: 1;
+      border-radius: 3px;
+    }
+
+    .star-btn.active { color: #f59e0b; }
+    .star-btn:not(.active) { color: #ccc; }
+    .star-btn:hover { color: #f59e0b; background: #fef3c7; }
+
+    .filter-section {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .filter-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid #aaa;
+      cursor: pointer;
+      background: #f5f5f5;
+      color: #555;
+      user-select: none;
+    }
+
+    .filter-badge.hidden {
+      background: #fff;
+      color: #aaa;
+      text-decoration: line-through;
+      border-color: #ddd;
+    }
+
+    .filter-badge:hover {
+      background: #e3f2fd;
+      border-color: #5481e6;
+      color: #1565c0;
+    }
   `;
 
   // ---------------------------------------------------------------------------
@@ -399,7 +491,12 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   async refresh() {
     this.loading = true;
-    this.events = (await dataService.getEvents()) || [];
+    const [events, categories] = await Promise.all([
+      dataService.getEvents(),
+      dataService.getEventCategories(),
+    ]);
+    this.events = events || [];
+    this.categories = categories || [];
     this.loading = false;
     this._renderSvg();
     this.requestUpdate();
@@ -414,6 +511,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._editDate = ev.date;
     this._editTitle = ev.title;
     this._editPlanId = ev.plan_id;
+    this._editCategory = ev.category || '';
   }
 
   _cancelEdit() {
@@ -421,6 +519,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._editDate = '';
     this._editTitle = '';
     this._editPlanId = '';
+    this._editCategory = '';
   }
 
   async _saveEdit() {
@@ -430,6 +529,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       date: this._editDate,
       title: this._editTitle,
       plan_id: this._editPlanId,
+      category: this._editCategory,
     });
     if (updated) {
       await this.refresh();
@@ -448,12 +548,14 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   async _addEvent(planId) {
     const date = this._newDates[planId] || '';
     const title = this._newTitles[planId] || '';
+    const category = this._newCategories[planId] || this.categories[0]?.name || '';
     if (!date || !title) return;
     this._saving = true;
-    const created = await dataService.createEvent({ date, title, plan_id: planId });
+    const created = await dataService.createEvent({ date, title, plan_id: planId, category });
     if (created) {
       this._newDates = { ...this._newDates, [planId]: '' };
       this._newTitles = { ...this._newTitles, [planId]: '' };
+      this._newCategories = { ...this._newCategories, [planId]: '' };
       this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
       await this.refresh();
       bus.emit(PlanEventEvents.CHANGED);
@@ -462,8 +564,135 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   // ---------------------------------------------------------------------------
+  // Category CRUD helpers
+  // ---------------------------------------------------------------------------
+
+  _startCatEdit(cat) {
+    this._editCatId = cat.id;
+    this._editCatName = cat.name;
+  }
+
+  _cancelCatEdit() {
+    this._editCatId = null;
+    this._editCatName = '';
+  }
+
+  async _saveCatEdit() {
+    if (!this._editCatName.trim()) return;
+    this._catSaving = true;
+    const updated = await dataService.updateEventCategory(this._editCatId, { name: this._editCatName.trim() });
+    if (updated) {
+      await this.refresh();
+      this._cancelCatEdit();
+    }
+    this._catSaving = false;
+  }
+
+  async _toggleSpecial(cat) {
+    await dataService.updateEventCategory(cat.id, { is_special: !cat.is_special });
+    await this.refresh();
+  }
+
+  async _addCategory() {
+    if (!this._newCatName.trim()) return;
+    this._catSaving = true;
+    const created = await dataService.createEventCategory({ name: this._newCatName.trim() });
+    if (created) {
+      this._newCatName = '';
+      await this.refresh();
+    }
+    this._catSaving = false;
+  }
+
+  async _deleteCategory(categoryId) {
+    await dataService.deleteEventCategory(categoryId);
+    await this.refresh();
+  }
+
+  _toggleCategoryVisibility(catName) {
+    const hidden = { ...this._hiddenCategories };
+    if (hidden[catName]) {
+      delete hidden[catName];
+    } else {
+      hidden[catName] = true;
+    }
+    this._hiddenCategories = hidden;
+    this._renderSvg();
+  }
+
+  // ---------------------------------------------------------------------------
   // Toolbar render
   // ---------------------------------------------------------------------------
+
+  _renderCategoriesSection() {
+    return html`
+      <div class="plan-section">
+        <div class="section-header">Event Categories</div>
+        ${this.categories.map(cat => {
+          if (this._editCatId === cat.id) {
+            return html`
+              <div class="edit-row">
+                <input
+                  type="text"
+                  .value=${this._editCatName}
+                  @input=${(e) => (this._editCatName = e.target.value)}
+                />
+                <div class="edit-actions">
+                  <button class="btn cancel" @click=${this._cancelCatEdit}>Cancel</button>
+                  <button class="btn save" ?disabled=${this._catSaving} @click=${this._saveCatEdit}>Save</button>
+                </div>
+              </div>
+            `;
+          }
+          return html`
+            <div class="cat-row">
+              <button
+                class="star-btn ${cat.is_special ? 'active' : ''}"
+                title="${cat.is_special ? 'Special (black border) — click to unset' : 'Set as special (renders with black border)'}"
+                @click=${() => this._toggleSpecial(cat)}
+              >★</button>
+              <span class="cat-name">${cat.name}</span>
+              <button class="icon-btn" title="Edit" @click=${() => this._startCatEdit(cat)}>✎</button>
+              <button class="icon-btn delete" title="Delete" @click=${() => this._deleteCategory(cat.id)}>✕</button>
+            </div>
+          `;
+        })}
+        <div class="add-row" style="margin-top:6px">
+          <input
+            type="text"
+            placeholder="New category…"
+            .value=${this._newCatName}
+            @input=${(e) => (this._newCatName = e.target.value)}
+            @keydown=${(e) => e.key === 'Enter' && this._addCategory()}
+            style="flex:1"
+          />
+          <button
+            class="add-btn"
+            ?disabled=${this._catSaving || !this._newCatName.trim()}
+            @click=${this._addCategory}
+          >Add</button>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderCategoryFilterSection() {
+    if (!this.categories.length) return '';
+    return html`
+      <div class="plan-section">
+        <div class="section-header">Show categories</div>
+        <div class="filter-section">
+          ${this.categories.map(cat => html`
+            <span
+              class="filter-badge ${this._hiddenCategories[cat.name] ? 'hidden' : ''}"
+              @click=${() => this._toggleCategoryVisibility(cat.name)}
+              title="${this._hiddenCategories[cat.name] ? 'Show' : 'Hide'} ${cat.name} events"
+            >${cat.name}</span>
+          `)}
+        </div>
+      </div>
+    `;
+  }
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
@@ -486,6 +715,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
                 html`<option value=${p.id} ?selected=${p.id === this._editPlanId}
                   >${p.name}</option
                 >`
+            )}
+          </select>
+          <select @change=${(e) => (this._editCategory = e.target.value)}>
+            ${this.categories.map(
+              (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._editCategory}>${cat.name}</option>`
             )}
           </select>
           <div class="edit-actions">
@@ -513,10 +747,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   _renderPlanSection(plan) {
     const planEvents = this.events
-      .filter((ev) => ev.plan_id === plan.id)
+      .filter((ev) => ev.plan_id === plan.id && !this._hiddenCategories[ev.category])
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)); // newest first
     const newDate = this._newDates[plan.id] || '';
     const newTitle = this._newTitles[plan.id] || '';
+    const newCategory = this._newCategories[plan.id] || this.categories[0]?.name || '';
     const addOpen = !!this._addOpenPlanIds[plan.id];
     return html`
       <div class="plan-section">
@@ -559,6 +794,15 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
               @keydown=${(e) => e.key === 'Enter' && this._addEvent(plan.id)}
               title="Event title"
             />
+            <select
+              @change=${(e) => {
+                this._newCategories = { ...this._newCategories, [plan.id]: e.target.value };
+              }}
+            >
+              ${this.categories.map(
+                (cat) => html`<option value=${cat.name} ?selected=${cat.name === newCategory}>${cat.name}</option>`
+              )}
+            </select>
             <button
               class="add-btn"
               ?disabled=${this._saving || !newDate || !newTitle}
@@ -579,6 +823,8 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
         <div class="toolbar-title">Plan Events</div>
         <div class="floating-content">
           ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
+          ${this._renderCategoriesSection()}
+          ${this._renderCategoryFilterSection()}
           ${selectedPlans.length === 0
             ? html`<div class="no-plans-msg">No plans selected.</div>`
             : selectedPlans.map((plan) => this._renderPlanSection(plan))}
@@ -634,7 +880,9 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       return;
     }
 
-    const filteredEvents = this.events.filter((ev) => selectedProjects.includes(ev.plan_id));
+    const filteredEvents = this.events.filter(
+      (ev) => selectedProjects.includes(ev.plan_id) && !this._hiddenCategories[ev.category]
+    );
 
     const positioned = filteredEvents
       .map((ev) => {
@@ -745,6 +993,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     tagBg.setAttribute('fill', color);
     tagBg.setAttribute('rx', '3');
     tagBg.setAttribute('opacity', '0.85');
+    const specialCat = this.categories.find(c => c.is_special);
+    if (specialCat && ev.category === specialCat.name) {
+      tagBg.setAttribute('stroke', 'black');
+      tagBg.setAttribute('stroke-width', '1');
+    }
     tagGroup.appendChild(tagBg);
 
     const tagText = document.createElementNS(SVG_NS, 'text');

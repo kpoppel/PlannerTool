@@ -67,6 +67,26 @@ def test_create_event_returns_event_with_id(store):
     assert len(event['id']) == 32  # uuid4 hex
 
 
+def test_create_event_default_category_is_empty(store):
+    from planner_lib.events.event_store import create_event
+    event = create_event(store, date='2026-05-01', title='Demo', plan_id='plan-1')
+    assert event['category'] == ''
+
+
+def test_create_event_with_explicit_category(store):
+    from planner_lib.events.event_store import create_event
+    for cat in ('Q', 'Bundle', 'Other', 'MyCustomCat'):
+        event = create_event(store, date='2026-05-01', title=cat, plan_id='plan-1', category=cat)
+        assert event['category'] == cat
+
+
+def test_update_event_changes_category(store):
+    from planner_lib.events.event_store import create_event, update_event
+    event = create_event(store, date='2026-05-01', title='T', plan_id='plan-1', category='Other')
+    updated = update_event(store, event['id'], category='Q')
+    assert updated['category'] == 'Q'
+
+
 def test_list_events_returns_all(store):
     from planner_lib.events.event_store import create_event, list_events
     create_event(store, date='2026-05-01', title='A', plan_id='plan-1')
