@@ -132,7 +132,7 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
         monkeypatch.setattr(cost_config, 'load_cost_config', lambda: None)
 
     # create account and session for auth
-    r = client.post('/api/account', json={'email': 'b@test.com', 'pat': 't'})
+    r = client.post('/api/config', json={'email': 'b@test.com', 'pat': 't'})
     assert r.status_code in (200, 201)
     r2 = client.post('/api/session', json={'email': 'b@test.com'})
     assert r2.status_code == 200

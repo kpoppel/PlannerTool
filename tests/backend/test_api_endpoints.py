@@ -82,7 +82,7 @@ def test_api_endpoint_session_behaviour(server_available, base_url: str, app):
 
         # Minimal payloads for write verbs
         payload = {}
-        if path == "/api/account":
+        if path == "/api/config":
             payload = {"email": "test@example.com", "pat": "token"}
 
         # 1) Request without session (ask for JSON so middleware returns JSON errors)
@@ -104,8 +104,8 @@ def test_api_endpoint_session_behaviour(server_available, base_url: str, app):
                 assert resp.status_code < 500, f"Unexpected server error: {resp.status_code} for {method} {url}"
 
         # 2) Create a valid session and retry
-        # First ensure config exists for the test email (POST /api/account)
-        cfg_url = base_url.rstrip('/') + '/api/account'
+        # First ensure config exists for the test email (POST /api/config)
+        cfg_url = base_url.rstrip('/') + '/api/config'
         r_cfg = httpx.post(cfg_url, json={"email": "test@example.com", "pat": "token"}, headers={"Accept": "application/json"}, timeout=5.0)
         assert r_cfg.status_code in (200, 201)
 

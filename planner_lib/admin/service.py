@@ -14,8 +14,8 @@ import logging
 
 from planner_lib.storage.base import StorageBackend
 from planner_lib.admin.config_manager import ConfigManager
-from planner_lib.admin.account_admin_service import AccountAdminService
 from planner_lib.admin.reload_orchestrator import ReloadOrchestrator
+from planner_lib.accounts.constants import AccountPermissions
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +25,13 @@ class AdminService:
 
     Delegates to three composed helpers:
     - ConfigManager    : config CRUD + backup/restore
-    - AccountAdminService : account / admin-marker CRUD
+    - AccountManager : account management (users and permissions)
     - ReloadOrchestrator  : hot-reload of in-memory service caches
     """
 
     def __init__(
         self,
-        account_storage: StorageBackend,
+        account_storage: StorageBackend,  # <-- TODO: Should not be needed
         config_storage: StorageBackend,
         project_repository: Any,
         account_manager: Any,
@@ -45,13 +45,13 @@ class AdminService:
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
             config_storage=config_storage,
-            account_storage=account_storage,
+            account_storage=account_storage,   # <-- TODO: Should not be needed
             server_config_storage=server_config_storage,
             views_storage=views_storage,
             scenarios_storage=scenarios_storage,
         )
-        # Composed account admin: owns all account / admin-marker CRUD.
-        self._account_admin = AccountAdminService(account_storage=account_storage)
+        # Composed account manager: owns all account / admin-marker CRUD.
+        self._account_manager = account_manager # To replace accountadminservice
         # Composed reload orchestrator: owns hot-reload coordination.
         self._reload_orchestrator = ReloadOrchestrator(
             config_storage=config_storage,
@@ -60,18 +60,6 @@ class AdminService:
             account_manager=account_manager,
             reloadable_services=reloadable_services or [],
         )
-
-    def is_admin(self, email: str) -> bool:
-        """Return True when `data/accounts_admin/<email>` exists."""
-        return self._account_admin.is_admin(email)
-
-    def admin_count(self) -> int:
-        """Return the number of configured admin accounts."""
-        return self._account_admin.admin_count()
-
-    def create_admin_account(self, email: str, pat: str) -> None:
-        """Create (or update) a user account and elevate it to admin."""
-        self._account_admin.create_admin_account(email, pat)
 
     def get_config(self, key: str, default=None):
         """Load a key from the config namespace.  Delegates to ConfigManager."""
@@ -101,22 +89,10 @@ class AdminService:
         """Restore config and data from a backup.  Delegates to ConfigManager."""
         return self._config_manager.restore_backup(
             data,
-            current_admins=self.get_all_admins(),
+            current_admins=self._account_manager.get_all_with_permission(AccountPermissions.ADMIN),
             current_user_email=current_user_email,
-            sync_accounts_fn=self.sync_accounts_full,
+            sync_accounts_fn=self._account_manager.sync_accounts_full,
         )
-
-    def get_all_admins(self):
-        """Returns a list of all admin emails.  Delegates to AccountAdminService."""
-        return self._account_admin.get_all_admins()
-
-    def get_all_users(self):
-        """Returns a list of all user emails.  Delegates to AccountAdminService."""
-        return self._account_admin.get_all_users()
-
-    def sync_accounts_full(self, users, admins):
-        """Synchronize user and admin accounts.  Delegates to AccountAdminService."""
-        return self._account_admin.sync_accounts_full(users, admins)
 
     def reload_config(self, session_id: str = '') -> dict:
         """Reload configuration artifacts touched by the admin UI.

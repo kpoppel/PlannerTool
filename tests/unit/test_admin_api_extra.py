@@ -16,7 +16,7 @@ def test_reload_config_raises_500(client, monkeypatch):
         pytest.skip('planner_lib.cost.config not available')
 
     # create account and session for auth
-    r = client.post('/api/account', json={'email': 'a@test.com', 'pat': 't'})
+    r = client.post('/api/config', json={'email': 'a@test.com', 'pat': 't'})
     assert r.status_code in (200, 201)
     r2 = client.post('/api/session', json={'email': 'a@test.com'})
     assert r2.status_code == 200

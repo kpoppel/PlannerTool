@@ -697,7 +697,7 @@ export const handlers = [
   }),
 
   // Account config save
-  http.post('/api/account', async ({ request }) => {
+  http.post('/api/config', async ({ request }) => {
     const body = await request.json();
     // echo back saved config
     return HttpResponse.json(body || {}, { status: 200 });

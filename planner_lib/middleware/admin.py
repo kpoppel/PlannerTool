@@ -3,6 +3,7 @@ import functools
 from fastapi import HTTPException
 from starlette.requests import Request
 
+from planner_lib.accounts.constants import AccountPermissions
 from planner_lib.services.resolver import resolve_service
 from .session import get_session_id_from_request
 import logging
@@ -64,13 +65,9 @@ def require_admin_session(func: Callable) -> Callable:
                 logger.warning('Admin access denied (no email in session)')
             raise HTTPException(status_code=401, detail={'error': 'access_denied', 'message': '200 - Admin access required.'})
 
-        # Delegate admin membership check to the AdminService which was
-        # constructed with the pickle-backed account storage.
-        try:
-            admin_svc = resolve_service(request, 'admin_service')
-            is_admin = admin_svc.is_admin(email)
-        except Exception:
-            is_admin = False
+        # Delegate admin membership check to the AccountManager
+        account_manager = resolve_service(request, 'account_manager')
+        is_admin = account_manager.has_permission(email, AccountPermissions.ADMIN)
 
         if not is_admin:
             try:

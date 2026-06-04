@@ -1,7 +1,7 @@
 import { expect } from '@esm-bundle/chai';
 import { ProviderREST } from '../../www/js/services/providerREST.js';
 
-describe('ProviderREST /api/account tests', () => {
+describe('ProviderREST /api/config tests', () => {
   it('saveConfig sends config to server and returns saved object', async () => {
     const pr = new ProviderREST();
     const cfg = { theme: 'dark', notifications: true };

@@ -10,6 +10,7 @@ import logging
 from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
+from planner_lib.accounts.constants import AccountPermissions
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,8 +21,6 @@ logger = logging.getLogger(__name__)
 async def admin_get_users(request: Request):
     """Return ``{ users: [...], admins: [...], current: email }``."""
     try:
-        admin_svc = resolve_service(request, 'admin_service')
-
         current_email = None
         try:
             sid = _get_session_id_or_raise(request)
@@ -31,7 +30,8 @@ async def admin_get_users(request: Request):
         except Exception:
             pass
 
-        resp = {'users': admin_svc.get_all_users(), 'admins': admin_svc.get_all_admins()}
+        account_manager = resolve_service(request, 'account_manager')
+        resp = {'users': account_manager.get_all_users(), 'admins': account_manager.get_all_with_permission(AccountPermissions.ADMIN)}
         if current_email:
             resp['current'] = current_email
         return resp
@@ -46,6 +46,8 @@ async def admin_save_users(request: Request):
     """Apply a ``{ users: [...], admins: [...] }`` modification atomically.
 
     Guards against the current admin removing their own access.
+    When the user list is modified in the admin UI, it transmits all new users and admins.
+    the backend then needs to sync the storage to add/remove/update permissions to match.
     """
     try:
         payload = await request.json()
@@ -57,10 +59,10 @@ async def admin_save_users(request: Request):
         if not isinstance(users, list) or not isinstance(admins, list):
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': '`users` and `admins` must be lists'})
 
-        admin_svc = resolve_service(request, 'admin_service')
+        account_manager = resolve_service(request, 'account_manager')
+        current_users = set(account_manager.get_all_users())
+        current_admins = set(account_manager.get_all_with_permission(AccountPermissions.ADMIN))
 
-        current_users = set(admin_svc.get_all_users())
-        current_admins = set(admin_svc.get_all_admins())
         incoming_users = set(users)
         incoming_admins = set(admins)
 
@@ -79,7 +81,7 @@ async def admin_save_users(request: Request):
             if current_email in current_users and current_email not in incoming_users:
                 raise HTTPException(status_code=400, detail={'error': 'forbidden', 'message': 'Cannot remove current admin user account'})
 
-        admin_svc.sync_accounts_full(users, admins)
+        account_manager.sync_accounts_full(users, admins)
         return {'ok': True}
     except HTTPException:
         raise

@@ -20,12 +20,3 @@ async def save_config(payload: AccountPayload, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
     return status
-
-
-@router.post('/account')
-async def save_account(payload: AccountPayload, request: Request):
-    """Compatibility route: frontend/tests expect POST /api/account.
-
-    Delegate to the same account save logic as `/config`.
-    """
-    return await save_config(payload, request)

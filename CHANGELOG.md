@@ -14,6 +14,14 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.0.4] - unreleased
+### Added
+### Changed
+- removed legacy backup account format support
+- deprecated /api/account endpoint. Use /api/config
+### Fixed
+- admin package service no longer attempt to duplicate account management which caused first time user creation to fail due to unencrypted PAT being rejected
+
 ## [v4.0.3] - 2026-05-08
 ### Added
 ### Changed

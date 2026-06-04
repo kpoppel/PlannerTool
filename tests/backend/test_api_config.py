@@ -5,7 +5,7 @@ from planner_lib.main import create_app, Config
 
 def test_post_config_and_persistence(client, app):
     payload = {'email': 'tester@example.com', 'pat': 'secrettoken'}
-    resp = client.post('/api/account', json=payload)
+    resp = client.post('/api/config', json=payload)
     assert resp.status_code == 200
     body = resp.json()
     assert body.get('ok') is True

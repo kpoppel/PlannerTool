@@ -1,16 +1,16 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
 import logging
 import os
 import re
 import base64
 from planner_lib.storage import StorageBackend
+from planner_lib.accounts.constants import AccountPermissions
 
 logger = logging.getLogger(__name__)
 
 # RFC-5321-lite: local-part@domain.tld — no spaces, at least one dot in domain.
 _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-
 
 def _is_valid_email(email: str) -> bool:
     return bool(_EMAIL_RE.match(email))
@@ -105,13 +105,17 @@ def _try_decrypt_pat(encrypted: str) -> Optional[str]:
 class AccountPayload(BaseModel):
     email: str
     pat: Optional[str] = None
+    permissions: Optional[list[str]] = None
 
 class AccountManager:
+    """Manages account configuration using a StorageBackend for persistence. All account management must pass
+       through this class to ensure consistent handling of PAT encryption and validation."""
     DEFAULT_NS = 'accounts'
     def __init__(self, account_storage: StorageBackend):
         self._storage = account_storage
 
     def save(self, config: AccountPayload) -> dict:
+        """Save an account configuration, validating input and handling PAT encryption."""
         # load from file storage to not change the PAT if empty
         try:
             existing = self._storage.load(self.DEFAULT_NS, config.email)
@@ -136,10 +140,10 @@ class AccountManager:
             encrypted_pat = existing.get('pat')
         else:
             encrypted_pat = _encrypt_pat(config.pat) if config.pat else None
-        payload = { 'email': config.email, 'pat': encrypted_pat }
+        payload = { 'email': config.email, 'pat': encrypted_pat, 'permissions': config.permissions or [] }
         self._storage.save(self.DEFAULT_NS, config.email, payload)
 
-        logger.info('Saved config for %s', config.email)
+        logger.info('Saved account configuration for %s', config.email)
         return { 'ok': True, 'email': config.email }
 
     def load(self, key: str) -> dict:
@@ -154,3 +158,92 @@ class AccountManager:
 
         logger.debug('Loaded config for %s: pat_set=%s', key, pat is not None)
         return { 'ok': True, 'email': key, 'pat': pat }
+
+    def has_permission(self, key: str, permission: str) -> bool:
+        """Return True when the account for *key* has the specified permission."""
+        try:
+            record = self._storage.load(self.DEFAULT_NS, key)
+            return permission in (record.get('permissions') or [])
+        except (KeyError, Exception):
+            return False
+        
+    def get_all_with_permission(self, permission: str) -> list:
+        """Return a list of users that have the specified permission."""
+        try:
+            result = []
+            for key in self._storage.list_keys(self.DEFAULT_NS):
+                try:
+                    record = self._storage.load(self.DEFAULT_NS, key)
+                    if permission in (record.get('permissions') or []):
+                        result.append(key)
+                except Exception:
+                    pass
+            return result
+        except Exception:
+            return []
+        
+    def count_all_with_permission(self, permission: str) -> int:
+        """Return the number of users that have the specified permission."""
+        return len(self.get_all_with_permission(permission))
+    
+    def get_all_users(self) -> list:
+        """Return a list of all user email keys."""
+        try:
+            return list(self._storage.list_keys('accounts'))
+        except Exception:
+            return []
+        
+    # ------------------------------------------------------------------
+    # Bulk sync (used by backup restore and the users admin endpoint)
+    # ------------------------------------------------------------------
+    def sync_accounts_full(
+        self,
+        users: Union[list, dict],
+        admins: Union[list, dict],
+    ) -> None:
+        """Synchronize user and admin accounts to exactly the supplied sets.
+
+        *users* is the complete set of accounts; *admins* is the subset that
+        should have the ADMIN permission.  Both may be lists of email strings
+        (from the admin UI) or dicts of ``{email: user_data}`` (from backup
+        restore).  When a list is provided, existing stored data is preserved.
+
+        Accounts no longer present in *users* are deleted.
+        The ADMIN permission is added/removed from each account record to
+        match the *admins* set exactly.
+        """
+        # Normalise lists → dicts, preserving any existing stored user data.
+        if isinstance(users, list):
+            users_dict: dict = {}
+            for email in users:
+                try:
+                    users_dict[email] = self._storage.load('accounts', email)
+                except KeyError:
+                    users_dict[email] = {'email': email}
+            users = users_dict
+        if isinstance(admins, list):
+            admins_set = set(admins)
+        else:
+            admins_set = set(admins.keys())
+
+        current_users = set(self._storage.list_keys('accounts') or [])
+        incoming_users = set(users.keys())
+
+        # Add / update users — set permissions according to admin membership.
+        for user_key, user_data in users.items():
+            record = dict(user_data) if user_data else {'email': user_key}
+            permissions = list(record.get('permissions') or [])
+            if user_key in admins_set:
+                if AccountPermissions.ADMIN not in permissions:
+                    permissions.append(AccountPermissions.ADMIN)
+            else:
+                permissions = [p for p in permissions if p != AccountPermissions.ADMIN]
+            record['permissions'] = permissions
+            self._storage.save('accounts', user_key, record)
+
+        # Remove accounts no longer in the incoming set.
+        for user_key in current_users - incoming_users:
+            try:
+                self._storage.delete('accounts', user_key)
+            except KeyError:
+                pass

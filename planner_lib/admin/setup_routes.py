@@ -15,7 +15,8 @@ from planner_lib.middleware import require_admin_session
 from planner_lib.services.resolver import resolve_service
 from planner_lib.middleware.session import SESSION_COOKIE
 from planner_lib.middleware.session import get_session_id_from_request as _get_session_id_or_raise
-from planner_lib.accounts.config import _is_valid_pat
+from planner_lib.accounts.config import _is_valid_pat, AccountPayload
+from planner_lib.accounts.constants import AccountPermissions
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ logger = logging.getLogger(__name__)
 async def admin_setup_status(request: Request):
     """Check if the admin system needs initial setup (no admins exist)."""
     try:
-        admin_svc = resolve_service(request, 'admin_service')
-        response = JSONResponse({'needs_setup': admin_svc.admin_count() == 0})
+        account_manager = resolve_service(request, 'account_manager')
+        response = JSONResponse({'needs_setup': account_manager.count_all_with_permission(AccountPermissions.ADMIN) == 0})
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         return response
     except Exception as e:
@@ -37,6 +38,7 @@ async def admin_setup_status(request: Request):
 @router.post('/admin/v1/setup')
 async def admin_setup(request: Request):
     """Create the initial admin account if none exists."""
+    logger.warning('Received request to set up initial admin account')
     try:
         payload = await request.json()
         email = payload.get('email')
@@ -50,12 +52,11 @@ async def admin_setup(request: Request):
         if not _is_valid_pat(pat):
             raise HTTPException(status_code=400, detail={'error': 'invalid_pat', 'message': 'PAT format invalid'})
 
-        admin_svc = resolve_service(request, 'admin_service')
-
-        if admin_svc.admin_count() > 0:
+        account_manager = resolve_service(request, 'account_manager')
+        if account_manager.count_all_with_permission(AccountPermissions.ADMIN) > 0:
             raise HTTPException(status_code=403, detail={'error': 'already_setup', 'message': 'Admin accounts already exist'})
-
-        admin_svc.create_admin_account(email, pat)
+        account_data = AccountPayload(email=email, pat=pat, permissions=[AccountPermissions.ADMIN])
+        account_manager.save(account_data)
 
         session_mgr = resolve_service(request, 'session_manager')
         sid = session_mgr.create(email)
@@ -145,10 +146,10 @@ async def admin_root(request: Request):
         if not session_mgr.exists(sid):
             return serve_file(login_path, fallback=index_path)
 
-        admin_svc = resolve_service(request, 'admin_service')
+        account_manager = resolve_service(request, 'account_manager')
         ctx = session_mgr.get(sid) or {}
         email = ctx.get('email')
-        if email and admin_svc.is_admin(email):
+        if email and account_manager.has_permission(email, AccountPermissions.ADMIN):
             return serve_file(index_path)
 
         # Valid session but not an admin — redirect to login with an error flag

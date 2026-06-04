@@ -31,7 +31,7 @@ def test_reload_config_endpoint_sets_ok(client):
     # Create an account and a session via the API so the session manager
     # contains a valid session for this test
     acct = {"email": "test@example.com", "pat": "token"}
-    r_acct = client.post('/api/account', json=acct)
+    r_acct = client.post('/api/config', json=acct)
     assert r_acct.status_code in (200, 201)
     r_sess = client.post('/api/session', json={"email": acct["email"]})
     assert r_sess.status_code == 200

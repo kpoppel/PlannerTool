@@ -184,6 +184,13 @@
                   'An error occurred during authentication'
               );
             }
+            // Persist the session cookie from x-set-session-id so subsequent
+            // requests to /admin/ carry the session ID automatically instead
+            // of being treated as "anonymous" and bouncing back to login.
+            const sid = r.headers.get('x-set-session-id');
+            if (sid) {
+              document.cookie = 'planner_sid=' + sid + '; path=/; SameSite=Lax';
+            }
             return r.json();
           })
           .then(() => {
@@ -201,6 +208,7 @@
             }
 
             // Redirect into the protected admin root on success
+            console.log('Login successful, redirecting to admin dashboard');
             window.location.href = (window.APP_BASE_URL || '') + '/admin/';
           })
           .catch((err) => {

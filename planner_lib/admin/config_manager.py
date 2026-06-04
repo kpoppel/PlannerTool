@@ -47,6 +47,8 @@ class ConfigManager:
     # Key that lives in YAML storage rather than diskcache.
     _SERVER_CONFIG_KEY = "server_config"
 
+    # TODO: The backup/restore should not use the account storage directly but use the AccountManager
+    # so that account data is properly handled no matter which fields are in the accounts.
     def __init__(
         self,
         config_storage: StorageBackend,
@@ -160,7 +162,7 @@ class ConfigManager:
 
         # User accounts.
         # PATs are decrypted so the backup JSON is portable across key rotations.
-        # Permissions are stored inline in each user record (no separate 'admins' dict).
+        # Permissions are stored inline in each user record.
         try:
             from planner_lib.accounts.config import _try_decrypt_pat
             users: dict = {}
@@ -216,7 +218,7 @@ class ConfigManager:
             Backup dict as produced by :meth:`get_backup`.
         current_admins:
             List of current admin emails; used to guard against removing the
-            currently authenticated admin.  Pass :meth:`AdminService.get_all_admins`
+            currently authenticated admin.  Pass :meth:`AccountManager.get_all_with_permission`
             result here.
         current_user_email:
             Email of the currently authenticated user.
@@ -231,20 +233,6 @@ class ConfigManager:
 
         if "accounts" in data:
             users = data["accounts"].get("users", {})
-            # Legacy backup format: had a separate 'admins' dict.  Merge admin
-            # status into the user records' 'permissions' field before restoring.
-            legacy_admins = data["accounts"].get("admins", {})
-            if legacy_admins:
-                from planner_lib.admin.account_admin_service import PERMISSION_ADMIN
-                users = {k: dict(v) if isinstance(v, dict) else v for k, v in users.items()}
-                for admin_email in legacy_admins:
-                    if admin_email not in users:
-                        users[admin_email] = dict(legacy_admins[admin_email]) if isinstance(legacy_admins[admin_email], dict) else {'email': admin_email}
-                    record = users[admin_email]
-                    permissions = list(record.get('permissions') or [])
-                    if PERMISSION_ADMIN not in permissions:
-                        permissions.append(PERMISSION_ADMIN)
-                    record['permissions'] = permissions
 
             # Guard: don't let a restore remove the currently authenticated admin.
             if (
@@ -254,6 +242,10 @@ class ConfigManager:
                 and current_user_email not in users
             ):
                 raise ValueError("Cannot remove the current admin account.")
+
+            # Overwrite the account storage with the backup data.  This is simpler than trying to
+            # diff and merge with existing data, and the backup is expected to be a complete snapshot of all accounts.
+            # TODO: Use the account manager to create accounts instead of re-encrytping here.
 
             # Re-encrypt PATs when the backup was produced with plaintext PATs.
             pat_format = (data.get("_meta") or {}).get("pat_format")
@@ -281,8 +273,8 @@ class ConfigManager:
 
             if sync_accounts_fn is not None:
                 # Derive admin set from permissions field in each user record.
-                from planner_lib.admin.account_admin_service import PERMISSION_ADMIN
-                admins_set = [k for k, v in users.items() if isinstance(v, dict) and PERMISSION_ADMIN in (v.get('permissions') or [])]
+                from planner_lib.accounts.constants import AccountPermissions
+                admins_set = [k for k, v in users.items() if isinstance(v, dict) and AccountPermissions.ADMIN in (v.get('permissions') or [])]
                 sync_accounts_fn(users, admins_set)
 
         if "views" in data:

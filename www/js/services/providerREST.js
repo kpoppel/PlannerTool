@@ -358,7 +358,7 @@ export class ProviderREST {
 
   async saveConfig(config) {
     try {
-      const res = await this._fetch('/api/account', {
+      const res = await this._fetch('/api/config', {
         method: 'POST',
         headers: this._headers({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(config),
@@ -384,7 +384,7 @@ export class ProviderREST {
 
   async getConfig() {
     // Example: fetch config from REST API (stub)
-    // return fetch('/api/account').then(res => res.json());
+    // return fetch('/api/config').then(res => res.json());
     return {};
   }
 

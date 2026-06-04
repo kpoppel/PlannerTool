@@ -89,7 +89,7 @@ Purpose: a concise overview of the backend server architecture and module respon
 
 **Authentication & Authorization**
 - `SessionMiddleware` validates session cookies and creates sessions on-demand for new users.
-- All routes except `/config` and `/account` (setup) require valid sessions.
+- All routes except `/config` (setup) require valid sessions.
 - Admin routes check user role (stored in session) to restrict access.
 
 **Data Namespacing & Isolation**
