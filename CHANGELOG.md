@@ -16,16 +16,18 @@ Template - do not change :
 
 ## [v4.0.4] - unreleased
 ### Added
+- Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
+- Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
+
 ### Changed
 - removed legacy backup account format support
 - deprecated /api/account endpoint. Use /api/config
+
 ### Fixed
 - admin package service no longer attempt to duplicate account management which caused first time user creation to fail due to unencrypted PAT being rejected
 
 ## [v4.0.3] - 2026-05-08
 ### Added
-- Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
-- Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
 ### Changed
 - Plugins have a place to persist state in an active session.
 - Saving a view will also persist plugin state for plugins which use the new session state service.
