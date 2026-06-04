@@ -13,8 +13,14 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+
 ## [v4.0.4] - unreleased
 ### Added
+- Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
+- Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
+- XY Board plugin: display features in a scrollable X/Y field intersection table with plugin-controlled selectors, multi-value field support, and persisted settings.
+- Backend: added `extra_fields` support — projects.yml can now list ADO field reference names (e.g. `Microsoft.VSTS.Common.Priority`) to fetch per project; values are included in each task's `fields` dict, cached with the rest of task data, and surfaced to plugins via the `/api/tasks` endpoint.
+  NOTE: Very early implementation of this plugin.
 - Groups now carry a `members: [taskId, ...]` list — membership is stored on the group, not on each feature
 - `scenario.scenarioGroups` field: groups created inside a scenario live here until promoted to baseline on publish
 - `scenario.groupOverrides` field: per-scenario overrides for baseline group fields (members, name, color, deleted flag)
@@ -23,31 +29,20 @@ Template - do not change :
 - `State.createGroupInScenario / updateGroupInScenario / deleteGroupInScenario / setGroupMembersOverride` — scenario-aware group management
 - `State.getActiveScenario()` — returns the currently active scenario object
 - `scripts/migrations/0024_groups_members_and_pending_changes.py` — migration that reconstructs `group.members` from old `feature.groupId` overrides and converts `scenario.pendingGroupChanges` to `scenario.scenarioGroups` / `scenario.groupOverrides`
+
 ### Changed
+- removed legacy backup account format support
+- deprecated /api/account endpoint. Use /api/config
 - `groupBandLayout.buildGroupBandItems` now reads feature membership from `group.members` (not `feature.groupId`)
 - `FeatureBoard` now calls `getEffectiveGroups` instead of `getGroupsForPlan` so scenario-local and overridden groups are visible on the board
 - `GroupContextMenu` uses the new `state.createGroupInScenario`, `updateGroupInScenario`, `deleteGroupInScenario`, and `groupService.addMemberToGroup/removeMemberFromGroup`
 - `ScenarioMenu` save flow now promotes `scenario.scenarioGroups` to baseline (POST with members), applies `groupOverrides` updates (PUT), and handles deleted groups
 - `State.saveScenario` persists `scenarioGroups` and `groupOverrides` alongside scenario data
 - Save modal (AzureDevopsModal): replaced per-row checkboxes with clickable-cell selection — changed cells are pre-selected (yellow); click a cell to exclude it from save, click a column header to toggle the whole column
-### Fixed
-- Group ID lifecycle: after committing pending group creates via the save modal, the scenario is now flushed to disk with real server UUIDs replacing stale temp IDs
-
-## [v4.0.4] - unreleased
-### Added
-- Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
-- Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
-- XY Board plugin: display features in a scrollable X/Y field intersection table with plugin-controlled selectors, multi-value field support, and persisted settings.
-- Backend: added `extra_fields` support — projects.yml can now list ADO field reference names (e.g. `Microsoft.VSTS.Common.Priority`) to fetch per project; values are included in each task's `fields` dict, cached with the rest of task data, and surfaced to plugins via the `/api/tasks` endpoint.
-
-NOTE: Very early implementation of this plugin.
-
-### Changed
-- removed legacy backup account format support
-- deprecated /api/account endpoint. Use /api/config
 
 ### Fixed
 - admin package service no longer attempt to duplicate account management which caused first time user creation to fail due to unencrypted PAT being rejected
+- Group ID lifecycle: after committing pending group creates via the save modal, the scenario is now flushed to disk with real server UUIDs replacing stale temp IDs
 
 ## [v4.0.3] - 2026-05-08
 ### Added
