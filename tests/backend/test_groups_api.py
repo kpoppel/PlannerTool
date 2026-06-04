@@ -48,10 +48,8 @@ def test_get_group_by_id(client):
 
 
 def test_get_missing_group_returns_404(client):
-    from fastapi.exceptions import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        client.get('/api/groups/no-such-id', headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.get('/api/groups/no-such-id', headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 def test_update_group_name(client):
@@ -79,10 +77,8 @@ def test_update_group_color(client):
 
 
 def test_update_missing_group_returns_404(client):
-    from fastapi.exceptions import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        client.put('/api/groups/no-such-id', json={'name': 'X'}, headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.put('/api/groups/no-such-id', json={'name': 'X'}, headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 def test_delete_group(client):
