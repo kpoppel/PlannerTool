@@ -223,6 +223,25 @@ export class SchemaForm extends LitElement {
       min-width: 150px;
       font-weight: 600;
     }
+    .drag-handle {
+      width: 36px;
+      text-align: center;
+      cursor: grab;
+      user-select: none;
+      font-size: 16px;
+      color: #9ca3af;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+
+    .array-item.dragging {
+      opacity: 0.5;
+    }
+
+    .array-item.drag-over {
+      outline: 2px dashed #3b82f6;
+      background: #f3f9ff;
+    }
   `;
 
   static properties = {
@@ -549,6 +568,93 @@ export class SchemaForm extends LitElement {
       </div>
     `;
   }
+
+  /**
+   * Resolve a dotted/bracket path (e.g. "parent[0].children") against this.data
+   */
+  _getValueByBracketPath(path) {
+    if (!path) return this.data;
+    const re = /([^\.\[]+)(?:\[(\d+)\])?/g;
+    let m;
+    let obj = this.data;
+    while ((m = re.exec(path)) !== null) {
+      const prop = m[1];
+      const idx = m[2];
+      if (obj == null) return null;
+      obj = obj[prop];
+      if (idx !== undefined) {
+        obj = obj?.[Number(idx)];
+      }
+    }
+    return obj;
+  }
+
+  _onArrayDragStart(e) {
+    const el = e.currentTarget;
+    const idx = Number(el.dataset.index);
+    const path = el.dataset.arrayPath;
+    this._dragArraySrc = { path, index: idx };
+    try {
+      e.dataTransfer.setData('text/plain', String(idx));
+      e.dataTransfer.effectAllowed = 'move';
+    } catch (err) {
+      // ignore
+    }
+    el.classList.add('dragging');
+  }
+
+  _onArrayDragEnter(e) {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.classList.add('drag-over');
+  }
+
+  _onArrayDragLeave(e) {
+    const el = e.currentTarget;
+    el.classList.remove('drag-over');
+  }
+
+  _onArrayDragOver(e) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  }
+
+  _onArrayDrop(e) {
+    e.preventDefault();
+    const el = e.currentTarget;
+    const tgt = Number(el.dataset.index);
+    const src = Number(e.dataTransfer?.getData('text/plain') ?? this._dragArraySrc?.index);
+    const path = el.dataset.arrayPath;
+    this._array_performReorder(path, src, tgt);
+    el.classList.remove('drag-over');
+    const dragging = this.shadowRoot?.querySelectorAll?.('.array-item.dragging');
+    if (dragging) dragging.forEach((r) => r.classList.remove('dragging'));
+    delete this._dragArraySrc;
+    this.requestUpdate();
+  }
+
+  _onArrayDragEnd(/*e*/) {
+    const dragging = this.shadowRoot?.querySelectorAll?.('.array-item.dragging');
+    if (dragging) dragging.forEach((r) => r.classList.remove('dragging'));
+    delete this._dragArraySrc;
+    this.requestUpdate();
+  }
+
+  _array_performReorder(path, sourceIndex, targetIndex) {
+    if (!Number.isFinite(sourceIndex) || !Number.isFinite(targetIndex)) return;
+    if (sourceIndex === targetIndex) return;
+    const arr = this._getValueByBracketPath(path) || [];
+    if (!Array.isArray(arr)) return;
+    const newArr = [...arr];
+    if (sourceIndex < 0 || sourceIndex >= newArr.length) return;
+    if (targetIndex < 0 || targetIndex >= newArr.length) return;
+    const [item] = newArr.splice(sourceIndex, 1);
+    let insertIndex = targetIndex;
+    if (sourceIndex < targetIndex) insertIndex = targetIndex - 1;
+    if (insertIndex < 0) insertIndex = 0;
+    newArr.splice(insertIndex, 0, item);
+    this._updateValue(path, newArr);
+  }
   /**
    * Render patternProperties (dynamic object keys)
    */
@@ -690,8 +796,18 @@ export class SchemaForm extends LitElement {
         <div class="array-container">
           ${value.map(
             (item, idx) => html`
-              <div class="array-item">
-                <div class="array-item-content">
+              <div class="array-item"
+                draggable="true"
+                data-index="${idx}"
+                data-array-path="${path}"
+                @dragstart=${(e) => this._onArrayDragStart(e)}
+                @dragenter=${(e) => this._onArrayDragEnter(e)}
+                @dragleave=${(e) => this._onArrayDragLeave(e)}
+                @dragover=${(e) => this._onArrayDragOver(e)}
+                @drop=${(e) => this._onArrayDrop(e)}
+                @dragend=${(e) => this._onArrayDragEnd(e)}>
+                <div class="drag-handle">☰</div>
+                <div class="array-item-content" style="flex:1">
                   ${this._renderArrayItem(schema.items, item, `${path}[${idx}]`, idx)}
                 </div>
                 <button

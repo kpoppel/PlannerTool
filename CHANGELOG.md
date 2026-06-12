@@ -32,6 +32,7 @@ Template - do not change :
 
 ### Changed
 - Admin Projects: drag handles replace checkboxes, letting admins reorder projects by dragging — the generated JSON reflects the new sequence.
+- Admin Teams: add drag handles to allow reordering teams.
 - removed legacy backup account format support
 - deprecated /api/account endpoint. Use /api/config
 - `groupBandLayout.buildGroupBandItems` now reads feature membership from `group.members` (not `feature.groupId`)

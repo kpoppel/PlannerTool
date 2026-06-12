@@ -157,6 +157,7 @@ _SCHEMAS: dict[str, Any] = {
                         'name': {
                             'type': 'string',
                             'title': 'Team Name',
+                            'description': 'Full team name (e.g. "The A Team")',
                             'minLength': 1,
                         },
                         'short_name': {
