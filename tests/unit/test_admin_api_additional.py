@@ -89,17 +89,33 @@ def test_get_projects_raises_on_storage_error():
 
 
 def test_get_users_handles_list_errors():
-    # get_all_users / get_all_admins return [] on error -> admin_get_users returns empty lists
+    # get_all_users / get_all_with_permission return [] on error -> admin_get_users returns empty lists
     class S:
         def list_keys(self, ns):
             raise Exception('boom')
     storage = S()
+
+    class FakeAccountManager:
+        _storage = storage
+        def get_all_users(self):
+            try:
+                return list(self._storage.list_keys('accounts'))
+            except Exception:
+                return []
+        def get_all_with_permission(self, permission: str) -> list:
+            try:
+                return [k for k in self._storage.list_keys('accounts')]
+            except Exception:
+                return []
+        def sync_accounts_full(self, users, admins):
+            pass
+
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: [],
         get_all_admins=lambda: [],
     )
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': FakeAccountManager(), 'admin_service': admin_svc}.get(name))
     req = make_request(container)
     res = asyncio.run(admin_api.admin_get_users.__wrapped__(req))
     assert res['users'] == [] and res['admins'] == []
@@ -220,15 +236,21 @@ def test_admin_save_users_delete_keyerror_handled():
             except KeyError:
                 pass
 
-    admin_svc = SimpleNamespace(
-        _account_storage=storage,
-        get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: [k for k, v in storage.data.get('accounts', {}).items()
-                                if 'admin' in (v.get('permissions') or [])],
-        sync_accounts_full=_sync_full,
-    )
+    class FakeAccountManager:
+        def get_all_users(self):
+            return [k for k, v in self._storage.data.get('accounts', {}).items()]
+        def get_all_with_permission(self, permission):
+            if permission == 'admin':
+                return self._storage.data.get('accounts_admin', {}).keys()
+            return []
+        def sync_accounts_full(self, users, admins):
+            _sync_full(users, admins)
+
+    admin_svc = SimpleNamespace(_account_storage=storage)
+    acct_mgr = FakeAccountManager()
+    acct_mgr._storage = storage
     session_mgr = SessMgr({'email': 'admin@admin'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': acct_mgr, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     class Req:
         def __init__(self, payload):

@@ -92,10 +92,8 @@ def test_delete_group(client):
 
 
 def test_delete_missing_group_returns_404(client):
-    from fastapi.exceptions import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        client.delete('/api/groups/no-such-id', headers=_HEADERS)
-    assert exc_info.value.status_code == 404
+    resp = client.delete('/api/groups/no-such-id', headers=_HEADERS)
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

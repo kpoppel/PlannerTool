@@ -83,21 +83,18 @@ class FakeAdminService:
             return list(self._account_storage.list_keys('accounts'))
         except Exception:
             return []
+
     def get_all_admins(self):
         try:
             return list(self._account_storage.list_keys('accounts_admin'))
         except Exception:
             return []
-    def admin_count(self):
-        return len(self.get_all_admins())
-    def create_admin_account(self, email, pat):
-        try:
-            user = self._account_storage.load('accounts', email)
-            user['pat'] = pat
-        except Exception:
-            user = {'email': email, 'pat': pat}
-        self._account_storage.save('accounts', email, user)
-        self._account_storage.save('accounts_admin', email, user)
+
+    def get_all_with_permission(self, permission: str) -> list:
+        if permission == 'admin':
+            return self.get_all_admins()
+        return []
+
     def sync_accounts_full(self, users, admins):
         if isinstance(users, list):
             users = {e: {'email': e} for e in users}
@@ -113,6 +110,17 @@ class FakeAdminService:
             self._account_storage.save('accounts_admin', k, v)
         for k in current_admins - set(admins):
             self._account_storage.delete('accounts_admin', k)
+
+    def admin_count(self):
+        return len(self.get_all_admins())
+    def create_admin_account(self, email, pat):
+        try:
+            user = self._account_storage.load('accounts', email)
+            user['pat'] = pat
+        except Exception:
+            user = {'email': email, 'pat': pat}
+        self._account_storage.save('accounts', email, user)
+        self._account_storage.save('accounts_admin', email, user)
 
 
 class SessMgr:
@@ -131,11 +139,8 @@ def make_request(container, headers=None, cookies=None):
 
 def test_backup_existing_fallback_uses_backend():
     storage = FakeStorageFailSave()
-    # populate existing key so _backup_existing will attempt to backup
     storage.data['config']['projects'] = b'rawbytes'
-    # call the internal helper
     admin_api._backup_existing(storage, 'projects', 'projects')
-    # backend.save should have been called with the backup key
     assert storage._backend.saved, 'backend.save was not called as fallback'
     ns, key, val = storage._backend.saved[0]
     assert ns == 'config'
@@ -149,7 +154,7 @@ def test_admin_save_users_forbidden_removal_of_current_admin():
 
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1@admin'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     class Req:
         def __init__(self, payload):
@@ -175,7 +180,7 @@ def test_admin_save_users_add_and_remove_users_and_admins():
 
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1@admin'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     class Req:
         def __init__(self, payload):
@@ -186,7 +191,6 @@ def test_admin_save_users_add_and_remove_users_and_admins():
         async def json(self):
             return self._payload
 
-    # Add u2 and admin2, remove nothing else
     payload = {'users': ['u1', 'u2'], 'admins': ['admin1@admin', 'admin2@admin']}
     req = Req(payload)
     res = asyncio.run(admin_api.admin_save_users.__wrapped__(req))
@@ -199,7 +203,7 @@ def test_admin_save_users_invalid_payload_types():
     storage = FakeStorageBase()
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1@admin'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     class ReqBad:
         def __init__(self, payload):
@@ -210,12 +214,10 @@ def test_admin_save_users_invalid_payload_types():
         async def json(self):
             return self._payload
 
-    # Non-dict payload
     req1 = ReqBad(['not', 'a', 'dict'])
     with pytest.raises(HTTPException):
         asyncio.run(admin_api.admin_save_users.__wrapped__(req1))
 
-    # users/admins not lists
     req2 = ReqBad({'users': 'string', 'admins': 'string'})
     with pytest.raises(HTTPException):
         asyncio.run(admin_api.admin_save_users.__wrapped__(req2))

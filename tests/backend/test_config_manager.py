@@ -184,25 +184,6 @@ def test_restore_backup_calls_sync_accounts_fn():
     # sync is called with the admin email list derived from permissions
     assert 'u@x.com' in called['admins']
 
-
-def test_restore_backup_calls_sync_accounts_fn_legacy_format():
-    """Legacy backup with separate 'admins' dict is still handled correctly."""
-    from planner_lib.admin.config_manager import ConfigManager
-    called = {}
-
-    def sync(users, admins):
-        called['users'] = users
-        called['admins'] = admins
-
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
-    # Old backup format: had a separate 'admins' key
-    data = {'accounts': {'users': {'u@x.com': {'email': 'u@x.com'}}, 'admins': {'u@x.com': {}}}}
-    cm.restore_backup(data, sync_accounts_fn=sync)
-    assert 'u@x.com' in called['users']
-    # Legacy admin entry should be promoted to permissions and included in admins list
-    assert 'u@x.com' in called['admins']
-
-
 def test_restore_backup_guards_current_admin():
     from planner_lib.admin.config_manager import ConfigManager
     cm = ConfigManager(config_storage=_Store(), account_storage=_Store())

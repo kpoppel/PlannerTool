@@ -85,7 +85,8 @@ def _empty_page_response():
 def _events_to_content(events: dict) -> str:
     """Render events dict into the wiki page format used by the backend."""
     backend = _make_backend()
-    return backend._render_page(events)
+    categories = { "name": "test", "is_special": True }
+    return backend._render_page(events, categories)
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +123,15 @@ class TestRenderPage:
     def test_contains_data_block(self):
         b = _make_backend()
         events = {'x1': {'id': 'x1', 'date': '2026-06-01', 'title': 'Go Live', 'plan_id': 'p1'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         assert '<!-- planner-tool-events' in content
         assert '"x1"' in content
 
     def test_empty_events_renders_no_table(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         assert '|------|' not in content
         assert 'No events configured' in content
 
@@ -138,7 +141,8 @@ class TestRenderPage:
             'a': {'id': 'a', 'date': '2026-05-01', 'title': 'Release', 'plan_id': 'plan-1'},
             'b': {'id': 'b', 'date': '2026-06-01', 'title': 'Freeze', 'plan_id': 'plan-2'},
         }
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         assert '| 2026-05-01 | Release |' in content
         assert '| 2026-06-01 | Freeze |' in content
 
@@ -147,7 +151,8 @@ class TestRenderPage:
         events = {
             'e1': {'id': 'e1', 'date': '2026-07-04', 'title': 'Independence', 'plan_id': 'us'},
         }
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         assert b._parse_events(content) == events
 
 
@@ -174,7 +179,8 @@ class TestFetchEvents:
             'a1': {'id': 'a1', 'date': '2026-01-01', 'title': 'A', 'plan_id': 'p'},
             'a2': {'id': 'a2', 'date': '2026-02-01', 'title': 'B', 'plan_id': 'p'},
         }
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.fetch_events(credential=_CRED)
@@ -186,7 +192,8 @@ class TestFetchEvents:
             'a1': {'id': 'a1', 'date': '2026-01-01', 'title': 'A', 'plan_id': 'plan-1'},
             'a2': {'id': 'a2', 'date': '2026-02-01', 'title': 'B', 'plan_id': 'plan-2'},
         }
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.fetch_events(plan_id='plan-1', credential=_CRED)
@@ -207,7 +214,8 @@ class TestFetchEvent:
     def test_returns_event_by_id(self):
         b = _make_backend()
         events = {'abc': {'id': 'abc', 'date': '2026-03-01', 'title': 'T', 'plan_id': 'p'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.fetch_event('abc', credential=_CRED)
@@ -215,7 +223,8 @@ class TestFetchEvent:
 
     def test_raises_key_error_for_missing_id(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             with pytest.raises(KeyError):
@@ -234,7 +243,8 @@ class TestCreateEvent:
 
     def test_creates_event_and_returns_it(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.create_event('2026-05-01', 'Release', 'plan-1', credential=_CRED)
@@ -245,7 +255,8 @@ class TestCreateEvent:
 
     def test_write_called_with_updated_content(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content, '"v1"')
             b.create_event('2026-05-01', 'Event', 'p', credential=_CRED)
@@ -267,7 +278,8 @@ class TestUpdateEvent:
 
     def test_raises_key_error_when_event_missing(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             with pytest.raises(KeyError):
@@ -276,7 +288,8 @@ class TestUpdateEvent:
     def test_updates_date(self):
         b = _make_backend()
         events = {'e1': {'id': 'e1', 'date': '2026-01-01', 'title': 'T', 'plan_id': 'p'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.update_event('e1', date='2026-12-31', credential=_CRED)
@@ -286,7 +299,8 @@ class TestUpdateEvent:
     def test_updates_title(self):
         b = _make_backend()
         events = {'e1': {'id': 'e1', 'date': '2026-01-01', 'title': 'Old', 'plan_id': 'p'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.update_event('e1', title='New', credential=_CRED)
@@ -295,7 +309,8 @@ class TestUpdateEvent:
     def test_updates_plan_id(self):
         b = _make_backend()
         events = {'e1': {'id': 'e1', 'date': '2026-01-01', 'title': 'T', 'plan_id': 'old-plan'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.update_event('e1', plan_id='new-plan', credential=_CRED)
@@ -314,7 +329,8 @@ class TestDeleteEvent:
 
     def test_returns_false_when_event_missing(self):
         b = _make_backend()
-        content = b._render_page({})
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page({}, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             result = b.delete_event('not-there', credential=_CRED)
@@ -323,7 +339,8 @@ class TestDeleteEvent:
     def test_returns_true_and_removes_event(self):
         b = _make_backend()
         events = {'e1': {'id': 'e1', 'date': '2026-01-01', 'title': 'T', 'plan_id': 'p'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             # First call (read) returns page with event; after delete write happens
             mock_wc.return_value.get_page.return_value = _page_response(content)
@@ -335,7 +352,8 @@ class TestDeleteEvent:
     def test_write_does_not_contain_deleted_event(self):
         b = _make_backend()
         events = {'e1': {'id': 'e1', 'date': '2026-01-01', 'title': 'Remove Me', 'plan_id': 'p'}}
-        content = b._render_page(events)
+        categories = { "name": "test", "is_special": True }
+        content = b._render_page(events, categories)
         with patch.object(b, '_get_wiki_client') as mock_wc:
             mock_wc.return_value.get_page.return_value = _page_response(content)
             b.delete_event('e1', credential=_CRED)

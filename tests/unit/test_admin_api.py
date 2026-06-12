@@ -44,17 +44,69 @@ class FakeStorage:
             return list(self.data['accounts_admin'].keys())
         return []
 
+class FakeAccountManager:
+    def __init__(self, storage):
+        self._storage = storage
+
+    def save(self, config: AccountPayload) -> dict: ...
+
+    def load(self, key: str) -> dict: ...
+
+    def has_permission(self, key: str, permission: str) -> bool: ...
+
+    def get_all_with_permission(self, permission) -> list:
+        # Stub delegate to FakeStorage for accounts_admin namespace
+        return [k for k in self._storage.list_keys('accounts_admin')]
+
+    def count_all_with_permission(self, permission) -> int:
+        return len([k for k in self._storage.list_keys('accounts_admin')])
+
+    def is_admin(self, email):
+        return email and email.endswith('@admin')
+ 
+    def get_all_users(self):
+        try:
+            return list(self._storage.list_keys('accounts'))
+        except Exception:
+            return []
+
+    # def get_all_admins(self):
+    #     try:
+    #         return list(self._storage.list_keys('accounts_admin'))
+    #     except Exception:
+    #         return []
+
+    # def admin_count(self):
+    #     return len(self.get_all_admins())
+
+    # def create_admin_account(self, email, pat):
+    #     user = {'email': email, 'pat': pat}
+    #     self._storage.save('accounts', email, user)
+    #     self._storage.save('accounts_admin', email, user)
+
+    def sync_accounts_full(self, users, admins):
+        if isinstance(users, list):
+            users = {e: {'email': e} for e in users}
+        if isinstance(admins, list):
+            admins = {e: {'email': e} for e in admins}
+        current_users = set(self._storage.list_keys('accounts') or [])
+        current_admins = set(self._storage.list_keys('accounts_admin') or [])
+        for k, v in users.items():
+            self._storage.save('accounts', k, v)
+        for k in current_users - set(users):
+            self._storage.delete('accounts', k)
+        for k, v in admins.items():
+            self._storage.save('accounts_admin', k, v)
+        for k in current_admins - set(admins):
+            self._storage.delete('accounts_admin', k)
 
 class FakeAdminService:
     def __init__(self, storage):
         self._config_storage = storage
-        self._account_storage = storage
 
     def reload_config(self, request):
         return {'reloaded': True}
 
-    def is_admin(self, email):
-        return email and email.endswith('@admin')
 
     def get_config(self, key, default=None):
         try:
@@ -78,46 +130,8 @@ class FakeAdminService:
     def save_config_raw(self, key, content):
         self._config_storage.save('config', key, content)
 
-    def get_all_users(self):
-        try:
-            return list(self._account_storage.list_keys('accounts'))
-        except Exception:
-            return []
-
-    def get_all_admins(self):
-        try:
-            return list(self._account_storage.list_keys('accounts_admin'))
-        except Exception:
-            return []
-
-    def admin_count(self):
-        return len(self.get_all_admins())
-
-    def create_admin_account(self, email, pat):
-        user = {'email': email, 'pat': pat}
-        self._account_storage.save('accounts', email, user)
-        self._account_storage.save('accounts_admin', email, user)
-
     def get_project_map(self):
         return []
-
-    def sync_accounts_full(self, users, admins):
-        if isinstance(users, list):
-            users = {e: {'email': e} for e in users}
-        if isinstance(admins, list):
-            admins = {e: {'email': e} for e in admins}
-        current_users = set(self._account_storage.list_keys('accounts') or [])
-        current_admins = set(self._account_storage.list_keys('accounts_admin') or [])
-        for k, v in users.items():
-            self._account_storage.save('accounts', k, v)
-        for k in current_users - set(users):
-            self._account_storage.delete('accounts', k)
-        for k, v in admins.items():
-            self._account_storage.save('accounts_admin', k, v)
-        for k in current_admins - set(admins):
-            self._account_storage.delete('accounts_admin', k)
-
-
 class SessMgr:
     def __init__(self, ctx=None):
         self._ctx = ctx or {}
@@ -190,9 +204,10 @@ def test_admin_get_users_and_save_users():
     storage = FakeStorage()
     storage.save('accounts', 'u1', {'email': 'u1'})
     storage.save('accounts_admin', 'admin1', {'email': 'admin1'})
+    acct_mgr = FakeAccountManager(storage)
     admin_svc = FakeAdminService(storage)
     session_mgr = SessMgr({'email': 'admin1'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': acct_mgr, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
     req = make_request(container, headers={'X-Session-Id': 's1'})
 
     # get users

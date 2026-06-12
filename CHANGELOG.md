@@ -31,6 +31,7 @@ Template - do not change :
 - `scripts/migrations/0024_groups_members_and_pending_changes.py` — migration that reconstructs `group.members` from old `feature.groupId` overrides and converts `scenario.pendingGroupChanges` to `scenario.scenarioGroups` / `scenario.groupOverrides`
 
 ### Changed
+- Admin Projects: drag handles replace checkboxes, letting admins reorder projects by dragging — the generated JSON reflects the new sequence.
 - removed legacy backup account format support
 - deprecated /api/account endpoint. Use /api/config
 - `groupBandLayout.buildGroupBandItems` now reads feature membership from `group.members` (not `feature.groupId`)

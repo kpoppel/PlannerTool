@@ -6,6 +6,7 @@ these tests verify they work correctly.
 """
 import pytest
 from planner_lib.admin.service import AdminService
+from planner_lib.accounts.constants import AccountPermissions
 
 
 class _FakeStorage:
@@ -34,13 +35,51 @@ class _FakeStorage:
         pass
 
 
+class _FakeAccountManager:
+    def __init__(self, storage):
+        self._storage = storage
+
+    def get_all_users(self):
+        try:
+            return self._storage.list_keys('accounts')
+        except Exception:
+            return []
+
+    def load(self, email):
+        return self._storage.load('accounts', email)
+
+    def save(self, payload_or_user_dict):
+        if hasattr(payload_or_user_dict, '__dict__'):
+            data = dict(payload_or_user_dict.__dict__)
+        elif isinstance(payload_or_user_dict, dict):
+            data = dict(payload_or_user_dict)
+        else:
+            data = dict(payload_or_user_dict)
+        email = data.get('email') or (hasattr(payload_or_user_dict, 'email') and payload_or_user_dict.email)
+        if email:
+            self._storage.save('accounts', email, data)
+
+    def get_all_with_permission(self, permission):
+        users = self._storage.list_keys('accounts') or []
+        if permission == 'admin':
+            return [k for k in users
+                    if 'admin' in (self._storage.load('accounts', k).get('permissions') or [])]
+        return []
+
+    def count_all_with_permission(self, permission):
+        return len(self.get_all_with_permission(permission))
+
+    def sync_accounts_full(self, users, admins):
+        pass
+
+
 def _make_service(**kwargs):
     storage = _FakeStorage()
     defaults = dict(
         account_storage=storage,
         config_storage=storage,
         project_repository=None,
-        account_manager=None,
+        account_manager=_FakeAccountManager(storage),
         azure_client=None,
     )
     defaults.update(kwargs)
@@ -53,31 +92,30 @@ def _make_service(**kwargs):
 
 def test_admin_count_returns_zero_when_no_admins():
     svc, _ = _make_service()
-    assert svc.admin_count() == 0
+    assert svc._account_manager.count_all_with_permission(AccountPermissions.ADMIN) == 0
 
 
 def test_admin_count_returns_correct_count():
     svc, store = _make_service()
     store.save('accounts', 'a@example.com', {'email': 'a@example.com', 'permissions': ['admin']})
     store.save('accounts', 'b@example.com', {'email': 'b@example.com', 'permissions': ['admin']})
-    assert svc.admin_count() == 2
+    assert svc._account_manager.count_all_with_permission(AccountPermissions.ADMIN) == 2
 
 
 def test_create_admin_account_creates_user_and_admin_records():
     svc, store = _make_service()
-    svc.create_admin_account('admin@example.com', 'mytoken')
+    svc._account_manager.save({'email': 'admin@example.com', 'pat': 'mytoken', 'permissions': [AccountPermissions.ADMIN]})
 
     user = store.load('accounts', 'admin@example.com')
     assert user['email'] == 'admin@example.com'
     assert user['pat'] == 'mytoken'
-    assert 'admin' in user.get('permissions', [])
+    assert AccountPermissions.ADMIN in user.get('permissions', [])
 
 
 def test_create_admin_account_updates_pat_if_account_exists():
     svc, store = _make_service()
     store.save('accounts', 'admin@example.com', {'email': 'admin@example.com', 'pat': 'old'})
-
-    svc.create_admin_account('admin@example.com', 'new_token')
+    svc._account_manager.save({'email': 'admin@example.com', 'pat': 'new_token'})
     user = store.load('accounts', 'admin@example.com')
     assert user['pat'] == 'new_token'
 

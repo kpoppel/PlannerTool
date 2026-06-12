@@ -99,12 +99,12 @@ def test_add_admin_copies_existing_account_and_removes_user_admin_marker():
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: [k for k, v in storage.data['accounts'].items()
-                                if 'admin' in (v.get('permissions') or [])],
+        get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
+                                                   if 'admin' in (v.get('permissions') or [])],
         sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
     )
     session_mgr = SessMgr({'email': 'admin_old'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     # incoming: add admin_new (should be given admin permission), remove nothing
     payload = {'users': ['u1', 'u2', 'admin_old', 'admin_new'], 'admins': ['admin_old', 'admin_new']}
@@ -124,12 +124,12 @@ def test_remove_user_also_removes_account():
     admin_svc = SimpleNamespace(
         _account_storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
-        get_all_admins=lambda: [k for k, v in storage.data['accounts'].items()
-                                if 'admin' in (v.get('permissions') or [])],
+        get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
+                                                   if 'admin' in (v.get('permissions') or [])],
         sync_accounts_full=lambda users, admins: _do_sync(storage, users, admins),
     )
     session_mgr = SessMgr({'email': 'someone@admin'})
-    container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
+    container = SimpleNamespace(get=lambda name: {'account_manager': admin_svc, 'admin_service': admin_svc, 'session_manager': session_mgr}.get(name))
 
     payload = {'users': [], 'admins': []}
     req = make_request(container, payload, session_email='someone@admin')

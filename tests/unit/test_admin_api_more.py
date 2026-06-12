@@ -72,6 +72,11 @@ def test_reload_config_appends_server_config(client, monkeypatch):
     register_service_on_client(client, 'server_config_storage', fake_storage)
     # Ensure admin checks succeed in tests by registering a permissive admin service
     register_service_on_client(client, 'admin_service', _FakeAdmin(client.app.state.container))
+    # Middleware calls account_manager.has_permission — also intercept it
+    class _PermitAll:
+        def has_permission(self, email, permission):
+            return True
+    register_service_on_client(client, 'account_manager', _PermitAll())
 
     # Ensure a session context exists for the test session id so the
     # middleware/require_admin_session can resolve the email.
@@ -111,6 +116,9 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
         def load(self, sid):
             called['account_load'] = True
             return real_mgr.load(sid)
+
+        def has_permission(self, email, permission):
+            return True
 
     register_service_on_client(client, 'account_manager', ProxyAcctMgr())
     # Also ensure the AdminService uses our proxy so reload_config triggers the proxy.load
