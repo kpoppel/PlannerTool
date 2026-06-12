@@ -93,7 +93,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     .floating-toolbar {
       position: fixed;
       top: 80px;
-      right: 170px; /* offset left so it doesn't overlap the markers toolbar */
+      right: 20px;
       background: white;
       padding: 12px;
       border-radius: 8px;
@@ -376,7 +376,19 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       font-size: 11px;
       color: #333;
       flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 120ms ease, color 120ms ease;
     }
+
+    .cat-name.visible {
+      background: rgb(55, 85, 130);
+      color: #fff;
+    }
+
+    .cat-name:hover { background: rgba(55,85,130,0.08); color: #000; }
 
     .star-btn {
       background: transparent;
@@ -628,7 +640,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     return html`
       <div class="plan-section">
         <div class="section-header">Event Categories</div>
-        ${this.categories.map(cat => {
+          ${this.categories.map(cat => {
           if (this._editCatId === cat.id) {
             return html`
               <div class="edit-row">
@@ -644,6 +656,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
               </div>
             `;
           }
+          const visible = !this._hiddenCategories[cat.name];
           return html`
             <div class="cat-row">
               <button
@@ -651,7 +664,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
                 title="${cat.is_special ? 'Special (black border) — click to unset' : 'Set as special (renders with black border)'}"
                 @click=${() => this._toggleSpecial(cat)}
               >★</button>
-              <span class="cat-name">${cat.name}</span>
+              <span
+                class="cat-name ${visible ? 'visible' : ''}"
+                @click=${() => this._toggleCategoryVisibility(cat.name)}
+                title="${visible ? 'Hide' : 'Show'} ${cat.name} events"
+              >${cat.name}</span>
               <button class="icon-btn" title="Edit" @click=${() => this._startCatEdit(cat)}>✎</button>
               <button class="icon-btn delete" title="Delete" @click=${() => this._deleteCategory(cat.id)}>✕</button>
             </div>
@@ -676,23 +693,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     `;
   }
 
-  _renderCategoryFilterSection() {
-    if (!this.categories.length) return '';
-    return html`
-      <div class="plan-section">
-        <div class="section-header">Show categories</div>
-        <div class="filter-section">
-          ${this.categories.map(cat => html`
-            <span
-              class="filter-badge ${this._hiddenCategories[cat.name] ? 'hidden' : ''}"
-              @click=${() => this._toggleCategoryVisibility(cat.name)}
-              title="${this._hiddenCategories[cat.name] ? 'Show' : 'Hide'} ${cat.name} events"
-            >${cat.name}</span>
-          `)}
-        </div>
-      </div>
-    `;
-  }
+  
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
@@ -718,6 +719,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
             )}
           </select>
           <select @change=${(e) => (this._editCategory = e.target.value)}>
+            <option value="" ?selected=${this._editCategory === ''}>(none)</option>
             ${this.categories.map(
               (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._editCategory}>${cat.name}</option>`
             )}
@@ -824,7 +826,6 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
         <div class="floating-content">
           ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
           ${this._renderCategoriesSection()}
-          ${this._renderCategoryFilterSection()}
           ${selectedPlans.length === 0
             ? html`<div class="no-plans-msg">No plans selected.</div>`
             : selectedPlans.map((plan) => this._renderPlanSection(plan))}

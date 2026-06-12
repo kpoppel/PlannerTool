@@ -31,6 +31,7 @@ Template - do not change :
 - `scripts/migrations/0024_groups_members_and_pending_changes.py` — migration that reconstructs `group.members` from old `feature.groupId` overrides and converts `scenario.pendingGroupChanges` to `scenario.scenarioGroups` / `scenario.groupOverrides`
 
 ### Changed
+- Event plugin: category show/hide now in the category section to avoid duplicating names
 - Admin Projects: drag handles replace checkboxes, letting admins reorder projects by dragging — the generated JSON reflects the new sequence.
 - Admin Teams: add drag handles to allow reordering teams.
 - removed legacy backup account format support
@@ -43,6 +44,7 @@ Template - do not change :
 - Save modal (AzureDevopsModal): replaced per-row checkboxes with clickable-cell selection — changed cells are pre-selected (yellow); click a cell to exclude it from save, click a column header to toggle the whole column
 
 ### Fixed
+- Fixed event plugin category select dropdown had no (none) default.
 - admin package service no longer attempt to duplicate account management which caused first time user creation to fail due to unencrypted PAT being rejected
 - Group ID lifecycle: after committing pending group creates via the save modal, the scenario is now flushed to disk with real server UUIDs replacing stale temp IDs
 
