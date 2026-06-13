@@ -41,10 +41,12 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     loading: { type: Boolean },
     _editId: { type: String, state: true },
     _editDate: { type: String, state: true },
+    _editEndDate: { type: String, state: true },
     _editTitle: { type: String, state: true },
     _editPlanId: { type: String, state: true },
     _editCategory: { type: String, state: true },
     _newDates: { type: Object, state: true },
+    _newEndDates: { type: Object, state: true },
     _newTitles: { type: Object, state: true },
     _newCategories: { type: Object, state: true },
     _saving: { type: Boolean, state: true },
@@ -63,10 +65,12 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this.loading = false;
     this._editId = null;
     this._editDate = '';
+    this._editEndDate = '';
     this._editTitle = '';
     this._editPlanId = '';
     this._editCategory = '';
     this._newDates = {};
+    this._newEndDates = {};
     this._newTitles = {};
     this._newCategories = {};
     this._saving = false;
@@ -521,6 +525,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   _startEdit(ev) {
     this._editId = ev.id;
     this._editDate = ev.date;
+    this._editEndDate = ev.end_date || '';
     this._editTitle = ev.title;
     this._editPlanId = ev.plan_id;
     this._editCategory = ev.category || '';
@@ -529,6 +534,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   _cancelEdit() {
     this._editId = null;
     this._editDate = '';
+    this._editEndDate = '';
     this._editTitle = '';
     this._editPlanId = '';
     this._editCategory = '';
@@ -537,12 +543,14 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   async _saveEdit() {
     if (!this._editDate || !this._editTitle || !this._editPlanId) return;
     this._saving = true;
-    const updated = await dataService.updateEvent(this._editId, {
+    const payload = {
       date: this._editDate,
       title: this._editTitle,
       plan_id: this._editPlanId,
       category: this._editCategory,
-    });
+      end_date: this._editEndDate ?? '',
+    };
+    const updated = await dataService.updateEvent(this._editId, payload);
     if (updated) {
       await this.refresh();
       bus.emit(PlanEventEvents.CHANGED);
@@ -559,13 +567,17 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   async _addEvent(planId) {
     const date = this._newDates[planId] || '';
+    const endDate = this._newEndDates[planId] || '';
     const title = this._newTitles[planId] || '';
-    const category = this._newCategories[planId] || this.categories[0]?.name || '';
+    const category = this._newCategories[planId] ?? this.categories[0]?.name ?? '';
     if (!date || !title) return;
     this._saving = true;
-    const created = await dataService.createEvent({ date, title, plan_id: planId, category });
+    const payload = { date, title, plan_id: planId, category };
+    if (endDate) payload.end_date = endDate;
+    const created = await dataService.createEvent(payload);
     if (created) {
       this._newDates = { ...this._newDates, [planId]: '' };
+      this._newEndDates = { ...this._newEndDates, [planId]: '' };
       this._newTitles = { ...this._newTitles, [planId]: '' };
       this._newCategories = { ...this._newCategories, [planId]: '' };
       this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
@@ -706,6 +718,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
             @input=${(e) => (this._editDate = e.target.value)}
           />
           <input
+            type="date"
+            .value=${this._editEndDate}
+            @input=${(e) => (this._editEndDate = e.target.value)}
+          />
+          <input
             type="text"
             .value=${this._editTitle}
             @input=${(e) => (this._editTitle = e.target.value)}
@@ -735,7 +752,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     }
     return html`
       <div class="event-row">
-        <span class="event-date">${ev.date}</span>
+        <span class="event-date">${ev.date}${ev.end_date ? ` → ${ev.end_date}` : ''}</span>
         <span class="event-title" title=${ev.title}>${ev.title}</span>
         <button class="icon-btn" title="Edit" @click=${() => this._startEdit(ev)}>✎</button>
         <button
@@ -753,7 +770,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)); // newest first
     const newDate = this._newDates[plan.id] || '';
     const newTitle = this._newTitles[plan.id] || '';
-    const newCategory = this._newCategories[plan.id] || this.categories[0]?.name || '';
+    const newCategory = this._newCategories[plan.id] ?? this.categories[0]?.name ?? '';
     const addOpen = !!this._addOpenPlanIds[plan.id];
     return html`
       <div class="plan-section">
@@ -784,7 +801,15 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
               @input=${(e) => {
                 this._newDates = { ...this._newDates, [plan.id]: e.target.value };
               }}
-              title="Event date"
+              title="Event start date"
+            />
+            <input
+              type="date"
+              .value=${this._newEndDates[plan.id] || ''}
+              @input=${(e) => {
+                this._newEndDates = { ...this._newEndDates, [plan.id]: e.target.value };
+              }}
+              title="Event end date (optional)"
             />
             <input
               type="text"
@@ -801,8 +826,9 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
                 this._newCategories = { ...this._newCategories, [plan.id]: e.target.value };
               }}
             >
+              <option value="" ?selected=${this._newCategories[plan.id] === ''}>(none)</option>
               ${this.categories.map(
-                (cat) => html`<option value=${cat.name} ?selected=${cat.name === newCategory}>${cat.name}</option>`
+                  (cat) => html`<option value=${cat.name} ?selected=${cat.name === newCategory}>${cat.name}</option>`
               )}
             </select>
             <button
@@ -887,12 +913,26 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
     const positioned = filteredEvents
       .map((ev) => {
-        const x = this._calcX(new Date(ev.date), months, monthWidth);
-        return x !== null ? { ev, x } : null;
+        const startX = this._calcX(new Date(ev.date), months, monthWidth);
+        if (startX === null) return null;
+        let endX = startX;
+        if (ev.end_date) {
+          const endCalc = this._calcX(new Date(ev.end_date), months, monthWidth);
+          if (endCalc !== null) {
+            endX = Math.max(startX, endCalc);
+          } else {
+            // If end date falls beyond visible months, extend to board edge
+            const endDateObj = new Date(ev.end_date);
+            const lastMonth = months[months.length - 1];
+            const lastMonthEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0);
+            if (endDateObj > lastMonthEnd) endX = boardRect.width;
+          }
+        }
+        return { ev, xStart: startX, xEnd: endX };
       })
       .filter(Boolean);
 
-    positioned.sort((a, b) => a.x - b.x);
+    positioned.sort((a, b) => a.xStart - b.xStart);
 
     // Detect whether the markers overlay is active so event tags can be
     // shifted down by one row to avoid overlap with the markers row.
@@ -901,7 +941,8 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     // Track clusters to stack tags that land on the same X position
     const xStack = [];
 
-    positioned.forEach(({ ev, x }) => {
+    positioned.forEach(({ ev, xStart, xEnd }) => {
+      const x = xStart;
       let cluster = xStack.find((c) => Math.abs(c.maxX - x) < TAG_CLUSTER_THRESHOLD);
       if (!cluster) {
         cluster = { maxX: x, rows: 0 };
@@ -911,7 +952,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       const row = cluster.rows;
       cluster.rows++;
 
-      this._createEventTag(x, ev, boardRect.height, boardCoords.scrollY, row, markersActive);
+      this._createEventTag(xStart, xEnd, ev, boardRect.height, boardCoords.scrollY, row, markersActive);
     });
 
     // Broadcast the clearance FeatureBoard needs so its first card row does not
@@ -945,14 +986,15 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
    * Draw a single event: vertical dashed line + tag anchored to top of board.
    * Tag colour matches the plan colour.
    *
-   * @param {number} x              Board-space X coordinate
-   * @param {{id:string,date:string,title:string,plan_id:string}} ev
+  * @param {number} xStart         Board-space start X coordinate
+  * @param {number} xEnd           Board-space end X coordinate (same as xStart for single-day)
+  * @param {{id:string,date:string,title:string,plan_id:string}} ev
    * @param {number} boardHeight
    * @param {number} scrollY        Current vertical scroll of the board
    * @param {number} row            Stack row (0 = nearest top, 1 = one below, …)
    * @param {boolean} markersActive Whether the markers overlay is also visible
    */
-  _createEventTag(x, ev, boardHeight, scrollY, row, markersActive) {
+  _createEventTag(xStart, xEnd, ev, boardHeight, scrollY, row, markersActive) {
     const plan = (state.projects || []).find((p) => p.id === ev.plan_id);
     const color = plan?.color || '#1565c0';
 
@@ -967,18 +1009,44 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const markerOffset = markersActive ? TAG_HEIGHT + 4 : 0;
     const tagY = (scrollY ?? 0) + 5 + markerOffset + row * (TAG_HEIGHT + 3);
 
-    // Vertical dashed line spanning the full board height
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('x1', x);
-    line.setAttribute('y1', 0);
-    line.setAttribute('x2', x);
-    line.setAttribute('y2', boardHeight);
-    line.setAttribute('stroke', color);
-    line.setAttribute('opacity', '0.4');
-    line.setAttribute('stroke-width', '1.5');
-    line.setAttribute('stroke-dasharray', '3,5');
-    line.style.pointerEvents = 'none';
-    this._svgEl.appendChild(line);
+    // If this event spans a range (xEnd > xStart), draw a translucent band
+    if (xEnd && xEnd > xStart + 1) {
+      const band = document.createElementNS(SVG_NS, 'rect');
+      band.setAttribute('x', xStart);
+      band.setAttribute('y', 0);
+      band.setAttribute('width', Math.max(1, xEnd - xStart));
+      band.setAttribute('height', boardHeight);
+      band.setAttribute('fill', color);
+      band.setAttribute('opacity', '0.12');
+      band.style.pointerEvents = 'none';
+      this._svgEl.appendChild(band);
+
+      // also draw a subtle start-line for visual anchor
+      const startLine = document.createElementNS(SVG_NS, 'line');
+      startLine.setAttribute('x1', xStart);
+      startLine.setAttribute('y1', 0);
+      startLine.setAttribute('x2', xStart);
+      startLine.setAttribute('y2', boardHeight);
+      startLine.setAttribute('stroke', color);
+      startLine.setAttribute('opacity', '0.45');
+      startLine.setAttribute('stroke-width', '1');
+      startLine.setAttribute('stroke-dasharray', '3,5');
+      startLine.style.pointerEvents = 'none';
+      this._svgEl.appendChild(startLine);
+    } else {
+      // Vertical dashed line spanning the full board height for single-day events
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', xStart);
+      line.setAttribute('y1', 0);
+      line.setAttribute('x2', xStart);
+      line.setAttribute('y2', boardHeight);
+      line.setAttribute('stroke', color);
+      line.setAttribute('opacity', '0.4');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-dasharray', '3,5');
+      line.style.pointerEvents = 'none';
+      this._svgEl.appendChild(line);
+    }
 
     // Tag group
     const tagGroup = document.createElementNS(SVG_NS, 'g');
@@ -987,7 +1055,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     tagGroup.style.pointerEvents = 'auto';
 
     const tagBg = document.createElementNS(SVG_NS, 'rect');
-    tagBg.setAttribute('x', x - tagWidth / 2);
+    tagBg.setAttribute('x', xStart - tagWidth / 2);
     tagBg.setAttribute('y', tagY);
     tagBg.setAttribute('width', tagWidth);
     tagBg.setAttribute('height', TAG_HEIGHT);
@@ -1002,7 +1070,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     tagGroup.appendChild(tagBg);
 
     const tagText = document.createElementNS(SVG_NS, 'text');
-    tagText.setAttribute('x', x);
+    tagText.setAttribute('x', xStart);
     tagText.setAttribute('y', tagY + 13);
     tagText.setAttribute('fill', 'white');
     tagText.setAttribute('font-size', '10');
@@ -1016,7 +1084,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const tooltipParts = [
       ev.title,
       plan ? `Plan: ${plan.name}` : '',
-      `Date: ${ev.date}`,
+      ev.end_date ? `Date: ${ev.date} → ${ev.end_date}` : `Date: ${ev.date}`,
     ].filter(Boolean);
     titleEl.textContent = tooltipParts.join('\n');
     tagGroup.appendChild(titleEl);

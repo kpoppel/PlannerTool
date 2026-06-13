@@ -16,10 +16,12 @@ export class EventsPanel extends LitElement {
     loading: { type: Boolean },
     _editId: { type: String, state: true },
     _editDate: { type: String, state: true },
+    _editEndDate: { type: String, state: true },
     _editTitle: { type: String, state: true },
     _editPlanId: { type: String, state: true },
     _editCategory: { type: String, state: true },
     _newDate: { type: String, state: true },
+    _newEndDate: { type: String, state: true },
     _newTitle: { type: String, state: true },
     _newCategory: { type: String, state: true },
     _saving: { type: Boolean, state: true },
@@ -211,10 +213,12 @@ export class EventsPanel extends LitElement {
     this.loading = false;
     this._editId = null;
     this._editDate = '';
+    this._editEndDate = '';
     this._editTitle = '';
     this._editPlanId = '';
     this._editCategory = '';
     this._newDate = '';
+    this._newEndDate = '';
     this._newTitle = '';
     this._newCategory = '';
     this._saving = false;
@@ -239,6 +243,7 @@ export class EventsPanel extends LitElement {
   _startEdit(ev) {
     this._editId = ev.id;
     this._editDate = ev.date;
+    this._editEndDate = ev.end_date || '';
     this._editTitle = ev.title;
     this._editPlanId = ev.plan_id;
     this._editCategory = ev.category || '';
@@ -247,6 +252,7 @@ export class EventsPanel extends LitElement {
   _cancelEdit() {
     this._editId = null;
     this._editDate = '';
+    this._editEndDate = '';
     this._editTitle = '';
     this._editPlanId = '';
     this._editCategory = '';
@@ -255,12 +261,14 @@ export class EventsPanel extends LitElement {
   async _saveEdit() {
     if (!this._editDate || !this._editTitle || !this._editPlanId) return;
     this._saving = true;
-    const updated = await dataService.updateEvent(this._editId, {
+    const payload = {
       date: this._editDate,
       title: this._editTitle,
       plan_id: this._editPlanId,
       category: this._editCategory,
-    });
+      end_date: this._editEndDate ?? '',
+    };
+    const updated = await dataService.updateEvent(this._editId, payload);
     if (updated) {
       await this._load();
       bus.emit(PlanEventEvents.CHANGED);
@@ -278,16 +286,19 @@ export class EventsPanel extends LitElement {
   async _addEvent() {
     if (!this._newDate || !this._newTitle) return;
     this._saving = true;
-    const created = await dataService.createEvent({
+    const payload = {
       date: this._newDate,
       title: this._newTitle,
       plan_id: this.planId,
-      category: this._newCategory,
-    });
+      category: this._newCategory ?? '',
+    };
+    if (this._newEndDate) payload.end_date = this._newEndDate;
+    const created = await dataService.createEvent(payload);
     if (created) {
       await this._load();
       bus.emit(PlanEventEvents.CHANGED);
       this._newDate = '';
+      this._newEndDate = '';
       this._newTitle = '';
       this._newCategory = '';
     }
@@ -304,6 +315,11 @@ export class EventsPanel extends LitElement {
             .value=${this._editDate}
             @input=${(e) => (this._editDate = e.target.value)}
           />
+            <input
+              type="date"
+              .value=${this._editEndDate}
+              @input=${(e) => (this._editEndDate = e.target.value)}
+            />
           <input
             type="text"
             placeholder="Title"
@@ -319,6 +335,7 @@ export class EventsPanel extends LitElement {
             )}
           </select>
           <select @change=${(e) => (this._editCategory = e.target.value)}>
+            <option value="" ?selected=${this._editCategory === ''}>(none)</option>
             ${this.categories.map(
               (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._editCategory}>${cat.name}</option>`
             )}
@@ -332,7 +349,7 @@ export class EventsPanel extends LitElement {
     }
     return html`
       <div class="event-row">
-        <span class="event-date">${ev.date}</span>
+        <span class="event-date">${ev.date}${ev.end_date ? ` → ${ev.end_date}` : ''}</span>
         <span class="event-title" title=${ev.title}>${ev.title}</span>
         <button class="icon-btn" title="Edit event" @click=${() => this._startEdit(ev)}>✎</button>
         <button class="icon-btn delete" title="Delete event" @click=${() => this._deleteEvent(ev.id)}>✕</button>
@@ -367,6 +384,7 @@ export class EventsPanel extends LitElement {
             title="Event title"
           />
           <select @change=${(e) => (this._newCategory = e.target.value)}>
+            <option value="" ?selected=${this._newCategory === ''}>(none)</option>
             ${this.categories.map(
               (cat) => html`<option value=${cat.name} ?selected=${cat.name === this._newCategory}>${cat.name}</option>`
             )}

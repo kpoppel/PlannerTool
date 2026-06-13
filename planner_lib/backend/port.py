@@ -377,6 +377,7 @@ class EventBackend(Protocol):
         title: str,
         plan_id: str,
         category: str = '',
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 
@@ -387,6 +388,7 @@ class EventBackend(Protocol):
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
         category: Optional[str] = None,
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]: ...
 

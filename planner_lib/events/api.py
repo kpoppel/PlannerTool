@@ -41,6 +41,7 @@ class EventCreate(BaseModel):
     title: str
     plan_id: str
     category: str = ''
+    end_date: Optional[str] = None
 
     @field_validator("date")
     @classmethod
@@ -64,12 +65,26 @@ class EventCreate(BaseModel):
             raise ValueError("plan_id must not be empty")
         return v.strip()
 
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date(cls, v: Optional[str]) -> Optional[str]:
+        # Allow explicit empty string to signal clearing the end date.
+        if v is None:
+            return v
+        if v == "":
+            return v
+        import re
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("end_date must be YYYY-MM-DD")
+        return v
+
 
 class EventUpdate(BaseModel):
     date: Optional[str] = None
     title: Optional[str] = None
     plan_id: Optional[str] = None
     category: Optional[str] = None
+    end_date: Optional[str] = None
 
     @field_validator("date")
     @classmethod
@@ -98,6 +113,19 @@ class EventUpdate(BaseModel):
         if not v.strip():
             raise ValueError("plan_id must not be empty")
         return v.strip()
+
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date(cls, v: Optional[str]) -> Optional[str]:
+        # Allow explicit empty string to signal clearing the end date.
+        if v is None:
+            return v
+        if v == "":
+            return v
+        import re
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("end_date must be YYYY-MM-DD")
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +222,7 @@ async def api_events_create(request: Request, payload: dict = Body(default={})):
             title=data.title,
             plan_id=data.plan_id,
             category=data.category,
+            end_date=data.end_date,
             user_id=_user_id(request),
         )
     except Exception as e:
@@ -217,6 +246,7 @@ async def api_events_update(event_id: str, request: Request, payload: dict = Bod
             title=data.title,
             plan_id=data.plan_id,
             category=data.category,
+            end_date=data.end_date,
             user_id=_user_id(request),
         )
     except KeyError:

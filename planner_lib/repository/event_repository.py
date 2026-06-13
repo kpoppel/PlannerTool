@@ -75,6 +75,7 @@ class EventRepository:
         title: str,
         plan_id: str,
         category: str = '',
+        end_date: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new event and return it (including generated id)."""
@@ -83,6 +84,7 @@ class EventRepository:
             title=title,
             plan_id=plan_id,
             category=category,
+            end_date=end_date,
             credential=self._get_credential(user_id),
         )
 
@@ -93,6 +95,7 @@ class EventRepository:
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
         category: Optional[str] = None,
+        end_date: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Update fields on an existing event (raises KeyError when not found)."""
@@ -102,6 +105,7 @@ class EventRepository:
             title=title,
             plan_id=plan_id,
             category=category,
+            end_date=end_date,
             credential=self._get_credential(user_id),
         )
 

@@ -117,11 +117,14 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         title: str,
         plan_id: str,
         category: str = '',
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,  # ignored
     ) -> Dict[str, Any]:
         """Create a new event and return it."""
         from planner_lib.events.event_store import create_event
-        return create_event(self._storage, date=date, title=title, plan_id=plan_id, category=category)
+        return create_event(
+            self._storage, date=date, title=title, plan_id=plan_id, category=category, end_date=end_date
+        )
 
     def update_event(
         self,
@@ -130,11 +133,20 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
         category: Optional[str] = None,
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,  # ignored
     ) -> Dict[str, Any]:
         """Update fields on an existing event (raises KeyError when not found)."""
         from planner_lib.events.event_store import update_event
-        return update_event(self._storage, event_id=event_id, date=date, title=title, plan_id=plan_id, category=category)
+        return update_event(
+            self._storage,
+            event_id=event_id,
+            date=date,
+            title=title,
+            plan_id=plan_id,
+            category=category,
+            end_date=end_date,
+        )
 
     def delete_event(
         self,

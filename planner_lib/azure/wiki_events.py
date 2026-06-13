@@ -297,6 +297,7 @@ class AzureWikiEventBackend:
         title: str,
         plan_id: str,
         category: str = '',
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         """Create a new event, persist it, and return it (including generated id)."""
@@ -311,6 +312,8 @@ class AzureWikiEventBackend:
             "plan_id": plan_id,
             "category": category,
         }
+        if end_date is not None:
+            event["end_date"] = end_date
         events[event_id] = event
         self._write_page(wiki_client, events, categories, etag)
         return event
@@ -322,6 +325,7 @@ class AzureWikiEventBackend:
         title: Optional[str] = None,
         plan_id: Optional[str] = None,
         category: Optional[str] = None,
+        end_date: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         """Update fields on an existing event; raises ``KeyError`` when not found."""
@@ -339,6 +343,8 @@ class AzureWikiEventBackend:
             event["plan_id"] = plan_id
         if category is not None:
             event["category"] = category
+        if end_date is not None:
+            event["end_date"] = end_date
         events[event_id] = event
         self._write_page(wiki_client, events, categories, etag)
         return event

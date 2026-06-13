@@ -60,6 +60,7 @@ def create_event(
     title: str,
     plan_id: str,
     category: str = "",
+    end_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a new event and return it (including generated ``id``)."""
     event_id = uuid.uuid4().hex
@@ -70,6 +71,8 @@ def create_event(
         "plan_id": plan_id,
         "category": category,
     }
+    if end_date is not None:
+        event["end_date"] = end_date
     reg = _load_register(storage)
     reg[event_id] = event
     _save_register(storage, reg)
@@ -83,6 +86,7 @@ def update_event(
     title: Optional[str] = None,
     plan_id: Optional[str] = None,
     category: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Update fields on an existing event; raises ``KeyError`` if not found."""
     reg = _load_register(storage)
@@ -97,6 +101,8 @@ def update_event(
         event["plan_id"] = plan_id
     if category is not None:
         event["category"] = category
+    if end_date is not None:
+        event["end_date"] = end_date
     reg[event_id] = event
     _save_register(storage, reg)
     return event
