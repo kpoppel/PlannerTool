@@ -16,6 +16,8 @@ Template - do not change :
 
 ## [v4.0.4] - unreleased
 ### Added
+- Events plugin: Added global events; events without a plan to hold e.g. holiday periods.
+- Events plugin: Added events with a date range. Events with a date range is displayed as a color band
 - Events plugin: added `category` property to events (Q, Bundle, Other); Q-category events render with a thin black border, Other-category events with a thin white border.
 - Events plugin: categories are now dynamic — created, renamed, and deleted via the events popup; one category can be marked as "special" (renders with a black border on SVG tags); per-category visibility toggles allow hiding event categories from the board.
 - XY Board plugin: display features in a scrollable X/Y field intersection table with plugin-controlled selectors, multi-value field support, and persisted settings.

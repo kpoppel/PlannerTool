@@ -330,6 +330,7 @@ export class EventsPanel extends LitElement {
             .value=${this._editPlanId}
             @change=${(e) => (this._editPlanId = e.target.value)}
           >
+            <option value="" ?selected=${this._editPlanId === ''}>(none)</option>
             ${plans.map(
               (p) => html`<option value=${p.id} ?selected=${p.id === this._editPlanId}>${p.name}</option>`
             )}

@@ -61,8 +61,7 @@ class EventCreate(BaseModel):
     @field_validator("plan_id")
     @classmethod
     def _validate_plan_id(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("plan_id must not be empty")
+        # Allow empty string to indicate no plan (global event).
         return v.strip()
 
     @field_validator("end_date")
@@ -109,6 +108,9 @@ class EventUpdate(BaseModel):
     @classmethod
     def _validate_plan_id(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
+            return v
+        # Allow explicit empty string to detach from plan.
+        if v == "":
             return v
         if not v.strip():
             raise ValueError("plan_id must not be empty")

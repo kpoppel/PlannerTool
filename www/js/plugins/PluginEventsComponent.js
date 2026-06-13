@@ -705,8 +705,6 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     `;
   }
 
-  
-
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
       const plans = state.projects || [];
@@ -728,6 +726,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
             @input=${(e) => (this._editTitle = e.target.value)}
           />
           <select @change=${(e) => (this._editPlanId = e.target.value)}>
+            <option value="" ?selected=${this._editPlanId === ''}>(none)</option>
             ${plans.map(
               (p) =>
                 html`<option value=${p.id} ?selected=${p.id === this._editPlanId}
@@ -852,9 +851,11 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
         <div class="floating-content">
           ${this.loading ? html`<div class="loading-msg">Loading…</div>` : ''}
           ${this._renderCategoriesSection()}
-          ${selectedPlans.length === 0
-            ? html`<div class="no-plans-msg">No plans selected.</div>`
-            : selectedPlans.map((plan) => this._renderPlanSection(plan))}
+          ${(() => {
+            const globalPlan = { id: '', name: 'Global events', color: '#999' };
+            const plansToRender = [globalPlan, ...selectedPlans];
+            return plansToRender.map((plan) => this._renderPlanSection(plan));
+          })()}
         </div>
       </div>
     `;
@@ -902,13 +903,15 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._svgEl.style.height = `${boardRect.height}px`;
 
     const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
-    if (!selectedProjects.length) {
+    const hasSelected = selectedProjects.length > 0;
+    const hasGlobal = this.events.some((ev) => !ev.plan_id && !this._hiddenCategories[ev.category]);
+    if (!hasSelected && !hasGlobal) {
       bus.emit(BoardEvents.OVERLAY_OFFSET_CHANGED, { offset: 0 });
       return;
     }
 
     const filteredEvents = this.events.filter(
-      (ev) => selectedProjects.includes(ev.plan_id) && !this._hiddenCategories[ev.category]
+      (ev) => (!ev.plan_id || selectedProjects.includes(ev.plan_id)) && !this._hiddenCategories[ev.category]
     );
 
     const positioned = filteredEvents
