@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.0.4] - unreleased
+## [v4.1.0] - unreleased
 ### Added
 - Events plugin: Added global events; events without a plan to hold e.g. holiday periods.
 - Events plugin: Added events with a date range. Events with a date range is displayed as a color band
