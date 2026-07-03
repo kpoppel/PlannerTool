@@ -243,8 +243,8 @@ describe('ProjectTeamService', () => {
 
       const orgLoad = service.computeFeatureOrgLoad(feature);
 
-      // (50 + 30) / 3 = 26.7%
-      expect(orgLoad).to.equal('26.7%');
+      // Denominator counts only selected teams (t1, t2): (50 + 30) / 2 = 40.0%
+      expect(orgLoad).to.equal('40.0%');
     });
 
     it('should handle features with no capacity', () => {
@@ -273,11 +273,12 @@ describe('ProjectTeamService', () => {
         ],
       };
 
-      // Only t1 and t2 are selected
+      // Only t1 and t2 are selected; t3's capacity and its seat in the
+      // denominator are both excluded.
       const orgLoad = service.computeFeatureOrgLoad(feature);
 
-      // (60 + 30) / 3 = 30%
-      expect(orgLoad).to.equal('30.0%');
+      // (60 + 30) / 2 = 45.0%
+      expect(orgLoad).to.equal('45.0%');
     });
   });
 

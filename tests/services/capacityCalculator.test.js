@@ -502,4 +502,77 @@ describe('CapacityCalculator (unit)', () => {
     expect(result.teamDailyCapacity[0][0]).to.equal(30);
     expect(result.teamDailyCapacity[1][0]).to.equal(30);
   });
+
+  // ---------------------------------------------------------------------------
+  // Org-load denominator must reflect only the currently *selected* teams
+  // ---------------------------------------------------------------------------
+
+  it('deselecting a team removes it from both the numerator and the org-load denominator', () => {
+    // Two teams exist; only teamA is selected. Feature has capacity on both teams.
+    // Expected: projectDailyCapacity (normalized) counts only teamA's capacity,
+    // divided by 1 (the single selected team), not by 2 (total team count).
+    const calc = new CapacityCalculator(bus);
+
+    const feature = {
+      id: 'f1',
+      project: 'p1',
+      start: '2025-09-01',
+      end: '2025-09-01',
+      state: 's',
+      capacity: [
+        { team: 'teamA', capacity: 40 },
+        { team: 'teamB', capacity: 60 },
+      ],
+    };
+
+    const teams = [{ id: 'teamA' }, { id: 'teamB' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      // teamB intentionally NOT selected
+      selectedTeams: ['teamA'],
+      selectedStates: ['s'],
+    };
+
+    const result = calc.calculate([feature], filters, teams, projects);
+    const p1Idx = 0;
+
+    // Numerator: only teamA's 40 counts (teamB filtered out entirely).
+    // Denominator: 1 selected team, not 2 total teams → 40 / 1 = 40.
+    expect(result.projectDailyCapacity[0][p1Idx]).to.equal(40);
+    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(40);
+  });
+
+  it('incremental delta path also normalizes by selected-team count, not total team count', () => {
+    const calc = new CapacityCalculator(bus);
+
+    const feature = {
+      id: 'fDelta',
+      project: 'p1',
+      start: '2025-09-10',
+      end: '2025-09-10',
+      state: 's',
+      capacity: [
+        { team: 'teamA', capacity: 40 },
+        { team: 'teamB', capacity: 60 },
+      ],
+    };
+
+    const teams = [{ id: 'teamA' }, { id: 'teamB' }];
+    const projects = [{ id: 'p1', type: 'project' }];
+    const filters = {
+      selectedProjects: ['p1'],
+      selectedTeams: ['teamA'],
+      selectedStates: ['s'],
+    };
+
+    // First full calculate to populate the cache
+    calc.calculate([feature], filters, teams, projects);
+
+    // Trigger the incremental delta path with the same (unchanged) feature
+    const result = calc.calculate([feature], filters, teams, projects, ['fDelta']);
+
+    expect(result.projectDailyCapacity[0][0]).to.equal(40);
+    expect(result.totalOrgDailyPerTeamAvg[0]).to.equal(40);
+  });
 });

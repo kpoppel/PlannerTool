@@ -365,7 +365,11 @@ export class PluginGraph extends LitElement {
 
     const teamDayMap = new Map();
     const projectDayMap = new Map();
-    const numTeamsGlobal = teams.length === 0 ? 1 : teams.length;
+    // Only teams the user has selected count towards the org-load denominator,
+    // consistent with CapacityCalculator/MainGraph. The fast path above
+    // already benefits automatically since state.projectDailyCapacity is
+    // pre-normalized by CapacityCalculator using the same selected-team count.
+    const numTeamsGlobal = teamSetSelected.size === 0 ? 1 : teamSetSelected.size;
     function addRawTeam(dayIdx, teamId, raw) {
       if (dayIdx < 0 || dayIdx >= days) return;
       if (!teamDayMap.has(dayIdx)) teamDayMap.set(dayIdx, {});

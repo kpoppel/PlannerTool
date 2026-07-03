@@ -159,11 +159,15 @@ export class ProjectTeamService {
   /**
    * Compute organization load for a feature based on selected teams
    * Returns a percentage string like '45.0%'
+   * A deselected team counts towards neither the numerator nor the
+   * denominator: deselecting a team excludes both its own capacity and its
+   * "seat" in the team-count average, consistent with CapacityCalculator.
    * @param {Object} feature - Feature object with capacity array
    * @returns {string} - Organization load percentage
    */
   computeFeatureOrgLoad(feature) {
-    const numTeamsGlobal = this.teams.length === 0 ? 1 : this.teams.length;
+    const selectedTeamCount = this.teams.filter((t) => t.selected).length;
+    const numTeamsGlobal = selectedTeamCount === 0 ? 1 : selectedTeamCount;
     let sum = 0;
     for (const tl of feature.capacity || []) {
       const t = this.teams.find((x) => x.id === tl.team && x.selected);

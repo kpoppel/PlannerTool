@@ -54,8 +54,8 @@ describe('State (unit)', () => {
       ],
     };
     const load = S.computeFeatureOrgLoad(f);
-    // Only t1 selected -> sum=50, numTeams=2 -> 25.0%
-    expect(load).to.equal('25.0%');
+    // Only t1 selected -> sum=50, denominator=1 selected team -> 50.0%
+    expect(load).to.equal('50.0%');
   });
 
   it('recomputeDerived detects changed fields', () => {

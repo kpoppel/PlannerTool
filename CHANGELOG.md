@@ -17,6 +17,7 @@ Template - do not change :
 ## [v4.1.1] - unreleased
 ### Added
 ### Changed
+- Organisational capacity math: deselecting a team in the Team menu now excludes it from the organisational-weight denominator as well as the numerator, in both the Project graph and per-feature org-load percentage. Previously a deselected team's capacity was already dropped from totals, but it still occupied a "seat" in the "1/N teams" denominator, silently diluting the result. Selected teams now always divide the organisation's capacity by only the currently-selected team count. See `www/docs/graph.md` for the updated UX explanation.
 - Backend error contract: data backends now raise typed `BackendError`s (`BackendAuthError`, `BackendUnavailableError`) instead of `PermissionError`/empty-list sentinels. The live ADO backend is the single place that classifies raw SDK failures (the low-level Azure client no longer swallows errors), and `CachingBackend` / `/api/tasks` react by type — auth failures return `401 invalid_pat`, outages return `503 backend_unavailable`.
 - Script `scripts/load_team_tasks.py` now accepts CLI `--organization` and `--project`, uses `AZURE_DEVOPS_PAT` with secure prompt fallback, and executes WIQL/detail fetches inside the active ADO connection context.
 ### Fixed

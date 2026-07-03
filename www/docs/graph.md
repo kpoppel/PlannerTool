@@ -43,6 +43,16 @@ The logic of the calculation is as follows:
 - For each day the sum of allocated team capacity multiplied by their organisational weight is calculated. If all teams are allocated 100%, the total organisation's allocation is 100%. If a team in this example is allocated 10%, it's total organisational allocation is 10% of 10%, so 1%.
 - This calculation is performed on each selected project and the numbers are stacked up in the graph.
 
+### Team selection affects organisational weight
+The Team menu's team checkboxes double as the control for which teams participate in the organisational-weight calculation, not just which team lines are visible in the Team graph:
+
+- A **selected** team counts towards both the numerator (its allocated capacity contributes to the totals) and the denominator (it is one of the "N teams" the organisation's capacity is divided across).
+- A **deselected** team is fully excluded: its capacity is dropped from the Project graph's totals, *and* it no longer occupies a "seat" in the organisational weight denominator. The other selected teams' organisational weight increases accordingly (e.g. with 10 teams total but only 5 selected, each selected team now carries 20% of the organisation's weight instead of 10%).
+
+This is a deliberate design choice: deselecting a team means "leave this team out of the organisational picture entirely" — for example, to temporarily exclude a supporting/tooling team that isn't meant to count towards the core delivery capacity. Use the Team menu selection (and optionally save it as a named View via the Views menu) to produce a stable "organisational capacity" view that only accounts for the teams you care about.
+
+Because team selection is session/view state rather than a permanent team property, switching to a different saved View (or the Default View) resets which teams count — so a dedicated View is the recommended way to keep a consistent "organisational capacity" configuration.
+
 ### Allocations with no parent in a project plan:
 - Tasks may have team allocations, but are not parented in a task from a plan of the type "project".
 - All of these tasks are combined into a virtual project and is displayed in the graph as well.

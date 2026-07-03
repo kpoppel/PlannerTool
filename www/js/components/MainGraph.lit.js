@@ -406,7 +406,12 @@ export class MainGraphLit extends LitElement {
     const projectDayMap = new Map();
     const orgTotalsTeam = new Map();
     const orgTotalsProject = new Map();
-    const nTeams = teams.length || 1;
+    // Only teams the user has selected count towards the org-load denominator,
+    // consistent with CapacityCalculator (a deselected team's capacity is
+    // already excluded from project/org totals, so it must not dilute the
+    // average either). Computed here because this raw project map
+    // (projectDailyCapacityMap) is not pre-normalized by CapacityCalculator.
+    const nTeams = (selectedTeamIds && selectedTeamIds.size) || 1;
 
     // Early exit only if the selection relevant to the current view mode is empty.
     // Team mode cares about selectedTeamIds; project mode cares about selectedProjectIds.

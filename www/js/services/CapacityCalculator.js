@@ -156,12 +156,19 @@ export class CapacityCalculator {
       });
 
       const cached = this._lastResultCache;
-      // Normalize project capacities
-      const nTeams = teams.length || 1;
+      // Normalize project capacities. Only teams the user has selected count
+      // towards the organisational-load denominator: a deselected team's
+      // capacity is already excluded from the numerator above, so excluding
+      // it here too keeps team selection consistent between the team graph
+      // (where a deselected team's line is zeroed) and the project/org graph
+      // (where its share would otherwise silently dilute the average).
+      const nSelectedTeams = selectedTeams.length || 1;
       const projectDailyNormalized = cached.projectDaily.map((tuple) =>
-        tuple.map((v) => v / nTeams)
+        tuple.map((v) => v / nSelectedTeams)
       );
-      const totalOrgDailyPerTeamAvg = cached.totalOrgDaily.map((v) => v / nTeams);
+      const totalOrgDailyPerTeamAvg = cached.totalOrgDaily.map(
+        (v) => v / nSelectedTeams
+      );
 
       const result = {
         dates: cached.dates,
@@ -193,12 +200,13 @@ export class CapacityCalculator {
         effectiveById
       );
 
-    // Normalize project capacities
-    const nTeams = teams.length || 1;
+    // Normalize project capacities. See the delta path above for why the
+    // denominator is the selected-team count rather than the total team count.
+    const nSelectedTeams = selectedTeams.length || 1;
     const projectDailyNormalized = projectDaily.map((tuple) =>
-      tuple.map((v) => v / nTeams)
+      tuple.map((v) => v / nSelectedTeams)
     );
-    const totalOrgDailyPerTeamAvg = totalOrgDaily.map((v) => v / nTeams);
+    const totalOrgDailyPerTeamAvg = totalOrgDaily.map((v) => v / nSelectedTeams);
 
     const result = {
       dates,

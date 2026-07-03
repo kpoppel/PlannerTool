@@ -17,9 +17,9 @@ describe('State core behaviors', () => {
     };
     const pct = state.computeFeatureOrgLoad(feature);
     expect(pct).to.be.a('string');
-    // Only t1 selected => load = 3 / 2 teams = 1.5% -> '1.5%'
-    // but compute uses number of teams global (2) so (3/2)=1.5 -> '1.5%'
-    expect(pct).to.equal('1.5%');
+    // Only t1 selected => denominator counts only selected teams (1), not
+    // the total team count (2): load = 3 / 1 = 3.0%
+    expect(pct).to.equal('3.0%');
   });
 
   it('recomputeCapacityMetrics computes dates and tuples', () => {
