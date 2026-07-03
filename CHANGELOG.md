@@ -14,6 +14,14 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.1.1] - unreleased
+### Added
+### Changed
+- Backend error contract: data backends now raise typed `BackendError`s (`BackendAuthError`, `BackendUnavailableError`) instead of `PermissionError`/empty-list sentinels. The live ADO backend is the single place that classifies raw SDK failures (the low-level Azure client no longer swallows errors), and `CachingBackend` / `/api/tasks` react by type — auth failures return `401 invalid_pat`, outages return `503 backend_unavailable`.
+### Fixed
+- ADO backend resilience: the work-item cache is never purged when a live Azure DevOps refresh fails. Task entries persist without a hard TTL (freshness is tracked by a tiny sidecar), so an expired/invalid PAT or an Azure DevOps outage keeps serving the last cached data instead of dropping it. This stale-on-failure behaviour is scoped to the live ADO backend only — local/static/mock backends pass refresh results through unchanged. `/api/tasks` returns warning headers and the UI shows a notice telling the user whether their PAT is invalid/expired or cached data is shown because Azure DevOps is unreachable.
+
+
 ## [v4.1.0] - 2026-06-26
 ### Added
 - Events plugin: Added global events; events without a plan to hold e.g. holiday periods.

@@ -133,12 +133,11 @@ class WorkItemOperations:
         
         from azure.devops.v7_1.work_item_tracking.models import Wiql
         wiql_obj = Wiql(query=wiql_query)
-        
-        try:
-            result = wit_client.query_by_wiql(wiql=wiql_obj)
-        except Exception as e:
-            logger.warning(f"WIQL query for area '{area_path}' failed: {e}")
-            return []
+
+        # Let SDK/HTTP exceptions propagate unchanged.  The AzureDevOpsBackend
+        # boundary classifies them into typed BackendError values (auth vs
+        # outage); the low-level client stays free of that policy.
+        result = wit_client.query_by_wiql(wiql=wiql_obj)
         
         # Extract work item IDs
         task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]

@@ -69,7 +69,8 @@ def test_fetch_markers_returns_marker_list():
 
 def test_fetch_markers_requires_credential():
     backend, _ = _make_backend()
-    with pytest.raises(PermissionError):
+    from planner_lib.backend.errors import BackendAuthError
+    with pytest.raises(BackendAuthError):
         backend.fetch_markers(_AREA, plan_id=_PLAN_ID, credential=None)
 
 

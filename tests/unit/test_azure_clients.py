@@ -359,6 +359,41 @@ def test_native_client_defaults_task_types_when_none():
     assert 'Feature' in q or 'feature' in q, f"Default WIQL should contain 'Feature', got: {q}"
 
 
+def test_get_work_items_propagates_raw_error_for_backend_to_classify():
+    """The low-level client no longer swallows or classifies failures.
+
+    It must propagate the raw SDK exception so the AzureDevOpsBackend boundary
+    can translate it into a typed BackendError.
+    """
+    c = AzureClient('org', DummyStorage())
+
+    class FakeWit:
+        def query_by_wiql(self, wiql):
+            raise RuntimeError('401 Unauthorized: TF400813')
+
+    c._connected = True
+    c.conn = SimpleNamespace(clients=SimpleNamespace(get_work_item_tracking_client=lambda: FakeWit()))
+
+    with pytest.raises(RuntimeError):
+        c.get_work_items('Proj\\Team')
+
+
+def test_classify_ado_exception_maps_auth_and_outage():
+    """classify_ado_exception maps auth-signal strings to BackendAuthError, else outage."""
+    from planner_lib.backend.errors import (
+        classify_ado_exception,
+        BackendAuthError,
+        BackendUnavailableError,
+    )
+
+    assert isinstance(classify_ado_exception(RuntimeError('401 Unauthorized')), BackendAuthError)
+    assert isinstance(classify_ado_exception(RuntimeError('TF400813: not authorized')), BackendAuthError)
+    assert isinstance(classify_ado_exception(RuntimeError('connection timed out')), BackendUnavailableError)
+    # Already-typed errors pass through unchanged.
+    err = BackendUnavailableError('x')
+    assert classify_ado_exception(err) is err
+
+
 # ===========================================================================
 # AzureMockClient persistence tests
 # ===========================================================================

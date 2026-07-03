@@ -71,6 +71,18 @@ def _make_session_mgr(pat='token', email='test@example.com'):
     return FakeSessionMgr()
 
 
+def _make_backend_with_warning():
+    class BackendWithWarning:
+        def consume_warnings(self, user_id=None):
+            return [{
+                'code': 'tasks_stale_invalid_pat',
+                'message': 'PAT is invalid or expired. Showing cached task data that may be out of date.',
+                'user_id': user_id,
+            }]
+
+    return BackendWithWarning()
+
+
 def test_teams_happy_path(client):
     svc = _make_team_service([{'id': 1, 'name': 'TeamA'}])
     register_service_on_client(client, 'team_repository', svc)
@@ -114,6 +126,49 @@ def test_tasks_list_and_project_param(client):
     assert r2.json() == [{'id': 't-p-42'}]
     # ensure the repository saw the project_id
     assert task_repo.last_read_args['project_id'] == '42'
+
+
+def test_tasks_returns_warning_headers_when_stale_fallback_used(client):
+    task_repo = _make_task_repository()
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr(email='warn@example.com'))
+    register_service_on_client(client, 'backend', _make_backend_with_warning())
+
+    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    assert r.status_code == 200
+    assert r.headers.get('X-Tasks-Data-Stale') == 'true'
+    assert r.headers.get('X-Tasks-Warning-Code') == 'tasks_stale_invalid_pat'
+    assert 'PAT is invalid or expired' in (r.headers.get('X-Tasks-Warning-Message') or '')
+
+
+def test_tasks_invalid_pat_without_stale_returns_401(client):
+    from planner_lib.backend.errors import BackendAuthError
+
+    class TaskRepo:
+        def read(self, project_id=None, credential=None):
+            raise BackendAuthError('invalid_pat')
+
+    register_service_on_client(client, 'task_repository', TaskRepo())
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+
+    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    assert r.status_code == 401
+    assert 'invalid_pat' in r.text
+
+
+def test_tasks_backend_outage_without_stale_returns_503(client):
+    from planner_lib.backend.errors import BackendUnavailableError
+
+    class TaskRepo:
+        def read(self, project_id=None, credential=None):
+            raise BackendUnavailableError('connection refused')
+
+    register_service_on_client(client, 'task_repository', TaskRepo())
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+
+    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    assert r.status_code == 503
+    assert 'backend_unavailable' in r.text
 
 
 def test_tasks_update_success_and_errors(client):

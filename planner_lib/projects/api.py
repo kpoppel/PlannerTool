@@ -1,10 +1,11 @@
 import asyncio
 
-from fastapi import APIRouter, Request, Body, HTTPException
+from fastapi import APIRouter, Request, Body, HTTPException, Response
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import BackendCredential
+from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
 import logging
 
 router = APIRouter()
@@ -37,15 +38,42 @@ async def api_projects(request: Request):
 
 @router.get('/tasks')
 @require_session
-async def api_tasks(request: Request):
+async def api_tasks(request: Request, response: Response):
     sid = get_session_id_from_request(request)
     logger.debug("Fetching tasks for session %s", sid)
     task_repo = resolve_service(request, 'task_repository')
-    credential, _email = _get_credential(request, sid)
+    credential, email = _get_credential(request, sid)
     project_id = request.query_params.get('project')
-    return await asyncio.to_thread(
-        task_repo.read, project_id=project_id or None, credential=credential
-    )
+    try:
+        tasks = await asyncio.to_thread(
+            task_repo.read, project_id=project_id or None, credential=credential
+        )
+    except BackendAuthError:
+        raise HTTPException(
+            status_code=401,
+            detail={'error': 'invalid_pat', 'message': 'Personal Access Token is invalid or expired'},
+        )
+    except BackendUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail={'error': 'backend_unavailable', 'message': 'Azure DevOps is currently unreachable. Please try again later.'},
+        )
+    try:
+        backend = resolve_service(request, 'backend')
+        consume_warnings = getattr(backend, 'consume_warnings', None)
+        if callable(consume_warnings):
+            warnings = consume_warnings(user_id=email or None)
+            if warnings:
+                warning = warnings[-1]
+                response.headers['X-Tasks-Data-Stale'] = 'true'
+                response.headers['X-Tasks-Warning-Code'] = str(warning.get('code') or 'tasks_stale')
+                response.headers['X-Tasks-Warning-Message'] = str(
+                    warning.get('message') or 'Showing cached task data that may be out of date.'
+                )
+    except Exception:
+        # Warning propagation must never break task reads.
+        pass
+    return tasks
 
 
 @router.get('/markers')

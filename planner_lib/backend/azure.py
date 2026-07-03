@@ -24,6 +24,10 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.port import BackendCredential, BackendPort
 from planner_lib.backend.adapter import AzureAdapter
+from planner_lib.backend.errors import (
+    BackendAuthError,
+    classify_ado_exception,
+)
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
 from planner_lib.storage.base import StorageBackend
@@ -52,6 +56,12 @@ class AzureDevOpsBackend(BackendPort):
 
     # AzureDevOpsBackend is the default; it has no dedicated feature flag.
     FEATURE_FLAG = None
+
+    # Live ADO is the only backend subject to transient API outages and PAT
+    # expiry.  CachingBackend reads this flag to scope its stale-on-failure
+    # resilience to the remote backend only — local/static/mock backends never
+    # face these conditions, so their reads pass through unchanged.
+    is_remote = True
 
     @classmethod
     def config_schema(cls) -> Dict[str, Any]:
@@ -101,15 +111,15 @@ class AzureDevOpsBackend(BackendPort):
     # ------------------------------------------------------------------
 
     def _require_credential(self, credential: Optional[BackendCredential], op: str) -> str:
-        """Extract the token from *credential* or raise PermissionError."""
+        """Extract the token from *credential* or raise BackendAuthError."""
         if credential is None:
-            raise PermissionError(
+            raise BackendAuthError(
                 f"AzureDevOpsBackend.{op} requires a credential; "
                 "none was provided and there is no cache to serve from."
             )
         token = credential.get('token')
         if not token:
-            raise PermissionError(f"BackendCredential for {op} has an empty token.")
+            raise BackendAuthError(f"BackendCredential for {op} has an empty token.")
         return token
 
     def _build_type_canonical(self) -> Dict[str, str]:
@@ -205,32 +215,38 @@ class AzureDevOpsBackend(BackendPort):
             else (area_path.split('/')[0] if '/' in area_path else area_path)
         )
 
-        with self._conn.connect(pat) as client:
-            iteration_map = self._build_iteration_map(client, azure_project)
-            raw_items = client.get_work_items(
-                area_path,
-                task_types=task_types,
-                include_states=include_states,
-            )
+        # Translate any failure contacting ADO into the backend's typed error
+        # vocabulary so the caching layer can react by type (auth vs outage)
+        # without inspecting exception strings.
+        try:
+            with self._conn.connect(pat) as client:
+                iteration_map = self._build_iteration_map(client, azure_project)
+                raw_items = client.get_work_items(
+                    area_path,
+                    task_types=task_types,
+                    include_states=include_states,
+                )
+        except Exception as exc:
+            raise classify_ado_exception(exc) from exc
 
-            results: List[DomainTask] = []
-            for raw_wi in (raw_items or []):
-                try:
-                    task = self._adapter.to_domain(
-                        raw_wi=raw_wi,
-                        project_slug=project_slug,
-                        team_repository=self._team_repository,
-                        type_canonical=type_canonical,
-                        iteration_map=iteration_map,
-                        capacity_service=self._capacity_service,
-                    )
-                    results.append(task)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to enrich work item %s: %s",
-                        raw_wi.get('id', '?'), exc,
-                    )
-            return results
+        results: List[DomainTask] = []
+        for raw_wi in (raw_items or []):
+            try:
+                task = self._adapter.to_domain(
+                    raw_wi=raw_wi,
+                    project_slug=project_slug,
+                    team_repository=self._team_repository,
+                    type_canonical=type_canonical,
+                    iteration_map=iteration_map,
+                    capacity_service=self._capacity_service,
+                )
+                results.append(task)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to enrich work item %s: %s",
+                    raw_wi.get('id', '?'), exc,
+                )
+        return results
 
     # ------------------------------------------------------------------
     # BackendPort: write_task

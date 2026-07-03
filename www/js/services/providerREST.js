@@ -10,6 +10,8 @@ export class ProviderREST {
     this._reacquirePromise = null;
     this._networkRetryCount = 2; // Number of retries for network errors
     this._networkRetryDelay = 1000; // Delay between retries in ms
+    this._lastTasksWarning = null;
+    this._lastTasksWarningAt = 0;
   }
   // Initialize provider and acquire a session. Init should only perform
   // overall initialization; actual session acquisition is factored into
@@ -165,6 +167,32 @@ export class ProviderREST {
     // Signal that we prefer JSON responses from the server
     if (!h['Accept']) h['Accept'] = 'application/json';
     return h;
+  }
+
+  async _showTasksWarning(message) {
+    const text = String(message || '').trim();
+    if (!text) return;
+    const now = Date.now();
+    if (this._lastTasksWarning === text && now - this._lastTasksWarningAt < 30000) {
+      return;
+    }
+    this._lastTasksWarning = text;
+    this._lastTasksWarningAt = now;
+
+    try {
+      await import('../components/AutoCloseMessageModal.js');
+      let modal = document.getElementById('app-message-modal');
+      if (!modal) {
+        modal = document.createElement('modal-autoclose');
+        modal.id = 'app-message-modal';
+        document.body.appendChild(modal);
+      }
+      modal.message = text;
+      modal.duration = 7000;
+      modal.open = true;
+    } catch (err) {
+      console.warn('tasks warning:', text, err);
+    }
   }
 
   async getCapabilities() {
@@ -394,6 +422,10 @@ export class ProviderREST {
     const resTasks = await this._fetch(url, { headers: this._headers() });
     if (resTasks && resTasks.sessionExpired) return [];
     if (!resTasks.ok) return [];
+    const staleWarning = resTasks.headers && resTasks.headers.get('X-Tasks-Warning-Message');
+    if (staleWarning) {
+      await this._showTasksWarning(staleWarning);
+    }
     const tasks = await resTasks.json();
     // Calculate derived fields used in the frontend
     // - parentEpic is used for relating Features to their parent Epic

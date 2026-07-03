@@ -80,12 +80,216 @@ def test_different_area_is_separate_cache_key(caching, inner):
 
 
 def test_credential_excluded_from_cache_key(caching, inner):
-    """Two calls with different credentials but same data args must share cache key."""
+    """Task cache entries are shared across users for the same query args."""
     cred_a = {'token': 'aaa', 'user_id': 'a@example.com'}
     cred_b = {'token': 'bbb', 'user_id': 'b@example.com'}
     caching.fetch_tasks(AREA, credential=cred_a)
     caching.fetch_tasks(AREA, credential=cred_b)
     assert len(inner.fetch_tasks_calls) == 1
+
+
+def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
+    """On a soft-expired entry, an auth failure keeps and serves existing content.
+
+    No shadow snapshot is used: the single cached entry persists and is served
+    when the live refresh raises a BackendAuthError.
+    """
+    import time
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.backend.errors import BackendAuthError
+
+    class _CredentialSensitiveBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.fetch_tasks_calls = []
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.fetch_tasks_calls.append({
+                'area_path': area_path,
+                'credential': credential,
+            })
+            token = (credential or {}).get('token')
+            if token == 'expired-token':
+                raise BackendAuthError('invalid_pat')
+            return [dict(_TASK)]
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _CredentialSensitiveBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_tasks(AREA, credential={'token': 'valid-token', 'user_id': 'u1@example.com'})
+    assert len(warm) == 1
+
+    # Force a soft-expiry without deleting the cached data (no shadow copy).
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    # The cached data entry must still be present (single copy, not purged).
+    data_keys = [k for k in storage.list_keys('backend_domain') if k.startswith('fetch_tasks__')]
+    assert len(data_keys) == 1
+    stale_keys = [k for k in storage.list_keys('backend_domain') if k.startswith('stale__')]
+    assert stale_keys == []
+
+    second = caching.fetch_tasks(AREA, credential={'token': 'expired-token', 'user_id': 'u2@example.com'})
+    assert len(second) == 1
+    assert len(inner.fetch_tasks_calls) == 2
+
+    warnings = caching.consume_warnings(user_id='u2@example.com')
+    assert warnings
+    assert warnings[-1]['code'] == 'tasks_stale_invalid_pat'
+
+
+def test_api_outage_serves_stale_tasks_and_records_outage_warning(storage):
+    """A BackendUnavailableError on refresh keeps cached content and flags an outage."""
+    import time
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.backend.errors import BackendUnavailableError
+
+    class _OutageBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return [dict(_TASK)]
+            raise BackendUnavailableError('connection timed out')
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _OutageBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert len(warm) == 1
+
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert len(again) == 1  # kept existing content despite the outage
+    assert inner.calls == 2
+
+    warnings = caching.consume_warnings(user_id='u@example.com')
+    assert warnings
+    assert warnings[-1]['code'] == 'tasks_stale_api_outage'
+
+
+def test_remote_backend_error_propagates_when_no_cache(storage):
+    """With no cached content, a BackendError must propagate (no silent empty board)."""
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.backend.errors import BackendUnavailableError
+
+    class _ColdOutageBackend:
+        is_remote = True
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            raise BackendUnavailableError('connection refused')
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    caching = CachingBackend(inner=_ColdOutageBackend(), storage=storage)
+    with pytest.raises(BackendUnavailableError):
+        caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+
+
+def test_empty_refresh_keeps_existing_task_content(storage):
+    """A refresh that returns no data must not overwrite populated cache content."""
+    import time
+    from planner_lib.backend.caching import CachingBackend
+
+    class _FlakyBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            # First call returns data; later refreshes return nothing.
+            return [dict(_TASK)] if self.calls == 1 else []
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _FlakyBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert len(warm) == 1
+
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert len(again) == 1  # kept existing content, not the empty refresh
+    assert inner.calls == 2
+
+    warnings = caching.consume_warnings(user_id='u@example.com')
+    assert warnings
+    assert warnings[-1]['code'] == 'tasks_stale_no_data'
+
+
+def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
+    """Local/static/mock backends (is_remote falsy) must NOT mask errors with stale data.
+
+    The stale-on-failure resilience is scoped to the live ADO backend only;
+    a local backend's exception should propagate instead of serving cached data.
+    """
+    import time
+    from planner_lib.backend.caching import CachingBackend
+
+    class _LocalBackend:
+        # No is_remote attribute → treated as local.
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return [dict(_TASK)]
+            raise RuntimeError('transient local error')
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _LocalBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_tasks(AREA, credential={'token': 'x', 'user_id': 'u@example.com'})
+    assert len(warm) == 1
+
+    # Soft-expire so the next read attempts a refresh.
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    with pytest.raises(RuntimeError):
+        caching.fetch_tasks(AREA, credential={'token': 'x', 'user_id': 'u@example.com'})
+
+    # No stale warning should have been queued for a local backend.
+    assert caching.consume_warnings(user_id='u@example.com') == []
 
 
 # ---------------------------------------------------------------------------

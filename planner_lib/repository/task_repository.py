@@ -7,8 +7,9 @@ Public API:
 
   read(project_id=None, credential=None) -> List[DomainTask]
     Fetch all tasks, optionally filtered to one project.  Uses cached
-    values when available; raises PermissionError if a live fetch is
-    needed and no credential is available.
+    values when available; raises BackendAuthError if a live fetch is
+    needed and no (valid) credential is available, or BackendUnavailableError
+    if the remote backend is unreachable.
 
   write(updates, user_id) -> WriteResult
     Persist one or more task updates.  Gets a credential from the provider.
@@ -75,7 +76,7 @@ class TaskRepository:
             returned.  Matches the ``id`` field from projects.yml project_map.
         credential:
             Optional BackendCredential for cache-miss paths.  When absent and
-            the backend needs a live fetch, the backend raises PermissionError.
+            the backend needs a live fetch, the backend raises BackendAuthError.
         """
         project_map = self._project_service.get_project_map()
         items: List[DomainTask] = []
