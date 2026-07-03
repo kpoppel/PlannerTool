@@ -13,6 +13,10 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+## [v4.1.2] - unreleased
+### Fixed
+- Cost Plugin V2 now deactivates cleanly from both its Close button and the Tools menu by implementing the component `close()` lifecycle and guarding wrapper deactivation when the element is unavailable.
+
 
 ## [v4.1.1] - 2026-07-03
 ### Added

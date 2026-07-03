@@ -483,6 +483,23 @@ export class PluginCostV2Component extends LitElement {
     this._applySidebarDisabled();
   }
 
+  close() {
+    this.removeAttribute('visible');
+
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = null;
+    }
+
+    // Restore sidebar controls and expansion defaults when plugin UI closes.
+    state.clearSidebarDisabledElements();
+    state.setExpansionState({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
+  }
+
   _persistPluginState() {
     const snapshot = {
       startDate: this.startDate,
