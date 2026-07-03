@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.1.1] - unreleased
+## [v4.1.1] - 2026-07-03
 ### Added
 ### Changed
 - Organisational capacity math: deselecting a team in the Team menu now excludes it from the organisational-weight denominator as well as the numerator, in both the Project graph and per-feature org-load percentage. Previously a deselected team's capacity was already dropped from totals, but it still occupied a "seat" in the "1/N teams" denominator, silently diluting the result. Selected teams now always divide the organisation's capacity by only the currently-selected team count. See `www/docs/graph.md` for the updated UX explanation.
