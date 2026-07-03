@@ -5,7 +5,7 @@ from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
 from planner_lib.backend.port import BackendCredential
-from planner_lib.backend.errors import BackendAuthError, BackendUnavailableError
+from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 import logging
 
 router = APIRouter()
@@ -57,6 +57,14 @@ async def api_tasks(request: Request, response: Response):
         raise HTTPException(
             status_code=503,
             detail={'error': 'backend_unavailable', 'message': 'Azure DevOps is currently unreachable. Please try again later.'},
+        )
+    except BackendConfigError:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                'error': 'backend_misconfigured',
+                'message': 'Task source configuration is invalid. See server logs for project and area path details.',
+            },
         )
     try:
         backend = resolve_service(request, 'backend')

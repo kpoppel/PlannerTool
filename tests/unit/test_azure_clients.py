@@ -379,15 +379,17 @@ def test_get_work_items_propagates_raw_error_for_backend_to_classify():
 
 
 def test_classify_ado_exception_maps_auth_and_outage():
-    """classify_ado_exception maps auth-signal strings to BackendAuthError, else outage."""
+    """classify_ado_exception maps auth/config signals, else outage."""
     from planner_lib.backend.errors import (
         classify_ado_exception,
         BackendAuthError,
+        BackendConfigError,
         BackendUnavailableError,
     )
 
     assert isinstance(classify_ado_exception(RuntimeError('401 Unauthorized')), BackendAuthError)
     assert isinstance(classify_ado_exception(RuntimeError('TF400813: not authorized')), BackendAuthError)
+    assert isinstance(classify_ado_exception(RuntimeError('TF401232: area path does not exist')), BackendConfigError)
     assert isinstance(classify_ado_exception(RuntimeError('connection timed out')), BackendUnavailableError)
     # Already-typed errors pass through unchanged.
     err = BackendUnavailableError('x')

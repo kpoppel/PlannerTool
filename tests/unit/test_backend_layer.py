@@ -10,6 +10,7 @@ Covers:
 import pytest
 from unittest.mock import MagicMock
 
+from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from tests.fakes.fake_backend import FakeBackend, FakeCredentialProvider
 from planner_lib.domain.tasks import DomainTask, WriteResult
 from planner_lib.domain.history import DomainHistoryEntry
@@ -259,6 +260,79 @@ def test_task_repository_read_filters_by_project():
     result = repo.read(project_id='project-a')
     assert len(result) == 1
     assert result[0]['id'] == '1'
+
+
+def test_task_repository_read_skips_misconfigured_project_and_logs_error(caplog):
+    from planner_lib.repository.task_repository import TaskRepository
+
+    class PartialFailureBackend(FakeBackend):
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            if area_path == 'PB\\MissingArea':
+                raise BackendConfigError('TF401232: area path does not exist')
+            return super().fetch_tasks(
+                area_path,
+                task_types=task_types,
+                include_states=include_states,
+                credential=credential,
+                **kwargs,
+            )
+
+    backend = PartialFailureBackend({
+        'PA\\Team': [
+            {
+                'id': '1',
+                'project': 'project-a',
+                'type': 'Feature',
+                'state': 'Active',
+                'title': 'T1',
+                'start': None,
+                'end': None,
+                'iterationPath': None,
+                'parentId': None,
+                'relations': [],
+                'capacity': [],
+                'description': None,
+                'assignee': None,
+                'tags': [],
+                'areaPath': 'PA\\Team',
+                'url': None,
+                '_inferred_start': False,
+                '_inferred_end': False,
+            }
+        ],
+    })
+    project_service = _make_project_service([
+        {'id': 'project-a', 'name': 'PA', 'area_path': 'PA\\Team'},
+        {'id': 'project-b', 'name': 'PB', 'area_path': 'PB\\MissingArea'},
+    ])
+    repo = TaskRepository(backend, project_service, FakeCredentialProvider())
+
+    caplog.set_level('ERROR')
+    result = repo.read()
+
+    assert len(result) == 1
+    assert result[0]['id'] == '1'
+    assert len(backend.fetch_tasks_calls) == 1
+    assert "skipping project 'project-b'" in caplog.text
+    assert "MissingArea" in caplog.text
+    assert "backend_misconfigured" in caplog.text
+
+
+def test_task_repository_read_raises_auth_error():
+    from planner_lib.repository.task_repository import TaskRepository
+
+    class AuthFailureBackend(FakeBackend):
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            raise BackendAuthError('invalid_pat')
+
+    backend = AuthFailureBackend({'PA\\Team': []})
+    project_service = _make_project_service([
+        {'id': 'project-a', 'name': 'PA', 'area_path': 'PA\\Team'},
+    ])
+    repo = TaskRepository(backend, project_service, FakeCredentialProvider())
+
+    with pytest.raises(BackendAuthError):
+        repo.read()
 
 
 def test_task_repository_write_delegates_to_backend():

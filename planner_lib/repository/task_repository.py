@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
 from planner_lib.backend.port import TaskBackend, BackendCredential
 from planner_lib.domain.tasks import DomainTask, WriteResult
 
@@ -77,6 +78,12 @@ class TaskRepository:
         credential:
             Optional BackendCredential for cache-miss paths.  When absent and
             the backend needs a live fetch, the backend raises BackendAuthError.
+
+        Notes
+        -----
+        Per-project BackendUnavailableError and BackendConfigError failures are
+        logged with project context and skipped so one broken area path does
+        not fail the complete task load. BackendAuthError remains fatal.
         """
         project_map = self._project_service.get_project_map()
         items: List[DomainTask] = []
@@ -90,12 +97,34 @@ class TaskRepository:
             task_types: Optional[List[str]] = project.get('task_types')
             include_states: Optional[List[str]] = project.get('include_states')
 
-            tasks = self._backend.fetch_tasks(
-                area_path=area_path,
-                task_types=task_types,
-                include_states=include_states,
-                credential=credential,
-            )
+            try:
+                tasks = self._backend.fetch_tasks(
+                    area_path=area_path,
+                    task_types=task_types,
+                    include_states=include_states,
+                    credential=credential,
+                )
+            except BackendAuthError:
+                # Auth failures must remain explicit to the API layer.
+                raise
+            except BackendConfigError as exc:
+                logger.error(
+                    "TaskRepository.read: skipping project '%s' (name=%r, area_path=%r) due to backend_misconfigured: %s",
+                    pid,
+                    project.get('name'),
+                    area_path,
+                    exc,
+                )
+                continue
+            except BackendUnavailableError as exc:
+                logger.error(
+                    "TaskRepository.read: skipping project '%s' (name=%r, area_path=%r) due to backend_unavailable: %s",
+                    pid,
+                    project.get('name'),
+                    area_path,
+                    exc,
+                )
+                continue
 
             # Post-fill the project identifier so consumers can filter by project
             # without relying on adapter-level slug derivation.

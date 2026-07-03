@@ -38,6 +38,14 @@ class BackendUnavailableError(BackendError):
     """
 
 
+class BackendConfigError(BackendError):
+    """The backend request failed due to invalid server-side configuration.
+
+    Raised when configured project/area-path values are invalid or missing in
+    Azure DevOps (for example, an area path that no longer exists).
+    """
+
+
 # Substrings (lower-cased) that identify an authentication/authorization failure
 # in raw Azure DevOps SDK / HTTP exception messages.  Anything not matching is
 # treated as a transient availability problem.
@@ -53,6 +61,15 @@ _AUTH_MARKERS = (
     'personal access token',
 )
 
+# Substrings identifying server-side configuration issues (not service outage).
+_CONFIG_MARKERS = (
+    'area path',
+    'does not exist',
+    'not found',
+    'tf401232',  # ADO: Area path/classification node does not exist.
+    'classification node',
+)
+
 
 def classify_ado_exception(exc: Exception) -> BackendError:
     """Map a raw exception from the ADO SDK to a typed ``BackendError``.
@@ -64,6 +81,8 @@ def classify_ado_exception(exc: Exception) -> BackendError:
     if isinstance(exc, BackendError):
         return exc
     txt = str(exc).lower()
+    if any(marker in txt for marker in _CONFIG_MARKERS):
+        return BackendConfigError(str(exc))
     if any(marker in txt for marker in _AUTH_MARKERS):
         return BackendAuthError(str(exc))
     return BackendUnavailableError(str(exc))

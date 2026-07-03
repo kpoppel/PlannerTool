@@ -171,6 +171,21 @@ def test_tasks_backend_outage_without_stale_returns_503(client):
     assert 'backend_unavailable' in r.text
 
 
+def test_tasks_backend_misconfigured_returns_500(client):
+    from planner_lib.backend.errors import BackendConfigError
+
+    class TaskRepo:
+        def read(self, project_id=None, credential=None):
+            raise BackendConfigError('TF401232: area path does not exist')
+
+    register_service_on_client(client, 'task_repository', TaskRepo())
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+
+    r = client.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
+    assert r.status_code == 500
+    assert 'backend_misconfigured' in r.text
+
+
 def test_tasks_update_success_and_errors(client):
     task_repo = _make_task_repository()
     register_service_on_client(client, 'task_repository', task_repo)

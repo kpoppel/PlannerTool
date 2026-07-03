@@ -18,8 +18,11 @@ Template - do not change :
 ### Added
 ### Changed
 - Backend error contract: data backends now raise typed `BackendError`s (`BackendAuthError`, `BackendUnavailableError`) instead of `PermissionError`/empty-list sentinels. The live ADO backend is the single place that classifies raw SDK failures (the low-level Azure client no longer swallows errors), and `CachingBackend` / `/api/tasks` react by type — auth failures return `401 invalid_pat`, outages return `503 backend_unavailable`.
+- Script `scripts/load_team_tasks.py` now accepts CLI `--organization` and `--project`, uses `AZURE_DEVOPS_PAT` with secure prompt fallback, and executes WIQL/detail fetches inside the active ADO connection context.
 ### Fixed
 - ADO backend resilience: the work-item cache is never purged when a live Azure DevOps refresh fails. Task entries persist without a hard TTL (freshness is tracked by a tiny sidecar), so an expired/invalid PAT or an Azure DevOps outage keeps serving the last cached data instead of dropping it. This stale-on-failure behaviour is scoped to the live ADO backend only — local/static/mock backends pass refresh results through unchanged. `/api/tasks` returns warning headers and the UI shows a notice telling the user whether their PAT is invalid/expired or cached data is shown because Azure DevOps is unreachable.
+- Task loading now logs per-project backend-unavailable failures (including project id and area path) and skips only the failing projects, so one broken ADO area path no longer causes `/api/tasks` to fail for the entire board.
+- ADO error classification now distinguishes backend misconfiguration (for example, missing area paths) from real service outage; `/api/tasks` uses `503 backend_unavailable` only for actual availability failures and returns `500 backend_misconfigured` for configuration issues.
 
 
 ## [v4.1.0] - 2026-06-26
