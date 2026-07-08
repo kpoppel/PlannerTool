@@ -418,7 +418,12 @@ class State {
     return this._dataInitService.getChildrenByParentMap();
   }
   get iterations() {
-    return this._dataInitService.iterations || [];
+    return this._dataInitService.iterationsByProject || {};
+  }
+  getIterationsForProject(projectId) {
+    if (!projectId) return [];
+    const group = this.iterations[String(projectId)];
+    return Array.isArray(group?.iterations) ? group.iterations : [];
   }
 
   // Available task types derived from baseline features

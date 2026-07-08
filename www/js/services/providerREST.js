@@ -487,13 +487,14 @@ export class ProviderREST {
           `/api/iterations?project=${encodeURIComponent(project)}`
         : '/api/iterations';
       const res = await this._fetch(url, { headers: this._headers() });
-      if (res && res.sessionExpired) return [];
-      if (!res.ok) return [];
+      if (res && res.sessionExpired) return project ? [] : {};
+      if (!res.ok) return project ? [] : {};
       const data = await res.json();
-      return data.iterations || [];
+      const byProject = data.iterationsByProject || {};
+      return project ? (byProject[project]?.iterations || []) : byProject;
     } catch (err) {
       console.error('providerREST:getIterations', err);
-      return [];
+      return project ? [] : {};
     }
   }
 

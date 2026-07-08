@@ -43,32 +43,48 @@ const teams = [
 ];
 
 const iterations = {
-  iterations: [
-    {
-      path: 'my_proj\\1',
-      name: 'Iter 1',
-      startDate: '2025-12-29',
-      finishDate: '2026-12-20',
+  iterationsByProject: {
+    'project-a': {
+      projectId: 'project-a',
+      projectName: 'Proj A',
+      sourceProject: 'my_proj',
+      roots: ['root-a'],
+      iterations: [
+        {
+          path: 'my_proj\\1',
+          name: 'Iter 1',
+          startDate: '2025-12-29',
+          finishDate: '2026-12-20',
+        },
+        {
+          path: 'my_proj\\2',
+          name: 'Iter 2',
+          startDate: '2025-12-29',
+          finishDate: '2026-03-20',
+        },
+      ],
     },
-    {
-      path: 'my_proj\\2',
-      name: 'Iter 2',
-      startDate: '2025-12-29',
-      finishDate: '2026-03-20',
+    'project-b': {
+      projectId: 'project-b',
+      projectName: 'Proj B',
+      sourceProject: 'my_proj',
+      roots: ['root-b'],
+      iterations: [
+        {
+          path: 'my_proj\\3',
+          name: 'Iter 3',
+          startDate: '2025-12-29',
+          finishDate: '2026-01-23',
+        },
+        {
+          path: 'my_proj\\4',
+          name: 'Iter 4',
+          startDate: '2026-01-26',
+          finishDate: '2026-02-20',
+        },
+      ],
     },
-    {
-      path: 'my_proj\\3',
-      name: 'Iter 3',
-      startDate: '2025-12-29',
-      finishDate: '2026-01-23',
-    },
-    {
-      path: 'my_proj\\4',
-      name: 'Iter 4',
-      startDate: '2026-01-26',
-      finishDate: '2026-02-20',
-    },
-  ],
+  },
 };
 
 const scenarios = [

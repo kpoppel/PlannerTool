@@ -15,10 +15,14 @@ describe('ProviderREST /api/iterations tests', () => {
     expect(i).to.have.property('finishDate');
   });
 
-  it('getIterations() (no project) returns iterations array', async () => {
+  it('getIterations() (no project) returns grouped iterations by project', async () => {
     const pr = new ProviderREST();
-    const iters = await pr.getIterations();
-    expect(Array.isArray(iters)).to.equal(true);
-    expect(iters.length).to.be.at.least(1);
+    const byProject = await pr.getIterations();
+    expect(typeof byProject).to.equal('object');
+    expect(Array.isArray(byProject)).to.equal(false);
+    expect(byProject).to.have.property('project-a');
+    expect(byProject['project-a']).to.have.property('iterations');
+    expect(Array.isArray(byProject['project-a'].iterations)).to.equal(true);
+    expect(byProject['project-a'].iterations.length).to.be.at.least(1);
   });
 });

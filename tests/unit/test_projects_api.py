@@ -24,6 +24,7 @@ def _make_task_repository():
         def __init__(self):
             self.last_read_args = None
             self.last_write_args = None
+            self.last_iteration_args = None
 
         def read(self, project_id=None, credential=None):
             self.last_read_args = dict(project_id=project_id)
@@ -44,7 +45,17 @@ def _make_task_repository():
             return []
 
         def list_iterations(self, project_id=None, user_id=None):
-            return []
+            self.last_iteration_args = dict(project_id=project_id, user_id=user_id)
+            project_key = project_id or 'project-a'
+            return {
+                project_key: {
+                    'projectId': project_key,
+                    'projectName': 'Proj',
+                    'sourceProject': 'ADO',
+                    'roots': ['Root'],
+                    'iterations': [],
+                }
+            }
 
     return TaskRepo()
 
@@ -215,4 +226,60 @@ def test_tasks_missing_service_returns_500(client):
     c = TestClient(client.app, raise_server_exceptions=False)
     r = c.get('/api/tasks', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 500
+
+
+def test_iterations_project_param_is_forwarded(client):
+    task_repo = _make_task_repository()
+
+    class AzureClientStub:
+        requires_pat = False
+
+    register_service_on_client(client, 'iteration_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+    register_service_on_client(client, 'azure_client', AzureClientStub())
+
+    r = client.get('/api/iterations?project=project-dalton', headers={'X-Session-Id': 'test-session'})
+
+    assert r.status_code == 200
+    assert r.json() == {
+        'iterationsByProject': {
+            'project-dalton': {
+                'projectId': 'project-dalton',
+                'projectName': 'Proj',
+                'sourceProject': 'ADO',
+                'roots': ['Root'],
+                'iterations': [],
+            }
+        }
+    }
+    assert task_repo.last_iteration_args == {
+        'project_id': 'project-dalton',
+        'user_id': 'test@example.com',
+    }
+
+
+def test_iterations_without_filter_returns_grouped_payload(client):
+    task_repo = _make_task_repository()
+
+    class AzureClientStub:
+        requires_pat = False
+
+    register_service_on_client(client, 'iteration_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+    register_service_on_client(client, 'azure_client', AzureClientStub())
+
+    r = client.get('/api/iterations', headers={'X-Session-Id': 'test-session'})
+
+    assert r.status_code == 200
+    assert r.json() == {
+        'iterationsByProject': {
+            'project-a': {
+                'projectId': 'project-a',
+                'projectName': 'Proj',
+                'sourceProject': 'ADO',
+                'roots': ['Root'],
+                'iterations': [],
+            }
+        }
+    }
 

@@ -303,6 +303,32 @@ export class AdminIterations extends LitElement {
     this.configuredProjects = [];
   }
 
+  normalizeConfig(rawConfig) {
+    const base = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
+    const rawOverrides =
+      base.project_overrides && typeof base.project_overrides === 'object' ?
+        base.project_overrides
+      : {};
+
+    const normalizedOverrides = {};
+    Object.entries(rawOverrides).forEach(([projectName, overrideValue]) => {
+      if (overrideValue && typeof overrideValue === 'object') {
+        const roots = Array.isArray(overrideValue.roots) ? overrideValue.roots : [];
+
+        normalizedOverrides[projectName] = {
+          azure_project: overrideValue.azure_project || '',
+          roots: [...roots],
+        };
+      }
+    });
+
+    return {
+      azure_project: base.azure_project || '',
+      default_roots: Array.isArray(base.default_roots) ? base.default_roots : [],
+      project_overrides: normalizedOverrides,
+    };
+  }
+
   connectedCallback() {
     super.connectedCallback();
     this.loadConfig();
@@ -313,11 +339,7 @@ export class AdminIterations extends LitElement {
     this.loading = true;
     try {
       const data = await adminProvider.getIterations();
-      this.config = data || {
-        azure_project: '',
-        default_roots: [],
-        project_overrides: {},
-      };
+      this.config = this.normalizeConfig(data);
       // Pre-fill browseProject from config if available
       if (this.config.azure_project && !this.browseProject) {
         this.browseProject = this.config.azure_project;
@@ -403,7 +425,10 @@ export class AdminIterations extends LitElement {
     const defaultProject =
       this.configuredProjects.length > 0 ? this.configuredProjects[0] : '';
     if (defaultProject) {
-      this.config.project_overrides[defaultProject] = [];
+      this.config.project_overrides[defaultProject] = {
+        azure_project: '',
+        roots: [],
+      };
       this.requestUpdate();
     } else {
       alert('No configured projects found. Please configure projects first.');
@@ -427,22 +452,55 @@ export class AdminIterations extends LitElement {
   }
 
   addOverrideRoot(projectName) {
-    this.config.project_overrides[projectName] = [
-      ...this.config.project_overrides[projectName],
-      '',
-    ];
+    const current = this.config.project_overrides[projectName] || {
+      azure_project: '',
+      roots: [],
+    };
+    this.config.project_overrides[projectName] = {
+      ...current,
+      roots: [
+        ...current.roots,
+        '',
+      ],
+    };
     this.requestUpdate();
   }
 
   removeOverrideRoot(projectName, index) {
-    this.config.project_overrides[projectName] = this.config.project_overrides[
-      projectName
-    ].filter((_, i) => i !== index);
+    const current = this.config.project_overrides[projectName] || {
+      azure_project: '',
+      roots: [],
+    };
+    this.config.project_overrides[projectName] = {
+      ...current,
+      roots: current.roots.filter((_, i) => i !== index),
+    };
     this.requestUpdate();
   }
 
   updateOverrideRoot(projectName, index, value) {
-    this.config.project_overrides[projectName][index] = value;
+    const current = this.config.project_overrides[projectName] || {
+      azure_project: '',
+      roots: [],
+    };
+    const nextRoots = [...current.roots];
+    nextRoots[index] = value;
+    this.config.project_overrides[projectName] = {
+      ...current,
+      roots: nextRoots,
+    };
+    this.requestUpdate();
+  }
+
+  updateOverrideAzureProject(projectName, value) {
+    const current = this.config.project_overrides[projectName] || {
+      azure_project: '',
+      roots: [],
+    };
+    this.config.project_overrides[projectName] = {
+      ...current,
+      azure_project: value,
+    };
     this.requestUpdate();
   }
 
@@ -456,7 +514,7 @@ export class AdminIterations extends LitElement {
         const textarea = this.shadowRoot.querySelector('.raw-editor textarea');
         if (textarea) {
           try {
-            this.config = JSON.parse(textarea.value);
+            this.config = this.normalizeConfig(JSON.parse(textarea.value));
           } catch (e) {
             this.statusMsg = 'Invalid JSON: ' + e.message;
             this.statusType = 'error';
@@ -559,7 +617,7 @@ export class AdminIterations extends LitElement {
                     .value="${JSON.stringify(this.config, null, 2)}"
                     @input="${(e) => {
                       try {
-                        this.config = JSON.parse(e.target.value);
+                        this.config = this.normalizeConfig(JSON.parse(e.target.value));
                       } catch (err) {
                         // Keep typing, don't update until valid
                       }
@@ -611,8 +669,12 @@ export class AdminIterations extends LitElement {
 
                   <div class="project-overrides">
                     <label>Project Overrides</label>
+                    <div class="status" style="margin: 6px 0 10px 0; color: #4b5563; font-size: 0.85rem;">
+                      Each configured project can override both the source ADO project and the
+                      iteration roots; roots are relative to Project\\Iteration.
+                    </div>
                     ${Object.entries(this.config.project_overrides).map(
-                      ([projectName, roots]) => html`
+                      ([projectName, override]) => html`
                         <div class="override-item">
                           <div class="override-header">
                             <select
@@ -641,8 +703,20 @@ export class AdminIterations extends LitElement {
                               Remove Project
                             </button>
                           </div>
+                          <div class="root-item" style="margin-bottom: 8px;">
+                            <input
+                              type="text"
+                              .value="${override.azure_project || ''}"
+                              @input="${(e) =>
+                                this.updateOverrideAzureProject(
+                                  projectName,
+                                  e.target.value
+                                )}"
+                              placeholder="ADO project override (optional, defaults to global)"
+                            />
+                          </div>
                           <div class="roots-list">
-                            ${roots.map(
+                            ${(override.roots || []).map(
                               (root, index) => html`
                                 <div class="root-item">
                                   <input

@@ -13,6 +13,14 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+
+## [v4.1.3] - unreleased
+### Added
+### Changed
+- Iteration configuration now applies overrides per configured project entry (projects.yml `name`) and supports overriding both source ADO project and roots (`project_overrides.<ConfiguredProject>.azure_project` + `roots`). This fixes mixed-project setups where default iteration roots were incorrectly reused across all plans.
+- Iteration data is now delivered to the client as a project-keyed cached payload, so details-panel iteration selectors resolve the correct per-project default or override set from local state without issuing a backend request on each card open.
+### Fixed
+
 ## [v4.1.2] - 2026-07-03
 ### Fixed
 - Cost Plugin V2 now deactivates cleanly from both its Close button and the Tools menu by implementing the component `close()` lifecycle and guarding wrapper deactivation when the element is unavailable.

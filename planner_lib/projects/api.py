@@ -122,13 +122,13 @@ async def api_tasks_update(request: Request, payload: list[dict] = Body(default=
 @router.get('/iterations')
 @require_session
 async def api_config_iterations(request: Request):
-    """Return all configured iterations, optionally filtered by project.
+    """Return configured iterations keyed by project id, optionally filtered.
 
     Query params:
-        project: Optional project name to use project_overrides from iterations.yml
+        project: Optional configured project ID to narrow the response map.
 
     Returns:
-        JSON with flat list of iterations sorted by startDate
+        JSON with project-keyed effective iteration sets.
     """
     sid = get_session_id_from_request(request)
 
@@ -154,7 +154,7 @@ async def api_config_iterations(request: Request):
         logger.exception('Failed to fetch iterations: %s', e)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    return {'iterations': iterations}
+    return {'iterationsByProject': iterations}
 
 
 @router.post('/cache/invalidate')

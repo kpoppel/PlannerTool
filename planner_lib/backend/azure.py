@@ -140,7 +140,13 @@ class AzureDevOpsBackend(BackendPort):
             pass
         return type_canonical
 
-    def _build_iteration_map(self, client, azure_project: str) -> Dict[str, Any]:
+    def _build_iteration_map(
+        self,
+        client,
+        azure_project: str,
+        configured_project_name: Optional[str] = None,
+        area_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Fetch and return a normalised iteration-path → dates map."""
         try:
             if self._config is not None:
@@ -149,16 +155,29 @@ class AzureDevOpsBackend(BackendPort):
                 iterations_config = (self._storage.load('config', 'iterations')
                                      if self._storage.exists('config', 'iterations') else {})
             project_overrides = (iterations_config or {}).get('project_overrides', {})
-            raw_roots = project_overrides.get(
-                azure_project, iterations_config.get('default_roots', [])
-            )
+            if not isinstance(project_overrides, dict):
+                project_overrides = {}
+
+            default_roots = iterations_config.get('default_roots', [])
+            override_entry = None
+            if configured_project_name and configured_project_name in project_overrides:
+                override_entry = project_overrides.get(configured_project_name)
+
+            source_project = azure_project
+            raw_roots = default_roots
+            if isinstance(override_entry, dict):
+                source_project = str(override_entry.get('azure_project') or azure_project)
+                candidate_roots = override_entry.get('roots')
+                raw_roots = candidate_roots if isinstance(candidate_roots, list) else default_roots
+
+            raw_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
             # Azure DevOps expects "<Project>\Iteration\<sub-path>".
-            # The yml stores only the sub-path, so prepend the full prefix.
-            root_paths = [f"{azure_project}\\Iteration\\{r}" for r in raw_roots] if raw_roots else []
+            # The config stores only the sub-path, so prepend the full prefix.
+            root_paths = [f"{source_project}\\Iteration\\{r}" for r in raw_roots] if raw_roots else []
             iteration_map: Dict[str, Any] = {}
             for root in (root_paths or [None]):
                 try:
-                    iterations = client.get_iterations(azure_project, root_path=root)
+                    iterations = client.get_iterations(source_project, root_path=root)
                     for it in iterations:
                         raw_path = it.get('path', '')
                         norm_path = self._strip_iteration_segment(raw_path)
@@ -169,11 +188,46 @@ class AzureDevOpsBackend(BackendPort):
                                 'name': it.get('name'),
                             }
                 except Exception as exc:
-                    logger.warning("Failed to fetch iterations for root '%s': %s", root, exc)
+                    logger.warning(
+                        "Failed to fetch iterations for configured project '%s' "
+                        "(area='%s', source_project='%s', root='%s'): %s",
+                        configured_project_name or '?',
+                        area_path or '?',
+                        source_project,
+                        root,
+                        exc,
+                    )
             return iteration_map
         except Exception as exc:
-            logger.warning("Error building iteration map for '%s': %s", azure_project, exc)
+            logger.warning(
+                "Error building iteration map for configured project '%s' "
+                "(area='%s', source_project='%s'): %s",
+                configured_project_name or '?',
+                area_path or '?',
+                azure_project,
+                exc,
+            )
             return {}
+
+    def _resolve_configured_project_name(self, area_path: str) -> Optional[str]:
+        """Resolve configured project name for an area path from projects config."""
+        if self._config is None:
+            return None
+        try:
+            project_map = self._config.fetch_project_map()
+        except Exception:
+            return None
+
+        for entry in (project_map or []):
+            if not isinstance(entry, dict):
+                continue
+            cfg_area = entry.get('area_path')
+            if not isinstance(cfg_area, str):
+                continue
+            if area_path == cfg_area:
+                name = entry.get('name')
+                return str(name) if name else None
+        return None
 
     @staticmethod
     def _strip_iteration_segment(path: str) -> str:
@@ -220,7 +274,13 @@ class AzureDevOpsBackend(BackendPort):
         # without inspecting exception strings.
         try:
             with self._conn.connect(pat) as client:
-                iteration_map = self._build_iteration_map(client, azure_project)
+                configured_project_name = self._resolve_configured_project_name(area_path)
+                iteration_map = self._build_iteration_map(
+                    client,
+                    azure_project,
+                    configured_project_name=configured_project_name,
+                    area_path=area_path,
+                )
                 raw_items = client.get_work_items(
                     area_path,
                     task_types=task_types,

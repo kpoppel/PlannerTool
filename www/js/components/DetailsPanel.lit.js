@@ -2,7 +2,6 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
-import { dataService } from '../services/dataService.js';
 import { getIconTemplate } from '../services/IconService.js';
 
 /**
@@ -1212,23 +1211,14 @@ export class DetailsPanelLit extends LitElement {
 
   async _loadIterationsForFeature() {
     try {
-      // Use iterations from state instead of fetching from server
-      // Filter iterations by project if feature has a project assigned
       const f = this.feature;
       if (!f) {
         this.iterations = [];
         return;
       }
 
-      // Get all iterations from state
-      const iters = state.iterations || [];
-
-      // If feature has a project, optionally filter iterations by project
-      // (depends on whether iterations have project info)
-      // For now, we'll use all iterations since server-side filtering
-      // by project may not be needed if iterations are already scoped
-
-      this.iterations = Array.isArray(iters) ? iters : [];
+      const projectId = f.project ? String(f.project) : null;
+      this.iterations = state.getIterationsForProject(projectId);
       // Lit's property-binding diff skips re-setting `.value` on the <select>
       // when `selectedPath` hasn't changed between renders (same card reopened).
       // Waiting for updateComplete ensures <option> elements exist, then we

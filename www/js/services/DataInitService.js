@@ -32,6 +32,7 @@ export class DataInitService {
     this._stateFilterService = stateFilterService;
     this._featureStateService = featureStateService;
     this._colorService = colorService;
+    this.iterationsByProject = {};
 
     // Lookup maps
     this.baselineFeatureById = new Map();
@@ -46,7 +47,7 @@ export class DataInitService {
     const projects = await this._dataService.getProjects();
     const teams = await this._dataService.getTeams();
     const features = await this._dataService.getFeatures();
-    const iterations = await this._dataService.getIterations();
+    const iterationsByProject = await this._dataService.getIterations();
 
     // Store baseline data using BaselineStore service
     this._baselineStore.loadBaseline({ projects, teams, features });
@@ -91,9 +92,8 @@ export class DataInitService {
       this._projectTeamService.getTeams()
     );
 
-    // Store iterations in baseline store (via a simple property)
-    // We'll make iterations available via the state object
-    this.iterations = iterations || [];
+    // Cache grouped iterations in client state for local per-project lookup.
+    this.iterationsByProject = iterationsByProject || {};
 
     // initialize scenarios
     try {
@@ -133,10 +133,10 @@ export class DataInitService {
     const projects = await this._dataService.getProjects();
     const teams = await this._dataService.getTeams();
     const features = await this._dataService.getFeatures();
-    const iterations = await this._dataService.getIterations();
+    const iterationsByProject = await this._dataService.getIterations();
 
-    // Store iterations
-    this.iterations = iterations || [];
+    // Store grouped iterations
+    this.iterationsByProject = iterationsByProject || {};
 
     // Build features with originalRank first
     const featuresWithRank = features.map((f, i) => ({
