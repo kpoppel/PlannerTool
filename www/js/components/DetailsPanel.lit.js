@@ -1616,7 +1616,11 @@ export class DetailsPanelLit extends LitElement {
             let title = '';
 
             const linked = state.baselineFeatureById.get(otherId);
-            if (linked) title = linked.title;
+            if (linked && linked.title) {
+              title = linked.title;
+            } else if (type === 'Child' && otherId) {
+              title = '(task state not loaded)';
+            }
 
             let iconTemplate = '';
             let stateIndicator = '';
