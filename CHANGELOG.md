@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.1.4] - unreleased
+## [v4.1.4] - 2026-07-08
 ### Fixed
 - Docker build now fails fast when frontend bundling errors occur (removed error-swallowing from `npm run build:vendor` and `npm run build` in the Dockerfile).
 - Build tooling: fixed Rollup config to use the default import from `@rollup/plugin-terser`, restoring `npm run build:vendor` and Docker image builds.
