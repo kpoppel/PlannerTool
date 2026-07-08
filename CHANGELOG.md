@@ -16,10 +16,12 @@ Template - do not change :
 
 ## [v4.1.3] - unreleased
 ### Added
+- Details panel displays "task state not loaded" if a linked task is not loaded into the tool. This happens when ex. Closed tasks are not loaded.
 ### Changed
 - Iteration configuration now applies overrides per configured project entry (projects.yml `name`) and supports overriding both source ADO project and roots (`project_overrides.<ConfiguredProject>.azure_project` + `roots`). This fixes mixed-project setups where default iteration roots were incorrectly reused across all plans.
 - Iteration data is now delivered to the client as a project-keyed cached payload, so details-panel iteration selectors resolve the correct per-project default or override set from local state without issuing a backend request on each card open.
 ### Fixed
+- Stale task warnings are now emitted only when non-empty cached task data is preserved; empty cached snapshots no longer trigger stale-warning headers/logs.
 
 ## [v4.1.2] - 2026-07-03
 ### Fixed

@@ -289,6 +289,7 @@ class CachingBackend:
         except KeyError:
             cached_value = None
             have_cached = False
+        fresh_until = _MISSING
 
         if have_cached:
             fresh_until = self._read_fresh_until(meta_key)
@@ -298,6 +299,7 @@ class CachingBackend:
 
         credential = kwargs.get('credential') if isinstance(kwargs, dict) else None
         user_id = (credential or {}).get('user_id') if isinstance(credential, dict) else None
+        cached_has_content = bool(cached_value) if have_cached else False
 
         try:
             result = inner_method(*args, **kwargs)
@@ -305,7 +307,7 @@ class CachingBackend:
             # Resilience is ADO-only: a remote outage / PAT expiry should not
             # drop already-cached content.  Only the live ADO backend raises
             # BackendError, so this branch never fires for local backends.
-            if self._inner_is_remote and have_cached:
+            if self._inner_is_remote and have_cached and cached_has_content:
                 if isinstance(exc, BackendAuthError):
                     self._record_warning(
                         code='tasks_stale_invalid_pat',
@@ -331,7 +333,7 @@ class CachingBackend:
                 return cached_value
             raise
 
-        if self._inner_is_remote and not result and have_cached:
+        if self._inner_is_remote and not result and have_cached and cached_has_content:
             # Backend returned no data but we already have content.  A live ADO
             # outage often surfaces as an empty result, so keep the existing
             # content rather than overwriting a populated cache with nothing.

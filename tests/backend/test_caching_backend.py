@@ -249,6 +249,42 @@ def test_empty_refresh_keeps_existing_task_content(storage):
     assert warnings[-1]['code'] == 'tasks_stale_no_data'
 
 
+def test_empty_cached_content_does_not_emit_stale_warning(storage):
+    """Empty cached snapshots must not trigger stale warnings on empty refresh."""
+    import time
+    from planner_lib.backend.caching import CachingBackend
+
+    class _AlwaysEmptyBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            return []
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _AlwaysEmptyBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    first = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert first == []
+
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    second = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert second == []
+    assert inner.calls == 2
+    assert caching.consume_warnings(user_id='u@example.com') == []
+
+
 def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
     """Local/static/mock backends (is_remote falsy) must NOT mask errors with stale data.
 
