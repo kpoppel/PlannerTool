@@ -14,9 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.1.5] - unreleased
-### Added
-### Changed
+## [v4.1.5] - 2026-07-08
 ### Fixed
 - MainGraph horizontal scroll lag: separated scroll rendering from data-change rendering. Scroll events now reuse cached data snapshots instead of rebuilding them, resulting in smooth real-time panning that follows user scroll input without staggered lag.
 
