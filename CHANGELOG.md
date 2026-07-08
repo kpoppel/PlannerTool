@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.1.3] - unreleased
+## [v4.1.3] - 2026-07-08
 ### Added
 - Details panel displays "task state not loaded" if a linked task is not loaded into the tool. This happens when ex. Closed tasks are not loaded.
 ### Changed
