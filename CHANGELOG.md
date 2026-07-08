@@ -16,7 +16,12 @@ Template - do not change :
 
 ## [v4.1.4] - unreleased
 ### Fixed
+- Docker build now fails fast when frontend bundling errors occur (removed error-swallowing from `npm run build:vendor` and `npm run build` in the Dockerfile).
+- Build tooling: fixed Rollup config to use the default import from `@rollup/plugin-terser`, restoring `npm run build:vendor` and Docker image builds.
+- FeatureBoard: removed stray `);` syntax error that caused the Vite production build to fail, resulting in a missing `dist/index.html` and a 500 error on startup in Docker.
 - Expand Dataset → Parent/Child Links: fixed lateral traversal where a shared ancestor would incorrectly pull in unrelated sibling features from other plans; ancestors found via the upward pass no longer expand downward. Fixed unassigned (no-capacity) features from non-selected plans appearing when no team is selected.
+- Expand Dataset → Parent/Child Links: when a team-type plan is selected and parent project plans are resolved via expansion, linked tasks now migrate to their parent's swimlane band; unlinked tasks remain in the team plan's own band.
+- Expand Dataset → Parent/Child Links: swimlane labels now correctly count and list all contributing plans, including selected team plans whose tasks migrated to a parent swimlane band.
 
 ## [v4.1.3] - 2026-07-08
 ### Added

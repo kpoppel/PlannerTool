@@ -21,8 +21,8 @@ COPY src ./src
 COPY rollup.config.mjs vite.config.js ./
 
 # Build vendor bundle and production frontend
-RUN npm run build:vendor || true
-RUN npm run build || true
+RUN npm run build:vendor
+RUN npm run build
 
 ######### Builder: python deps #########
 FROM python:3.13-slim AS pybuilder

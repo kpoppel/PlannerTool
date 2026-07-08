@@ -600,6 +600,9 @@ class FeatureBoard extends LitElement {
           .map((s) => [String(s.id), s])
       );
 
+      // Full lookup of all swimlanes by ID — used for origin attribution in labels.
+      const swimlaneById = new Map(swimlanes.map((s) => [String(s.id), s]));
+
       const swimlanesToRender = swimlanes.filter(
         (s) => s.type === 'plan' || !hiddenExpansionLanes.has(String(s.id))
       );
@@ -617,34 +620,40 @@ class FeatureBoard extends LitElement {
         const teamOrigins = new Map();
 
         for (const feature of bucket) {
-          const sourceProjectLane = hiddenExpansionLanes.get(String(feature.project));
-          if (
-            sourceProjectLane &&
-            sourceProjectLane.type === 'expanded-plan' &&
-            String(sourceProjectLane.id) !== String(swimlane.id)
-          ) {
-            planOrigins.set(String(sourceProjectLane.id), {
-              id: String(sourceProjectLane.id),
-              name: sourceProjectLane.name,
-              color: sourceProjectLane.color,
-              type: sourceProjectLane.type,
-            });
+          // Any feature whose own project is a different swimlane contributes
+          // to this band's origin list — regardless of whether that source lane
+          // is hidden or visible.  This ensures selected team-plan participants
+          // (type='plan') are counted in the project swimlane label even when
+          // they still have their own band for unlinked tasks.
+          const sourcePlanId = String(feature.project);
+          if (sourcePlanId !== String(swimlane.id)) {
+            const sourcePlanSwimlane = swimlaneById.get(sourcePlanId);
+            if (
+              sourcePlanSwimlane &&
+              (sourcePlanSwimlane.type === 'plan' || sourcePlanSwimlane.type === 'expanded-plan')
+            ) {
+              planOrigins.set(sourcePlanId, {
+                id: sourcePlanId,
+                name: sourcePlanSwimlane.name,
+                color: sourcePlanSwimlane.color,
+                type: sourcePlanSwimlane.type,
+              });
+            }
           }
           if (Array.isArray(feature.capacity)) {
             for (const cap of feature.capacity) {
               if (!cap?.team || !(cap.capacity > 0)) continue;
-              const sourceTeamLane = hiddenExpansionLanes.get(String(cap.team));
-              if (
-                sourceTeamLane &&
-                sourceTeamLane.type === 'team' &&
-                String(sourceTeamLane.id) !== String(swimlane.id)
-              ) {
-                teamOrigins.set(String(sourceTeamLane.id), {
-                  id: String(sourceTeamLane.id),
-                  name: sourceTeamLane.name,
-                  color: sourceTeamLane.color,
-                  type: sourceTeamLane.type,
-                });
+              const sourceTeamId = String(cap.team);
+              if (sourceTeamId !== String(swimlane.id)) {
+                const sourceTeamSwimlane = swimlaneById.get(sourceTeamId);
+                if (sourceTeamSwimlane && sourceTeamSwimlane.type === 'team') {
+                  teamOrigins.set(sourceTeamId, {
+                    id: sourceTeamId,
+                    name: sourceTeamSwimlane.name,
+                    color: sourceTeamSwimlane.color,
+                    type: sourceTeamSwimlane.type,
+                  });
+                }
               }
             }
           }

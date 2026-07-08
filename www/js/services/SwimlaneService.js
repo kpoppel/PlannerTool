@@ -164,13 +164,20 @@ export function assignFeatureToSwimlane(
   const ownSwimlane = swimlaneById.get(feature.project);
 
   // --- Priority 1: parent chain walk (expandParentChild) ---
-  // When parent/child expansion is active a B-plan feature whose ancestor lives
-  // in an A-plan swimlane follows the ancestor — this takes precedence over the
-  // feature's own-project assignment so linked tasks migrate to their parent's band.
+  // When parent/child expansion is active, a feature follows its nearest ancestor
+  // that has a swimlane.  We prefer 'plan' (selected) swimlanes over 'expanded-plan'
+  // ones, so we keep walking past expanded-plan ancestors in case a plan-type ancestor
+  // sits higher in the chain.
+  //
+  // This handles two directions:
+  //   A) Project plan selected ('plan'), team plan features resolved as 'expanded-plan':
+  //      feature (T1/expanded) → ... → epic (P1/plan) → stops at P1 ✓
+  //   B) Team plan selected ('plan'), parent project resolved as 'expanded-plan':
+  //      feature (T1/plan) → epic (P1/expanded) → no plan ancestor → returns P1 ✓
+  //      feature (T1/plan) with no parent → no ancestor → falls to Priority 2 → T1 ✓
   if (expansionState && expansionState.expandParentChild) {
-    const planSwimlaneIds = new Set(
-      swimlanes.filter((s) => s.type === 'plan').map((s) => s.id)
-    );
+    let firstPlanAncestorProjectId = null;
+    let firstExpandedAncestorProjectId = null;
     let current = feature;
     // visited guards against cycles in malformed data
     const visited = new Set([String(feature.id)]);
@@ -180,12 +187,21 @@ export function assignFeatureToSwimlane(
       visited.add(parentId);
       const parent = allFeaturesById.get(parentId);
       if (!parent) break;
-      if (parent.project && planSwimlaneIds.has(parent.project)) {
-        // Ancestor is in a plan swimlane → this feature follows it
-        return parent.project;
+      const parentSwimlane = parent.project ? swimlaneById.get(parent.project) : null;
+      if (parentSwimlane) {
+        if (parentSwimlane.type === 'plan') {
+          // Plan-type ancestor is highest priority — no need to walk further.
+          firstPlanAncestorProjectId = parent.project;
+          break;
+        } else if (parentSwimlane.type === 'expanded-plan' && !firstExpandedAncestorProjectId) {
+          // Save as candidate but keep walking — a plan-type ancestor may be higher up.
+          firstExpandedAncestorProjectId = parent.project;
+        }
       }
       current = parent;
     }
+    if (firstPlanAncestorProjectId) return firstPlanAncestorProjectId;
+    if (firstExpandedAncestorProjectId) return firstExpandedAncestorProjectId;
   }
 
   // --- Priority 2: own project in a plan swimlane ---

@@ -340,14 +340,17 @@ describe('assignFeatureToSwimlane', () => {
       ).toBe('p1'); // walks up mid→root, finds p1 plan swimlane
     });
 
-    it('does not follow parent when parent is in expanded-plan (not plan) swimlane', () => {
+    it('follows parent into expanded-plan swimlane when parent and child share that swimlane', () => {
+      // Both task3 and its parent epic3 are in p3 (expanded-plan).
+      // The parent walk finds p3 as an expanded-plan ancestor → returns p3,
+      // which is the same result as the feature's own project — the key point is
+      // that features DO follow their parent into expanded-plan swimlanes.
       const features = [
         mkFeature('epic3', 'p3'),            // expanded-plan parent
         mkFeature('task3', 'p3', 'epic3'),   // child in same expanded-plan
       ];
       const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
 
-      // Both in p3 (expanded-plan), no plan swimlane ancestor → stays in p3
       expect(
         assignFeatureToSwimlane(
           features[1],
@@ -358,6 +361,53 @@ describe('assignFeatureToSwimlane', () => {
           selectedTeamIds
         )
       ).toBe('p3');
+    });
+
+    it('moves team-plan feature to parent expanded-plan swimlane (team plan selected)', () => {
+      // Scenario: team plan p1 is selected ('plan'), parent project p3 is
+      // resolved as 'expanded-plan'.  Feature in p1 whose parent is an epic
+      // in p3 should migrate to the p3 swimlane.
+      const swimlanesTeamBase = [
+        { id: 'p1', name: 'Team Plan', color: '#f00', type: 'plan' },
+        { id: 'p3', name: 'Project Plan', color: '#00f', type: 'expanded-plan' },
+      ];
+      const features = [
+        mkFeature('epic3', 'p3'),           // parent epic in expanded project plan
+        mkFeature('feat1', 'p1', 'epic3'),  // team-plan feature linked to epic
+      ];
+      const allFeaturesById = new Map(features.map((f) => [String(f.id), f]));
+
+      expect(
+        assignFeatureToSwimlane(
+          features[1], // feat1 in team plan p1
+          swimlanesTeamBase,
+          allFeaturesById,
+          { ...noExpansion, expandParentChild: true },
+          new Set(['p1']),
+          new Set()
+        )
+      ).toBe('p3'); // migrates to parent's expanded-plan swimlane
+    });
+
+    it('keeps team-plan feature in its own swimlane when it has no parent', () => {
+      // An unlinked team-plan feature (no parentId) should remain in the
+      // team plan swimlane even when expandParentChild is on.
+      const swimlanesTeamBase = [
+        { id: 'p1', name: 'Team Plan', color: '#f00', type: 'plan' },
+        { id: 'p3', name: 'Project Plan', color: '#00f', type: 'expanded-plan' },
+      ];
+      const feature = mkFeature('feat2', 'p1', null); // no parentId
+
+      expect(
+        assignFeatureToSwimlane(
+          feature,
+          swimlanesTeamBase,
+          new Map(),
+          { ...noExpansion, expandParentChild: true },
+          new Set(['p1']),
+          new Set()
+        )
+      ).toBe('p1'); // stays in team plan swimlane
     });
 
     it('handles cycle in parent chain without infinite loop', () => {
