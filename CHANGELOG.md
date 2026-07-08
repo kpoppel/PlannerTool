@@ -14,6 +14,12 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.1.5] - unreleased
+### Added
+### Changed
+### Fixed
+- MainGraph horizontal scroll lag: separated scroll rendering from data-change rendering. Scroll events now reuse cached data snapshots instead of rebuilding them, resulting in smooth real-time panning that follows user scroll input without staggered lag.
+
 ## [v4.1.4] - 2026-07-08
 ### Fixed
 - Docker build now fails fast when frontend bundling errors occur (removed error-swallowing from `npm run build:vendor` and `npm run build` in the Dockerfile).

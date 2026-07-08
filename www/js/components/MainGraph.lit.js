@@ -91,6 +91,7 @@ export class MainGraphLit extends LitElement {
     }
     // Setup event-driven scheduler so component owns its rendering lifecycle
     this._maingraphScheduled = false;
+    this._maingraphScrollScheduled = false;
     this._maingraphUnsubs = [];
     const buildSnapshot = () => {
       const months = getTimelineMonths() || [];
@@ -116,7 +117,8 @@ export class MainGraphLit extends LitElement {
       };
     };
 
-    const scheduleRender = async () => {
+    // Render when DATA changes (expensive: rebuilds snapshot and re-renders)
+    const scheduleDataRender = async () => {
       if (this._maingraphScheduled) return;
       this._maingraphScheduled = true;
       requestAnimationFrame(async () => {
@@ -127,21 +129,34 @@ export class MainGraphLit extends LitElement {
       });
     };
 
-    // Subscribe to bus events
-    this._maingraphUnsubs.push(bus.on(FeatureEvents.UPDATED, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(CapacityEvents.UPDATED, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(ProjectEvents.CHANGED, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(TeamEvents.CHANGED, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(FilterEvents.CHANGED, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(TimelineEvents.MONTHS, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_COMPLETE, scheduleRender));
-    this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleRender));
+    // Render when SCROLL changes (fast: reuses cached snapshot, just re-renders with new viewport)
+    const scheduleScrollRender = () => {
+      if (this._maingraphScrollScheduled) return;
+      this._maingraphScrollScheduled = true;
+      requestAnimationFrame(() => {
+        this._maingraphScrollScheduled = false;
+        // Reuse cached snapshot; _fullRender will recalculate visible range from scroll position
+        if (this._renderData) {
+          this.renderGraph(this._renderData);
+        }
+      });
+    };
 
-    // Listen for scroll via boardCoords (single scroll container)
-    this._maingraphScrollUnsubscribe = boardCoords.subscribe(scheduleRender);
+    // Subscribe to bus events (data changes → full rebuild)
+    this._maingraphUnsubs.push(bus.on(FeatureEvents.UPDATED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(CapacityEvents.UPDATED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ProjectEvents.CHANGED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(TeamEvents.CHANGED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(FilterEvents.CHANGED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(TimelineEvents.MONTHS, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_COMPLETE, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleDataRender));
+
+    // Listen for scroll via boardCoords (fast scroll render without rebuilding snapshot)
+    this._maingraphScrollUnsubscribe = boardCoords.subscribe(scheduleScrollRender);
 
     // Initial render
-    scheduleRender();
+    scheduleDataRender();
   }
 
   disconnectedCallback() {
