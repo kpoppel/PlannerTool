@@ -14,6 +14,10 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.1.4] - unreleased
+### Fixed
+- Expand Dataset → Parent/Child Links: fixed lateral traversal where a shared ancestor would incorrectly pull in unrelated sibling features from other plans; ancestors found via the upward pass no longer expand downward. Fixed unassigned (no-capacity) features from non-selected plans appearing when no team is selected.
+
 ## [v4.1.3] - 2026-07-08
 ### Added
 - Details panel displays "task state not loaded" if a linked task is not loaded into the tool. This happens when ex. Closed tasks are not loaded.

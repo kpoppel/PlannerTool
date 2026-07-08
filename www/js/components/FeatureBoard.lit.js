@@ -472,12 +472,23 @@ class FeatureBoard extends LitElement {
           feature.capacity.some((tl) =>
             state.teams.find((t) => t.id === tl.team && t.selected)
           )
-        : state._viewService.showUnassignedCards;
+        : // Unassigned parent: only visible if it belongs to a selected plan.
+          // Features from expanded (non-selected) plans must always match the team
+          // filter; showUnassignedCards is not a bypass for cross-plan expansion.
+          selectedProjectIds.has(String(feature.project)) &&
+          state._viewService.showUnassignedCards;
       if (!epicVisible && !anyChildVisible) return false;
     } else {
       const hasCapacity = feature.capacity?.length > 0;
       if (!hasCapacity) {
-        if (!state._viewService.showUnassignedCards) return false;
+        // Unassigned leaf: only visible if it belongs to a selected plan.
+        // Features from expanded (non-selected) plans must always match the team
+        // filter; showUnassignedCards is not a bypass for cross-plan expansion.
+        if (
+          !selectedProjectIds.has(String(feature.project)) ||
+          !state._viewService.showUnassignedCards
+        )
+          return false;
       } else {
         // If this feature belongs to a selected project, ignore team-selection and show it.
         if (

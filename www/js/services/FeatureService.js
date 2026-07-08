@@ -575,16 +575,35 @@ export class FeatureService {
   }
 
   /**
-   * Expand feature set with transitive closure of parent/child relations
-   * Given a set of feature IDs, return all features connected via parentId relationships
+   * Expand feature set with transitive closure of parent/child relations.
+   *
+   * Traversal rules (prevents lateral walk via shared ancestors):
+   *   - UPWARD (parentId chain): always followed from any visited node.
+   *   - DOWNWARD (childrenByParent): only allowed from the original base features
+   *     and their true descendants.  Ancestors reached via the upward pass are
+   *     deliberately excluded from downward expansion so that unrelated siblings
+   *     that share a common parent are never pulled in.
+   *
+   * Example — team plan base {Feature-A} (parent = Epic1, Epic1 also has Feature-B in T2):
+   *   Feature-A → upward Epic1 (added, not in canExpandDown)
+   *   Feature-A → downward Sub-A (added, added to canExpandDown)
+   *   Epic1     → upward Project (added); downward BLOCKED → Feature-B never added ✓
+   *
+   * Example — project plan base {Epic1} (Epic1 IS in canExpandDown):
+   *   Epic1 → downward [Feature-A, Feature-B] → full descendant tree ✓
+   *
    * Only includes features that exist in the database (excludes User Stories, etc.)
    * @param {Set<string>} baseIds - Starting feature IDs
-   * @returns {Set<string>} - Expanded feature IDs including all ancestors and descendants
+   * @returns {Set<string>} - Expanded feature IDs (ancestors + base + true descendants)
    */
   expandParentChildClosure(baseIds) {
     const allFeatures = this.getEffectiveFeatures();
     const featureById = new Map(allFeatures.map((f) => [f.id, f]));
     const expanded = new Set(baseIds);
+    // canExpandDown: base features and true descendants — the only nodes allowed to
+    // spawn children.  Ancestors fetched via the upward pass are intentionally
+    // excluded so they cannot pull in unrelated siblings (no lateral traversal).
+    const canExpandDown = new Set(baseIds);
     const toProcess = [...baseIds];
 
     while (toProcess.length > 0) {
@@ -592,22 +611,24 @@ export class FeatureService {
       const feature = featureById.get(id);
       if (!feature) continue;
 
-      // Add parent epic if exists in database
+      // UPWARD: add parent if it exists in the database and hasn't been visited yet.
+      // Do NOT add the parent to canExpandDown — ancestors must not expand downward.
       if (feature.parentId && !expanded.has(feature.parentId)) {
-        // Only add if parent exists in our feature set
         if (featureById.has(feature.parentId)) {
           expanded.add(feature.parentId);
           toProcess.push(feature.parentId);
         }
       }
 
-      // Add children (features that have this as parent)
-      // Only include children that exist in the database
-      const children = this._childrenByParent.get(id) || [];
-      for (const childId of children) {
-        if (!expanded.has(childId) && featureById.has(childId)) {
-          expanded.add(childId);
-          toProcess.push(childId);
+      // DOWNWARD: only for base features and their true descendants.
+      if (canExpandDown.has(id)) {
+        const children = this._childrenByParent.get(id) || [];
+        for (const childId of children) {
+          if (!expanded.has(childId) && featureById.has(childId)) {
+            expanded.add(childId);
+            canExpandDown.add(childId); // child is eligible for further downward expansion
+            toProcess.push(childId);
+          }
         }
       }
     }
