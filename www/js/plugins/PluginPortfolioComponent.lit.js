@@ -798,7 +798,13 @@ export class PluginPortfolioComponent extends LitElement {
 
     this._projectById = Object.fromEntries(projects.map((p) => [String(p.id), p]));
 
-    this._columnStates =
+    const sidebarStateFilterRaw =
+      state.selectedFeatureStateFilter instanceof Set ?
+        Array.from(state.selectedFeatureStateFilter)
+      : state.selectedFeatureStateFilter || [];
+    const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
+
+    const allAvailableStates =
       (state.availableFeatureStates || []).length > 0 ?
         [...state.availableFeatureStates]
       : Array.from(
@@ -810,6 +816,11 @@ export class PluginPortfolioComponent extends LitElement {
           return a.localeCompare(b);
         });
 
+    // Sidebar state selection is the source of truth for visible portfolio columns.
+    this._columnStates = allAvailableStates.filter((s) =>
+      sidebarStateFilter.has(normalizeState(s))
+    );
+
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 
     const availableTypes =
@@ -820,12 +831,6 @@ export class PluginPortfolioComponent extends LitElement {
     const sidebarVisibleTypes = new Set(
       availableTypes.filter((t) => state._viewService?.isTypeVisible?.(t) !== false)
     );
-
-    const sidebarStateFilterRaw =
-      state.selectedFeatureStateFilter instanceof Set ?
-        Array.from(state.selectedFeatureStateFilter)
-      : state.selectedFeatureStateFilter || [];
-    const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
 
     const expansion = state.expansionState || {};
     const hasExpansion =
@@ -858,7 +863,7 @@ export class PluginPortfolioComponent extends LitElement {
 
       const featureStateNorm = normalizeState(feature.state);
       if (!stateMap.has(featureStateNorm)) return false;
-      if (sidebarStateFilter.size > 0 && !sidebarStateFilter.has(featureStateNorm)) return false;
+      if (!sidebarStateFilter.has(featureStateNorm)) return false;
 
       const featureType = getFeatureType(feature);
       if (!sidebarVisibleTypes.has(featureType)) return false;
