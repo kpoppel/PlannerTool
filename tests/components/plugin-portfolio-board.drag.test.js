@@ -171,4 +171,41 @@ describe('plugin-portfolio-board drag and drop', () => {
     expect(updateStub.called).to.equal(false);
     expect(el._dragState.active).to.equal(false);
   });
+
+  it('builds a timeline extent from the visible task date range', async () => {
+    const features = [
+      {
+        id: 'F-10',
+        title: 'First feature',
+        type: 'Feature',
+        state: 'New',
+        project: 'p1',
+        start: '2026-01-01',
+        end: '2026-02-10',
+        capacity: [{ team: 't1', capacity: 50 }],
+      },
+      {
+        id: 'F-11',
+        title: 'Last feature',
+        type: 'Feature',
+        state: 'Doing',
+        project: 'p1',
+        start: '2028-07-07',
+        end: '2028-07-07',
+        capacity: [{ team: 't1', capacity: 50 }],
+      },
+    ];
+    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns(features));
+
+    const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
+    const layout = el._timelineLayout;
+
+    expect(layout.empty).to.equal(false);
+    expect(layout.months[0].getFullYear()).to.equal(2026);
+    expect(layout.months[0].getMonth()).to.equal(0);
+    expect(layout.months[layout.months.length - 1].getFullYear()).to.equal(2028);
+    expect(layout.months[layout.months.length - 1].getMonth()).to.equal(6);
+    expect(layout.totalWidth).to.be.greaterThan(0);
+    expect(el.shadowRoot.querySelector('.timeline-svg-wrap')).to.exist;
+  });
 });

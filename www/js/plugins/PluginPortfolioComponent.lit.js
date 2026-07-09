@@ -1,4 +1,4 @@
-import { LitElement, html, css } from '../vendor/lit.js';
+import { LitElement, html, css, unsafeSVG } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import {
   AppEvents,
@@ -14,9 +14,18 @@ import {
 import { pluginManager } from '../core/PluginManager.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
+import {
+  TIMELINE_HEADER_HEIGHT,
+  TIMELINE_LABEL_WIDTH,
+  buildPortfolioTimelineLayout,
+  buildPortfolioTimelineSvgMarkup,
+  formatTimelineMonthLabel,
+} from './portfolioTimeline.js';
 
 const ENABLE_STATE_CELL_ACCENT = true;
 const STATE_CELL_ACCENT_ALPHA = 0.1;
+const TIMELINE_MONTH_GRID_SPACING = 120;
+const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
 
 function normalizeState(value) {
   return String(value || '').trim().toLowerCase();
@@ -81,6 +90,8 @@ export class PluginPortfolioComponent extends LitElement {
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
     _unallocatedOpen: { type: Boolean, state: true },
+    _timelineOpen: { type: Boolean, state: true },
+    _timelineLayout: { type: Object, state: true },
     _dragState: { type: Object, state: true },
     _statusMessage: { type: String, state: true },
   };
@@ -164,6 +175,116 @@ export class PluginPortfolioComponent extends LitElement {
       background: #ffffff;
     }
 
+    .timeline-panel {
+      position: sticky;
+      top: 0;
+      z-index: 35;
+      border-bottom: 1px solid #d7e1ee;
+      background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+    }
+
+    .timeline-panel .panel-header {
+      background: transparent;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .timeline-summary {
+      font-size: 0.72rem;
+      color: #475569;
+    }
+
+    .timeline-body {
+      display: grid;
+      grid-template-columns: ${TIMELINE_LABEL_WIDTH}px minmax(0, 1fr);
+      align-items: start;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    .timeline-labels {
+      position: sticky;
+      left: 0;
+      z-index: 40;
+      background: rgba(248, 251, 255, 0.96);
+      border-right: 1px solid #dbe5f1;
+      box-shadow: 1px 0 0 rgba(15, 23, 42, 0.03);
+    }
+
+    .timeline-label {
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .timeline-label .tc-dot {
+      margin-right: 8px;
+      width: 8px;
+      height: 8px;
+      flex-shrink: 0;
+    }
+
+    .timeline-svg-wrap {
+      position: relative;
+      overflow: hidden;
+      background:
+        repeating-linear-gradient(
+          to right,
+          rgba(148, 163, 184, 0.07) 0,
+          rgba(148, 163, 184, 0.07) 1px,
+          transparent 1px,
+          transparent ${TIMELINE_MONTH_GRID_SPACING}px
+        ),
+        #fff;
+    }
+
+    .timeline-svg {
+      display: block;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .timeline-empty {
+      padding: 10px 12px;
+      color: #64748b;
+      font-size: 0.76rem;
+      font-style: italic;
+      border-top: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .timeline-month-label {
+      fill: #334155;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .timeline-month-line {
+      stroke: rgba(148, 163, 184, 0.42);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+    }
+
+    .timeline-today {
+      stroke: #dc2626;
+      stroke-width: 1.5;
+      stroke-dasharray: 5 4;
+      shape-rendering: crispEdges;
+    }
+
+    .timeline-row-divider {
+      stroke: rgba(148, 163, 184, 0.18);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+    }
+
     table.pgrid td.sc.drop-allowed {
       box-shadow: inset 0 0 0 2px rgba(22, 163, 74, 0.55);
     }
@@ -199,7 +320,7 @@ export class PluginPortfolioComponent extends LitElement {
 
     table.pgrid thead th {
       position: sticky;
-      top: 0;
+      top: var(--portfolio-timeline-offset, 0px);
       z-index: 20;
       background: #1a2a3e;
       color: #dde4f0;
@@ -217,6 +338,7 @@ export class PluginPortfolioComponent extends LitElement {
       width: 182px;
       z-index: 30;
       position: sticky;
+      top: var(--portfolio-timeline-offset, 0px);
       left: 0;
       border-right: 2px solid rgba(255, 255, 255, 0.15);
       text-align: left;
@@ -535,6 +657,17 @@ export class PluginPortfolioComponent extends LitElement {
     this._columnStates = [];
     this._projectById = {};
     this._unallocatedOpen = true;
+    this._timelineOpen = true;
+    this._timelineLayout = {
+      empty: true,
+      rows: [],
+      months: [],
+      totalWidth: TIMELINE_LABEL_WIDTH,
+      totalHeight: TIMELINE_HEADER_HEIGHT,
+      stickyOffset: TIMELINE_HEADER_HEIGHT,
+      rangeStart: null,
+      rangeEnd: null,
+    };
     this._dragState = {
       featureId: null,
       fromState: null,
@@ -743,6 +876,70 @@ export class PluginPortfolioComponent extends LitElement {
 
     this._rows = rows;
     this._unallocated = unallocated;
+    this._timelineLayout = buildPortfolioTimelineLayout(rows, unallocated, this._columnStates);
+  }
+
+  _timelineBarCategory(feature) {
+    const category = state.featureStateService?.getCategoryForState?.(feature?.state);
+    return String(category || '').toLowerCase();
+  }
+
+  _timelineBarOpacity(feature) {
+    return TIMELINE_FADED_CATEGORIES.has(this._timelineBarCategory(feature)) ? 0.36 : 0.92;
+  }
+
+  _timelineBarTooltip(feature) {
+    const start = feature?.start || '-';
+    const end = feature?.end || '-';
+    const projectName = this._projectNameForFeature(feature);
+    return `${feature?.id || ''}\n${toTitle(feature?.title)}\n${projectName}\n${start} -> ${end}`.trim();
+  }
+
+  _renderTimeline() {
+    const layout = this._timelineLayout;
+    const hasTimeline = !layout.empty;
+    const subtitle = hasTimeline
+      ? `${formatTimelineMonthLabel(layout.months[0])} -> ${formatTimelineMonthLabel(layout.months[layout.months.length - 1])}`
+      : 'No dated tasks in the current selection';
+
+    const timelineSvg = hasTimeline
+      ? unsafeSVG(
+          buildPortfolioTimelineSvgMarkup(layout, {
+            getBarColor: (feature) => this._projectColorForFeature(feature),
+            getBarOpacity: (feature) => this._timelineBarOpacity(feature),
+            getBarTooltip: (feature) => this._timelineBarTooltip(feature),
+          })
+        )
+      : null;
+
+    return html`
+      <div class="timeline-panel">
+        <div class="panel-header" @click=${() => { this._timelineOpen = !this._timelineOpen; }}>
+          <span class="panel-title">Timeline Overview</span>
+          <span class="panel-subtitle timeline-summary">${subtitle}</span>
+          <span class="panel-toggle ${this._timelineOpen ? 'up' : ''}">▼</span>
+        </div>
+
+        ${this._timelineOpen
+          ? hasTimeline
+            ? html`
+                <div class="timeline-body">
+                  <div class="timeline-labels" style="width:${TIMELINE_LABEL_WIDTH}px;">
+                    <div class="timeline-label" style="height:${TIMELINE_HEADER_HEIGHT}px;">Teams</div>
+                    ${layout.rows.map(
+                      (row) => html`<div class="timeline-label" style="height:${row.height}px;">
+                        <span class="tc-dot" style="background:${row.color}"></span>
+                        ${row.label}
+                      </div>`
+                    )}
+                  </div>
+                  <div class="timeline-svg-wrap">${timelineSvg}</div>
+                </div>
+              `
+            : html`<div class="timeline-empty">No dated tasks in the current selection.</div>`
+          : ''}
+      </div>
+    `;
   }
 
   _projectColorForFeature(feature) {
@@ -1005,8 +1202,11 @@ export class PluginPortfolioComponent extends LitElement {
       }
     }
 
+    const timelineOffset =
+      this._timelineOpen && !this._timelineLayout.empty ? this._timelineLayout.totalHeight : 0;
+
     return html`
-      <div class="board-scroll">
+      <div class="board-scroll" style="--portfolio-timeline-offset:${timelineOffset}px;">
         <table class="pgrid" style="--state-count:${this._columnStates.length}">
           <thead>
             <tr>
@@ -1153,6 +1353,7 @@ export class PluginPortfolioComponent extends LitElement {
       </div>
 
       <div class="main-content" @click="${this._clearSelectionOnBackground}">
+        ${this._renderTimeline()}
         <div class="board-panel">${this._renderBoard()}</div>
         ${this._renderUnallocated()}
       </div>
