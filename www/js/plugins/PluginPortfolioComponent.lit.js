@@ -81,6 +81,8 @@ export class PluginPortfolioComponent extends LitElement {
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
     _unallocatedOpen: { type: Boolean, state: true },
+    _dragState: { type: Object, state: true },
+    _statusMessage: { type: String, state: true },
   };
 
   static styles = css`
@@ -162,12 +164,37 @@ export class PluginPortfolioComponent extends LitElement {
       background: #ffffff;
     }
 
+    table.pgrid td.sc.drop-allowed {
+      box-shadow: inset 0 0 0 2px rgba(22, 163, 74, 0.55);
+    }
+
+    .pcard.dragging {
+      opacity: 0.45;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+    }
+
     table.pgrid {
       border-collapse: separate;
       border-spacing: 0;
       table-layout: fixed;
       min-width: calc(182px + 210px * var(--state-count, 4));
       width: 100%;
+    }
+
+    .status-toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 2000;
+      max-width: 320px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.94);
+      color: #f8fafc;
+      font-size: 0.74rem;
+      font-weight: 600;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.28);
+      pointer-events: none;
     }
 
     table.pgrid thead th {
@@ -508,9 +535,25 @@ export class PluginPortfolioComponent extends LitElement {
     this._columnStates = [];
     this._projectById = {};
     this._unallocatedOpen = true;
+    this._dragState = {
+      featureId: null,
+      fromState: null,
+      fromTeamId: null,
+      toState: null,
+      toTeamId: null,
+      active: false,
+      allowed: false,
+    };
+    this._statusMessage = '';
+
+    this._dragToastTimer = null;
+    this._suppressClickUntil = 0;
+    this._pointerDown = null;
 
     this._boundRefresh = this._refresh.bind(this);
     this._boundSelected = this._onFeatureSelected.bind(this);
+    this._boundPointerMove = this._handleGlobalPointerMove.bind(this);
+    this._boundPointerUp = this._handleGlobalPointerUp.bind(this);
   }
 
   connectedCallback() {
@@ -545,6 +588,9 @@ export class PluginPortfolioComponent extends LitElement {
     bus.off(FilterEvents.CHANGED, this._boundRefresh);
     bus.off(FeatureEvents.SELECTED, this._boundSelected);
     bus.off(ViewManagementEvents.ACTIVATED, this._boundRefresh);
+
+    this._cleanupPointerTracking();
+    this._clearToastTimer();
   }
 
   open() {
@@ -730,8 +776,163 @@ export class PluginPortfolioComponent extends LitElement {
 
   _selectFeature(feature) {
     if (!feature) return;
+    if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
     this._selectedFeatureId = String(feature.id);
     bus.emit(FeatureEvents.SELECTED, feature);
+  }
+
+  _clearToastTimer() {
+    if (this._dragToastTimer) {
+      window.clearTimeout(this._dragToastTimer);
+      this._dragToastTimer = null;
+    }
+  }
+
+  _showStatus(message) {
+    this._statusMessage = message || '';
+    this._clearToastTimer();
+    if (!this._statusMessage) return;
+    this._dragToastTimer = window.setTimeout(() => {
+      this._statusMessage = '';
+      this._dragToastTimer = null;
+    }, 2400);
+  }
+
+  _cleanupPointerTracking() {
+    window.removeEventListener('pointermove', this._boundPointerMove);
+    window.removeEventListener('pointerup', this._boundPointerUp);
+    window.removeEventListener('mouseup', this._boundPointerUp);
+    this._pointerDown = null;
+  }
+
+  _handleCardPointerDown(event, feature) {
+    if (!feature) return;
+    this._pointerDown = {
+      featureId: String(feature.id),
+      x: event.clientX,
+      y: event.clientY,
+      moved: false,
+    };
+    window.addEventListener('pointermove', this._boundPointerMove);
+    window.addEventListener('pointerup', this._boundPointerUp);
+    window.addEventListener('mouseup', this._boundPointerUp);
+  }
+
+  _handleGlobalPointerMove(event) {
+    if (!this._pointerDown || this._pointerDown.moved) return;
+    const dx = Math.abs(event.clientX - this._pointerDown.x);
+    const dy = Math.abs(event.clientY - this._pointerDown.y);
+    if (dx > 5 || dy > 5) {
+      this._pointerDown.moved = true;
+      this._suppressClickUntil = Date.now() + 250;
+    }
+  }
+
+  _handleGlobalPointerUp() {
+    this._cleanupPointerTracking();
+  }
+
+  _resetDragState() {
+    this._dragState = {
+      featureId: null,
+      fromState: null,
+      fromTeamId: null,
+      toState: null,
+      toTeamId: null,
+      active: false,
+      allowed: false,
+    };
+  }
+
+  _handleDragStart(event, feature, teamId) {
+    if (!feature) return;
+    const fromState = String(feature.state || '');
+    const featureId = String(feature.id);
+    const fromTeamId = teamId == null ? null : String(teamId);
+    this._dragState = {
+      featureId,
+      fromState,
+      fromTeamId,
+      toState: null,
+      toTeamId: null,
+      active: true,
+      allowed: false,
+    };
+    this._suppressClickUntil = Date.now() + 250;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData(
+        'application/json',
+        JSON.stringify({ featureId, fromState, fromTeamId })
+      );
+      event.dataTransfer.setData('text/plain', featureId);
+    }
+  }
+
+  _handleDragEnd() {
+    this._resetDragState();
+  }
+
+  _handleDragOver(event, stateName, teamId) {
+    if (!this._dragState?.active) return;
+    void stateName;
+    const targetTeamId = teamId == null ? null : String(teamId);
+    const sameRow =
+      this._dragState.fromTeamId == null ||
+      targetTeamId === this._dragState.fromTeamId;
+    const allowed = sameRow;
+    if (allowed) event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = allowed ? 'move' : 'none';
+    }
+    if (this._dragState.allowed !== allowed) {
+      this._dragState = {
+        ...this._dragState,
+        allowed,
+      };
+    }
+  }
+
+  _handleDragLeave(event, stateName, teamId) {
+    void event;
+    void stateName;
+    void teamId;
+  }
+
+  _handleDrop(event, stateName, teamId) {
+    if (!this._dragState?.active) return;
+    event.preventDefault();
+
+    const nextState = String(stateName || '');
+    const nextTeamId = teamId == null ? null : String(teamId);
+    const featureId = this._dragState.featureId;
+    const fromState = this._dragState.fromState;
+    const fromTeamId = this._dragState.fromTeamId;
+    if (!featureId || !nextState) {
+      this._resetDragState();
+      return;
+    }
+
+    if (fromTeamId != null && nextTeamId !== fromTeamId) {
+      this._resetDragState();
+      return;
+    }
+
+    if (normalizeState(fromState) === normalizeState(nextState)) {
+      this._resetDragState();
+      return;
+    }
+
+    try {
+      const updated = state.updateFeatureField(featureId, 'state', nextState);
+      if (!updated) throw new Error('State update rejected');
+      this._showStatus(`Moved ${featureId} to ${nextState}`);
+    } catch (error) {
+      console.warn('[PluginPortfolio] failed to update feature state', error);
+      this._showStatus(`Failed to move ${featureId} to ${nextState}`);
+    } finally {
+      this._resetDragState();
+    }
   }
 
   _clearSelectionOnBackground(event) {
@@ -755,9 +956,10 @@ export class PluginPortfolioComponent extends LitElement {
     this._unallocatedOpen = !this._unallocatedOpen;
   }
 
-  _renderCard(feature, allocation) {
+  _renderCard(feature, allocation, teamId) {
     const typeName = getFeatureType(feature);
     const selected = String(feature.id) === String(this._selectedFeatureId);
+    const dragging = String(feature.id) === String(this._dragState?.featureId || '');
     const tags = featureTags(feature);
     const start = feature?.start || null;
     const end = feature?.end || null;
@@ -765,8 +967,12 @@ export class PluginPortfolioComponent extends LitElement {
 
     return html`
       <div
-        class="pcard ${selected ? 'selected' : ''} ${feature?.dirty ? 'dirty' : ''}"
+        class="pcard ${selected ? 'selected' : ''} ${feature?.dirty ? 'dirty' : ''} ${dragging ? 'dragging' : ''}"
         style="border-left-color:${this._projectColorForFeature(feature)}"
+        draggable="true"
+        @pointerdown="${(event) => this._handleCardPointerDown(event, feature)}"
+        @dragstart="${(event) => this._handleDragStart(event, feature, teamId)}"
+        @dragend="${this._handleDragEnd}"
         @click="${() => this._selectFeature(feature)}"
       >
         <div class="card-id">
@@ -840,10 +1046,21 @@ export class PluginPortfolioComponent extends LitElement {
                     const cellStyle = ENABLE_STATE_CELL_ACCENT
                       ? `background:${hexToRgba(stateColor.background, STATE_CELL_ACCENT_ALPHA)};`
                       : '';
+                    const rowTeamId = String(row.team?.id || '');
+                    const rowHighlight =
+                      this._dragState?.active &&
+                      String(this._dragState.fromTeamId || '') === rowTeamId;
+                    const dropClass = rowHighlight ? 'drop-allowed' : '';
                     return html`
-                      <td class="sc" style="${cellStyle}">
+                      <td
+                        class="sc ${dropClass}"
+                        style="${cellStyle}"
+                        @dragover="${(event) => this._handleDragOver(event, stateName, rowTeamId)}"
+                        @dragleave="${(event) => this._handleDragLeave(event, stateName, rowTeamId)}"
+                        @drop="${(event) => this._handleDrop(event, stateName, rowTeamId)}"
+                      >
                         ${cards.length
-                          ? cards.map((entry) => this._renderCard(entry.feature, entry.allocation))
+                          ? cards.map((entry) => this._renderCard(entry.feature, entry.allocation, rowTeamId))
                           : html`<div class="empty-cell">-</div>`}
                       </td>
                     `;
@@ -939,6 +1156,8 @@ export class PluginPortfolioComponent extends LitElement {
         <div class="board-panel">${this._renderBoard()}</div>
         ${this._renderUnallocated()}
       </div>
+
+      ${this._statusMessage ? html`<div class="status-toast">${this._statusMessage}</div>` : ''}
     `;
   }
 }
