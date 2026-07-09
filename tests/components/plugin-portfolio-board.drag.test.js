@@ -206,6 +206,13 @@ describe('plugin-portfolio-board drag and drop', () => {
     expect(layout.months[layout.months.length - 1].getFullYear()).to.equal(2028);
     expect(layout.months[layout.months.length - 1].getMonth()).to.equal(6);
     expect(layout.totalWidth).to.be.greaterThan(0);
+
+    // Timeline overview starts collapsed by default.
+    expect(el._timelineOpen).to.equal(false);
+    expect(el.shadowRoot.querySelector('.timeline-svg-wrap')).to.not.exist;
+
+    el._timelineOpen = true;
+    await el.updateComplete;
     expect(el.shadowRoot.querySelector('.timeline-svg-wrap')).to.exist;
   });
 });

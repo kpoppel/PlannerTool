@@ -26,6 +26,8 @@ const ENABLE_STATE_CELL_ACCENT = true;
 const STATE_CELL_ACCENT_ALPHA = 0.1;
 const TIMELINE_MONTH_GRID_SPACING = 120;
 const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
+// Tune this default cap for the timeline viewport height.
+const DEFAULT_TIMELINE_MAX_HEIGHT_VH = 50;
 
 function normalizeState(value) {
   return String(value || '').trim().toLowerCase();
@@ -179,6 +181,9 @@ export class PluginPortfolioComponent extends LitElement {
       position: sticky;
       top: 0;
       z-index: 35;
+      display: flex;
+      flex-direction: column;
+      max-height: var(--portfolio-timeline-max-height, ${DEFAULT_TIMELINE_MAX_HEIGHT_VH}vh);
       border-bottom: 1px solid #d7e1ee;
       background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
       box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
@@ -195,11 +200,12 @@ export class PluginPortfolioComponent extends LitElement {
     }
 
     .timeline-body {
+      flex: 1;
       display: grid;
       grid-template-columns: ${TIMELINE_LABEL_WIDTH}px minmax(0, 1fr);
       align-items: start;
       min-height: 0;
-      overflow: visible;
+      overflow: auto;
     }
 
     .timeline-labels {
@@ -249,7 +255,7 @@ export class PluginPortfolioComponent extends LitElement {
     .timeline-svg {
       display: block;
       overflow: visible;
-      pointer-events: none;
+      pointer-events: auto;
     }
 
     .timeline-empty {
@@ -260,16 +266,31 @@ export class PluginPortfolioComponent extends LitElement {
       border-top: 1px solid rgba(148, 163, 184, 0.14);
     }
 
-    .timeline-month-label {
+    .timeline-year-label {
       fill: #334155;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
+    }
+
+    .timeline-month-number {
+      fill: #1e293b;
+      font-size: 10px;
+      font-weight: 700;
+      pointer-events: none;
     }
 
     .timeline-month-line {
       stroke: rgba(148, 163, 184, 0.42);
       stroke-width: 1;
       shape-rendering: crispEdges;
+      pointer-events: none;
+    }
+
+    .timeline-year-line {
+      stroke: rgba(100, 116, 139, 0.52);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+      pointer-events: none;
     }
 
     .timeline-today {
@@ -277,12 +298,22 @@ export class PluginPortfolioComponent extends LitElement {
       stroke-width: 1.5;
       stroke-dasharray: 5 4;
       shape-rendering: crispEdges;
+      pointer-events: none;
     }
 
     .timeline-row-divider {
       stroke: rgba(148, 163, 184, 0.18);
       stroke-width: 1;
       shape-rendering: crispEdges;
+      pointer-events: none;
+    }
+
+    .timeline-year-label {
+      pointer-events: none;
+    }
+
+    .timeline-bar {
+      pointer-events: visiblePainted;
     }
 
     table.pgrid td.sc.drop-allowed {
@@ -320,7 +351,7 @@ export class PluginPortfolioComponent extends LitElement {
 
     table.pgrid thead th {
       position: sticky;
-      top: var(--portfolio-timeline-offset, 0px);
+      top: 0;
       z-index: 20;
       background: #1a2a3e;
       color: #dde4f0;
@@ -338,7 +369,7 @@ export class PluginPortfolioComponent extends LitElement {
       width: 182px;
       z-index: 30;
       position: sticky;
-      top: var(--portfolio-timeline-offset, 0px);
+      top: 0;
       left: 0;
       border-right: 2px solid rgba(255, 255, 255, 0.15);
       text-align: left;
@@ -657,7 +688,7 @@ export class PluginPortfolioComponent extends LitElement {
     this._columnStates = [];
     this._projectById = {};
     this._unallocatedOpen = true;
-    this._timelineOpen = true;
+    this._timelineOpen = false;
     this._timelineLayout = {
       empty: true,
       rows: [],
@@ -1202,11 +1233,8 @@ export class PluginPortfolioComponent extends LitElement {
       }
     }
 
-    const timelineOffset =
-      this._timelineOpen && !this._timelineLayout.empty ? this._timelineLayout.totalHeight : 0;
-
     return html`
-      <div class="board-scroll" style="--portfolio-timeline-offset:${timelineOffset}px;">
+      <div class="board-scroll">
         <table class="pgrid" style="--state-count:${this._columnStates.length}">
           <thead>
             <tr>

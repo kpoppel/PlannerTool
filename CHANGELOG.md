@@ -19,6 +19,9 @@ Template - do not change :
 ### Changed
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.
+- Portfolio Board timeline overview now uses a two-row header with year labels and numeric month labels to improve readability and avoid overlapping month text.
+- Portfolio Board timeline overview is now capped to 50% of viewport height and becomes internally scrollable so the board table remains usable with large datasets.
+- Portfolio Board timeline height cap is now configurable via CSS variable (`--portfolio-timeline-max-height`) with a default of `50vh`.
 - Details panel now shows task tags with add/remove editing, and Save to Azure now includes selectable tag changes in the Azure save modal.
 - Save modal features again a checkbox per row.
 - Save modal has added revert button to revert all changes to an item.  This is useful for reverting in this overview, but also if items were changed outside the tool (in ADO) and no longer are loaded, causing a difference between scenario overrides and loaded items.

@@ -4,12 +4,14 @@ export const TIMELINE_BAR_HEIGHT = 3;
 export const TIMELINE_BAR_GAP = 2;
 export const TIMELINE_ROW_PADDING = 4;
 export const TIMELINE_ROW_MIN_HEIGHT = 20;
-export const TIMELINE_HEADER_HEIGHT = 28;
+export const TIMELINE_HEADER_HEIGHT = 34;
 export const TIMELINE_LABEL_WIDTH = 182;
 export const TIMELINE_VIEWBOX_WIDTH = 1000;
 
 export function formatTimelineMonthLabel(date) {
-  return date.toLocaleString('default', { month: 'short', year: '2-digit' });
+  const month = String((date?.getMonth?.() || 0) + 1).padStart(2, '0');
+  const year = String(date?.getFullYear?.() || '').padStart(4, '0');
+  return `${month}/${year}`;
 }
 
 function isValidDate(date) {
@@ -152,19 +154,64 @@ export function buildPortfolioTimelineSvgMarkup(layout, options = {}) {
 
   const timelineWidth = Math.max(layout.totalWidth || TIMELINE_VIEWBOX_WIDTH, TIMELINE_LABEL_WIDTH);
   const timelineHeight = layout.totalHeight || TIMELINE_HEADER_HEIGHT;
+  const yearRowHeight = 14;
+  const monthRowHeight = TIMELINE_HEADER_HEIGHT - yearRowHeight;
 
-  const monthLines = (layout.months || [])
-    .map((month) => {
-      const x = rangeToTimelineX(month, layout.rangeStart, layout.rangeEnd, timelineWidth);
-      return `
-        <g>
-          <line class="timeline-month-line" x1="${x}" y1="0" x2="${x}" y2="${timelineHeight}"></line>
-          <text class="timeline-month-label" x="${x + 6}" y="16">${escapeSvgText(
-            formatTimelineMonthLabel(month)
-          )}</text>
-        </g>
-      `;
+  const months = layout.months || [];
+
+  const monthSegments = months.map((month, index) => {
+    const startX = rangeToTimelineX(month, layout.rangeStart, layout.rangeEnd, timelineWidth);
+    const endX =
+      index < months.length - 1
+        ? rangeToTimelineX(months[index + 1], layout.rangeStart, layout.rangeEnd, timelineWidth)
+        : timelineWidth;
+    return {
+      month,
+      startX,
+      endX,
+      centerX: startX + Math.max(0, endX - startX) / 2,
+      monthNumber: String(month.getMonth() + 1).padStart(2, '0'),
+    };
+  });
+
+  const yearSegments = [];
+  for (const segment of monthSegments) {
+    const year = segment.month.getFullYear();
+    const last = yearSegments[yearSegments.length - 1];
+    if (!last || last.year !== year) {
+      yearSegments.push({ year, startX: segment.startX, endX: segment.endX });
+    } else {
+      last.endX = segment.endX;
+    }
+  }
+
+  const monthLines = monthSegments
+    .map(
+      (segment) => `
+        <line class="timeline-month-line" x1="${segment.startX}" y1="${yearRowHeight}" x2="${segment.startX}" y2="${timelineHeight}"></line>
+      `
+    )
+    .join('');
+
+  const yearLines = yearSegments
+    .map(
+      (segment) =>
+        `<line class="timeline-year-line" x1="${segment.startX}" y1="0" x2="${segment.startX}" y2="${timelineHeight}"></line>`
+    )
+    .join('');
+
+  const yearLabels = yearSegments
+    .map((segment) => {
+      const centerX = segment.startX + Math.max(0, segment.endX - segment.startX) / 2;
+      return `<text class="timeline-year-label" x="${centerX}" y="${yearRowHeight / 2 + 4}" text-anchor="middle">${escapeSvgText(segment.year)}</text>`;
     })
+    .join('');
+
+  const monthLabels = monthSegments
+    .map(
+      (segment) =>
+        `<text class="timeline-month-number" x="${segment.centerX}" y="${yearRowHeight + monthRowHeight / 2 + 4}" text-anchor="middle">${segment.monthNumber}</text>`
+    )
     .join('');
 
   const rowGroups = (layout.rows || [])
@@ -216,7 +263,12 @@ export function buildPortfolioTimelineSvgMarkup(layout, options = {}) {
   return `
     <svg class="timeline-svg" viewBox="0 0 ${timelineWidth} ${timelineHeight}" preserveAspectRatio="none" width="100%" height="${timelineHeight}" role="img" aria-label="Portfolio task timeline">
       <rect x="0" y="0" width="${timelineWidth}" height="${timelineHeight}" fill="#fff"></rect>
+      <line class="timeline-row-divider" x1="0" y1="${yearRowHeight}" x2="${timelineWidth}" y2="${yearRowHeight}"></line>
+      <line class="timeline-row-divider" x1="0" y1="${TIMELINE_HEADER_HEIGHT}" x2="${timelineWidth}" y2="${TIMELINE_HEADER_HEIGHT}"></line>
+      ${yearLines}
       ${monthLines}
+      ${yearLabels}
+      ${monthLabels}
       <line class="timeline-month-line" x1="${timelineWidth}" y1="0" x2="${timelineWidth}" y2="${timelineHeight}"></line>
       ${rowGroups}
       ${todayLine}
