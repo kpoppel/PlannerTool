@@ -15,6 +15,7 @@ Template - do not change :
 ---
 ## [v4.2.0] - unreleased
 ### Added
+- Portfolio Board plugin Phase 1: added a fullscreen team-row/state-column board with sidebar-aware filtering, details-panel card selection, persisted plugin toolbar state, and an unallocated tasks panel.
 ### Changed
 - Details panel now shows task tags with add/remove editing, and Save to Azure now includes selectable tag changes in the Azure save modal.
 - Save modal features again a checkbox per row.

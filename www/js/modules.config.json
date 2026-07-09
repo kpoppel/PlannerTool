@@ -145,6 +145,18 @@
       "fullscreen": true,
       "mountPoint": "app",
       "dependencies": []
+    },
+    {
+      "id": "plugin-portfolio-board",
+      "name": "Portfolio Board",
+      "version": "1.0.0",
+      "description": "Kanban-style portfolio board with teams as rows and states as columns",
+      "enabled": true,
+      "activated": false,
+      "exclusive": true,
+      "fullscreen": true,
+      "mountPoint": "app",
+      "dependencies": []
     }
   ]
 }
