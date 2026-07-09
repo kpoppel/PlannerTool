@@ -15,6 +15,9 @@ import { pluginManager } from '../core/PluginManager.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
 
+const ENABLE_STATE_CELL_ACCENT = true;
+const STATE_CELL_ACCENT_ALPHA = 0.1;
+
 function normalizeState(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -54,6 +57,19 @@ function getFeatureTeamAllocation(feature, teamId) {
   return entries
     .filter((c) => String(c?.team) === String(teamId))
     .reduce((sum, c) => sum + numberOrZero(c?.capacity), 0);
+}
+
+function hexToRgba(hex, alpha = 0.12) {
+  if (!hex) return `rgba(148, 163, 184, ${alpha})`;
+  const value = String(hex).replace('#', '');
+  if (value.length !== 6) return `rgba(148, 163, 184, ${alpha})`;
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  if ([r, g, b].some((part) => Number.isNaN(part))) {
+    return `rgba(148, 163, 184, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export class PluginPortfolioComponent extends LitElement {
@@ -697,15 +713,34 @@ export class PluginPortfolioComponent extends LitElement {
     return project?.name || feature?.project || 'Unknown';
   }
 
-  _isMultiProject(feature) {
-    if (Array.isArray(feature?.projects) && feature.projects.length > 1) return true;
-    if (typeof feature?.project === 'string' && feature.project.includes(',')) return true;
+  _hasMultipleTeamAllocations(feature) {
+    const allocations = Array.isArray(feature?.capacity) ? feature.capacity : [];
+    const allocatedTeams = allocations.filter((entry) => numberOrZero(entry?.capacity) > 0);
+    if (allocatedTeams.length > 1) return true;
     return false;
+  }
+
+  _getStateColorInfo(stateName) {
+    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    const configured = stateColors?.[stateName] || null;
+    const background = configured?.background || state.getFeatureStateColor?.(stateName) || '#94a3b8';
+    const text = configured?.text || '#ffffff';
+    return { background, text };
   }
 
   _selectFeature(feature) {
     if (!feature) return;
+    this._selectedFeatureId = String(feature.id);
     bus.emit(FeatureEvents.SELECTED, feature);
+  }
+
+  _clearSelectionOnBackground(event) {
+    const target = event?.target;
+    if (!target || typeof target.closest !== 'function') return;
+
+    if (target.closest('.pcard') || target.closest('.ugrid tbody tr')) return;
+
+    this._selectedFeatureId = null;
   }
 
   async _closePlugin() {
@@ -743,11 +778,10 @@ export class PluginPortfolioComponent extends LitElement {
           <span class="badge badge-proj" style="background:${this._projectColorForFeature(feature)}">
             ${this._projectNameForFeature(feature)}
           </span>
-          ${this._isMultiProject(feature) ? html`<span class="badge badge-multi">Multi-team</span>` : ''}
+          ${this._hasMultipleTeamAllocations(feature) ? html`<span class="badge badge-multi">🔗 Multi-team</span>` : ''}
           <span class="badge badge-pct">${allocation.toFixed(0)}%</span>
           ${dates ? html`<span class="badge badge-dates">${dates}</span>` : ''}
-          ${tags.slice(0, 2).map((tag) => html`<span class="badge badge-tag">${tag}</span>`)}
-          ${tags.length > 2 ? html`<span class="badge">+${tags.length - 2}</span>` : ''}
+          ${tags.map((tag) => html`<span class="badge badge-tag">${tag}</span>`)}
         </div>
       </div>
     `;
@@ -772,15 +806,21 @@ export class PluginPortfolioComponent extends LitElement {
             <tr>
               <th>Teams</th>
               ${this._columnStates.map(
-                (stateName) => html`
+                (stateName) => {
+                  const stateColor = this._getStateColorInfo(stateName);
+                  return html`
                   <th>
                     <div class="state-th-inner">
-                      <span class="state-dot"></span>
+                      <span class="state-dot" style="background:${stateColor.background}"></span>
                       ${stateName}
-                      <span class="state-count">${stateCounts[stateName] || 0}</span>
+                      <span
+                        class="state-count"
+                        style="background:${stateColor.background}; color:${stateColor.text};"
+                      >${stateCounts[stateName] || 0}</span>
                     </div>
                   </th>
-                `
+                `;
+                }
               )}
             </tr>
           </thead>
@@ -796,8 +836,12 @@ export class PluginPortfolioComponent extends LitElement {
                   </td>
                   ${this._columnStates.map((stateName) => {
                     const cards = row.cells[stateName] || [];
+                    const stateColor = this._getStateColorInfo(stateName);
+                    const cellStyle = ENABLE_STATE_CELL_ACCENT
+                      ? `background:${hexToRgba(stateColor.background, STATE_CELL_ACCENT_ALPHA)};`
+                      : '';
                     return html`
-                      <td class="sc">
+                      <td class="sc" style="${cellStyle}">
                         ${cards.length
                           ? cards.map((entry) => this._renderCard(entry.feature, entry.allocation))
                           : html`<div class="empty-cell">-</div>`}
@@ -891,7 +935,7 @@ export class PluginPortfolioComponent extends LitElement {
         <button class="close-btn" @click="${this._closePlugin}">Close</button>
       </div>
 
-      <div class="main-content">
+      <div class="main-content" @click="${this._clearSelectionOnBackground}">
         <div class="board-panel">${this._renderBoard()}</div>
         ${this._renderUnallocated()}
       </div>
