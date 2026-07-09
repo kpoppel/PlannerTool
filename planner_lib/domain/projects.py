@@ -16,5 +16,6 @@ class DomainProject(TypedDict):
     area_path: Optional[str]                    # Azure DevOps area path
     task_types: List[str]                       # configured work item types
     task_type_hierarchy: List[str]              # global hierarchy list
+    state_display_sequence: List[str]           # global state ordering list
     display_states: List[str]
     state_categories: Dict[str, StateCategory]  # state name → ADO category

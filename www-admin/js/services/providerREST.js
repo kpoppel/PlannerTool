@@ -667,7 +667,7 @@ export class AdminProviderREST {
       });
       if (!res.ok) return null;
       const j = await res.json();
-      return j.content || { task_type_hierarchy: [] };
+      return j.content || { task_type_hierarchy: [], state_display_sequence: [] };
     } catch (err) {
       console.error('AdminProviderREST:getGlobalSettings', err);
       return null;

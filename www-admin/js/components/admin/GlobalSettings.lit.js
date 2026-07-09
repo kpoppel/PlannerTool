@@ -7,6 +7,8 @@ import { adminProvider } from '../../services/providerREST.js';
  * Currently manages:
  *   • Task Type Hierarchy — ordered levels defining parent→child relationships
  *     between task types (e.g. Initiative → Epic → Feature → Bug/User Story → Sub-Task).
+ *   • State Display Sequence — ordered levels defining how task states are
+ *     shown across the user UI (Sidebar, Details panel, plugins).
  *
  * The settings are stored in data/config/global_settings.yml and served to the
  * user client via /api/projects so that every project carries the same hierarchy.
@@ -25,6 +27,9 @@ export class AdminGlobalSettings extends LitElement {
     _hierarchy: { type: Array, state: true },
     _allTypes: { type: Array, state: true },
     _activeLevel: { type: Number, state: true },
+    _stateSequence: { type: Array, state: true },
+    _allStates: { type: Array, state: true },
+    _activeStateLevel: { type: Number, state: true },
     _loading: { type: Boolean, state: true },
     _saving: { type: Boolean, state: true },
     _statusMsg: { type: String, state: true },
@@ -342,6 +347,9 @@ export class AdminGlobalSettings extends LitElement {
     this._hierarchy = [];
     this._allTypes = [];
     this._activeLevel = -1;
+    this._stateSequence = [];
+    this._allStates = [];
+    this._activeStateLevel = -1;
     this._loading = false;
     this._saving = false;
     this._statusMsg = '';
@@ -356,13 +364,15 @@ export class AdminGlobalSettings extends LitElement {
   async _load() {
     this._loading = true;
     this._statusMsg = '';
-    const [data, schema] = await Promise.all([
+    const [data, schema, projectsCfg] = await Promise.all([
       adminProvider.getGlobalSettings(),
       adminProvider.getSchema('projects'),
+      adminProvider.getProjects(),
     ]);
     this._loading = false;
     if (data) {
       this._hierarchy = JSON.parse(JSON.stringify(data.task_type_hierarchy || []));
+      this._stateSequence = JSON.parse(JSON.stringify(data.state_display_sequence || []));
     } else {
       this._statusMsg = 'Failed to load global settings.';
       this._statusType = 'error';
@@ -371,7 +381,20 @@ export class AdminGlobalSettings extends LitElement {
     const enumTypes =
       schema?.properties?.project_map?.items?.properties?.task_types?.items?.enum || [];
     this._allTypes = [...enumTypes].sort();
+
+    const projectMap = Array.isArray(projectsCfg?.project_map) ? projectsCfg.project_map : [];
+    const stateSet = new Set();
+    for (const p of projectMap) {
+      const states = Array.isArray(p?.display_states) ? p.display_states : [];
+      for (const s of states) {
+        const trimmed = String(s || '').trim();
+        if (trimmed) stateSet.add(trimmed);
+      }
+    }
+    this._allStates = Array.from(stateSet).sort();
+
     this._activeLevel = -1;
+    this._activeStateLevel = -1;
   }
 
   async _save() {
@@ -379,6 +402,7 @@ export class AdminGlobalSettings extends LitElement {
     this._statusMsg = '';
     const result = await adminProvider.saveGlobalSettings({
       task_type_hierarchy: this._hierarchy,
+      state_display_sequence: this._stateSequence,
     });
     this._saving = false;
     if (result && result.ok) {
@@ -392,79 +416,111 @@ export class AdminGlobalSettings extends LitElement {
 
   // ---- Computed ----
 
-  /** Returns the set of types placed in any named level. */
-  get _placedTypeSet() {
+  _placedSet(levels) {
     const placed = new Set();
-    this._hierarchy.forEach((l) => (l.types || []).forEach((t) => placed.add(t)));
+    levels.forEach((l) => (l.types || []).forEach((t) => placed.add(t)));
     return placed;
   }
 
-  /** Types from the schema not yet placed in any named level — shown in the Pool row. */
-  get _poolTypes() {
-    const placed = this._placedTypeSet;
-    return this._allTypes.filter((t) => !placed.has(t));
+  _poolItems(allItems, levels) {
+    const placed = this._placedSet(levels);
+    return allItems.filter((t) => !placed.has(t));
   }
 
   // ---- Hierarchy mutation ----
 
-  _addLevel() {
-    this._hierarchy = [...this._hierarchy, { types: [] }];
-    // Activate the new level so pool clicks immediately target it.
-    this._activeLevel = this._hierarchy.length - 1;
+  _addLevel(kind) {
+    if (kind === 'type') {
+      this._hierarchy = [...this._hierarchy, { types: [] }];
+      this._activeLevel = this._hierarchy.length - 1;
+      return;
+    }
+    this._stateSequence = [...this._stateSequence, { types: [] }];
+    this._activeStateLevel = this._stateSequence.length - 1;
   }
 
-  _removeLevel(levelIndex) {
-    this._hierarchy = this._hierarchy.filter((_, i) => i !== levelIndex);
-    if (this._activeLevel >= this._hierarchy.length) {
-      this._activeLevel = this._hierarchy.length - 1;
+  _removeLevel(kind, levelIndex) {
+    if (kind === 'type') {
+      this._hierarchy = this._hierarchy.filter((_, i) => i !== levelIndex);
+      if (this._activeLevel >= this._hierarchy.length) {
+        this._activeLevel = this._hierarchy.length - 1;
+      }
+      return;
+    }
+    this._stateSequence = this._stateSequence.filter((_, i) => i !== levelIndex);
+    if (this._activeStateLevel >= this._stateSequence.length) {
+      this._activeStateLevel = this._stateSequence.length - 1;
     }
   }
 
-  _moveLevel(levelIndex, direction) {
-    const h = [...this._hierarchy];
+  _moveLevel(kind, levelIndex, direction) {
+    const levels = kind === 'type' ? [...this._hierarchy] : [...this._stateSequence];
     const target = levelIndex + direction;
-    if (target < 0 || target >= h.length) return;
-    [h[levelIndex], h[target]] = [h[target], h[levelIndex]];
-    this._hierarchy = h;
-    // Keep active level tracking in sync with the moved level.
-    if (this._activeLevel === levelIndex) this._activeLevel = target;
+    if (target < 0 || target >= levels.length) return;
+    [levels[levelIndex], levels[target]] = [levels[target], levels[levelIndex]];
+
+    if (kind === 'type') {
+      this._hierarchy = levels;
+      if (this._activeLevel === levelIndex) this._activeLevel = target;
+      return;
+    }
+
+    this._stateSequence = levels;
+    if (this._activeStateLevel === levelIndex) this._activeStateLevel = target;
   }
 
   /**
    * Move a type into the given level, removing it from any other level first.
    * Accepts types not in _allTypes (manual entry via keyboard).
    */
-  _moveTypeToLevel(levelIndex, rawType) {
+  _moveItemToLevel(kind, levelIndex, rawType) {
     const trimmed = String(rawType || '').trim();
     if (!trimmed) return;
-    const h = JSON.parse(JSON.stringify(this._hierarchy));
-    if (!h[levelIndex]) return;
+    const levels = kind === 'type' ? this._hierarchy : this._stateSequence;
+    const next = JSON.parse(JSON.stringify(levels));
+    if (!next[levelIndex]) return;
     // Remove from every level to ensure single-assignment invariant.
-    h.forEach((l) => {
+    next.forEach((l) => {
       l.types = (l.types || []).filter((t) => t !== trimmed);
     });
-    h[levelIndex].types = [...(h[levelIndex].types || []), trimmed];
-    this._hierarchy = h;
+    next[levelIndex].types = [...(next[levelIndex].types || []), trimmed];
+    if (kind === 'type') {
+      this._hierarchy = next;
+    } else {
+      this._stateSequence = next;
+    }
   }
 
   /** Remove a type from a named level, returning it to the pool. */
-  _removeType(levelIndex, type) {
-    const h = JSON.parse(JSON.stringify(this._hierarchy));
-    if (!h[levelIndex]) return;
-    h[levelIndex].types = (h[levelIndex].types || []).filter((t) => t !== type);
-    this._hierarchy = h;
+  _removeItem(kind, levelIndex, type) {
+    const levels = kind === 'type' ? this._hierarchy : this._stateSequence;
+    const next = JSON.parse(JSON.stringify(levels));
+    if (!next[levelIndex]) return;
+    next[levelIndex].types = (next[levelIndex].types || []).filter((t) => t !== type);
+    if (kind === 'type') {
+      this._hierarchy = next;
+    } else {
+      this._stateSequence = next;
+    }
   }
 
   // ---- Render ----
 
-  _renderLevel(level, levelIndex) {
+  _renderLevel(level, levelIndex, kind) {
+    const isType = kind === 'type';
+    const levels = isType ? this._hierarchy : this._stateSequence;
+    const activeLevel = isType ? this._activeLevel : this._activeStateLevel;
     const isFirst = levelIndex === 0;
-    const isLast = levelIndex === this._hierarchy.length - 1;
-    const isActive = this._activeLevel === levelIndex;
+    const isLast = levelIndex === levels.length - 1;
+    const isActive = activeLevel === levelIndex;
+    const itemName = isType ? 'type' : 'state';
     return html`
       <div
         class="hierarchy-level ${isActive ? 'level-active' : ''}"
-        @click=${() => { this._activeLevel = levelIndex; }}
+        @click=${() => {
+          if (isType) this._activeLevel = levelIndex;
+          else this._activeStateLevel = levelIndex;
+        }}
       >
         <span class="hierarchy-level-index">
           Level ${levelIndex}${isActive ? html`<br/>\u270e active` : ''}
@@ -475,7 +531,10 @@ export class AdminGlobalSettings extends LitElement {
               <span
                 class="chip removable"
                 title="Remove from level (returns to pool)"
-                @click=${(e) => { e.stopPropagation(); this._removeType(levelIndex, type); }}
+                @click=${(e) => {
+                  e.stopPropagation();
+                  this._removeItem(kind, levelIndex, type);
+                }}
               >
                 ${type}<span class="chip-remove">\u00d7</span>
               </span>
@@ -483,11 +542,11 @@ export class AdminGlobalSettings extends LitElement {
           )}
           <input
             class="add-input"
-            placeholder="type + Enter"
+            placeholder="${itemName} + Enter"
             @click=${(e) => e.stopPropagation()}
             @keydown=${(e) => {
               if (e.key === 'Enter') {
-                this._moveTypeToLevel(levelIndex, e.target.value);
+                this._moveItemToLevel(kind, levelIndex, e.target.value);
                 e.target.value = '';
               }
             }}
@@ -498,31 +557,37 @@ export class AdminGlobalSettings extends LitElement {
             class="icon-btn"
             title="Move level up"
             ?disabled=${isFirst}
-            @click=${(e) => { e.stopPropagation(); this._moveLevel(levelIndex, -1); }}
+            @click=${(e) => { e.stopPropagation(); this._moveLevel(kind, levelIndex, -1); }}
           >\u2191</button>
           <button
             class="icon-btn"
             title="Move level down"
             ?disabled=${isLast}
-            @click=${(e) => { e.stopPropagation(); this._moveLevel(levelIndex, 1); }}
+            @click=${(e) => { e.stopPropagation(); this._moveLevel(kind, levelIndex, 1); }}
           >\u2193</button>
           <button
             class="icon-btn"
             title="Remove level (types return to pool)"
-            @click=${(e) => { e.stopPropagation(); this._removeLevel(levelIndex); }}
+            @click=${(e) => { e.stopPropagation(); this._removeLevel(kind, levelIndex); }}
           >\uD83D\uDDD1</button>
         </div>
       </div>
     `;
   }
 
-  _renderPool() {
-    if (!this._allTypes.length) return html``;
-    const pool = this._poolTypes;
-    const hasTarget = this._activeLevel >= 0;
+  _renderPool(kind) {
+    const isType = kind === 'type';
+    const allItems = isType ? this._allTypes : this._allStates;
+    if (!allItems.length) return html``;
+
+    const levels = isType ? this._hierarchy : this._stateSequence;
+    const activeLevel = isType ? this._activeLevel : this._activeStateLevel;
+    const pool = this._poolItems(allItems, levels);
+    const hasTarget = activeLevel >= 0;
+    const itemLabel = isType ? 'type' : 'state';
     const hintText = hasTarget
-      ? `Click a type to add it to Level ${this._activeLevel}`
-      : 'Click a named level above to activate it, then click types here to assign them';
+      ? `Click a ${itemLabel} to add it to Level ${activeLevel}`
+      : `Click a named level above to activate it, then click ${itemLabel}s here to assign them`;
     return html`
       <div class="hierarchy-level pool-level ${hasTarget ? '' : 'pool-hint'}">
         <span class="hierarchy-level-index">
@@ -530,15 +595,15 @@ export class AdminGlobalSettings extends LitElement {
         </span>
         <div class="hierarchy-level-types">
           ${pool.length === 0
-            ? html`<span style="color:#16a34a;font-size:12px">All types assigned \u2713</span>`
+            ? html`<span style="color:#16a34a;font-size:12px">All ${itemLabel}s assigned \u2713</span>`
             : pool.map(
                 (t) => html`
                   <span
                     class="pool-chip ${hasTarget ? 'clickable' : ''}"
                     title=${hasTarget
-                      ? `Add to Level ${this._activeLevel}`
-                      : 'Activate a level first to assign this type'}
-                    @click=${() => { if (hasTarget) this._moveTypeToLevel(this._activeLevel, t); }}
+                      ? `Add to Level ${activeLevel}`
+                      : `Activate a level first to assign this ${itemLabel}`}
+                    @click=${() => { if (hasTarget) this._moveItemToLevel(kind, activeLevel, t); }}
                   >${t}</span>
                 `
               )}
@@ -575,11 +640,37 @@ export class AdminGlobalSettings extends LitElement {
                 ? html`<div style="color:#9ca3af;font-size:13px;padding:8px 0">
                     No levels defined yet. Click "+ Add Level" to start, then assign types from the pool.
                   </div>`
-                : this._hierarchy.map((level, idx) => this._renderLevel(level, idx))}
+                : this._hierarchy.map((level, idx) => this._renderLevel(level, idx, 'type'))}
 
-              ${this._renderPool()}
+              ${this._renderPool('type')}
 
-              <button class="add-level-btn" @click=${() => this._addLevel()}>
+              <button class="add-level-btn" @click=${() => this._addLevel('type')}>
+                + Add Level
+              </button>
+            </div>
+          </div>
+
+          <!-- State Display Sequence -->
+          <div>
+            <div class="section-title">State Display Sequence</div>
+            <div class="section-hint">
+              Define the ordering of task states shown across the user UI.
+              States earlier in the sequence are displayed first in state lists,
+              filters, and plugins.
+              <br/><br/>
+              Example: <em>(New, Approved) \u2192 (Active, In Progress) \u2192 Resolved \u2192 Closed</em>
+            </div>
+
+            <div class="hierarchy-editor">
+              ${this._stateSequence.length === 0
+                ? html`<div style="color:#9ca3af;font-size:13px;padding:8px 0">
+                    No levels defined yet. Click "+ Add Level" to start, then assign states from the pool.
+                  </div>`
+                : this._stateSequence.map((level, idx) => this._renderLevel(level, idx, 'state'))}
+
+              ${this._renderPool('state')}
+
+              <button class="add-level-btn" @click=${() => this._addLevel('state')}>
                 + Add Level
               </button>
             </div>

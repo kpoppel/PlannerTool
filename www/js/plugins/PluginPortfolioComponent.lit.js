@@ -577,7 +577,12 @@ export class PluginPortfolioComponent extends LitElement {
         [...state.availableFeatureStates]
       : Array.from(
           new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
-        ).sort();
+        ).sort((a, b) => {
+          if (typeof state.compareFeatureStates === 'function') {
+            return state.compareFeatureStates(a, b);
+          }
+          return a.localeCompare(b);
+        });
 
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 

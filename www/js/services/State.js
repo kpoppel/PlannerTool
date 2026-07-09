@@ -720,6 +720,14 @@ class State {
     return this.availableFeatureStates;
   }
 
+  getStateDisplaySequence() {
+    return this._featureStateService.getConfiguredSequence();
+  }
+
+  compareFeatureStates(a, b) {
+    return this._featureStateService.compareStates(a, b);
+  }
+
   // Delegation helpers to FeatureService for counts used by UI
   countEpicsForProject(projectId) {
     return this._getFeatureService().countEpicsForProject(projectId);

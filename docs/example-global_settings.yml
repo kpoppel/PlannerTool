@@ -12,3 +12,12 @@ task_type_hierarchy:
   - types: [Feature]
   - types: [User Story, Bug, Defect]
   - types: [Sub-Task]
+
+# State display sequence controls the order that task states are shown in the
+# user client (Sidebar state filter, details state picker, and plugins).
+# Each entry is a level; states within the same level are siblings.
+state_display_sequence:
+  - types: [New]
+  - types: [Approved, Active]
+  - types: [Resolved]
+  - types: [Closed]

@@ -37,9 +37,10 @@ export function fieldValues(feature, field) {
  * @param {Object[]} features - array of feature objects
  * @param {string} xField - field name for X axis (columns)
  * @param {string} yField - field name for Y axis (rows)
+ * @param {{xSort?: (a:string, b:string) => number, ySort?: (a:string, b:string) => number}} [options]
  * @returns {{ xVals: string[], yVals: string[], grid: Map<string, Map<string, Object[]>> }}
  */
-export function computeGrid(features, xField, yField) {
+export function computeGrid(features, xField, yField, options = {}) {
   const xSet = new Set();
   const ySet = new Set();
 
@@ -49,18 +50,19 @@ export function computeGrid(features, xField, yField) {
     for (const v of fieldValues(f, yField)) ySet.add(v);
   }
 
-  const sortAxis = (set) => {
+  const sortAxis = (set, comparator) => {
     const arr = Array.from(set);
     arr.sort((a, b) => {
       if (a === 'Unassigned') return 1;
       if (b === 'Unassigned') return -1;
+      if (typeof comparator === 'function') return comparator(a, b);
       return a.localeCompare(b);
     });
     return arr;
   };
 
-  const xVals = sortAxis(xSet);
-  const yVals = sortAxis(ySet);
+  const xVals = sortAxis(xSet, options.xSort);
+  const yVals = sortAxis(ySet, options.ySort);
 
   // Build grid: grid.get(y).get(x) = feature[]
   /** @type {Map<string, Map<string, Object[]>>} */

@@ -89,11 +89,15 @@ def test_fetch_projects_reads_from_storage():
             {'name': 'Alpha', 'area_path': 'Org\\Alpha', 'task_types': ['Feature']}
         ]
     })
-    storage.save('config', 'global_settings', {'task_type_hierarchy': []})
+    storage.save('config', 'global_settings', {
+        'task_type_hierarchy': [],
+        'state_display_sequence': ['New', 'Active', 'Closed'],
+    })
     cb = ConfigBackend(storage=storage)
     projects = cb.fetch_projects()
     assert len(projects) == 1
     assert projects[0]['name'] == 'Alpha'
+    assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
 
 
 def test_fetch_config_teams_reads_from_storage():

@@ -399,7 +399,14 @@ export class PluginXYBoardComponent extends LitElement {
         ? afterProjectFilter.filter((f) => this.selectedTypes.includes(f.type || f.workItemType))
         : afterProjectFilter;
 
-    const { xVals, yVals, grid } = computeGrid(filtered, this.xField, this.yField);
+    const stateComparator =
+      typeof state.compareFeatureStates === 'function'
+        ? (a, b) => state.compareFeatureStates(a, b)
+        : null;
+    const { xVals, yVals, grid } = computeGrid(filtered, this.xField, this.yField, {
+      xSort: this.xField === 'state' ? stateComparator : null,
+      ySort: this.yField === 'state' ? stateComparator : null,
+    });
     this._xVals = xVals;
     this._yVals = yVals;
     this._grid = grid;

@@ -102,13 +102,24 @@ async def admin_save_projects(request: Request):
 # Global settings
 # ---------------------------------------------------------------------------
 
+def _normalize_global_settings(content):
+    data = content if isinstance(content, dict) else {}
+    return {
+        'task_type_hierarchy': data.get('task_type_hierarchy') or [],
+        'state_display_sequence': data.get('state_display_sequence') or [],
+    }
+
 @router.get('/admin/v1/global-settings')
 @require_admin_session
 async def admin_get_global_settings(request: Request):
     """Return the server-wide global settings."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        return {'content': admin_svc.get_config('global_settings', default={'task_type_hierarchy': []})}
+        cfg = admin_svc.get_config(
+            'global_settings',
+            default={'task_type_hierarchy': [], 'state_display_sequence': []},
+        )
+        return {'content': _normalize_global_settings(cfg)}
     except Exception as e:
         logger.exception('Failed to load global settings: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -124,7 +135,7 @@ async def admin_save_global_settings(request: Request):
         if content is None:
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('global_settings', content)
+        admin_svc.save_config('global_settings', _normalize_global_settings(content))
         return {'ok': True}
     except HTTPException:
         raise

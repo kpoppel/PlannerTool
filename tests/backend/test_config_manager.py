@@ -110,12 +110,18 @@ def test_get_backup_includes_config_keys():
     store = _Store()
     store.save('config', 'projects', [{'id': 'p1'}])
     store.save('config', 'teams', [{'id': 't1'}])
-    store.save('config', 'global_settings', {'task_type_hierarchy': []})
+    store.save('config', 'global_settings', {
+        'task_type_hierarchy': [],
+        'state_display_sequence': [],
+    })
     cm = ConfigManager(config_storage=store, account_storage=_Store())
     bk = cm.get_backup()
     assert bk['config']['projects'] == [{'id': 'p1'}]
     assert bk['config']['teams'] == [{'id': 't1'}]
-    assert bk['config']['global_settings'] == {'task_type_hierarchy': []}
+    assert bk['config']['global_settings'] == {
+        'task_type_hierarchy': [],
+        'state_display_sequence': [],
+    }
     # Missing keys are stored as None
     assert bk['config']['people'] is None
 
@@ -138,10 +144,20 @@ def test_restore_backup_writes_global_settings():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     cm = ConfigManager(config_storage=store, account_storage=_Store())
-    data = {'config': {'global_settings': {'task_type_hierarchy': [{'level': 0}]}}}
+    data = {
+        'config': {
+            'global_settings': {
+                'task_type_hierarchy': [{'level': 0}],
+                'state_display_sequence': [{'level': 1}],
+            }
+        }
+    }
     result = cm.restore_backup(data)
     assert result['ok'] is True
-    assert store.load('config', 'global_settings') == {'task_type_hierarchy': [{'level': 0}]}
+    assert store.load('config', 'global_settings') == {
+        'task_type_hierarchy': [{'level': 0}],
+        'state_display_sequence': [{'level': 1}],
+    }
 
 
 def test_get_backup_includes_accounts():

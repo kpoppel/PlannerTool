@@ -115,9 +115,11 @@ class ConfigBackend(
         project_map = cfg.get("project_map") or []
 
         global_hierarchy: list = []
+        global_state_sequence: list = []
         try:
             gs = self._storage.load("config", "global_settings") or {}
             global_hierarchy = gs.get("task_type_hierarchy") or []
+            global_state_sequence = gs.get("state_display_sequence") or []
         except Exception:
             pass
 
@@ -131,6 +133,7 @@ class ConfigBackend(
                 state_categories={},
                 task_types=p.get("task_types") or [],
                 task_type_hierarchy=global_hierarchy,
+                state_display_sequence=global_state_sequence,
             )
             for p in project_map
         ]
