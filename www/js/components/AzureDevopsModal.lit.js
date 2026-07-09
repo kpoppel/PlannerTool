@@ -3,7 +3,7 @@ import './Modal.lit.js';
 import { groupService } from '../services/GroupService.js';
 
 /** Field names supported in feature-override rows, in display order. */
-const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath'];
+const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
 
 /** Maps a field name to the boolean changed-flag property on a computed row. */
 const CHANGED_KEY = {
@@ -12,6 +12,7 @@ const CHANGED_KEY = {
   capacity: 'capacityChanged',
   state: 'stateChanged',
   iterationPath: 'iterationChanged',
+  tags: 'tagsChanged',
 };
 
 /** Human-readable column label for each field. */
@@ -21,6 +22,7 @@ const FIELD_LABEL = {
   capacity: 'Capacity',
   state: 'State',
   iterationPath: 'Iteration',
+  tags: 'Tags',
 };
 
 /**
@@ -68,6 +70,80 @@ export class AzureDevopsModal extends LitElement {
     if (t === null) return html`${f || '—'} \u2192 <em style="color:#c0392b">(cleared)</em>`;
     if (f === t) return f;
     return `${f || '—'} \u2192 ${t}`;
+  }
+
+  _parseTags(value) {
+    if (!value || typeof value !== 'string') return [];
+    return value
+      .split(';')
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
+  _normaliseTags(value) {
+    return this._parseTags(value).map((t) => t.toLowerCase());
+  }
+
+  _normalisedTagSet(value) {
+    return new Set(this._normaliseTags(value));
+  }
+
+  _formatTags(value) {
+    const tags = this._parseTags(value);
+    return tags.length ? tags.join(', ') : '—';
+  }
+
+  _formatTagsRange(from, to) {
+    if (to === undefined) return this._formatTags(from);
+
+    const fromTags = this._parseTags(from);
+    const toTags = this._parseTags(to);
+    const fromSet = this._normalisedTagSet(from);
+    const toSet = this._normalisedTagSet(to);
+
+    const removed = fromTags.filter((tag) => !toSet.has(tag.toLowerCase()));
+    const added = toTags.filter((tag) => !fromSet.has(tag.toLowerCase()));
+
+    if (!removed.length && !added.length) return this._formatTags(to);
+
+    const parts = [];
+    if (removed.length) {
+      parts.push(html`<span style="color:#c0392b;">− ${removed.join(', ')}</span>`);
+    }
+    if (added.length) {
+      parts.push(html`<span style="color:#0a7c42;">+ ${added.join(', ')}</span>`);
+    }
+    return html`${parts.map((p, i) => html`${i > 0 ? html`<br/>` : ''}${p}`)}`;
+  }
+
+  _tagsChanged(from, to) {
+    const fromSet = this._normalisedTagSet(from);
+    const toSet = this._normalisedTagSet(to);
+    if (fromSet.size !== toSet.size) return true;
+    for (const tag of fromSet) {
+      if (!toSet.has(tag)) return true;
+    }
+    return false;
+  }
+
+  _getFeatureRowKeys(r) {
+    const keys = FIELDS
+      .filter((f) => r[CHANGED_KEY[f]])
+      .map((f) => `${r.id}:${f}`);
+    if (r.groupDelta) keys.push(r.groupDelta.key);
+    return keys;
+  }
+
+  _isAllSelected(keys) {
+    return keys.length > 0 && keys.every((k) => this._selected.has(k));
+  }
+
+  _onRowToggle(keys) {
+    if (!keys.length) return;
+    const allOn = this._isAllSelected(keys);
+    if (allOn) keys.forEach((k) => this._selected.delete(k));
+    else keys.forEach((k) => this._selected.add(k));
+    this.requestUpdate();
   }
 
   _toggleAll(enrichedRows, groupOps, orphanDeltaRows) {
@@ -226,6 +302,25 @@ export class AzureDevopsModal extends LitElement {
     return { taskGroupMap, orphanDeltaRows };
   }
 
+  /**
+   * Revert all scenario changes for a single feature and remove it from the table.
+   * Works even when the feature is no longer visible on the board (e.g. closed in ADO).
+   * @param {string} id  Feature / task id
+   */
+  _onRevertFeature(id) {
+    if (!this.state) return;
+    // Remove any selected keys for this feature so the selection stays consistent.
+    const next = new Set(this._selected);
+    for (const key of next) {
+      if (key.startsWith(`${id}:`)) next.delete(key);
+    }
+    this._selected = next;
+    // Revert the override in the active scenario (mutates the shared object in place).
+    this.state.revertFeature(id);
+    // Force re-render so the now-absent override no longer shows a row.
+    this.requestUpdate();
+  }
+
   _onSave() {
     // Feature overrides: only selected fields.
     const featuresOut = [];
@@ -293,15 +388,20 @@ export class AzureDevopsModal extends LitElement {
    */
   _computeRows(entries) {
     const normDate = (v) => v || null;
+    // Build an id→feature map once so each row lookup is O(1) instead of O(n).
+    const baselineById = new Map(
+      (this.state?.baselineFeatures || []).map((f) => [f.id, f])
+    );
     return entries
       .filter(([, ov]) => ov && typeof ov === 'object')
       .map(([id, ov]) => {
-        const base = this.state?.baselineFeatures?.find((f) => f.id === id) || {};
+        const base = baselineById.get(id) || {};
         const origStart = base.start || '';
         const origEnd = base.end || '';
         const origCapacity = base.capacity || [];
         const origState = base.state || '';
         const origIterationPath = base.iterationPath || '';
+        const origTags = base.tags || '';
         const startChanged = 'start' in ov && normDate(ov.start) !== normDate(origStart);
         const endChanged = 'end' in ov && normDate(ov.end) !== normDate(origEnd);
         const capacityChanged =
@@ -309,6 +409,7 @@ export class AzureDevopsModal extends LitElement {
         const stateChanged = ov.state && ov.state !== origState;
         const iterationChanged =
           'iterationPath' in ov && (ov.iterationPath || null) !== (origIterationPath || null);
+        const tagsChanged = 'tags' in ov && this._tagsChanged(origTags, ov.tags);
 
         // Format capacity diff for display
         let capacityContent = '';
@@ -335,8 +436,8 @@ export class AzureDevopsModal extends LitElement {
 
         return {
           id, ov,
-          origStart, origEnd, origState, origIterationPath,
-          startChanged, endChanged, capacityChanged, stateChanged, iterationChanged,
+          origStart, origEnd, origState, origIterationPath, origTags,
+          startChanged, endChanged, capacityChanged, stateChanged, iterationChanged, tagsChanged,
           capacityContent,
         };
       });
@@ -349,7 +450,7 @@ export class AzureDevopsModal extends LitElement {
    * @param {object} showCols
    */
   _renderTable(enrichedRows, groupOps, orphanDeltaRows, showCols) {
-    const { showStart, showEnd, showCapacity, showState, showIteration, showGroup } = showCols;
+    const { showStart, showEnd, showCapacity, showState, showIteration, showTags, showGroup } = showCols;
 
     // Clickable changed cell for feature fields.
     const tdFeature = (changed, featureId, field, content) => {
@@ -380,6 +481,7 @@ export class AzureDevopsModal extends LitElement {
       ${showCapacity  ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
       ${showState     ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
       ${showIteration ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
+      ${showTags      ? html`<td class="unchanged"><span style="color:#999">—</span></td>` : ''}
     `;
 
     // Shared helper: render a group-assignment cell (feature rows and orphan rows).
@@ -399,12 +501,15 @@ export class AzureDevopsModal extends LitElement {
       <table class="scenario-annotate-table">
         <thead>
           <tr>
+            <th style="width:34px;">Sel</th>
             <th>Title</th>
+            <th style="width:66px;"></th>
             ${colHeader('start', showStart)}
             ${colHeader('end', showEnd)}
             ${colHeader('capacity', showCapacity)}
             ${colHeader('state', showState)}
             ${colHeader('iterationPath', showIteration)}
+            ${colHeader('tags', showTags)}
             ${showGroup ? html`<th class="col-header"
               @click=${() => this._onColumnHeaderClick('groupId', enrichedRows, groupOps, orphanDeltaRows)}
               title="Click to toggle Group column">Group</th>` : ''}
@@ -413,7 +518,29 @@ export class AzureDevopsModal extends LitElement {
         <tbody>
           ${enrichedRows.map((r) => html`
             <tr>
-              <td>${this.state ? this.state.getFeatureTitleById(r.id) : r.id}</td>
+              ${(() => {
+                const rowKeys = this._getFeatureRowKeys(r);
+                return html`<td>
+                  <input
+                    type="checkbox"
+                    .checked=${this._isAllSelected(rowKeys)}
+                    ?disabled=${rowKeys.length === 0}
+                    @change=${() => this._onRowToggle(rowKeys)}
+                    title="Toggle all changes on this row"
+                  />
+                </td>`;
+              })()}
+              <td>
+                ${this.state ? this.state.getFeatureTitleById(r.id) : r.id}
+              </td>
+              <td style="padding:6px 8px;">
+                <button
+                  type="button"
+                  class="revert-btn"
+                  title="Discard all local changes for this item"
+                  @click=${() => this._onRevertFeature(r.id)}
+                >↺ Revert</button>
+              </td>
               ${showStart ? tdFeature(r.startChanged, r.id, 'start',
                   this._formatRange(r.origStart, r.ov.start)) : ''}
               ${showEnd ? tdFeature(r.endChanged, r.id, 'end',
@@ -433,6 +560,8 @@ export class AzureDevopsModal extends LitElement {
                         <strong>${r.ov.iterationPath || html`<em style="color:#c0392b">(cleared)</em>`}</strong>
                       </span>`
                     : html`<span style="font-size:0.9em;">${r.origIterationPath || '—'}</span>`) : ''}
+              ${showTags ? tdFeature(r.tagsChanged, r.id, 'tags',
+                  html`<span style="font-size:0.9em;line-height:1.4;">${this._formatTagsRange(r.origTags, r.ov.tags)}</span>`) : ''}
               ${showGroup
                 ? (r.groupDelta
                     ? tdGroupDelta(r.groupDelta.key, r.groupDelta.change, r.groupDelta.groupName)
@@ -461,7 +590,16 @@ export class AzureDevopsModal extends LitElement {
               const sel = this._selected.has(key);
               return [html`
                 <tr>
+                  <td>
+                    <input
+                      type="checkbox"
+                      .checked=${sel}
+                      @change=${() => this._onRowToggle([key])}
+                      title="Toggle all changes on this row"
+                    />
+                  </td>
                   <td>${itemLabel}</td>
+                  <td></td>
                   ${blankCells}
                   ${showGroup ? html`<td
                     class=${sel ? 'changed' : 'changed skipped'}
@@ -475,7 +613,23 @@ export class AzureDevopsModal extends LitElement {
             /* Orphan rows: tasks with only a group change (no feature-field row above) */
             (orphanDeltaRows || []).map((d) => html`
               <tr>
+                <td>
+                  <input
+                    type="checkbox"
+                    .checked=${this._selected.has(d.key)}
+                    @change=${() => this._onRowToggle([d.key])}
+                    title="Toggle all changes on this row"
+                  />
+                </td>
                 <td>${this.state ? this.state.getFeatureTitleById(d.taskId) : d.taskId}</td>
+                <td style="padding:6px 8px;">
+                  <button
+                    type="button"
+                    class="revert-btn"
+                    title="Discard all local changes for this item"
+                    @click=${() => this._onRevertFeature(d.taskId)}
+                  >↺ Revert</button>
+                </td>
                 ${blankCells}
                 ${showGroup ? tdGroupDelta(d.key, d.change, d.groupName) : ''}
               </tr>
@@ -491,7 +645,7 @@ export class AzureDevopsModal extends LitElement {
     // Compute feature-field rows.
     const allRows = this._computeRows(Object.entries(this.overrides || {}));
     const featureRows = allRows.filter((r) =>
-      r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged
+      r.startChanged || r.endChanged || r.capacityChanged || r.stateChanged || r.iterationChanged || r.tagsChanged
     );
     const featureSet = new Set(featureRows.map((r) => r.id));
 
@@ -504,14 +658,15 @@ export class AzureDevopsModal extends LitElement {
     const showCapacity  = enrichedRows.some((r) => r.capacityChanged);
     const showState     = enrichedRows.some((r) => r.stateChanged);
     const showIteration = enrichedRows.some((r) => r.iterationChanged);
+    const showTags      = enrichedRows.some((r) => r.tagsChanged);
     const showGroup     = groupOps.length > 0;
-    const showCols = { showStart, showEnd, showCapacity, showState, showIteration, showGroup };
+    const showCols = { showStart, showEnd, showCapacity, showState, showIteration, showTags, showGroup };
 
     const hasAny = enrichedRows.length > 0 || groupOps.length > 0;
 
     return html`
       <modal-lit wide>
-        <div slot="header"><h3>Save changes</h3></div>
+        <div slot="header"><h3>Review and save changes</h3></div>
         <div>
           <style>
             p {
@@ -597,6 +752,24 @@ export class AzureDevopsModal extends LitElement {
               color: #000;
               font-weight: 600;
             }
+            .revert-btn {
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              padding: 3px 7px;
+              border: 1px solid rgba(192,57,43,0.30);
+              border-radius: 5px;
+              background: transparent;
+              color: #a93226;
+              font-size: 11px;
+              cursor: pointer;
+              white-space: nowrap;
+              line-height: 1.4;
+            }
+            .revert-btn:hover {
+              background: rgba(192,57,43,0.07);
+              border-color: rgba(192,57,43,0.55);
+            }
             .btn {
               padding: 6px 12px;
               background: #e9e9e9;
@@ -614,7 +787,7 @@ export class AzureDevopsModal extends LitElement {
             html`<p style="color:#888;">No changes to save.</p>`
           : html`
               <p>Select which changes to persist:</p>
-              <p class="instruction">All cells start deselected. Click a cell to include it in this save; click again to exclude. Click a column header to toggle the whole column.</p>
+              <p class="instruction">Select rows and/or cells to save by clicking a row checkbox or cell. Click a column header to toggle the whole column. Use the revert button to revert all changes to that task.</p>
               <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
                 <button type="button" @click=${() => this._toggleAll(enrichedRows, groupOps, orphanDeltaRows)} class="btn">
                   Toggle All/None

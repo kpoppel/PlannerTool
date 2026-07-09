@@ -232,6 +232,8 @@ class MockFixtureBackend(_MockBackendBase):
                     client.update_work_item_dates(task_id, **self._adapter.extract_date_kwargs(updates))
                 if self._adapter.has_iteration_update(updates):
                     client.update_work_item_iteration_path(task_id, updates['iterationPath'])
+                if self._adapter.has_tags_update(updates):
+                    client.update_work_item_tags(task_id, updates.get('tags'))
                 updated = 1
         except Exception as exc:
             errors.append(str(exc))
@@ -500,6 +502,8 @@ class MockGeneratorBackend(_MockBackendBase):
                     client.update_work_item_dates(task_id, **self._adapter.extract_date_kwargs(updates))
                 if self._adapter.has_iteration_update(updates):
                     client.update_work_item_iteration_path(task_id, updates['iterationPath'])
+                if self._adapter.has_tags_update(updates):
+                    client.update_work_item_tags(task_id, updates.get('tags'))
                 updated = 1
         except Exception as exc:
             errors.append(str(exc))

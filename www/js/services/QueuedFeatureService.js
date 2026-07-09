@@ -68,6 +68,11 @@ export class QueuedFeatureService {
   _recomputeDerived(featureBase, override) {
     const changedFields = [];
     if (override) {
+      const normaliseTags = (value) =>
+        String(value || '')
+          .split(';')
+          .map((tag) => tag.trim().toLowerCase())
+          .filter(Boolean);
       if (override.start && override.start !== featureBase.start)
         changedFields.push('start');
       if (override.end && override.end !== featureBase.end) changedFields.push('end');
@@ -76,6 +81,13 @@ export class QueuedFeatureService {
         JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)
       )
         changedFields.push('capacity');
+      if (
+        'tags' in override &&
+        JSON.stringify(normaliseTags(override.tags)) !==
+          JSON.stringify(normaliseTags(featureBase.tags))
+      ) {
+        changedFields.push('tags');
+      }
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -118,6 +130,14 @@ export class QueuedFeatureService {
           capacityCallback();
         }, 0);
       }
+      return true;
+    }
+    if (field === 'tags') {
+      const ov = activeScenario.overrides[id] || {};
+      ov.tags = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
       return true;
     }
     return false;

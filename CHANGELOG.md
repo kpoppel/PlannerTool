@@ -13,6 +13,14 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
+## [v4.2.0] - unreleased
+### Added
+### Changed
+- Details panel now shows task tags with add/remove editing, and Save to Azure now includes selectable tag changes in the Azure save modal.
+- Save modal features again a checkbox per row.
+- Save modal has added revert button to revert all changes to an item.  This is useful for reverting in this overview, but also if items were changed outside the tool (in ADO) and no longer are loaded, causing a difference between scenario overrides and loaded items.
+### Fixed
+- Save modal recalculated changed items per row, causing a large lag from click to UI update.
 
 ## [v4.1.5] - 2026-07-08
 ### Fixed

@@ -370,6 +370,14 @@ class AzureDevOpsBackend(BackendPort):
                 except Exception as exc:
                     errors.append(f"{task_id} (iterationPath): {exc}")
 
+            # Tags ─────────────────────────────────────────────────────
+            if self._adapter.has_tags_update(updates):
+                try:
+                    client.update_work_item_tags(task_id, updates.get('tags'))
+                    item_updated = True
+                except Exception as exc:
+                    errors.append(f"{task_id} (tags): {exc}")
+
         return WriteResult(
             ok=len(errors) == 0,
             updated=1 if item_updated else 0,

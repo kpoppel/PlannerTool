@@ -333,6 +333,13 @@ class AzureClient:
         """
         return self._work_item_ops.update_work_item_state(work_item_id, state_value)
 
+    def update_work_item_tags(self, work_item_id: int, tags_value: Optional[str]):
+        """Update the tags field for a work item.
+
+        Delegates to WorkItemOperations.
+        """
+        return self._work_item_ops.update_work_item_tags(work_item_id, tags_value)
+
     def update_work_item_relations(self, work_item_id: int, relations_ops: list):
         """Update work item relations (delegates to WorkItemOperations)."""
         return self._work_item_ops.update_work_item_relations(work_item_id, relations_ops)

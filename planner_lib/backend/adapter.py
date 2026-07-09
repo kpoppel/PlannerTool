@@ -156,5 +156,8 @@ class AzureAdapter:
     def has_iteration_update(self, update: Dict[str, Any]) -> bool:
         return 'iterationPath' in update
 
+    def has_tags_update(self, update: Dict[str, Any]) -> bool:
+        return 'tags' in update
+
     def has_relations_update(self, update: Dict[str, Any]) -> bool:
         return update.get('relations') is not None

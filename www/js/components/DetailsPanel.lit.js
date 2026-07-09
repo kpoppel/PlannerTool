@@ -783,6 +783,65 @@ export class DetailsPanelLit extends LitElement {
     .state-choices button.state-chip.selected {
       box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.12);
     }
+    .tags-section {
+      margin-top: 12px;
+    }
+    .tags-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #c7d2df;
+      background: #f2f7fc;
+      color: #23344d;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .tag-chip button {
+      border: none;
+      background: transparent;
+      color: #8a3b2e;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0;
+      line-height: 1;
+    }
+    .tag-editor-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .tag-input {
+      flex: 1;
+      min-width: 0;
+      padding: 4px 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 12px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .tag-add-btn {
+      height: 26px;
+      padding: 0 9px;
+      border: 1px solid #c4d7eb;
+      border-radius: 6px;
+      background: #e9f3fc;
+      color: #214f78;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .tag-add-btn:hover {
+      background: #deedf9;
+    }
   `;
 
   constructor() {
@@ -793,6 +852,7 @@ export class DetailsPanelLit extends LitElement {
     this.showAddTeamPopover = false; // Track if add team popover is visible
     this.editingState = false;
     this._stateEditValue = null;
+    this._newTagText = '';
     this._onShow = this._onShow.bind(this);
   }
 
@@ -915,7 +975,63 @@ export class DetailsPanelLit extends LitElement {
 
   _onShow(feature) {
     this.feature = feature;
+    this._newTagText = '';
     this.open = true;
+    this.requestUpdate();
+  }
+
+  _parseTags(tagsValue) {
+    if (!tagsValue || typeof tagsValue !== 'string') return [];
+    return tagsValue
+      .split(';')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  _normaliseTags(tagsValue) {
+    return this._parseTags(tagsValue).map((tag) => tag.toLowerCase());
+  }
+
+  _tagsToString(tags) {
+    return (tags || []).join('; ');
+  }
+
+  _onTagInput(e) {
+    this._newTagText = e.target.value || '';
+  }
+
+  _onTagInputKeydown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      this._addTag();
+    }
+  }
+
+  _addTag() {
+    if (!this.feature) return;
+    const newTag = (this._newTagText || '').trim().replace(/;+$/g, '');
+    if (!newTag) return;
+    const current = this._parseTags(this.feature.tags);
+    const existingNorm = new Set(current.map((tag) => tag.toLowerCase()));
+    if (!existingNorm.has(newTag.toLowerCase())) {
+      current.push(newTag);
+      state.updateFeatureField(this.feature.id, 'tags', this._tagsToString(current));
+    }
+    this._newTagText = '';
+    this.requestUpdate();
+  }
+
+  _removeTag(tagToRemove) {
+    if (!this.feature) return;
+    const removeNorm = String(tagToRemove || '').toLowerCase();
+    const remaining = this._parseTags(this.feature.tags).filter(
+      (tag) => tag.toLowerCase() !== removeNorm
+    );
+    state.updateFeatureField(
+      this.feature.id,
+      'tags',
+      remaining.length ? this._tagsToString(remaining) : null
+    );
     this.requestUpdate();
   }
 
@@ -1499,6 +1615,14 @@ export class DetailsPanelLit extends LitElement {
 
     // Strip capacity section from description
     const cleanDescription = this._stripCapacityFromDescription(feature.description);
+    const parsedTags = this._parseTags(feature.tags);
+    const tagsOrig = feature && feature.original ? feature.original.tags : undefined;
+    const tagsChanged = tagsOrig !== undefined &&
+      JSON.stringify(this._normaliseTags(feature.tags)) !==
+        JSON.stringify(this._normaliseTags(tagsOrig));
+    const tagsCls = tagsChanged ? 'details-value details-changed' : 'details-value';
+    const tagsOriginalSpan =
+      tagsChanged ? html` <span class="original-date">(was ${tagsOrig || '—'})</span>` : '';
 
     const changedSet = new Set(feature.changedFields || []);
     const changedBanner =
@@ -1907,6 +2031,40 @@ export class DetailsPanelLit extends LitElement {
             <div class="details-label">Allocated Capacity:</div>
             <div class="capacity-bars">${capacityBars}</div>
             ${addTeamButton} ${totalAllocationBox}
+          </div>
+
+          <div class="tags-section">
+            <div class="details-label">Tags</div>
+            <div class="${tagsCls}">
+              <div class="tags-row">
+                ${parsedTags.length ?
+                  parsedTags.map((tag) => html`
+                    <span class="tag-chip">
+                      <span>${tag}</span>
+                      <button
+                        type="button"
+                        title="Remove tag ${tag}"
+                        @click=${() => this._removeTag(tag)}
+                      >✕</button>
+                    </span>
+                  `)
+                : html`<span>—</span>`}
+                ${tagsOriginalSpan}
+              </div>
+              <div class="tag-editor-row">
+                <input
+                  type="text"
+                  class="tag-input"
+                  .value=${this._newTagText}
+                  placeholder="Add tag"
+                  @input=${(e) => this._onTagInput(e)}
+                  @keydown=${(e) => this._onTagInputKeydown(e)}
+                />
+                <button type="button" class="tag-add-btn" @click=${() => this._addTag()}>
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="details-label">Description</div>

@@ -33,6 +33,7 @@ describe('QueuedFeatureService basic behavior', () => {
         start: '2025-02-01',
         end: '2025-02-10',
         capacity: { a: 1 },
+        tags: 'alpha; beta',
       },
     ];
 
@@ -78,10 +79,11 @@ describe('QueuedFeatureService basic behavior', () => {
       start: '2025-01-01',
       end: '2025-01-10',
       capacity: { a: 1 },
+      tags: 'a; b',
     };
-    const override = { start: '2025-01-02', capacity: { a: 2 } };
+    const override = { start: '2025-01-02', capacity: { a: 2 }, tags: 'a; c' };
     const res = qfs._recomputeDerived(base, override);
-    expect(res.changedFields).to.include.members(['start', 'capacity']);
+    expect(res.changedFields).to.include.members(['start', 'capacity', 'tags']);
     expect(res.dirty).to.equal(true);
   });
 
@@ -96,6 +98,8 @@ describe('QueuedFeatureService basic behavior', () => {
     expect(bus.emitted.length).to.be.greaterThan(0);
     const ok3 = qfs.updateFeatureField('f2', 'capacity', { a: 3 });
     expect(ok3).to.equal(true);
+    const ok4 = qfs.updateFeatureField('f2', 'tags', 'alpha; gamma');
+    expect(ok4).to.equal(true);
   });
 
   it('revertFeature removes overrides and emits', () => {

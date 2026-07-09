@@ -341,6 +341,30 @@ class WorkItemOperations:
         except Exception as e:
             raise RuntimeError(f"Failed to update work item {work_item_id} state: {e}")
 
+    def update_work_item_tags(self, work_item_id: int, tags_value: Optional[str]) -> Any:
+        """Update the System.Tags field for a work item.
+
+        Args:
+            work_item_id: Work item ID
+            tags_value: Semicolon-separated tags string. None clears tags.
+
+        Returns:
+            Azure SDK response object
+        """
+        if not self.client._connected:
+            raise RuntimeError("Azure client is not connected. Use 'with client.connect(pat):' to obtain a connected client.")
+
+        assert self.client.conn is not None
+        wit = self.client.wit_client
+
+        # ADO accepts empty string to clear System.Tags.
+        ops = [{"op": "add", "path": "/fields/System.Tags", "value": tags_value or ""}]
+
+        try:
+            return wit.update_work_item(document=ops, id=work_item_id)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update work item {work_item_id} tags: {e}")
+
     def update_work_item_relations(self, work_item_id: int, relations_ops: list) -> Any:
         """Update work item relations.
 

@@ -142,6 +142,34 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
+  it('_addTag adds a new tag via state.updateFeatureField', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f-tags-1', tags: 'one; two' };
+    el._newTagText = 'three';
+    await el.updateComplete;
+
+    const stub = sinon.stub(state, 'updateFeatureField');
+    el._addTag();
+
+    expect(stub.calledOnce).to.be.true;
+    expect(stub.getCall(0).args).to.deep.equal(['f-tags-1', 'tags', 'one; two; three']);
+    expect(el._newTagText).to.equal('');
+    stub.restore();
+  });
+
+  it('_removeTag clears tags when removing the last tag', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.feature = { id: 'f-tags-2', tags: 'solo' };
+    await el.updateComplete;
+
+    const stub = sinon.stub(state, 'updateFeatureField');
+    el._removeTag('solo');
+
+    expect(stub.calledOnce).to.be.true;
+    expect(stub.getCall(0).args).to.deep.equal(['f-tags-2', 'tags', null]);
+    stub.restore();
+  });
+
   it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f10' };

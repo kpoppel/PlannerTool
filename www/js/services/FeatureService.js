@@ -168,6 +168,11 @@ export class FeatureService {
   _recomputeDerived(featureBase, override) {
     const changedFields = [];
     if (override) {
+      const normaliseTags = (value) =>
+        String(value || '')
+          .split(';')
+          .map((tag) => tag.trim().toLowerCase())
+          .filter(Boolean);
       // Use key-presence + null-normalised comparison so that clearing a date
       // to null (unplanning) is detected as a change even though null is falsy.
       const normDate = (v) => v || null;
@@ -189,6 +194,12 @@ export class FeatureService {
         override.iterationPath !== featureBase.iterationPath
       )
         changedFields.push('iterationPath');
+      if (
+        'tags' in override &&
+        JSON.stringify(normaliseTags(override.tags)) !==
+          JSON.stringify(normaliseTags(featureBase.tags))
+      )
+        changedFields.push('tags');
     }
     return { changedFields, dirty: changedFields.length > 0 };
   }
@@ -450,6 +461,18 @@ export class FeatureService {
       return true;
     }
 
+    if (field === 'tags') {
+      const ov = activeScenario.overrides[id] || {};
+      ov.tags = value;
+      activeScenario.overrides[id] = ov;
+      activeScenario.isChanged = true;
+
+      const idsToEmit = new Set([id]);
+      if (base.parentId) idsToEmit.add(base.parentId);
+      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+      return true;
+    }
+
     return false;
   }
 
@@ -491,8 +514,7 @@ export class FeatureService {
    * Get feature title by ID (helper)
    */
   getFeatureTitleById(id) {
-    const baselineFeatures = this._baselineStore.getFeatures();
-    const f = baselineFeatures.find((x) => x.id === id);
+    const f = this._baselineStore.getFeatureById().get(id);
     return f ? f.title : id;
   }
 

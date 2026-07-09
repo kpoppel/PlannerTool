@@ -35,6 +35,7 @@ describe('FeatureService public methods', () => {
         start: '2025-02-01',
         end: '2025-02-10',
         capacity: { foo: 1 },
+        tags: 'alpha; beta',
       },
     ];
 
@@ -92,10 +93,18 @@ describe('FeatureService public methods', () => {
     expect(okDate).to.equal(true);
     const okCap = fs.updateFeatureField('f2', 'capacity', { foo: 2 });
     expect(okCap).to.equal(true);
+    const okTags = fs.updateFeatureField('f2', 'tags', 'alpha; gamma');
+    expect(okTags).to.equal(true);
     // invalid field
     const bad = fs.updateFeatureField('f2', 'nonexistent', 1);
     expect(bad).to.equal(false);
     expect(bus.emitted.length).to.be.greaterThan(0);
+  });
+
+  it('getEffectiveFeatureById marks tags as changed when tags override differs', () => {
+    activeScenario.overrides['f2'] = { tags: 'gamma; delta' };
+    const eff = fs.getEffectiveFeatureById('f2');
+    expect(eff.changedFields).to.include('tags');
   });
 
   it('revertFeature removes override and emits', () => {
