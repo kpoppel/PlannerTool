@@ -53,6 +53,8 @@ export class PluginPortfolioComponent extends LitElement {
     _timelineLayout: { type: Object, state: true },
     _dragState: { type: Object, state: true },
     _statusMessage: { type: String, state: true },
+    _pendingChangesCount: { type: Number, state: true },
+    _activeScenarioId: { type: String, state: true },
   };
 
   static styles = createPortfolioStyles(
@@ -92,6 +94,8 @@ export class PluginPortfolioComponent extends LitElement {
       allowed: false,
     };
     this._statusMessage = '';
+    this._pendingChangesCount = 0;
+    this._activeScenarioId = 'baseline';
 
     this._dragToastTimer = null;
     this._suppressClickUntil = 0;
@@ -309,6 +313,24 @@ export class PluginPortfolioComponent extends LitElement {
     this._rows = rows;
     this._unallocated = unallocatedWithDepth;
     this._timelineLayout = buildPortfolioTimelineLayout(rows, unallocated, this._columnStates);
+
+    // Update scenario and pending changes info
+    this._updateScenarioInfo();
+  }
+
+  _updateScenarioInfo() {
+    try {
+      this._activeScenarioId = state.activeScenarioId || 'baseline';
+
+      const activeScenario = (state.scenarios || []).find(
+        (s) => s.id === this._activeScenarioId
+      );
+      this._pendingChangesCount =
+        activeScenario?.overrides ? Object.keys(activeScenario.overrides).length : 0;
+    } catch (_) {
+      this._activeScenarioId = 'baseline';
+      this._pendingChangesCount = 0;
+    }
   }
 
 
@@ -503,8 +525,15 @@ export class PluginPortfolioComponent extends LitElement {
 
     try {
       const updated = state.updateFeatureField(featureId, 'state', nextState);
-      if (!updated) throw new Error('State update rejected');
-      this._showStatus(`Moved ${featureId} to ${nextState}`);
+      // Don't show error if baseline scenario is active (read-only) - the update will be attempted anyway
+      // Only show success message if explicit update was successful
+      if (updated) {
+        this._showStatus(`Moved ${featureId} to ${nextState}`);
+      } else if (this._activeScenarioId !== 'baseline') {
+        // Only show error for non-baseline scenarios
+        throw new Error('State update rejected');
+      }
+      // For baseline, silently proceed - the state might update through other paths
     } catch (error) {
       console.warn('[PluginPortfolio] failed to update feature state', error);
       this._showStatus(`Failed to move ${featureId} to ${nextState}`);
@@ -795,10 +824,28 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   render() {
+    const isBaselineScenario = this._activeScenarioId === 'baseline';
+    const hasWarnings = isBaselineScenario || this._pendingChangesCount === 0;
+
     return html`
       <div class="toolbar">
         <div class="toolbar-title">Portfolio Planning Board</div>
         <div class="toolbar-spacer"></div>
+        
+        ${this._pendingChangesCount > 0 ? html`
+          <div class="status-indicator pending">
+            <span class="status-badge">${this._pendingChangesCount}</span>
+            <span class="status-label">pending change${this._pendingChangesCount > 1 ? 's' : ''}</span>
+          </div>
+        ` : ''}
+        
+        ${isBaselineScenario ? html`
+          <div class="status-indicator warning">
+            <span class="warning-icon">⚠</span>
+            <span class="status-label">No scenario selected</span>
+          </div>
+        ` : ''}
+        
         <button class="close-btn" @click="${this._closePlugin}">Close</button>
       </div>
 

@@ -66,6 +66,47 @@ export function createPortfolioStyles(
       background: #d32f2f;
     }
 
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .status-indicator.pending {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    .status-indicator.warning {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      background: #2196f3;
+      color: white;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .status-indicator.warning .warning-icon {
+      font-size: 14px;
+    }
+
+    .status-label {
+      font-weight: 500;
+    }
+
     .main-content {
       flex: 1;
       display: flex;
