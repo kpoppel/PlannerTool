@@ -689,6 +689,37 @@ export class AdminProviderREST {
       return { ok: false, error: String(err) };
     }
   }
+
+  async getPluginsConfig() {
+    try {
+      const res = await this._fetch('/admin/v1/plugins-config', {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.content || null;
+    } catch (err) {
+      console.error('AdminProviderREST:getPluginsConfig', err);
+      return null;
+    }
+  }
+
+  async savePluginsConfig(content) {
+    try {
+      const res = await this._fetch('/admin/v1/plugins-config', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:savePluginsConfig', err);
+      return { ok: false, error: String(err) };
+    }
+  }
 }
 
 // Export a default instance for simple imports

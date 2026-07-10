@@ -2,6 +2,7 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import './admin/GlobalSettings.lit.js';
 // AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
+import './admin/Plugins.lit.js';
 
 export class AdminApp extends LitElement {
   static properties = {
@@ -97,6 +98,7 @@ export class AdminApp extends LitElement {
       'Area Mappings',
       'Iterations',
       'Utilities',
+      'Plugins',
     ];
   }
 
@@ -154,6 +156,8 @@ export class AdminApp extends LitElement {
         return html`<admin-iterations></admin-iterations>`;
       case 'Utilities':
         return html`<admin-utilities></admin-utilities>`;
+      case 'Plugins':
+        return html`<admin-plugins></admin-plugins>`;
       default:
         return html`<div>Unknown section</div>`;
     }
