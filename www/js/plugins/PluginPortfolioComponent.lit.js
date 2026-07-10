@@ -21,66 +21,23 @@ import {
 } from './portfolioTimeline.js';
 import { createPortfolioStyles } from './PluginPortfolioComponent.styles.js';
 import { renderPortfolioTimeline } from './PortfolioTimelineRenderer.js';
+import { renderUnallocatedPanel } from './PortfolioUnallocatedRenderer.js';
+import {
+  normalizeState,
+  getFeatureType,
+  toTitle,
+  numberOrZero,
+  featureTags,
+  hasAnyCapacity,
+  getFeatureTeamAllocation,
+  hexToRgba,
+} from './PortfolioPluginUtils.js';
 
 const ENABLE_STATE_CELL_ACCENT = true;
 const STATE_CELL_ACCENT_ALPHA = 0.1;
 const TIMELINE_MONTH_GRID_SPACING = 120;
 // Tune this default cap for the timeline viewport height.
 const DEFAULT_TIMELINE_MAX_HEIGHT_VH = 50;
-
-function normalizeState(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function getFeatureType(feature) {
-  return String(feature?.type || feature?.workItemType || feature?.work_item_type || 'Unknown');
-}
-
-function toTitle(value) {
-  return String(value || '').trim() || 'Untitled';
-}
-
-function numberOrZero(value) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : 0;
-}
-
-function featureTags(feature) {
-  const raw = feature?.tags;
-  if (Array.isArray(raw)) return raw.map((t) => String(t)).filter(Boolean);
-  if (typeof raw === 'string') {
-    return raw
-      .split(/[;,]/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function hasAnyCapacity(feature) {
-  const entries = Array.isArray(feature?.capacity) ? feature.capacity : [];
-  return entries.some((c) => numberOrZero(c?.capacity) > 0);
-}
-
-function getFeatureTeamAllocation(feature, teamId) {
-  const entries = Array.isArray(feature?.capacity) ? feature.capacity : [];
-  return entries
-    .filter((c) => String(c?.team) === String(teamId))
-    .reduce((sum, c) => sum + numberOrZero(c?.capacity), 0);
-}
-
-function hexToRgba(hex, alpha = 0.12) {
-  if (!hex) return `rgba(148, 163, 184, ${alpha})`;
-  const value = String(hex).replace('#', '');
-  if (value.length !== 6) return `rgba(148, 163, 184, ${alpha})`;
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  if ([r, g, b].some((part) => Number.isNaN(part))) {
-    return `rgba(148, 163, 184, ${alpha})`;
-  }
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 export class PluginPortfolioComponent extends LitElement {
   static properties = {
@@ -91,6 +48,7 @@ export class PluginPortfolioComponent extends LitElement {
     _columnStates: { type: Array, state: true },
     _projectById: { type: Object, state: true },
     _unallocatedOpen: { type: Boolean, state: true },
+    _boardOpen: { type: Boolean, state: true },
     _timelineOpen: { type: Boolean, state: true },
     _timelineLayout: { type: Object, state: true },
     _dragState: { type: Object, state: true },
@@ -112,6 +70,7 @@ export class PluginPortfolioComponent extends LitElement {
     this._columnStates = [];
     this._projectById = {};
     this._unallocatedOpen = true;
+    this._boardOpen = true;
     this._timelineOpen = false;
     this._timelineLayout = {
       empty: true,
@@ -344,8 +303,8 @@ export class PluginPortfolioComponent extends LitElement {
       }
     }
 
-    // Apply hierarchical ordering with depth to unallocated items
-    const unallocatedWithDepth = this._orderFeaturesHierarchicallyWithDepth(unallocated);
+    // Apply hierarchical ordering with depth to unallocated items (roots at end)
+    const unallocatedWithDepth = this._orderUnallocatedHierarchically(unallocated);
 
     this._rows = rows;
     this._unallocated = unallocatedWithDepth;
@@ -620,6 +579,54 @@ export class PluginPortfolioComponent extends LitElement {
     return ordered;
   }
 
+  _orderUnallocatedHierarchically(features) {
+    const childrenMap = this._buildChildrenMap(features);
+    const sourceIds = new Set(features.map((f) => String(f.id)));
+    
+    // Roots are features without parents in the source set
+    const roots = features.filter(
+      (f) => !f.parentId || !sourceIds.has(String(f.parentId))
+    );
+    
+    // Features with parents are non-roots
+    const withParents = features.filter(
+      (f) => f.parentId && sourceIds.has(String(f.parentId))
+    );
+
+    const ordered = [];
+    const visited = new Set();
+
+    const visit = (item, depth = 0) => {
+      const itemId = String(item.id);
+      if (visited.has(itemId)) return;
+      visited.add(itemId);
+      ordered.push({ ...item, depth });
+      const children = childrenMap.get(itemId) || [];
+      for (const child of children) {
+        visit(child, depth + 1);
+      }
+    };
+
+    // First, find all parent features in the with-parents set and visit them
+    const parentIds = new Set(withParents.map((f) => String(f.parentId)));
+    for (const parentId of parentIds) {
+      const parent = features.find((f) => String(f.id) === parentId);
+      if (parent) {
+        visit(parent, 0);
+      }
+    }
+
+    // Then visit remaining features to catch any that weren't visited
+    for (const f of features) {
+      const fId = String(f.id);
+      if (!visited.has(fId)) {
+        visit(f, 0);
+      }
+    }
+
+    return ordered;
+  }
+
   _toggleUnallocated() {
     this._unallocatedOpen = !this._unallocatedOpen;
   }
@@ -667,8 +674,19 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _renderBoard() {
+    const subtitle = `${this._rows.length} team${this._rows.length > 1 ? 's' : ''} · ${this._columnStates.length} state${this._columnStates.length > 1 ? 's' : ''}` || 'Board';
+    const boardClass = this._boardOpen ? '' : 'collapsed';
+    
     if (!this._rows.length || !this._columnStates.length) {
-      return html`<div class="empty-cell" style="padding: 12px;">No teams or states selected.</div>`;
+      return html`
+        <div class="board-panel ${boardClass}">
+          <div class="panel-header" @click="${this._toggleBoard}">
+            <span class="panel-title">Board</span>
+            <span class="panel-subtitle">No teams or states selected</span>
+            <span class="panel-toggle ${this._boardOpen ? 'up' : ''}">▼</span>
+          </div>
+        </div>
+      `;
     }
 
     const stateCounts = Object.fromEntries(this._columnStates.map((s) => [s, 0]));
@@ -679,6 +697,13 @@ export class PluginPortfolioComponent extends LitElement {
     }
 
     return html`
+      <div class="board-panel ${boardClass}">
+        <div class="panel-header" @click="${this._toggleBoard}">
+          <span class="panel-title">Board</span>
+          <span class="panel-subtitle">${subtitle}</span>
+          <span class="panel-toggle ${this._boardOpen ? 'up' : ''}">▼</span>
+        </div>
+        ${this._boardOpen ? html`
       <div class="board-scroll">
         <table class="pgrid" style="--state-count:${this._columnStates.length}">
           <thead>
@@ -744,78 +769,29 @@ export class PluginPortfolioComponent extends LitElement {
           </tbody>
         </table>
       </div>
+        ` : ''}
+      </div>
     `;
   }
 
+  _toggleUnallocated() {
+    this._unallocatedOpen = !this._unallocatedOpen;
+  }
+
+  _toggleBoard() {
+    this._boardOpen = !this._boardOpen;
+  }
+
   _renderUnallocated() {
-    const subtitle = this._unallocated.length
-      ? `${this._unallocated.length} task${this._unallocated.length > 1 ? 's' : ''} need team assignment`
-      : '- all tasks allocated';
-
-    return html`
-      <div class="unalloc-panel">
-        <div class="panel-header" @click="${this._toggleUnallocated}">
-          <span class="panel-title">Unallocated Tasks</span>
-          <span class="panel-subtitle">${subtitle}</span>
-          <span class="panel-toggle ${this._unallocatedOpen ? 'up' : ''}">▼</span>
-        </div>
-
-        ${this._unallocatedOpen
-          ? html`
-              <div class="unalloc-scroll">
-                <table class="ugrid">
-                  <thead>
-                    <tr>
-                      <th style="width:68px;">ID</th>
-                      <th>Title</th>
-                      <th style="width:130px;">Project</th>
-                      <th style="width:110px;">Start</th>
-                      <th style="width:110px;">End</th>
-                      <th style="width:110px;">State</th>
-                      <th>Tags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${this._unallocated.length === 0
-                      ? html`<tr class="empty-row"><td colspan="7">All tasks have team allocations</td></tr>`
-                      : this._unallocated.map((feature) => {
-                          const tags = featureTags(feature);
-                          const depthMargin = (feature.depth || 0) * 16;
-                          return html`
-                            <tr @click="${() => this._selectFeature(feature)}">
-                              <td style="padding-left:${depthMargin + 12}px;"><strong>${feature.id}</strong></td>
-                              <td>${toTitle(feature.title)}</td>
-                              <td>
-                                <span
-                                  class="badge badge-proj"
-                                  style="background:${this._projectColorForFeature(feature)}"
-                                >
-                                  ${this._projectNameForFeature(feature)}
-                                </span>
-                              </td>
-                              <td>${feature?.start || '-'}</td>
-                              <td>${feature?.end || '-'}</td>
-                              <td>
-                                <span class="state-cell">
-                                  <span class="state-cell-dot"></span>
-                                  ${feature?.state || '-'}
-                                </span>
-                              </td>
-                              <td>
-                                ${tags.length
-                                  ? tags.map((tag) => html`<span class="badge badge-tag">${tag}</span>`)
-                                  : html`<span style="color:#64748b;">-</span>`}
-                              </td>
-                            </tr>
-                          `;
-                        })}
-                  </tbody>
-                </table>
-              </div>
-            `
-          : ''}
-      </div>
-    `;
+    return renderUnallocatedPanel({
+      unallocated: this._unallocated,
+      isOpen: this._unallocatedOpen,
+      isBoardCollapsed: !this._boardOpen,
+      onToggle: () => this._toggleUnallocated(),
+      onSelectFeature: (feature) => this._selectFeature(feature),
+      getProjectColor: (feature) => this._projectColorForFeature(feature),
+      getProjectName: (feature) => this._projectNameForFeature(feature),
+    });
   }
 
   render() {
@@ -828,7 +804,7 @@ export class PluginPortfolioComponent extends LitElement {
 
       <div class="main-content" @click="${this._clearSelectionOnBackground}">
         ${this._renderTimeline()}
-        <div class="board-panel">${this._renderBoard()}</div>
+        ${this._renderBoard()}
         ${this._renderUnallocated()}
       </div>
 

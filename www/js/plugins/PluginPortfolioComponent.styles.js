@@ -83,6 +83,22 @@ export function createPortfolioStyles(
       padding: 8px;
     }
 
+    .board-panel.collapsed {
+      flex: none;
+      max-height: auto;
+      padding: 0;
+      border-top: 1px solid #e2e8f0;
+      border-left: none;
+      border-right: none;
+      border-bottom: 1px solid #e2e8f0;
+      border-radius: 0;
+      background: #ffffff;
+    }
+
+    .board-panel.collapsed .panel-header {
+      border-bottom: 1px solid #e2e8f0;
+    }
+
     .board-scroll {
       flex: 1;
       overflow: auto;
@@ -520,6 +536,11 @@ export function createPortfolioStyles(
       border-bottom: 1px solid #e2e8f0;
       border-radius: 0 0 8px 8px;
       overflow: hidden;
+    }
+
+    .unalloc-panel.expanded {
+      flex: 1;
+      max-height: none;
     }
 
     .panel-header {
