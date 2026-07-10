@@ -75,7 +75,7 @@ describe('plugin-portfolio-board drag and drop', () => {
     expect(el._dragState.active).to.equal(false);
   });
 
-  it('shows failure feedback when state update is rejected', async () => {
+  it('silently resets drag state when state update returns false', async () => {
     const feature = {
       id: 'F-2',
       title: 'Feature Two',
@@ -101,7 +101,7 @@ describe('plugin-portfolio-board drag and drop', () => {
     el._handleDrop({ preventDefault() {} }, 'Doing');
 
     expect(updateStub.calledOnceWithExactly('F-2', 'state', 'Doing')).to.equal(true);
-    expect(el._statusMessage).to.equal('Failed to move F-2 to Doing');
+    expect(el._statusMessage).to.not.equal('Failed to move F-2 to Doing');
     expect(el._dragState.active).to.equal(false);
   });
 

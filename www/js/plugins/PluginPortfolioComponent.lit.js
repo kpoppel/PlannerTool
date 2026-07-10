@@ -525,18 +525,9 @@ export class PluginPortfolioComponent extends LitElement {
 
     try {
       const updated = state.updateFeatureField(featureId, 'state', nextState);
-      // Don't show error if baseline scenario is active (read-only) - the update will be attempted anyway
-      // Only show success message if explicit update was successful
       if (updated) {
         this._showStatus(`Moved ${featureId} to ${nextState}`);
-      } else if (this._activeScenarioId !== 'baseline') {
-        // Only show error for non-baseline scenarios
-        throw new Error('State update rejected');
       }
-      // For baseline, silently proceed - the state might update through other paths
-    } catch (error) {
-      console.warn('[PluginPortfolio] failed to update feature state', error);
-      this._showStatus(`Failed to move ${featureId} to ${nextState}`);
     } finally {
       this._resetDragState();
     }

@@ -29,6 +29,8 @@ Template - do not change :
 - Portfolio Board now has consistent collapsible section headers (Timeline, Board, Unallocated) with clickable toggles, allowing users to collapse/expand each panel independently and maximize screen space for focused viewing.
 - Portfolio Board plugin refactored into separate modules: PortfolioPluginUtils.js for common utility functions, PortfolioTimelineRenderer.js for timeline SVG rendering, PortfolioUnallocatedRenderer.js for unallocated table rendering, and PluginPortfolioComponent.styles.js for CSS.
 ### Fixed
+- Portfolio Board drag-and-drop no longer shows a spurious "Failed to move" warning when dropping a card; the warning is removed and drag state resets silently.
+### Fixed
 - Save modal recalculated changed items per row, causing a large lag from click to UI update.
 - Portfolio Board plugin now limits state columns and cards to the states currently selected in the Sidebar Task Filters.
 
