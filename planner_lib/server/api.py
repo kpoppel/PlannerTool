@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from planner_lib.middleware import require_session, get_session_id_from_request
 from planner_lib.services.resolver import resolve_service, resolve_optional_service
 from planner_lib.backend.port import BackendCredential
+from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
 from .health import get_health
 import logging
 
@@ -57,3 +58,18 @@ async def api_config_tasks(request):
 async def api_health(request: Request):
     health_config = resolve_optional_service(request, 'health_config')
     return get_health(health_config)
+
+
+@router.get('/plugins/config')
+@require_session
+async def api_plugins_config(request: Request):
+    """Return runtime-manageable plugin configuration for the user app."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        content = admin_svc.get_config('plugin_runtime_config', default=None)
+        return normalize_plugin_runtime_config(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(e)})
+    except Exception as e:
+        logger.exception('Failed to load runtime plugin config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')

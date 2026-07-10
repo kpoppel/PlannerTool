@@ -114,6 +114,10 @@ def test_get_backup_includes_config_keys():
         'task_type_hierarchy': [],
         'state_display_sequence': [],
     })
+    store.save('config', 'plugin_runtime_config', {
+        'schema_version': 1,
+        'plugins': [{'id': 'portfolio', 'enabled': True, 'activated': True, 'order': 0, 'custom_config': {}}],
+    })
     cm = ConfigManager(config_storage=store, account_storage=_Store())
     bk = cm.get_backup()
     assert bk['config']['projects'] == [{'id': 'p1'}]
@@ -121,6 +125,10 @@ def test_get_backup_includes_config_keys():
     assert bk['config']['global_settings'] == {
         'task_type_hierarchy': [],
         'state_display_sequence': [],
+    }
+    assert bk['config']['plugin_runtime_config'] == {
+        'schema_version': 1,
+        'plugins': [{'id': 'portfolio', 'enabled': True, 'activated': True, 'order': 0, 'custom_config': {}}],
     }
     # Missing keys are stored as None
     assert bk['config']['people'] is None
@@ -131,7 +139,7 @@ def test_get_backup_covers_all_live_config_keys():
     from planner_lib.admin.config_manager import ConfigManager
     expected = {
         "projects", "teams", "people", "cost_config",
-        "area_plan_map", "iterations", "global_settings", "ado_config", "server_config",
+        "area_plan_map", "iterations", "global_settings", "ado_config", "plugin_runtime_config", "server_config",
     }
     assert set(ConfigManager.CONFIG_KEYS) == expected, (
         f"CONFIG_KEYS mismatch — backup would silently omit: "

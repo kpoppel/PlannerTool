@@ -18,6 +18,7 @@ from planner_lib.admin import schema as admin_schema
 from planner_lib.admin import cost_inspector
 from planner_lib.admin import people_inspector
 from planner_lib.admin import area_mapping_service
+from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -720,4 +721,65 @@ async def admin_save_groups_config(request: Request):
         return {'ok': True}
     except Exception as e:
         logger.exception('Failed to save groups config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+# ---------------------------------------------------------------------------
+# Plugin runtime configuration (plugin_runtime_config in diskcache)
+# ---------------------------------------------------------------------------
+
+def _validate_plugin_dependency_order(_plugins):
+    """Hook for dependency-order validation against modules.config.json.
+
+    Intentionally no-op in phase 1; wiring exists so strict validation can be
+    added without changing route behavior.
+    """
+    return None
+
+
+@router.get('/admin/v1/plugins-config')
+@require_admin_session
+async def admin_get_plugins_config(request: Request):
+    """Return normalized plugin runtime configuration."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        content = admin_svc.get_config('plugin_runtime_config', default=None)
+        return {
+            'content': normalize_plugin_runtime_config(
+                content,
+                dependency_validator=_validate_plugin_dependency_order,
+            )
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(e)})
+    except Exception as e:
+        logger.exception('Failed to load plugin runtime config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/plugins-config')
+@require_admin_session
+async def admin_save_plugins_config(request: Request):
+    """Save plugin runtime configuration after lightweight normalization."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
+
+    content = payload.get('content') if isinstance(payload, dict) else None
+    if content is None:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+
+    try:
+        normalized = normalize_plugin_runtime_config(
+            content,
+            dependency_validator=_validate_plugin_dependency_order,
+        )
+        admin_svc = resolve_service(request, 'admin_service')
+        admin_svc.save_config('plugin_runtime_config', normalized)
+        return {'ok': True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(e)})
+    except Exception as e:
+        logger.exception('Failed to save plugin runtime config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')

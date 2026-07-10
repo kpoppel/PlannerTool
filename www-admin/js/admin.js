@@ -25,7 +25,7 @@ async function mountAdminApp() {
   // access-denied page (consistent UX). If the check succeeds, mount
   // the admin app.
   try {
-    const res = await fetch('/admin/check', {
+    const res = await fetch((window.APP_BASE_URL || '') + '/admin/check', {
       method: 'GET',
       credentials: 'same-origin',
     });

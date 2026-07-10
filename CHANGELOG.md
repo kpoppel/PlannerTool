@@ -14,8 +14,12 @@ Template - do not change :
 ### Fixed
 ---
 ## [v4.2.0] - unreleased
+### Fixed
+- Admin redirect on sub-path deployments (e.g. `/esw/admin`) now correctly includes the root path prefix; previously redirected to `/admin/login` losing the sub-site.
+- Admin JS check endpoint now correctly uses `APP_BASE_URL` prefix so it routes through the reverse proxy sub-path.
 ### Added
 - Portfolio Board plugin Phase 1: added a fullscreen team-row/state-column board with sidebar-aware filtering, details-panel card selection, persisted plugin toolbar state, and an unallocated tasks panel.
+- Backend: added global plugin runtime configuration support with admin CRUD endpoint (`/admin/v1/plugins-config`), session-protected runtime read endpoint (`/api/plugins/config`), payload normalization, and backup/restore persistence under `plugin_runtime_config`.
 ### Changed
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.

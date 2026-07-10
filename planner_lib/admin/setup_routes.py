@@ -162,14 +162,17 @@ async def admin_root(request: Request):
         resp = HTMLResponse(content=login_html)
         resp.delete_cookie(SESSION_COOKIE, path='/')
         # Redirect so the browser URL reflects the error state cleanly.
-        redirect = RedirectResponse(url='/admin/login?error=not_admin', status_code=302)
+        # Prefix with root_path so sub-path deployments (e.g. /esw) redirect correctly.
+        login_url = (request.scope.get('root_path') or '') + '/admin/login?error=not_admin'
+        redirect = RedirectResponse(url=login_url, status_code=302)
         redirect.delete_cookie(SESSION_COOKIE, path='/')
         return redirect
     except HTTPException:
         raise
     except Exception:
         # Any unexpected error — redirect to login rather than showing the Dead End page.
-        redirect = RedirectResponse(url='/admin/login?error=not_admin', status_code=302)
+        login_url = (request.scope.get('root_path') or '') + '/admin/login?error=not_admin'
+        redirect = RedirectResponse(url=login_url, status_code=302)
         redirect.delete_cookie(SESSION_COOKIE, path='/')
         return redirect
 
