@@ -59,4 +59,13 @@ describe('PluginCost', () => {
     timeline.remove();
     host.remove();
   });
+
+  it('deactivate without an element is a no-op', async () => {
+    const p = new PluginCost('cost-test-noop', { fullscreen: true });
+
+    await p.deactivate();
+
+    expect(p.active).to.be.false;
+    expect(p._el).to.equal(null);
+  });
 });

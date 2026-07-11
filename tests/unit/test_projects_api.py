@@ -30,14 +30,26 @@ def _make_task_repository():
             self.last_read_args = dict(project_id=project_id)
             if project_id:
                 return [{'id': 't-p-' + str(project_id)}]
-            return [{'id': 't-all-1'}, {'id': 't-all-2'}]
+            return [
+                {'id': 't-all-1', 'start': '2026-01-01', 'end': '2026-01-31'},
+                {
+                    'id': 't-all-2',
+                    'start': '2026-02-01',
+                    'end': '2026-02-28',
+                    'startDate': '2026-02-01',
+                    'finishDate': '2026-02-28',
+                    'start_date': '2026-02-01',
+                    'end_date': '2026-02-28',
+                    'endDate': '2026-02-28',
+                },
+            ]
 
         def write(self, updates, user_id=None):
             self.last_write_args = dict(updates=updates, user_id=user_id)
             if not updates:
                 return {'ok': True, 'updated': 0, 'errors': []}
             for it in updates:
-                if it.get('error'):
+                if it.get('state') == 'bad':
                     return {'ok': False, 'updated': 0, 'errors': ['bad item']}
             return {'ok': True, 'updated': len(updates), 'errors': []}
 
@@ -210,11 +222,26 @@ def test_tasks_update_success_and_errors(client):
     assert r.json().get('updated') == 2
 
     # error path
-    bad = [{'id': 3, 'error': True}]
+    bad = [{'id': 3, 'state': 'bad'}]
     r2 = client.post('/api/tasks', json=bad, headers={'X-Session-Id': 'test-session'})
     assert r2.status_code == 200
     assert r2.json().get('ok') is False
     assert 'errors' in r2.json()
+
+
+@pytest.mark.parametrize('legacy_key', ['startDate', 'endDate', 'start_date', 'end_date'])
+def test_tasks_update_rejects_legacy_date_aliases(client, legacy_key):
+    task_repo = _make_task_repository()
+    register_service_on_client(client, 'task_repository', task_repo)
+    register_service_on_client(client, 'session_manager', _make_session_mgr())
+
+    payload = [{'id': 1, legacy_key: '2026-01-01'}]
+    r = client.post('/api/tasks', json=payload, headers={'X-Session-Id': 'test-session'})
+
+    assert r.status_code == 422
+    body = r.json()
+    assert 'detail' in body
+    assert legacy_key in str(body['detail'])
 
 
 def test_tasks_missing_service_returns_500(client):

@@ -1,6 +1,8 @@
 import asyncio
+from typing import Optional
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
+from pydantic import BaseModel, ConfigDict
 from planner_lib.middleware import require_session
 from planner_lib.middleware.session import get_session_id_from_request
 from planner_lib.services.resolver import resolve_service
@@ -10,6 +12,34 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class TaskCapacityEntry(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    team: str
+    capacity: float
+
+
+class TaskRelationEntry(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    type: str
+    id: str
+    url: Optional[str] = None
+
+
+class TaskUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    id: str | int
+    start: Optional[str] = None
+    end: Optional[str] = None
+    capacity: Optional[list[TaskCapacityEntry]] = None
+    state: Optional[str] = None
+    iterationPath: Optional[str] = None
+    tags: Optional[str] = None
+    relations: Optional[list[TaskRelationEntry]] = None
 
 
 def _get_credential(request: Request, sid: str):
@@ -99,13 +129,17 @@ async def api_markers(request: Request):
 
 @router.post('/tasks')
 @require_session
-async def api_tasks_update(request: Request, payload: list[dict] = Body(default=[])):
+async def api_tasks_update(
+    request: Request,
+    payload: list[TaskUpdatePayload] = Body(default=[]),
+):
     sid = get_session_id_from_request(request)
     logger.debug("Updating tasks for session %s: %d items", sid, len(payload or []))
 
     task_repo = resolve_service(request, 'task_repository')
     _credential, email = _get_credential(request, sid)
-    result = await asyncio.to_thread(task_repo.write, payload or [], user_id=email)
+    normalized_payload = [item.model_dump(exclude_unset=True) for item in (payload or [])]
+    result = await asyncio.to_thread(task_repo.write, normalized_payload, user_id=email)
     if not result.get('ok', True) and result.get('errors'):
         logger.warning("Task update completed with errors: %s", result['errors'])
 

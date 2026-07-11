@@ -51,6 +51,7 @@ class PluginCost {
   }
 
   async activate() {
+    if (this.active) return;
     if (!this._componentLoaded) await this.init();
     if (!this._host) {
       const selector = this.config.mountPoint || 'app';
@@ -88,6 +89,10 @@ class PluginCost {
   }
 
   async deactivate() {
+    if (!this._el) {
+      this.active = false;
+      return;
+    }
     // Persist the currently-selected date range into the PluginStateService
     const s = {
       startDate: this._el.startDate,

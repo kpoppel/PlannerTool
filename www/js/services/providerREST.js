@@ -435,13 +435,23 @@ export class ProviderREST {
     }
     //const parentEpic = tasks.relations ? tasks.relations.find(r => r.type === 'Parent') : null;
     //console.log("Parent Epic:", parentEpic);
-    const retval = (tasks || []).map((f) => ({
-      ...f,
-      parentId: getParent(f),
-      original: { ...f },
-      changedFields: [],
-      dirty: false,
-    }));
+    const retval = (tasks || []).map((rawTask) => {
+      const {
+        startDate,
+        endDate,
+        start_date,
+        end_date,
+        finishDate,
+        ...task
+      } = rawTask || {};
+      return {
+        ...task,
+        parentId: getParent(task),
+        original: { ...task },
+        changedFields: [],
+        dirty: false,
+      };
+    });
     //console.log('providerREST:getFeatures - Fetched tasks:', retval);
     return retval;
   }

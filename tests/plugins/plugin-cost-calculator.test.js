@@ -3,14 +3,14 @@ import {
   buildMonths,
   buildProjects,
   monthKey,
-} from '../../www/js/plugins/PluginCostV1Calculator.js';
+} from '../../www/js/plugins/PluginCostCalculator.js';
 import {
   toDate,
   firstOfMonth,
   lastOfMonth,
   addMonths,
   monthLabel,
-} from '../../www/js/plugins/PluginCostV1Calculator.js';
+} from '../../www/js/plugins/PluginCostCalculator.js';
 import { enable, disable } from '../../www/js/config.js';
 
 // Helper to create minimal project/feature structure returned by backend
@@ -49,6 +49,47 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
     const mk = monthKey(months[0]);
     expect(project.features[0].values.internal[mk]).to.equal(100);
     expect(project.features[0].values.external[mk]).to.equal(50);
+  });
+
+  it('preserves the raw start and end fields on normalized features', () => {
+    const cfg = { dataset_start: '2026-06-01', dataset_end: '2026-06-30' };
+    const months = buildMonths(cfg);
+    const p = {
+      id: 1,
+      name: 'P',
+      features: [makeFeature(13, '2026-06-10', '2026-06-20', 10, 5, 2, 1)],
+    };
+    const res = buildProjects([p], months, {});
+    const feat = res.projects[0].features[0];
+    expect(feat.start).to.equal('2026-06-10');
+    expect(feat.end).to.equal('2026-06-20');
+  });
+
+  it('treats legacy start_date and end_date fields as unscheduled', () => {
+    const cfg = { dataset_start: '2026-06-01', dataset_end: '2026-06-30' };
+    const months = buildMonths(cfg);
+    const p = {
+      id: 1,
+      name: 'P',
+      features: [
+        {
+          id: 14,
+          title: 'backend-shape',
+          start_date: '2026-06-05',
+          end_date: '2026-06-25',
+          metrics: {
+            internal: { cost: 20, hours: 4 },
+            external: { cost: 10, hours: 2 },
+          },
+        },
+      ],
+    };
+    const res = buildProjects([p], months, {});
+    const feat = res.projects[0].features[0];
+    expect(feat.start).to.equal(null);
+    expect(feat.end).to.equal(null);
+    expect(feat.internalTotal).to.equal(20);
+    expect(feat.externalTotal).to.equal(10);
   });
 
   it('splits costs across months proportional to days', () => {

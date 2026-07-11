@@ -375,14 +375,12 @@ const taskProto = {
   state: 'New', // Randomize by default
   tags: null, // Randomize by default
   description: null, // Randomize by default
-  startDate: null,
-  finishDate: null,
   areaPath: 'my_proj\\p1\\p2',
   iterationPath: 'my_proj\\i1',
   relations: [],
   url: 'https://example.com/T-000',
   project: 'project-a',
-  start: null, // TODO: Really must remove the double start, startDate, end, endDate mess
+  start: null,
   end: null,
   capacity: [],
 };

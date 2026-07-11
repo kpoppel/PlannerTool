@@ -1,16 +1,20 @@
 import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
+import PluginEventsPlugin from '../../www/js/plugins/PluginEvents.js';
 import PluginGraph from '../../www/js/plugins/PluginGraph.js';
 import PluginHistory from '../../www/js/plugins/PluginHistory.js';
+import PluginMarkers from '../../www/js/plugins/PluginMarkers.js';
 import PluginPlanHealth from '../../www/js/plugins/PluginPlanHealth.js';
 import PluginLinkEditor from '../../www/js/plugins/PluginLinkEditor.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
+import { enable } from '../../www/js/config.js';
 
 describe('Simple plugin wrappers lifecycle', () => {
   let emitStub;
 
   beforeEach(() => {
+    enable('USE_PLUGIN_SYSTEM');
     emitStub = stub(bus, 'emit');
   });
   afterEach(() => {
@@ -69,6 +73,56 @@ describe('Simple plugin wrappers lifecycle', () => {
     await p.destroy();
   });
 
+  it('PluginEvents lifecycle and refresh', async () => {
+    const p = new PluginEventsPlugin('pe-test');
+    p._componentLoaded = true;
+    p._el = document.createElement('plugin-events');
+    p._el.open = stub();
+    p._el.close = stub();
+    p._el.refresh = stub();
+    document.body.appendChild(p._el);
+
+    await p.init();
+    expect(p.initialized).to.be.true;
+
+    await p.activate();
+    expect(p.active).to.be.true;
+
+    await p.refresh();
+    expect(p._el.refresh.called).to.be.true;
+
+    await p.deactivate();
+    expect(p.active).to.be.false;
+
+    await p.destroy();
+    expect(p.initialized).to.be.false;
+  });
+
+  it('PluginMarkers lifecycle and refresh', async () => {
+    const p = new PluginMarkers('pm-test');
+    p._componentLoaded = true;
+    p._el = document.createElement('plugin-markers');
+    p._el.open = stub();
+    p._el.close = stub();
+    p._el.refresh = stub();
+    document.body.appendChild(p._el);
+
+    await p.init();
+    expect(p.initialized).to.be.true;
+
+    await p.activate();
+    expect(p.active).to.be.true;
+
+    await p.refresh();
+    expect(p._el.refresh.called).to.be.true;
+
+    await p.deactivate();
+    expect(p.active).to.be.false;
+
+    await p.destroy();
+    expect(p.initialized).to.be.false;
+  });
+
   it('PluginPlanHealth lifecycle', async () => {
     const p = new PluginPlanHealth('pph-test');
     p._componentLoaded = true;
@@ -86,6 +140,7 @@ describe('Simple plugin wrappers lifecycle', () => {
     expect(emitStub.calledTwice).to.be.true;
 
     await p.destroy();
+    expect(p.initialized).to.be.false;
   });
 
   it('PluginLinkEditor init/activate/deactivate/destroy', async () => {

@@ -15,7 +15,9 @@ Template - do not change :
 ---
 ## [v4.2.0] - unreleased
 ### Fixed
-- Cost plugin naming is now explicit: `plugin-cost` is the current implementation and `plugin-cost-v1` is the legacy implementation; state persistence/subscription/deactivation now use runtime plugin ids consistently.
+- Removed dead `plugin-cost-v2` wrapper and component files that were not registered and referenced missing imports.
+- Removed the legacy `plugin-cost-v1` stack and moved shared cost helper logic into the active calculator module.
+- Cost plugin naming is now explicit: `plugin-cost` is the active implementation; state persistence/subscription/deactivation now use runtime plugin ids consistently.
 - Admin redirect on sub-path deployments (e.g. `/esw/admin`) now correctly includes the root path prefix; previously redirected to `/admin/login` losing the sub-site.
 - Admin JS check endpoint now correctly uses `APP_BASE_URL` prefix so it routes through the reverse proxy sub-path.
 - Admin plugins config save now sends correct payload structure: `{schema_version, plugins}` object instead of array, matching backend validation and GET response format.
@@ -34,6 +36,8 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Early lifecycle-only plugins now extend the shared Plugin base and their duplicate wrapper tests were consolidated into the shared wrapper suite.
+- Task date contract is now strict and canonical: task updates accept only `start`/`end` date fields (legacy `startDate`/`endDate`/`start_date`/`end_date` are rejected), task responses strip legacy aliases, and cost calculation reads only canonical task date keys.
 - Admin test suite cleanup: separated plugins adminProvider API contract checks into a dedicated service test, reduced duplicated admin-plugins test setup via file-local helpers, and removed obsolete legacy `*.test.old.js` providerREST tests.
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.

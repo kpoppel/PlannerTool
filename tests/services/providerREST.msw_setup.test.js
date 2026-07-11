@@ -15,14 +15,12 @@ const prototask = {
   state: 'New',
   tags: null,
   description: null,
-  startDate: null,
-  finishDate: null,
   areaPath: 'my_proj\\p1\\p2',
   iterationPath: 'my_proj\\i1',
   relations: [],
   url: 'https://example.com/T-000',
   project: 'project-a',
-  start: null, // TODO: Really must remove the double start, startDate, end, endDate mess
+  start: null,
   end: null,
   capacity: [],
 };
@@ -35,14 +33,12 @@ const prototask_2 = {
   state: 'New',
   tags: null,
   description: null,
-  startDate: null,
-  finishDate: null,
   areaPath: 'my_proj\\p1\\p2',
   iterationPath: 'my_proj\\i1',
   relations: [],
   url: 'https://example.com/T-000',
   project: 'project-a',
-  start: null, // TODO: Really must remove the double start, startDate, end, endDate mess
+  start: null,
   end: null,
   capacity: [],
 };
@@ -63,6 +59,11 @@ describe('ProviderREST test checking the MSW implementation with MSW custom scop
     //console.log('DEBUG getFeatures out =>', out);
     expect(Array.isArray(out)).to.equal(true);
     expect(out[0].id).to.equal('T-000');
+    expect(Object.hasOwn(out[0], 'startDate')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'endDate')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'start_date')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'end_date')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'finishDate')).to.equal(false);
   });
 });
 
@@ -84,5 +85,10 @@ describe('ProviderREST test checking the MSW implementation with MSW custom full
     //console.log('DEBUG getFeatures out =>', out);
     expect(Array.isArray(out)).to.equal(true);
     expect(out[0].id).to.equal('T-001');
+    expect(Object.hasOwn(out[0], 'startDate')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'endDate')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'start_date')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'end_date')).to.equal(false);
+    expect(Object.hasOwn(out[0], 'finishDate')).to.equal(false);
   });
 });

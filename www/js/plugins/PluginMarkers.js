@@ -3,15 +3,14 @@
  */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
+import { Plugin } from '../core/Plugin.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 
-class PluginMarkers {
+class PluginMarkers extends Plugin {
   constructor(id = 'plugin-markers', config = {}) {
-    this.id = id;
-    this.config = config;
+    super(id, config);
     this._el = null;
     this._componentLoaded = false;
-    this.active = false;
   }
 
   getMetadata() {
@@ -31,6 +30,7 @@ class PluginMarkers {
       await import('./PluginMarkersComponent.js');
       this._componentLoaded = true;
     }
+    this.initialized = true;
   }
 
   async activate() {
@@ -56,6 +56,7 @@ class PluginMarkers {
     this._el?.remove();
     this._el = null;
     this.active = false;
+    this.initialized = false;
   }
 
   toggle() {

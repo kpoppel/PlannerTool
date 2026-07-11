@@ -187,5 +187,21 @@ describe('SamplePlugin', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('destroys and clears initialized state', async () => {
+      const eventSpy = vi.spyOn(bus, 'off');
+
+      await plugin.init();
+      await plugin.activate();
+      await plugin.destroy();
+
+      expect(plugin.initialized).to.equal(false);
+      expect(eventSpy).toHaveBeenCalledWith(
+        FeatureEvents.SELECTED,
+        expect.any(Function)
+      );
+
+      eventSpy.mockRestore();
+    });
   });
 });
