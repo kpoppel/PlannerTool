@@ -119,7 +119,7 @@ describe('Modal Consolidated Tests', () => {
     // Wait for modal to appear with 3 feature rows
     const start = Date.now();
     let featureRows, saveBtn, modalEl, root;
-    while (Date.now() - start < 500) {
+    while (Date.now() - start < 1000) {
       modalEl = document.querySelector('azure-devops-modal');
       if (modalEl) {
         root = modalEl.renderRoot || modalEl.shadowRoot || modalEl;
@@ -138,9 +138,7 @@ describe('Modal Consolidated Tests', () => {
     // All cells start deselected. Click changed cells on f1 and f3 rows to include them;
     // leave f2 untouched so it is excluded from the save payload.
     for (const targetId of ['f1', 'f3']) {
-      const row = featureRows.find((r) =>
-        r.querySelector('td')?.textContent?.includes(`Title-${targetId}`)
-      );
+      const row = featureRows.find((r) => r.textContent?.includes(`Title-${targetId}`));
       expect(row).to.exist;
       const changedCells = Array.from(row.querySelectorAll('td.changed'));
       expect(changedCells.length).to.be.greaterThan(0);

@@ -24,7 +24,9 @@ describe('plugin-portfolio-board drag and drop', () => {
     );
     stateStubs.push(sinon.stub(state, 'availableFeatureStates').get(() => ['New', 'Doing']));
     stateStubs.push(sinon.stub(state, 'availableTaskTypes').get(() => ['Feature']));
-    stateStubs.push(sinon.stub(state, 'selectedFeatureStateFilter').get(() => new Set()));
+    stateStubs.push(
+      sinon.stub(state, 'selectedFeatureStateFilter').get(() => new Set(['New', 'Doing']))
+    );
     stateStubs.push(sinon.stub(state, 'expansionState').get(() => ({}) ));
 
     state._taskFilterService = { featurePassesFilters: () => true };

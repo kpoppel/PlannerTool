@@ -8,6 +8,10 @@ describe('DetailsPanel additional function coverage', () => {
     await customElements.whenDefined('details-panel');
   });
 
+  afterEach(() => {
+    sinon.restore();
+  });
+
   it('_onShow opens and sets feature', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     const f = { id: 'x1', title: 'X' };
@@ -173,9 +177,8 @@ describe('DetailsPanel additional function coverage', () => {
   it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f10' };
-    // Provide iterations via state so _loadIterationsForFeature picks them up
-    // stub the state's iterations getter so _loadIterationsForFeature picks them up
-    const itersStub = sinon.stub(state, 'iterations').get(() => [
+    // Provide iterations via state.getIterationsForProject (current implementation).
+    const getIterationsStub = sinon.stub(state, 'getIterationsForProject').returns([
       {
         path: 'Proj\\Iteration\\It1',
         startDate: '2025-02-01',
@@ -185,20 +188,23 @@ describe('DetailsPanel additional function coverage', () => {
     // trigger the load that runs in updated lifecycle
     await el._loadIterationsForFeature();
 
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const datesStub = sinon.stub(state, 'updateFeatureDates');
+    const fieldStub = sinon.stub(state, 'updateFeatureField');
     // simulate selection change - component accepts full path or suffix
     // select elements may pass either full path or suffix; use suffix to match endsWith
     const ev = { target: { value: 'It1' } };
     await el._onIterationChange(ev);
 
-    expect(stub.calledOnce).to.be.true;
-    const arg = stub.getCall(0).args[0][0];
+    expect(fieldStub.calledOnceWithExactly('f10', 'iterationPath', 'It1')).to.be.true;
+    expect(datesStub.calledOnce).to.be.true;
+    const arg = datesStub.getCall(0).args[0][0];
     expect(arg.id).to.equal('f10');
     expect(arg.start).to.equal('2025-02-01');
     expect(arg.end).to.equal('2025-02-10');
 
-    stub.restore();
-    itersStub.restore();
+    getIterationsStub.restore();
+    datesStub.restore();
+    fieldStub.restore();
   });
 
   it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {
