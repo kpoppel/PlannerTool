@@ -1236,12 +1236,11 @@ export class AdminPlugins extends LitElement {
         </td>
         <td class="radio-cell">
           <input
-            type="radio"
-            name="activated"
+            type="checkbox"
             .checked=${row.activated}
             ?disabled=${isInvalid || !row.enabled}
             @change=${() => this._onSelectActivated(index)}
-            title="Set as activated plugin"
+            title="Toggle this plugin as active (only one can be active at a time)"
           />
         </td>
         <td class="order-cell">

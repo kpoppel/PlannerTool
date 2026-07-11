@@ -733,6 +733,10 @@ def _validate_plugin_dependency_order(_plugins):
 
     Intentionally no-op in phase 1; wiring exists so strict validation can be
     added without changing route behavior.
+    
+    Future enhancement: validate plugin dependencies and load order against
+    the PluginManager's dependency graph to ensure circular dependencies
+    and missing dependencies are caught at save time.
     """
     return None
 
@@ -740,17 +744,24 @@ def _validate_plugin_dependency_order(_plugins):
 @router.get('/admin/v1/plugins-config')
 @require_admin_session
 async def admin_get_plugins_config(request: Request):
-    """Return normalized plugin runtime configuration."""
+    """Return normalized plugin runtime configuration.
+    
+    Handles:
+    - Missing config (first time after upgrade): returns empty default
+    - Schema migration: normalizes payload to current schema version
+    - Validation: checks single activated, duplicate IDs, enabled=false forces activated=false
+    """
     try:
         admin_svc = resolve_service(request, 'admin_service')
         content = admin_svc.get_config('plugin_runtime_config', default=None)
-        return {
-            'content': normalize_plugin_runtime_config(
-                content,
-                dependency_validator=_validate_plugin_dependency_order,
-            )
-        }
+        result = normalize_plugin_runtime_config(
+            content,
+            dependency_validator=_validate_plugin_dependency_order,
+        )
+        logger.info('Loaded plugin runtime config: %d plugins', len(result.get('plugins', [])))
+        return {'content': result}
     except ValueError as e:
+        logger.warning('Invalid plugin runtime config payload: %s', e)
         raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to load plugin runtime config: %s', e)
@@ -760,14 +771,23 @@ async def admin_get_plugins_config(request: Request):
 @router.post('/admin/v1/plugins-config')
 @require_admin_session
 async def admin_save_plugins_config(request: Request):
-    """Save plugin runtime configuration after lightweight normalization."""
+    """Save plugin runtime configuration after lightweight normalization.
+    
+    Handles:
+    - Validation: duplicate IDs, single activated, enabled/activated consistency
+    - Normalization: enforces schema version, cleans up entries
+    - Persistence: stores in backend config
+    - Logging: records plugin count and any validation issues
+    """
     try:
         payload = await request.json()
     except Exception:
+        logger.warning('Failed to parse plugin config JSON request')
         raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Expecting JSON body'})
 
     content = payload.get('content') if isinstance(payload, dict) else None
     if content is None:
+        logger.warning('Plugin config POST missing content field')
         raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
 
     try:
@@ -777,8 +797,12 @@ async def admin_save_plugins_config(request: Request):
         )
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('plugin_runtime_config', normalized)
+        num_plugins = len(normalized.get('plugins', []))
+        activated = [p for p in normalized.get('plugins', []) if p.get('activated')]
+        logger.info('Saved plugin runtime config: %d plugins (%d activated)', num_plugins, len(activated))
         return {'ok': True}
     except ValueError as e:
+        logger.warning('Invalid plugin runtime config payload: %s', e)
         raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to save plugin runtime config: %s', e)

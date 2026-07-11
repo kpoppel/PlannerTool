@@ -7,8 +7,10 @@ intentionally delegated to frontend-provided forms.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEMA_VERSION = 1
 
@@ -108,16 +110,32 @@ def _normalize_plugin_entry(entry: Any, index: int) -> dict[str, Any]:
 
 
 def _ensure_single_activated(plugins: list[dict[str, Any]]) -> None:
-    """Keep only the first active plugin in order; disable the rest."""
+    """Keep only the first active plugin in order; disable the rest.
+    
+    Logs when multiple plugins attempt activation so admins can see
+    if an invalid configuration was attempted and corrected.
+    """
     active_seen = False
+    adjusted_plugins = []
+    
     for plugin in plugins:
         if not plugin.get('enabled', False):
-            plugin['activated'] = False
+            if plugin.get('activated', False):
+                plugin['activated'] = False
+                adjusted_plugins.append(plugin['id'])
             continue
         if plugin.get('activated', False) and not active_seen:
             active_seen = True
             continue
-        plugin['activated'] = False
+        if plugin.get('activated', False):
+            plugin['activated'] = False
+            adjusted_plugins.append(plugin['id'])
+    
+    if adjusted_plugins:
+        logger.warning(
+            'Multiple plugins attempted activation; keeping only first active. '
+            'Deactivated: %s', ', '.join(adjusted_plugins)
+        )
 
 
 def _run_dependency_validator(

@@ -26,16 +26,23 @@ export class PluginManager {
      * @returns {Promise<void>}
      * @throws {Error} when plugin already registered or missing dependencies
      */
-    if (this.plugins.has(plugin.id))
-      throw new Error(`Plugin ${plugin.id} is already registered`);
+    if (this.plugins.has(plugin.id)) {
+      const msg = `Plugin ${plugin.id} is already registered`;
+      console.error(`[PluginManager] ${msg}`);
+      throw new Error(msg);
+    }
     const missing = this._checkDependencies(plugin);
-    if (missing.length)
-      throw new Error(`Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`);
+    if (missing.length) {
+      const msg = `Plugin ${plugin.id} missing dependencies: ${missing.join(', ')}`;
+      console.error(`[PluginManager] ${msg}`);
+      throw new Error(msg);
+    }
 
     this.plugins.set(plugin.id, plugin);
     await plugin.init();
     plugin.initialized = true;
     this._addToLoadOrder(plugin);
+    console.log(`[PluginManager] Plugin registered: ${plugin.id}`);
     bus.emit(PluginEvents.REGISTERED, { plugin: plugin.id });
   }
 
@@ -52,9 +59,9 @@ export class PluginManager {
 
     const dependents = this._findDependents(pluginId);
     if (dependents.length > 0) {
-      throw new Error(
-        `Cannot unregister plugin ${pluginId} required by: ${dependents.join(', ')}`
-      );
+      const msg = `Cannot unregister plugin ${pluginId}: required by plugins ${dependents.join(', ')}`;
+      console.error(`[PluginManager] ${msg}`);
+      throw new Error(msg);
     }
 
     // Ensure deactivated and destroyed
@@ -64,6 +71,7 @@ export class PluginManager {
     await plugin.destroy();
     this.plugins.delete(pluginId);
     this.loadOrder = this.loadOrder.filter((id) => id !== pluginId);
+    console.log(`[PluginManager] Plugin unregistered: ${pluginId}`);
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
   }
 
@@ -76,7 +84,9 @@ export class PluginManager {
   async activate(pluginId) {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) {
-      throw new Error(`Plugin ${pluginId} not found`);
+      const msg = `Plugin ${pluginId} not found`;
+      console.error(`[PluginManager] ${msg}`);
+      throw new Error(msg);
     }
 
     if (!plugin.initialized) {
@@ -85,12 +95,15 @@ export class PluginManager {
     }
 
     if (plugin.active) {
-      console.warn(`Plugin ${pluginId} is already active`);
+      console.info(`[PluginManager] Plugin ${pluginId} is already active`);
       return;
     }
 
     // Determine dependency list for the target plugin (to avoid closing deps)
     const deps = plugin.getMetadata().dependencies || [];
+    if (deps.length > 0) {
+      console.log(`[PluginManager] Plugin ${pluginId} requires dependencies: ${deps.join(', ')}`);
+    }
 
     // Build a dependency set for this plugin (recursively)
     const depsSet = new Set();
@@ -114,6 +127,7 @@ export class PluginManager {
     // allow co-existence with other shareable plugins. Default is exclusive
     // (true) to preserve current single-open UX.
     const targetExclusive = !(plugin.config && plugin.config.exclusive === false);
+    const deactivated = [];
 
     for (const other of this.plugins.values()) {
       if (other.id === pluginId) continue;
@@ -131,18 +145,27 @@ export class PluginManager {
 
       try {
         await this.deactivate(other.id);
+        deactivated.push(other.id);
       } catch (err) {
         console.warn(`[PluginManager] Failed to deactivate plugin ${other.id}:`, err);
       }
     }
 
+    if (deactivated.length > 0) {
+      console.log(`[PluginManager] Deactivated ${deactivated.join(', ')} to make room for ${pluginId}`);
+    }
+
     // Activate dependencies first (after ensuring incompatible actives were closed)
     for (const depId of deps) {
-      if (!this.isActive(depId)) await this.activate(depId);
+      if (!this.isActive(depId)) {
+        console.log(`[PluginManager] Activating dependency ${depId} for ${pluginId}`);
+        await this.activate(depId);
+      }
     }
 
     await plugin.activate();
     plugin.active = true;
+    console.log(`[PluginManager] Plugin activated: ${pluginId}`);
     bus.emit(PluginEvents.ACTIVATED, { plugin: pluginId });
   }
 

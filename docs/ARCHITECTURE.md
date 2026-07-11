@@ -16,7 +16,7 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 4. **Data Access Layer (providers + dataService):** Abstract persistence and remote data. Includes ProviderREST (HTTP), ProviderLocalStorage (fallback), ProviderMock (testing), and DataInitService. The dataService adapter wires the active provider so services and components use a single interface regardless of backend.
 
-5. **Plugins (plugins/):** Optional, loadable modules for extensibility. Plugins declare metadata (id, dependencies, mount point) in modules.config.json. Current plugins include markers, cost analysis, and export functionality. Plugins register themselves with the core infrastructure and clean up on deactivation.
+5. **Plugins (plugins/):** Optional, loadable modules for extensibility. Plugins declare metadata (id, dependencies, mount point) in modules.config.json and have optional schema definitions in .schema.json files. Current plugins include markers, cost analysis, and export functionality. Plugins register themselves with the core infrastructure, consume runtime configuration, and clean up on deactivation. Runtime configuration is managed separately via the admin panel and merged with static metadata at app startup.
 
 6. **Utilities & Helpers (tour/, vendor/, and standalone files):** Reusable helpers like board-utils.js (layout/render helpers), dragManager.js (drag-and-drop), util.js (date/geometry math), viewOptions.js (UI state), and modalHelpers.js (modal management). vendor/ holds third-party libraries (e.g., Lit).
 
@@ -36,7 +36,7 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 - **Service APIs:** Services expose imperative methods to modify state and emit events when state changes. Consumers call service methods rather than mutating state directly. This maintains a single source of truth and enables undo/redo and scenario management.
 
-- **Plugin Extension:** Plugins declare metadata (id, path, export, dependencies, enabled, mountPoint) in modules.config.json. PluginManager loads and activates plugins declaratively. Plugins hook into the event bus and service registry and must clean up on deactivation.
+- **Plugin Extension & Configuration:** Plugins declare static metadata (id, path, export, dependencies, enabled, mountPoint) in modules.config.json. Each plugin has an optional .schema.json file defining configuration schema and defaults. PluginManager loads and activates plugins declaratively, merging runtime-managed config (enabled, activated, custom_config) with static metadata. Runtime configuration is managed via admin panel REST endpoints and persisted per-deployment. Plugins hook into the event bus, access runtime config via constructor parameters, and must clean up on deactivation.
 
 - **Provider Abstraction:** Services call dataService, which delegates to an active provider (ProviderREST, ProviderLocalStorage, or ProviderMock). This allows seamless backend swapping and offline-first fallback without changing service code.
 
@@ -59,6 +59,22 @@ The State.js service is the central orchestrator:
 
 Services like QueuedFeatureService and SidebarPersistenceService handle secondary concerns (queued edits, UI preferences).
 
+**Plugin Configuration Management**
+
+The plugin system uses a two-tier configuration model separating static metadata from runtime configuration:
+
+- **Static Metadata (modules.config.json):** Immutable, deployment-wide plugin registry. Defines id, path, export, dependencies, default enabled/activated states, and mount points. Deployed with the application code.
+
+- **Schema Definitions (plugins/*.schema.json):** Optional per-plugin JSON Schema defining configuration constraints (type, required fields, min/max values, patterns, enums). Used by admin UI for form field rendering and validation. Each schema includes both constraint metadata and default values for custom_config.
+
+- **Runtime Configuration (backend: plugin_runtime_config):** Mutable, per-deployment plugin settings including enabled, activated, order, and plugin-specific custom_config. Stored in backend persistent config (via admin_service). Managed by admin panel (REST endpoints: POST/GET /admin/v1/plugins-config) and loaded by client app at startup.
+
+- **Configuration Merge (www/js/core/pluginConfigMerge.js):** At app startup, client fetches runtime config from /api/plugins/config and merges with modules.config.json via mergePluginConfig(). Runtime order is authoritative when provided; metadata defaults apply when not overridden. Unknown plugin IDs in runtime config are skipped with a warning, and missing metadata plugins are appended with metadata defaults.
+
+- **Schema Discovery:** Admin panel discovers plugin schemas via per-plugin .schema.json files using pluginSchemaRegistry. User app loads all schemas at startup via /api/plugins/schemas endpoint. Schema-driven form UI in admin panel uses schema.properties to render typed input fields (text, number, boolean, select, JSON) with real-time validation. Config button only appears for plugins with non-empty schema.properties.
+
+- **Safeguards:** Validation ensures at most one activated plugin, enabled=false forces activated=false, duplicate IDs are rejected, and all custom_config values are objects (no deep schema validation—delegated to frontend forms). Backend returns errors for unknown plugin IDs; client silently skips them to allow safe deployment of subset of plugins.
+
 **Testing Strategy**
 
 - **Unit tests:** Focus on services and domain logic (ScenarioManager, FeatureService, FilterManager, CapacityCalculator). Keep these isolated, fast, and deterministic.
@@ -71,7 +87,7 @@ Services like QueuedFeatureService and SidebarPersistenceService handle secondar
 
 - **Adding a component:** Create under components/, export as a Lit element, register custom element, add unit + component tests in tests/.
 - **Adding a service:** Implement under services/, inject dependencies (bus, state, other services), add unit tests. Follow the service API pattern: imperative methods + event emission.
-- **Adding a plugin:** Create under plugins/, implement the Plugin interface (init, activate, deactivate, destroy), add metadata to modules.config.json, ensure clean activation/deactivation.
+- **Adding a plugin:** Create under plugins/, implement the Plugin interface (init, activate, deactivate, destroy), add metadata to modules.config.json, create a .schema.json file with configuration schema (optional but recommended), ensure clean activation/deactivation. If the plugin supports runtime configuration, accept custom_config in constructor and validate against schema.
 - **Adding a provider:** Implement the provider interface (matching existing ProviderREST, ProviderLocalStorage), integrate via dataService.
 - **Event naming:** Use EventRegistry constants; prefer domain-namespaced events (e.g., FeatureEvents.UPDATED, ScenarioEvents.SAVED, UIEvents.DETAILS_SHOW).
 
@@ -95,7 +111,9 @@ Services like QueuedFeatureService and SidebarPersistenceService handle secondar
 **Deployment & Configuration**
 
 - **www/js/config.js:** feature flags and runtime configuration.
-- **www/js/modules.config.json:** plugin registry and load order.
+- **www/js/modules.config.json:** static plugin metadata (id, path, export, dependencies, enabled, mountPoint).
+- **www/js/plugins/*.schema.json:** plugin configuration schema and defaults (optional per-plugin metadata for runtime config UI).
+- **Backend plugin_runtime_config:** runtime-managed plugin settings (enabled, activated, custom_config, order) persisted per-deployment. Admin panel provides REST endpoints for CRUD. Merged with static metadata at app startup.
 - **Environment:** Node.js v16+ for tests; tests run via npm scripts in package.json. Python tests in requirements-dev.txt for backend.
 - **Build:** No bundler; modules are loaded as-is by the browser. Libraries in vendor/ or via CDN.
 
