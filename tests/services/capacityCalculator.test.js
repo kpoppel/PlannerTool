@@ -61,9 +61,9 @@ describe('CapacityCalculator (unit)', () => {
     const res = calc.calculate(features, filters, teams, projects);
     expect(res.dates).to.have.lengthOf(3);
     expect(res.teamDailyCapacity).to.be.an('array');
-    expect(res.totalOrgDaily).to.be.an('array');
+    expect(res.totalOrgDailyCapacity).to.be.an('array');
     // each day should have total org capacity 2
-    expect(res.totalOrgDaily.every((v) => v === 2)).to.be.true;
+    expect(res.totalOrgDailyCapacity.every((v) => v === 2)).to.be.true;
   });
 
   it('incremental delta updates adjust cached result', () => {
@@ -87,7 +87,7 @@ describe('CapacityCalculator (unit)', () => {
     };
 
     const first = calc.calculate(features, filters, teams, projects);
-    expect(first.totalOrgDaily.every((v) => v === 1)).to.be.true;
+    expect(first.totalOrgDailyCapacity.every((v) => v === 1)).to.be.true;
 
     // Modify feature capacity and call calculate with changedFeatureIds to trigger deltas
     const newFeatures = [
@@ -101,7 +101,7 @@ describe('CapacityCalculator (unit)', () => {
       },
     ];
     const updated = calc.calculate(newFeatures, filters, teams, projects, ['f1']);
-    expect(updated.totalOrgDaily.every((v) => v === 3)).to.be.true;
+    expect(updated.totalOrgDailyCapacity.every((v) => v === 3)).to.be.true;
   });
 
   it('epic children rollup: children allocations roll up to epic parent project', () => {

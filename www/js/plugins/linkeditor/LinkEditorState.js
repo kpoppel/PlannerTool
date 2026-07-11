@@ -195,7 +195,7 @@ class LinkEditorState {
         // Trigger feature update event
         import('../../core/EventBus.js').then(({ bus }) => {
           import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
-            bus.emit(FeatureEvents.UPDATED, { id: fromId });
+            bus.emit(FeatureEvents.UPDATED, { ids: [fromId] });
             console.log(
               '[LinkEditorState] Created link:',
               action,
@@ -257,7 +257,7 @@ class LinkEditorState {
         // Trigger feature update event
         import('../../core/EventBus.js').then(({ bus }) => {
           import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
-            bus.emit(FeatureEvents.UPDATED, { id: fromId });
+            bus.emit(FeatureEvents.UPDATED, { ids: [fromId] });
             console.log(
               '[LinkEditorState] Removed link:',
               relationType,

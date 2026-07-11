@@ -124,223 +124,64 @@ export class ViewManagementService {
    */
   async loadAndApplyView(viewId) {
     try {
-      let response;
-
-      // Handle default view specially
-      if (viewId === 'default') {
-        response = this._views.find((v) => v.id === 'default');
-        if (!response) {
-          console.warn('[ViewManagementService] Default view not found');
-          return;
-        }
-      } else {
-        response = await dataService.getView(viewId);
-        if (!response) {
-          console.warn('[ViewManagementService] View not found:', viewId);
-          return;
-        }
-      }
+      const response = await this._loadViewById(viewId);
+      if (!response) return;
 
       console.log('[ViewManagementService] Loading view:', response);
 
       // Store the active view data for filtering
       this._activeViewData = response;
+      const sidebarElement = document.querySelector('app-sidebar');
+      const viewOptions = response.viewOptions || {};
 
-      // For default view, select all projects and teams AND reset all view options to defaults
       if (viewId === 'default') {
-        // Reset view options to defaults
         const defaults = getDefaultViewOptions();
         this._viewService.restoreView(defaults);
-
-        // Select all projects
-        if (this._state.projects) {
-          const projectSelections = {};
-          this._state.projects.forEach((project) => {
-            projectSelections[project.id] = true;
-          });
-          this._state.setProjectsSelectedBulk(projectSelections);
-        }
-
-        // Select all teams
-        if (this._state.teams) {
-          const teamSelections = {};
-          this._state.teams.forEach((team) => {
-            teamSelections[team.id] = true;
-          });
-          this._state.setTeamsSelectedBulk(teamSelections);
-        }
-
-        // Select all available states
+        this._applySelections(this._state.projects, null, true, (s) =>
+          this._state.setProjectsSelectedBulk(s)
+        );
+        this._applySelections(this._state.teams, null, true, (s) =>
+          this._state.setTeamsSelectedBulk(s)
+        );
         if (this._state._stateFilterService) {
-          const allStates = this._state.availableFeatureStates || [];
-          this._state._stateFilterService.setSelectedStates([...allStates]);
+          this._state._stateFilterService.setSelectedStates([
+            ...(this._state.availableFeatureStates || []),
+          ]);
         }
-
-        // Reset task filters (schedule, allocation, hierarchy, relations)
-        if (this._state.taskFilterService) {
-          this._state.taskFilterService.resetFilters();
-        }
-
-        // Reset expansion options
-        this._state.setExpansionState({
+        this._state.taskFilterService?.resetFilters();
+        this._applyExpansionState({
           expandParentChild: defaults.expandParentChild || false,
           expandRelations: defaults.expandRelations || false,
           expandTeamAllocated: defaults.expandTeamAllocated || false,
+        }, sidebarElement, false);
+        this._syncSidebarViewState(sidebarElement, {
+          graphType: 'team',
+          updateTaskTypes: true,
         });
-
-        // Reset sidebar-local properties (task types and graph type)
-        const sidebarElement = document.querySelector('app-sidebar');
-        if (sidebarElement) {
-          // Derive selectedTaskTypes from ViewService (authoritative after restoreView)
-          const availableTypes = sidebarElement.availableTaskTypes || [];
-          sidebarElement.selectedTaskTypes = new Set(
-            availableTypes.filter((t) => this._viewService.isTypeVisible(t))
-          );
-          // Emit with the correct Symbol so Sidebar._onSidebarFilterChanged fires
-          this._bus.emit(FilterEvents.CHANGED, {
-            selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-          });
-
-          // Reset graph type to default
-          if (typeof sidebarElement._graphType !== 'undefined') {
-            sidebarElement._graphType = 'team';
-            // Sync with ViewService
-            this._viewService.setCapacityViewMode('team');
-          }
-
-          // Reset expansion options to defaults
-          sidebarElement.expandParentChild = defaults.expandParentChild || false;
-          sidebarElement.expandRelations = defaults.expandRelations || false;
-          sidebarElement.expandTeamAllocated = defaults.expandTeamAllocated || false;
-
-          // Request update to reflect changes
-          if (typeof sidebarElement.requestUpdate === 'function') {
-            sidebarElement.requestUpdate();
-          }
-        }
       } else {
-        // For custom views, apply specific selections
-        if (this._state.projects) {
-          const projectSelections = {};
-          this._state.projects.forEach((project) => {
-            projectSelections[project.id] =
-              response.selectedProjects?.[project.id] === true;
-          });
-          this._state.setProjectsSelectedBulk(projectSelections);
+        this._applySelections(this._state.projects, response.selectedProjects, false, (s) =>
+          this._state.setProjectsSelectedBulk(s)
+        );
+        this._applySelections(this._state.teams, response.selectedTeams, false, (s) =>
+          this._state.setTeamsSelectedBulk(s)
+        );
+        this._viewService.restoreView(viewOptions);
+        if (viewOptions.taskFilters) {
+          this._state.taskFilterService?.restoreFilters(viewOptions.taskFilters);
         }
-
-        if (this._state.teams) {
-          const teamSelections = {};
-          this._state.teams.forEach((team) => {
-            teamSelections[team.id] = response.selectedTeams?.[team.id] === true;
-          });
-          this._state.setTeamsSelectedBulk(teamSelections);
+        if (Array.isArray(viewOptions.selectedFeatureStates) && this._state._stateFilterService) {
+          const availableStates = this._state.availableFeatureStates || [];
+          const validStates = viewOptions.selectedFeatureStates.filter((s) => availableStates.includes(s));
+          this._state._stateFilterService.setSelectedStates(validStates);
         }
-
-        // Apply view options
-        if (response.viewOptions) {
-          this._viewService.restoreView(response.viewOptions);
-
-          // Restore task filters if present
-          if (response.viewOptions.taskFilters && this._state.taskFilterService) {
-            this._state.taskFilterService.restoreFilters(
-              response.viewOptions.taskFilters
-            );
-          }
-
-          // Restore state filters if present
-          if (
-            response.viewOptions.selectedFeatureStates &&
-            Array.isArray(response.viewOptions.selectedFeatureStates)
-          ) {
-            // Set the state filter to the saved selection
-            const availableStates = this._state.availableFeatureStates || [];
-            const savedStates = response.viewOptions.selectedFeatureStates;
-
-            // Filter to only include states that are currently available
-            const validStates = savedStates.filter((stateName) =>
-              availableStates.includes(stateName)
-            );
-
-            // Set the selected states (this will emit events)
-            this._state._stateFilterService.setSelectedStates(validStates);
-          }
-
-          // Restore sidebar-local properties (task types and graph type)
-          const sidebarElement = document.querySelector('app-sidebar');
-          if (sidebarElement) {
-            // Derive selectedTaskTypes from ViewService (authoritative after restoreView)
-            // so the sidebar UI always reflects the actual board filter state.
-            const availableTypes = sidebarElement.availableTaskTypes || [];
-            sidebarElement.selectedTaskTypes = new Set(
-              availableTypes.filter((t) => this._viewService.isTypeVisible(t))
-            );
-            // Use the Symbol key so Sidebar._onSidebarFilterChanged fires for proper sync
-            this._bus.emit(FilterEvents.CHANGED, {
-              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-            });
-
-            // Restore graph type if saved
-            if (response.viewOptions.graphType) {
-              sidebarElement._graphType = response.viewOptions.graphType;
-              // Sync with ViewService
-              this._viewService.setCapacityViewMode(response.viewOptions.graphType);
-            }
-
-            // Restore expansion options if saved
-            let expansionChanged = false;
-            if (typeof response.viewOptions.expandParentChild !== 'undefined') {
-              sidebarElement.expandParentChild = response.viewOptions.expandParentChild;
-              expansionChanged = true;
-            }
-            if (typeof response.viewOptions.expandRelations !== 'undefined') {
-              sidebarElement.expandRelations = response.viewOptions.expandRelations;
-              expansionChanged = true;
-            }
-            if (typeof response.viewOptions.expandTeamAllocated !== 'undefined') {
-              sidebarElement.expandTeamAllocated =
-                response.viewOptions.expandTeamAllocated;
-              expansionChanged = true;
-            }
-
-            // Sync expansion state to State service and trigger updates
-            if (expansionChanged) {
-              this._state.setExpansionState({
-                expandParentChild: sidebarElement.expandParentChild,
-                expandRelations: sidebarElement.expandRelations,
-                expandTeamAllocated: sidebarElement.expandTeamAllocated,
-              });
-
-              // Trigger data funnel recomputation
-              if (typeof sidebarElement._recomputeDataFunnel === 'function') {
-                sidebarElement._recomputeDataFunnel();
-              }
-
-              // Emit filter change event so the board updates
-              this._bus.emit('filter:changed', {
-                expansion: {
-                  parentChild: sidebarElement.expandParentChild,
-                  relations: sidebarElement.expandRelations,
-                  teamAllocated: sidebarElement.expandTeamAllocated,
-                },
-              });
-            }
-
-            // Request update to reflect changes
-            if (typeof sidebarElement.requestUpdate === 'function') {
-              sidebarElement.requestUpdate();
-            }
-          }
-        }
+        this._syncSidebarViewState(sidebarElement, {
+          graphType: viewOptions.graphType,
+          updateTaskTypes: true,
+        });
+        this._applyExpansionState(viewOptions, sidebarElement, true);
       }
 
-      // Restore plugin state included in the saved view (if any)
-      try {
-          const pluginState = response.viewOptions?.pluginState || {};
-          await this._state.pluginStateService.restoreFromView(pluginState);
-      } catch (e) {
-        console.warn('[ViewManagementService] Failed to restore plugin state from view', e);
-      }
+      await this._restorePluginState(viewOptions);
 
       this._activeViewId = viewId;
       this._saveLastViewId(viewId);
@@ -465,9 +306,7 @@ export class ViewManagementService {
     console.log('[ViewManagementService] Emitting view activated:', this._activeViewId);
     this._bus.emit(ViewManagementEvents.ACTIVATED, {
       id: this._activeViewId,
-      viewId: this._activeViewId, // For backward compatibility
       data: this._activeViewData,
-      activeViewData: this._activeViewData, // For backward compatibility
     });
   }
 
@@ -500,6 +339,98 @@ export class ViewManagementService {
       console.warn('[ViewManagementService] Failed to get last view ID:', err);
     }
     return null;
+  }
+
+  async _loadViewById(viewId) {
+    if (viewId === 'default') {
+      const view = this._views.find((v) => v.id === 'default');
+      if (!view) {
+        console.warn('[ViewManagementService] Default view not found');
+        return null;
+      }
+      return view;
+    }
+    const view = await dataService.getView(viewId);
+    if (!view) {
+      console.warn('[ViewManagementService] View not found:', viewId);
+      return null;
+    }
+    return view;
+  }
+
+  _applySelections(items, selectedMap, selectAll, setter) {
+    if (!items || typeof setter !== 'function') return;
+    const selections = {};
+    items.forEach((item) => {
+      selections[item.id] = selectAll ? true : selectedMap?.[item.id] === true;
+    });
+    setter(selections);
+  }
+
+  _syncSidebarViewState(sidebarElement, { graphType, updateTaskTypes }) {
+    if (!sidebarElement) return;
+    if (updateTaskTypes) {
+      const availableTypes = sidebarElement.availableTaskTypes || [];
+      sidebarElement.selectedTaskTypes = new Set(
+        availableTypes.filter((t) => this._viewService.isTypeVisible(t))
+      );
+      this._bus.emit(FilterEvents.CHANGED, {
+        selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
+      });
+    }
+    if (graphType && typeof sidebarElement._graphType !== 'undefined') {
+      sidebarElement._graphType = graphType;
+      this._viewService.setCapacityViewMode(graphType);
+    }
+    if (typeof sidebarElement.requestUpdate === 'function') {
+      sidebarElement.requestUpdate();
+    }
+  }
+
+  _applyExpansionState(viewOptions, sidebarElement, emitFilterChange) {
+    const hasExpansionSetting =
+      typeof viewOptions.expandParentChild !== 'undefined' ||
+      typeof viewOptions.expandRelations !== 'undefined' ||
+      typeof viewOptions.expandTeamAllocated !== 'undefined';
+    if (!hasExpansionSetting) return;
+
+    const expansion = {
+      expandParentChild: viewOptions.expandParentChild || false,
+      expandRelations: viewOptions.expandRelations || false,
+      expandTeamAllocated: viewOptions.expandTeamAllocated || false,
+    };
+    this._state.setExpansionState(expansion);
+
+    if (sidebarElement) {
+      sidebarElement.expandParentChild = expansion.expandParentChild;
+      sidebarElement.expandRelations = expansion.expandRelations;
+      sidebarElement.expandTeamAllocated = expansion.expandTeamAllocated;
+      if (typeof sidebarElement._recomputeDataFunnel === 'function') {
+        sidebarElement._recomputeDataFunnel();
+      }
+      if (typeof sidebarElement.requestUpdate === 'function') {
+        sidebarElement.requestUpdate();
+      }
+    }
+
+    if (emitFilterChange) {
+      this._bus.emit(FilterEvents.CHANGED, {
+        expansion: {
+          parentChild: expansion.expandParentChild,
+          relations: expansion.expandRelations,
+          teamAllocated: expansion.expandTeamAllocated,
+        },
+      });
+    }
+  }
+
+  async _restorePluginState(viewOptions) {
+    if (!this._state?.pluginStateService?.restoreFromView) return;
+    try {
+      await this._state.pluginStateService.restoreFromView(viewOptions?.pluginState || {});
+    } catch (e) {
+      console.warn('[ViewManagementService] Failed to restore plugin state from view', e);
+    }
   }
 
   /**

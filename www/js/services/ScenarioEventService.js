@@ -82,7 +82,7 @@ export class ScenarioEventService {
 
     this.emitScenarioList();
     this.emitScenarioActivated();
-    this._bus.emit(FeatureEvents.UPDATED);
+    this._bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   /**

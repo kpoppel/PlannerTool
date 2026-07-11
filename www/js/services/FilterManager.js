@@ -28,19 +28,19 @@ export class FilterManager {
 
     project.selected = !project.selected;
     this.bus.emit(ProjectEvents.CHANGED, this.projects);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   selectAllProjects() {
     this.projects.forEach((p) => (p.selected = true));
     this.bus.emit(ProjectEvents.CHANGED, this.projects);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   deselectAllProjects() {
     this.projects.forEach((p) => (p.selected = false));
     this.bus.emit(ProjectEvents.CHANGED, this.projects);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   getSelectedProjects() {
@@ -58,19 +58,19 @@ export class FilterManager {
 
     team.selected = !team.selected;
     this.bus.emit(TeamEvents.CHANGED, this.teams);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   selectAllTeams() {
     this.teams.forEach((t) => (t.selected = true));
     this.bus.emit(TeamEvents.CHANGED, this.teams);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   deselectAllTeams() {
     this.teams.forEach((t) => (t.selected = false));
     this.bus.emit(TeamEvents.CHANGED, this.teams);
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   getSelectedTeams() {
@@ -103,7 +103,7 @@ export class FilterManager {
       this.bus.emit(TeamEvents.CHANGED, this.teams);
     }
 
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   // ===== Utility Methods =====

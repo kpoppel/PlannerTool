@@ -96,30 +96,6 @@ export const userstoryTemplate = html`${unsafeSVG(USERSTORY_SVG_CORE)}`;
 
 export const defaultTemplate = html`${unsafeSVG(DEFAULT_SVG_CORE)}`;
 
-// Return an SVGElement ready to be inserted into an export SVG.
-// Accepts an attrs object to set basic positioning/size attributes.
-// TODO: Only used ina test: iconservice.test.js
-export function epicSvgElement(attrs = {}) {
-  const el = parseSvgString(EPIC_SVG_CORE);
-  if (!el) return null;
-  if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
-  if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
-  if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
-  if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  return el;
-}
-
-// TODO: Only used ina test: iconservice.test.js
-export function featureSvgElement(attrs = {}) {
-  const el = parseSvgString(FEATURE_SVG_CORE);
-  if (!el) return null;
-  if (attrs.x !== undefined) el.setAttribute('x', String(attrs.x));
-  if (attrs.y !== undefined) el.setAttribute('y', String(attrs.y));
-  if (attrs.width !== undefined) el.setAttribute('width', String(attrs.width));
-  if (attrs.height !== undefined) el.setAttribute('height', String(attrs.height));
-  return el;
-}
-
 
 function parseSvgString(svgString) {
   const parser = new DOMParser();
@@ -180,8 +156,6 @@ export default {
   featureTemplate,
   userstoryTemplate,
   defaultTemplate,
-  featureSvgElement,
-  epicSvgElement,
   getIconTemplate,
   getIconSvgElement,
 };

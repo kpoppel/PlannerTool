@@ -292,8 +292,9 @@ describe('PluginManager.loadFromConfig', () => {
     ]));
 
     // plugin-a must be registered first due to dependency
-    expect(manager.loadOrder[0]).to.equal('plugin-a');
-    expect(manager.loadOrder[1]).to.equal('plugin-b');
+    const ids = manager.list().map((p) => p.id);
+    expect(ids[0]).to.equal('plugin-a');
+    expect(ids[1]).to.equal('plugin-b');
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('adjusted for dependency safety'),
       expect.anything(),

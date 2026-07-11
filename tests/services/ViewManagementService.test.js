@@ -6,6 +6,7 @@
 import { expect } from '@esm-bundle/chai';
 import { ViewManagementService } from '../../www/js/services/ViewManagementService.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { FilterEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('ViewManagementService - Expansion Filters', () => {
   let viewManagementService;
@@ -112,7 +113,7 @@ describe('ViewManagementService - Expansion Filters', () => {
       expect(mockState._expansionState.expandTeamAllocated).to.equal(false);
     });
 
-    it('should emit filter:changed event when loading view with expansion filters', async () => {
+    it('should emit FilterEvents.CHANGED event when loading view with expansion filters', async () => {
       // Mock the getView response
       const mockViewData = {
         id: 'test-view-2',
@@ -134,9 +135,9 @@ describe('ViewManagementService - Expansion Filters', () => {
       // Load the view
       await viewManagementService.loadAndApplyView('test-view-2');
 
-      // Verify filter:changed event was emitted
+      // Verify FilterEvents.CHANGED event was emitted
       const filterChangedEvent = emitCalls.find(
-        (call) => call.event === 'filter:changed'
+        (call) => call.event === FilterEvents.CHANGED && call.data.expansion
       );
       expect(filterChangedEvent).to.exist;
       expect(filterChangedEvent.data.expansion).to.deep.equal({
@@ -196,9 +197,9 @@ describe('ViewManagementService - Expansion Filters', () => {
       // Load the view
       await viewManagementService.loadAndApplyView('test-view-4');
 
-      // Verify filter:changed event with expansion was NOT emitted
+      // Verify FilterEvents.CHANGED event with expansion was NOT emitted
       const expansionFilterEvent = emitCalls.find(
-        (call) => call.event === 'filter:changed' && call.data.expansion
+        (call) => call.event === FilterEvents.CHANGED && call.data.expansion
       );
       expect(expansionFilterEvent).to.be.undefined;
     });

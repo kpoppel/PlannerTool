@@ -166,7 +166,7 @@ export class StateFilterService {
     this.bus.emit(FilterEvents.CHANGED, {
       selectedFeatureStateFilter: Array.from(this._selectedFeatureStateFilter),
     });
-    this.bus.emit(FeatureEvents.UPDATED);
+    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
   }
 
   /**

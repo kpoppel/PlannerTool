@@ -37,16 +37,10 @@ export class QueuedFeatureService {
   }
 
   getEffectiveFeatures() {
-    // fallback simple implementation: mirror baseline + overrides
-    let baselineFeatures = [];
-    try {
-      baselineFeatures =
-        this._baselineStore && typeof this._baselineStore.getFeatures === 'function' ?
-          this._baselineStore.getFeatures()
-        : [];
-    } catch (e) {
-      baselineFeatures = [];
-    }
+    const baselineFeatures =
+      this._baselineStore && typeof this._baselineStore.getFeatures === 'function' ?
+        this._baselineStore.getFeatures()
+      : [];
     const activeScenario = this._getActiveScenario();
     if (!activeScenario) return baselineFeatures.map((f) => ({ ...f }));
     return baselineFeatures.map((base) => {
@@ -107,11 +101,7 @@ export class QueuedFeatureService {
       ov[field] = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
-      try {
-        bus.emit(FeatureEvents.UPDATED, { ids: [id] });
-      } catch (e) {
-        bus.emit(FeatureEvents.UPDATED);
-      }
+      this._emitUpdated([id]);
       if (capacityCallback) {
         setTimeout(() => {
           capacityCallback();
@@ -124,7 +114,7 @@ export class QueuedFeatureService {
       ov.capacity = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
-      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
+      this._emitUpdated([id]);
       if (capacityCallback) {
         setTimeout(() => {
           capacityCallback();
@@ -137,7 +127,7 @@ export class QueuedFeatureService {
       ov.tags = value;
       activeScenario.overrides[id] = ov;
       activeScenario.isChanged = true;
-      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
+      this._emitUpdated([id]);
       return true;
     }
     return false;
@@ -149,7 +139,7 @@ export class QueuedFeatureService {
     if (activeScenario.overrides[id]) {
       delete activeScenario.overrides[id];
       activeScenario.isChanged = true;
-      bus.emit(FeatureEvents.UPDATED, { ids: [id] });
+      this._emitUpdated([id]);
       if (capacityCallback) {
         setTimeout(() => {
           capacityCallback();
@@ -352,8 +342,7 @@ export class QueuedFeatureService {
       }
     }
     const dedup = Array.from(new Set(actuallyAppliedQuickIds));
-    if (dedup.length) bus.emit(FeatureEvents.UPDATED, { ids: dedup });
-    else bus.emit(FeatureEvents.UPDATED);
+    this._emitUpdated(dedup);
 
     activeScenario.isChanged = true;
     // Schedule processing
@@ -594,13 +583,7 @@ export class QueuedFeatureService {
       }
 
       if (appliedIds.length) {
-        try {
-          bus.emit(FeatureEvents.UPDATED, {
-            ids: Array.from(new Set(appliedIds)),
-          });
-        } catch (e) {
-          bus.emit(FeatureEvents.UPDATED);
-        }
+        this._emitUpdated(Array.from(new Set(appliedIds)));
       }
       for (const cb of pendingCallbacks) {
         setTimeout(() => {
@@ -613,5 +596,11 @@ export class QueuedFeatureService {
     } catch (e) {
       setTimeout(process, 50);
     }
+  }
+
+  _emitUpdated(ids = []) {
+    bus.emit(FeatureEvents.UPDATED, {
+      ids: Array.isArray(ids) ? ids.filter(Boolean) : [],
+    });
   }
 }

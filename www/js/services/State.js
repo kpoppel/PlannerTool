@@ -17,7 +17,6 @@ import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
 import { ViewManagementService } from './ViewManagementService.js';
 import { PluginStateService } from './PluginStateService.js';
-// Re-export color constants for backward compatibility
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
   FeatureEvents,
@@ -150,20 +149,9 @@ class State {
     this._taskTypeHierarchyCache = null;
   }
 
-  // ========== Backward Compatibility Property Accessors ==========
-  // Delegate to services for backward compatibility with existing code
-
   // ViewService properties
   get timelineScale() {
     return this._viewService.timelineScale;
-  }
-  get showEpics() {
-    // Backward-compat shim: returns true when 'epic' is not in hiddenTypes
-    return !this._viewService.hiddenTypes.has('epic');
-  }
-  get showFeatures() {
-    // Backward-compat shim: returns true when 'feature' is not in hiddenTypes
-    return !this._viewService.hiddenTypes.has('feature');
   }
   get hiddenTypes() {
     return this._viewService.hiddenTypes;
@@ -173,9 +161,6 @@ class State {
   }
   get showDependencies() {
     return this._viewService.showDependencies;
-  }
-  get condensedCards() {
-    return this._viewService.condensedCards;
   }
   get capacityViewMode() {
     return this._viewService.capacityViewMode;
@@ -200,7 +185,7 @@ class State {
     return this._configService._autosaveTimer;
   }
 
-  // ColorService properties (for compatibility)
+  // ColorService properties
   get defaultStateColorMap() {
     return this._colorService.defaultStateColorMap;
   }
@@ -307,14 +292,7 @@ class State {
     this._stateFilterService.setAllStatesSelected(selectAll);
     // Recompute capacity metrics (graphs) when toggling all/none
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
+    this._emitCapacityUpdated();
   }
 
   // Toggle a single state's selection on/off
@@ -322,14 +300,7 @@ class State {
     this._stateFilterService.toggleStateSelected(stateName);
     // Recompute capacity metrics (graphs) whenever state filter changes
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
+    this._emitCapacityUpdated();
   }
 
   /**
@@ -575,7 +546,7 @@ class State {
     // Delegate to DataInitService
     const result = await this._dataInitService.initState();
 
-    // Sync to state properties for backward compatibility
+    // Sync loaded baseline data to state properties
     this.baselineProjects = result.baselineProjects;
     this.baselineTeams = result.baselineTeams;
     this.baselineFeatures = result.baselineFeatures;
@@ -642,14 +613,7 @@ class State {
 
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
+    this._emitCapacityUpdated();
   }
 
   /**
@@ -676,28 +640,14 @@ class State {
     this._scenarioEventService.emitScenarioActivated();
 
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
+    this._emitCapacityUpdated();
   }
 
   setStateFilter(stateName) {
     this._stateFilterService.setStateFilter(stateName);
     // Recompute capacity metrics when filter changes
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
+    this._emitCapacityUpdated();
   }
 
   // Dirty/changed fields now derived against baseline when creating effective feature objects.
@@ -728,23 +678,6 @@ class State {
     return this._featureStateService.compareStates(a, b);
   }
 
-  // Delegation helpers to FeatureService for counts used by UI
-  countEpicsForProject(projectId) {
-    return this._getFeatureService().countEpicsForProject(projectId);
-  }
-
-  countFeaturesForProject(projectId) {
-    return this._getFeatureService().countFeaturesForProject(projectId);
-  }
-
-  countEpicsForTeam(teamId) {
-    return this._getFeatureService().countEpicsForTeam(teamId);
-  }
-
-  countFeaturesForTeam(teamId) {
-    return this._getFeatureService().countFeaturesForTeam(teamId);
-  }
-
   /**
    * Return a Map<type, count> of all task types for a given project.
    * @param {string} projectId
@@ -769,16 +702,7 @@ class State {
       const changedIds =
         Array.isArray(updates) ? updates.map((u) => u.id).filter(Boolean) : [];
       this.recomputeCapacityMetrics(changedIds.length ? changedIds : null);
-      bus.emit(CapacityEvents.UPDATED, {
-        dates: this.capacityDates,
-        teamDailyCapacity: this.teamDailyCapacity,
-        teamDailyCapacityMap: this.teamDailyCapacityMap,
-        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-        projectDailyCapacity: this.projectDailyCapacity,
-        projectDailyCapacityMap: this.projectDailyCapacityMap,
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-      });
+      this._emitCapacityUpdated();
     };
 
     const updateCount = this._getFeatureService().updateFeatureDates(
@@ -798,16 +722,7 @@ class State {
   updateFeatureField(id, field, value) {
     const capacityCallback = () => {
       this.recomputeCapacityMetrics([id]);
-      bus.emit(CapacityEvents.UPDATED, {
-        dates: this.capacityDates,
-        teamDailyCapacity: this.teamDailyCapacity,
-        teamDailyCapacityMap: this.teamDailyCapacityMap,
-        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-        projectDailyCapacity: this.projectDailyCapacity,
-        projectDailyCapacityMap: this.projectDailyCapacityMap,
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-      });
+      this._emitCapacityUpdated();
     };
 
     const updated = this._getFeatureService().updateFeatureField(
@@ -830,16 +745,7 @@ class State {
   revertFeature(id) {
     const capacityCallback = () => {
       this.recomputeCapacityMetrics([id]);
-      bus.emit(CapacityEvents.UPDATED, {
-        dates: this.capacityDates,
-        teamDailyCapacity: this.teamDailyCapacity,
-        teamDailyCapacityMap: this.teamDailyCapacityMap,
-        projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-        projectDailyCapacity: this.projectDailyCapacity,
-        projectDailyCapacityMap: this.projectDailyCapacityMap,
-        totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-        totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-      });
+      this._emitCapacityUpdated();
     };
 
     const reverted = this._getFeatureService().revertFeature(id, capacityCallback);
@@ -865,15 +771,8 @@ class State {
     // Notify UI listeners of project list change (single consolidated event)
     bus.emit(ProjectEvents.CHANGED, this.projects);
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated();
   }
 
   setTeamSelected(id, selected) {
@@ -884,15 +783,8 @@ class State {
     // Notify UI listeners of team list change (single consolidated event)
     bus.emit(TeamEvents.CHANGED, this.teams);
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated();
   }
 
   /**
@@ -908,15 +800,8 @@ class State {
     // Notify listeners that project selection changed (single consolidated event)
     bus.emit(ProjectEvents.CHANGED, this.projects);
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated();
   }
 
   /**
@@ -932,37 +817,16 @@ class State {
     // Notify listeners that team selection changed (single consolidated event)
     bus.emit(TeamEvents.CHANGED, this.teams);
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated();
   }
 
   setTimelineScale(scale) {
     this._viewService.setTimelineScale(scale);
   }
 
-  setShowEpics(val) {
-    // Backward-compat shim
-    this._viewService.setTypeVisibility('epic', !!val);
-  }
-
-  setShowFeatures(val) {
-    // Backward-compat shim
-    this._viewService.setTypeVisibility('feature', !!val);
-  }
-
   setTypeVisibility(type, visible) {
     this._viewService.setTypeVisibility(type, visible);
-  }
-
-  setCondensedCards(val) {
-    this._viewService.setCondensedCards(val);
   }
 
   setShowDependencies(val) {
@@ -1078,13 +942,8 @@ class State {
     this._scenarioEventService.emitScenarioActivated();
     // Recompute capacity metrics to reflect active scenario overrides
     this.recomputeCapacityMetrics();
-    bus.emit(CapacityEvents.UPDATED, {
-      dates: this.capacityDates,
-      teamDailyCapacity: this.teamDailyCapacity,
-      projectDailyCapacity: this.projectDailyCapacity,
-      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated();
 
     // Re-render board with the new scenario's effective groups.
     // getEffectiveGroups reads scenario.scenarioGroups and groupOverrides directly.
@@ -1113,7 +972,7 @@ class State {
     if (wasActive) {
       this._scenarioEventService.emitScenarioActivated();
     }
-    bus.emit(FeatureEvents.UPDATED);
+    this._emitFeatureUpdated();
   }
 
   setScenarioOverride(featureId, start, end) {
@@ -1127,12 +986,29 @@ class State {
     }
     // Recompute capacity metrics after setting override
     this.recomputeCapacityMetrics([featureId]);
-    bus.emit(CapacityEvents.UPDATED, {
+    this._emitCapacityUpdated();
+    this._emitFeatureUpdated([featureId]);
+  }
+
+  _getCapacityUpdatedPayload() {
+    return {
       dates: this.capacityDates,
       teamDailyCapacity: this.teamDailyCapacity,
-      orgDailyLoad: this.orgDailyLoad,
-    });
-    bus.emit(FeatureEvents.UPDATED);
+      teamDailyCapacityMap: this.teamDailyCapacityMap,
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
+      projectDailyCapacity: this.projectDailyCapacity,
+      projectDailyCapacityMap: this.projectDailyCapacityMap,
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
+    };
+  }
+
+  _emitCapacityUpdated() {
+    bus.emit(CapacityEvents.UPDATED, this._getCapacityUpdatedPayload());
+  }
+
+  _emitFeatureUpdated(ids = []) {
+    bus.emit(FeatureEvents.UPDATED, { ids: Array.isArray(ids) ? ids.filter(Boolean) : [] });
   }
 
   getEffectiveFeatures() {

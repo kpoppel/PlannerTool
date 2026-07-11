@@ -1,7 +1,6 @@
 /**
  * CapacityCalculator Service
  * Calculates team/project capacity from features
- * Fully compatible with legacy capacity calculation
  */
 
 import { CapacityEvents } from '../core/EventRegistry.js';
@@ -69,7 +68,7 @@ export class CapacityCalculator {
    * @param {Object} filters - { selectedProjects, selectedTeams, selectedStates }
    * @param {Array} teams - Array of team objects with id
    * @param {Array} projects - Array of project objects with id
-   * @returns {Object} Capacity metrics in legacy tuple format
+  * @returns {Object} Capacity metrics
    *
    * Note: This method adds a synthetic '__unfunded__' project to track allocations
    * that don't roll up to any type='project' project. Consumers should check for
@@ -180,7 +179,6 @@ export class CapacityCalculator {
         totalOrgDailyCapacity: cached.totalOrgDaily,
         totalOrgDailyPerTeamAvg,
       };
-      result.totalOrgDaily = cached.totalOrgDaily;
       this.bus.emit(CapacityEvents.UPDATED, result);
       return result;
     }
@@ -218,9 +216,6 @@ export class CapacityCalculator {
       totalOrgDailyCapacity: totalOrgDaily,
       totalOrgDailyPerTeamAvg,
     };
-    // Backwards-compatible alias expected by some callers/tests
-    result.totalOrgDaily = totalOrgDaily;
-
     // Cache result for incremental updates
     this._lastResultCache = {
       dates,
@@ -551,109 +546,4 @@ export class CapacityCalculator {
     return dates;
   }
 
-  _calculateDailyCapacities(
-    features,
-    dates,
-    selectedProjects,
-    selectedTeams,
-    selectedStates,
-    teams,
-    teamIndexById,
-    projectIndexById,
-    effectiveById
-  ) {
-    const teamDaily = new Array(dates.length);
-    const teamDailyMap = new Array(dates.length);
-    const projectDaily = new Array(dates.length);
-    const projectDailyMap = new Array(dates.length);
-    const totalOrgDaily = new Array(dates.length);
-
-    const selectedProjectSet = new Set(selectedProjects);
-    const selectedTeamSet = new Set(selectedTeams);
-    const selectedStateSet = new Set(selectedStates);
-
-    for (let di = 0; di < dates.length; di++) {
-      const dayIso = dates[di];
-      const teamTuple = new Array(teams.length).fill(0);
-      const projectTuple = new Array(projectIndexById.size).fill(0);
-      const teamMap = {};
-      const projectMap = {};
-
-      for (const f of features) {
-        if (!f || !f.start || !f.end) continue;
-
-        // Check if day is within feature date range
-        if (dayIso < f.start || dayIso > f.end) continue;
-
-        // Filter by selected projects
-        if (!selectedProjectSet.has(f.project)) continue;
-
-        // Filter by selected states
-        const fState = f.state;
-        if (!selectedStateSet.has(fState)) continue;
-
-        // Handle epic capacity based on mode
-        if ((this.childrenByParent.get(f.id) || []).length > 0) {
-          if (!isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByParent.get(f.id) || [];
-            if (childIds.length) continue; // Skip epic if has children
-          } else if (isEnabled('USE_PARENT_CAPACITY_GAP_FILLS')) {
-            const childIds = this.childrenByParent.get(f.id) || [];
-            if (childIds.length) {
-              // Check if any child covers this day
-              let childCovers = false;
-              for (const cid of childIds) {
-                const ch = effectiveById.get(cid);
-                if (!ch || !ch.start || !ch.end) continue;
-                if (dayIso >= ch.start && dayIso <= ch.end) {
-                  childCovers = true;
-                  break;
-                }
-              }
-              if (childCovers) continue; // Skip epic if child covers this day
-            }
-          }
-        }
-
-        // Process capacity allocations
-        const tls = f.capacity || [];
-        for (const tl of tls) {
-          // Filter by selected teams
-          if (!selectedTeamSet.has(tl.team)) continue;
-
-          const ti = teamIndexById.get(tl.team);
-          if (ti !== undefined) {
-            const load = Number(tl.capacity) || 0;
-            teamTuple[ti] += load;
-            teamMap[tl.team] = (teamMap[tl.team] || 0) + load;
-          }
-
-          // Add to project capacity
-          const pi = projectIndexById.get(f.project);
-          if (pi !== undefined) {
-            const load = Number(tl.capacity) || 0;
-            projectTuple[pi] += load;
-            projectMap[f.project] = (projectMap[f.project] || 0) + load;
-          }
-        }
-      }
-
-      teamDaily[di] = teamTuple;
-      teamDailyMap[di] = teamMap;
-      projectDaily[di] = projectTuple;
-      projectDailyMap[di] = projectMap;
-
-      // Calculate total org capacity (sum of all project capacities)
-      const sumProjects = projectTuple.reduce((a, b) => a + b, 0);
-      totalOrgDaily[di] = sumProjects;
-    }
-
-    return {
-      teamDaily,
-      teamDailyMap,
-      projectDaily,
-      projectDailyMap,
-      totalOrgDaily,
-    };
-  }
 }

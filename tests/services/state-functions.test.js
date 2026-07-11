@@ -29,7 +29,6 @@ describe('State small function coverage', () => {
     state._viewService._featureSortMode = 'date';
     const view = state.captureCurrentView();
     expect(view.capacityViewMode).to.equal('project');
-    expect(view.condensedCards).to.equal(true);
     expect(view.displayMode).to.equal('compact');
     expect(view.featureSortMode).to.equal('date');
   });
@@ -70,12 +69,12 @@ describe('State small function coverage', () => {
   it('set and toggle display and modes update properties', () => {
     state.setTimelineScale('weeks');
     expect(state.timelineScale).to.equal('weeks');
-    state.setShowEpics(false);
-    expect(state.showEpics).to.equal(false);
-    state.setShowFeatures(false);
-    expect(state.showFeatures).to.equal(false);
-    state.setCondensedCards(false);
-    expect(state.condensedCards).to.equal(false);
+    state.setTypeVisibility('epic', false);
+    expect(state.isTypeVisible('epic')).to.equal(false);
+    state.setTypeVisibility('feature', false);
+    expect(state.isTypeVisible('feature')).to.equal(false);
+    state._viewService.setDisplayMode('normal');
+    expect(state._viewService.displayMode).to.equal('normal');
     state.setShowDependencies(true);
     expect(state.showDependencies).to.equal(true);
     state.setCapacityViewMode('team');

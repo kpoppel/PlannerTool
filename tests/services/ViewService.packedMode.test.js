@@ -131,26 +131,9 @@ describe('ViewService — displayMode / packedMode', () => {
       expect(snapshot.displayMode).to.equal('packed');
     });
 
-    it('captureCurrentView condensedCards reflects packed mode', () => {
-      vs._displayMode = 'packed';
-      const snapshot = vs.captureCurrentView();
-      expect(snapshot.condensedCards).to.equal(true);
-    });
-
     it('applyViewStateSilently restores displayMode', () => {
       vs.applyViewStateSilently({ displayMode: 'packed' });
       expect(vs._displayMode).to.equal('packed');
-    });
-
-    it('applyViewStateSilently falls back to condensedCards for old snapshots', () => {
-      vs.applyViewStateSilently({ condensedCards: true });
-      expect(vs._displayMode).to.equal('compact');
-    });
-
-    it('applyViewStateSilently condensedCards:false → normal', () => {
-      vs._displayMode = 'packed';
-      vs.applyViewStateSilently({ condensedCards: false });
-      expect(vs._displayMode).to.equal('normal');
     });
 
     it('restoreView with displayMode:"packed" round-trips correctly', () => {

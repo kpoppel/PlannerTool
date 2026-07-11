@@ -360,15 +360,7 @@ export class FeatureService {
       // Collect changed ids to allow consumers to update only affected cards
       const changedIds = Array.from(new Set(changedIdsCollector.filter(Boolean)));
 
-      //console.log('updateFeatureDatesBulk updated ids:', changedIds);
-
-      // Emit events with explicit ids so listeners can do minimal updates
-      bus.emit(FeatureEvents.UPDATED, { ids: changedIds });
-
-      // Trigger capacity recalculation if callback provided
-      if (capacityCallback) {
-        capacityCallback();
-      }
+      this._finalizeMutation(changedIds, capacityCallback);
     }
 
     //console.log('updateFeatureDatesBulk prof time:', Date.now() - prof_start);
@@ -405,12 +397,7 @@ export class FeatureService {
         const childIds = this._childrenByParent.get(base.id) || [];
         for (const cid of childIds) idsToEmit.add(cid);
       }
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
-
-      // Trigger capacity recalculation if callback provided
-      if (capacityCallback) {
-        capacityCallback();
-      }
+      this._finalizeMutation(Array.from(idsToEmit), capacityCallback);
 
       return true;
     }
@@ -424,12 +411,7 @@ export class FeatureService {
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
-
-      // Trigger capacity recalculation if callback provided
-      if (capacityCallback) {
-        capacityCallback();
-      }
+      this._finalizeMutation(Array.from(idsToEmit), capacityCallback);
 
       return true;
     }
@@ -443,7 +425,7 @@ export class FeatureService {
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+      this._emitUpdated(Array.from(idsToEmit));
 
       // State change may affect derived color mappings; trigger no capacity callback
       return true;
@@ -457,7 +439,7 @@ export class FeatureService {
 
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+      this._emitUpdated(Array.from(idsToEmit));
       return true;
     }
 
@@ -469,7 +451,7 @@ export class FeatureService {
 
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
+      this._emitUpdated(Array.from(idsToEmit));
       return true;
     }
 
@@ -497,17 +479,21 @@ export class FeatureService {
           for (const cid of childIds) idsToEmit.add(cid);
         }
       }
-      bus.emit(FeatureEvents.UPDATED, { ids: Array.from(idsToEmit) });
-
-      // Trigger capacity recalculation if callback provided
-      if (capacityCallback) {
-        capacityCallback();
-      }
+      this._finalizeMutation(Array.from(idsToEmit), capacityCallback);
 
       return true;
     }
 
     return false;
+  }
+
+  _emitUpdated(ids = []) {
+    bus.emit(FeatureEvents.UPDATED, { ids: Array.isArray(ids) ? ids.filter(Boolean) : [] });
+  }
+
+  _finalizeMutation(ids, capacityCallback) {
+    this._emitUpdated(ids);
+    if (capacityCallback) capacityCallback();
   }
 
   /**
@@ -546,34 +532,6 @@ export class FeatureService {
       }
       return f;
     });
-  }
-
-  /**
-   * Count epics for a given project id (backward-compat shim)
-   */
-  countEpicsForProject(projectId) {
-    return this.allCountsForProject(projectId).get('epic') || 0;
-  }
-
-  /**
-   * Count features for a given project id (backward-compat shim)
-   */
-  countFeaturesForProject(projectId) {
-    return this.allCountsForProject(projectId).get('feature') || 0;
-  }
-
-  /**
-   * Count epics that have non-zero allocation for a team (backward-compat shim)
-   */
-  countEpicsForTeam(teamId) {
-    return this.allCountsForTeam(teamId).get('epic') || 0;
-  }
-
-  /**
-   * Count items of any type that have non-zero allocation for a team (backward-compat shim)
-   */
-  countFeaturesForTeam(teamId) {
-    return this.allCountsForTeam(teamId).get('feature') || 0;
   }
 
   /**

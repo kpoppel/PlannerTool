@@ -9,9 +9,6 @@ import { mergePluginConfig } from './core/pluginConfigMerge.js';
 async function init() {
   registerCoreServices();
   // Register typed events and optional runtime behaviors
-  if (featureFlags.LOG_STRING_EVENTS) {
-    bus.enableStringWarnings();
-  }
   if (featureFlags.LOG_EVENT_HISTORY) {
     bus.enableHistoryLogging(1000);
   }

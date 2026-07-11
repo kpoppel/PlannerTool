@@ -234,7 +234,7 @@ describe('ViewService', () => {
 
       // Production snapshot shape may vary; assert expected fields and values
       expect(snapshot.capacityViewMode).to.equal('project');
-      expect(snapshot.condensedCards).to.equal(true);
+      expect(snapshot.displayMode).to.equal('compact');
       expect(snapshot.featureSortMode).to.equal('date');
       expect(snapshot.showUnassignedCards).to.equal(true);
       expect(snapshot.showUnplannedWork).to.equal(true);
@@ -244,7 +244,7 @@ describe('ViewService', () => {
     it('should restore view state from snapshot including timeline scale', () => {
       const snapshot = {
         capacityViewMode: 'project',
-        condensedCards: true,
+        displayMode: 'compact',
         featureSortMode: 'date',
         showUnassignedCards: false,
         timelineScale: 'weeks',
@@ -268,9 +268,10 @@ describe('ViewService', () => {
     });
 
     it('should handle partial snapshot', () => {
+      viewService._displayMode = 'normal';
       viewService._capacityViewMode = 'team';
-      viewService.restoreView({ condensedCards: true });
-      expect(viewService.condensedCards).to.equal(true);
+      viewService.restoreView({ displayMode: 'compact' });
+      expect(viewService.displayMode).to.equal('compact');
       expect(viewService.capacityViewMode).to.equal('team'); // Unchanged
     });
   });

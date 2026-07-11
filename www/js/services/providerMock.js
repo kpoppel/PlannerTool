@@ -1,11 +1,6 @@
 // providerMock.js
 // Mock implementation of the BackendProvider interface
 
-// Simulate async to match future fetch-based API
-function _delay(ms) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-
 export class ProviderMock {
   constructor() {
     this.projects = [
@@ -420,19 +415,8 @@ export class ProviderMock {
   }
 
   async updateTasksWithCapacity(updates) {
+    this.logCall('updateTasksWithCapacity', arguments);
     return { ok: true };
-    // if (!f) {
-    //   return {
-    //     ok: false,
-    //     work_item_id: workItemId,
-    //     error: 'WORK_ITEM_NOT_FOUND',
-    //   };
-    // }
-    // // Replace capacity array
-    // f.capacity = Array.isArray(capacity) ? capacity.map((c) => ({ ...c })) : f.capacity;
-    // f.dirty = true;
-    // f.changedFields = ['start', 'end'];
-    // return { ...f };
   }
 
   async getConfig() {
@@ -508,5 +492,4 @@ export class ProviderMock {
     }));
     return out;
   }
-  // ...other methods will be added in later steps
 }

@@ -14,7 +14,6 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     if (bus.eventTypeMap && typeof bus.eventTypeMap.clear === 'function')
       bus.eventTypeMap.clear();
     bus.history = [];
-    if (typeof bus.disableStringWarnings === 'function') bus.disableStringWarnings();
     if (typeof bus.disableHistoryLogging === 'function') bus.disableHistoryLogging();
   });
 
@@ -88,9 +87,9 @@ describe('EventBus: Consolidated Behavior and Features', () => {
     const { FeatureEvents } = await import('../../www/js/core/EventRegistry.js');
     const events = [];
     bus.on(FeatureEvents.UPDATED, (payload) => events.push(payload));
-    bus.emit(FeatureEvents.UPDATED, { id: 1 });
+    bus.emit(FeatureEvents.UPDATED, { ids: [1] });
     expect(events.length).to.equal(1);
-    expect(events[0]).to.deep.equal({ id: 1 });
+    expect(events[0]).to.deep.equal({ ids: [1] });
   });
 
   it('records history when enabled', async () => {

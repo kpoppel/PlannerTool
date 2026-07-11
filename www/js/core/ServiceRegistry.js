@@ -9,7 +9,6 @@
  */
 import { container } from './Container.js';
 import { bus } from './EventBus.js';
-import { featureFlags } from '../config.js';
 
 /**
  * Register all core services with the container.
@@ -54,10 +53,5 @@ export function registerService(name, factory, deps = [], singleton = false) {
  * @throws {Error} When resolution fails
  */
 export function getService(name) {
-  try {
-    return container.resolve(name);
-  } catch (e) {
-    console.error(`[ServiceRegistry] Failed to resolve: ${name}`, e);
-    throw e;
-  }
+  return container.resolve(name);
 }

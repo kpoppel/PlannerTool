@@ -96,6 +96,52 @@ export class ProviderREST {
     return await this._reacquirePromise;
   }
 
+  async _parseJsonOrNull(res) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async _handleUnauthorized(url, opts, res) {
+    const body = await this._parseJsonOrNull(res);
+    const errCode = body && body.error ? body.error : null;
+    if (errCode !== 'invalid_session' && errCode !== 'missing_session_id') {
+      return res;
+    }
+
+    const reacquired = await this._handleSessionExpiry();
+    if (!reacquired) {
+      return { sessionExpired: true, status: res.status, detail: body };
+    }
+
+    if (this.sessionId) {
+      opts.headers['X-Session-Id'] = this.sessionId;
+    }
+    return await fetch(url, opts);
+  }
+
+  async _retryFetch(url, opts, retryCount, err) {
+    if (retryCount >= this._networkRetryCount) {
+      console.error('Network error after retries exhausted:', err);
+      bus.emit(SessionEvents.EXPIRED, {
+        ok: false,
+        error: String(err),
+        message:
+          'Cannot connect to server. Please check if the server is running and try again.',
+      });
+      throw err;
+    }
+
+    const delay = this._networkRetryDelay * Math.pow(2, retryCount);
+    console.log(
+      `Network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${this._networkRetryCount})...`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return this._fetch(url, opts, retryCount + 1);
+  }
+
   // Centralized fetch wrapper that detects session expiry (401 + invalid_session) and network errors
   async _fetch(url, opts, _retryCount = 0) {
     if (url.startsWith('/')) {
@@ -106,56 +152,12 @@ export class ProviderREST {
       opts.headers = opts.headers || {};
       if (!opts.headers['Accept']) opts.headers['Accept'] = 'application/json';
       const res = await fetch(url, opts);
-      //console.log('[providerREST._fetch, 103] fetched', url, 'status=', res && res.status, 'ok=', res && res.ok, res);
       if (res.status === 401) {
-        // Try to parse JSON body for error detail
-        let body = null;
-        try {
-          body = await res.json();
-        } catch (e) {
-          body = null;
-        }
-        const errCode = body && body.error ? body.error : null;
-        if (errCode === 'invalid_session' || errCode === 'missing_session_id') {
-          // Attempt to quietly reacquire session
-          const reacquired = await this._handleSessionExpiry();
-
-          if (reacquired) {
-            // Session reacquired successfully - retry the request
-            // Update headers with new session ID if present
-            if (this.sessionId) {
-              opts.headers['X-Session-Id'] = this.sessionId;
-            }
-            return await fetch(url, opts);
-          } else {
-            // Reacquisition failed - return error
-            return { sessionExpired: true, status: res.status, detail: body };
-          }
-        }
-        return res;
+        return await this._handleUnauthorized(url, opts, res);
       }
       return res;
     } catch (err) {
-      // Network error (server unreachable, timeout, etc.)
-      if (_retryCount < this._networkRetryCount) {
-        // Quietly retry with exponential backoff
-        const delay = this._networkRetryDelay * Math.pow(2, _retryCount);
-        console.log(
-          `Network error, retrying in ${delay}ms (attempt ${_retryCount + 1}/${this._networkRetryCount})...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return await this._fetch(url, opts, _retryCount + 1);
-      } else {
-        // All retries exhausted - emit error event and throw
-        console.error('Network error after retries exhausted:', err);
-        bus.emit(SessionEvents.EXPIRED, {
-          ok: false,
-          error: String(err),
-          message:
-            'Cannot connect to server. Please check if the server is running and try again.',
-        });
-        throw err;
-      }
+      return await this._retryFetch(url, opts, _retryCount, err);
     }
   }
 

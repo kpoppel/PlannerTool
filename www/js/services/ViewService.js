@@ -4,7 +4,7 @@
  * Purpose: Extract view state management from State.js to reduce coupling and improve testability
  *
  * Responsibilities:
- * - Maintain view state properties (timelineScale, showEpics, showFeatures, condensedCards, etc.)
+ * - Maintain view state properties (timelineScale, hiddenTypes, display and sort modes)
  * - Emit appropriate events when view state changes
  * - Provide getters/setters for view properties
  * - Capture current view state for scenario persistence
@@ -12,7 +12,7 @@
  * Events emitted:
  * - TimelineEvents.SCALE_CHANGED: when timeline scale changes
  * - FilterEvents.CHANGED: when type visibility (hiddenTypes) changes
- * - ViewEvents.CONDENSED: when condensed card mode changes
+ * - ViewEvents.CONDENSED: when compactness changes
  * - ViewEvents.DEPENDENCIES: when dependency visibility changes
  * - ViewEvents.CAPACITY_MODE: when capacity view mode changes
  * - ViewEvents.SORT_MODE: when feature sort mode changes
@@ -154,7 +154,7 @@ export class ViewService {
       this.bus.emit(FilterEvents.CHANGED, {
         hiddenTypes: Array.from(this._hiddenTypes),
       });
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -177,7 +177,7 @@ export class ViewService {
     console.debug('[ViewService] setShowDependencies ->', this._showDependencies);
     if (!arguments[1]) {
       this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -200,7 +200,7 @@ export class ViewService {
       this.bus.emit(FilterEvents.CHANGED, {
         showUnassignedCards: this._showUnassignedCards,
       });
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -223,7 +223,7 @@ export class ViewService {
       this.bus.emit(FilterEvents.CHANGED, {
         showUnplannedWork: this._showUnplannedWork,
       });
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -245,7 +245,7 @@ export class ViewService {
       this.bus.emit(FilterEvents.CHANGED, {
         showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
       });
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -272,16 +272,14 @@ export class ViewService {
     const oldMode = this._displayMode;
     this._displayMode = mode;
     if (!arguments[1]) {
-      // Emit CONDENSED for backward compatibility (listeners re-render on display change)
       this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
       this.bus.emit(ViewEvents.DISPLAY_MODE, { mode, oldMode });
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
   /**
-   * Get whether condensed card mode is enabled (true for 'compact' and 'packed').
-   * Retained for backward compatibility.
+   * Get whether compact card mode is enabled (true for 'compact' and 'packed').
    * @returns {boolean}
    */
   get condensedCards() {
@@ -289,7 +287,7 @@ export class ViewService {
   }
 
   /**
-   * Set condensed card mode (backward-compat shim).
+  * Set compact card mode.
    * Maps to displayMode 'compact' (true) or 'normal' (false).
    * Does NOT enter 'packed' mode — use setDisplayMode('packed') for that.
    * @param {boolean} val
@@ -325,7 +323,7 @@ export class ViewService {
     this._capacityViewMode = mode;
     if (!arguments[1]) {
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -347,7 +345,7 @@ export class ViewService {
     this._featureSortMode = mode;
     if (!arguments[1]) {
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 
@@ -359,7 +357,7 @@ export class ViewService {
     this._highlightFeatureRelationMode = !!val;
     if (!arguments[1]) {
       this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
   // ========== State Capture ==========
@@ -372,8 +370,6 @@ export class ViewService {
     return {
       capacityViewMode: this._capacityViewMode,
       displayMode: this._displayMode,
-      // condensedCards retained for backward compatibility
-      condensedCards: this.condensedCards,
       featureSortMode: this._featureSortMode,
       highlightFeatureRelationMode: this._highlightFeatureRelationMode,
       showUnassignedCards: this._showUnassignedCards,
@@ -397,12 +393,7 @@ export class ViewService {
   applyViewStateSilently(viewState) {
     if (!viewState) return;
     if (viewState.capacityViewMode) this._capacityViewMode = viewState.capacityViewMode;
-    // Restore displayMode; fall back to condensedCards boolean for older saved views
-    if (viewState.displayMode) {
-      this._displayMode = viewState.displayMode;
-    } else if (typeof viewState.condensedCards !== 'undefined') {
-      this._displayMode = viewState.condensedCards ? 'compact' : 'normal';
-    }
+    if (viewState.displayMode) this._displayMode = viewState.displayMode;
     if (viewState.featureSortMode) this._featureSortMode = viewState.featureSortMode;
     if (typeof viewState.highlightFeatureRelationMode !== 'undefined')
       this._highlightFeatureRelationMode = !!viewState.highlightFeatureRelationMode;
@@ -416,10 +407,6 @@ export class ViewService {
     // New format: hiddenTypes is an array of lower-cased type names.
     if (Array.isArray(viewState.hiddenTypes)) {
       this._hiddenTypes = new Set(viewState.hiddenTypes);
-    } else {
-      // Backward-compat: translate legacy showEpics/showFeatures booleans
-      if (viewState.showEpics === false) this._hiddenTypes.add('epic');
-      if (viewState.showFeatures === false) this._hiddenTypes.add('feature');
     }
     if (typeof viewState.showOnlyProjectHierarchy !== 'undefined')
       this._showOnlyProjectHierarchy = !!viewState.showOnlyProjectHierarchy;
@@ -447,7 +434,7 @@ export class ViewService {
       this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
       this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
       this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
-      this.bus.emit(FeatureEvents.UPDATED);
+      this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
     }
   }
 }

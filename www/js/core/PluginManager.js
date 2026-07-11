@@ -11,12 +11,10 @@ import PluginRegistry from './pluginRegistry.js';
  * - provide introspection (list/has/get)
  * Data schemes:
  * - `plugins`: Map<id, Plugin>
- * - `loadOrder`: Array<string>
  */
 export class PluginManager {
   constructor() {
     this.plugins = new Map();
-    this.loadOrder = [];
   }
 
   async register(plugin) {
@@ -41,8 +39,6 @@ export class PluginManager {
     this.plugins.set(plugin.id, plugin);
     await plugin.init();
     plugin.initialized = true;
-    this._addToLoadOrder(plugin);
-    console.log(`[PluginManager] Plugin registered: ${plugin.id}`);
     bus.emit(PluginEvents.REGISTERED, { plugin: plugin.id });
   }
 
@@ -70,8 +66,6 @@ export class PluginManager {
     }
     await plugin.destroy();
     this.plugins.delete(pluginId);
-    this.loadOrder = this.loadOrder.filter((id) => id !== pluginId);
-    console.log(`[PluginManager] Plugin unregistered: ${pluginId}`);
     bus.emit(PluginEvents.UNREGISTERED, { plugin: pluginId });
   }
 
@@ -99,73 +93,24 @@ export class PluginManager {
       return;
     }
 
-    // Determine dependency list for the target plugin (to avoid closing deps)
     const deps = plugin.getMetadata().dependencies || [];
-    if (deps.length > 0) {
-      console.log(`[PluginManager] Plugin ${pluginId} requires dependencies: ${deps.join(', ')}`);
-    }
-
-    // Build a dependency set for this plugin (recursively)
-    const depsSet = new Set();
-    const collectDeps = (id) => {
-      const p = this.plugins.get(id);
-      if (!p) return;
-      const dlist = p.getMetadata().dependencies || [];
-      for (const d of dlist) {
-        if (!depsSet.has(d)) {
-          depsSet.add(d);
-          collectDeps(d);
-        }
-      }
-    };
-    for (const d of deps) {
-      depsSet.add(d);
-      collectDeps(d);
-    }
+    const depsSet = this._collectDependencies(pluginId);
 
     // Decide shareability: a plugin may declare `config.exclusive = false` to
     // allow co-existence with other shareable plugins. Default is exclusive
     // (true) to preserve current single-open UX.
     const targetExclusive = !(plugin.config && plugin.config.exclusive === false);
-    const deactivated = [];
-
-    for (const other of this.plugins.values()) {
-      if (other.id === pluginId) continue;
-      if (!other.active) continue;
-      // Never deactivate dependencies required by the target plugin
-      if (depsSet.has(other.id)) continue;
-
-      const otherExclusive = !(other.config && other.config.exclusive === false);
-
-      // If both target and other are explicitly shareable (exclusive === false),
-      // allow them to remain active together. Otherwise, deactivate the other
-      // so the target may become active alone.
-      const bothShareable = targetExclusive === false && otherExclusive === false;
-      if (bothShareable) continue;
-
-      try {
-        await this.deactivate(other.id);
-        deactivated.push(other.id);
-      } catch (err) {
-        console.warn(`[PluginManager] Failed to deactivate plugin ${other.id}:`, err);
-      }
-    }
-
-    if (deactivated.length > 0) {
-      console.log(`[PluginManager] Deactivated ${deactivated.join(', ')} to make room for ${pluginId}`);
-    }
+    await this._deactivateIncompatibleActives(pluginId, depsSet, targetExclusive);
 
     // Activate dependencies first (after ensuring incompatible actives were closed)
     for (const depId of deps) {
       if (!this.isActive(depId)) {
-        console.log(`[PluginManager] Activating dependency ${depId} for ${pluginId}`);
         await this.activate(depId);
       }
     }
 
     await plugin.activate();
     plugin.active = true;
-    console.log(`[PluginManager] Plugin activated: ${pluginId}`);
     bus.emit(PluginEvents.ACTIVATED, { plugin: pluginId });
   }
 
@@ -318,16 +263,33 @@ export class PluginManager {
     return dependents;
   }
 
-  _addToLoadOrder(plugin) {
-    const deps = plugin.getMetadata().dependencies || [];
+  _collectDependencies(pluginId) {
+    const depsSet = new Set();
+    const visit = (id) => {
+      const plugin = this.plugins.get(id);
+      if (!plugin) return;
+      const deps = plugin.getMetadata().dependencies || [];
+      for (const depId of deps) {
+        if (depsSet.has(depId)) continue;
+        depsSet.add(depId);
+        visit(depId);
+      }
+    };
+    visit(pluginId);
+    return depsSet;
+  }
 
-    // Find position after all dependencies
-    let insertIndex = 0;
-    for (const depId of deps) {
-      const depIndex = this.loadOrder.indexOf(depId);
-      if (depIndex >= insertIndex) insertIndex = depIndex + 1;
+  async _deactivateIncompatibleActives(pluginId, depsSet, targetExclusive) {
+    for (const other of this.plugins.values()) {
+      if (other.id === pluginId || !other.active || depsSet.has(other.id)) continue;
+      const otherExclusive = !(other.config && other.config.exclusive === false);
+      if (targetExclusive === false && otherExclusive === false) continue;
+      try {
+        await this.deactivate(other.id);
+      } catch (err) {
+        console.warn(`[PluginManager] Failed to deactivate plugin ${other.id}:`, err);
+      }
     }
-    this.loadOrder.splice(insertIndex, 0, plugin.id);
   }
 
   _topologicalSort(modules) {

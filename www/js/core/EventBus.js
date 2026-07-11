@@ -9,7 +9,7 @@
  * - `history`: Array<{ts: number, event: any, payload: any}>
  */
 export class EventBus {
-  listeners = new Map(); // Map<Symbol|string, Set<Function>>
+  listeners = new Map(); // Map<event, Set<Function>>
   namespaceListeners = new Map(); // Map<string, Set<Function>>
   historyEnabled = false;
   history = [];
@@ -17,7 +17,7 @@ export class EventBus {
 
   /**
    * Extract namespace from a Symbol event (e.g. Symbol('feature:created') -> 'feature').
-   * @param {Symbol|string} event - Symbol with description or legacy string event
+  * @param {symbol} event - Symbol with description
    * @returns {string|null} namespace portion or null when not available
    * @private
    */
@@ -46,7 +46,7 @@ export class EventBus {
 
   /**
    * Subscribe to a single event identifier.
-   * @param {Symbol|string} event - identifier
+  * @param {symbol} event - identifier
    * @param {Function} handler - callback(payload)
    * @returns {Function} unsubscribe
    */
@@ -59,7 +59,7 @@ export class EventBus {
 
   /**
    * Unsubscribe from an event
-   * @param {Symbol|string} event - Event identifier
+  * @param {symbol} event - Event identifier
    * @param {Function} handler - Event handler function
    * @returns {void}
    */
@@ -69,7 +69,7 @@ export class EventBus {
 
   /**
    * Emit an event
-   * @param {Symbol|string} event - Event identifier
+  * @param {symbol} event - Event identifier
    * @param {any} payload - Event payload
    * @returns {void}
    */
@@ -106,7 +106,7 @@ export class EventBus {
 
   /**
    * Subscribe to an event for a single occurrence
-   * @param {Symbol|string} event - Event identifier
+  * @param {symbol} event - Event identifier
    * @param {Function} handler - Event handler function
    * @returns {Function} Unsubscribe function
    */
@@ -120,23 +120,6 @@ export class EventBus {
       }
     });
     return unsub;
-  }
-
-  /**
-   * Enable console warnings when string-based events are used (legacy usage)
-   * @returns {void}
-   */
-  enableStringWarnings() {
-    console.log('[eventBus] EventBus will warn on string events (legacy usage)');
-    this.warnOnStringEvents = true;
-  }
-
-  /**
-   * Disable string event warnings
-   * @returns {void}
-   */
-  disableStringWarnings() {
-    this.warnOnStringEvents = false;
   }
 
   /**

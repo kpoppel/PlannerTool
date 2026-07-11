@@ -109,7 +109,7 @@ export class DataInitService {
       StateFilterEvents.CHANGED,
       this._stateFilterService.availableFeatureStates
     );
-    this._bus.emit(FeatureEvents.UPDATED);
+    this._bus.emit(FeatureEvents.UPDATED, { ids: [] });
 
     return {
       baselineProjects,
@@ -190,7 +190,7 @@ export class DataInitService {
     // Emit refresh events
     this._bus.emit(ProjectEvents.CHANGED, this._projectTeamService.getProjects());
     this._bus.emit(TeamEvents.CHANGED, this._projectTeamService.getTeams());
-    this._bus.emit(FeatureEvents.UPDATED);
+    this._bus.emit(FeatureEvents.UPDATED, { ids: [] });
 
     return {
       baselineProjects,
