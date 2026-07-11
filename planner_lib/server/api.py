@@ -73,3 +73,46 @@ async def api_plugins_config(request: Request):
     except Exception as e:
         logger.exception('Failed to load runtime plugin config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.get('/plugins/schemas')
+@require_session
+async def api_plugins_schemas(request: Request):
+    """Return plugin schema definitions for all registered plugins.
+    
+    Reads *.schema.json files from www/js/plugins/ directory.
+    Each schema file contains {"schema": {...}, "defaultConfig": {...}}.
+    Returns {"plugin-id": {...}, ...} mapping.
+    """
+    try:
+        from pathlib import Path
+        import json
+        
+        # Find www/js/plugins directory relative to planner_lib
+        planner_lib_dir = Path(__file__).parent.parent
+        plugins_dir = planner_lib_dir.parent / 'www' / 'js' / 'plugins'
+        
+        schemas = {}
+        if plugins_dir.exists():
+            # Find all *.schema.json files
+            for schema_file in plugins_dir.glob('*.schema.json'):
+                plugin_name = schema_file.stem  # e.g., 'SamplePlugin' from 'SamplePlugin.schema.json'
+                # Convert class name to kebab-case plugin id
+                # e.g., SamplePlugin -> sample-plugin, PluginCost -> plugin-cost
+                plugin_id = ''.join('-' + c.lower() if c.isupper() else c 
+                                  for c in plugin_name).lstrip('-')
+                try:
+                    with open(schema_file, 'r') as f:
+                        content = json.load(f)
+                        if 'schema' in content and 'defaultConfig' in content:
+                            schemas[plugin_id] = {
+                                'schema': content['schema'],
+                                'defaultConfig': content['defaultConfig']
+                            }
+                except Exception as e:
+                    logger.warning('Failed to load schema from %s: %s', schema_file, e)
+        
+        return schemas
+    except Exception as e:
+        logger.exception('Failed to load plugin schemas: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')

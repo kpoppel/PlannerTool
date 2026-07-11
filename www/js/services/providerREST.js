@@ -1000,4 +1000,19 @@ export class ProviderREST {
       return null;
     }
   }
+
+  async getPluginsSchemas() {
+    try {
+      const res = await this._fetch('/api/plugins/schemas', {
+        headers: this._headers(),
+      });
+      if (res && res.sessionExpired) return null;
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j && typeof j === 'object' ? j : null;
+    } catch (err) {
+      console.error('providerREST:getPluginsSchemas error', err);
+      return null;
+    }
+  }
 }

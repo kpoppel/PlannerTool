@@ -110,6 +110,10 @@ class DataService {
   async getPluginsConfig() {
     return this.providers['rest'].getPluginsConfig();
   }
+
+  async getPluginsSchemas() {
+    return this.providers['rest'].getPluginsSchemas();
+  }
   /** @param {string} [planId] */
   async getEvents(planId) {
     return this.providers['rest'].getEvents(planId);

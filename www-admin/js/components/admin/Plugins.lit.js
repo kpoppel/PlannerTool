@@ -444,18 +444,51 @@ export class AdminPlugins extends LitElement {
   }
 
   /**
-   * Fetch plugin configuration schemas from the user app.
-   * The user app serves a schemas.json file that maps plugin ids to schema info.
-   * This avoids requiring admin UI to import plugin classes directly.
+   * Discover plugin schemas by fetching individual plugin-specific .schema.json files.
+   * For each plugin in metadata, attempts to load its {PluginName}.schema.json file.
    * @returns {Promise<object>} Schema map { pluginId: { schema, defaultConfig } }
    */
   async _discoverPluginSchemas() {
     try {
+      const schemas = {};
       const base = window.APP_BASE_URL || '';
-      const res = await fetch(`${base}/static/js/schemas.json`);
-      if (!res.ok) return {};
-      const j = await res.json();
-      return j.schemas || {};
+      
+      // First fetch metadata to get list of all plugins
+      const metaRes = await fetch(`${base}/static/js/modules.config.json`);
+      if (!metaRes.ok) return {};
+      const metaJson = await metaRes.json();
+      const modules = Array.isArray(metaJson.modules) ? metaJson.modules : [];
+      
+      // For each plugin, attempt to fetch its schema file
+      for (const module of modules) {
+        if (!module.id) continue;
+        
+        // Convert plugin id to PluginClassName
+        // e.g., 'sample-plugin' -> 'SamplePlugin', 'plugin-cost' -> 'PluginCost'
+        const className = module.id
+          .split('-')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join('');
+        
+        const schemaUrl = `${base}/static/js/plugins/${className}.schema.json`;
+        try {
+          const res = await fetch(schemaUrl);
+          if (res.ok) {
+            const schemaData = await res.json();
+            if (schemaData.schema && schemaData.defaultConfig) {
+              schemas[module.id] = {
+                schema: schemaData.schema,
+                defaultConfig: schemaData.defaultConfig
+              };
+            }
+          }
+        } catch (err) {
+          // Plugin has no schema file — skip it
+          console.debug(`No schema for ${module.id} at ${schemaUrl}:`, err.message);
+        }
+      }
+      
+      return schemas;
     } catch (err) {
       console.warn('AdminPlugins:_discoverPluginSchemas failed:', err);
       return {};

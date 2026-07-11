@@ -721,20 +721,7 @@ export class AdminProviderREST {
     }
   }
 
-  async getPluginsSchemas() {
-    try {
-      const res = await this._fetch('/admin/v1/plugins-schemas', {
-        method: 'GET',
-        credentials: 'same-origin',
-      });
-      if (!res.ok) return null;
-      const j = await res.json();
-      return j.schemas || null;
-    } catch (err) {
-      console.error('AdminProviderREST:getPluginsSchemas', err);
-      return null;
-    }
-  }
+
 }
 
 // Export a default instance for simple imports

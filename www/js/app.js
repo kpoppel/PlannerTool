@@ -80,6 +80,10 @@ async function init() {
       // metadata defaults when unavailable or when the server has no saved config).
       const runtimeConfig = await dataService.getPluginsConfig().catch(() => null);
 
+      // Fetch plugin schemas for all plugins (non-fatal: continues without schemas if unavailable)
+      const pluginSchemas = await dataService.getPluginsSchemas().catch(() => ({}));
+      window.APP_PLUGIN_SCHEMAS = pluginSchemas || {};
+
       const mergedCfg = mergePluginConfig(cfg, runtimeConfig?.plugins || null);
       await pluginManager.loadFromConfig(mergedCfg);
       console.log('[App] PluginManager loaded modules');

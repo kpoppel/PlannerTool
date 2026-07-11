@@ -1,0 +1,37 @@
+{
+  "schema": {
+    "type": "object",
+    "title": "Sample Plugin Configuration",
+    "description": "Configure behavior of the Sample Plugin. These settings are persisted via the admin panel and affect plugin behavior at runtime.",
+    "properties": {
+      "sampleSetting": {
+        "type": "string",
+        "title": "Log Prefix",
+        "description": "Prefix used in console log messages when logging is enabled",
+        "default": "Sample",
+        "minLength": 1,
+        "maxLength": 50
+      },
+      "enableLogging": {
+        "type": "boolean",
+        "title": "Enable Debug Logging",
+        "description": "When enabled, the plugin logs lifecycle and event information to the browser console",
+        "default": false
+      },
+      "threshold": {
+        "type": "number",
+        "title": "Feature Threshold",
+        "description": "Example numeric threshold used in feature selection behavior",
+        "minimum": 0,
+        "maximum": 100,
+        "default": 50
+      }
+    },
+    "required": []
+  },
+  "defaultConfig": {
+    "sampleSetting": "Sample",
+    "enableLogging": false,
+    "threshold": 50
+  }
+}
