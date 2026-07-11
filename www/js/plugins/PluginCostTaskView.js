@@ -6,10 +6,10 @@ import {
   monthKey,
   calculateBudgetDeviation,
   hasSignificantDeviation,
-} from './PluginCostV2Calculator.js';
+} from './PluginCostCalculator.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { renderCountingBanner, renderClipBanner } from './PluginCostV2Shared.js';
+import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
 export function renderTaskView(component) {
   if (!component.data || !component.data.projects) {

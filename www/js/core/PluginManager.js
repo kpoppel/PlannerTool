@@ -211,24 +211,53 @@ export class PluginManager {
   }
 
   /**
-   * Load plugins from config
+   * Load plugins from config.
+   *
+   * Ordering strategy
+   * ─────────────────
+   * The config list is treated as the admin-defined sequence. Within that sequence,
+   * dependency safety is enforced by topological sort. If topological sort must
+   * reorder plugins to satisfy dependencies the reordering is logged as a warning.
+   *
+   * Disabled plugins are skipped entirely and will not appear in the plugin registry
+   * or the Tools menu.
+   *
+   * Activation: the first plugin found with `activated === true` is auto-activated
+   * at startup. Subsequent activated entries are ignored (only one may be active).
+   *
    * @param {{modules: Array<object>}} config
    * @returns {Promise<void>}
    */
   async loadFromConfig(config) {
     const modules = config.modules || [];
 
-    // Sort by dependencies
-    const sorted = this._topologicalSort(modules);
+    // Filter out disabled plugins before sorting so dependency checks only
+    // consider enabled plugins.
+    const enabled = modules.filter((m) => {
+      if (m.enabled === false) {
+        console.log(`[PluginManager] Skipping disabled module ${m.id}`);
+        return false;
+      }
+      return true;
+    });
+
+    // Apply topological sort to enforce dependency order within the admin sequence.
+    // Warn when the sort must change the admin-defined order.
+    const adminOrder = enabled.map((m) => m.id);
+    const sorted = this._topologicalSort(enabled);
+    const sortedOrder = sorted.map((m) => m.id);
+    if (adminOrder.join(',') !== sortedOrder.join(',')) {
+      console.warn(
+        '[PluginManager] Plugin order adjusted for dependency safety.',
+        'Admin order:', adminOrder,
+        'Resolved order:', sortedOrder
+      );
+    }
+
+    let defaultActivated = false;
 
     for (const moduleConfig of sorted) {
       try {
-        // If module is explicitly disabled, skip loading/registering it entirely
-        if (moduleConfig.enabled === false) {
-          console.log(`[PluginManager] Skipping disabled module ${moduleConfig.id}`);
-          continue;
-        }
-
         // Lookup constructor by module id from the minimal registry.
         const ctor = PluginRegistry[moduleConfig.id];
         if (typeof ctor !== 'function') {
@@ -238,9 +267,10 @@ export class PluginManager {
         const pluginInstance = new ctor(moduleConfig.id, moduleConfig);
         await this.register(pluginInstance);
 
-        // Use `activated` to control initial active state. This keeps `enabled` as a loader flag.
-        if (moduleConfig.activated === true) {
+        // Only the first activated:true plugin auto-activates at startup.
+        if (!defaultActivated && moduleConfig.activated === true) {
           await this.activate(moduleConfig.id);
+          defaultActivated = true;
         }
       } catch (error) {
         console.error(`[PluginManager] Failed to load ${moduleConfig.id}:`, error);

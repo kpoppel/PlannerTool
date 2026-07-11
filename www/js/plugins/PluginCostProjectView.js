@@ -8,9 +8,9 @@ import {
   flattenTree,
   buildByTeam,
   computeEffectiveDataMaps,
-} from './PluginCostV2Calculator.js';
+} from './PluginCostCalculator.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { renderCountingBanner, renderClipBanner } from './PluginCostV2Shared.js';
+import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
 function getTeamLabel(component, teamKey) {
   const costTeams =
@@ -260,7 +260,7 @@ function renderProjectSummaryTable(
     if (false) {
       if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
         component.__dbg_logged_team_arch = true;
-        console.debug('[PluginCostV2][DBG][client] team-architecture', teamData);
+        console.debug('[PluginCost][DBG][client] team-architecture', teamData);
       }
     }
 
@@ -281,7 +281,7 @@ function renderProjectSummaryTable(
   // DEBUG: show totals and server-provided project totals for inspection
   if (false) {
     const pid = projectData && projectData.id ? projectData.id : '(unknown)';
-    console.debug('[PluginCostV2][DBG][client][summary]', {
+    console.debug('[PluginCost][DBG][client][summary]', {
       project: pid,
       monthKeys,
       totals_internal_hours: Object.fromEntries(
@@ -673,7 +673,7 @@ function renderTeamMonthTable(component, teams, teamAllocations, monthKeys) {
   `;
 }
 
-// flattenTree, buildByTeam, computeEffectiveDataMaps are imported from PluginCostV2Calculator.js
+// flattenTree, buildByTeam, computeEffectiveDataMaps are imported from PluginCostCalculator.js
 
 function renderFeatureList(component, features, monthKeys) {
   const formatValue = (val) => formatPlainNumber(component, val);

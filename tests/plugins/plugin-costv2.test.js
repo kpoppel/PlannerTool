@@ -1,11 +1,11 @@
 import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
-import PluginCostV2 from '../../www/js/plugins/PluginCostV2.js';
+import PluginCost from '../../www/js/plugins/PluginCost.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 import { disable, enable } from '../../www/js/config.js';
 
-describe('PluginCostV2', () => {
+describe('PluginCost', () => {
   let emitStub;
 
   beforeEach(() => {
@@ -32,13 +32,13 @@ describe('PluginCostV2', () => {
     // Disable plugin system so init does not dynamically import heavy component
     disable('USE_PLUGIN_SYSTEM');
 
-    const p = new PluginCostV2('pcv2-test', { mountPoint: 'test-app' });
+    const p = new PluginCost('pcv2-test', { mountPoint: 'test-app' });
     // mark component as loaded to avoid init path in activate
     p._componentLoaded = true;
     p._host = host;
 
     // simulate element created by component
-    p._el = document.createElement('plugin-cost-v2');
+    p._el = document.createElement('plugin-cost');
     p._el.open = stub();
     p._el.close = stub();
     p._el.style.display = 'none';

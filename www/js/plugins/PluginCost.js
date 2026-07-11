@@ -1,17 +1,16 @@
 /**
- * PluginCostPlugin
+ * PluginCost
  * Single-responsibility: lifecycle wrapper that mounts/unmounts the
- * `plugin-cost` component and coordinates initial data loading.
+ * `plugin-cost` component providing three-view cost analysis.
  *
- * Methods are deliberately small; the heavy lifting happens in the
- * component and the `dataService`.
+ * Views: Project, Task, Team - each with monthly cost/hours breakdowns.
  */
 import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
-import { dataService } from '../services/dataService.js';
+import { state } from '../services/State.js';
 
-class PluginCostPlugin {
+class PluginCost {
   constructor(id = 'plugin-cost', config = {}) {
     this.id = id;
     this.config = config;
@@ -20,18 +19,19 @@ class PluginCostPlugin {
     this._componentLoaded = false;
     this.initialized = false;
     this.active = false;
-    this._costData = null;
   }
 
   getMetadata() {
     return {
       id: this.id,
       name: this.config.name || 'Cost Analysis',
-      description: this.config.description || 'Cost analysis plugin',
-      icon: this.config.icon || 'attach_money',
+      description:
+        this.config.description ||
+        'Three-view cost analysis with project, task, and team breakdowns',
+      icon: this.config.icon || 'assessment',
       section: 'tools',
       autoActivate: false,
-      fullscreen: this.config.fullscreen || false,
+      fullscreen: true,
     };
   }
 
@@ -50,11 +50,6 @@ class PluginCostPlugin {
     this.initialized = true;
   }
 
-  /**
-   * Activate the plugin: ensure component exists, load cost data and open UI.
-   * @returns {Promise<void>}
-   */
-
   async activate() {
     if (!this._componentLoaded) await this.init();
     if (!this._host) {
@@ -66,37 +61,48 @@ class PluginCostPlugin {
     }
     if (!this._el) {
       this._el = document.createElement('plugin-cost');
+      this._el.pluginId = this.id;
       // Mount as peer to timeline-board with same layout class
       this._el.classList.add('main');
       this._el.style.display = 'none'; // Start hidden
       this._host.appendChild(this._el);
     }
-    // Hide timeline-board if this is a fullscreen plugin
-    if (this.config.fullscreen) {
-      const timelineBoard = document.querySelector('timeline-board');
-      if (timelineBoard) {
-        this._savedTimelineBoardDisplay = timelineBoard.style.display || '';
-        timelineBoard.style.display = 'none';
-      }
-      this._el.style.display = 'flex';
+    // Hide timeline-board since this is a fullscreen plugin
+    const timelineBoard = document.querySelector('timeline-board');
+    if (timelineBoard) {
+      this._savedTimelineBoardDisplay = timelineBoard.style.display || '';
+      timelineBoard.style.display = 'none';
     }
-    // Open the plugin UI immediately; the component handles its own data
-    // loading to avoid blocking the UI and to prevent duplicate fetches.
-    if (this._el && typeof this._el.open === 'function') this._el.open(this.config.mode);
+    this._el.style.display = 'flex';
+
+    // Restore persisted plugin state (if any) before opening so the component
+    // loads data for the same window the user selected previously.
+    const ps = state.pluginStateService.get(this.id) || {};
+    if (ps.startDate) this._el.startDate = ps.startDate;
+    if (ps.endDate) this._el.endDate = ps.endDate;
+
+    // Open the plugin UI; component handles its own data loading
+    if (this._el && typeof this._el.open === 'function') this._el.open();
     this.active = true;
     bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
-    if (this._el && typeof this._el.close === 'function') this._el.close();
-    // Restore timeline-board visibility if this is a fullscreen plugin
-    if (this.config.fullscreen) {
-      const timelineBoard = document.querySelector('timeline-board');
-      if (timelineBoard) {
-        timelineBoard.style.display = this._savedTimelineBoardDisplay || '';
-      }
-      if (this._el) this._el.style.display = 'none';
+    // Persist the currently-selected date range into the PluginStateService
+    const s = {
+      startDate: this._el.startDate,
+      endDate: this._el.endDate,
+    };
+    state.pluginStateService.set(this.id, s, { saveToView: true });
+
+
+    this._el.close();
+    // Restore timeline-board visibility
+    const timelineBoard = document.querySelector('timeline-board');
+    if (timelineBoard) {
+      timelineBoard.style.display = this._savedTimelineBoardDisplay || '';
     }
+    if (this._el) this._el.style.display = 'none';
     this.active = false;
     bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
@@ -113,4 +119,4 @@ class PluginCostPlugin {
   }
 }
 
-export default PluginCostPlugin;
+export default PluginCost;

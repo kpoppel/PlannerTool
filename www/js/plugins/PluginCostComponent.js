@@ -1,1582 +1,1092 @@
 /**
  * PluginCostComponent
- * Single-responsibility: render cost and hours tables for features and
- * projects. This LitElement component consumes the JSON produced by the
- * cost service and focuses on presenting per-month internal/external
- * allocations plus totals.
+ * LitElement component providing three-view cost analysis.
  *
- * Dependencies: `PluginCostCalculator` helpers, `state` service, `dataService`.
- */
-
-/**
- * @typedef {Object} PluginFeature
- * @property {string} id
- * @property {string} name
- * @property {string} state
- * @property {Object<string,number>} values.internal
- * @property {Object<string,number>} values.external
- * @property {Object<string,number>} hours.internal
- * @property {Object<string,number>} hours.external
- * @property {number} total
- * @property {number} totalHours
- */
-
-/**
- * @typedef {Object} PluginProject
- * @property {string|number} id
- * @property {string} name
- * @property {PluginFeature[]} features
- * @property {Object<string,number>} totals.internal
- * @property {Object<string,number>} totals.external
- * @property {Object<string,object>} totals.hours
- * @property {number} total
- * @property {number} totalHours
+ * Views:
+ * - Project: Per-project team-month breakdown tables
+ * - Task: Parent/child task tree with budget deviation indicators
+ * - Team: Per-team feature allocation tables
+ *
+ * All views show monthly Int/Ext cost/hours breakdowns with date range
+ * and cost/hours toggle controls.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
-import { UIFeatureFlags } from '../config.js';
+import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
+
+import { renderProjectView } from './PluginCostProjectView.js';
+import { renderTaskView } from './PluginCostTaskView.js';
+import { renderTeamView } from './PluginCostTeamView.js';
+import { renderTeamMembersView } from './PluginCostTeamMembersView.js';
 import { bus } from '../core/EventBus.js';
-import { findInBoard } from '../components/board-utils.js';
-import { UIEvents, ScenarioEvents } from '../core/EventRegistry.js';
 import {
-  toDate,
-  firstOfMonth,
-  lastOfMonth,
-  addMonths,
-  monthKey,
-  monthLabel,
-  buildMonths,
-  buildProjects,
-} from './PluginCostCalculator.js';
-import '../components/SpinnerModal.js';
-import '../components/SpinnerModal.js';
-/**
- * Convert a hex color (#rrggbb) to an rgba string with supplied alpha.
- * Defensive: returns a sensible fallback when `hex` is falsy.
- * @param {string} hex
- * @param {number} [alpha=0.12]
- * @returns {string}
- */
-function hexToRgba(hex, alpha = 0.12) {
-  if (!hex) return `rgba(0,0,0,${alpha})`;
-  // Accept either a hex string or an object with a `background` property
-  let val = hex;
-  if (typeof hex === 'object' && hex !== null) {
-    val = hex.background || hex;
-  }
-  const h = String(val).replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+  FeatureEvents,
+  ProjectEvents,
+  TeamEvents,
+  ScenarioEvents,
+  FilterEvents,
+} from '../core/EventRegistry.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginCostComponent extends LitElement {
   static properties = {
-    data: { state: true },
-    months: { state: true },
-    projects: { state: true },
-    expandedProjects: { state: true },
-    expandedEpics: { state: true },
-    showBudgetDeviations: { state: true },
-    deviationThreshold: { state: true },
-    teamCostMode: { state: true },
-    planTypeTab: { state: true },
-    startDate: { state: true },
-    endDate: { state: true },
+    activeView: { type: String }, // 'project' | 'task' | 'team'
+    viewMode: { type: String }, // 'cost' | 'hours'
+    startDate: { type: String },
+    endDate: { type: String },
+    data: { type: Object },
+    loading: { type: Boolean },
+    error: { type: String },
+    expandedProjects: { type: Object },
+    expandedTasks: { type: Object },
+    projectViewSelection: { type: Object },
   };
 
   constructor() {
     super();
+    this.activeView = 'project';
+    this.viewMode = 'cost';
     this.data = null;
-    this.months = [];
-    this.projects = [];
+    this.loading = false;
+    this.error = null;
     this.expandedProjects = new Set();
-    this.expandedEpics = new Set();
-    this.viewMode = 'cost'; // 'cost' or 'hours'
-    this.activeTab = 'cost'; // 'cost' or 'teams'
-    this.teamsData = null;
-    this._subscribed = false;
-    this.showBudgetDeviations = false;
-    this.deviationThreshold = 10; // Default 10%
-    this.teamCostMode = 'all'; // 'all' or 'noproject' - controls team task visibility
-    this.planTypeTab = 'projects'; // 'projects' or 'teams'
+    this.expandedTasks = new Set();
+    this.expandedTeams = new Set();
+    this.projectViewSelection = {}; // per-project: 'teams' | 'features'
 
-    // Default to start of current year through end of this year
+    // Default date range: current year
     const now = new Date();
     const year = now.getFullYear();
-    // Use plain YYYY-MM-DD strings to avoid timezone shifts from toISOString()
-    this.startDate = `${year}-01-01`;
-    this.endDate = `${year}-12-31`;
+    this._defaultStartDate = `${year}-01-01`;
+    this._defaultEndDate = `${year}-12-31`;
+    this.startDate = this._defaultStartDate;
+    this.endDate = this._defaultEndDate;
+
+    this.months = [];
+    this._unsubscribes = [];
+    this._reloadTimer = null;
   }
 
   static styles = css`
     :host {
-      display: flex;
+      display: none;
       flex-direction: column;
       width: 100%;
-      height: 100%;
-      padding: 12px;
-      box-sizing: border-box;
-      overflow: auto;
-      background: #fff;
+      height: 100vh;
+      background: white;
+      overflow: hidden;
+      z-index: 300;
     }
-    .table-wrapper {
-      width: 100%;
-      max-height: calc(100vh - 160px);
-      overflow: auto;
-      overflow-x: scroll;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      border: 1px solid #e6e6e6;
+
+    :host([visible]) {
+      display: flex;
     }
-    .table-inner {
-      min-width: 1200px;
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      flex-shrink: 0;
     }
-    .table {
-      width: 100%;
-      border-collapse: collapse;
-      font-family:
-        system-ui,
-        Segoe UI,
-        Roboto,
-        Helvetica,
-        Arial;
+
+    .toolbar-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
     }
-    .table th,
-    .table td {
-      border: 1px solid #eee;
-      padding: 6px 8px;
-      text-align: right;
+
+    .tab-buttons {
+      display: flex;
+      gap: 4px;
+      margin-left: 16px;
+    }
+
+    .tab-buttons button {
+      padding: 6px 16px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
       font-size: 13px;
-      white-space: nowrap;
+      color: #666;
+      transition: all 0.2s;
     }
-    .table thead th {
-      position: sticky;
-      top: 0;
-      background: #fff;
-      z-index: 2;
-    }
-    .project-row {
+
+    .tab-buttons button:hover {
       background: #fafafa;
-      cursor: pointer;
+      border-color: #999;
     }
-    .feature-row:hover {
-      background: #fbfbfe;
+
+    .tab-buttons button.active {
+      background: #2196f3;
+      color: white;
+      border-color: #2196f3;
     }
-    .swatch {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-    .feat-icon {
-      display: inline-flex;
-      width: 16px;
-      height: 16px;
-      align-items: center;
-      justify-content: center;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-    .feat-icon svg {
-      width: 14px;
-      height: 14px;
-    }
-    .epic-row {
-      background: #f6f9ff;
-      cursor: pointer;
-    }
-    .nested-feature {
-      padding-left: 18px;
-    }
-    .legend {
-      margin-top: 12px;
+
+    .view-toggle {
       display: flex;
+      gap: 4px;
+      margin-left: auto;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+
+    .view-toggle button {
+      padding: 6px 12px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .view-toggle button.active {
+      background: #4caf50;
+      color: white;
+      border-color: #4caf50;
+    }
+
+    .date-controls {
+      display: flex;
+      align-items: center;
       gap: 8px;
-      flex-wrap: wrap;
     }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 6px;
-      border: 1px solid #eee;
+
+    .date-controls label {
+      font-size: 13px;
+      color: #666;
+    }
+
+    .date-controls input[type='date'] {
+      padding: 4px 8px;
+      border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 13px;
     }
-    .total-cell {
-      font-weight: 600;
+
+    .close-btn {
+      padding: 6px 12px;
+      background: #f44336;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      margin-left: 8px;
     }
-    /* Freeze first column */
-    .table th.left,
-    .table td.left {
-      position: sticky;
-      left: 0;
-      z-index: 4;
-      background: #fff;
+
+    .close-btn:hover {
+      background: #d32f2f;
+    }
+
+    .content {
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .error {
+      padding: 16px;
+      background: #ffebee;
+      border: 1px solid #f44336;
+      border-radius: 4px;
+      color: #c62828;
+      margin: 16px;
+    }
+
+    .error-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .empty-state {
+      padding: 32px;
+      text-align: center;
+      color: #666;
+    }
+
+    .empty-state h3 {
+      margin-bottom: 8px;
+      font-size: 16px;
+      color: #333;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    th,
+    td {
+      padding: 8px;
       text-align: left;
-      max-width: 200px;
+      border: 1px solid #ddd;
+    }
+
+    th {
+      background: #f5f5f5;
+      font-weight: 600;
+      color: #333;
+    }
+
+    td {
+      color: #666;
+    }
+
+    tr:hover {
+      background: #fafafa;
+    }
+
+    .numeric {
+      text-align: right;
+      font-family: 'Courier New', monospace;
+    }
+
+    .expandable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .expandable:hover {
+      background: #f0f0f0;
+    }
+
+    .expand-icon {
+      display: inline-block;
+      width: 16px;
+      margin-right: 4px;
+      transition: transform 0.2s;
+    }
+
+    .expand-icon.expanded {
+      transform: rotate(90deg);
+    }
+
+    .deviation-indicator {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .deviation-indicator.high {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .deviation-indicator.medium {
+      background: #fff3e0;
+      color: #ef6c00;
+    }
+
+    .project-header {
+      font-weight: 600;
+      font-size: 14px;
+      color: #1976d2;
+    }
+
+    .team-header {
+      font-weight: 600;
+      font-size: 14px;
+      color: #4caf50;
+    }
+
+    .totals-row {
+      font-weight: 600;
+      background: #f9f9f9;
+    }
+    /* Small toggle buttons used inside project view for compact controls */
+    .project-toggle-btn {
+      padding: 6px 10px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #444;
+      transition: all 0.15s ease;
+      box-shadow: none;
+    }
+    .project-toggle-btn:hover {
+      background: #fafafa;
+      transform: translateY(-1px);
+      border-color: #cfcfcf;
+    }
+    .project-toggle-btn.active {
+      background: linear-gradient(180deg, #1976d2, #1565c0);
+      color: white;
+      border-color: #1565c0;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+    }
+    /* Summary table improvements for readability */
+    .summary-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+    }
+    .summary-table tbody tr.group-header-row td {
+      background: transparent;
+      padding-top: 10px;
+      padding-bottom: 4px;
+      font-weight: 700;
+      color: #333;
+      border-top: 2px solid #e6e6e6;
+    }
+    .summary-table tbody tr.group-row td {
+      background: white;
+    }
+    /* Use explicit 'alt' class for consistent banding across paired rows */
+    .summary-table tr.alt td {
+      background: #efefef;
+    }
+    .summary-table td.metric {
+      width: 280px;
+      white-space: nowrap;
+    }
+    .summary-table td.sum-column,
+    .summary-table th.sum-column {
+      background: #e8f2ff;
+      font-weight: 700;
+      border-left: 2px solid #dfe9f6;
+      color: #123b5a;
+    }
+    /* Apply consistent Sum styling across all tables */
+    table td.sum-column,
+    table th.sum-column {
+      background: #e8f2ff;
+      font-weight: 700;
+      color: #123b5a;
+      border-left: 2px solid #dfe9f6;
+    }
+    /* Ensure Sum column keeps its blue shade even when row cells are white or alt-banded */
+    .summary-table tr.site-pair td.sum-column,
+    .summary-table tr.group-row td.sum-column,
+    .summary-table tr.alt td.sum-column {
+      background: #e8f2ff;
+      font-weight: 700;
+      color: #123b5a;
+    }
+    /* Slightly different shade for alt-banded pairs to indicate grouping */
+    .summary-table tr.site-pair.alt td.sum-column,
+    .summary-table tr.group-row.alt td.sum-column {
+      background: #d7ebff;
+    }
+    /* Ensure alt rows don't override the Sum column background */
+    .summary-table tr.alt td.sum-column,
+    .summary-table tr.site-pair.alt td.sum-column,
+    .summary-table tr.group-row.alt td.sum-column {
+      background: #e8f2ff;
+    }
+    /* Per-site paired rows (Hours + Cost) with alternating banding */
+    .summary-table tr.site-pair td {
+      background: white;
+    }
+    .summary-table tr.site-pair.alt td {
+      background: #efefef;
+    }
+    .summary-table tr.group-row.alt td {
+      background: #efefef;
+    }
+    .summary-table tr.site-pair td:first-child {
+      padding-left: 12px;
+    }
+
+    /* Icon sizing for type icons used in lists/tables */
+    .type-icon {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+    }
+    .type-icon svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+    /* Clip-window indicators: shown on features whose dates extend outside the selected period */
+    .clip-warning {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 4px;
+      font-size: 10px;
+      color: #e65100;
+      cursor: default;
+      vertical-align: middle;
+      opacity: 0.8;
+    }
+    /* Team Members summary grid for consistent alignment */
+    .team-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .team-name {
+      min-width: 260px;
+      flex: 1 1 auto;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .team-metrics {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: #333;
+      font-size: 13px;
+      flex: 0 0 auto;
+    }
+    .team-metric {
+      min-width: 120px;
+      text-align: right;
+      color: #333;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .table thead th.left {
-      top: 0;
-      z-index: 6;
-    }
-    /* Freeze last two columns (Total + extra) on the right */
-    .table th.right,
-    .table td.right {
-      position: sticky;
-      right: 0;
-      z-index: 4;
-      background: #fff !important;
-    }
-    .table th.right-extra,
-    .table td.right-extra {
-      position: sticky;
-      right: 0;
-      z-index: 4;
-      background: #fff !important;
-    }
-    .table th.right-total,
-    .table td.right-total {
-      position: sticky;
-      right: 30px;
-      z-index: 4;
-      background: #fff !important;
-    }
-    /* When deviation mode is off, Total column moves to right edge */
-    :host([no-deviation]) .table th.right-total,
-    :host([no-deviation]) .table td.right-total {
-      right: 0;
-    }
-    .table thead th.right-total,
-    .table thead th.right-extra {
-      top: 0;
-      z-index: 6;
-    }
-    .table tfoot td.right-total,
-    .table tfoot td.right-extra {
-      background: #eaf4ff;
-    }
-    /* Ensure opaque backgrounds for sticky cells in different row types */
-    .project-row td.right-total,
-    .project-row td.right-extra {
-      background: #fafafa !important;
-    }
-    .epic-row td.right-total,
-    .epic-row td.right-extra {
-      background: #f6f9ff !important;
-    }
-    .feature-row td.right-total,
-    .feature-row td.right-extra {
-      background: #fff !important;
-    }
-    .feature-row:hover td.right-total,
-    .feature-row:hover td.right-extra {
-      background: #fbfbfe !important;
-    }
-    .controls {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    .toggle {
-      display: inline-flex;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .toggle button {
-      background: transparent;
-      border: 0;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .toggle button.active {
-      background: #eee;
-      font-weight: 600;
-    }
-    /* Totals footer styling */
-    .table tfoot td {
-      background: #eaf4ff;
-      color: #0b61c9;
-      font-weight: 700;
-      border-top: 2px solid #c7e3ff;
-    }
-    .table tfoot td.left {
-      background: linear-gradient(90deg, #eaf4ff 0%, #e6f2ff 60%);
-    }
-    .tab-toggle {
-      display: inline-flex;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .tab-toggle button {
-      background: transparent;
-      border: 0;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .tab-toggle button.active {
-      background: var(--accent-color, #dfeffd);
-      color: var(--accent-text, #072b52);
-      font-weight: 600;
-    }
-    /* Budget deviation controls */
-    .deviation-controls {
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
-      padding: 4px 8px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      background: #fff;
-    }
-    .deviation-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .deviation-toggle input[type='checkbox'] {
-      cursor: pointer;
-    }
-    .deviation-input {
-      width: 50px;
-      padding: 4px 6px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 13px;
-      text-align: center;
-    }
-    .deviation-warning {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      background: #fff3cd;
-      border: 1px solid #ffc107;
-      border-radius: 50%;
-      color: #856404;
-      font-size: 14px;
-      font-weight: bold;
-      cursor: help;
-    }
   `;
 
-  connectedCallback() {
-    super.connectedCallback();
-    // Listen for scenario activation so cost view updates to selected scenario
-    // Debounce to coalesce duplicate events emitted by multiple managers
-    this._onScenarioActivated = ({ scenarioId }) => {
-      if (this._scenarioDebounceTimer) clearTimeout(this._scenarioDebounceTimer);
-      this._scenarioDebounceTimer = setTimeout(() => {
-        this._scenarioDebounceTimer = null;
-        this.loadCostForScenario(scenarioId);
-      }, 60);
-    };
-    this._subscribe();
-    // Don't load data here - wait until open() is called
-  }
-
-  _subscribe() {
-    if (this._subscribed) return;
-    if (this._onScenarioActivated) {
-      bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
-      this._subscribed = true;
-    }
-  }
-
-  _unsubscribe() {
-    if (!this._subscribed) return;
-    if (this._onScenarioActivated) {
-      bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
-    }
-    this._subscribed = false;
-  }
-
-  /**
-   * Format a numeric cell value as a fixed 2-decimal string.
-   * Accepts numeric or string-like input and coerces to number.
-   * @param {number|string} v
-   * @returns {string}
-   */
-  //fmtCell(v){ return (typeof v === 'number' ? v : Number(v || 0)).toFixed(2); }
-  fmtCell(value, decimals = 1) {
-    // If the feature flag is on, render exact zeros as empty to de-emphasize them
-    if (UIFeatureFlags.MUTE_ZERO_CELLS && value === 0) {
-      return '';
-    }
-    if (value == null || value === '') return '';
-    const num = Number(value);
-    if (Number.isNaN(num)) return String(value);
-    return num.toFixed(decimals);
-  }
-
-  /**
-   * Compute inline style for the left (frozen) project cell. Uses project
-   * color and a subtle gradient to aid visual grouping.
-   * @param {string|number} pid
-   * @returns {string}
-   */
-  projectLeftStyle(pid) {
-    const color =
-      (state.projects || []).find((sp) => String(sp.id) === String(pid))?.color || '#ddd';
-    // Use ColorService directly
-    const projectColor = state._colorService.getProjectColor(
-      pid,
-      state.projects,
-      state.baselineProjects
-    );
-    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(projectColor, 0.14)} 0px, ${hexToRgba(projectColor, 0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 6px 0 0 ${color};`;
-  }
-
-  /**
-   * Compute inline style used for feature/epic rows. Shows a subtle
-   * gradient and left accent using the feature state color.
-   * @param {string} stateColor
-   * @returns {string}
-   */
-  featureBgStyle(stateColor) {
-    // Normalize input: accept either a hex string or an object { background, text }
-    const c =
-      stateColor && typeof stateColor === 'object' ?
-        stateColor.background || ''
-      : stateColor || '';
-    return `background:#fff; background-image:linear-gradient(90deg, ${hexToRgba(c, 0.14)} 0px, ${hexToRgba(c, 0.06)} 40%, rgba(255,255,255,0) 100%); box-shadow: inset 4px 0 0 ${c}; cursor:pointer;`;
-  }
-
-  /**
-   * Check if an Epic's original allocated budget deviates from the sum of
-   * its children's totals by more than the configured threshold percentage.
-   *
-   * Note: When an Epic has children, the table displays the children's sum,
-   * but the Epic's original budget (what planners estimated) is preserved
-   * for comparison.
-   *
-   * @param {Object} epicBase - The epic feature object (contains originalTotal)
-   * @param {Array} children - Array of child feature objects
-   * @returns {{hasDeviation: boolean, epicOriginal: number, childrenSum: number, deviationPercent: number}}
-   */
-  checkBudgetDeviation(epicBase, children) {
-    if (!this.showBudgetDeviations || !children || children.length === 0) {
-      return {
-        hasDeviation: false,
-        epicOriginal: 0,
-        childrenSum: 0,
-        deviationPercent: 0,
-      };
-    }
-
-    // Get Epic's original allocated budget (before it was replaced by children sum)
-    const epicOriginal =
-      this.viewMode === 'cost' ?
-        (epicBase.originalTotal ?? 0) // Use nullish coalescing to handle undefined
-      : (epicBase.originalTotalHours ?? 0);
-
-    // The children sum is what's currently displayed (epicBase.total after replacement)
-    const childrenSum =
-      this.viewMode === 'cost' ? (epicBase.total ?? 0) : (epicBase.totalHours ?? 0);
-
-    // If both are zero, no deviation
-    if (epicOriginal === 0 && childrenSum === 0) {
-      return {
-        hasDeviation: false,
-        epicOriginal,
-        childrenSum,
-        deviationPercent: 0,
-      };
-    }
-
-    // If Epic has no original allocation (0), this means all work is allocated to children
-    // This is the correct pattern - no deviation warning needed
-    if (epicOriginal === 0) {
-      return {
-        hasDeviation: false,
-        epicOriginal,
-        childrenSum,
-        deviationPercent: 0,
-      };
-    }
-
-    // Calculate deviation percentage: |original - actual| / original * 100
-    const deviationPercent = (Math.abs(epicOriginal - childrenSum) / epicOriginal) * 100;
-    const hasDeviation = deviationPercent > this.deviationThreshold;
-
-    return { hasDeviation, epicOriginal, childrenSum, deviationPercent };
-  }
-
   open() {
-    // Plugin's parent (PluginCost.js) handles display and timeline-board hiding
-    // Just load the data
-    this._subscribe();
-    this._isLoading = this._isLoading || false;
-    if (!this._isLoading) this.loadData();
+    this.setAttribute('visible', '');
+    this._persistPluginState();
+    this.loadData();
+    // Ensure sidebar disabled state is applied when plugin UI opens
+    this._applySidebarDisabled();
   }
 
   close() {
-    // When closed (hidden but not removed) unsubscribe to avoid background reloads
-    this._unsubscribe();
+    this.removeAttribute('visible');
+
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = null;
+    }
+
+    // Restore sidebar controls and expansion defaults when plugin UI closes.
+    state.clearSidebarDisabledElements();
+    state.setExpansionState({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
   }
 
-  async loadData() {
-    // Prevent duplicate loads
-    if (this._isLoading) return;
-    this._isLoading = true;
-    // Show spinner using the app-level spinner modal early so UI opens while fetching
-    const spinner = document.getElementById('appSpinner');
-    if (spinner) {
-      spinner.message = 'Loading cost data...';
-      spinner.open = true;
-    }
-    try {
-      // Load cost for the currently active scenario if available, otherwise baseline
-      const activeId =
-        state && state.activeScenarioId ? state.activeScenarioId : 'baseline';
-      await this.loadCostForScenario(activeId || 'baseline');
-      // If teams tab is enabled, preload teams data
-      try {
-        if (UIFeatureFlags.SHOW_COST_TEAMS_TAB) {
-          this.teamsData = await dataService.getCostTeams();
-        }
-      } catch (e) {
-        console.error('Failed to load cost teams', e);
-      }
-    } finally {
-      // Hide spinner
-      if (spinner) spinner.open = false;
-      this._isLoading = false;
+  _persistPluginState() {
+    const snapshot = {
+      startDate: this.startDate,
+      endDate: this.endDate,
+    };
+
+    state.pluginStateService.update(this._getPluginId(), snapshot, { saveToView: true });
+  }
+
+  _getPluginId() {
+    return this.pluginId || 'plugin-cost';
+  }
+
+  _applyPluginState(pluginState) {
+    const nextStartDate = pluginState && pluginState.startDate ?
+      pluginState.startDate
+    : this._defaultStartDate;
+    const nextEndDate = pluginState && pluginState.endDate ?
+      pluginState.endDate
+    : this._defaultEndDate;
+    const changed = this.startDate !== nextStartDate || this.endDate !== nextEndDate;
+
+    if (!changed) return;
+
+    this.startDate = nextStartDate;
+    this.endDate = nextEndDate;
+    this.requestUpdate();
+
+    if (this.hasAttribute('visible')) {
+      this.loadData();
     }
   }
 
-  async loadCostForScenario(scenarioId) {
-    /**
-     * Load cost data for a given scenario id. Supports 3 cases:
-     * - baseline (cached GET)
-     * - saved scenario (GET by id)
-     * - unsaved/transient scenario (POST features payload for on-the-fly calc)
-     *
-     * @param {string} scenarioId
-     */
-    // Show spinner using the app-level spinner modal
-    const spinner = document.getElementById('appSpinner');
-    if (spinner) {
-      spinner.message = 'Loading cost data...';
-      spinner.open = true;
-    }
-    try {
-      // Baseline: GET cached cost. Always fetch fresh baseline data to avoid showing stale scenario data
-      if (!scenarioId || scenarioId === 'baseline') {
-        const json = await dataService.getCost();
-        if (!json) throw new Error('no cost data');
-        this.data = json;
-        this.buildMonths(json.configuration);
-        this.buildProjects(json.projects || []);
-        this.requestUpdate();
-        return;
-      }
+  // Apply the sidebar disabled configuration
+  _applySidebarDisabled() {
+    // Ensure unplanned is unchecked, and all other task filters are checked
+    state.taskFilterService.setFilter('schedule', 'unplanned', false);
+    // Schedule: ensure planned is true
+    state.taskFilterService.setFilter('schedule', 'planned', true);
+    // Allocation
+    state.taskFilterService.setFilter('allocation', 'allocated', true);
+    state.taskFilterService.setFilter('allocation', 'unallocated', true);
+    // Hierarchy
+    state.taskFilterService.setFilter('hierarchy', 'hasParent', true);
+    state.taskFilterService.setFilter('hierarchy', 'noParent', true);
+    // Relations
+    state.taskFilterService.setFilter('relations', 'hasLinks', true);
+    state.taskFilterService.setFilter('relations', 'noLinks', true);
 
-      // Try to read scenario from state first, fallback to dataService.getScenario
-      let scenario =
-        state?.scenarios ? state.scenarios.find((s) => s.id === scenarioId) : null;
-      if (!scenario) {
-        scenario = await dataService.getScenario(scenarioId);
-      }
+    // Force all states selected via public State API
+    state.setAllStatesSelected(true);
 
-      // If scenario exists and appears saved (not locally dirty), ask backend to load it by id
-      const isUnsaved = scenario && scenario.isChanged;
-      if (scenario && !isUnsaved) {
-        const json = await dataService.getCost({ scenarioId: scenarioId });
-        if (!json) throw new Error('no cost data for scenario');
-        this.data = json;
-        this.buildMonths(json.configuration);
-        this.buildProjects(json.projects || []);
-        this.requestUpdate();
-        return;
-      }
+    // Ensure all task types are checked via public State API
+    // Prefer the sidebar's known available task types. The ViewManagementService
+    // does not reliably expose the loaded task types at runtime.
+    // Read available task types from State service (preferred) or fall back
+    // to any saved view options. Do NOT query other components' internals.
+    console.log(state.availableTaskTypes);
+    state.setSelectedTaskTypes(state.availableTaskTypes);
 
-      // Unsaved or transient scenario: POST effective features so server can calculate
-      // Build features list from state.getEffectiveFeatures() which already merges overrides
-      const eff =
-        state && typeof state.getEffectiveFeatures === 'function' ?
-          state.getEffectiveFeatures()
-        : null;
-      const featuresPayload = (eff || []).map((f) => {
-        // Capacity must be a list of {team, capacity} objects, not a float
-        let capacity = f.capacity;
-        if (!Array.isArray(capacity)) {
-          capacity = [];
-        }
-        return {
-          id: f.id,
-          project: f.project,
-          start: f.start,
-          end: f.end,
-          capacity: capacity,
-          title: f.title || f.name || '',
-          type: f.type || f.feature_type || '',
-          state: f.state || '',
-          relations: f.relations || [],
-        };
-      });
+    // Now disable buttons
+    const disabled = {
+      taskFilters: {
+        schedule: ['planned'],
+        allocation: ['allocated', 'unallocated'],
+        hierarchy: ['hasParent', 'noParent'],
+        relations: ['hasLinks', 'noLinks'],
+      },
+      taskTypes: [],
+      states:
+        Array.isArray(state.availableFeatureStates) ?
+          Array.from(state.availableFeatureStates)
+        : [],
+      expansion: ['parentChild', 'relations', 'teamAllocated'],
+    };
+    state.setSidebarDisabledElements(disabled);
+    // Ensure Parent/Child expansion is enabled while plugin is active so
+    // children from selected plans are included in calculations and the
+    // Sidebar shows Parent/Child Links as checked.
+    state.setExpansionState({
+      expandParentChild: true,
+      expandRelations: true,
+      expandTeamAllocated: true,
+    });
+  }
 
-      const json = await dataService.getCost({ features: featuresPayload });
-      if (!json) throw new Error('no cost data for scenario');
-      this.data = json;
-      this.buildMonths(json.configuration);
-      this.buildProjects(json.projects || []);
-      this.requestUpdate();
-    } catch (e) {
-      console.error('PluginCost load error', e);
-    } finally {
-      // Hide spinner
-      const spinner = document.getElementById('appSpinner');
-      if (spinner) spinner.open = false;
-    }
+  connectedCallback() {
+    super.connectedCallback();
+    // Subscribe to global state events that should trigger a recalculation
+    this._unsubscribes.push(bus.on(FeatureEvents.UPDATED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(ProjectEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(TeamEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(
+      bus.on(ScenarioEvents.ACTIVATED, () => this._scheduleReload())
+    );
+    this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
+    this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
+    this._unsubscribes.push(
+      state.pluginStateService.subscribe(this._getPluginId(), (pluginState) => {
+        this._applyPluginState(pluginState);
+      })
+    );
+    // Signal sidebar which controls are not relevant while this plugin is active
+    this._applySidebarDisabled();
   }
 
   disconnectedCallback() {
-    // Ensure any subscriptions are cleaned up when element is removed
-    this._unsubscribe();
-    if (this._scenarioDebounceTimer) {
-      clearTimeout(this._scenarioDebounceTimer);
-      this._scenarioDebounceTimer = null;
+    // Unsubscribe all listeners
+    for (const u of this._unsubscribes) {
+      if (typeof u === 'function') u();
     }
-    if (super.disconnectedCallback) super.disconnectedCallback();
-  }
+    this._unsubscribes = [];
 
-  /**
-   * Wrapper to build months for the component from configuration.
-   * @param {Object} cfg - configuration object with dataset_start/dataset_end
-   * @returns {void}
-   */
-  buildMonths(cfg) {
-    // Use selected date range instead of config dates
-    this.months = buildMonths({
-      dataset_start: this.startDate,
-      dataset_end: this.endDate,
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = null;
+    }
+
+    state.clearSidebarDisabledElements();
+    // restore expansion defaults when plugin unloads
+    state.setExpansionState({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
     });
+    super.disconnectedCallback();
   }
 
-  /**
-   * Build projects using calculator helpers and store footer hour totals.
-   * @param {Array} projects
-   * @returns {void}
-   */
-  buildProjects(projects) {
-    const res = buildProjects(projects, this.months || [], state);
-    this.projects = res.projects;
-    this._footerHours = res.footerHours;
-    this._footerTotalHours = +(res.footerTotalHours.toFixed ?
-      res.footerTotalHours.toFixed(2)
-    : Number(res.footerTotalHours) || 0);
+  _scheduleReload() {
+    // Debounce rapid events
+    try {
+      // If the UI is not visible (plugin closed) avoid reloading data.
+      if (!this.hasAttribute('visible')) return;
+      if (this._reloadTimer) clearTimeout(this._reloadTimer);
+      this._reloadTimer = setTimeout(() => {
+        this._reloadTimer = null;
+        this.loadData();
+      }, 200);
+    } catch (e) {
+      this.loadData();
+    }
   }
 
-  /**
-   * Check if a project has any Epic with budget deviations.
-   * @param {Object} project - The project object with features
-   * @returns {boolean}
-   */
-  projectHasDeviations(project) {
-    if (!this.showBudgetDeviations || !project || !project.features) return false;
+  _closeClicked() {
+    const plugin = pluginManager.get(this._getPluginId());
+    if (plugin) plugin.deactivate();
+  }
 
-    // Build epic map to identify which features are epics with children
-    const epicMap = new Map();
-    for (const f of project.features || []) {
-      const eff =
-        state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
-      const parent =
-        eff && (eff.parentId || eff.parentId === 0) ?
-          eff.parentId
-        : f.parentId || null;
-      if (parent) {
-        if (!epicMap.has(parent)) epicMap.set(parent, []);
-        epicMap.get(parent).push({ base: f, eff });
-      } else {
-        const children =
-          state.childrenByParent &&
-          state.childrenByParent.get &&
-          state.childrenByParent.get(f.id);
-        if (children && children.length) {
-          if (!epicMap.has(f.id)) epicMap.set(f.id, []);
+  async loadData() {
+    this.loading = true;
+    this.error = null;
+
+    try {
+      // Build months list
+      this.months = buildMonths({
+        dataset_start: this.startDate,
+        dataset_end: this.endDate,
+      });
+
+      // Get effective features from state
+      const effectiveFeatures =
+        state && typeof state.getEffectiveFeatures === 'function' ?
+          state.getEffectiveFeatures()
+        : [];
+
+      if (effectiveFeatures.length === 0) {
+        throw new Error(
+          'No features available. Please ensure projects and teams are selected.'
+        );
+      }
+
+      // Build features payload for cost API
+      // Honor sidebar-selected task types when present. If multiple types
+      // are selected, apply the "lowest level counts" rule: when a parent
+      // item has children of a selected type, skip the parent so children
+      // are authoritative.
+      let selectedTypes = null;
+      try {
+        const sidebar = document.querySelector('app-sidebar');
+        if (
+          sidebar &&
+          sidebar.selectedTaskTypes &&
+          typeof sidebar.selectedTaskTypes.values === 'function'
+        ) {
+          selectedTypes = new Set(
+            Array.from(sidebar.selectedTaskTypes).map((s) => String(s).toLowerCase())
+          );
+        }
+      } catch (e) {
+        selectedTypes = null;
+      }
+
+      // Helper: determine if a feature has children according to state.childrenByParent
+      const hasChildren = (fid) => {
+        try {
+          const map = state.childrenByParent || new Map();
+          const list = map.get(Number(fid)) || map.get(String(fid)) || [];
+          return Array.isArray(list) && list.length > 0;
+        } catch (e) {
+          return false;
+        }
+      };
+
+      let filteredFeatures = effectiveFeatures.filter((f) => {
+        if (!f) return false;
+        if (!selectedTypes || selectedTypes.size === 0) return true;
+        const ftype = String(f.type || f.feature_type || '').toLowerCase();
+        if (!selectedTypes.has(ftype)) return false;
+        // If multiple types selected, prefer lowest-level: skip parents
+        if (selectedTypes.size > 1) {
+          if (hasChildren(f.id)) return false;
+        }
+        return true;
+      });
+
+      // Apply task filters (planned/unplanned, allocation, etc.) from TaskFilterService
+      const tfs = state.taskFilterService;
+      // If the schedule.unplanned option is turned off, proactively
+      // filter out features that are truly unplanned. Some backends
+      // set placeholder dates (today) for unplanned items which would
+      // otherwise appear as "planned"; treat those as unplanned too.
+      const taskFilters = tfs.getFilters();
+      if (taskFilters.schedule.unplanned === false) {
+        const today = new Date().toISOString().slice(0, 10);
+        filteredFeatures = filteredFeatures.filter((f) => {
+          const hasStart = !!f.start;
+          const hasEnd = !!f.end;
+          // No dates => unplanned
+          if (!hasStart && !hasEnd) return false;
+          // Placeholder: start===end===today => treat as unplanned
+          if (
+            hasStart &&
+            hasEnd &&
+            String(f.start).startsWith(today) &&
+            String(f.end).startsWith(today) &&
+            String(f.start) === String(f.end)
+          )
+            return false;
+          return true;
+        });
+
+        const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
+        filteredFeatures.length = 0;
+        Array.prototype.push.apply(filteredFeatures, ff);
+      }
+
+      // Ensure expansion (parent/child, relations, team-allocated) is respected
+      // Include any features from the expanded feature id set so the server
+      // will compute costs for those child/related features even if they
+      // are not part of the original filtered set.
+      if (typeof state.getExpandedFeatureIds === 'function') {
+        const expandedIds = state.getExpandedFeatureIds() || new Set();
+        if (expandedIds.size > 0) {
+          const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
+          const allEffective = state.getEffectiveFeatures() || [];
+          const byId = new Map(allEffective.map((f) => [String(f.id), f]));
+          for (const id of expandedIds) {
+            const sid = String(id);
+            if (!present.has(sid) && byId.has(sid)) {
+              filteredFeatures.push(byId.get(sid));
+              present.add(sid);
+            }
+          }
         }
       }
-    }
 
-    // Check each epic for deviations
-    for (const f of project.features || []) {
-      if (epicMap.has(f.id)) {
-        const epicChildren = epicMap.get(f.id) || [];
-        const deviation = this.checkBudgetDeviation(f, epicChildren);
-        if (deviation.hasDeviation) return true;
+      const featuresPayload = filteredFeatures.map((f) => ({
+        id: f.id,
+        project: f.project,
+        start: f.start,
+        end: f.end,
+        capacity: Array.isArray(f.capacity) ? f.capacity : [],
+        title: f.title || f.name || '',
+        type: f.type || f.feature_type || '',
+        state: f.state || '',
+        relations: f.relations || [],
+      }));
+
+      // Fetch cost data
+      const json = await dataService.getCost({ features: featuresPayload });
+
+      // Normalize projects structure: backend returns an array of projects
+      // while older clients expect an object keyed by project id. Convert
+      // an array into a lookup so subsequent code can index by project id.
+      // Also enrich each feature object with `capacity` (from the payload)
+      // and `project` so downstream allocation and filtering works.
+      const payloadById = (featuresPayload || []).reduce((acc, f) => {
+        if (f && f.id != null) acc[String(f.id)] = f;
+        return acc;
+      }, {});
+
+      if (json && Array.isArray(json.projects)) {
+        const projectsById = {};
+        for (const p of json.projects) {
+          if (!p || p.id == null) continue;
+          // Ensure features array exists
+          p.features = Array.isArray(p.features) ? p.features : [];
+
+          // Enrich each feature with capacity (from the payload) and project id
+          p.features = p.features.map((feat) => {
+            const fid = String(feat.id);
+            const src = payloadById[fid];
+            const capacity =
+              src && Array.isArray(src.capacity) ? src.capacity : feat.capacity || [];
+            return Object.assign({}, feat, {
+              capacity: capacity,
+              project: p.id,
+            });
+          });
+
+          projectsById[String(p.id)] = p;
+        }
+        json.projects = projectsById;
       }
-    }
 
-    return false;
+      this.data = json;
+
+      // Fetch cost teams metadata (members + sites) to enable per-site breakdowns
+      try {
+        const ct = await dataService.getCostTeams();
+        this.costTeams = ct && ct.teams ? ct : { teams: [] };
+      } catch (e) {
+        this.costTeams = { teams: [] };
+      }
+
+      // Start with project sections expanded for all selected projects
+      try {
+        const selectedProjects = (state.projects || [])
+          .filter((p) => p.selected)
+          .map((p) => p.id);
+        this.expandedProjects = new Set(selectedProjects);
+      } catch (e) {
+        this.expandedProjects = new Set();
+      }
+
+      this.loading = false;
+      this.requestUpdate();
+    } catch (err) {
+      console.error('[PluginCost] Failed to load data:', err);
+      this.error = err.message || 'Failed to load cost data';
+      this.loading = false;
+    }
   }
 
-  toggleProject(id) {
-    if (this.expandedProjects.has(id)) this.expandedProjects.delete(id);
-    else this.expandedProjects.add(id);
+  handleViewChange(view) {
+    this.activeView = view;
     this.requestUpdate();
   }
 
-  toggleEpic(id) {
-    if (this.expandedEpics.has(id)) this.expandedEpics.delete(id);
-    else this.expandedEpics.add(id);
+  handleViewModeChange(mode) {
+    this.viewMode = mode;
     this.requestUpdate();
   }
 
-  /**
-   * Render the teams tab view showing team-level summaries and members.
-   * Accepts several server shapes (array, object with `teams`, or map).
-   * @returns {import('lit').TemplateResult}
-   */
+  handleDateChange() {
+    this._persistPluginState();
+    // Rebuild months and reload data
+    this.loadData();
+  }
 
-  render() {
-    if (!this.data) return html`<div></div>`;
-    const months = this.months || [];
-    const monthKeys = months.map((m) => monthKey(m));
-
-    // Use ColorService directly
-    const stateColors =
-      state._colorService ?
-        state._colorService.getFeatureStateColors(state.availableFeatureStates)
-      : {};
-
-    // Filter projects based on selected plan type tab
-    const filteredProjects = this.projects.filter((p) => {
-      if (this.planTypeTab === 'projects') {
-        return p.type === 'project';
-      } else {
-        return p.type === 'team';
-      }
-    });
-
-    // compute footer totals using filtered projects
-    const footerInternal = Object.fromEntries(monthKeys.map((k) => [k, 0]));
-    const footerExternal = Object.fromEntries(monthKeys.map((k) => [k, 0]));
-    let combinedTotal = 0;
-    for (const p of filteredProjects) {
-      // Use no-project totals for teams in 'noproject' mode
-      const useTotals =
-        p.type === 'team' && this.teamCostMode === 'noproject' ?
-          p.totalsNoProject
-        : p.totals;
-      const useTotal =
-        p.type === 'team' && this.teamCostMode === 'noproject' ?
-          p.noProjectTotal
-        : p.total;
-      for (const k of monthKeys) {
-        footerInternal[k] += +(useTotals.internal[k] || 0);
-        footerExternal[k] += +(useTotals.external[k] || 0);
-      }
-      combinedTotal += +(useTotal || 0);
-    }
-    // ensure footer hours exist
-    if (!this._footerHours) {
-      this._footerHours = {
-        internal: Object.fromEntries(monthKeys.map((k) => [k, 0])),
-        external: Object.fromEntries(monthKeys.map((k) => [k, 0])),
-      };
-      this._footerTotalHours = 0;
-    }
-
-    // Always display all months for calendar readability
-    const displayMonths = months;
-    const displayMonthKeys = monthKeys;
-
-    // Update host attribute to control Total column positioning
-    if (!this.showBudgetDeviations) {
-      this.setAttribute('no-deviation', '');
+  toggleProject(projectId) {
+    if (this.expandedProjects.has(projectId)) {
+      this.expandedProjects.delete(projectId);
     } else {
-      this.removeAttribute('no-deviation');
+      this.expandedProjects.add(projectId);
     }
+    this.requestUpdate();
+  }
 
+  toggleTask(taskId) {
+    if (this.expandedTasks.has(taskId)) {
+      this.expandedTasks.delete(taskId);
+    } else {
+      this.expandedTasks.add(taskId);
+    }
+    this.requestUpdate();
+  }
+
+  toggleTeam(teamId) {
+    if (this.expandedTeams.has(teamId)) {
+      this.expandedTeams.delete(teamId);
+    } else {
+      this.expandedTeams.add(teamId);
+    }
+    this.requestUpdate();
+  }
+
+  setProjectView(projectId, view) {
+    // Toggle behaviour: if the requested view is already selected, unset it
+    const current = this.projectViewSelection && this.projectViewSelection[projectId];
+    if (current === view) {
+      const copy = Object.assign({}, this.projectViewSelection);
+      delete copy[projectId];
+      this.projectViewSelection = copy;
+    } else {
+      this.projectViewSelection = Object.assign({}, this.projectViewSelection, {
+        [projectId]: view,
+      });
+    }
+    this.requestUpdate();
+  }
+
+  renderToolbar() {
     return html`
-      <div>
-        <div class="controls">
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <div class="toggle" role="tablist" aria-label="View mode">
-              <button
-                class=${this.viewMode === 'cost' ? 'active' : ''}
-                @click=${() => {
-                  this.viewMode = 'cost';
-                  this.requestUpdate();
-                }}
-              >
-                Cost
-              </button>
-              <button
-                class=${this.viewMode === 'hours' ? 'active' : ''}
-                @click=${() => {
-                  this.viewMode = 'hours';
-                  this.requestUpdate();
-                }}
-              >
-                Hours
-              </button>
-            </div>
-            <div class="toggle" role="tablist" aria-label="Plan type">
-              <button
-                class=${this.planTypeTab === 'projects' ? 'active' : ''}
-                @click=${() => {
-                  this.planTypeTab = 'projects';
-                  this.requestUpdate();
-                }}
-              >
-                Projects
-              </button>
-              <button
-                class=${this.planTypeTab === 'teams' ? 'active' : ''}
-                @click=${() => {
-                  this.planTypeTab = 'teams';
-                  this.requestUpdate();
-                }}
-              >
-                Teams
-              </button>
-            </div>
-            ${UIFeatureFlags.SHOW_COST_TEAMS_TAB ?
-              html`<div class="tab-toggle">
-                <button
-                  class=${this.activeTab === 'cost' ? 'active' : ''}
-                  @click=${() => {
-                    this.activeTab = 'cost';
-                    this.requestUpdate();
-                  }}
-                >
-                  Cost Table</button
-                ><button
-                  class=${this.activeTab === 'teams' ? 'active' : ''}
-                  @click=${async () => {
-                    this.activeTab = 'teams';
-                    if (!this.teamsData) {
-                      this.teamsData = await dataService.getCostTeams().catch((e) => {
-                        console.error('Failed to load cost teams', e);
-                        return [];
-                      });
-                    }
-                    this.requestUpdate();
-                  }}
-                >
-                  Teams
-                </button>
-              </div>`
-            : ''}
-            ${this.planTypeTab === 'teams' ?
-              html`<div class="team-cost-toggle">
-                <label for="team-cost-mode" style="font-size:13px; margin-right:4px;"
-                  >Team costs:</label
-                >
-                <select
-                  id="team-cost-mode"
-                  @change=${(e) => {
-                    this.teamCostMode = e.target.value;
-                  }}
-                  style="font-size:13px; padding:2px 4px;"
-                >
-                  <option value="all" ?selected=${this.teamCostMode === 'all'}>
-                    All tasks
-                  </option>
-                  <option
-                    value="noproject"
-                    ?selected=${this.teamCostMode === 'noproject'}
-                  >
-                    No project
-                  </option>
-                </select>
-              </div>`
-            : ''}
-            <div style="display:flex; gap:8px; align-items:center; margin-left:auto;">
-              <label for="start-date" style="font-size:13px;">From:</label>
+      <div class="toolbar">
+        <div class="toolbar-title">Cost Analysis</div>
+
+        <div class="tab-buttons">
+          <button
+            class="${this.activeView === 'project' ? 'active' : ''}"
+            @click="${() => this.handleViewChange('project')}"
+          >
+            Plan View
+          </button>
+          <button
+            class="${this.activeView === 'task' ? 'active' : ''}"
+            @click="${() => this.handleViewChange('task')}"
+          >
+            Task View
+          </button>
+          <button
+            class="${this.activeView === 'team' ? 'active' : ''}"
+            @click="${() => this.handleViewChange('team')}"
+          >
+            Team View
+          </button>
+          <button
+            class="${this.activeView === 'team-members' ? 'active' : ''}"
+            @click="${() => this.handleViewChange('team-members')}"
+          >
+            Team Members
+          </button>
+        </div>
+
+        ${this.activeView !== 'team-members' ?
+          html`
+            <div class="date-controls">
+              <label for="start-date">From:</label>
               <input
                 type="date"
                 id="start-date"
-                .value=${this.startDate}
-                @change=${(e) => {
+                .value="${this.startDate}"
+                @change="${(e) => {
                   this.startDate = e.target.value;
-                  this.buildMonths(this.data?.configuration || {});
-                  this.buildProjects(this.data?.projects || []);
-                  this.requestUpdate();
-                }}
-                style="font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:4px;"
+                  this.handleDateChange();
+                }}"
               />
-              <label for="end-date" style="font-size:13px;">To:</label>
+              <label for="end-date">To:</label>
               <input
                 type="date"
                 id="end-date"
-                .value=${this.endDate}
-                @change=${(e) => {
+                .value="${this.endDate}"
+                @change="${(e) => {
                   this.endDate = e.target.value;
-                  this.buildMonths(this.data?.configuration || {});
-                  this.buildProjects(this.data?.projects || []);
-                  this.requestUpdate();
-                }}
-                style="font-size:13px; padding:4px 6px; border:1px solid #ddd; border-radius:4px;"
+                  this.handleDateChange();
+                }}"
               />
             </div>
-            <div class="deviation-controls">
-              <div class="deviation-toggle">
-                <input
-                  type="checkbox"
-                  id="deviation-check"
-                  ?checked=${this.showBudgetDeviations}
-                  @change=${(e) => {
-                    this.showBudgetDeviations = e.target.checked;
-                    this.requestUpdate();
-                  }}
-                />
-                <label for="deviation-check" style="font-size:13px; cursor:pointer;"
-                  >Budget Deviations</label
-                >
-              </div>
-              <input
-                type="number"
-                class="deviation-input"
-                min="0"
-                max="100"
-                step="1"
-                .value=${this.deviationThreshold}
-                @input=${(e) => {
-                  this.deviationThreshold = parseInt(e.target.value) || 10;
-                  this.requestUpdate();
-                }}
-                placeholder="%"
-                title="Deviation threshold percentage"
-              />%
-            </div>
-          </div>
-        </div>
-        <div class="legend">
-          ${(() => {
-            // Use ColorService directly
-            const stateColors = state._colorService.getFeatureStateColors(
-              state.availableFeatureStates
-            );
-            const keys = Object.keys(stateColors);
-            return keys.map((s) => {
-              const c = stateColors[s].background;
-              const text = stateColors[s].text;
-              return html`<div class="legend-item">
-                <span class="swatch" style="background:${c}; border:1px solid #eee"></span
-                ><span style="color:${text}">${s}</span>
-              </div>`;
-            });
-          })()}
-        </div>
-        ${UIFeatureFlags.SHOW_COST_TEAMS_TAB && this.activeTab === 'teams' ?
-          html`
-            <div class="table-wrapper">
-              <div class="table-inner">${this.renderTeamsView()}</div>
-            </div>
           `
-        : html`
-            <div class="table-wrapper">
-              <div class="table-inner">
-                <table class="table">
-                  <thead>
-                    <tr>
-                      <th class="left" rowspan="2">Project / Feature</th>
-                      ${displayMonths.map(
-                        (m) => html`<th colspan="2">${monthLabel(m)}</th>`
-                      )}
-                      <th class="total-head right-total" rowspan="2">Total</th>
-                      ${this.showBudgetDeviations ?
-                        html`<th class="total-extra right-extra" rowspan="2"></th>`
-                      : ''}
-                    </tr>
-                    <tr>
-                      ${displayMonths.map(
-                        (m) =>
-                          html`<th>Int</th>
-                            <th>Ext</th>`
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${filteredProjects.map((p) => {
-                      const projectDeviation = this.projectHasDeviations(p);
-                      const projectDeviationIndicator =
-                        projectDeviation ?
-                          html`<span
-                            class="deviation-warning"
-                            title="This project contains Epics with budget deviations"
-                            >⚠</span
-                          >`
-                        : '';
-                      // Use no-project totals for teams in 'noproject' mode
-                      const displayTotals =
-                        p.type === 'team' && this.teamCostMode === 'noproject' ?
-                          p.totalsNoProject
-                        : p.totals;
-                      const displayTotal =
-                        p.type === 'team' && this.teamCostMode === 'noproject' ?
-                          p.noProjectTotal
-                        : p.total;
-                      const displayTotalHours =
-                        p.type === 'team' && this.teamCostMode === 'noproject' ?
-                          p.noProjectTotalHours
-                        : p.totalHours;
-                      return html`
-                        <tr class="project-row" @click=${() => this.toggleProject(p.id)}>
-                          <td class="left" style=${this.projectLeftStyle(p.id)}>
-                            ${p.name}
-                          </td>
-                          ${displayMonthKeys.map(
-                            (k) =>
-                              html`<td>
-                                  ${this.fmtCell(
-                                    this.viewMode === 'cost' ?
-                                      displayTotals.internal[k] || 0
-                                    : displayTotals.hours.internal[k] || 0
-                                  )}
-                                </td>
-                                <td>
-                                  ${this.fmtCell(
-                                    this.viewMode === 'cost' ?
-                                      displayTotals.external[k] || 0
-                                    : displayTotals.hours.external[k] || 0
-                                  )}
-                                </td>`
-                          )}
-                          <td class="total-cell right-total">
-                            ${this.fmtCell(
-                              this.viewMode === 'cost' ?
-                                displayTotal
-                              : displayTotalHours || 0
-                            )}
-                          </td>
-                          ${this.showBudgetDeviations ?
-                            html`<td class="right-extra">
-                              ${projectDeviationIndicator}
-                            </td>`
-                          : ''}
-                        </tr>
-                        ${this.expandedProjects.has(p.id) ?
-                          (() => {
-                            // Filter features based on team cost mode (for teams only)
-                            let visibleFeatures = p.features || [];
-
-                            if (p.type === 'team' && this.teamCostMode === 'noproject') {
-                              // Only show features that don't have a project parent
-                              visibleFeatures = visibleFeatures.filter(
-                                (f) => !f.has_project_parent
-                              );
-                            }
-
-                            // Build a set of visible feature IDs for quick lookup
-                            const visibleIds = new Set(
-                              visibleFeatures.map((f) => String(f.id))
-                            );
-
-                            const epicMap = new Map();
-                            const standalone = [];
-                            for (const f of visibleFeatures) {
-                              const eff =
-                                state.getEffectiveFeatureById ?
-                                  state.getEffectiveFeatureById(f.id)
-                                : null;
-                              const parent =
-                                eff && (eff.parentId || eff.parentId === 0) ?
-                                  eff.parentId
-                                : f.parentId || null;
-                              // Only group under parent if the parent is in our visible features
-                              if (parent && visibleIds.has(String(parent))) {
-                                if (!epicMap.has(parent)) epicMap.set(parent, []);
-                                epicMap.get(parent).push({ base: f, eff });
-                              } else {
-                                // Could be an epic (has children in state) or a standalone feature
-                                // Mark epics by presence in state.childrenByParent
-                                const children =
-                                  state.childrenByParent &&
-                                  state.childrenByParent.get &&
-                                  state.childrenByParent.get(f.id);
-                                if (children && children.length) {
-                                  // This is an epic - ensure it exists in map
-                                  if (!epicMap.has(f.id)) epicMap.set(f.id, []);
-                                }
-                                standalone.push({ base: f, eff });
-                              }
-                            }
-                            // Render epics first (preserve insertion order from visibleFeatures)
-                            const rendered = [];
-                            const seenEpics = new Set();
-                            for (const f of visibleFeatures) {
-                              // render epic rows
-                              if (epicMap.has(f.id) && !seenEpics.has(f.id)) {
-                                seenEpics.add(f.id);
-                                const epicChildren = epicMap.get(f.id) || [];
-                                const epicBase = f;
-                                const epicEff =
-                                  state.getEffectiveFeatureById ?
-                                    state.getEffectiveFeatureById(epicBase.id)
-                                  : null;
-                                const epicStateName =
-                                  epicEff && epicEff.state ?
-                                    epicEff.state
-                                  : epicBase.state || '';
-                                // Use ColorService directly
-                                const epicStateColor =
-                                  state._colorService.getFeatureStateColor(epicStateName);
-                                // Check for budget deviation
-                                const deviation = this.checkBudgetDeviation(
-                                  epicBase,
-                                  epicChildren
-                                );
-                                const deviationIndicator =
-                                  deviation.hasDeviation ?
-                                    html`<span
-                                      class="deviation-warning"
-                                      title="Budget deviation: Epic allocated ${(
-                                        this.viewMode === 'cost'
-                                      ) ?
-                                        'cost'
-                                      : 'hours'} (${this.fmtCell(
-                                        deviation.epicOriginal
-                                      )}) differs from children sum (${this.fmtCell(
-                                        deviation.childrenSum
-                                      )}) by ${deviation.deviationPercent.toFixed(1)}%"
-                                      >⚠</span
-                                    >`
-                                  : '';
-                                rendered.push(
-                                  html`<tr
-                                    class="epic-row"
-                                    @click=${() => this.toggleEpic(epicBase.id)}
-                                  >
-                                    <td
-                                      class="left"
-                                      style="${this.featureBgStyle(epicStateColor)}"
-                                    >
-                                      &nbsp;&nbsp;<span class="feat-icon">📁</span
-                                      >${epicBase.name}
-                                    </td>
-                                    ${displayMonthKeys.map(
-                                      (k) =>
-                                        html`<td>
-                                            ${this.fmtCell(
-                                              this.viewMode === 'cost' ?
-                                                epicBase.values?.internal?.[k] || 0
-                                              : epicBase.hours?.internal?.[k] || 0
-                                            )}
-                                          </td>
-                                          <td>
-                                            ${this.fmtCell(
-                                              this.viewMode === 'cost' ?
-                                                epicBase.values?.external?.[k] || 0
-                                              : epicBase.hours?.external?.[k] || 0
-                                            )}
-                                          </td>`
-                                    )}
-                                    <td class="total-cell right-total">
-                                      ${this.fmtCell(
-                                        this.viewMode === 'cost' ?
-                                          epicBase.total || 0
-                                        : epicBase.totalHours || 0
-                                      )}
-                                    </td>
-                                    ${this.showBudgetDeviations ?
-                                      html`<td class="right-extra">
-                                        ${deviationIndicator}
-                                      </td>`
-                                    : ''}
-                                  </tr>`
-                                );
-                                if (this.expandedEpics.has(f.id)) {
-                                  for (const child of epicChildren) {
-                                    const fb = child.base;
-                                    const effState =
-                                      child.eff && child.eff.state ? child.eff.state
-                                      : state.getEffectiveFeatureById ?
-                                        (state.getEffectiveFeatureById(fb.id) || {}).state
-                                      : null;
-                                    const stateName = effState || fb.state || '';
-                                    // Use ColorService directly
-                                    const base =
-                                      state._colorService.getFeatureStateColor(stateName);
-                                    const bg = hexToRgba(base, 0.1);
-                                    rendered.push(
-                                      html`<tr class="feature-row">
-                                        <td
-                                          class="left nested-feature"
-                                          style="${this.featureBgStyle(base)}"
-                                          @click=${(ev) => {
-                                            ev.stopPropagation();
-                                            const feat = state.getEffectiveFeatureById(
-                                              fb.id
-                                            );
-                                            bus.emit(UIEvents.DETAILS_SHOW, feat);
-                                          }}
-                                        >
-                                          &nbsp;&nbsp;&nbsp;&nbsp;<span
-                                            class="feat-icon"
-                                            title="Feature"
-                                            >🔹</span
-                                          >${fb.name}
-                                        </td>
-                                        ${displayMonthKeys.map(
-                                          (k) =>
-                                            html`<td style="background:${bg};">
-                                                ${this.fmtCell(
-                                                  this.viewMode === 'cost' ?
-                                                    fb.values.internal[k] || 0
-                                                  : fb.hours.internal[k] || 0
-                                                )}
-                                              </td>
-                                              <td style="background:${bg};">
-                                                ${this.fmtCell(
-                                                  this.viewMode === 'cost' ?
-                                                    fb.values.external[k] || 0
-                                                  : fb.hours.external[k] || 0
-                                                )}
-                                              </td>`
-                                        )}
-                                        <td
-                                          class="total-cell right-total"
-                                          style="background:${bg};"
-                                        >
-                                          ${this.fmtCell(
-                                            this.viewMode === 'cost' ?
-                                              fb.total
-                                            : fb.totalHours || 0
-                                          )}
-                                        </td>
-                                        ${this.showBudgetDeviations ?
-                                          html`<td
-                                            class="right-extra"
-                                            style="background:${bg};"
-                                          ></td>`
-                                        : ''}
-                                      </tr>`
-                                    );
-                                  }
-                                }
-                              }
-                            }
-                            // Render standalone features that are not part of any epic
-                            for (const s of standalone) {
-                              // if this standalone is actually an epic (has children) it was already rendered
-                              if (epicMap.has(s.base.id)) continue;
-                              const fb = s.base;
-                              const effState =
-                                s.eff && s.eff.state ? s.eff.state
-                                : state.getEffectiveFeatureById ?
-                                  (state.getEffectiveFeatureById(fb.id) || {}).state
-                                : null;
-                              const stateName = effState || fb.state || '';
-                              // Use ColorService directly
-                              const base =
-                                state._colorService.getFeatureStateColor(stateName);
-                              const bg = hexToRgba(base, 0.1);
-                              rendered.push(
-                                html`<tr class="feature-row">
-                                  <td
-                                    class="left"
-                                    style="${this.featureBgStyle(base)}"
-                                    @click=${(ev) => {
-                                      ev.stopPropagation();
-                                      const feat = state.getEffectiveFeatureById(fb.id);
-                                      bus.emit(UIEvents.DETAILS_SHOW, feat);
-                                    }}
-                                  >
-                                    &nbsp;&nbsp;<span class="feat-icon" title="Feature"
-                                      >🔹</span
-                                    >${fb.name}
-                                  </td>
-                                  ${displayMonthKeys.map(
-                                    (k) =>
-                                      html`<td style="background:${bg};">
-                                          ${this.fmtCell(
-                                            this.viewMode === 'cost' ?
-                                              fb.values.internal[k] || 0
-                                            : fb.hours.internal[k] || 0
-                                          )}
-                                        </td>
-                                        <td style="background:${bg};">
-                                          ${this.fmtCell(
-                                            this.viewMode === 'cost' ?
-                                              fb.values.external[k] || 0
-                                            : fb.hours.external[k] || 0
-                                          )}
-                                        </td>`
-                                  )}
-                                  <td
-                                    class="total-cell right-total"
-                                    style="background:${bg};"
-                                  >
-                                    ${this.fmtCell(
-                                      this.viewMode === 'cost' ?
-                                        fb.total
-                                      : fb.totalHours || 0
-                                    )}
-                                  </td>
-                                  ${this.showBudgetDeviations ?
-                                    html`<td
-                                      class="right-extra"
-                                      style="background:${bg};"
-                                    ></td>`
-                                  : ''}
-                                </tr>`
-                              );
-                            }
-                            return rendered;
-                          })()
-                        : ''}
-                      `;
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td class="left">Totals</td>
-                      ${displayMonthKeys.map(
-                        (k) =>
-                          html`<td>
-                              ${this.fmtCell(
-                                this.viewMode === 'cost' ? footerInternal[k] || 0
-                                : this._footerHours ? this._footerHours.internal[k] || 0
-                                : 0
-                              )}
-                            </td>
-                            <td>
-                              ${this.fmtCell(
-                                this.viewMode === 'cost' ? footerExternal[k] || 0
-                                : this._footerHours ? this._footerHours.external[k] || 0
-                                : 0
-                              )}
-                            </td>`
-                      )}
-                      <td class="total-cell right-total">
-                        ${this.fmtCell(
-                          this.viewMode === 'cost' ?
-                            combinedTotal
-                          : this._footerTotalHours || 0
-                        )}
-                      </td>
-                      ${this.showBudgetDeviations ?
-                        html`<td class="right-extra"></td>`
-                      : ''}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            ${this.projects && this.projects.length > 0 ?
-              html`
-                <div
-                  class="cost-table-docs"
-                  style="margin-top: 20px; padding: 15px; background: #f5f9fc; border: 1px solid #d0e4f5; border-radius: 4px; font-size: 13px; color: #444;"
+        : ''}
+        ${(() => {
+          // For Team view always show the global Cost/Hours toggle.
+          if (this.activeView === 'team') {
+            return html`
+              <div class="view-toggle">
+                <button
+                  class="${this.viewMode === 'cost' ? 'active' : ''}"
+                  @click="${() => this.handleViewModeChange('cost')}"
                 >
-                  <h4
-                    style="margin-top: 0; font-size: 14px; font-weight: 600; color: #0b61c9;"
+                  Cost
+                </button>
+                <button
+                  class="${this.viewMode === 'hours' ? 'active' : ''}"
+                  @click="${() => this.handleViewModeChange('hours')}"
+                >
+                  Hours
+                </button>
+              </div>
+            `;
+          }
+          // For Project (Plan) view only show when at least one expanded project
+          // has a selected sub-view (teams or features) so the sub-tables are visible.
+          if (this.activeView === 'project') {
+            const expanded = Array.from(this.expandedProjects || []);
+            const show = expanded.some(
+              (pid) => this.projectViewSelection && this.projectViewSelection[pid]
+            );
+            if (show) {
+              return html`
+                <div class="view-toggle">
+                  <button
+                    class="${this.viewMode === 'cost' ? 'active' : ''}"
+                    @click="${() => this.handleViewModeChange('cost')}"
                   >
-                    Cost Table Guide
-                  </h4>
-                  <ul style="margin: 8px 0; padding-left: 20px;">
-                    <li>
-                      <strong>Table Structure:</strong> Projects are listed in one table,
-                      team costs in another table. Click on any row to expand and view the
-                      detailed tasks underneath.
-                    </li>
-                    <li>
-                      <strong>Team Cost Toggle:</strong> For the team table, this control
-                      switches between showing "All tasks" (including those that have a
-                      project parent, which appear in both team and project rows) and "No
-                      project" (showing only tasks without a project parent, unique to the
-                      team).
-                    </li>
-                    <li>
-                      <strong>Budget Deviations Toggle:</strong> When enabled, highlights
-                      epics where the total capacity allocation differs from the sum of
-                      their child work items. A warning indicator (⚠) appears next to
-                      projects that contain such deviations.
-                    </li>
-                    <li>
-                      <strong>View Mode:</strong> Switch between "Cost" (in currency
-                      units) and "Hours" to view the data in different units.
-                    </li>
-                  </ul>
+                    Cost
+                  </button>
+                  <button
+                    class="${this.viewMode === 'hours' ? 'active' : ''}"
+                    @click="${() => this.handleViewModeChange('hours')}"
+                  >
+                    Hours
+                  </button>
                 </div>
-              `
-            : ''}
-          `}
+              `;
+            }
+          }
+          return '';
+        })()}
+
+        <div class="toolbar-spacer"></div>
+        <button class="close-btn" @click="${() => this._closeClicked()}">Close</button>
       </div>
     `;
   }
 
-  /**
-   * Render a teams-oriented view for cost allocation. Handles multiple
-   * shapes returned by the server and renders member rows with budget
-   * and hourly totals.
-   * @returns {import('lit').TemplateResult}
-   */
-  renderTeamsView() {
-    let teams = this.teamsData;
-    // Accept different shapes: null, array, object with `teams`, or object map
-    if (!teams) return html`<div style="padding:12px">No teams data available.</div>`;
-    if (!Array.isArray(teams) && typeof teams === 'object') {
-      if (Array.isArray(teams.teams)) teams = teams.teams;
-      else teams = Object.values(teams || {});
-    }
-    if (!Array.isArray(teams) || teams.length === 0)
-      return html`<div style="padding:12px">No teams data available.</div>`;
+  renderProjectView() {
+    return renderProjectView(this);
+  }
 
-    const fmtCurrency = (v) =>
-      (typeof v === 'number' ? v
-      : v && v.parsedValue ? v.parsedValue
-      : Number(v) || 0
-      ).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+  renderProjectTable() {
+    return null;
+  }
 
-    return html`<div style="display:flex; flex-direction:column; gap:12px; padding:8px">
-      ${teams.map((team) => {
-        const totals = team.totals || {};
-        const internalCount = totals.internal_count || 0;
-        const externalCount = totals.external_count || 0;
-        const internalHours = totals.internal_hours_total || 0;
-        const externalHours = totals.external_hours_total || 0;
-        const internalRateTotal = totals.internal_hourly_rate_total || 0;
-        const externalRateTotal = totals.external_hourly_rate_total || 0;
-        const members = Array.isArray(team.members) ? team.members : [];
-        return html` <div
-          style="border:1px solid #e6e6e6; padding:10px; border-radius:6px; background:#fff"
-        >
-          <div
-            style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px"
-          >
-            <div style="font-weight:600">${team.name || team.id}</div>
-            <div style="display:flex; gap:12px; font-size:13px; color:#333">
-              <div>Internal: ${internalCount} members</div>
-              <div>External: ${externalCount} members</div>
-              <div>Internal hours: ${internalHours}</div>
-              <div>External hours: ${externalHours}</div>
-              <div>Internal rate total: ${fmtCurrency(internalRateTotal)}</div>
-              <div>External rate total: ${fmtCurrency(externalRateTotal)}</div>
+  buildTeamMonthAllocations() {
+    return null;
+  }
+
+  renderProjectSummaryTable(teams, teamAllocations, monthKeys) {
+    return null;
+  }
+
+  renderTeamMonthTable(teams, teamAllocations, monthKeys) {
+    return null;
+  }
+
+  renderFeatureList(features, monthKeys) {
+    return null;
+  }
+
+  renderTaskView() {
+    return renderTaskView(this);
+  }
+
+  renderTaskNode(featureId, featureMap, childrenMap, depth) {
+    return null;
+  }
+
+  renderDeviationDetail(parent, children, deviation) {
+    return null;
+  }
+
+  renderTeamView() {
+    return renderTeamView(this);
+  }
+
+  renderTeamMembersView() {
+    return renderTeamMembersView(this);
+  }
+
+  renderTeamTable(team, monthKeys) {
+    return null;
+  }
+
+  render() {
+    return html`
+      ${this.renderToolbar()}
+
+      <div class="content">
+        ${this.loading ? html` <div class="loading">Loading cost data...</div> ` : ''}
+        ${this.error ?
+          html`
+            <div class="error">
+              <div class="error-title">Error</div>
+              <div>${this.error}</div>
             </div>
-          </div>
-          <div>
-            <table class="table" style="min-width:700px; margin-bottom:4px">
-              <thead>
-                <tr>
-                  <th class="left">Member</th>
-                  <th>Site</th>
-                  <th>Budget Hourly Rate</th>
-                  <th>Budget Hours / mo</th>
-                  <th>Budget Monthly Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${(() => {
-                  const externals = members
-                    .filter((x) => x && x.external)
-                    .slice()
-                    .sort((a, b) =>
-                      String(a.name || '').localeCompare(String(b.name || ''))
-                    );
-                  const internals = members
-                    .filter((x) => (!x || !x.external ? true : false))
-                    .slice()
-                    .sort((a, b) =>
-                      String(a.name || '').localeCompare(String(b.name || ''))
-                    );
-                  const rows = [];
-                  if (internals.length) {
-                    rows.push(
-                      html`<tr>
-                        <td
-                          class="left"
-                          colspan="5"
-                          style="background:#f6fff6; font-weight:600"
-                        >
-                          Internal Members
-                        </td>
-                      </tr>`
-                    );
-                    for (const m of internals) {
-                      const rate =
-                        (m &&
-                          m.hourly_rate &&
-                          (typeof m.hourly_rate.parsedValue === 'number' ?
-                            m.hourly_rate.parsedValue
-                          : Number(m.hourly_rate.source || m.hourly_rate) || 0)) ||
-                        0;
-                      const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
-                      const monthly = +(rate * hours || 0);
-                      rows.push(
-                        html`<tr>
-                          <td class="left">${m && m.name}</td>
-                          <td>${m && m.site}</td>
-                          <td style="text-align:right">
-                            ${fmtCurrency(m && m.hourly_rate)}
-                          </td>
-                          <td style="text-align:right">${hours}</td>
-                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
-                        </tr>`
-                      );
-                    }
-                  }
-                  if (externals.length) {
-                    rows.push(
-                      html`<tr>
-                        <td
-                          class="left"
-                          colspan="5"
-                          style="background:#f9f9fb; font-weight:600"
-                        >
-                          External Members
-                        </td>
-                      </tr>`
-                    );
-                    for (const m of externals) {
-                      const rate =
-                        (m &&
-                          m.hourly_rate &&
-                          (typeof m.hourly_rate.parsedValue === 'number' ?
-                            m.hourly_rate.parsedValue
-                          : Number(m.hourly_rate.source || m.hourly_rate) || 0)) ||
-                        0;
-                      const hours = (m && (m.hours_per_month || m.hours || 0)) || 0;
-                      const monthly = +(rate * hours || 0);
-                      rows.push(
-                        html`<tr>
-                          <td class="left">${m && m.name}</td>
-                          <td>${m && m.site}</td>
-                          <td style="text-align:right">
-                            ${fmtCurrency(m && m.hourly_rate)}
-                          </td>
-                          <td style="text-align:right">${hours}</td>
-                          <td style="text-align:right">${fmtCurrency(monthly)}</td>
-                        </tr>`
-                      );
-                    }
-                  }
-                  if (rows.length === 0)
-                    rows.push(
-                      html`<tr>
-                        <td class="left" colspan="5">No members</td>
-                      </tr>`
-                    );
-                  return rows;
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-      })}
-    </div>`;
+          `
+        : ''}
+        ${!this.loading && !this.error ?
+          html`
+            ${this.activeView === 'project' ? this.renderProjectView() : ''}
+            ${this.activeView === 'task' ? this.renderTaskView() : ''}
+            ${this.activeView === 'team' ? this.renderTeamView() : ''}
+            ${this.activeView === 'team-members' ? this.renderTeamMembersView() : ''}
+          `
+        : ''}
+      </div>
+    `;
   }
 }
 

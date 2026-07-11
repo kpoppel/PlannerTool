@@ -1,6 +1,6 @@
 /**
- * PluginCostV2Shared
- * Shared UI helpers used by all PluginCostV2 view modules.
+ * PluginCostShared
+ * Shared UI helpers used by all PluginCost view modules.
  *
  * - renderCountingBanner()   Yellow info banner: active task-type / unplanned rules.
  * - renderClipBanner()       Orange warning banner: features extending outside the

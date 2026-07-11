@@ -1,7 +1,7 @@
 import { expect } from '@open-wc/testing';
-import { renderTeamMembersView } from '../../www/js/plugins/PluginCostV2TeamMembersView.js';
+import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 
-describe('PluginCostV2 TeamMembers View render paths', () => {
+describe('PluginCost TeamMembers View render paths', () => {
   it('returns an empty-state when no data present', () => {
     const res = renderTeamMembersView({});
     expect(res).to.be.ok;

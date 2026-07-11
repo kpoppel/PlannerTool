@@ -1,5 +1,5 @@
 /**
- * Unit tests for PluginCostV2Calculator
+ * Unit tests for PluginCostCalculator
  * Tests pure utility functions for cost analysis calculations
  */
 
@@ -13,9 +13,9 @@ import {
   flattenTree,
   buildByTeam,
   computeEffectiveDataMaps,
-} from '../../www/js/plugins/PluginCostV2Calculator.js';
+} from '../../www/js/plugins/PluginCostCalculator.js';
 
-describe('PluginCostV2Calculator', () => {
+describe('PluginCostCalculator', () => {
   describe('expandDataset', () => {
     it('should include initial features', () => {
       const features = [{ id: '1', title: 'Feature 1' }];

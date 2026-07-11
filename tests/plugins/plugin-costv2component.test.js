@@ -1,14 +1,14 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import sinon from 'sinon';
-import { PluginCostV2Component } from '../../www/js/plugins/PluginCostV2Component.js';
+import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
 import { state } from '../../www/js/services/State.js';
 
-describe('PluginCostV2Component', () => {
+describe('PluginCostComponent', () => {
   let el;
   let originalPluginStateService;
   beforeEach(async () => {
     originalPluginStateService = state._pluginStateService;
-    el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+    el = await fixture(html`<plugin-cost></plugin-cost>`);
   });
 
   afterEach(() => {
@@ -86,7 +86,7 @@ describe('PluginCostV2Component', () => {
     el.handleDateChange();
 
     expect(updateStub.calledOnce).to.be.true;
-    expect(updateStub.firstCall.args[0]).to.equal('plugin-cost-v2');
+    expect(updateStub.firstCall.args[0]).to.equal('plugin-cost');
     expect(updateStub.firstCall.args[1]).to.deep.equal({
       startDate: '2026-03-01',
       endDate: '2026-04-30',
@@ -102,13 +102,13 @@ describe('PluginCostV2Component', () => {
     el.remove();
     state._pluginStateService = {
       subscribe: (pluginId, cb) => {
-        expect(pluginId).to.equal('plugin-cost-v2');
+        expect(pluginId).to.equal('plugin-cost');
         subscriber = cb;
         return unsubscribe;
       },
     };
 
-    el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+    el = await fixture(html`<plugin-cost></plugin-cost>`);
     const loadDataStub = sinon.stub(el, 'loadData');
     el.setAttribute('visible', '');
 

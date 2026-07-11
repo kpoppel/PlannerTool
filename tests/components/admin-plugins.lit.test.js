@@ -42,14 +42,17 @@ const MODULES_META = {
   ],
 };
 
-const PLUGINS_CONFIG = [
-  { id: 'plugin-alpha', enabled: true, activated: false },
-  { id: 'plugin-beta', enabled: false, activated: false },
-];
+const PLUGINS_CONFIG = {
+  schema_version: 1,
+  plugins: [
+    { id: 'plugin-alpha', enabled: true, activated: false },
+    { id: 'plugin-beta', enabled: false, activated: false },
+  ],
+};
 
 function useDefaultHandlers() {
   server.use(
-    http.get('/js/modules.config.json', () => HttpResponse.json(MODULES_META, { status: 200 })),
+    http.get('/static/js/modules.config.json', () => HttpResponse.json(MODULES_META, { status: 200 })),
     http.get('/admin/v1/plugins-config', () =>
       HttpResponse.json({ content: PLUGINS_CONFIG }, { status: 200 })
     ),
@@ -202,7 +205,7 @@ describe('admin-plugins', () => {
     // Helpers to set up a clean (no-invalid-entry) component for save tests
     function useCleanHandlers(postHandler) {
       server.use(
-        http.get('/js/modules.config.json', () =>
+        http.get('/static/js/modules.config.json', () =>
           HttpResponse.json(
             {
               modules: [
@@ -234,11 +237,13 @@ describe('admin-plugins', () => {
       await comp._onSave();
 
       expect(capturedBody).to.exist;
-      expect(capturedBody.content).to.be.an('array');
+      expect(capturedBody.content).to.be.an('object');
+      expect(capturedBody.content.schema_version).to.equal(1);
+      expect(capturedBody.content.plugins).to.be.an('array');
       // Only entries with valid ids
-      capturedBody.content.forEach((item) => expect(item.id).to.be.a('string'));
+      capturedBody.content.plugins.forEach((item) => expect(item.id).to.be.a('string'));
       // Payload shape includes enabled and activated fields
-      const alpha = capturedBody.content.find((x) => x.id === 'plugin-alpha');
+      const alpha = capturedBody.content.plugins.find((x) => x.id === 'plugin-alpha');
       expect(alpha).to.exist;
       expect(alpha).to.have.property('enabled');
       expect(alpha).to.have.property('activated');
@@ -261,7 +266,7 @@ describe('admin-plugins', () => {
 
       await comp._onSave();
 
-      const ids = capturedBody.content.map((x) => x.id);
+      const ids = capturedBody.content.plugins.map((x) => x.id);
       expect(ids.indexOf('plugin-beta')).to.be.lessThan(ids.indexOf('plugin-alpha'));
     });
 
@@ -278,7 +283,7 @@ describe('admin-plugins', () => {
     it('shows ok status after successful save', async () => {
       // Use metadata without the bad entry so save is unblocked
       server.use(
-        http.get('/js/modules.config.json', () =>
+        http.get('/static/js/modules.config.json', () =>
           HttpResponse.json(
             {
               modules: [
@@ -305,7 +310,7 @@ describe('admin-plugins', () => {
 
     it('shows error status when save fails', async () => {
       server.use(
-        http.get('/js/modules.config.json', () =>
+        http.get('/static/js/modules.config.json', () =>
           HttpResponse.json(
             {
               modules: [
@@ -328,6 +333,62 @@ describe('admin-plugins', () => {
 
       expect(comp._statusType).to.equal('error');
     });
+
+    it('save includes custom_config in payload', async () => {
+      let capturedBody = null;
+      useCleanHandlers(
+        http.post('/admin/v1/plugins-config', async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({ ok: true }, { status: 200 });
+        })
+      );
+
+      await comp._load();
+      await comp.updateComplete;
+
+      // Modify custom_config
+      comp._rows[0].custom_config = { threshold: 75, enabled: true };
+      await comp.updateComplete;
+
+      await comp._onSave();
+
+      expect(capturedBody.content.plugins[0]).to.have.property('custom_config');
+      expect(capturedBody.content.plugins[0].custom_config).to.deep.equal({
+        threshold: 75,
+        enabled: true,
+      });
+    });
+
+    it('_onCustomConfigChange updates custom_config for row', async () => {
+      await comp._load();
+      await comp.updateComplete;
+
+      const newConfig = { setting: 'new value' };
+      comp._onCustomConfigChange(0, newConfig);
+
+      expect(comp._rows[0].custom_config).to.deep.equal(newConfig);
+    });
+
+    it('_validateCustomConfigs returns errors for missing required fields', async () => {
+      await comp._load();
+      await comp.updateComplete;
+
+      // Mock schemas with a required field
+      comp._schemas = {
+        'plugin-alpha': {
+          schema: {
+            type: 'object',
+            required: ['requiredField'],
+          },
+          defaultConfig: {},
+        },
+      };
+      comp._rows[0].custom_config = {}; // missing requiredField
+
+      const errors = comp._validateCustomConfigs();
+      expect(errors.length).to.be.greaterThan(0);
+      expect(errors[0]).to.include('missing required field');
+    });
   });
 });
 
@@ -344,15 +405,17 @@ describe('adminProvider plugins-config methods', () => {
     server.resetHandlers();
   });
 
-  it('getPluginsConfig returns content array on success', async () => {
+  it('getPluginsConfig returns content object on success', async () => {
     server.use(
       http.get('/admin/v1/plugins-config', () =>
-        HttpResponse.json({ content: [{ id: 'plugin-alpha', enabled: true, activated: false }] }, { status: 200 })
+        HttpResponse.json({ content: { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] } }, { status: 200 })
       )
     );
     const result = await adminProvider.getPluginsConfig();
-    expect(result).to.be.an('array');
-    expect(result[0].id).to.equal('plugin-alpha');
+    expect(result).to.be.an('object');
+    expect(result.schema_version).to.equal(1);
+    expect(result.plugins).to.be.an('array');
+    expect(result.plugins[0].id).to.equal('plugin-alpha');
   });
 
   it('getPluginsConfig returns null on network failure', async () => {
@@ -371,9 +434,11 @@ describe('adminProvider plugins-config methods', () => {
         return HttpResponse.json({ ok: true }, { status: 200 });
       })
     );
-    const result = await adminProvider.savePluginsConfig([{ id: 'plugin-alpha', enabled: true, activated: false }]);
+    const payload = { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] };
+    const result = await adminProvider.savePluginsConfig(payload);
     expect(result.ok).to.equal(true);
-    expect(body.content[0].id).to.equal('plugin-alpha');
+    expect(body.content.schema_version).to.equal(1);
+    expect(body.content.plugins[0].id).to.equal('plugin-alpha');
   });
 
   it('savePluginsConfig returns error object on HTTP error', async () => {

@@ -1,7 +1,7 @@
 import { expect } from '@open-wc/testing';
-import { renderTaskView } from '../../www/js/plugins/PluginCostV2TaskView.js';
+import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
 
-describe('PluginCostV2 Task View render paths', () => {
+describe('PluginCost Task View render paths', () => {
   it('returns an empty-state when no data present', () => {
     const res = renderTaskView({});
     expect(res).to.be.ok;

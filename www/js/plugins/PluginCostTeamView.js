@@ -1,8 +1,8 @@
 import { html } from '../vendor/lit.js';
-import { monthLabel, monthKey, buildTaskTree, buildByTeam, flattenTree } from './PluginCostV2Calculator.js';
+import { monthLabel, monthKey, buildTaskTree, buildByTeam, flattenTree } from './PluginCostCalculator.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
-import { renderCountingBanner, renderClipBanner } from './PluginCostV2Shared.js';
+import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
 export function renderTeamView(component) {
   if (!component.data || !component.data.projects) {

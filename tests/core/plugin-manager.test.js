@@ -1,4 +1,4 @@
-import { expect } from '@open-wc/testing';
+import { expect, vi, beforeEach, afterEach, describe, it } from 'vitest';
 import { Plugin } from '../../www/js/core/Plugin.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginManager } from '../../www/js/core/PluginManager.js';
@@ -181,5 +181,127 @@ describe('PluginManager & Plugin base', () => {
 
     const sorted = manager._topologicalSort([m3, m1, m2]);
     expect(sorted.map((m) => m.id)).to.deep.equal(['a', 'b', 'c']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadFromConfig — isolated tests using a stub registry injected via vi.mock
+// ---------------------------------------------------------------------------
+
+vi.mock('../../www/js/core/pluginRegistry.js', () => {
+  // Minimal stub that satisfies PluginManager lifecycle without importing Plugin
+  // (vi.mock factories are hoisted before imports, so Plugin is not yet in scope).
+  class StubPlugin {
+    constructor(id, config = {}) {
+      this.id = id;
+      this.config = config;
+      this.initialized = false;
+      this.active = false;
+    }
+    getMetadata() { return { id: this.id, dependencies: this.config.dependencies || [] }; }
+    async init() {}
+    async activate() { this.active = true; }
+    async deactivate() { this.active = false; }
+    async destroy() {}
+  }
+  return {
+    default: {
+      'plugin-a': StubPlugin,
+      'plugin-b': StubPlugin,
+      'plugin-c': StubPlugin,
+    },
+  };
+});
+
+describe('PluginManager.loadFromConfig', () => {
+  let manager;
+
+  beforeEach(() => {
+    manager = new PluginManager();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeConfig(modules) {
+    return { modules };
+  }
+
+  it('registers enabled plugins and skips disabled ones', async () => {
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-b', enabled: false, activated: false, dependencies: [] },
+    ]));
+
+    expect(manager.has('plugin-a')).to.equal(true);
+    expect(manager.has('plugin-b')).to.equal(false);
+  });
+
+  it('disabled plugins are not listed', async () => {
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-b', enabled: false, activated: false, dependencies: [] },
+    ]));
+
+    const ids = manager.list().map((p) => p.id);
+    expect(ids).to.include('plugin-a');
+    expect(ids).not.to.include('plugin-b');
+  });
+
+  it('auto-activates exactly the first plugin with activated:true', async () => {
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-a', enabled: true, activated: true, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activated: true, dependencies: [] },
+    ]));
+
+    expect(manager.isActive('plugin-a')).to.equal(true);
+    // second activated:true is ignored — only first one activates
+    expect(manager.isActive('plugin-b')).to.equal(false);
+  });
+
+  it('does not activate any plugin when none has activated:true', async () => {
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-b', enabled: true, activated: false, dependencies: [] },
+    ]));
+
+    expect(manager.isActive('plugin-a')).to.equal(false);
+    expect(manager.isActive('plugin-b')).to.equal(false);
+  });
+
+  it('preserves admin-defined order when no dependency reordering is needed', async () => {
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-b', enabled: true, activated: false, dependencies: [] },
+      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+    ]));
+
+    // list() uses the plugins Map which preserves insertion (registration) order
+    const ids = manager.list().map((p) => p.id);
+    expect(ids[0]).to.equal('plugin-b');
+    expect(ids[1]).to.equal('plugin-a');
+  });
+
+  it('reorders for dependency safety and logs a warning', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // plugin-b depends on plugin-a, but admin put b before a
+    await manager.loadFromConfig(makeConfig([
+      { id: 'plugin-b', enabled: true, activated: false, dependencies: ['plugin-a'] },
+      { id: 'plugin-a', enabled: true, activated: false, dependencies: [] },
+    ]));
+
+    // plugin-a must be registered first due to dependency
+    expect(manager.loadOrder[0]).to.equal('plugin-a');
+    expect(manager.loadOrder[1]).to.equal('plugin-b');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('adjusted for dependency safety'),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+
+    warnSpy.mockRestore();
   });
 });

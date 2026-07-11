@@ -1,14 +1,14 @@
 import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
-import '../../www/js/plugins/PluginCostV2Component.js';
+import '../../www/js/plugins/PluginCostComponent.js';
 
-describe('PluginCostV2Component basic', () => {
+describe('PluginCostComponent basic', () => {
   afterEach(() => {
     document.body.innerHTML = '';
   });
 
   it('constructor defaults', () => {
-    const el = document.createElement('plugin-cost-v2');
+    const el = document.createElement('plugin-cost');
     expect(el.activeView).to.equal('project');
     expect(el.viewMode).to.equal('cost');
     expect(el.loading).to.equal(false);
@@ -18,7 +18,7 @@ describe('PluginCostV2Component basic', () => {
   });
 
   it('view change and mode change', () => {
-    const el = document.createElement('plugin-cost-v2');
+    const el = document.createElement('plugin-cost');
     el.handleViewChange('task');
     expect(el.activeView).to.equal('task');
     el.handleViewModeChange('hours');
@@ -26,7 +26,7 @@ describe('PluginCostV2Component basic', () => {
   });
 
   it('toggle and setProjectView', () => {
-    const el = document.createElement('plugin-cost-v2');
+    const el = document.createElement('plugin-cost');
     el.expandedProjects = new Set();
     el.toggleProject('p1');
     expect(el.expandedProjects.has('p1')).to.be.true;
@@ -41,7 +41,7 @@ describe('PluginCostV2Component basic', () => {
   });
 
   it('renderToolbar shows view toggles for team and project', () => {
-    const el = document.createElement('plugin-cost-v2');
+    const el = document.createElement('plugin-cost');
     // team view toggles always shown
     el.activeView = 'team';
     el.viewMode = 'cost';

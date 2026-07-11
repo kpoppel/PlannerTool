@@ -983,9 +983,8 @@ export class ProviderREST {
 
   /**
    * Fetch runtime plugin configuration from the backend.
-   * Returns an array of {id, enabled, activated, order, custom_config} entries,
-   * or null if the request fails or the server has no persisted config yet.
-   * @returns {Promise<Array<object>|null>}
+    * Returns an object: {schema_version, plugins:[...]} or null when unavailable.
+    * @returns {Promise<object|null>}
    */
   async getPluginsConfig() {
     try {
@@ -995,7 +994,7 @@ export class ProviderREST {
       if (res && res.sessionExpired) return null;
       if (!res.ok) return null;
       const j = await res.json();
-      return Array.isArray(j.content) ? j.content : null;
+      return j && typeof j === 'object' && Array.isArray(j.plugins) ? j : null;
     } catch (err) {
       console.error('providerREST:getPluginsConfig error', err);
       return null;

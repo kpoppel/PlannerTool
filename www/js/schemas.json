@@ -1,0 +1,29 @@
+{
+  "schemas": {
+    "sample-plugin": {
+      "schema": {
+        "type": "object",
+        "description": "Configuration for the Sample Plugin demonstrating custom config patterns",
+        "properties": {
+          "sampleSetting": {
+            "type": "string",
+            "description": "A custom string setting (e.g., prefix for logging)"
+          },
+          "enableLogging": {
+            "type": "boolean",
+            "description": "Enable/disable debug logging to console"
+          },
+          "threshold": {
+            "type": "number",
+            "description": "Numeric threshold for feature selection behavior"
+          }
+        }
+      },
+      "defaultConfig": {
+        "sampleSetting": "Sample",
+        "enableLogging": false,
+        "threshold": 50
+      }
+    }
+  }
+}

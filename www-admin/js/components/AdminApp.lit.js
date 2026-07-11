@@ -91,6 +91,7 @@ export class AdminApp extends LitElement {
       'Data Sources',
       'Users',
       'Global Project Settings',
+      'Plugins',
       'Projects',
       'Teams',
       'People',
@@ -98,7 +99,6 @@ export class AdminApp extends LitElement {
       'Area Mappings',
       'Iterations',
       'Utilities',
-      'Plugins',
     ];
   }
 

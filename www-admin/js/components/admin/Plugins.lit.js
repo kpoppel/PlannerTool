@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
+import { getPluginSchema, hasPluginSchema } from '../../core/pluginSchemaRegistry.js';
 
 /**
  * AdminPlugins — Admin panel for managing plugin runtime settings.
@@ -19,11 +20,14 @@ export class AdminPlugins extends LitElement {
   static properties = {
     _metadata: { type: Array, state: true },
     _rows: { type: Array, state: true },
+    _schemas: { type: Object, state: true },
     _loading: { type: Boolean, state: true },
     _saving: { type: Boolean, state: true },
     _statusMsg: { type: String, state: true },
     _statusType: { type: String, state: true },
     _validationErrors: { type: Array, state: true },
+    _editingConfigIndex: { type: Number, state: true },
+    _configEditorValue: { type: String, state: true },
   };
 
   static styles = css`
@@ -268,17 +272,150 @@ export class AdminPlugins extends LitElement {
       font-size: 0.75rem;
       font-family: monospace;
     }
+
+    .config-btn {
+      padding: 2px 8px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .config-btn:hover:not(:disabled) {
+      background: #4f46e5;
+    }
+
+    .config-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal {
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+    }
+
+    .modal-header {
+      margin: 0 0 16px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .modal-body {
+      margin-bottom: 16px;
+    }
+
+    .modal-field {
+      margin-bottom: 12px;
+    }
+
+    .modal-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+
+    .modal-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: monospace;
+      box-sizing: border-box;
+    }
+
+    .modal-textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: monospace;
+      min-height: 200px;
+      box-sizing: border-box;
+    }
+
+    .modal-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      font-size: 0.85rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .btn-modal {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .btn-modal-save {
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    .btn-modal-save:hover {
+      background: #2563eb;
+    }
+
+    .btn-modal-cancel {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .btn-modal-cancel:hover {
+      background: #d1d5db;
+    }
   `;
 
   constructor() {
     super();
     this._metadata = [];
     this._rows = [];
+    this._schemas = {};
     this._loading = true;
     this._saving = false;
     this._statusMsg = '';
     this._statusType = '';
     this._validationErrors = [];
+    this._editingConfigIndex = -1;
+    this._configEditorValue = '';
   }
 
   connectedCallback() {
@@ -292,25 +429,48 @@ export class AdminPlugins extends LitElement {
     this._statusType = '';
     this.requestUpdate();
 
-    const [metaResponse, runtimeConfig] = await Promise.all([
+    const [metaResponse, runtimeConfig, schemas] = await Promise.all([
       this._fetchMetadata(),
       adminProvider.getPluginsConfig(),
+      this._discoverPluginSchemas(),
     ]);
 
     this._metadata = metaResponse;
     this._rows = this._mergeConfig(metaResponse, runtimeConfig);
+    this._schemas = schemas;
     this._validationErrors = this._detectValidationErrors(metaResponse);
     this._loading = false;
     this.requestUpdate();
   }
 
   /**
-   * Fetch modules.config.json from the frontend static path.
+   * Fetch plugin configuration schemas from the user app.
+   * The user app serves a schemas.json file that maps plugin ids to schema info.
+   * This avoids requiring admin UI to import plugin classes directly.
+   * @returns {Promise<object>} Schema map { pluginId: { schema, defaultConfig } }
+   */
+  async _discoverPluginSchemas() {
+    try {
+      const base = window.APP_BASE_URL || '';
+      const res = await fetch(`${base}/static/js/schemas.json`);
+      if (!res.ok) return {};
+      const j = await res.json();
+      return j.schemas || {};
+    } catch (err) {
+      console.warn('AdminPlugins:_discoverPluginSchemas failed:', err);
+      return {};
+    }
+  }
+
+  /**
+   * Fetch modules.config.json from the main app's static path.
+   * Uses APP_BASE_URL so sub-path deployments resolve correctly.
    * @returns {Promise<object[]>}
    */
   async _fetchMetadata() {
     try {
-      const res = await fetch('/js/modules.config.json');
+      const base = window.APP_BASE_URL || '';
+      const res = await fetch(`${base}/static/js/modules.config.json`);
       if (!res.ok) return [];
       const j = await res.json();
       return Array.isArray(j.modules) ? j.modules : [];
@@ -324,13 +484,24 @@ export class AdminPlugins extends LitElement {
    * Merge static metadata with persisted runtime config to produce editable rows.
    * Order follows the persisted config order when available.
    * @param {object[]} meta - modules from modules.config.json
-   * @param {object[]|null} runtime - persisted plugin config list
+   * @param {object|object[]|null} runtime - persisted plugin config from backend
+   *   (can be { schema_version, plugins: [...] } object or legacy array)
    * @returns {object[]}
    */
   _mergeConfig(meta, runtime) {
+    // Handle both new structure { schema_version, plugins } and legacy array format
+    let runtimePlugins = null;
+    if (runtime && typeof runtime === 'object') {
+      if (Array.isArray(runtime)) {
+        runtimePlugins = runtime;
+      } else if (runtime.plugins && Array.isArray(runtime.plugins)) {
+        runtimePlugins = runtime.plugins;
+      }
+    }
+
     const runtimeMap = new Map();
-    if (Array.isArray(runtime)) {
-      runtime.forEach((r, idx) => {
+    if (Array.isArray(runtimePlugins)) {
+      runtimePlugins.forEach((r, idx) => {
         if (r.id) runtimeMap.set(r.id, { ...r, _runtimeOrder: idx });
       });
     }
@@ -343,8 +514,8 @@ export class AdminPlugins extends LitElement {
     });
 
     // First pass: runtime order (only valid ids)
-    if (Array.isArray(runtime)) {
-      runtime.forEach((r) => {
+    if (Array.isArray(runtimePlugins)) {
+      runtimePlugins.forEach((r) => {
         if (!r.id) return;
         const m = metaById.get(r.id);
         if (!m) return; // id in runtime but not in metadata — skip
@@ -387,6 +558,7 @@ export class AdminPlugins extends LitElement {
       // editable runtime state (fallback to metadata defaults)
       enabled: runtime ? Boolean(runtime.enabled) : Boolean(meta.enabled),
       activated: runtime ? Boolean(runtime.activated) : Boolean(meta.activated),
+      custom_config: runtime && runtime.custom_config ? { ...runtime.custom_config } : {},
       // internal
       _metaOnly: runtime === null,
     };
@@ -451,21 +623,68 @@ export class AdminPlugins extends LitElement {
     return this._validationErrors.length > 0;
   }
 
+  /**
+   * Validate custom_config values against plugin schemas.
+   * @returns {string[]} Array of validation error messages
+   */
+  _validateCustomConfigs() {
+    const errors = [];
+    for (const row of this._rows) {
+      if (!row.id) continue;
+      const schemaInfo = getPluginSchema(row.id, this._schemas);
+      if (!schemaInfo) continue; // No schema, no validation needed
+
+      // Basic validation: check required fields
+      const schema = schemaInfo.schema;
+      if (schema.required && Array.isArray(schema.required)) {
+        for (const requiredField of schema.required) {
+          if (!(requiredField in row.custom_config)) {
+            errors.push(
+              `${row.name}: missing required field "${requiredField}"`
+            );
+          }
+        }
+      }
+    }
+    return errors;
+  }
+
+  _onCustomConfigChange(rowIndex, value) {
+    if (rowIndex < 0 || rowIndex >= this._rows.length) return;
+    const rows = [...this._rows];
+    rows[rowIndex].custom_config = value || {};
+    this._rows = rows;
+  }
+
   async _onSave() {
     if (this._hasValidationErrors()) return;
+
+    // Validate custom_config against schemas
+    const configErrors = this._validateCustomConfigs();
+    if (configErrors.length > 0) {
+      this._statusMsg = `Config validation failed: ${configErrors.join('; ')}`;
+      this._statusType = 'error';
+      this.requestUpdate();
+      return;
+    }
 
     this._saving = true;
     this._statusMsg = '';
     this.requestUpdate();
 
-    // Build payload: only rows with valid ids
-    const content = this._rows
-      .filter((r) => r.id)
-      .map((r) => ({
-        id: r.id,
-        enabled: r.enabled,
-        activated: r.activated,
-      }));
+    // Build payload: wrap in object with schema_version and plugins array
+    // (backend expects { schema_version, plugins: [...] })
+    const content = {
+      schema_version: 1,
+      plugins: this._rows
+        .filter((r) => r.id)
+        .map((r) => ({
+          id: r.id,
+          enabled: r.enabled,
+          activated: r.activated,
+          custom_config: r.custom_config || {},
+        })),
+    };
 
     const result = await adminProvider.savePluginsConfig(content);
     this._saving = false;
@@ -482,6 +701,35 @@ export class AdminPlugins extends LitElement {
 
   async _onReload() {
     await this._load();
+  }
+
+  _onEditConfig(rowIndex) {
+    if (rowIndex < 0 || rowIndex >= this._rows.length) return;
+    const row = this._rows[rowIndex];
+    this._editingConfigIndex = rowIndex;
+    this._configEditorValue = JSON.stringify(row.custom_config || {}, null, 2);
+    this.requestUpdate();
+  }
+
+  _onCloseConfigEditor() {
+    this._editingConfigIndex = -1;
+    this._configEditorValue = '';
+    this.requestUpdate();
+  }
+
+  _onSaveConfigEditor() {
+    if (this._editingConfigIndex < 0) return;
+    try {
+      const newConfig = JSON.parse(this._configEditorValue);
+      this._onCustomConfigChange(this._editingConfigIndex, newConfig);
+      this._onCloseConfigEditor();
+    } catch (err) {
+      alert(`Invalid JSON: ${err.message}`);
+    }
+  }
+
+  _onConfigEditorInput(e) {
+    this._configEditorValue = e.target.value;
   }
 
   _renderValidationErrors() {
@@ -501,10 +749,66 @@ export class AdminPlugins extends LitElement {
     return html`<div class="status ${this._statusType}">${this._statusMsg}</div>`;
   }
 
+  _renderConfigEditor() {
+    if (this._editingConfigIndex < 0) return '';
+    const row = this._rows[this._editingConfigIndex];
+    const schemaInfo = getPluginSchema(row.id, this._schemas);
+    const schema = schemaInfo?.schema || {};
+
+    return html`
+      <div class="modal-overlay" @click=${(e) => {
+        if (e.target === e.currentTarget) this._onCloseConfigEditor();
+      }}>
+        <div class="modal">
+          <h3 class="modal-header">Configure: ${row.name}</h3>
+          <div class="modal-body">
+            ${schema.description
+              ? html`<p style="font-size: 0.9rem; color: #6b7280; margin-bottom: 12px;">
+                  ${schema.description}
+                </p>`
+              : ''}
+            <div class="modal-field">
+              <label class="modal-label">Configuration (JSON)</label>
+              <textarea
+                class="modal-textarea"
+                .value=${this._configEditorValue}
+                @input=${(e) => this._onConfigEditorInput(e)}
+              ></textarea>
+            </div>
+            ${schema.properties
+              ? html`<div style="font-size: 0.8rem; color: #6b7280; margin-top: 12px;">
+                  <strong>Schema fields:</strong>
+                  <ul style="margin: 4px 0 0; padding-left: 18px;">
+                    ${Object.entries(schema.properties).map(
+                      ([key, prop]) => html`
+                        <li>
+                          <code>${key}</code>:
+                          ${prop.type} ${prop.description ? `— ${prop.description}` : ''}
+                        </li>
+                      `
+                    )}
+                  </ul>
+                </div>`
+              : ''}
+          </div>
+          <div class="modal-actions">
+            <button class="btn-modal btn-modal-cancel" @click=${() => this._onCloseConfigEditor()}>
+              Cancel
+            </button>
+            <button class="btn-modal btn-modal-save" @click=${() => this._onSaveConfigEditor()}>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   _renderRow(row, index) {
     const isInvalid = !row.id;
     const rowClass = isInvalid ? 'invalid-row' : !row.enabled ? 'disabled-row' : '';
     const isLast = index === this._rows.length - 1;
+    const hasSchema = row.id && hasPluginSchema(row.id, this._schemas);
 
     return html`
       <tr class=${rowClass}>
@@ -536,18 +840,32 @@ export class AdminPlugins extends LitElement {
           />
         </td>
         <td class="order-cell">
+          ${hasSchema
+            ? html`<button
+                class="config-btn"
+                ?disabled=${isInvalid}
+                @click=${() => this._onEditConfig(index)}
+                title="Edit plugin configuration"
+              >
+                Config
+              </button>`
+            : ''}
           <button
             class="order-btn"
             ?disabled=${index === 0}
             @click=${() => this._onMoveUp(index)}
             title="Move up"
-          >▲</button>
+          >
+            ▲
+          </button>
           <button
             class="order-btn"
             ?disabled=${isLast}
             @click=${() => this._onMoveDown(index)}
             title="Move down"
-          >▼</button>
+          >
+            ▼
+          </button>
         </td>
       </tr>
     `;
@@ -564,7 +882,7 @@ export class AdminPlugins extends LitElement {
         <p class="hint">
           Manage plugin runtime settings. Metadata (id, name, version, etc.) is read-only and comes
           from <code>modules.config.json</code>. Use enabled/activated/order to control runtime
-          behaviour.
+          behaviour. Click "Config" to edit custom settings for plugins.
         </p>
         ${this._renderValidationErrors()}
         ${this._renderStatus()}
@@ -576,7 +894,7 @@ export class AdminPlugins extends LitElement {
               <th>Description</th>
               <th>Enabled</th>
               <th>Activated</th>
-              <th>Order</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -596,6 +914,7 @@ export class AdminPlugins extends LitElement {
           </button>
         </div>
       </div>
+      ${this._renderConfigEditor()}
     `;
   }
 }

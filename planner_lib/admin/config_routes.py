@@ -783,3 +783,17 @@ async def admin_save_plugins_config(request: Request):
     except Exception as e:
         logger.exception('Failed to save plugin runtime config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.get('/admin/v1/plugins-schemas')
+@require_admin_session
+async def admin_get_plugins_schemas(request: Request):
+    """Return plugin schema availability map.
+    
+    Schema discovery happens client-side in the admin UI by checking if
+    registered plugin classes export getAdminConfigSchema() and
+    getDefaultAdminConfig() static methods. This endpoint provides
+    metadata but relies on frontend plugin registry for actual schemas.
+    """
+    return {'schemas': {}}
+

@@ -1,16 +1,16 @@
 /**
- * Integration tests for PluginCostV2Component
+ * Integration tests for PluginCostComponent
  * Tests component rendering, view switching, and user interactions
  */
 
 import { expect, fixture, html } from '@open-wc/testing';
-import '../../www/js/plugins/PluginCostV2Component.js';
+import '../../www/js/plugins/PluginCostComponent.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 
-describe('PluginCostV2Component', () => {
+describe('PluginCostComponent', () => {
   describe('initialization', () => {
     it('should render with default properties', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
 
       expect(el.activeView).to.equal('project');
       expect(el.viewMode).to.equal('cost');
@@ -19,7 +19,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should default to current year date range', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       const now = new Date();
       const year = now.getFullYear();
 
@@ -30,7 +30,7 @@ describe('PluginCostV2Component', () => {
 
   describe('toolbar', () => {
     it('should render tab buttons', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
 
@@ -44,7 +44,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should highlight active tab', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.activeView = 'task';
       await el.updateComplete;
@@ -54,7 +54,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should render date range inputs', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
 
@@ -63,7 +63,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should render view mode toggle', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       // view-toggle only appears for certain views; ensure we're in Team view
       el.activeView = 'team';
@@ -78,7 +78,7 @@ describe('PluginCostV2Component', () => {
 
   describe('view switching', () => {
     it('should switch to Task view when tab clicked', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
 
@@ -90,7 +90,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should switch to Team view when tab clicked', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
 
@@ -104,7 +104,7 @@ describe('PluginCostV2Component', () => {
 
   describe('view mode toggle', () => {
     it('should switch to hours mode when Hours button clicked', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       // Ensure view-toggle is visible by switching to Team view
       el.activeView = 'team';
@@ -118,7 +118,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should highlight active view mode', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       // Ensure view-toggle is visible by switching to Team view
       el.activeView = 'team';
@@ -132,7 +132,7 @@ describe('PluginCostV2Component', () => {
 
   describe('empty states', () => {
     it('should show empty state when no data', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.data = null;
       await el.updateComplete;
@@ -142,7 +142,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should show loading state when loading', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.loading = true;
       await el.updateComplete;
@@ -153,7 +153,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should show error state when error occurs', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.error = 'Test error message';
       await el.updateComplete;
@@ -166,7 +166,7 @@ describe('PluginCostV2Component', () => {
 
   describe('Project view', () => {
     it('should render project tables when data available', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
 
       // Mock data
@@ -189,7 +189,7 @@ describe('PluginCostV2Component', () => {
 
   describe('Task view', () => {
     it('should show selection prompt when no projects selected', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.data = { projects: {} };
       el.activeView = 'task';
@@ -202,7 +202,7 @@ describe('PluginCostV2Component', () => {
 
   describe('Team view', () => {
     it('should show team selection prompt when no teams selected', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       el.data = { projects: {} };
       el.activeView = 'team';
@@ -215,7 +215,7 @@ describe('PluginCostV2Component', () => {
 
   describe('close functionality', () => {
     it('should hide when close is called', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
       // Ensure pluginManager.get returns a plugin stub with deactivate()
@@ -234,7 +234,7 @@ describe('PluginCostV2Component', () => {
     });
 
     it('should close when close button clicked', async () => {
-      const el = await fixture(html`<plugin-cost-v2></plugin-cost-v2>`);
+      const el = await fixture(html`<plugin-cost></plugin-cost>`);
       el.setAttribute('visible', '');
       await el.updateComplete;
       // stub pluginManager.get to avoid calling real plugin code

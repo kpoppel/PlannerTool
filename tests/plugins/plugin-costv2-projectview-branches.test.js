@@ -1,5 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { renderProjectView } from '../../www/js/plugins/PluginCostV2ProjectView.js';
+import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
 import { render } from '../../www/js/vendor/lit.js';
 import { state } from '../../www/js/services/State.js';
 
@@ -15,7 +15,7 @@ function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
   return { id, title: `F${id}`, metrics };
 }
 
-describe('PluginCostV2 Project View deeper branches', () => {
+describe('PluginCost Project View deeper branches', () => {
   let originalProjects;
   beforeEach(() => {
     originalProjects =

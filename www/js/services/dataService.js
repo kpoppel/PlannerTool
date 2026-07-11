@@ -107,6 +107,9 @@ class DataService {
   async getMarkers() {
     return this.providers['rest'].getMarkers();
   }
+  async getPluginsConfig() {
+    return this.providers['rest'].getPluginsConfig();
+  }
   /** @param {string} [planId] */
   async getEvents(planId) {
     return this.providers['rest'].getEvents(planId);

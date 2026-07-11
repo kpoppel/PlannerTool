@@ -5,7 +5,7 @@
 import { SamplePlugin } from '../plugins/SamplePlugin.js';
 import PluginMarkers from '../plugins/PluginMarkers.js';
 import PluginCost from '../plugins/PluginCost.js';
-import PluginCostV2 from '../plugins/PluginCostV2.js';
+import PluginCostV1 from '../plugins/PluginCostV1.js';
 import PluginExportTimeline from '../plugins/PluginExportTimeline.js';
 import PluginAnnotations from '../plugins/PluginAnnotations.js';
 import PluginGraph from '../plugins/PluginGraph.js';
@@ -20,8 +20,8 @@ import PluginPortfolio from '../plugins/PluginPortfolio.js';
 const PluginRegistry = {
   'sample-plugin': SamplePlugin,
   'plugin-markers': PluginMarkers,
+  'plugin-cost-v1': PluginCostV1,
   'plugin-cost': PluginCost,
-  'plugin-cost-v2': PluginCostV2,
   'plugin-export-timeline': PluginExportTimeline,
   'plugin-annotations': PluginAnnotations,
   'plugin-graph': PluginGraph,

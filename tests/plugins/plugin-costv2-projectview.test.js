@@ -1,8 +1,8 @@
 import { expect } from '@open-wc/testing';
-import { renderProjectView } from '../../www/js/plugins/PluginCostV2ProjectView.js';
+import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
 import { state } from '../../www/js/services/State.js';
 
-describe('PluginCostV2 Project View render paths', () => {
+describe('PluginCost Project View render paths', () => {
   let originalProjects;
 
   beforeEach(() => {

@@ -4,6 +4,7 @@ import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { registerCoreServices } from './core/ServiceRegistry.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
+import { mergePluginConfig } from './core/pluginConfigMerge.js';
 
 async function init() {
   registerCoreServices();
@@ -68,13 +69,19 @@ async function init() {
     if (featureFlags.USE_PLUGIN_SYSTEM) {
       // Load modules config via fetch to avoid JSON module import and
       // potential strict MIME-type handling by some dev servers/browsers.
-      // Plugin registration is driven entirely by modules.config.json
+      // Plugin registration is driven by modules.config.json merged with
+      // admin-persisted runtime config from /api/plugins/config.
       const url = new URL('./modules.config.json', import.meta.url).href;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Failed to fetch modules config: ${res.status}`);
       const cfg = await res.json();
 
-      await pluginManager.loadFromConfig(cfg);
+      // Fetch runtime plugin config from backend (non-fatal: falls back to
+      // metadata defaults when unavailable or when the server has no saved config).
+      const runtimeConfig = await dataService.getPluginsConfig().catch(() => null);
+
+      const mergedCfg = mergePluginConfig(cfg, runtimeConfig?.plugins || null);
+      await pluginManager.loadFromConfig(mergedCfg);
       console.log('[App] PluginManager loaded modules');
     }
 

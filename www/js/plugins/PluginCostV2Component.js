@@ -506,7 +506,11 @@ export class PluginCostV2Component extends LitElement {
       endDate: this.endDate,
     };
 
-    state.pluginStateService.update('plugin-cost-v2', snapshot, { saveToView: true });
+    state.pluginStateService.update(this._getPluginId(), snapshot, { saveToView: true });
+  }
+
+  _getPluginId() {
+    return this.pluginId || 'plugin-cost-v2';
   }
 
   _applyPluginState(pluginState) {
@@ -594,7 +598,7 @@ export class PluginCostV2Component extends LitElement {
     this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
     this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
     this._unsubscribes.push(
-      state.pluginStateService.subscribe('plugin-cost-v2', (pluginState) => {
+      state.pluginStateService.subscribe(this._getPluginId(), (pluginState) => {
         this._applyPluginState(pluginState);
       })
     );
@@ -640,8 +644,8 @@ export class PluginCostV2Component extends LitElement {
   }
 
   _closeClicked() {
-    const plugin = pluginManager.get('plugin-cost-v2');
-    plugin.deactivate();
+    const plugin = pluginManager.get(this._getPluginId());
+    if (plugin) plugin.deactivate();
   }
 
   async loadData() {

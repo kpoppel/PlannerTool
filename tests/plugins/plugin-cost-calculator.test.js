@@ -3,14 +3,14 @@ import {
   buildMonths,
   buildProjects,
   monthKey,
-} from '../../www/js/plugins/PluginCostCalculator.js';
+} from '../../www/js/plugins/PluginCostV1Calculator.js';
 import {
   toDate,
   firstOfMonth,
   lastOfMonth,
   addMonths,
   monthLabel,
-} from '../../www/js/plugins/PluginCostCalculator.js';
+} from '../../www/js/plugins/PluginCostV1Calculator.js';
 import { enable, disable } from '../../www/js/config.js';
 
 // Helper to create minimal project/feature structure returned by backend

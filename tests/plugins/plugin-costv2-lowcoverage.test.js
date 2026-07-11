@@ -1,11 +1,11 @@
 import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
 import { state } from '../../www/js/services/State.js';
-import { renderTaskView } from '../../www/js/plugins/PluginCostV2TaskView.js';
-import { renderTeamView } from '../../www/js/plugins/PluginCostV2TeamView.js';
-import { renderTeamMembersView } from '../../www/js/plugins/PluginCostV2TeamMembersView.js';
+import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
+import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
+import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 
-describe('PluginCostV2 low-coverage branches', () => {
+describe('PluginCost low-coverage branches', () => {
   afterEach(() => {
     // restore project/team lists
     state._projectTeamService.projects = [];

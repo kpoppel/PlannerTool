@@ -12,7 +12,7 @@ import './PluginLinkEditorComponent.js';
 import { findInBoard } from '../components/board-utils.js';
 
 export class PluginLinkEditor extends Plugin {
-  constructor(id = 'link-editor', config = {}) {
+  constructor(id = 'plugin-link-editor', config = {}) {
     super(id, config);
     this._component = null;
     this._linkEditorState = getLinkEditorState();

@@ -42,7 +42,7 @@ describe('ViewManagementService pluginState integration', () => {
   });
 
   it('saveCurrentView includes pluginState when captureForView returns data', async () => {
-    const pluginMap = { 'plugin-cost-v2': { startDate: '2026-01-01' } };
+    const pluginMap = { 'plugin-cost': { startDate: '2026-01-01' } };
     mockState.pluginStateService = { captureForView: () => pluginMap };
 
     let savedArg = null;
@@ -60,7 +60,7 @@ describe('ViewManagementService pluginState integration', () => {
   });
 
   it('loadAndApplyView restores pluginState via restoreFromView', async () => {
-    const pluginMap = { 'plugin-cost-v2': { startDate: '2026-02-02' } };
+    const pluginMap = { 'plugin-cost': { startDate: '2026-02-02' } };
     let restoreCalled = false;
     mockState.pluginStateService = { restoreFromView: async (pm) => { restoreCalled = true; expect(pm).to.deep.equal(pluginMap); } };
 
