@@ -1,24 +1,16 @@
-import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
-export class AdminCost extends LitElement {
+export class AdminCost extends BaseConfigComponent {
   static properties = {
     activeTab: { type: String },
-    content: { type: Object },
-    schema: { type: Object },
-    loading: { type: Boolean },
-    statusMsg: { type: String },
-    statusType: { type: String },
     inspectData: { type: Object },
     inspectLoading: { type: Boolean },
   };
 
   static styles = css`
-    :host {
-      display: block;
-      height: 100%;
-    }
+    ${BaseConfigComponent.styles}
 
     .tabs {
       display: flex;
@@ -47,74 +39,6 @@ export class AdminCost extends LitElement {
       color: #3b82f6;
       border-bottom-color: #3b82f6;
       font-weight: 600;
-    }
-
-    h2 {
-      margin-top: 0;
-      font-size: 1.1rem;
-    }
-
-    .panel {
-      padding: 12px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      height: calc(100vh - 200px);
-      box-sizing: border-box;
-      overflow-y: auto;
-    }
-
-    .actions {
-      margin-top: 12px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding-top: 12px;
-      border-top: 1px solid #e5e7eb;
-    }
-
-    button {
-      padding: 8px 16px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: all 0.2s;
-    }
-
-    button:hover {
-      background: #e5e7eb;
-    }
-
-    button.primary {
-      background: #3b82f6;
-      color: #fff;
-      border-color: #3b82f6;
-    }
-
-    button.primary:hover {
-      background: #2563eb;
-    }
-
-    .status {
-      margin-left: 8px;
-      font-size: 0.9rem;
-    }
-
-    .status.success {
-      color: #10b981;
-    }
-    .status.error {
-      color: #ef4444;
-    }
-
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 40px;
-      color: #6b7280;
     }
 
     /* Inspection view styles */
@@ -386,38 +310,9 @@ export class AdminCost extends LitElement {
   constructor() {
     super();
     this.activeTab = 'config';
-    this.content = this.defaultContent;
-    this.schema = null;
-    this.loading = false;
-    this.statusMsg = '';
-    this.statusType = '';
     this.inspectData = null;
     this.inspectLoading = false;
     this.expandedTeams = new Set();
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    this.loadConfig();
-  }
-
-  async loadConfig() {
-    this.loading = true;
-    try {
-      const [schemaData, contentData] = await Promise.all([
-        adminProvider.getSchema(this.configType),
-        adminProvider.getCost(),
-      ]);
-
-      this.schema = schemaData;
-      this.content = this.parseContent(contentData);
-      this.statusMsg = '';
-    } catch (e) {
-      this.statusMsg = `Error loading cost configuration`;
-      this.statusType = 'error';
-    } finally {
-      this.loading = false;
-    }
   }
 
   parseContent(data) {
@@ -442,11 +337,9 @@ export class AdminCost extends LitElement {
       const data = await adminProvider.getCostInspect();
       if (!data) throw new Error('Failed to load inspection data');
       this.inspectData = data;
-      this.statusMsg = 'Inspection data loaded successfully';
-      this.statusType = 'success';
+      this.setStatus('Inspection data loaded successfully', 'success');
     } catch (e) {
-      this.statusMsg = `Error loading inspection data: ${e.message}`;
-      this.statusType = 'error';
+      this.setStatus(`Error loading inspection data: ${e.message}`, 'error');
     } finally {
       this.inspectLoading = false;
     }
@@ -461,28 +354,14 @@ export class AdminCost extends LitElement {
     this.requestUpdate();
   }
 
-  async handleSave() {
-    this.loading = true;
-    this.statusMsg = '';
+  async afterSave() {
+    // Best-effort server-side reload so runtime services use updated config.
     try {
-      const formData = this.shadowRoot.querySelector('schema-form')?.getData();
-      await adminProvider.saveCost(formData || this.content);
-      // Trigger server-side reload so in-memory services pick up new config,
-      // then refresh local view state to reflect persisted values.
-      try {
-        await adminProvider.reloadConfig();
-      } catch (e) {
-        /* best-effort */
-      }
-      await this.loadConfig();
-      this.statusMsg = 'Saved successfully';
-      this.statusType = 'success';
+      await adminProvider.reloadConfig();
     } catch (e) {
-      this.statusMsg = `Error: ${e.message}`;
-      this.statusType = 'error';
-    } finally {
-      this.loading = false;
+      /* best-effort */
     }
+    await this.loadConfig();
   }
 
   switchTab(tab) {
@@ -509,7 +388,7 @@ export class AdminCost extends LitElement {
               ></schema-form>
             </div>
             <div class="actions">
-              <button class="primary" @click=${this.handleSave}>Save Changes</button>
+              <button class="primary" @click=${this.saveConfig}>Save</button>
               <button
                 @click=${async () => {
                   await adminProvider.reloadConfig();
@@ -561,7 +440,7 @@ export class AdminCost extends LitElement {
         ${database_only_teams.length > 0 ?
           html`
             <div class="alert warning">
-              <strong>⚠️ Warning:</strong> ${database_only_teams.length} team(s) in
+              <strong>Warning:</strong> ${database_only_teams.length} team(s) in
               database.yml are not configured in teams.yml. Cost calculations for work
               assigned to these teams will fail.
             </div>
@@ -570,7 +449,7 @@ export class AdminCost extends LitElement {
         ${config_only_teams.length > 0 ?
           html`
             <div class="alert info">
-              <strong>ℹ️ Info:</strong> ${config_only_teams.length} team(s) in teams.yml
+              <strong>Info:</strong> ${config_only_teams.length} team(s) in teams.yml
               have no members in database.yml.
             </div>
           `
@@ -578,7 +457,7 @@ export class AdminCost extends LitElement {
         ${excluded_teams && excluded_teams.length > 0 ?
           html`
             <div class="alert info">
-              <strong>ℹ️ Info:</strong> ${excluded_teams.length} team(s) are marked as
+              <strong>Info:</strong> ${excluded_teams.length} team(s) are marked as
               excluded in teams.yml and will not be used in operations.
             </div>
           `
@@ -638,7 +517,7 @@ export class AdminCost extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                ⚠️ Teams in Database but NOT in Config (${database_only_teams.length})
+                Teams in Database but NOT in Config (${database_only_teams.length})
               </div>
               <div class="team-list">
                 ${database_only_teams.map((team) =>
@@ -651,7 +530,7 @@ export class AdminCost extends LitElement {
         ${matched_teams.length > 0 ?
           html`
             <div class="section">
-              <div class="section-title">✓ Matched Teams (${matched_teams.length})</div>
+              <div class="section-title">Matched Teams (${matched_teams.length})</div>
               <div class="team-list">
                 ${matched_teams.map((team) => this.renderTeamCard(team, 'matched'))}
               </div>
@@ -662,7 +541,7 @@ export class AdminCost extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                ℹ️ Teams in Config but NOT in Database (${config_only_teams.length})
+                Teams in Config but NOT in Database (${config_only_teams.length})
               </div>
               <div class="team-list">
                 ${config_only_teams.map((team) =>
@@ -676,7 +555,7 @@ export class AdminCost extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                🚫 Excluded Teams (${excluded_teams.length})
+                Excluded Teams (${excluded_teams.length})
               </div>
               <div class="team-list">
                 ${excluded_teams.map((team) => this.renderTeamCard(team, 'excluded'))}
@@ -707,9 +586,9 @@ export class AdminCost extends LitElement {
             <div class="team-id">${team.id}</div>
           </div>
           <div class="team-badge ${type}">
-            ${type === 'matched' ? '✓ Matched'
-            : type === 'unmatched' ? '⚠️ Not in Config'
-            : 'ℹ️ No Members'}
+            ${type === 'matched' ? 'Matched'
+            : type === 'unmatched' ? 'Not in Config'
+            : 'No Members'}
           </div>
         </div>
 

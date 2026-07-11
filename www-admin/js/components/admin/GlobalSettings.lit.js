@@ -683,9 +683,9 @@ export class AdminGlobalSettings extends LitElement {
               ?disabled=${this._saving}
               @click=${() => this._save()}
             >
-              ${this._saving ? 'Saving…' : '💾 Save'}
+              ${this._saving ? 'Saving…' : 'Save'}
             </button>
-            <button class="btn" @click=${() => this._load()}>🔄 Reload</button>
+            <button class="btn" @click=${() => this._load()}>Reload</button>
             ${this._statusMsg
               ? html`<span class="status ${this._statusType}">${this._statusMsg}</span>`
               : ''}

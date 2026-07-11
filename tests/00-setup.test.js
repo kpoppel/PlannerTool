@@ -88,6 +88,48 @@ if (typeof window.requestIdleCallback === 'undefined') {
   };
 }
 
+// jsdom does not implement canvas drawing APIs by default and emits noisy
+// "Error: Not implemented" messages. Provide a minimal no-op 2D context.
+if (typeof HTMLCanvasElement !== 'undefined') {
+  const createCanvasContextStub = () => ({
+    canvas: null,
+    clearRect() {},
+    fillRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fill() {},
+    save() {},
+    restore() {},
+    setLineDash() {},
+    closePath() {},
+    arc() {},
+    rect() {},
+    clip() {},
+    translate() {},
+    scale() {},
+    rotate() {},
+    strokeText() {},
+    fillText() {},
+    measureText(text) {
+      return { width: String(text || '').length * 7 };
+    },
+    createLinearGradient() {
+      return { addColorStop() {} };
+    },
+  });
+
+  HTMLCanvasElement.prototype.getContext = function () {
+    if (!this.__ctx2d) {
+      const ctx = createCanvasContextStub();
+      ctx.canvas = this;
+      this.__ctx2d = ctx;
+    }
+    return this.__ctx2d;
+  };
+}
+
 // Provide simple providerMock and config services expected by many tests
 if (!window.ProviderMock) {
   window.ProviderMock = {

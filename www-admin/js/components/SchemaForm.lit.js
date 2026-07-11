@@ -120,13 +120,6 @@ export class SchemaForm extends LitElement {
       margin-top: 4px;
     }
 
-    .object-section {
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      padding: 16px;
-      background: #f9fafb;
-    }
-
     .object-title {
       font-size: 1rem;
       font-weight: 600;
@@ -318,77 +311,55 @@ export class SchemaForm extends LitElement {
     return this.data;
   }
 
+  _getPathSegments(path) {
+    if (!path) return [];
+    const tokens = path.match(/[^.[\]]+|\[(\d+)\]/g) || [];
+    return tokens.map((token) =>
+      token.startsWith('[') ? Number(token.slice(1, -1)) : token
+    );
+  }
+
+  _getByPath(path) {
+    let obj = this.data;
+    for (const segment of this._getPathSegments(path)) {
+      if (obj == null) return null;
+      obj = obj[segment];
+    }
+    return obj;
+  }
+
+  _setByPath(path, value) {
+    const parts = this._getPathSegments(path);
+    if (parts.length === 0) {
+      this.data = value;
+      return;
+    }
+    let obj = this.data;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (obj[part] == null) {
+        obj[part] = typeof parts[i + 1] === 'number' ? [] : {};
+      }
+      obj = obj[part];
+    }
+    obj[parts[parts.length - 1]] = value;
+  }
+
+  _renderFieldGroup({ content, label = '', description = '', errorMsg = '' }) {
+    return html`
+      <div class="field-group">
+        ${label} ${description}
+        ${content}
+        ${errorMsg}
+      </div>
+    `;
+  }
+
   /**
    * Update a value in the data object
    */
   _updateValue(path, value) {
-    // Handle array notation in path like "team_map[0].name"
-    const parts = [];
-    const pathStr = path;
-    let current = '';
-    let i = 0;
-
-    while (i < pathStr.length) {
-      const char = pathStr[i];
-      if (char === '[') {
-        if (current) {
-          parts.push({ type: 'property', value: current });
-          current = '';
-        }
-        i++;
-        let indexStr = '';
-        while (i < pathStr.length && pathStr[i] !== ']') {
-          indexStr += pathStr[i];
-          i++;
-        }
-        parts.push({ type: 'index', value: parseInt(indexStr, 10) });
-        i++; // skip ']'
-        if (i < pathStr.length && pathStr[i] === '.') {
-          i++; // skip '.'
-        }
-      } else if (char === '.') {
-        if (current) {
-          parts.push({ type: 'property', value: current });
-          current = '';
-        }
-        i++;
-      } else {
-        current += char;
-        i++;
-      }
-    }
-    if (current) {
-      parts.push({ type: 'property', value: current });
-    }
-
-    let obj = this.data;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (part.type === 'property') {
-        if (!obj[part.value]) {
-          // Look ahead to see if next is an index
-          if (i + 1 < parts.length && parts[i + 1].type === 'index') {
-            obj[part.value] = [];
-          } else {
-            obj[part.value] = {};
-          }
-        }
-        obj = obj[part.value];
-      } else if (part.type === 'index') {
-        if (!obj[part.value]) {
-          obj[part.value] = {};
-        }
-        obj = obj[part.value];
-      }
-    }
-
-    const lastPart = parts[parts.length - 1];
-    if (lastPart.type === 'property') {
-      obj[lastPart.value] = value;
-    } else if (lastPart.type === 'index') {
-      obj[lastPart.value] = value;
-    }
+    this._setByPath(path, value);
 
     this.requestUpdate();
     this._dispatchChange();
@@ -434,8 +405,8 @@ export class SchemaForm extends LitElement {
     const errorMsg = error ? html`<div class="error-message">${error}</div>` : '';
     // Boolean checkbox
     if (schema.type === 'boolean') {
-      return html`
-        <div class="field-group">
+      return this._renderFieldGroup({
+        content: html`
           <div class="checkbox-wrapper">
             <input
               type="checkbox"
@@ -444,16 +415,18 @@ export class SchemaForm extends LitElement {
             />
             ${label}
           </div>
-          ${description}
-        </div>
-      `;
+        `,
+        description,
+      });
     }
 
     // Enum/select
     if (schema.enum) {
-      return html`
-        <div class="field-group">
-          ${label} ${description}
+      return this._renderFieldGroup({
+        label,
+        description,
+        errorMsg,
+        content: html`
           <select
             .value=${value || schema.default || ''}
             @change=${(e) => this._updateValue(fullPath, e.target.value)}
@@ -466,16 +439,17 @@ export class SchemaForm extends LitElement {
               `
             )}
           </select>
-          ${errorMsg}
-        </div>
-      `;
+        `,
+      });
     }
 
     // Number/integer
     if (schema.type === 'number' || schema.type === 'integer') {
-      return html`
-        <div class="field-group">
-          ${label} ${description}
+      return this._renderFieldGroup({
+        label,
+        description,
+        errorMsg,
+        content: html`
           <input
             type="number"
             .value=${value != null ? String(value) : ''}
@@ -490,16 +464,17 @@ export class SchemaForm extends LitElement {
             }}
             class=${error ? 'error' : ''}
           />
-          ${errorMsg}
-        </div>
-      `;
+        `,
+      });
     }
 
     // String
     if (schema.type === 'string') {
-      return html`
-        <div class="field-group">
-          ${label} ${description}
+      return this._renderFieldGroup({
+        label,
+        description,
+        errorMsg,
+        content: html`
           <input
             type="text"
             .value=${value || ''}
@@ -510,9 +485,8 @@ export class SchemaForm extends LitElement {
             }}
             class=${error ? 'error' : ''}
           />
-          ${errorMsg}
-        </div>
-      `;
+        `,
+      });
     }
 
     // Object - full width
@@ -574,19 +548,7 @@ export class SchemaForm extends LitElement {
    */
   _getValueByBracketPath(path) {
     if (!path) return this.data;
-    const re = /([^\.\[]+)(?:\[(\d+)\])?/g;
-    let m;
-    let obj = this.data;
-    while ((m = re.exec(path)) !== null) {
-      const prop = m[1];
-      const idx = m[2];
-      if (obj == null) return null;
-      obj = obj[prop];
-      if (idx !== undefined) {
-        obj = obj?.[Number(idx)];
-      }
-    }
-    return obj;
+    return this._getByPath(path);
   }
 
   _onArrayDragStart(e) {
@@ -670,14 +632,17 @@ export class SchemaForm extends LitElement {
         alert('Key already exists!');
         return;
       }
-      value[newKey] = this._getDefaultValue(itemSchema);
-      this._updateValue(path, value);
+      this._updateValue(path, {
+        ...(value || {}),
+        [newKey]: this._getDefaultValue(itemSchema),
+      });
     };
 
     const removeItem = (itemKey) => {
       if (confirm(`Remove ${itemKey}?`)) {
-        delete value[itemKey];
-        this._updateValue(path, value);
+        const next = { ...(value || {}) };
+        delete next[itemKey];
+        this._updateValue(path, next);
       }
     };
 
@@ -778,13 +743,14 @@ export class SchemaForm extends LitElement {
 
     const addItem = () => {
       const newItem = this._getDefaultValue(schema.items);
-      value.push(newItem);
-      this._updateValue(path, value);
+      this._updateValue(path, [...value, newItem]);
     };
 
     const removeItem = (idx) => {
-      value.splice(idx, 1);
-      this._updateValue(path, value);
+      this._updateValue(
+        path,
+        value.filter((_, index) => index !== idx)
+      );
     };
 
     return html`
@@ -808,7 +774,7 @@ export class SchemaForm extends LitElement {
                 @dragend=${(e) => this._onArrayDragEnd(e)}>
                 <div class="drag-handle">☰</div>
                 <div class="array-item-content" style="flex:1">
-                  ${this._renderArrayItem(schema.items, item, `${path}[${idx}]`, idx)}
+                  ${this._renderArrayItem(schema.items, item, `${path}[${idx}]`)}
                 </div>
                 <button
                   class="btn btn-danger btn-small"
@@ -833,7 +799,7 @@ export class SchemaForm extends LitElement {
   /**
    * Render a single array item
    */
-  _renderArrayItem(itemSchema, value, path, idx) {
+  _renderArrayItem(itemSchema, value, path) {
     if (!itemSchema) return '';
 
     // For primitive types in arrays
@@ -842,13 +808,7 @@ export class SchemaForm extends LitElement {
         return html`
           <select
             .value=${value || ''}
-            @change=${(e) => {
-              const pathParts = path.match(/([^\[]+)(?:\[(\d+)\])?/g);
-              const arrayPath = pathParts[0].replace(/\[\d+\]$/, '');
-              const arr = this._getValueByPath(arrayPath);
-              arr[idx] = e.target.value;
-              this._updateValue(arrayPath, arr);
-            }}
+            @change=${(e) => this._updateValue(path, e.target.value)}
           >
             <option value="">-- Select --</option>
             ${itemSchema.enum.map(
@@ -863,13 +823,7 @@ export class SchemaForm extends LitElement {
         <input
           type="text"
           .value=${value || ''}
-          @input=${(e) => {
-            const pathParts = path.match(/([^\[]+)(?:\[(\d+)\])?/g);
-            const arrayPath = pathParts[0].replace(/\[\d+\]$/, '');
-            const arr = this._getValueByPath(arrayPath);
-            arr[idx] = e.target.value;
-            this._updateValue(arrayPath, arr);
-          }}
+          @input=${(e) => this._updateValue(path, e.target.value)}
         />
       `;
     }
@@ -892,19 +846,6 @@ export class SchemaForm extends LitElement {
     }
 
     return html`<div>Unsupported array item type</div>`;
-  }
-
-  /**
-   * Get a value by path string
-   */
-  _getValueByPath(path) {
-    const parts = path.split('.');
-    let obj = this.data;
-    for (const part of parts) {
-      if (obj == null) return null;
-      obj = obj[part];
-    }
-    return obj;
   }
 
   /**
@@ -947,8 +888,7 @@ export class SchemaForm extends LitElement {
      * Resolve a dotted path (e.g. "feature_flags.enable_memory_cache") against
      * this.data, returning the value or undefined.
      */
-    const resolveFlag = (flagPath) =>
-      flagPath.split('.').reduce((obj, k) => (obj != null ? obj[k] : undefined), this.data);
+    const resolveFlag = (flagPath) => this._getByPath(flagPath);
 
     // Collect conditional panels bubbled up from nested objects (x-showWhen).
     // These are rendered as peer sections at root level, matching the style of

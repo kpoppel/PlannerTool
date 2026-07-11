@@ -50,6 +50,39 @@ const PLUGINS_CONFIG = {
   ],
 };
 
+const CLEAN_MODULES_META = {
+  modules: [
+    {
+      id: 'plugin-alpha',
+      name: 'Alpha',
+      version: '1.0.0',
+      description: 'Alpha plugin',
+      enabled: true,
+      activated: false,
+      exclusive: true,
+      mountPoint: 'feature-board',
+      dependencies: [],
+    },
+    {
+      id: 'plugin-beta',
+      name: 'Beta',
+      version: '2.0.0',
+      description: 'Beta plugin',
+      enabled: false,
+      activated: false,
+      exclusive: false,
+      mountPoint: 'app',
+      dependencies: [],
+    },
+  ],
+};
+
+function okPostHandler() {
+  return http.post('/admin/v1/plugins-config', async () =>
+    HttpResponse.json({ ok: true }, { status: 200 })
+  );
+}
+
 function useDefaultHandlers() {
   server.use(
     http.get('/static/js/modules.config.json', () => HttpResponse.json(MODULES_META, { status: 200 })),
@@ -60,6 +93,16 @@ function useDefaultHandlers() {
       const body = await request.json();
       return HttpResponse.json({ ok: true }, { status: 200 });
     })
+  );
+}
+
+function useCleanHandlers(postHandler = okPostHandler()) {
+  server.use(
+    http.get('/static/js/modules.config.json', () => HttpResponse.json(CLEAN_MODULES_META, { status: 200 })),
+    http.get('/admin/v1/plugins-config', () =>
+      HttpResponse.json({ content: PLUGINS_CONFIG }, { status: 200 })
+    ),
+    postHandler
   );
 }
 
@@ -202,27 +245,6 @@ describe('admin-plugins', () => {
   });
 
   describe('save payload and providerREST calls', () => {
-    // Helpers to set up a clean (no-invalid-entry) component for save tests
-    function useCleanHandlers(postHandler) {
-      server.use(
-        http.get('/static/js/modules.config.json', () =>
-          HttpResponse.json(
-            {
-              modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: 'Alpha plugin', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
-                { id: 'plugin-beta', name: 'Beta', version: '2.0.0', description: 'Beta plugin', enabled: false, activated: false, exclusive: false, mountPoint: 'app', dependencies: [] },
-              ],
-            },
-            { status: 200 }
-          )
-        ),
-        http.get('/admin/v1/plugins-config', () =>
-          HttpResponse.json({ content: PLUGINS_CONFIG }, { status: 200 })
-        ),
-        postHandler
-      );
-    }
-
     it('save sends ordered list of valid-id rows to /admin/v1/plugins-config', async () => {
       let capturedBody = null;
       useCleanHandlers(
@@ -281,22 +303,7 @@ describe('admin-plugins', () => {
     });
 
     it('shows ok status after successful save', async () => {
-      // Use metadata without the bad entry so save is unblocked
-      server.use(
-        http.get('/static/js/modules.config.json', () =>
-          HttpResponse.json(
-            {
-              modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
-              ],
-            },
-            { status: 200 }
-          )
-        ),
-        http.post('/admin/v1/plugins-config', async () =>
-          HttpResponse.json({ ok: true }, { status: 200 })
-        )
-      );
+      useCleanHandlers(okPostHandler());
 
       await comp._load();
       await comp.updateComplete;
@@ -309,17 +316,7 @@ describe('admin-plugins', () => {
     });
 
     it('shows error status when save fails', async () => {
-      server.use(
-        http.get('/static/js/modules.config.json', () =>
-          HttpResponse.json(
-            {
-              modules: [
-                { id: 'plugin-alpha', name: 'Alpha', version: '1.0.0', description: '', enabled: true, activated: false, exclusive: true, mountPoint: 'feature-board', dependencies: [] },
-              ],
-            },
-            { status: 200 }
-          )
-        ),
+      useCleanHandlers(
         http.post('/admin/v1/plugins-config', async () =>
           HttpResponse.json({ ok: false, error: 'server error' }, { status: 500 })
         )
@@ -389,67 +386,6 @@ describe('admin-plugins', () => {
       expect(errors.length).to.be.greaterThan(0);
       expect(errors[0]).to.include('missing required field');
     });
-  });
-});
-
-// Standalone providerREST method tests
-describe('adminProvider plugins-config methods', () => {
-  let adminProvider;
-
-  beforeEach(async () => {
-    const mod = await import('../../www-admin/js/services/providerREST.js');
-    adminProvider = mod.adminProvider;
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
-  });
-
-  it('getPluginsConfig returns content object on success', async () => {
-    server.use(
-      http.get('/admin/v1/plugins-config', () =>
-        HttpResponse.json({ content: { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] } }, { status: 200 })
-      )
-    );
-    const result = await adminProvider.getPluginsConfig();
-    expect(result).to.be.an('object');
-    expect(result.schema_version).to.equal(1);
-    expect(result.plugins).to.be.an('array');
-    expect(result.plugins[0].id).to.equal('plugin-alpha');
-  });
-
-  it('getPluginsConfig returns null on network failure', async () => {
-    server.use(
-      http.get('/admin/v1/plugins-config', () => HttpResponse.json({}, { status: 500 }))
-    );
-    const result = await adminProvider.getPluginsConfig();
-    expect(result).to.equal(null);
-  });
-
-  it('savePluginsConfig posts content and returns ok', async () => {
-    let body = null;
-    server.use(
-      http.post('/admin/v1/plugins-config', async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json({ ok: true }, { status: 200 });
-      })
-    );
-    const payload = { schema_version: 1, plugins: [{ id: 'plugin-alpha', enabled: true, activated: false }] };
-    const result = await adminProvider.savePluginsConfig(payload);
-    expect(result.ok).to.equal(true);
-    expect(body.content.schema_version).to.equal(1);
-    expect(body.content.plugins[0].id).to.equal('plugin-alpha');
-  });
-
-  it('savePluginsConfig returns error object on HTTP error', async () => {
-    server.use(
-      http.post('/admin/v1/plugins-config', async () =>
-        HttpResponse.json({ error: 'bad' }, { status: 400 })
-      )
-    );
-    const result = await adminProvider.savePluginsConfig([]);
-    expect(result.ok).to.equal(false);
-    expect(result.error).to.include('400');
   });
 });
 

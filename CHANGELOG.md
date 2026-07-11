@@ -21,6 +21,7 @@ Template - do not change :
 - Admin plugins config save now sends correct payload structure: `{schema_version, plugins}` object instead of array, matching backend validation and GET response format.
 - User app startup now correctly requests runtime plugin config via `dataService` (instead of a non-existent `provider` export), fixing cases where the Tools menu appeared empty and no `/api/plugins/config` request was sent.
 - PluginLinkEditor constructor default id now matches modules.config.json: changed from `'link-editor'` to `'plugin-link-editor'` for consistency.
+- Test harness now stubs canvas `getContext()` in jsdom, removing noisy "Error: Not implemented" output when no real test failures exist.
 ### Added
 - Portfolio Board plugin Phase 1: added a fullscreen team-row/state-column board with sidebar-aware filtering, details-panel card selection, persisted plugin toolbar state, and an unallocated tasks panel.
 - Backend: added global plugin runtime configuration support with admin CRUD endpoint (`/admin/v1/plugins-config`), session-protected runtime read endpoint (`/api/plugins/config`), payload normalization, and backup/restore persistence under `plugin_runtime_config`.
@@ -33,6 +34,7 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Admin test suite cleanup: separated plugins adminProvider API contract checks into a dedicated service test, reduced duplicated admin-plugins test setup via file-local helpers, and removed obsolete legacy `*.test.old.js` providerREST tests.
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.
 - Portfolio Board timeline overview now uses a two-row header with year labels and numeric month labels to improve readability and avoid overlapping month text.

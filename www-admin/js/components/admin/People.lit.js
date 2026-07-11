@@ -1,25 +1,17 @@
-import { LitElement, html, css } from '/static/js/vendor/lit.js';
+import { html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
-export class AdminPeople extends LitElement {
+export class AdminPeople extends BaseConfigComponent {
   static properties = {
     activeTab: { type: String },
-    content: { type: Object },
-    schema: { type: Object },
-    loading: { type: Boolean },
-    statusMsg: { type: String },
-    statusType: { type: String },
     inspectData: { type: Object },
     inspectLoading: { type: Boolean },
     expandedTeams: { type: Object },
   };
 
   static styles = css`
-    :host {
-      display: block;
-      height: 100%;
-    }
+    ${BaseConfigComponent.styles}
 
     .tabs {
       display: flex;
@@ -48,74 +40,6 @@ export class AdminPeople extends LitElement {
       color: #3b82f6;
       border-bottom-color: #3b82f6;
       font-weight: 600;
-    }
-
-    h2 {
-      margin-top: 0;
-      font-size: 1.1rem;
-    }
-
-    .panel {
-      padding: 12px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      height: calc(100vh - 200px);
-      box-sizing: border-box;
-      overflow-y: auto;
-    }
-
-    .actions {
-      margin-top: 12px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding-top: 12px;
-      border-top: 1px solid #e5e7eb;
-    }
-
-    button {
-      padding: 8px 16px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: all 0.2s;
-    }
-
-    button:hover {
-      background: #e5e7eb;
-    }
-
-    button.primary {
-      background: #3b82f6;
-      color: #fff;
-      border-color: #3b82f6;
-    }
-
-    button.primary:hover {
-      background: #2563eb;
-    }
-
-    .status {
-      margin-left: 8px;
-      font-size: 0.9rem;
-    }
-
-    .status.success {
-      color: #10b981;
-    }
-    .status.error {
-      color: #ef4444;
-    }
-
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 40px;
-      color: #6b7280;
     }
 
     /* Inspection view styles */
@@ -371,11 +295,6 @@ export class AdminPeople extends LitElement {
   constructor() {
     super();
     this.activeTab = 'config';
-    this.content = null;
-    this.schema = null;
-    this.loading = false;
-    this.statusMsg = '';
-    this.statusType = '';
     this.inspectData = null;
     this.inspectLoading = false;
     this.expandedTeams = new Set();
@@ -397,43 +316,17 @@ export class AdminPeople extends LitElement {
     };
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    this.loadConfig();
-  }
-
-  async loadConfig() {
-    this.loading = true;
-    try {
-      // Load schema via centralized admin provider
-      const schema = await adminProvider.getSchema(this.configType);
-      if (schema) {
-        this.schema = schema;
-      }
-
-      // Load content
-      const methodName = `get${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
-      const content = await adminProvider[methodName]();
-      // If server returned no content, use default from schema when available
-      if (content) {
-        this.content = content;
-      } else {
-        const schemaDefault =
-          this.schema &&
-          this.schema.properties &&
-          this.schema.properties.database_file &&
-          this.schema.properties.database_file.default;
-        const dbFile = schemaDefault || this.defaultContent.database_file;
-        this.content = Object.assign({}, this.defaultContent, {
-          database_file: dbFile,
-        });
-      }
-    } catch (e) {
-      this.statusMsg = `Error loading config: ${e.message}`;
-      this.statusType = 'error';
-    } finally {
-      this.loading = false;
-    }
+  parseContent(data) {
+    if (data) return data;
+    const schemaDefault =
+      this.schema &&
+      this.schema.properties &&
+      this.schema.properties.database_file &&
+      this.schema.properties.database_file.default;
+    const dbFile = schemaDefault || this.defaultContent.database_file;
+    return Object.assign({}, this.defaultContent, {
+      database_file: dbFile,
+    });
   }
 
   async loadInspectData() {
@@ -444,11 +337,9 @@ export class AdminPeople extends LitElement {
       if (!this.inspectData) {
         throw new Error('No data returned from server');
       }
-      this.statusMsg = 'Inspection data loaded successfully';
-      this.statusType = 'success';
+      this.setStatus('Inspection data loaded successfully', 'success');
     } catch (e) {
-      this.statusMsg = `Error loading inspection data: ${e.message}`;
-      this.statusType = 'error';
+      this.setStatus(`Error loading inspection data: ${e.message}`, 'error');
     } finally {
       this.inspectLoading = false;
     }
@@ -463,23 +354,9 @@ export class AdminPeople extends LitElement {
     this.requestUpdate();
   }
 
-  async handleSave() {
-    this.loading = true;
-    this.statusMsg = '';
-    try {
-      const formData = this.shadowRoot.querySelector('schema-form')?.getData();
-      await adminProvider.savePeople(formData || this.content);
-      this.statusMsg = 'Saved successfully';
-      this.statusType = 'success';
-      // Reload inspect data if on that tab
-      if (this.activeTab === 'inspect' && this.inspectData) {
-        setTimeout(() => this.loadInspectData(), 500);
-      }
-    } catch (e) {
-      this.statusMsg = `Error: ${e.message}`;
-      this.statusType = 'error';
-    } finally {
-      this.loading = false;
+  async afterSave() {
+    if (this.activeTab === 'inspect' && this.inspectData) {
+      setTimeout(() => this.loadInspectData(), 500);
     }
   }
 
@@ -507,7 +384,7 @@ export class AdminPeople extends LitElement {
               ></schema-form>
             </div>
             <div class="actions">
-              <button class="primary" @click=${this.handleSave}>Save Changes</button>
+              <button class="primary" @click=${this.saveConfig}>Save</button>
               <button @click=${this.loadConfig}>Reload</button>
               ${this.statusMsg ?
                 html`<span class="status ${this.statusType}">${this.statusMsg}</span>`
@@ -554,7 +431,7 @@ export class AdminPeople extends LitElement {
         ${unmatched_teams.length > 0 ?
           html`
             <div class="alert warning">
-              <strong>⚠️ Warning:</strong> ${unmatched_teams.length} team(s) have people
+              <strong>Warning:</strong> ${unmatched_teams.length} team(s) have people
               assigned but are not configured in teams.yml. Add these teams to teams.yml.
             </div>
           `
@@ -562,7 +439,7 @@ export class AdminPeople extends LitElement {
         ${teams_without_people.length > 0 ?
           html`
             <div class="alert info">
-              <strong>ℹ️ Info:</strong> ${teams_without_people.length} configured team(s)
+              <strong>Info:</strong> ${teams_without_people.length} configured team(s)
               have no people assigned in the database.
             </div>
           `
@@ -570,7 +447,7 @@ export class AdminPeople extends LitElement {
         ${unassigned_people.length > 0 ?
           html`
             <div class="alert warning">
-              <strong>⚠️ Warning:</strong> ${unassigned_people.length} people have no team
+              <strong>Warning:</strong> ${unassigned_people.length} people have no team
               assignment.
             </div>
           `
@@ -608,7 +485,7 @@ export class AdminPeople extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                ⚠️ Teams with People but NOT in Config (${unmatched_teams.length})
+                Teams with People but NOT in Config (${unmatched_teams.length})
               </div>
               <div class="team-list">
                 ${unmatched_teams.map((team) => this.renderTeamCard(team, 'unmatched'))}
@@ -619,7 +496,7 @@ export class AdminPeople extends LitElement {
         ${matched_teams.length > 0 ?
           html`
             <div class="section">
-              <div class="section-title">✓ Matched Teams (${matched_teams.length})</div>
+              <div class="section-title">Matched Teams (${matched_teams.length})</div>
               <div class="team-list">
                 ${matched_teams.map((team) => this.renderTeamCard(team, 'matched'))}
               </div>
@@ -630,7 +507,7 @@ export class AdminPeople extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                ℹ️ Configured Teams with No People (${teams_without_people.length})
+                Configured Teams with No People (${teams_without_people.length})
               </div>
               <div class="team-list">
                 ${teams_without_people.map((team) =>
@@ -644,7 +521,7 @@ export class AdminPeople extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                🚫 Excluded Teams (${excluded_teams.length})
+                Excluded Teams (${excluded_teams.length})
               </div>
               <div class="team-list">
                 ${excluded_teams.map((team) => this.renderTeamCard(team, 'excluded'))}
@@ -656,7 +533,7 @@ export class AdminPeople extends LitElement {
           html`
             <div class="section">
               <div class="section-title">
-                ⚠️ Unassigned People (${unassigned_people.length})
+                Unassigned People (${unassigned_people.length})
               </div>
               <div class="team-list">
                 ${unassigned_people.map((person) => this.renderUnassignedPerson(person))}
@@ -687,10 +564,10 @@ export class AdminPeople extends LitElement {
             <div class="team-id">${team.id}</div>
           </div>
           <div class="team-badge ${type}">
-            ${type === 'matched' ? '✓ Matched'
-            : type === 'unmatched' ? '⚠️ Not in Config'
-            : type === 'excluded' ? '🚫 Excluded'
-            : 'ℹ️ No People'}
+            ${type === 'matched' ? 'Matched'
+            : type === 'unmatched' ? 'Not in Config'
+            : type === 'excluded' ? 'Excluded'
+            : 'No People'}
           </div>
         </div>
 
@@ -754,7 +631,7 @@ export class AdminPeople extends LitElement {
             <div class="team-name">${person.name}</div>
             <div class="team-id">${person.reason}</div>
           </div>
-          <div class="team-badge unmatched">⚠️ No Team</div>
+          <div class="team-badge unmatched">No Team</div>
         </div>
         <div class="team-stats">
           <div class="stat">

@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
-import { getPluginSchema, hasPluginSchema, hasConfigurableSchema } from '../../core/pluginSchemaRegistry.js';
+import { getPluginSchema, hasConfigurableSchema } from '../../core/pluginSchemaRegistry.js';
 
 /**
  * AdminPlugins — Admin panel for managing plugin runtime settings.
@@ -27,7 +27,6 @@ export class AdminPlugins extends LitElement {
     _statusType: { type: String, state: true },
     _validationErrors: { type: Array, state: true },
     _editingConfigIndex: { type: Number, state: true },
-    _configEditorValue: { type: String, state: true },
     _configFormFields: { type: Object, state: true },
     _configFormErrors: { type: Object, state: true },
   };
@@ -183,11 +182,11 @@ export class AdminPlugins extends LitElement {
       transition: 0.2s;
     }
 
-    input:checked + .slider {
+    .toggle input:checked + .slider {
       background: #3b82f6;
     }
 
-    input:checked + .slider:before {
+    .toggle input:checked + .slider:before {
       transform: translateX(16px);
     }
 
@@ -330,10 +329,6 @@ export class AdminPlugins extends LitElement {
       margin-bottom: 16px;
     }
 
-    .modal-field {
-      margin-bottom: 12px;
-    }
-
     .modal-label {
       display: block;
       font-size: 0.85rem;
@@ -348,7 +343,6 @@ export class AdminPlugins extends LitElement {
       border: 1px solid #d1d5db;
       border-radius: 4px;
       font-size: 0.85rem;
-      font-family: monospace;
       box-sizing: border-box;
     }
 
@@ -358,7 +352,7 @@ export class AdminPlugins extends LitElement {
       border: 1px solid #d1d5db;
       border-radius: 4px;
       font-size: 0.85rem;
-      font-family: monospace;
+      font-family: inherit;
       min-height: 200px;
       box-sizing: border-box;
     }
@@ -453,51 +447,6 @@ export class AdminPlugins extends LitElement {
       box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
-    .toggle {
-      position: relative;
-      display: inline-block;
-      width: 36px;
-      height: 20px;
-    }
-
-    .toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: #d1d5db;
-      border-radius: 20px;
-      transition: 0.2s;
-    }
-
-    .slider:before {
-      position: absolute;
-      content: '';
-      height: 14px;
-      width: 14px;
-      left: 3px;
-      bottom: 3px;
-      background: #fff;
-      border-radius: 50%;
-      transition: 0.2s;
-    }
-
-    .toggle input:checked + .slider {
-      background: #3b82f6;
-    }
-
-    .toggle input:checked + .slider:before {
-      transform: translateX(16px);
-    }
-
     .field-hint {
       font-size: 0.8rem;
       color: #6b7280;
@@ -524,7 +473,6 @@ export class AdminPlugins extends LitElement {
     this._statusType = '';
     this._validationErrors = [];
     this._editingConfigIndex = -1;
-    this._configEditorValue = '';
     this._configFormFields = {};
     this._configFormErrors = {};
   }
@@ -540,10 +488,10 @@ export class AdminPlugins extends LitElement {
     this._statusType = '';
     this.requestUpdate();
 
-    const [metaResponse, runtimeConfig, schemas] = await Promise.all([
-      this._fetchMetadata(),
+    const metaResponse = await this._fetchMetadata();
+    const [runtimeConfig, schemas] = await Promise.all([
       adminProvider.getPluginsConfig(),
-      this._discoverPluginSchemas(),
+      this._discoverPluginSchemas(metaResponse),
     ]);
 
     this._metadata = metaResponse;
@@ -559,19 +507,14 @@ export class AdminPlugins extends LitElement {
    * For each plugin in metadata, attempts to load its {PluginName}.schema.json file.
    * @returns {Promise<object>} Schema map { pluginId: { schema, defaultConfig } }
    */
-  async _discoverPluginSchemas() {
+  async _discoverPluginSchemas(modules) {
     try {
       const schemas = {};
       const base = window.APP_BASE_URL || '';
-      
-      // First fetch metadata to get list of all plugins
-      const metaRes = await fetch(`${base}/static/js/modules.config.json`);
-      if (!metaRes.ok) return {};
-      const metaJson = await metaRes.json();
-      const modules = Array.isArray(metaJson.modules) ? metaJson.modules : [];
+      const discoveredModules = Array.isArray(modules) ? modules : [];
       
       // For each plugin, attempt to fetch its schema file
-      for (const module of modules) {
+      for (const module of discoveredModules) {
         if (!module.id) continue;
         
         // Convert plugin id to PluginClassName
@@ -850,14 +793,6 @@ export class AdminPlugins extends LitElement {
   _onEditConfig(rowIndex) {
     if (rowIndex < 0 || rowIndex >= this._rows.length) return;
     const row = this._rows[rowIndex];
-    this._editingConfigIndex = rowIndex;
-    this._configEditorValue = JSON.stringify(row.custom_config || {}, null, 2);
-    this.requestUpdate();
-  }
-
-  _onEditConfig(rowIndex) {
-    if (rowIndex < 0 || rowIndex >= this._rows.length) return;
-    const row = this._rows[rowIndex];
     const schemaInfo = getPluginSchema(row.id, this._schemas);
     const schema = schemaInfo?.schema || {};
     
@@ -1023,10 +958,6 @@ export class AdminPlugins extends LitElement {
     this._onCloseConfigEditor();
   }
 
-  _onConfigEditorInput(e) {
-    this._configEditorValue = e.target.value;
-  }
-
   _renderValidationErrors() {
     if (!this._hasValidationErrors()) return '';
     return html`
@@ -1129,30 +1060,18 @@ export class AdminPlugins extends LitElement {
           ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
         </div>
       `;
-    } else {
-      // Fallback for complex types (object, array, etc.)
-      return html`
-        <div class="modal-field ${errorClass}">
-          <label class="modal-label">${fieldLabel}${required} (JSON)</label>
-          <textarea
-            class="modal-textarea"
-            .value=${typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2)}
-            @input=${(e) => {
-              try {
-                const parsed = JSON.parse(e.target.value);
-                this._onFieldChange(key, parsed);
-              } catch (err) {
-                // Keep raw string if JSON is invalid, show error
-                this._configFormErrors = { ...this._configFormErrors, [key]: 'Invalid JSON' };
-                this.requestUpdate();
-              }
-            }}
-          ></textarea>
-          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
-          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
-        </div>
-      `;
     }
+
+    return html`
+      <div class="modal-field ${errorClass}">
+        <label class="modal-label">${fieldLabel}${required}</label>
+        <p class="field-hint">
+          Unsupported configuration field type: ${propSchema.type || 'unknown'}.
+        </p>
+        ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+        ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+      </div>
+    `;
   }
 
   _renderConfigEditor() {

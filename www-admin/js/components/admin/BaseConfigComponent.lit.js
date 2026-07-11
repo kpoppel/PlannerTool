@@ -120,6 +120,11 @@ export class BaseConfigComponent extends LitElement {
     this.useRawMode = false;
   }
 
+  setStatus(message, type = '') {
+    this.statusMsg = message;
+    this.statusType = type;
+  }
+
   // Abstract methods to be overridden by subclasses
   get configType() {
     throw new Error('configType must be implemented');
@@ -173,6 +178,12 @@ export class BaseConfigComponent extends LitElement {
     return data || this.defaultContent;
   }
 
+  async beforeSave(content) {
+    return content;
+  }
+
+  async afterSave() {}
+
   async saveConfig() {
     const form = this.shadowRoot.querySelector('schema-form');
     if (form && !this.useRawMode) {
@@ -184,20 +195,19 @@ export class BaseConfigComponent extends LitElement {
       this.content = form.getData();
     }
 
-    this.statusMsg = 'Saving...';
-    this.statusType = '';
+    this.setStatus('Saving...', '');
 
     try {
+      const payload = await this.beforeSave(this.content);
       const methodName = `save${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
-      await adminProvider[methodName](this.content);
-      this.statusMsg = 'Saved successfully';
-      this.statusType = 'success';
+      await adminProvider[methodName](payload);
+      await this.afterSave();
+      this.setStatus('Saved successfully', 'success');
       setTimeout(() => {
         this.statusMsg = '';
       }, 3000);
     } catch (e) {
-      this.statusMsg = 'Error saving';
-      this.statusType = 'error';
+      this.setStatus('Error saving', 'error');
     }
   }
 
@@ -237,10 +247,10 @@ export class BaseConfigComponent extends LitElement {
               `}
           </div>
           <div class="actions">
-            <button class="primary" @click="${this.saveConfig}">💾 Save</button>
-            <button @click="${this.loadConfig}">🔄 Reload</button>
+            <button class="primary" @click="${this.saveConfig}">Save</button>
+            <button @click="${this.loadConfig}">Reload</button>
             <button class="toggle-mode" @click="${this.toggleMode}">
-              ${this.useRawMode ? '📋 Form Mode' : '📝 Raw JSON'}
+              ${this.useRawMode ? 'Form Mode' : 'Raw JSON'}
             </button>
             ${this.statusMsg ?
               html` <span class="status ${this.statusType}">${this.statusMsg}</span> `

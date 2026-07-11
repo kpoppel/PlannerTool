@@ -15,7 +15,9 @@ ENV/
 
 # VS Code
 .vscode/
-.github/
+.github/*
+!.github/agents/
+!.github/agents/*.agent.md
 .copilot-phase.yml
 
 # Node.js
