@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
-import { getPluginSchema, hasPluginSchema } from '../../core/pluginSchemaRegistry.js';
+import { getPluginSchema, hasPluginSchema, hasConfigurableSchema } from '../../core/pluginSchemaRegistry.js';
 
 /**
  * AdminPlugins — Admin panel for managing plugin runtime settings.
@@ -28,6 +28,8 @@ export class AdminPlugins extends LitElement {
     _validationErrors: { type: Array, state: true },
     _editingConfigIndex: { type: Number, state: true },
     _configEditorValue: { type: String, state: true },
+    _configFormFields: { type: Object, state: true },
+    _configFormErrors: { type: Object, state: true },
   };
 
   static styles = css`
@@ -402,6 +404,113 @@ export class AdminPlugins extends LitElement {
     .btn-modal-cancel:hover {
       background: #d1d5db;
     }
+
+    .btn-modal:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .modal-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .modal-field.field-error .modal-input,
+    .modal-field.field-error .modal-select,
+    .modal-field.field-error .modal-textarea {
+      border-color: #dc2626;
+      background-color: #fef2f2;
+    }
+
+    .modal-input,
+    .modal-select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      box-sizing: border-box;
+    }
+
+    .modal-select {
+      font-family: inherit;
+      background-color: #fff;
+      cursor: pointer;
+    }
+
+    .modal-input:focus,
+    .modal-select:focus,
+    .modal-textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 36px;
+      height: 20px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #d1d5db;
+      border-radius: 20px;
+      transition: 0.2s;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: '';
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+
+    .toggle input:checked + .slider {
+      background: #3b82f6;
+    }
+
+    .toggle input:checked + .slider:before {
+      transform: translateX(16px);
+    }
+
+    .field-hint {
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin: 0;
+      font-style: italic;
+    }
+
+    .field-error-msg {
+      font-size: 0.8rem;
+      color: #dc2626;
+      margin: 0;
+      font-weight: 500;
+    }
   `;
 
   constructor() {
@@ -416,6 +525,8 @@ export class AdminPlugins extends LitElement {
     this._validationErrors = [];
     this._editingConfigIndex = -1;
     this._configEditorValue = '';
+    this._configFormFields = {};
+    this._configFormErrors = {};
   }
 
   connectedCallback() {
@@ -744,21 +855,172 @@ export class AdminPlugins extends LitElement {
     this.requestUpdate();
   }
 
+  _onEditConfig(rowIndex) {
+    if (rowIndex < 0 || rowIndex >= this._rows.length) return;
+    const row = this._rows[rowIndex];
+    const schemaInfo = getPluginSchema(row.id, this._schemas);
+    const schema = schemaInfo?.schema || {};
+    
+    this._editingConfigIndex = rowIndex;
+    // Populate form fields from current custom_config
+    this._configFormFields = { ...row.custom_config || {} };
+    this._configFormErrors = {};
+    
+    // If schema has properties, initialize any missing fields with defaults
+    if (schema.properties) {
+      for (const [key, prop] of Object.entries(schema.properties)) {
+        if (!(key in this._configFormFields) && prop.default !== undefined) {
+          this._configFormFields[key] = prop.default;
+        }
+      }
+    }
+    
+    this.requestUpdate();
+  }
+
   _onCloseConfigEditor() {
     this._editingConfigIndex = -1;
-    this._configEditorValue = '';
+    this._configFormFields = {};
+    this._configFormErrors = {};
+    this.requestUpdate();
+  }
+
+  /**
+   * Validate a single field value against schema property definition.
+   * @param {string} key - field name
+   * @param {*} value - field value
+   * @param {Object} propSchema - JSON schema property definition
+   * @returns {string|null} error message or null if valid
+   */
+  _validateFieldValue(key, value, propSchema) {
+    if (!propSchema) return null;
+
+    // Check required
+    if (propSchema.required === true && (value === undefined || value === null || value === '')) {
+      return `Required field`;
+    }
+
+    // Type validation
+    if (value !== undefined && value !== null && value !== '') {
+      if (propSchema.type === 'string' && typeof value !== 'string') {
+        return `Must be a string`;
+      }
+      if (propSchema.type === 'number' && typeof value !== 'number') {
+        return `Must be a number`;
+      }
+      if (propSchema.type === 'boolean' && typeof value !== 'boolean') {
+        return `Must be a boolean`;
+      }
+      
+      // String constraints
+      if (propSchema.type === 'string' && typeof value === 'string') {
+        if (propSchema.minLength !== undefined && value.length < propSchema.minLength) {
+          return `Minimum length is ${propSchema.minLength}`;
+        }
+        if (propSchema.maxLength !== undefined && value.length > propSchema.maxLength) {
+          return `Maximum length is ${propSchema.maxLength}`;
+        }
+        if (propSchema.pattern !== undefined) {
+          const regex = new RegExp(propSchema.pattern);
+          if (!regex.test(value)) {
+            return `Invalid format`;
+          }
+        }
+      }
+      
+      // Number constraints
+      if (propSchema.type === 'number' && typeof value === 'number') {
+        if (propSchema.minimum !== undefined && value < propSchema.minimum) {
+          return `Minimum value is ${propSchema.minimum}`;
+        }
+        if (propSchema.maximum !== undefined && value > propSchema.maximum) {
+          return `Maximum value is ${propSchema.maximum}`;
+        }
+        if (propSchema.exclusiveMinimum !== undefined && value <= propSchema.exclusiveMinimum) {
+          return `Must be greater than ${propSchema.exclusiveMinimum}`;
+        }
+        if (propSchema.exclusiveMaximum !== undefined && value >= propSchema.exclusiveMaximum) {
+          return `Must be less than ${propSchema.exclusiveMaximum}`;
+        }
+      }
+      
+      // Enum validation
+      if (propSchema.enum && !propSchema.enum.includes(value)) {
+        return `Must be one of: ${propSchema.enum.join(', ')}`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Validate all form fields against schema and populate _configFormErrors.
+   * @returns {boolean} true if all valid, false otherwise
+   */
+  _validateConfigForm() {
+    if (this._editingConfigIndex < 0) return false;
+    
+    const row = this._rows[this._editingConfigIndex];
+    const schemaInfo = getPluginSchema(row.id, this._schemas);
+    const schema = schemaInfo?.schema || {};
+    
+    this._configFormErrors = {};
+    let hasErrors = false;
+
+    if (schema.properties) {
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        const value = this._configFormFields[key];
+        const error = this._validateFieldValue(key, value, propSchema);
+        if (error) {
+          this._configFormErrors[key] = error;
+          hasErrors = true;
+        }
+      }
+    }
+    
+    // Check required fields from schema.required array
+    if (schema.required && Array.isArray(schema.required)) {
+      for (const requiredKey of schema.required) {
+        const value = this._configFormFields[requiredKey];
+        if (value === undefined || value === null || value === '') {
+          this._configFormErrors[requiredKey] = `Required field`;
+          hasErrors = true;
+        }
+      }
+    }
+
+    return !hasErrors;
+  }
+
+  _onFieldChange(key, value) {
+    this._configFormFields = { ...this._configFormFields, [key]: value };
+    // Validate this field as user types
+    const row = this._rows[this._editingConfigIndex];
+    const schemaInfo = getPluginSchema(row.id, this._schemas);
+    const schema = schemaInfo?.schema || {};
+    const propSchema = schema.properties?.[key];
+    const error = this._validateFieldValue(key, value, propSchema);
+    
+    if (error) {
+      this._configFormErrors = { ...this._configFormErrors, [key]: error };
+    } else {
+      const newErrors = { ...this._configFormErrors };
+      delete newErrors[key];
+      this._configFormErrors = newErrors;
+    }
     this.requestUpdate();
   }
 
   _onSaveConfigEditor() {
     if (this._editingConfigIndex < 0) return;
-    try {
-      const newConfig = JSON.parse(this._configEditorValue);
-      this._onCustomConfigChange(this._editingConfigIndex, newConfig);
-      this._onCloseConfigEditor();
-    } catch (err) {
-      alert(`Invalid JSON: ${err.message}`);
+    
+    if (!this._validateConfigForm()) {
+      this.requestUpdate();
+      return;
     }
+    
+    this._onCustomConfigChange(this._editingConfigIndex, this._configFormFields);
+    this._onCloseConfigEditor();
   }
 
   _onConfigEditorInput(e) {
@@ -782,11 +1044,123 @@ export class AdminPlugins extends LitElement {
     return html`<div class="status ${this._statusType}">${this._statusMsg}</div>`;
   }
 
+  /**
+   * Render a form field based on schema property type.
+   * @param {string} key - field name
+   * @param {Object} propSchema - JSON schema property definition
+   * @returns {TemplateResult} HTML for the field
+   */
+  _renderSchemaField(key, propSchema) {
+    const value = this._configFormFields[key];
+    const error = this._configFormErrors[key];
+    const errorClass = error ? 'field-error' : '';
+    const fieldLabel = propSchema.title || key;
+    const fieldHint = propSchema.description || '';
+    const required = propSchema.required === true ? '*' : '';
+
+    if (propSchema.type === 'string') {
+      return html`
+        <div class="modal-field ${errorClass}">
+          <label class="modal-label">${fieldLabel}${required}</label>
+          <input
+            type="text"
+            class="modal-input"
+            .value=${value || ''}
+            ?disabled=${error ? true : false}
+            ?minlength=${propSchema.minLength}
+            ?maxlength=${propSchema.maxLength}
+            ?pattern=${propSchema.pattern}
+            @input=${(e) => this._onFieldChange(key, e.target.value)}
+            title="${fieldHint}"
+          />
+          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+        </div>
+      `;
+    } else if (propSchema.type === 'boolean') {
+      return html`
+        <div class="modal-field ${errorClass}">
+          <label class="modal-label">${fieldLabel}${required}</label>
+          <label class="toggle" title="${fieldHint}">
+            <input
+              type="checkbox"
+              .checked=${Boolean(value)}
+              @change=${(e) => this._onFieldChange(key, e.target.checked)}
+            />
+            <span class="slider"></span>
+          </label>
+          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+        </div>
+      `;
+    } else if (propSchema.type === 'number') {
+      return html`
+        <div class="modal-field ${errorClass}">
+          <label class="modal-label">${fieldLabel}${required}</label>
+          <input
+            type="number"
+            class="modal-input"
+            .value=${value !== undefined ? value : ''}
+            ?disabled=${error ? true : false}
+            ?min=${propSchema.minimum !== undefined ? propSchema.minimum : false}
+            ?max=${propSchema.maximum !== undefined ? propSchema.maximum : false}
+            ?step=${propSchema.step || false}
+            @input=${(e) => this._onFieldChange(key, e.target.value === '' ? undefined : parseFloat(e.target.value))}
+            title="${fieldHint}"
+          />
+          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+        </div>
+      `;
+    } else if (propSchema.enum && Array.isArray(propSchema.enum)) {
+      return html`
+        <div class="modal-field ${errorClass}">
+          <label class="modal-label">${fieldLabel}${required}</label>
+          <select
+            class="modal-select"
+            .value=${value || ''}
+            @change=${(e) => this._onFieldChange(key, e.target.value)}
+            title="${fieldHint}"
+          >
+            <option value="">(select...)</option>
+            ${propSchema.enum.map((opt) => html`<option value=${opt}>${opt}</option>`)}
+          </select>
+          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+        </div>
+      `;
+    } else {
+      // Fallback for complex types (object, array, etc.)
+      return html`
+        <div class="modal-field ${errorClass}">
+          <label class="modal-label">${fieldLabel}${required} (JSON)</label>
+          <textarea
+            class="modal-textarea"
+            .value=${typeof value === 'string' ? value : JSON.stringify(value || {}, null, 2)}
+            @input=${(e) => {
+              try {
+                const parsed = JSON.parse(e.target.value);
+                this._onFieldChange(key, parsed);
+              } catch (err) {
+                // Keep raw string if JSON is invalid, show error
+                this._configFormErrors = { ...this._configFormErrors, [key]: 'Invalid JSON' };
+                this.requestUpdate();
+              }
+            }}
+          ></textarea>
+          ${fieldHint ? html`<p class="field-hint">${fieldHint}</p>` : ''}
+          ${error ? html`<p class="field-error-msg">${error}</p>` : ''}
+        </div>
+      `;
+    }
+  }
+
   _renderConfigEditor() {
     if (this._editingConfigIndex < 0) return '';
     const row = this._rows[this._editingConfigIndex];
     const schemaInfo = getPluginSchema(row.id, this._schemas);
     const schema = schemaInfo?.schema || {};
+    const hasErrors = Object.keys(this._configFormErrors).length > 0;
 
     return html`
       <div class="modal-overlay" @click=${(e) => {
@@ -795,40 +1169,38 @@ export class AdminPlugins extends LitElement {
         <div class="modal">
           <h3 class="modal-header">Configure: ${row.name}</h3>
           <div class="modal-body">
+            ${schema.title
+              ? html`<h4 style="margin: 0 0 8px 0; font-size: 1rem; color: #1f2937;">
+                  ${schema.title}
+                </h4>`
+              : ''}
             ${schema.description
               ? html`<p style="font-size: 0.9rem; color: #6b7280; margin-bottom: 12px;">
                   ${schema.description}
                 </p>`
               : ''}
-            <div class="modal-field">
-              <label class="modal-label">Configuration (JSON)</label>
-              <textarea
-                class="modal-textarea"
-                .value=${this._configEditorValue}
-                @input=${(e) => this._onConfigEditorInput(e)}
-              ></textarea>
-            </div>
-            ${schema.properties
-              ? html`<div style="font-size: 0.8rem; color: #6b7280; margin-top: 12px;">
-                  <strong>Schema fields:</strong>
-                  <ul style="margin: 4px 0 0; padding-left: 18px;">
+            
+            ${schema.properties && Object.keys(schema.properties).length > 0
+              ? html`
+                  <div class="modal-fields">
                     ${Object.entries(schema.properties).map(
-                      ([key, prop]) => html`
-                        <li>
-                          <code>${key}</code>:
-                          ${prop.type} ${prop.description ? `— ${prop.description}` : ''}
-                        </li>
-                      `
+                      ([key, propSchema]) => this._renderSchemaField(key, propSchema)
                     )}
-                  </ul>
-                </div>`
-              : ''}
+                  </div>
+                `
+              : html`<p style="font-size: 0.9rem; color: #6b7280; margin: 8px 0;">
+                  No configuration options available for this plugin.
+                </p>`}
           </div>
           <div class="modal-actions">
             <button class="btn-modal btn-modal-cancel" @click=${() => this._onCloseConfigEditor()}>
               Cancel
             </button>
-            <button class="btn-modal btn-modal-save" @click=${() => this._onSaveConfigEditor()}>
+            <button
+              class="btn-modal btn-modal-save"
+              ?disabled=${hasErrors}
+              @click=${() => this._onSaveConfigEditor()}
+            >
               Save
             </button>
           </div>
@@ -841,7 +1213,7 @@ export class AdminPlugins extends LitElement {
     const isInvalid = !row.id;
     const rowClass = isInvalid ? 'invalid-row' : !row.enabled ? 'disabled-row' : '';
     const isLast = index === this._rows.length - 1;
-    const hasSchema = row.id && hasPluginSchema(row.id, this._schemas);
+    const isConfigurable = row.id && hasConfigurableSchema(row.id, this._schemas);
 
     return html`
       <tr class=${rowClass}>
@@ -873,7 +1245,7 @@ export class AdminPlugins extends LitElement {
           />
         </td>
         <td class="order-cell">
-          ${hasSchema
+          ${isConfigurable
             ? html`<button
                 class="config-btn"
                 ?disabled=${isInvalid}

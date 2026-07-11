@@ -73,8 +73,24 @@ export function hasPluginSchema(pluginId, schemaMap) {
   return !!schemaMap[pluginId];
 }
 
+/**
+ * Check if plugin has a configurable schema (schema with properties).
+ * Only plugins with non-empty schema.properties should show Config button.
+ * 
+ * @param {string} pluginId - plugin identifier
+ * @param {Object} schemaMap - cached schema map
+ * @returns {boolean} true if plugin has non-empty schema.properties
+ */
+export function hasConfigurableSchema(pluginId, schemaMap) {
+  const schemaInfo = schemaMap[pluginId];
+  if (!schemaInfo) return false;
+  const schema = schemaInfo.schema || {};
+  return schema.properties && Object.keys(schema.properties).length > 0;
+}
+
 export default {
   discoverPluginSchemas,
   getPluginSchema,
   hasPluginSchema,
+  hasConfigurableSchema,
 };
