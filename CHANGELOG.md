@@ -36,6 +36,12 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Modal helper flow is now consolidated and Azure DevOps modal save uses normalized `modal-submit` event semantics (tests updated accordingly).
+- Sidebar component simplification removed deprecated no-op persistence paths and reduced collapsible section/event listener boilerplate.
+- Details panel cleanup now uses stable event handler subscriptions and shared date-update logic with reduced duplicate close paths.
+- Timeline board now avoids duplicate month-subscriptions and cleans scroll-button listeners on teardown; drag manager API removed unused parameters.
+- Graph/timeline math helpers are now deduplicated via shared utility functions and board position calculations use a unified date-to-position path.
+- Client component tests now remove duplicated and placeholder-only suites, focusing assertions on active behavior instead of legacy implementation details.
 - Client services refactor: consolidated view-application and REST retry/session handling paths, removed legacy string filter event emission, and simplified queued feature update event emission.
 - Client service APIs now use canonical view/filter/capacity fields only: removed legacy state and feature count shim methods, removed legacy task-filter event mapping, and dropped deprecated `totalOrgDaily` capacity alias.
 - Capacity and feature update flow cleanup: removed unused legacy daily-capacity path, consolidated repeated capacity update emission logic, and standardized `FeatureEvents.UPDATED` payloads to use `{ ids: [] }` shape.

@@ -363,7 +363,7 @@ export class AzureDevopsModal extends LitElement {
     }, []);
 
     this.dispatchEvent(
-      new CustomEvent('azure-save', {
+      new CustomEvent('modal-submit', {
         detail: { features: featuresOut, groupChanges },
         bubbles: true,
         composed: true,

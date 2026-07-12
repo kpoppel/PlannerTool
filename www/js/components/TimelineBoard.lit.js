@@ -74,10 +74,6 @@ class TimelineBoard extends LitElement {
       GroupContextMenu.init();
       this._initGroupContextMenu(GroupContextMenu);
 
-      // Position today-line once months are available, and re-position on scale changes
-      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
-      bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
-
       this._enablePanning();
       this._initScrollButtons();
       document.addEventListener('mousemove', this._onProximityMove);
@@ -93,6 +89,14 @@ class TimelineBoard extends LitElement {
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mouseup', this._onMouseUp);
     document.removeEventListener('mousemove', this._onProximityMove);
+    const btnTop = this.shadowRoot?.querySelector('#btn-scroll-top');
+    const btnBottom = this.shadowRoot?.querySelector('#btn-scroll-bottom');
+    if (btnTop && this._onScrollTopClick)
+      btnTop.removeEventListener('click', this._onScrollTopClick);
+    if (btnBottom && this._onScrollBottomClick)
+      btnBottom.removeEventListener('click', this._onScrollBottomClick);
+    this._onScrollTopClick = null;
+    this._onScrollBottomClick = null;
     if (this._onDetailsShow) bus.off?.(UIEvents.DETAILS_SHOW, this._onDetailsShow);
     if (this._onDetailsHide) bus.off?.(UIEvents.DETAILS_HIDE, this._onDetailsHide);
     if (this._onMonthsUpdated) bus.off?.(TimelineEvents.MONTHS, this._onMonthsUpdated);
@@ -217,14 +221,12 @@ class TimelineBoard extends LitElement {
     const btnTop = this.shadowRoot.querySelector('#btn-scroll-top');
     const btnBottom = this.shadowRoot.querySelector('#btn-scroll-bottom');
 
-    if (btnTop)
-      btnTop.addEventListener('click', () =>
-        scroll?.scrollTo({ top: 0, behavior: 'smooth' })
-      );
-    if (btnBottom)
-      btnBottom.addEventListener('click', () =>
-        scroll?.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' })
-      );
+    this._onScrollTopClick = () => scroll?.scrollTo({ top: 0, behavior: 'smooth' });
+    this._onScrollBottomClick = () =>
+      scroll?.scrollTo({ top: scroll.scrollHeight, behavior: 'smooth' });
+
+    if (btnTop) btnTop.addEventListener('click', this._onScrollTopClick);
+    if (btnBottom) btnBottom.addEventListener('click', this._onScrollBottomClick);
 
     const scrollButtons = this.shadowRoot.querySelector('#scroll-buttons');
     this._onDetailsShow = () => { if (scrollButtons) scrollButtons.style.display = 'none'; };

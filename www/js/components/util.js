@@ -5,6 +5,22 @@ export const parseDate = (str) => {
   return new Date(y, m - 1, d);
 };
 
+export const daysInMonth = (date) =>
+  new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+
+export const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export const hexToRgba = (hex, alpha) => {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) {
+    return `rgba(231,76,60,${alpha})`;
+  }
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export const formatDate = (dt) => {
   const y = dt.getFullYear();
   const m = String(dt.getMonth() + 1).padStart(2, '0');

@@ -1206,23 +1206,11 @@ export class SidebarLit extends LitElement {
       this._computeAvailableTaskTypes();
     };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
-    // Listen for view option changes to trigger sidebar state save
-    const onViewOptionChange = () => {
-      /* auto-save removed - use View feature instead */
-    };
-    bus.on(ViewEvents.CONDENSED, onViewOptionChange);
-    bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
     bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
       // Sync local _graphType when capacity mode changes
       this._graphType = mode || 'team';
       this.requestUpdate();
-      onViewOptionChange();
     });
-    bus.on(ViewEvents.SORT_MODE, onViewOptionChange);
-    bus.on(FilterEvents.CHANGED, onViewOptionChange);
-    bus.on(StateFilterEvents.CHANGED, onViewOptionChange);
-    bus.on(TimelineEvents.SCALE_CHANGED, onViewOptionChange); // Save when timeline zoom changes
-    this._viewOptionChangeHandler = onViewOptionChange;
     // Initialize reactive properties from current state in case events were
     // emitted before this element was connected. This ensures the component
     // renders current projects/teams immediately instead of waiting for
@@ -1262,31 +1250,18 @@ export class SidebarLit extends LitElement {
     const headers = this.shadowRoot.querySelectorAll(
       '.sidebar-section-header-collapsible'
     );
-    this._collapsibleHandlers = Array.from(headers).flatMap((header) => {
-      const section = header.parentElement;
-      const contentWrapper = section.children[1];
+    this._onCollapsibleHeaderClick = (e) => {
+      const header = e.currentTarget;
+      const section = header?.parentElement;
+      const contentWrapper = section?.children?.[1];
+      if (!contentWrapper) return;
+      const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
       const chevron = header.querySelector('.sidebar-chevron');
-
-      const toggleSection = () => {
-        const isCollapsed = contentWrapper.classList.toggle('sidebar-section-collapsed');
-        if (chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
-        // Save sidebar state when section is toggled
-        // Auto-save removed - use View feature instead
-      };
-
-      const onHeaderClick = () => toggleSection();
-      header.addEventListener('click', onHeaderClick);
-
-      const handlers = [{ el: header, fn: onHeaderClick }];
-      if (chevron) {
-        const onChevronClick = (e) => {
-          e.stopPropagation();
-          toggleSection();
-        };
-        chevron.addEventListener('click', onChevronClick);
-        handlers.push({ el: chevron, fn: onChevronClick });
-      }
-      return handlers;
+      if (chevron) chevron.textContent = isCollapsed ? '▲' : '▼';
+    };
+    this._collapsibleHeaders = Array.from(headers);
+    this._collapsibleHeaders.forEach((header) => {
+      header.addEventListener('click', this._onCollapsibleHeaderClick);
     });
 
     const onPluginsChanged = () => this.requestUpdate();
@@ -1314,17 +1289,6 @@ export class SidebarLit extends LitElement {
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
 
-    // Clean up view option change listeners
-    const viewHandler = this._viewOptionChangeHandler;
-    if (viewHandler) {
-      bus.off(ViewEvents.CONDENSED, viewHandler);
-      bus.off(ViewEvents.DEPENDENCIES, viewHandler);
-      bus.off(ViewEvents.CAPACITY_MODE, viewHandler);
-      bus.off(ViewEvents.SORT_MODE, viewHandler);
-      bus.off(FilterEvents.CHANGED, viewHandler);
-      bus.off(StateFilterEvents.CHANGED, viewHandler);
-      bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
-    }
     if (this._recomputeDataFunnel) {
       bus.off(FeatureEvents.UPDATED, this._recomputeDataFunnel);
       bus.off(FilterEvents.CHANGED, this._recomputeDataFunnel);
@@ -1342,13 +1306,11 @@ export class SidebarLit extends LitElement {
     if (this._onDisplayModeChanged)
       bus.off(ViewEvents.DISPLAY_MODE, this._onDisplayModeChanged);
 
-    this._collapsibleHandlers?.forEach((h) => h.el.removeEventListener('click', h.fn));
-    this._collapsibleHandlers = null;
-
-    if (this._onKeyDown) {
-      document.removeEventListener('keydown', this._onKeyDown);
-      this._onKeyDown = null;
-    }
+    this._collapsibleHeaders?.forEach((header) => {
+      header.removeEventListener('click', this._onCollapsibleHeaderClick);
+    });
+    this._collapsibleHeaders = null;
+    this._onCollapsibleHeaderClick = null;
 
     if (this._onPluginsChanged) {
       [
@@ -1692,14 +1654,6 @@ export class SidebarLit extends LitElement {
   // Project/team/view rendering and menu actions moved to TopMenu and small menu components;
   // keep sidebar focused on dataset, expansions, filters and view options container.
 
-  /**
-   * Save current sidebar state to localStorage (debounced)
-   * DEPRECATED: Views are now the only persistence mechanism.
-   */
-  _saveSidebarState() {
-    // No-op: This method is deprecated - use View feature to save settings
-  }
-
   // Handlers for Taskboard Options
   _setTimelineScale(scale) {
     try {
@@ -1740,14 +1694,6 @@ export class SidebarLit extends LitElement {
     }
     // Auto-save removed - use View feature instead
     this.requestUpdate();
-  }
-
-  /**
-   * Restore sidebar state from localStorage
-   * DEPRECATED: Views are restored via ViewManagementService.
-   */
-  async _restoreSidebarState() {
-    // No-op: This method is deprecated - views restored automatically
   }
 
   async refreshServerStatus() {

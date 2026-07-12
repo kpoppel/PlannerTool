@@ -1,5 +1,5 @@
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
-import { parseDate } from './util.js';
+import { parseDate, daysInMonth } from './util.js';
 import { state } from '../services/State.js';
 import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
@@ -24,9 +24,7 @@ let _cachedMonthDays = null;
 const _buildMonthCache = (months) => {
   _cachedMonthsRef = months;
   _cachedMonthStarts = months.map((m) => m.getTime());
-  _cachedMonthDays = months.map((m) =>
-    new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate()
-  );
+  _cachedMonthDays = months.map((m) => daysInMonth(m));
   // Cache the actual end time for each month (start of next month)
   // This correctly handles DST transitions where days != 24 hours
   _cachedMonthEnds = months.map((m, i) => {
@@ -76,70 +74,32 @@ export const computePosition = (feature, monthsArg) => {
   )
     _buildMonthCache(months);
 
+  const resolveMonthIndex = (timestamp) => {
+    const idx = findMonthIndexFor(timestamp);
+    if (idx >= 0) return idx;
+    return timestamp < _cachedMonthStarts[0] ? 0 : months.length - 1;
+  };
+
   // Handle unplanned features (when feature flag is ON)
-  if (featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end)) {
-    // Position at today's date with 1-month default duration
-    const today = new Date();
-    const oneMonthLater = new Date(today);
-    oneMonthLater.setMonth(today.getMonth() + 1);
-
-    const startDate = today;
-    const endDate = oneMonthLater;
-
-    const ms = startDate.getTime();
-    const ems = endDate.getTime();
-
-    let startIdx = findMonthIndexFor(ms);
-    startIdx =
-      startIdx < 0 ?
-        ms < _cachedMonthStarts[0] ?
-          0
-        : months.length - 1
-      : startIdx;
-    let endIdx = findMonthIndexFor(ems);
-    endIdx =
-      endIdx < 0 ?
-        ems < _cachedMonthStarts[0] ?
-          0
-        : months.length - 1
-      : endIdx;
-
-    const startDays = _cachedMonthDays[startIdx];
-    const endDays = _cachedMonthDays[endIdx];
-    const startFraction = (startDate.getDate() - 1) / startDays;
-    const endFraction = endDate.getDate() / endDays;
-
-    const left = (startIdx + startFraction) * monthWidth;
-    const spanContinuous = endIdx + endFraction - (startIdx + startFraction);
-    let width = spanContinuous * monthWidth;
-
-    // Dynamic minimum width based on zoom level
-    const minVisualWidth = Math.max(5, monthWidth / 6);
-    if (width < minVisualWidth) width = minVisualWidth;
-
-    return { left, width };
-  }
-
-  // Normal processing for planned features
-  const startDate = parseDate(feature.start) || new Date('2025-01-01');
-  const endDate = parseDate(feature.end) || new Date('2025-01-15');
+  const isUnplanned =
+    featureFlags.SHOW_UNPLANNED_WORK && (!feature.start || !feature.end);
+  const startDate =
+    isUnplanned ?
+      new Date()
+    : (parseDate(feature.start) || new Date('2025-01-01'));
+  const endDate =
+    isUnplanned ?
+      (() => {
+        const oneMonthLater = new Date(startDate);
+        oneMonthLater.setMonth(startDate.getMonth() + 1);
+        return oneMonthLater;
+      })()
+    : (parseDate(feature.end) || new Date('2025-01-15'));
 
   const ms = startDate.getTime();
   const ems = endDate.getTime();
-  let startIdx = findMonthIndexFor(ms);
-  startIdx =
-    startIdx < 0 ?
-      ms < _cachedMonthStarts[0] ?
-        0
-      : months.length - 1
-    : startIdx;
-  let endIdx = findMonthIndexFor(ems);
-  endIdx =
-    endIdx < 0 ?
-      ems < _cachedMonthStarts[0] ?
-        0
-      : months.length - 1
-    : endIdx;
+  const startIdx = resolveMonthIndex(ms);
+  const endIdx = resolveMonthIndex(ems);
 
   const startDays = _cachedMonthDays[startIdx];
   const endDays = _cachedMonthDays[endIdx];
@@ -200,7 +160,7 @@ export function calcTodayX(months) {
   if (idx < 0) return null;
 
   const monthStart = months[idx];
-  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-  const fraction = (today.getDate() - 1) / daysInMonth;
+  const dayCount = daysInMonth(monthStart);
+  const fraction = (today.getDate() - 1) / dayCount;
   return (idx + fraction) * monthWidth;
 }

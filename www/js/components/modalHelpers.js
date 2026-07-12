@@ -17,6 +17,9 @@ const _modalImports = {
   './ViewDeleteModal.lit.js': () => import('./ViewDeleteModal.lit.js'),
 };
 
+const MODAL_CLOSE_EVENT = 'modal-close';
+const MODAL_SUBMIT_EVENT = 'modal-submit';
+
 const _createModal = async (
   modulePath,
   tagName,
@@ -52,47 +55,58 @@ const _createModal = async (
   return { el, cleanup };
 };
 
+const _waitForModalResult = (el, cleanup, {
+  submitEvent,
+  submitValue = (e) => e?.detail ?? null,
+  closeEvent = MODAL_CLOSE_EVENT,
+  closeValue = (e) => e?.detail ?? null,
+}) => new Promise((resolve) => {
+  const listeners = [];
+  const done = (value) => {
+    cleanup(null, listeners);
+    resolve(value);
+  };
+  if (submitEvent) {
+    const onSubmit = (e) => done(submitValue(e));
+    listeners.push([submitEvent, onSubmit]);
+    el.addEventListener(submitEvent, onSubmit);
+  }
+  if (closeEvent) {
+    const onClose = (e) => done(closeValue(e));
+    listeners.push([closeEvent, onClose]);
+    el.addEventListener(closeEvent, onClose);
+  }
+});
+
+const _openAndWaitForClose = async (modulePath, tagName, {
+  parent = document.body,
+  attrs = {},
+  autoOpen = false,
+} = {}) => {
+  const { el, cleanup } = await _createModal(modulePath, tagName, {
+    parent,
+    attrs,
+    autoOpen,
+  });
+  return _waitForModalResult(el, cleanup, {});
+};
+
 export const openConfigModal = async (opts = { parent: document.body }) => {
-  const { el, cleanup } = await _createModal('./ConfigModal.lit.js', 'config-modal', {
+  return _openAndWaitForClose('./ConfigModal.lit.js', 'config-modal', {
     parent: opts.parent,
     autoOpen: true,
-  });
-  return new Promise((resolve) => {
-    const onClose = (e) => {
-      cleanup(e, [['modal-close', onClose]]);
-      resolve(e?.detail ?? null);
-    };
-    el.addEventListener('modal-close', onClose);
   });
 };
 
 export const openHelpModal = async (opts = { parent: document.body }) => {
-  const { el, cleanup } = await _createModal('./HelpModal.lit.js', 'help-modal', {
+  return _openAndWaitForClose('./HelpModal.lit.js', 'help-modal', {
     parent: opts.parent,
-  });
-  return new Promise((resolve) => {
-    const onClose = (e) => {
-      cleanup(e, [['modal-close', onClose]]);
-      resolve(e?.detail ?? null);
-    };
-    el.addEventListener('modal-close', onClose);
   });
 };
 
 export const openOnboardingModal = async (opts = { parent: document.body }) => {
-  const { el, cleanup } = await _createModal(
-    './OnboardingModal.lit.js',
-    'onboarding-modal',
-    {
-      parent: opts.parent,
-    }
-  );
-  return new Promise((resolve) => {
-    const onClose = (e) => {
-      cleanup(e, [['modal-close', onClose]]);
-      resolve(e?.detail ?? null);
-    };
-    el.addEventListener('modal-close', onClose);
+  return _openAndWaitForClose('./OnboardingModal.lit.js', 'onboarding-modal', {
+    parent: opts.parent,
   });
 };
 
@@ -102,48 +116,20 @@ export const openAzureDevopsModal = async ({
   state = null,
   parent = document.body,
 } = {}) => {
-  const { el, cleanup } = await _createModal(
-    './AzureDevopsModal.lit.js',
-    'azure-devops-modal',
-    {
-      parent,
-      attrs: { overrides, pendingGroupChanges, state },
-    }
-  );
-  return new Promise((resolve) => {
-    const onSave = (e) => {
-      cleanup(e, [
-        ['azure-save', onSave],
-        ['modal-close', onClose],
-      ]);
-      resolve(e.detail ?? []);
-    };
-    const onClose = () => {
-      cleanup(null, [
-        ['azure-save', onSave],
-        ['modal-close', onClose],
-      ]);
-      resolve(null);
-    };
-    el.addEventListener('azure-save', onSave);
-    el.addEventListener('modal-close', onClose);
+  const { el, cleanup } = await _createModal('./AzureDevopsModal.lit.js', 'azure-devops-modal', {
+    parent,
+    attrs: { overrides, pendingGroupChanges, state },
+  });
+  return _waitForModalResult(el, cleanup, {
+    submitEvent: MODAL_SUBMIT_EVENT,
+    submitValue: (e) => e?.detail ?? [],
+    closeValue: () => null,
   });
 };
 
 export const openEmptyBoardModal = async ({ parent = document.body } = {}) => {
-  const { el, cleanup } = await _createModal(
-    './EmptyBoardModal.lit.js',
-    'empty-board-modal',
-    {
-      parent,
-    }
-  );
-  return new Promise((resolve) => {
-    const onClose = (e) => {
-      cleanup(e, [['modal-close', onClose]]);
-      resolve(e?.detail ?? null);
-    };
-    el.addEventListener('modal-close', onClose);
+  return _openAndWaitForClose('./EmptyBoardModal.lit.js', 'empty-board-modal', {
+    parent,
   });
 };
 
@@ -159,13 +145,7 @@ const _simpleModal = async (
     parent,
     attrs,
   });
-  return new Promise((resolve) => {
-    const onClose = (e) => {
-      cleanup(e, [['modal-close', onClose]]);
-      resolve(e?.detail ?? null);
-    };
-    el.addEventListener('modal-close', onClose);
-  });
+  return _waitForModalResult(el, cleanup, {});
 };
 
 export const openScenarioCloneModal = (opts = {}) =>

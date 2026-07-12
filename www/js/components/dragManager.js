@@ -65,8 +65,7 @@ export function startDragMove(
   e,
   feature,
   card,
-  updateDatesCb = state.updateFeatureDates.bind(state),
-  featuresSource = state.features
+  updateDatesCb = state.updateFeatureDates.bind(state)
 ) {
   const months = getTimelineMonths();
   const monthWidth = getMonthWidth();
@@ -173,8 +172,7 @@ export function startResize(
   feature,
   card,
   datesEl,
-  updateDatesCb = state.updateFeatureDates.bind(state),
-  featuresSource = state.features
+  updateDatesCb = state.updateFeatureDates.bind(state)
 ) {
   const monthWidth = getMonthWidth();
 

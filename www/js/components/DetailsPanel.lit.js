@@ -854,6 +854,8 @@ export class DetailsPanelLit extends LitElement {
     this._stateEditValue = null;
     this._newTagText = '';
     this._onShow = this._onShow.bind(this);
+    this._onFeatureUpdatedHandler = this._onFeatureUpdated.bind(this);
+    this._onCapacityUpdatedHandler = this._onCapacityUpdated.bind(this);
   }
 
   // Note: use component's shadow DOM (default) so component styles apply correctly
@@ -878,8 +880,8 @@ export class DetailsPanelLit extends LitElement {
     super.connectedCallback();
     bus.on(UIEvents.DETAILS_SHOW, this._onShow);
     bus.on(FeatureEvents.SELECTED, this._onShow);
-    bus.on(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
-    bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdated.bind(this));
+    bus.on(FeatureEvents.UPDATED, this._onFeatureUpdatedHandler);
+    bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedHandler);
     //TODO: Should the side panel receive update if it is shown and the feature is changed?
     //TODO: Should standardise what is sent on events (full feature vs id only)
 
@@ -930,9 +932,6 @@ export class DetailsPanelLit extends LitElement {
       // Feature IDs are typically in format like "J_688051" or just the number
       const workItemId = String(featureId).replace(/^[A-Za-z_]+/, '');
 
-      // Import dataService dynamically to avoid circular dependencies
-      const { dataService } = await import('../services/dataService.js');
-
       // Call the API to update capacity in Azure DevOps
       const result = await dataService.updateWorkItemCapacity(workItemId, capacity);
 
@@ -966,8 +965,8 @@ export class DetailsPanelLit extends LitElement {
   disconnectedCallback() {
     bus.off(UIEvents.DETAILS_SHOW, this._onShow);
     bus.off(FeatureEvents.SELECTED, this._onShow);
-    bus.off(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
-    bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdated.bind(this));
+    bus.off(FeatureEvents.UPDATED, this._onFeatureUpdatedHandler);
+    bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedHandler);
     document.body.removeEventListener('mousedown', this._onBodyMouseDown);
     document.body.removeEventListener('click', this._onBodyClick);
     super.disconnectedCallback();
@@ -1155,10 +1154,16 @@ export class DetailsPanelLit extends LitElement {
   }
 
   hideAndEmit() {
-    // Close panel and emit a global hide event so other components can respond
-    this.open = false;
-    this.requestUpdate();
-    bus.emit(UIEvents.DETAILS_HIDE);
+    this.hide();
+  }
+
+  _updateFeatureDates(start, end, warnContext) {
+    if (!this.feature) return;
+    try {
+      state.updateFeatureDates([{ id: this.feature.id, start, end }]);
+    } catch (err) {
+      console.warn(warnContext, err);
+    }
   }
 
   _handleCapacityClick(teamId, e) {
@@ -1374,22 +1379,14 @@ export class DetailsPanelLit extends LitElement {
     const val = e.target.value || null;
     if (!this.feature) return;
     const end = this.feature.end || null;
-    try {
-      state.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
-    } catch (err) {
-      console.warn('Failed to update start date', err);
-    }
+    this._updateFeatureDates(val, end, 'Failed to update start date');
   }
 
   _onEndDateChange(e) {
     const val = e.target.value || null;
     if (!this.feature) return;
     const start = this.feature.start || null;
-    try {
-      state.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
-    } catch (err) {
-      console.warn('Failed to update end date', err);
-    }
+    this._updateFeatureDates(start, val, 'Failed to update end date');
   }
 
   _clearDates() {
@@ -1401,7 +1398,7 @@ export class DetailsPanelLit extends LitElement {
       if (this.feature.iterationPath) {
         state.updateFeatureField(this.feature.id, 'iterationPath', null);
       }
-      state.updateFeatureDates([{ id: this.feature.id, start: null, end: null }]);
+      this._updateFeatureDates(null, null, 'Failed to clear dates');
     } catch (err) {
       console.warn('Failed to clear dates', err);
     }
@@ -1422,7 +1419,7 @@ export class DetailsPanelLit extends LitElement {
       state.updateFeatureField(this.feature.id, 'iterationPath', sel);
       // Then update dates (preserves iterationPath already stored in override)
       if (start && end) {
-        state.updateFeatureDates([{ id: this.feature.id, start, end }]);
+        this._updateFeatureDates(start, end, 'Failed to update iteration');
       }
     } catch (err) {
       console.warn('Failed to update iteration', err);

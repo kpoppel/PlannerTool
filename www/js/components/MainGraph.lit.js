@@ -16,6 +16,7 @@ import {
 } from '../core/EventRegistry.js';
 import { findInBoard } from './board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
+import { daysInMonth, clamp, hexToRgba } from './util.js';
 
 /**
  * MainGraphLit - Lit-based main graph component with canvas rendering
@@ -296,21 +297,6 @@ export class MainGraphLit extends LitElement {
 
     const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth;
 
-    function daysInMonth(d) {
-      return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    }
-
-    function hexToRgba(hex, alpha) {
-      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      if (!m) {
-        return `rgba(231,76,60,${alpha})`;
-      }
-      const r = parseInt(m[1], 16),
-        g = parseInt(m[2], 16),
-        b = parseInt(m[3], 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
     const msPerDay = 24 * 60 * 60 * 1000;
     function dateToIndex(monthsArr, date) {
       const start = monthsArr[0];
@@ -320,9 +306,6 @@ export class MainGraphLit extends LitElement {
     function indexToDate(monthsArr, idx) {
       const start = monthsArr[0];
       return new Date(start.getTime() + idx * msPerDay);
-    }
-    function clamp(v, min, max) {
-      return Math.max(min, Math.min(max, v));
     }
 
     // Visible range: use boardCoords for scroll position and container width
@@ -565,26 +548,6 @@ export class MainGraphLit extends LitElement {
         }
       }
       orgTotalsProject.set(d, totalPerTeam);
-    }
-
-    function pxPerDay(date) {
-      return MONTH_WIDTH / daysInMonth(date);
-    }
-    function xForDayIndex(dayIdx) {
-      let cum = 0;
-      const startDate = new Date(range.startDate);
-      let curIdx = dateToIndex(months, startDate);
-      const curDate = new Date(
-        startDate.getFullYear(),
-        startDate.getMonth(),
-        startDate.getDate()
-      );
-      while (curIdx < dayIdx) {
-        cum += pxPerDay(curDate);
-        curDate.setDate(curDate.getDate() + 1);
-        curIdx++;
-      }
-      return Math.floor(cum);
     }
 
     const usingTeam = capacityViewMode === 'team';

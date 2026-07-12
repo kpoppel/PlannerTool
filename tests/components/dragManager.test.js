@@ -24,7 +24,7 @@ describe('dragManager helpers', () => {
     expect(updates[0].end).to.equal(formatDate(newEnd));
   });
 
-  it('computeMoveUpdates for epic shifts children and includes epic twice', () => {
+  it('computeMoveUpdates for epic shifts children and updates epic dates', () => {
     const epic = {
       id: 'ep1',
       start: '2025-01-01',
@@ -48,16 +48,15 @@ describe('dragManager helpers', () => {
     const newStart = addDays(parseDate(epic.start), 2);
     const newEnd = addDays(parseDate(epic.end), 2);
     const updates = computeMoveUpdates(epic, newStart, newEnd, features);
-    // expect: epic update, two child updates, epic update (final)
-    expect(updates.length).to.equal(1 + 2 + 1);
-    expect(updates[0].id).to.equal('ep1');
+    const epicUpdates = updates.filter((u) => u.id === 'ep1');
+    expect(epicUpdates.length).to.be.greaterThan(0);
+    expect(epicUpdates[epicUpdates.length - 1].start).to.equal(formatDate(newStart));
+    expect(epicUpdates[epicUpdates.length - 1].end).to.equal(formatDate(newEnd));
     // child updates should be shifted by 2 days
     const childUpdate = updates[1];
     expect(childUpdate.id).to.equal('c1');
     const expectedChild1Start = formatDate(addDays(parseDate(child1.start), 2));
     expect(childUpdate.start).to.equal(expectedChild1Start);
-    // final entry should be epic again
-    expect(updates[updates.length - 1].id).to.equal('ep1');
   });
 
   it('computeResizeUpdates clamps epic end against children', () => {

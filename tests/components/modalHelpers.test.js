@@ -56,14 +56,14 @@ describe('modalHelpers', () => {
     expect(document.querySelector('help-modal')).to.be.null;
   });
 
-  it('openAzureDevopsModal resolves on save and close appropriately', async () => {
+  it('openAzureDevopsModal resolves on submit and close appropriately', async () => {
     // Test save path
     const savePromise = openAzureDevopsModal({
       overrides: { a: 1 },
       state: null,
     });
     let el = await waitFor('azure-devops-modal');
-    el.dispatchEvent(new CustomEvent('azure-save', { detail: [{ id: 'x' }] }));
+    el.dispatchEvent(new CustomEvent('modal-submit', { detail: [{ id: 'x' }] }));
     const saved = await savePromise;
     expect(saved).to.deep.equal([{ id: 'x' }]);
 
