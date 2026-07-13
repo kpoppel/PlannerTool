@@ -65,17 +65,18 @@ describe('FeatureBoard helper coverage (additional)', () => {
 
   it('_featurePassesFilters respects project/team and state filters', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
-    // Setup minimal state via ProjectTeamService and filter service
-    state._projectTeamService.initFromBaseline(
-      [{ id: 'p1', selected: true }],
-      [{ id: 't1', selected: true }]
-    );
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setTypeVisibility('epic', true);
-    state._viewService.setTypeVisibility('feature', true);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
-    state._stateFilterService.restoreFilterState({ selectedStates: ['New'] });
+    const projectsStub = sinon
+      .stub(state, 'projects')
+      .get(() => [{ id: 'p1', selected: true }]);
+    const teamsStub = sinon
+      .stub(state, 'teams')
+      .get(() => [{ id: 't1', selected: true }]);
+    state.setShowOnlyProjectHierarchy(false);
+    state.setTypeVisibility('epic', true);
+    state.setTypeVisibility('feature', true);
+    state.setShowUnplannedWork(true);
+    state.setShowUnallocatedCards(true);
+    state.setSelectedStates(['New']);
 
     const feature = {
       id: 'f1',
@@ -86,6 +87,8 @@ describe('FeatureBoard helper coverage (additional)', () => {
     };
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.equal(true);
+    projectsStub.restore();
+    teamsStub.restore();
   });
 
   it('_startThumbDrag/_onThumbMove scrollbar rail was removed', async () => {

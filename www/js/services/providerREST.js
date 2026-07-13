@@ -197,16 +197,6 @@ export class ProviderREST {
     }
   }
 
-  async getCapabilities() {
-    // Example: fetch capabilities via REST API (stub)
-    // return fetch('/api/capabilities').then(res => res.json());
-    return {
-      scenariosPersisted: true,
-      colorsPersisted: true,
-      batchUpdates: true,
-    };
-  }
-
   async listScenarios() {
     try {
       const res = await this._fetch('/api/scenario', {

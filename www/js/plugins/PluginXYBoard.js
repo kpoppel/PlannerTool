@@ -7,8 +7,6 @@
  * only handles mount/unmount and timeline-board visibility toggling.
  */
 import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
 
 class PluginXYBoard {
   constructor(id = 'plugin-xy-board', config = {}) {
@@ -75,7 +73,6 @@ class PluginXYBoard {
     }
     if (this._el && typeof this._el.open === 'function') this._el.open();
     this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
@@ -88,7 +85,6 @@ class PluginXYBoard {
       if (this._el) this._el.style.display = 'none';
     }
     this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
 
   async destroy() {

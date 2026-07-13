@@ -30,7 +30,7 @@ describe('Sidebar – packed mode disables schedule.unplanned', () => {
     document.body.appendChild(sidebar);
     await sidebar.updateComplete;
 
-    origDisplayMode = state._viewService._displayMode;
+    origDisplayMode = state.displayMode;
 
     // Ensure unplanned starts as checked (default state)
     if (state.taskFilterService) {
@@ -42,7 +42,7 @@ describe('Sidebar – packed mode disables schedule.unplanned', () => {
   afterEach(() => {
     sidebar.remove();
     // Restore view service mode without emitting DISPLAY_MODE to avoid side-effects
-    state._viewService._displayMode = origDisplayMode;
+    state.setDisplayMode(origDisplayMode || 'normal', true);
     // Restore unplanned filter to true
     if (state.taskFilterService) {
       state.taskFilterService.setFilter('schedule', 'unplanned', true);

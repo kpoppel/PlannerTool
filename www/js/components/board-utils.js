@@ -62,7 +62,7 @@ const findMonthIndexFor = (msVal) => {
   return -1;
 };
 
-export const laneHeight = () => (state._viewService.condensedCards ? 28 : 64);
+export const laneHeight = () => (state.condensedCards ? 28 : 64);
 
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();

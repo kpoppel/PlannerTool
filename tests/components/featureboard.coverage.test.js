@@ -1,4 +1,5 @@
 import { fixture, html, expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { state } from '../../www/js/services/State.js';
 
@@ -57,17 +58,20 @@ describe('FeatureBoard helper coverage', () => {
 
   it('_featurePassesFilters returns true for a basic visible feature', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
-    // Monkeypatch state services to create a minimal visible environment
-    state._projectTeamService.getProjects = () => [{ id: 'p1', selected: true }];
-    state._projectTeamService.getTeams = () => [{ id: 't1', selected: true }];
+    const projectsStub = sinon
+      .stub(state, 'projects')
+      .get(() => [{ id: 'p1', selected: true }]);
+    const teamsStub = sinon
+      .stub(state, 'teams')
+      .get(() => [{ id: 't1', selected: true }]);
     // Ensure view service flags
-    state._viewService.setTypeVisibility('epic', true);
-    state._viewService.setTypeVisibility('feature', true);
-    state._viewService.setShowUnallocatedCards(true);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
+    state.setTypeVisibility('epic', true);
+    state.setTypeVisibility('feature', true);
+    state.setShowUnallocatedCards(true);
+    state.setShowUnplannedWork(true);
+    state.setShowOnlyProjectHierarchy(false);
     // State filter service selected states
-    state._stateFilterService.setSelectedStates(['New']);
+    state.setSelectedStates(['New']);
 
     const feature = {
       id: 'f1',
@@ -78,5 +82,7 @@ describe('FeatureBoard helper coverage', () => {
     };
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.be.true;
+    projectsStub.restore();
+    teamsStub.restore();
   });
 });

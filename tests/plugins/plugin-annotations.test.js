@@ -2,19 +2,14 @@ import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
 import PluginAnnotations from '../../www/js/plugins/PluginAnnotations.js';
 import * as boardUtils from '../../www/js/components/board-utils.js';
-import { bus } from '../../www/js/core/EventBus.js';
-import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('PluginAnnotations', () => {
-  let emitStub;
   let findStub;
 
   beforeEach(() => {
-    emitStub = stub(bus, 'emit');
   });
 
   afterEach(() => {
-    emitStub.restore();
     if (findStub) findStub.restore();
   });
 
@@ -34,8 +29,6 @@ describe('PluginAnnotations', () => {
     await p.activate();
 
     expect(p.active).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
-    expect(emitStub.firstCall.args[0]).to.equal(PluginEvents.ACTIVATED);
 
     // element should be appended to board and styled
     expect(p._el).to.exist;

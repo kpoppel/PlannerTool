@@ -4,8 +4,6 @@
  * functionality. Follows existing plugin patterns used by other plugins.
  */
 import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
 
 class PluginExportTimeline {
   constructor(id = 'plugin-export-timeline', config = {}) {
@@ -79,13 +77,11 @@ class PluginExportTimeline {
       this._el.open(this.config.mode);
     }
     this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
     if (this._el && typeof this._el.close === 'function') this._el.close();
     this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
 
   async destroy() {

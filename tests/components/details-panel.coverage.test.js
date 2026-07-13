@@ -71,7 +71,7 @@ describe('DetailsPanel helper coverage', () => {
 
   it('capacity input value updates when switching features', async () => {
     // Stub state.teams getter to return test data
-    const teamsStub = sinon.stub(state._projectTeamService, 'getTeams').returns([
+    const teamsStub = sinon.stub(state, 'teams').get(() => [
       { id: 't1', name: 'Team Alpha', color: '#ff0000' },
       { id: 't2', name: 'Team Beta', color: '#00ff00' },
     ]);

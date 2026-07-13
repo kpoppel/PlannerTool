@@ -19,6 +19,7 @@
 import { bus } from '../core/EventBus.js';
 import { GroupEvents } from '../core/EventRegistry.js';
 import { dataService } from './dataService.js';
+import { dataOr } from './result.js';
 
 export class GroupService {
   constructor() {
@@ -210,7 +211,7 @@ export class GroupService {
    */
   async loadGroups(planId) {
     try {
-      const groups = await dataService.listGroups(planId);
+      const groups = dataOr(await dataService.listGroups(planId), []);
       this._groupsByPlan.set(String(planId), groups || []);
       bus.emit(GroupEvents.LOADED, { planId, groups: this._groupsByPlan.get(String(planId)) });
       return this._groupsByPlan.get(String(planId));
@@ -244,7 +245,7 @@ export class GroupService {
       rank: opts.rank ?? 0,
     };
     try {
-      const group = await dataService.createGroup(payload);
+      const group = dataOr(await dataService.createGroup(payload), null);
       if (!group) return null;
       const list = this._groupsByPlan.get(String(planId)) || [];
       list.push(group);
@@ -265,7 +266,7 @@ export class GroupService {
    */
   async updateGroup(groupId, fields) {
     try {
-      const updated = await dataService.updateGroup(groupId, fields);
+      const updated = dataOr(await dataService.updateGroup(groupId, fields), null);
       if (!updated) return null;
       for (const [planId, list] of this._groupsByPlan.entries()) {
         const idx = list.findIndex((g) => String(g.id) === String(groupId));
@@ -290,7 +291,7 @@ export class GroupService {
    */
   async deleteGroup(groupId) {
     try {
-      const ok = await dataService.deleteGroup(groupId);
+      const ok = dataOr(await dataService.deleteGroup(groupId), false);
       if (!ok) return false;
       for (const [planId, list] of this._groupsByPlan.entries()) {
         const idx = list.findIndex((g) => String(g.id) === String(groupId));

@@ -577,12 +577,9 @@ export class PluginExportTimeline extends LitElement {
       teamDailyCapacity: state.teamDailyCapacity || [],
       features: state.features || [],
       view: {
-        capacityMode:
-          state._viewService ? state._viewService.capacityViewMode : undefined,
-        hiddenTypes:
-          state._viewService ? Array.from(state._viewService.hiddenTypes) : [],
-        showDependencies:
-          state._viewService ? !!state._viewService.showDependencies : undefined,
+        capacityMode: state.capacityViewMode,
+        hiddenTypes: Array.from(state.hiddenTypes || []),
+        showDependencies: !!state.showDependencies,
       },
     };
     return out;

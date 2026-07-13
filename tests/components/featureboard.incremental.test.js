@@ -92,10 +92,10 @@ describe('FeatureBoard incremental updates', () => {
     if (board && board._cardMap) board._cardMap.set('F2', card2);
 
     // Ensure state will return our source features when updateCardsById queries for them
-    state._featureService = {
-      getEffectiveFeatureById: (id) => features.find((f) => f.id === id),
-      getEffectiveFeatures: () => features,
-    };
+    const originalGetEffectiveFeatureById = state.getEffectiveFeatureById;
+    const originalGetEffectiveFeatures = state.getEffectiveFeatures;
+    state.getEffectiveFeatureById = (id) => features.find((f) => f.id === id);
+    state.getEffectiveFeatures = () => features;
 
     // Now change features and call update; provide precomputed layout values used by tests
     features[0].start = '2025-01-02';
@@ -121,6 +121,8 @@ describe('FeatureBoard incremental updates', () => {
     const n2 = nodes[1];
     expect(n2.feature.start).to.equal('2025-01-09');
     expect(n2.style.left).to.not.equal('200px');
+    state.getEffectiveFeatureById = originalGetEffectiveFeatureById;
+    state.getEffectiveFeatures = originalGetEffectiveFeatures;
     // restore ResizeObserver
     if (window.__origResizeObserver) {
       window.ResizeObserver = window.__origResizeObserver;

@@ -71,10 +71,10 @@ describe('FeatureBoard & DragSurface Tests', () => {
     ];
     // ensure state feature lookup works for updateCardsById
     const { state } = await import('../../www/js/services/State.js');
-    state._featureService = {
-      getEffectiveFeatureById: (id) => features.find((f) => f.id === id),
-      getEffectiveFeatures: () => features,
-    };
+    const originalGetEffectiveFeatureById = state.getEffectiveFeatureById;
+    const originalGetEffectiveFeatures = state.getEffectiveFeatures;
+    state.getEffectiveFeatureById = (id) => features.find((f) => f.id === id);
+    state.getEffectiveFeatures = () => features;
     const card1 = document.createElement('feature-card-lit');
     card1.feature = features[0];
     card1.style.left = '10px';
@@ -111,6 +111,8 @@ describe('FeatureBoard & DragSurface Tests', () => {
     expect(nodes[0].style.left).to.not.equal('10px');
     expect(nodes[1].feature.start).to.equal('2025-01-09');
     expect(nodes[1].style.left).to.not.equal('200px');
+    state.getEffectiveFeatureById = originalGetEffectiveFeatureById;
+    state.getEffectiveFeatures = originalGetEffectiveFeatures;
   });
 
   it('attachDrag binds mousedown and calls onStart (local adapter)', async () => {

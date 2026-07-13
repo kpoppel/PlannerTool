@@ -1,6 +1,4 @@
 import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
 
 class PluginPortfolio {
   constructor(id = 'plugin-portfolio-board', config = {}) {
@@ -71,7 +69,6 @@ class PluginPortfolio {
 
     if (this._el && typeof this._el.open === 'function') this._el.open();
     this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
@@ -86,7 +83,6 @@ class PluginPortfolio {
     }
 
     this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
 
   async destroy() {

@@ -13,6 +13,7 @@
 import { dataService } from './dataService.js';
 import { ViewManagementEvents, FilterEvents } from '../core/EventRegistry.js';
 import { getDefaultViewOptions } from '../config/viewDefaults.js';
+import { dataOr } from './result.js';
 
 const DEFAULT_VIEW_MGMT_ENV = {
   storage: {
@@ -78,8 +79,7 @@ export class ViewManagementService {
    */
   async loadViews() {
     try {
-      const response = await dataService.listViews();
-      const userViews = response || [];
+      const userViews = dataOr(await dataService.listViews(), []) || [];
       console.log('[ViewManagementService] Loaded user views:', userViews);
 
       // Combine default view + user views
@@ -118,7 +118,10 @@ export class ViewManagementService {
         viewOptions: currentState.viewOptions || {},
       };
 
-      const response = await dataService.saveView(viewData);
+      const response = dataOr(await dataService.saveView(viewData), null);
+      if (!response) {
+        throw new Error('Failed to save view');
+      }
 
       console.log('[ViewManagementService] Saved view:', response);
 
@@ -165,11 +168,7 @@ export class ViewManagementService {
         this._applySelections(this._state.teams, null, true, (s) =>
           this._state.setTeamsSelectedBulk(s)
         );
-        if (this._state._stateFilterService) {
-          this._state._stateFilterService.setSelectedStates([
-            ...(this._state.availableFeatureStates || []),
-          ]);
-        }
+        this._state.setSelectedStates([...(this._state.availableFeatureStates || [])]);
         this._state.taskFilterService?.resetFilters();
         this._applyExpansionState({
           expandParentChild: defaults.expandParentChild || false,
@@ -191,10 +190,10 @@ export class ViewManagementService {
         if (viewOptions.taskFilters) {
           this._state.taskFilterService?.restoreFilters(viewOptions.taskFilters);
         }
-        if (Array.isArray(viewOptions.selectedFeatureStates) && this._state._stateFilterService) {
+        if (Array.isArray(viewOptions.selectedFeatureStates)) {
           const availableStates = this._state.availableFeatureStates || [];
           const validStates = viewOptions.selectedFeatureStates.filter((s) => availableStates.includes(s));
-          this._state._stateFilterService.setSelectedStates(validStates);
+          this._state.setSelectedStates(validStates);
         }
         this._syncSidebarViewState(sidebarElement, {
           graphType: viewOptions.graphType,
@@ -222,7 +221,10 @@ export class ViewManagementService {
    */
   async renameView(viewId, newName) {
     try {
-      await dataService.renameView(viewId, newName);
+      const renamed = dataOr(await dataService.renameView(viewId, newName), null);
+      if (!renamed) {
+        throw new Error('Rename operation failed');
+      }
       console.log('[ViewManagementService] Renamed view:', viewId, 'to', newName);
 
       // Preserve active view if this view is currently active
@@ -248,7 +250,7 @@ export class ViewManagementService {
    */
   async deleteView(viewId) {
     try {
-      const ok = await dataService.deleteView(viewId);
+      const ok = dataOr(await dataService.deleteView(viewId), false);
       if (!ok) {
         throw new Error('Delete operation failed');
       }
@@ -368,7 +370,7 @@ export class ViewManagementService {
       }
       return view;
     }
-    const view = await dataService.getView(viewId);
+    const view = dataOr(await dataService.getView(viewId), null);
     if (!view) {
       console.warn('[ViewManagementService] View not found:', viewId);
       return null;
@@ -508,10 +510,7 @@ export class ViewManagementService {
     };
 
     // Capture selected feature states (state filter)
-    if (this._state._stateFilterService) {
-      snapshot.viewOptions.selectedFeatureStates =
-        this._state._stateFilterService.getSelectedStates();
-    }
+    snapshot.viewOptions.selectedFeatureStates = this._state.selectedFeatureStates || [];
 
     // Capture selected task types (from sidebar element) if present
     if (sidebarElement && sidebarElement.selectedTaskTypes) {

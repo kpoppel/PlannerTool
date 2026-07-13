@@ -1444,9 +1444,7 @@ export class DetailsPanelLit extends LitElement {
     const feature = this.feature;
     // Build a state color chip using state service helper
     // Use ColorService directly
-    const stateColors = state._colorService.getFeatureStateColors(
-      state.availableFeatureStates
-    );
+    const stateColors = state.getFeatureStateColors();
     const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;

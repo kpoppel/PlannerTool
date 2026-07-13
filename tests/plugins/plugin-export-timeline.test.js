@@ -1,20 +1,8 @@
 import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
 import PluginExportTimeline from '../../www/js/plugins/PluginExportTimeline.js';
-import { bus } from '../../www/js/core/EventBus.js';
-import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('PluginExportTimeline', () => {
-  let emitStub;
-
-  beforeEach(() => {
-    emitStub = stub(bus, 'emit');
-  });
-
-  afterEach(() => {
-    emitStub.restore();
-  });
-
   it('activate mounts element to app root, opens it, and deactivates/destroys', async () => {
     const appRoot = document.createElement('div');
     appRoot.className = 'app-container';

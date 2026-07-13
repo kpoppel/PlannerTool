@@ -2,12 +2,10 @@ import { bus } from './core/EventBus.js';
 import { state } from './services/State.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
-import { registerCoreServices } from './core/ServiceRegistry.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 import { mergePluginConfig } from './core/pluginConfigMerge.js';
 
 async function init() {
-  registerCoreServices();
   state.setEnvironmentAdapters({
     viewLayout: {
       getTimelineSectionWidth: () => {

@@ -10,7 +10,7 @@
  * for every plan that is currently active in the plan filter.
  */
 import { html, css } from '../vendor/lit.js';
-import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
+import { OverlaySvgComponent } from './OverlaySvgComponent.js';
 import { findInBoard } from '../components/board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
@@ -30,7 +30,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const TAG_CLUSTER_THRESHOLD = 60;
 const TAG_HEIGHT = 18;
 
-export class PluginEventsComponent extends OverlaySvgPlugin {
+export class PluginEventsComponent extends OverlaySvgComponent {
   static overlayClass = 'events-overlay-svg';
   static zIndex = '124'; // just below markers (125)
 

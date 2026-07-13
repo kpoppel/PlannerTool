@@ -2,7 +2,7 @@
  * PluginMarkersComponent - Displays delivery plan markers as timeline overlay
  */
 import { html, css } from '../vendor/lit.js';
-import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
+import { OverlaySvgComponent } from './OverlaySvgComponent.js';
 import { findInBoard } from '../components/board-utils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
@@ -11,7 +11,7 @@ import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
-export class PluginMarkersComponent extends OverlaySvgPlugin {
+export class PluginMarkersComponent extends OverlaySvgComponent {
   static overlayClass = 'markers-overlay-svg';
 
   static properties = {

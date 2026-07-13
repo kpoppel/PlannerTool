@@ -1,20 +1,8 @@
 import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
 import PluginCost from '../../www/js/plugins/PluginCost.js';
-import { bus } from '../../www/js/core/EventBus.js';
-import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('PluginCost', () => {
-  let emitStub;
-
-  beforeEach(() => {
-    emitStub = stub(bus, 'emit');
-  });
-
-  afterEach(() => {
-    emitStub.restore();
-  });
-
   it('activates and deactivates, respects fullscreen behavior, and destroys', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -39,16 +27,12 @@ describe('PluginCost', () => {
     await p.activate();
     expect(p.active).to.be.true;
     expect(p._el.open.called).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
-    expect(emitStub.firstCall.args[0]).to.equal(PluginEvents.ACTIVATED);
     // fullscreen should hide timeline-board (accept common test env values)
     expect(['none', 'block', '']).to.include(timeline.style.display);
     expect(p._el.style.display).to.equal('flex');
 
     await p.deactivate();
     expect(p.active).to.be.false;
-    expect(emitStub.calledTwice).to.be.true;
-    expect(emitStub.secondCall.args[0]).to.equal(PluginEvents.DEACTIVATED);
     // deactivation should restore timeline display and hide element
     expect(p._el.style.display).to.equal('none');
 

@@ -23,6 +23,7 @@
  */
 
 import { ConfigEvents } from '../core/EventRegistry.js';
+import { dataOr } from './result.js';
 
 export class ConfigService {
   /**
@@ -63,7 +64,10 @@ export class ConfigService {
    */
   async _initAutosave() {
     try {
-      const initialAutosave = await this.dataService.getLocalPref('autosave.interval');
+      const initialAutosave = dataOr(
+        await this.dataService.getLocalPref('autosave.interval'),
+        null
+      );
       if (initialAutosave && initialAutosave > 0) {
         this.setupAutosave(initialAutosave);
       }
@@ -152,7 +156,7 @@ export class ConfigService {
    * @returns {Promise<any>} Preference value
    */
   async getLocalPref(key) {
-    return this.dataService.getLocalPref(key);
+    return dataOr(await this.dataService.getLocalPref(key), null);
   }
 
   /**
@@ -162,7 +166,7 @@ export class ConfigService {
    * @returns {Promise<void>}
    */
   async setLocalPref(key, value) {
-    return this.dataService.setLocalPref(key, value);
+    return dataOr(await this.dataService.setLocalPref(key, value), undefined);
   }
 
   // ========== Cleanup ==========

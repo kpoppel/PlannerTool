@@ -408,7 +408,7 @@ class FeatureBoard extends LitElement {
       childrenMap,
     });
     const months = getTimelineMonths();
-    const isPacked = state._viewService.packedMode;
+    const isPacked = state.packedMode;
     const expansionState = state.expansionState || {};
     const visibleFeatures = [];
     for (const feature of sourceFeatures) {
@@ -564,11 +564,11 @@ class FeatureBoard extends LitElement {
           // Group-aware layout: group pills + packed or flat features per group
           const orderedBucket = this._orderFeaturesHierarchically(
             bucket,
-            state._viewService.featureSortMode
+            state.featureSortMode
           );
           const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            state._viewService.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
+            state.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, laneHeight());
@@ -602,7 +602,7 @@ class FeatureBoard extends LitElement {
           // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
             bucket,
-            state._viewService.featureSortMode
+            state.featureSortMode
           );
           let laneIndex = 0;
           for (const feature of ordered) {
@@ -613,7 +613,7 @@ class FeatureBoard extends LitElement {
               width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * laneHeight(),
               teams: state.teams,
-              condensed: state._viewService.condensedCards,
+              condensed: state.condensedCards,
               hideGhostTitle: false,
               project: state.projects.find((p) => p.id === feature.project),
             });
@@ -648,7 +648,7 @@ class FeatureBoard extends LitElement {
       // Order features once; used by both group and flat paths.
       const ordered = this._orderFeaturesHierarchically(
         sourceFeatures,
-        state._viewService.featureSortMode
+        state.featureSortMode
       );
       // Scope groups to the currently-selected plans only.  getAllGroups()
       // returns groups from ALL cached plans (including stale entries from plans
@@ -666,7 +666,7 @@ class FeatureBoard extends LitElement {
         );
         const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
           visibleFiltered, allGroups, 0, months,
-          state._viewService.condensedCards, isPacked, this._collapsedGroups,
+          state.condensedCards, isPacked, this._collapsedGroups,
           selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
         );
         renderList = groupItems;
@@ -713,7 +713,7 @@ class FeatureBoard extends LitElement {
               width: pos.width ?? 0,
               top: this._overlayOffset + laneIndex * laneHeight(),
             teams: state.teams,
-            condensed: state._viewService.condensedCards,
+            condensed: state.condensedCards,
             hideGhostTitle: false,
             project: state.projects.find((p) => p.id === feature.project),
           });
@@ -757,7 +757,7 @@ class FeatureBoard extends LitElement {
   async updateCardsById(ids = []) {
     // In packed mode any date change can shift a card into an occupied lane.
     // A full repack is required to keep the layout consistent.
-    if (state._viewService.packedMode) {
+    if (state.packedMode) {
       await this.renderFeatures();
       return;
     }

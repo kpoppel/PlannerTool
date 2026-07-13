@@ -19,7 +19,7 @@ import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
  *           <feature-card-lit data-feature-id="2"> (left:160, top:10)
  *           <feature-card-lit data-feature-id="3"> (left:320, top:10)
  *
- * OverlaySvgPlugin._attachOverlay() needs findInBoard('#board-area') to succeed.
+ * OverlaySvgComponent._attachOverlay() needs findInBoard('#board-area') to succeed.
  * We inject a #board-area div into the existing timeline-board in beforeEach and
  * remove it in afterEach so the global setup isn't permanently modified.
  */
@@ -68,7 +68,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    state.setShowDependencies(true);
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -89,7 +89,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 2, relations: [{ id: 3, type: 'Related' }] },
       { id: 3, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    state.setShowDependencies(true);
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -114,7 +114,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    state.setShowDependencies(true);
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -123,7 +123,7 @@ describe('PluginDependenciesComponent', () => {
     component.open();
     await new Promise((r) => setTimeout(r, 50));
 
-    state._viewService.setShowDependencies(false);
+    state.setShowDependencies(false);
     component._handleDepsToggle();
     await new Promise((r) => setTimeout(r, 50));
 

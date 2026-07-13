@@ -1,4 +1,5 @@
 import { expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
 import { render } from '../../www/js/vendor/lit.js';
 import { state } from '../../www/js/services/State.js';
@@ -16,18 +17,21 @@ function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
 }
 
 describe('PluginCost Project View deeper branches', () => {
-  let originalProjects;
+  let projectsValue;
+  let childrenMap;
+  let projectsStub;
+  let childrenStub;
+
   beforeEach(() => {
-    originalProjects =
-      state._projectTeamService.projects ?
-        state._projectTeamService.projects.slice()
-      : [];
-    state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
-    state._dataInitService.childrenByParent = new Map();
+    projectsValue = [{ id: 'p1', name: 'P1', selected: true }];
+    childrenMap = new Map();
+    projectsStub = sinon.stub(state, 'projects').get(() => projectsValue);
+    childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
   });
+
   afterEach(() => {
-    state._projectTeamService.projects = originalProjects;
-    state._dataInitService.childrenByParent = new Map();
+    projectsStub.restore();
+    childrenStub.restore();
   });
 
   it('renders team-month table and summary when project has features', () => {
@@ -254,7 +258,7 @@ describe('PluginCost Project View deeper branches', () => {
     };
 
     // Establish parent→child relationship in state
-    state._dataInitService.childrenByParent = new Map([[100, ['101']]]);
+    childrenMap = new Map([[100, ['101']]]);
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -302,7 +306,7 @@ describe('PluginCost Project View deeper branches', () => {
       },
     };
 
-    state._dataInitService.childrenByParent = new Map([[200, ['201']]]);
+    childrenMap = new Map([[200, ['201']]]);
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -356,7 +360,7 @@ describe('PluginCost Project View deeper branches', () => {
     const parent = mk('300', 'Epic A', { 'team-alpha': 500 });
     const child = mk('301', 'Feature A', { 'team-alpha': 200 });
 
-    state._dataInitService.childrenByParent = new Map([[300, ['301']]]);
+    childrenMap = new Map([[300, ['301']]]);
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -408,7 +412,7 @@ describe('PluginCost Project View deeper branches', () => {
     const parent = mk('400', 'Epic B', { 'team-alpha': 500, 'team-beta': 300 });
     const child = mk('401', 'Feature B', { 'team-alpha': 200 });
 
-    state._dataInitService.childrenByParent = new Map([[400, ['401']]]);
+    childrenMap = new Map([[400, ['401']]]);
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -460,7 +464,7 @@ describe('PluginCost Project View deeper branches', () => {
   }
 
   function renderTeamsView(features, parentId, childIds) {
-    state._dataInitService.childrenByParent = new Map([[parentId, childIds.map(String)]]);
+    childrenMap = new Map([[parentId, childIds.map(String)]]);
     return {
       months: [new Date('2026-01-01')],
       startDate: '2026-01-01',
@@ -510,7 +514,7 @@ describe('PluginCost Project View deeper branches', () => {
   it('team table: no double-counting when parent has no children', () => {
     // Single leaf feature: Team A 400. Should be 400.
     const leaf = mkMultiTeamFeature(600, 'Leaf', { 'team-alpha': 400 });
-    state._dataInitService.childrenByParent = new Map();
+    childrenMap = new Map();
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -571,7 +575,7 @@ describe('PluginCost Project View deeper branches', () => {
     const parent = mkMultiTeamFeature(800, 'Epic', { 'team-alpha': 400 });
     const child = mkMultiTeamFeature(801, 'Feature', { 'team-beta': 200 });
 
-    state._dataInitService.childrenByParent = new Map([[800, ['801']]]);
+    childrenMap = new Map([[800, ['801']]]);
 
     const comp = {
       months: [new Date('2026-01-01')],

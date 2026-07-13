@@ -101,15 +101,13 @@ export class ViewSaveModal extends LitElement {
     }
 
     // Get view options
-    if (state._viewService) {
-      const vo = state._viewService.captureCurrentView();
-      this.previewData.viewOptions = {
-        timelineScale: vo.timelineScale || 'months',
-        condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
-        sortMode: vo.featureSortMode || 'rank',
-        showDependencies: vo.showDependencies ? 'Yes' : 'No',
-      };
-    }
+    const vo = state.captureCurrentView();
+    this.previewData.viewOptions = {
+      timelineScale: vo.timelineScale || 'months',
+      condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
+      sortMode: vo.featureSortMode || 'rank',
+      showDependencies: vo.showDependencies ? 'Yes' : 'No',
+    };
 
     // Get task types from sidebar
     const sidebarElement = document.querySelector('app-sidebar');

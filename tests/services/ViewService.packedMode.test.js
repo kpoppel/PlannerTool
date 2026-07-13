@@ -3,7 +3,7 @@
  */
 
 import { expect } from '@esm-bundle/chai';
-import { state } from '../../www/js/services/State.js';
+import { ViewService } from '../../www/js/services/ViewService.js';
 import { ViewEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('ViewService — displayMode / packedMode', () => {
@@ -13,11 +13,7 @@ describe('ViewService — displayMode / packedMode', () => {
   beforeEach(() => {
     emitCalls = [];
     const mockBus = { emit: (event, data) => emitCalls.push({ event, data }) };
-    vs = state._viewService;
-    vs.bus = mockBus;
-    // Reset to defaults
-    vs._displayMode = 'normal';
-    vs._featureSortMode = 'rank';
+    vs = new ViewService(mockBus);
   });
 
   describe('displayMode getter/setter', () => {

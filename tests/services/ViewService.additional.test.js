@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { state } from '../../www/js/services/State.js';
+import { ViewService } from '../../www/js/services/ViewService.js';
 import {
   FilterEvents,
   FeatureEvents,
@@ -14,17 +14,7 @@ describe('ViewService additional coverage', () => {
   beforeEach(() => {
     emitCalls = [];
     bus = { emit: (event, data) => emitCalls.push({ event, data }) };
-    vs = state._view_service || state._viewService;
-    vs = state._viewService;
-    vs.bus = bus;
-    vs._timelineScale = 'months';
-    vs._hiddenTypes = new Set(); // all types visible by default
-    vs._showDependencies = false;
-    vs._showUnassignedCards = true;
-    vs._showUnplannedWork = true;
-    vs._displayMode = 'normal';
-    vs._capacityViewMode = 'team';
-    vs._featureSortMode = 'rank';
+    vs = new ViewService(bus);
   });
 
   it('setShowUnallocatedCards and setShowUnplannedWork emit events and update state', () => {

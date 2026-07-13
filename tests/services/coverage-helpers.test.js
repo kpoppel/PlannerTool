@@ -35,6 +35,7 @@ describe('Coverage helpers', () => {
   it('exercise DataService read methods', async () => {
     // local provider calls - should be safe
     const colors = await dataService.getColorMappings();
+    expect(colors.ok).to.equal(true);
     expect(colors).to.be.an('object');
     await dataService.updateProjectColor('p1', '#abc');
     await dataService.updateTeamColor('t1', '#def');
@@ -50,9 +51,12 @@ describe('Coverage helpers', () => {
     const teams = await dataService.getTeams();
     const features = await dataService.getFeatures();
     window.fetch = origFetch;
-    const pIsArrayOrObject = Array.isArray(projects) || typeof projects === 'object';
-    const tIsArrayOrObject = Array.isArray(teams) || typeof teams === 'object';
-    const fIsArrayOrObject = Array.isArray(features) || typeof features === 'object';
+    const pIsArrayOrObject = Array.isArray(projects.data) || typeof projects.data === 'object';
+    const tIsArrayOrObject = Array.isArray(teams.data) || typeof teams.data === 'object';
+    const fIsArrayOrObject = Array.isArray(features.data) || typeof features.data === 'object';
+    expect(projects.ok).to.equal(true);
+    expect(teams.ok).to.equal(true);
+    expect(features.ok).to.equal(true);
     expect(pIsArrayOrObject).to.equal(true);
     expect(tIsArrayOrObject).to.equal(true);
     expect(fIsArrayOrObject).to.equal(true);
@@ -60,8 +64,8 @@ describe('Coverage helpers', () => {
 
   it('exercise some state helpers', () => {
     // shallow calls that do not hit network
-    state._stateFilterService.setAvailableStates(['Open', 'Done']);
-    state._stateFilterService.toggleStateSelected('Open');
+    state.setAvailableFeatureStates(['Open', 'Done']);
+    state.toggleStateSelected('Open');
     expect(state.selectedFeatureStateFilter instanceof Set).to.equal(true);
     state.setAllStatesSelected(true);
     expect(state.selectedFeatureStateFilter.size).to.be.at.least(1);

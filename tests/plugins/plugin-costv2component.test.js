@@ -5,14 +5,15 @@ import { state } from '../../www/js/services/State.js';
 
 describe('PluginCostComponent', () => {
   let el;
-  let originalPluginStateService;
+  let pluginStateGetterStub;
+
   beforeEach(async () => {
-    originalPluginStateService = state._pluginStateService;
+    pluginStateGetterStub = null;
     el = await fixture(html`<plugin-cost></plugin-cost>`);
   });
 
   afterEach(() => {
-    state._pluginStateService = originalPluginStateService;
+    pluginStateGetterStub?.restore();
   });
 
   it('renders toolbar and default view', () => {
@@ -150,7 +151,7 @@ describe('PluginCostComponent', () => {
   it('persists date range into pluginStateService while still open', () => {
     const updateStub = sinon.stub();
     const loadDataStub = sinon.stub(el, 'loadData');
-    state._pluginStateService = { update: updateStub };
+    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({ update: updateStub }));
 
     el.startDate = '2026-03-01';
     el.endDate = '2026-04-30';
@@ -171,13 +172,13 @@ describe('PluginCostComponent', () => {
     const unsubscribe = sinon.stub();
 
     el.remove();
-    state._pluginStateService = {
+    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({
       subscribe: (pluginId, cb) => {
         expect(pluginId).to.equal('plugin-cost');
         subscriber = cb;
         return unsubscribe;
       },
-    };
+    }));
 
     el = await fixture(html`<plugin-cost></plugin-cost>`);
     const loadDataStub = sinon.stub(el, 'loadData');
@@ -205,7 +206,7 @@ describe('PluginCostComponent', () => {
   it('updates plugin state while open and restores it when reopened', async () => {
     const updateStub = sinon.stub();
     const loadDataStub = sinon.stub(el, 'loadData');
-    state._pluginStateService = { update: updateStub };
+    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({ update: updateStub }));
 
     el.startDate = '2026-03-01';
     el.endDate = '2026-04-30';
@@ -222,13 +223,14 @@ describe('PluginCostComponent', () => {
     let subscriber;
     const unsubscribe = sinon.stub();
     el.remove();
-    state._pluginStateService = {
+    pluginStateGetterStub.restore();
+    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({
       subscribe: (pluginId, cb) => {
         expect(pluginId).to.equal('plugin-cost');
         subscriber = cb;
         return unsubscribe;
       },
-    };
+    }));
 
     el = await fixture(html`<plugin-cost></plugin-cost>`);
     const restoreLoadDataStub = sinon.stub(el, 'loadData');

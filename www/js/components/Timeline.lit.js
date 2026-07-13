@@ -348,7 +348,7 @@ export async function initTimeline() {
       });
     });
     // Ensure any restored timeline scale from ViewService is applied now
-    const savedScale = state && state._viewService && state._viewService.timelineScale;
+    const savedScale = state && state.timelineScale;
     if (savedScale) {
       _currentTimelineScale = savedScale;
       if (savedScale === 'threeMonths') {

@@ -53,7 +53,7 @@ class TimelineBoard extends LitElement {
         bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
       }
 
-      if (state && state._initCompleted) await state._initCompleted;
+      if (state && state.initCompleted) await state.initCompleted;
 
       await import('./MainGraph.lit.js');
       const mod_t = await import('./Timeline.lit.js');

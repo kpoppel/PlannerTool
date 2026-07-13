@@ -5,7 +5,7 @@ describe('State core behaviors', () => {
   it('computeFeatureOrgLoad respects selected teams', () => {
     // Setup baseline teams and selection using ProjectTeamService
     const teams = [{ id: 't1' }, { id: 't2' }];
-    state._projectTeamService.initFromBaseline([], teams);
+    state.initProjectTeamBaseline([], teams);
     state.setTeamSelected('t1', true);
     state.setTeamSelected('t2', false);
 
@@ -26,7 +26,7 @@ describe('State core behaviors', () => {
     // Minimal baseline data: one team, one project, one feature spanning 3 days
     state.baselineTeams = [{ id: 't1' }];
     state.baselineProjects = [{ id: 'p1' }];
-    state.baselineFeatures = [
+    state.setBaselineFeatures([
       {
         id: 'f1',
         start: '2024-01-01',
@@ -35,24 +35,17 @@ describe('State core behaviors', () => {
         state: 'New',
         capacity: [{ team: 't1', capacity: 2 }],
       },
-    ];
+    ]);
     // Working copies (no selection filtering) - use ProjectTeamService
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
+    state.initProjectTeamBaseline([{ id: 'p1' }], [{ id: 't1' }]);
     state.setProjectSelected('p1', true);
     state.setTeamSelected('t1', true);
     // Ensure selectedFeatureStateFilter includes the feature status so it isn't filtered out
-    state._stateFilterService.setAvailableStates(['New']);
-    state._stateFilterService._selectedStates = new Set(['New']);
-    // Setup scenarios using ScenarioEventService
-    state._scenarioEventService._scenarios = [
-      {
-        id: 'baseline',
-        overrides: {},
-        filters: { projects: [], teams: [] },
-        view: {},
-      },
-    ];
-    state._scenarioEventService.setActiveScenarioId('baseline');
+    state.setAvailableFeatureStates(['New']);
+    state.setSelectedStates(['New']);
+    // Ensure baseline scenario exists and is active
+    state.initDefaultScenario();
+    state.activeScenarioId = 'baseline';
     // Ensure getEffectiveFeatures returns the baseline features for this test
     state.getEffectiveFeatures = () => state.baselineFeatures;
     // Run recompute
@@ -67,7 +60,7 @@ describe('State core behaviors', () => {
   });
 
   it('setStateFilter toggles selection and emits updates', async () => {
-    state._stateFilterService.setAvailableStates(['New', 'Done']);
+    state.setAvailableFeatureStates(['New', 'Done']);
     // Track events
     const events = [];
     const { bus } = await import('../../www/js/core/EventBus.js');

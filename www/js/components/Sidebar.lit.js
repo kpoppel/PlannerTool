@@ -1123,9 +1123,9 @@ export class SidebarLit extends LitElement {
         this.selectedTaskTypes = new Set(arr);
         // Sync to ViewService so the board filter matches (external callers or
         // plugin-driven selectedTaskTypes must also be reflected in _hiddenTypes).
-        if (state && state._viewService) {
+        if (state) {
           for (const t of (this.availableTaskTypes || [])) {
-            state._viewService.setTypeVisibility(t, this.selectedTaskTypes.has(t), /* suppressEmit= */true);
+            state.setTypeVisibility(t, this.selectedTaskTypes.has(t), /* suppressEmit= */true);
           }
         }
         // Mark types initialized so default-selection logic does not override
@@ -1431,8 +1431,8 @@ export class SidebarLit extends LitElement {
     if (checked) this.selectedTaskTypes.add(type);
     else this.selectedTaskTypes.delete(type);
     // Sync to ViewService (authoritative source for board filter)
-    if (state && state._viewService) {
-      state._viewService.setTypeVisibility(type, !!checked);
+    if (state) {
+      state.setTypeVisibility(type, !!checked);
     }
     bus.emit(FilterEvents.CHANGED, {
       selectedTaskTypes: Array.from(this.selectedTaskTypes),
@@ -1453,8 +1453,7 @@ export class SidebarLit extends LitElement {
     // Use ViewService as the authoritative source for current visibility —
     // avoids stale-selectedTaskTypes bugs when selectedTaskTypes was never
     // initialised (e.g. data loaded after connectedCallback ran with no features).
-    const isCurrentlyVisible =
-      state && state._viewService ? state._viewService.isTypeVisible(type) : true;
+    const isCurrentlyVisible = state ? state.isTypeVisible(type) : true;
     const nowVisible = !isCurrentlyVisible;
 
     // Keep selectedTaskTypes in sync for persistence (view save/restore)
@@ -1463,8 +1462,8 @@ export class SidebarLit extends LitElement {
     else this.selectedTaskTypes.delete(type);
 
     // Generically update type visibility via ViewService — no hardcoded type strings
-    if (state && state._viewService) {
-      state._viewService.setTypeVisibility(type, nowVisible);
+    if (state) {
+      state.setTypeVisibility(type, nowVisible);
     }
     bus.emit(FilterEvents.CHANGED, {
       selectedTaskTypes: Array.from(this.selectedTaskTypes),
@@ -1617,8 +1616,7 @@ export class SidebarLit extends LitElement {
         <div class="filter-options">
           ${types.map(
             (t) => {
-              const isActive = state._viewService ? state._viewService.isTypeVisible(t)
-                : (this.selectedTaskTypes && this.selectedTaskTypes.has(t));
+              const isActive = state.isTypeVisible(t);
               return html`
                 <div
                   class="filter-option ${isActive ? 'active' : ''}"
@@ -1641,7 +1639,7 @@ export class SidebarLit extends LitElement {
   // Handlers for Taskboard Options
   _setTimelineScale(scale) {
     try {
-      state._viewService.setTimelineScale(scale);
+      state.setTimelineScale(scale);
     } catch (e) {
       console.warn('[Sidebar] setTimelineScale failed', e);
     }
@@ -1651,7 +1649,7 @@ export class SidebarLit extends LitElement {
 
   _toggleCondensed() {
     try {
-      state._viewService.setCondensedCards(!state._viewService.condensedCards);
+      state.setCondensedCards(!state.condensedCards);
     } catch (e) {
       console.warn('[Sidebar] toggleCondensed failed', e);
     }
@@ -1661,7 +1659,7 @@ export class SidebarLit extends LitElement {
 
   _setFeatureSortMode(mode) {
     try {
-      state._viewService.setFeatureSortMode(mode);
+      state.setFeatureSortMode(mode);
     } catch (e) {
       console.warn('[Sidebar] setFeatureSortMode failed', e);
     }
@@ -1672,7 +1670,7 @@ export class SidebarLit extends LitElement {
   _setGraphType(type) {
     this._graphType = type;
     try {
-      state._viewService.setCapacityViewMode(type);
+      state.setCapacityViewMode(type);
     } catch (e) {
       console.warn('[Sidebar] setCapacityViewMode failed', e);
     }
@@ -1768,22 +1766,22 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'normal' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('normal')}
+                    class="segment-btn ${state.displayMode === 'normal' ? 'active' : ''}"
+                    @click=${() => state.setDisplayMode('normal')}
                   >
                     Normal
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'compact' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('compact')}
+                    class="segment-btn ${state.displayMode === 'compact' ? 'active' : ''}"
+                    @click=${() => state.setDisplayMode('compact')}
                   >
                     Compact
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'packed' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('packed')}
+                    class="segment-btn ${state.displayMode === 'packed' ? 'active' : ''}"
+                    @click=${() => state.setDisplayMode('packed')}
                     title="Pack cards with non-overlapping dates into the same lane"
                   >
                     Packed
@@ -1796,21 +1794,21 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'rank' && !state._viewService.packedMode ?
+                    class="segment-btn ${state.featureSortMode === 'rank' && !state.packedMode ?
                       'active'
-                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
-                    ?disabled=${state._viewService.packedMode}
-                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('rank')}
+                    : ''} ${state.packedMode ? 'disabled' : ''}"
+                    ?disabled=${state.packedMode}
+                    @click=${() => !state.packedMode && this._setFeatureSortMode('rank')}
                   >
                     Rank
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'date' && !state._viewService.packedMode ?
+                    class="segment-btn ${state.featureSortMode === 'date' && !state.packedMode ?
                       'active'
-                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
-                    ?disabled=${state._viewService.packedMode}
-                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('date')}
+                    : ''} ${state.packedMode ? 'disabled' : ''}"
+                    ?disabled=${state.packedMode}
+                    @click=${() => !state.packedMode && this._setFeatureSortMode('date')}
                   >
                     Date
                   </button>

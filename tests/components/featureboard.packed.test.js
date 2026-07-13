@@ -110,7 +110,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     board = document.createElement('feature-board');
     document.body.appendChild(board);
     origGetEffectiveFeatures = state.getEffectiveFeatures?.bind(state);
-    origDisplayMode = state._viewService._displayMode;
+    origDisplayMode = state.displayMode;
     // Stub computePosition so tests don't depend on a real timeline being mounted.
     // Returns a deterministic fixed position for any feature that has dates.
     origComputePosition = boardUtils.computePosition;
@@ -124,20 +124,20 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     });
 
     // Ensure project p1 is selected and passes filters
-    state._projectTeamService.initFromBaseline([{ id: 'p1', selected: true }], []);
+    state.initProjectTeamBaseline([{ id: 'p1', selected: true }], []);
     state.setProjectSelected('p1', true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
+    state.setShowOnlyProjectHierarchy(false);
+    state.setShowUnplannedWork(true);
+    state.setShowUnallocatedCards(true);
     // Allow 'Active' state through the filter (case-insensitive in _featurePassesFilters)
-    state._stateFilterService._selectedFeatureStateFilter = new Set(['Active']);
+    state.setSelectedStates(['Active']);
   });
 
   afterEach(() => {
     board.remove();
     // Restore state
     state.getEffectiveFeatures = origGetEffectiveFeatures;
-    state._viewService._displayMode = origDisplayMode;
+    state.setDisplayMode(origDisplayMode || 'normal', true);
     Object.defineProperty(boardUtils, 'computePosition', {
       configurable: true,
       writable: true,
@@ -164,7 +164,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     // Simulate getEffectiveFeatures returning the same feature twice (e.g. scenario overlay collision)
     state.getEffectiveFeatures = () => [f, { ...f }]; // same ID, two objects
 
-    state._viewService._displayMode = 'packed';
+    state.setDisplayMode('packed', true);
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -182,7 +182,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     // f1 appears a second time (simulates duplicate from data source)
     state.getEffectiveFeatures = () => [f1, f2, { ...f1 }];
 
-    state._viewService._displayMode = 'packed';
+    state.setDisplayMode('packed', true);
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -197,7 +197,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     const f = makeFeature('dup-2', 'Anti-Corruption');
     state.getEffectiveFeatures = () => [f, { ...f }];
 
-    state._viewService._displayMode = 'normal';
+    state.setDisplayMode('normal', true);
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -212,7 +212,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     const f = makeFeature('dup-3', 'Anti-Corruption');
     state.getEffectiveFeatures = () => [f, { ...f }];
 
-    state._viewService._displayMode = 'compact';
+    state.setDisplayMode('compact', true);
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -233,7 +233,7 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     });
     timelineBoard.appendChild(scrollContainer);
 
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [
         { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
         { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
@@ -274,7 +274,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     board = document.createElement('feature-board');
     document.body.appendChild(board);
 
-    origDisplayMode = state._viewService._displayMode;
+    origDisplayMode = state.displayMode;
     origGetEffectiveFeatures = state.getEffectiveFeatures?.bind(state);
 
     origComputePosition = boardUtils.computePosition;
@@ -287,18 +287,18 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
       },
     });
 
-    state._projectTeamService.initFromBaseline([{ id: 'p1', selected: true }], []);
+    state.initProjectTeamBaseline([{ id: 'p1', selected: true }], []);
     state.setProjectSelected('p1', true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
-    state._stateFilterService._selectedFeatureStateFilter = new Set(['Active']);
+    state.setShowOnlyProjectHierarchy(false);
+    state.setShowUnplannedWork(true);
+    state.setShowUnallocatedCards(true);
+    state.setSelectedStates(['Active']);
   });
 
   afterEach(() => {
     board.remove();
     state.getEffectiveFeatures = origGetEffectiveFeatures;
-    state._viewService._displayMode = origDisplayMode;
+    state.setDisplayMode(origDisplayMode || 'normal', true);
     Object.defineProperty(boardUtils, 'computePosition', {
       configurable: true,
       writable: true,
@@ -324,7 +324,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     const f2 = makeFeature('repack-2');
     state.getEffectiveFeatures = () => [f1, f2];
 
-    state._viewService._displayMode = 'packed';
+    state.setDisplayMode('packed', true);
 
     let renderFeaturesCallCount = 0;
     const origRenderFeatures = board.renderFeatures.bind(board);
@@ -342,7 +342,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   });
 
   it('normal mode: updateCardsById does NOT call renderFeatures', async () => {
-    state._viewService._displayMode = 'normal';
+    state.setDisplayMode('normal', true);
 
     let renderFeaturesCallCount = 0;
     board.renderFeatures = async () => {
@@ -359,7 +359,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   });
 
   it('compact mode: updateCardsById does NOT call renderFeatures', async () => {
-    state._viewService._displayMode = 'compact';
+    state.setDisplayMode('compact', true);
 
     let renderFeaturesCallCount = 0;
     board.renderFeatures = async () => {

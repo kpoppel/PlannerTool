@@ -4,8 +4,6 @@
  * Provides SVG annotation tools for the timeline view
  */
 import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
 import { findInBoard } from '../components/board-utils.js';
 
 class PluginAnnotations {
@@ -105,13 +103,11 @@ class PluginAnnotations {
     }
     this._el.open();
     this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
   }
 
   async deactivate() {
     this._el.close();
     this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
   }
 
   async destroy() {

@@ -4,7 +4,7 @@
  */
 
 import { expect } from '@esm-bundle/chai';
-import { state } from '../../www/js/services/State.js';
+import { ViewService } from '../../www/js/services/ViewService.js';
 import {
   TimelineEvents,
   FilterEvents,
@@ -24,19 +24,7 @@ describe('ViewService', () => {
         emitCalls.push({ event, data });
       },
     };
-    // Use the singleton view service created by State to avoid circular import
-    viewService = state._viewService;
-    // Override the bus so emits are captured locally
-    viewService.bus = mockBus;
-    // Reset internals to defaults to avoid test cross-contamination
-    viewService._timelineScale = 'months';
-    viewService._hiddenTypes = new Set(); // all types visible by default
-    viewService._showDependencies = false;
-    viewService._showUnassignedCards = true;
-    viewService._showUnplannedWork = true;
-    viewService._displayMode = 'normal';
-    viewService._capacityViewMode = 'team';
-    viewService._featureSortMode = 'rank';
+    viewService = new ViewService(mockBus);
   });
 
   describe('Initialization', () => {

@@ -13,10 +13,13 @@ describe('State (unit)', () => {
       selectedFeatureStateFilter: new Set(Array.from(S.selectedFeatureStateFilter || [])),
       timelineScale: S.timelineScale,
       hiddenTypes: new Set(Array.from(S.hiddenTypes || [])),
-      displayMode: S._viewService.displayMode,
+      displayMode: S.displayMode,
       capacityViewMode: S.capacityViewMode,
       featureSortMode: S.featureSortMode,
       showDependencies: S.showDependencies,
+      showUnplannedWork: S.showUnplannedWork,
+      showUnallocatedCards: S.showUnallocatedCards,
+      showOnlyProjectHierarchy: S.showOnlyProjectHierarchy,
     };
   });
   afterEach(() => {
@@ -27,16 +30,18 @@ describe('State (unit)', () => {
     S._stateFilterService.setAvailableStates(
       JSON.parse(JSON.stringify(backup.availableFeatureStates))
     );
-    // Restore selected states
-    S._stateFilterService._selectedStates = new Set(
-      Array.from(backup.selectedFeatureStateFilter || [])
-    );
-    S._viewService._timelineScale = backup.timelineScale;
-    S._viewService._hiddenTypes = new Set(Array.from(backup.hiddenTypes || []));
-    S._viewService._displayMode = backup.displayMode || 'normal';
-    S._viewService._capacityViewMode = backup.capacityViewMode;
-    S._viewService._featureSortMode = backup.featureSortMode;
-    S._viewService._showDependencies = backup.showDependencies;
+    S.setSelectedStates(Array.from(backup.selectedFeatureStateFilter || []));
+    S.setTimelineScale(backup.timelineScale);
+    S.setDisplayMode(backup.displayMode || 'normal', true);
+    S.setCapacityViewMode(backup.capacityViewMode);
+    S.setFeatureSortMode(backup.featureSortMode);
+    S.setShowDependencies(backup.showDependencies);
+    S.setShowUnplannedWork(backup.showUnplannedWork, true);
+    S.setShowUnallocatedCards(backup.showUnallocatedCards, true);
+    S.setShowOnlyProjectHierarchy(backup.showOnlyProjectHierarchy, true);
+    // Restore hidden types through public visibility API for known task types used in tests
+    S.setTypeVisibility('epic', !backup.hiddenTypes.has('epic'), true);
+    S.setTypeVisibility('feature', !backup.hiddenTypes.has('feature'), true);
   });
 
   it('computeFeatureOrgLoad calculates percent correctly', () => {
@@ -82,7 +87,7 @@ describe('State (unit)', () => {
 
   it('toggleStateSelected handles add/remove safely', () => {
     S._stateFilterService.setAvailableStates(['A', 'B']);
-    S._stateFilterService._selectedStates = ['A'];
+    S.setSelectedStates(['A']);
     S.toggleStateSelected('A');
     expect(S.selectedFeatureStateFilter.has('A')).to.equal(false);
     S.toggleStateSelected('B');
@@ -104,8 +109,8 @@ describe('State (unit)', () => {
     expect(S.isTypeVisible('epic')).to.equal(false);
     S.setTypeVisibility('feature', false);
     expect(S.isTypeVisible('feature')).to.equal(false);
-    S._viewService.setDisplayMode('compact');
-    expect(S._viewService.displayMode).to.equal('compact');
+    S.setDisplayMode('compact');
+    expect(S.displayMode).to.equal('compact');
     S.setShowDependencies(true);
     expect(S.showDependencies).to.equal(true);
     S.setCapacityViewMode('project');

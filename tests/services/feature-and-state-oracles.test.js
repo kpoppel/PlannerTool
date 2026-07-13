@@ -5,6 +5,8 @@ import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('Feature Service and State Oracles (consolidated)', () => {
+  let scenarioId;
+
   describe('FeatureService unit behaviors', () => {
     it('getEffectiveFeatures returns baseline when no active scenario', () => {
       const baselineStore = {
@@ -148,7 +150,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
 
   describe('State.js oracle behaviors', () => {
     beforeEach(async () => {
-      state.baselineFeatures = [
+      state.setBaselineFeatures([
         {
           id: 'f1',
           title: 'Feature 1',
@@ -180,26 +182,11 @@ describe('Feature Service and State Oracles (consolidated)', () => {
           project: 'p1',
           state: 'active',
         },
-      ];
-      state._baselineStore.setFeatures(state.baselineFeatures);
-      state._dataInitService.baselineFeatureById = new Map();
-      state._dataInitService.childrenByParent = new Map();
-      for (const f of state.baselineFeatures) {
-        state._dataInitService.baselineFeatureById.set(f.id, f);
-      }
-      for (const f of state.baselineFeatures) {
-        if (f.type === 'feature' && f.parentId) {
-          if (!state._dataInitService.childrenByParent.has(f.parentId)) {
-            state._dataInitService.childrenByParent.set(f.parentId, []);
-          }
-          state._dataInitService.childrenByParent.get(f.parentId).push(f.id);
-        }
-      }
-      state._scenarioEventService._scenarios = [
-        { id: 'test-scenario', name: 'Test', overrides: {}, isChanged: false },
-      ];
-      state._scenarioEventService.setActiveScenarioId('test-scenario');
-      state._featureService = null;
+      ]);
+      state.initDefaultScenario();
+      const scenario = state.cloneScenario('baseline', 'State Oracle Test');
+      scenarioId = scenario.id;
+      state.activateScenario(scenarioId);
     });
 
     it('getEffectiveFeatures returns baseline when no scenario is active', () => {
@@ -209,7 +196,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('should apply scenario overrides when scenario is active', () => {
-      const scenario = state.scenarios.find((s) => s.id === 'test-scenario');
+      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
       scenario.overrides['f1'] = { start: '2024-01-02', end: '2024-01-12' };
       const features = state.getEffectiveFeatures();
       const f1 = features.find((f) => f.id === 'f1');
@@ -220,7 +207,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
 
     it('updateFeatureField marks scenario as changed', () => {
       state.updateFeatureField('f1', 'end', '2024-01-15');
-      const scenario = state.scenarios.find((s) => s.id === 'test-scenario');
+      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
       expect(scenario.overrides['f1']).to.deep.equal({
         start: '2024-01-01',
         end: '2024-01-15',
@@ -234,7 +221,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('revertFeature removes override and emits event', (done) => {
-      const scenario = state.scenarios.find((s) => s.id === 'test-scenario');
+      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
       scenario.overrides['f1'] = { start: '2024-01-02', end: '2024-01-12' };
       bus.once(FeatureEvents.UPDATED, () => done());
       state.revertFeature('f1');

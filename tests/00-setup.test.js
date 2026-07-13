@@ -130,20 +130,18 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   };
 }
 
-// Provide simple providerMock and config services expected by many tests
-if (!window.ProviderMock) {
-  window.ProviderMock = {
-    getLocalPref(key) {
-      const defaults = { 'autosave.interval': null, 'sidebar.state': null };
-      return defaults[key] ?? null;
-    },
-  };
-}
-
 if (!window.ConfigService) {
   window.ConfigService = {
     getPref(key) {
-      return window.ProviderMock.getLocalPref(key);
+      const raw = localStorage.getItem('az_planner:user_prefs:v1');
+      const defaults = { 'autosave.interval': null, 'sidebar.state': null };
+      if (!raw) return defaults[key] ?? null;
+      try {
+        const prefs = JSON.parse(raw);
+        return Object.prototype.hasOwnProperty.call(prefs, key) ? prefs[key] : defaults[key] ?? null;
+      } catch {
+        return defaults[key] ?? null;
+      }
     },
   };
 }

@@ -17,13 +17,4 @@ describe('ProviderREST /api/config tests', () => {
     const res = await pr.getConfig();
     expect(res).to.be.an('object');
   });
-
-  it('getCapabilities returns expected capability flags', async () => {
-    const pr = new ProviderREST();
-    const caps = await pr.getCapabilities();
-    expect(caps).to.be.an('object');
-    expect(caps.scenariosPersisted).to.equal(true);
-    expect(caps.colorsPersisted).to.equal(true);
-    expect(caps.batchUpdates).to.equal(true);
-  });
 });

@@ -12,7 +12,7 @@ import { expect } from '@open-wc/testing';
 import '../../www/js/components/Sidebar.lit.js';
 import { state } from '../../www/js/services/State.js';
 import { bus } from '../../www/js/core/EventBus.js';
-import { FilterEvents, FeatureEvents } from '../../www/js/core/EventRegistry.js';
+import { FilterEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('Sidebar task-type filter', () => {
   let sidebar;
@@ -22,8 +22,9 @@ describe('Sidebar task-type filter', () => {
     sidebar = document.createElement('app-sidebar');
     document.body.appendChild(sidebar);
     await sidebar.updateComplete;
-    // Reset ViewService hidden types so each test starts clean
-    state._viewService._hiddenTypes = new Set();
+    // Reset type visibility so each test starts clean
+    state.setTypeVisibility('epic', true, true);
+    state.setTypeVisibility('feature', true, true);
   });
 
   afterEach(() => {
@@ -74,12 +75,13 @@ describe('Sidebar task-type filter', () => {
     // Simulate the bug scenario: selectedTaskTypes is empty but ViewService says all visible
     sidebar.selectedTaskTypes = new Set(); // empty — old bug: would ADD instead of remove
     sidebar.availableTaskTypes = ['epic', 'feature'];
-    state._viewService._hiddenTypes = new Set(); // all visible
+    state.setTypeVisibility('epic', true, true);
+    state.setTypeVisibility('feature', true, true);
 
     sidebar._toggleTaskType('feature');
 
     // Feature should now be hidden in ViewService
-    expect(state._viewService.isTypeVisible('feature')).to.equal(false,
+    expect(state.isTypeVisible('feature')).to.equal(false,
       'feature should be hidden after toggle when it was visible');
     // selectedTaskTypes should reflect the new state
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(false);
@@ -88,11 +90,11 @@ describe('Sidebar task-type filter', () => {
   it('_toggleTaskType re-shows a hidden type', () => {
     sidebar.selectedTaskTypes = new Set(['epic']); // feature not in set
     sidebar.availableTaskTypes = ['epic', 'feature'];
-    state._viewService._hiddenTypes = new Set(['feature']); // feature hidden
+    state.setTypeVisibility('feature', false, true);
 
     sidebar._toggleTaskType('feature');
 
-    expect(state._viewService.isTypeVisible('feature')).to.equal(true,
+    expect(state.isTypeVisible('feature')).to.equal(true,
       'feature should be visible after toggling from hidden state');
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
   });
@@ -103,7 +105,8 @@ describe('Sidebar task-type filter', () => {
   it('task-type button active class reflects ViewService, not stale selectedTaskTypes', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(); // empty – simulates the stale/cold state
-    state._viewService._hiddenTypes = new Set(); // both visible
+    state.setTypeVisibility('epic', true, true);
+    state.setTypeVisibility('feature', true, true);
     await sidebar.updateComplete;
 
     const root = sidebar.shadowRoot || sidebar;
@@ -122,7 +125,7 @@ describe('Sidebar task-type filter', () => {
   it('task-type button loses active class when ViewService hides the type', async () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
-    state._viewService._hiddenTypes = new Set(['feature']); // feature hidden
+    state.setTypeVisibility('feature', false, true);
     // Trigger re-render so the Lit template picks up the new ViewService state
     sidebar.requestUpdate();
     await sidebar.updateComplete;
@@ -145,14 +148,15 @@ describe('Sidebar task-type filter', () => {
   it('FilterEvents.CHANGED with selectedTaskTypes syncs hidden types to ViewService', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
-    state._viewService._hiddenTypes = new Set();
+    state.setTypeVisibility('epic', true, true);
+    state.setTypeVisibility('feature', true, true);
 
     // External caller hides feature by emitting selectedTaskTypes without it
     bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: ['epic'] });
 
-    expect(state._viewService.isTypeVisible('feature')).to.equal(false,
+    expect(state.isTypeVisible('feature')).to.equal(false,
       'feature should be hidden after external selectedTaskTypes event excludes it');
-    expect(state._viewService.isTypeVisible('epic')).to.equal(true);
+    expect(state.isTypeVisible('epic')).to.equal(true);
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(false);
     expect(sidebar._taskTypesInitialized).to.equal(true);
   });
@@ -160,11 +164,11 @@ describe('Sidebar task-type filter', () => {
   it('FilterEvents.CHANGED restoring all types makes all visible in ViewService', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic']);
-    state._viewService._hiddenTypes = new Set(['feature']); // feature hidden
+    state.setTypeVisibility('feature', false, true);
 
     bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: ['epic', 'feature'] });
 
-    expect(state._viewService.isTypeVisible('epic')).to.equal(true);
-    expect(state._viewService.isTypeVisible('feature')).to.equal(true);
+    expect(state.isTypeVisible('epic')).to.equal(true);
+    expect(state.isTypeVisible('feature')).to.equal(true);
   });
 });

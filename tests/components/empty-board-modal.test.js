@@ -6,24 +6,23 @@ describe('EmptyBoardModal regression', () => {
   let originalBaselineFeatures;
   let originalGetEffectiveFeatures;
   let originalStateFeatures;
-  let originalGetProjects;
-  let originalGetTeams;
+  let originalProjects;
+  let originalTeams;
   let originalSelectedStates;
   let originalShowUnplanned;
   let originalShowUnassigned;
   let originalHiddenTypes;
-  let originalAvailableTaskTypesCache;
 
   const restoreTypeVisibility = (hiddenTypes = new Set()) => {
     const knownTypes = new Set([
       'epic',
       'feature',
       'bug',
-      ...(Array.isArray(state._availableTaskTypesCache) ? state._availableTaskTypesCache : []),
+      ...(Array.isArray(state.availableTaskTypes) ? state.availableTaskTypes : []),
       ...hiddenTypes,
     ]);
     for (const t of knownTypes) {
-      state._viewService.setTypeVisibility(t, !hiddenTypes.has(t));
+      state.setTypeVisibility(t, !hiddenTypes.has(t));
     }
   };
 
@@ -31,33 +30,27 @@ describe('EmptyBoardModal regression', () => {
     originalBaselineFeatures = state.baselineFeatures;
     originalGetEffectiveFeatures = state.getEffectiveFeatures;
     originalStateFeatures = state.features;
-    originalGetProjects = state._projectTeamService.getProjects;
-    originalGetTeams = state._projectTeamService.getTeams;
+    originalProjects = (state.projects || []).map((p) => ({ ...p }));
+    originalTeams = (state.teams || []).map((t) => ({ ...t }));
     originalSelectedStates =
-      state._stateFilterService?.selectedFeatureStateFilter instanceof Set ?
-        new Set(state._stateFilterService.selectedFeatureStateFilter)
+      state.selectedFeatureStateFilter instanceof Set ?
+        new Set(state.selectedFeatureStateFilter)
       : new Set();
-    originalShowUnplanned = state._viewService.showUnplannedWork;
-    originalShowUnassigned = state._viewService.showUnassignedCards;
-    originalHiddenTypes = new Set(state._viewService.hiddenTypes || []);
-    originalAvailableTaskTypesCache =
-      Array.isArray(state._availableTaskTypesCache) ?
-        [...state._availableTaskTypesCache]
-      : state._availableTaskTypesCache;
-    state.baselineFeatures = [{ id: 'baseline-1' }];
+    originalShowUnplanned = state.showUnplannedWork;
+    originalShowUnassigned = state.showUnallocatedCards;
+    originalHiddenTypes = new Set(state.hiddenTypes || []);
+    state.setBaselineFeatures([{ id: 'baseline-1' }]);
   });
 
   afterEach(() => {
-    state.baselineFeatures = originalBaselineFeatures;
+    state.setBaselineFeatures(originalBaselineFeatures);
     state.getEffectiveFeatures = originalGetEffectiveFeatures;
     state.features = originalStateFeatures;
-    state._projectTeamService.getProjects = originalGetProjects;
-    state._projectTeamService.getTeams = originalGetTeams;
-    state._stateFilterService.setSelectedStates(Array.from(originalSelectedStates));
-    state._viewService.setShowUnplannedWork(originalShowUnplanned);
-    state._viewService.setShowUnallocatedCards(originalShowUnassigned);
+    state.initProjectTeamBaseline(originalProjects, originalTeams);
+    state.setSelectedStates(Array.from(originalSelectedStates));
+    state.setShowUnplannedWork(originalShowUnplanned);
+    state.setShowUnallocatedCards(originalShowUnassigned);
     restoreTypeVisibility(new Set(originalHiddenTypes));
-    state._availableTaskTypesCache = originalAvailableTaskTypesCache;
   });
 
   it('closes itself when tasks become visible after being open', () => {
@@ -91,12 +84,13 @@ describe('EmptyBoardModal regression', () => {
 
     state.features = [];
     state.getEffectiveFeatures = () => [feature];
-    state._projectTeamService.getProjects = () => [{ id: 'p-1', selected: true }];
-    state._projectTeamService.getTeams = () => [{ id: 't-1', selected: true }];
-    state._stateFilterService.setSelectedStates(['New']);
-    state._viewService.setTypeVisibility('feature', true);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
+    state.initProjectTeamBaseline([{ id: 'p-1' }], [{ id: 't-1' }]);
+    state.setProjectSelected('p-1', true);
+    state.setTeamSelected('t-1', true);
+    state.setSelectedStates(['New']);
+    state.setTypeVisibility('feature', true);
+    state.setShowUnplannedWork(true);
+    state.setShowUnallocatedCards(true);
 
     const hasVisible = el._hasVisibleFeatures();
 
@@ -107,10 +101,10 @@ describe('EmptyBoardModal regression', () => {
     const el = document.createElement('empty-board-modal');
 
     state.getEffectiveFeatures = () => [];
-    state._projectTeamService.getProjects = () => [{ id: 'p-1', selected: true }];
-    state._projectTeamService.getTeams = () => [];
-    state._stateFilterService.setSelectedStates(['New']);
-    state._availableTaskTypesCache = ['feature'];
+    state.setBaselineFeatures([{ id: 'baseline-1', type: 'feature' }]);
+    state.initProjectTeamBaseline([{ id: 'p-1' }], []);
+    state.setProjectSelected('p-1', true);
+    state.setSelectedStates(['New']);
     restoreTypeVisibility(new Set());
 
     const reasons = el._computeReasons();
@@ -129,10 +123,13 @@ describe('EmptyBoardModal regression', () => {
         state: 'New',
       },
     ];
-    state._projectTeamService.getProjects = () => [{ id: 'p-1', selected: true }];
-    state._projectTeamService.getTeams = () => [];
-    state._stateFilterService.setSelectedStates(['New']);
-    state._availableTaskTypesCache = ['feature', 'epic'];
+    state.setBaselineFeatures([
+      { id: 'baseline-1', type: 'feature' },
+      { id: 'baseline-2', type: 'epic' },
+    ]);
+    state.initProjectTeamBaseline([{ id: 'p-1' }], []);
+    state.setProjectSelected('p-1', true);
+    state.setSelectedStates(['New']);
     restoreTypeVisibility(new Set());
 
     const reasons = el._computeReasons();

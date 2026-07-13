@@ -1,36 +1,6 @@
 import { expect } from '@open-wc/testing';
 
 describe('Providers, FilterManager and CapacityCalculator (consolidated)', () => {
-  describe('ProviderLocalStorage', () => {
-    it('save and list scenarios', async () => {
-      const mod = await import('../../www/js/services/providerLocalStorage.js');
-      const provider = new mod.ProviderLocalStorage();
-      localStorage.removeItem('scenarios');
-      await provider.saveScenario({ id: 's1', name: 'S1' });
-      const list = await provider.listScenarios();
-      expect(list).to.be.an('array');
-      expect(list.length).to.equal(1);
-      expect(list[0].id).to.equal('s1');
-    });
-
-    it('renameScenario updates entry', async () => {
-      const mod = await import('../../www/js/services/providerLocalStorage.js');
-      const provider = new mod.ProviderLocalStorage();
-      localStorage.setItem('scenarios', JSON.stringify([{ id: 's2', name: 'Old' }]));
-      const res = await provider.renameScenario('s2', 'New');
-      expect(res.name).to.equal('New');
-    });
-
-    it('saveProjectColor and loadColors', async () => {
-      const mod = await import('../../www/js/services/providerLocalStorage.js');
-      const provider = new mod.ProviderLocalStorage();
-      localStorage.removeItem('az_planner:user_prefs:v1');
-      await provider.saveProjectColor('p1', '#abc');
-      const res = await provider.loadColors();
-      expect(res.projectColors.p1).to.equal('#abc');
-    });
-  });
-
   describe('ProviderREST coverage', () => {
     it('listScenarios and getScenario emit events', async () => {
       const mod = await import('/www/js/services/providerREST.js');

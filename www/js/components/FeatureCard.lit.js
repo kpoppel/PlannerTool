@@ -797,8 +797,7 @@ export class FeatureCardLit extends LitElement {
     if (this.condensed) return '';
     const hasChildren = (() => {
       try {
-        const map =
-          state._dataInitService?.getChildrenByParentMap?.() || state.childrenByParent;
+        const map = state.childrenByParent;
         const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
       } catch (e) {

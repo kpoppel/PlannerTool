@@ -36,9 +36,23 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Frontend architecture unification (Part 6A): removed unused DI container/service-registry startup path and corresponding DI-only client tests.
+- Frontend architecture unification (Part 6B): migrated runtime components/plugins/view-management from private state member reach-through to State facade APIs.
+- Frontend architecture unification (Part 6C): updated selected component tests to validate public State facade behavior instead of private state internals.
+- Frontend architecture unification (Part 6C continuation): migrated plugin-cost test suites from private state member patching to public State getter stubs.
+- Frontend architecture unification (Part 6C continuation): migrated additional component tests to public State getter stubs instead of private project-team service patching.
+- Frontend architecture unification (Part 6C continuation): migrated State service tests from private members to new minimal public State seeding/access helpers.
+- Frontend architecture unification (Part 6C continuation): migrated feature-and-state oracle tests to public State scenario/baseline APIs.
+- Frontend architecture unification (Part 6C continuation): migrated sidebar/featureboard/empty-board-modal tests from private state service/cache access to public State APIs.
+- Frontend architecture unification (Part 6 complete): migrated final residual component tests off private State members and completed Part 6 test private-field realignment.
+- Frontend data layer simplification: removed mock/local runtime providers, dropped capabilities API, made config REST-only, and introduced injected preferences storage abstraction in dataService.
+- Data service contract is now normalized to a unified Result shape (`{ ok, data | error }`) with service-layer unwrapping at state/view/group/config boundaries to preserve UI behavior.
 - Feature visibility/filtering now uses a shared selector + diagnostics service across FeatureBoard, Sidebar funnel counts, and EmptyBoardModal reasons, removing duplicated rule paths while preserving behavior.
 - Modal helper flow is now consolidated and Azure DevOps modal save uses normalized `modal-submit` event semantics (tests updated accordingly).
 - Sidebar component simplification removed deprecated no-op persistence paths and reduced collapsible section/event listener boilerplate.
+- Plugin lifecycle event flow is now deduplicated: PluginManager is the single source of plugin lifecycle events, and simple overlay wrappers share one lifecycle helper to remove repeated boilerplate.
+- Simple overlay lifecycle wrappers are now a concrete class abstraction (`OverlayPlugin`) instead of a factory, aligning wrapper lifecycle semantics (`open/close`) with existing overlay component patterns.
+- Renamed overlay LitElement base from `OverlaySvgPlugin` to `OverlaySvgComponent` and updated dependent imports/extends to clarify that it is a component abstraction, not a PluginManager plugin.
 - Details panel cleanup now uses stable event handler subscriptions and shared date-update logic with reduced duplicate close paths.
 - Timeline board now avoids duplicate month-subscriptions and cleans scroll-button listeners on teardown; drag manager API removed unused parameters.
 - Graph/timeline math helpers are now deduplicated via shared utility functions and board position calculations use a unified date-to-position path.

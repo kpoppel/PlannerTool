@@ -1,4 +1,5 @@
 import { fixture, html, expect } from '@open-wc/testing';
+import sinon from 'sinon';
 
 describe('Color Components Consolidated', () => {
   it('ColorPopover renders swatches and responds to palette updates', async () => {
@@ -30,8 +31,8 @@ describe('Color Components Consolidated', () => {
     const state = stateMod.state;
     const busMod = await import('../../www/js/core/EventBus.js?b=' + Math.random());
     const bus = busMod.bus;
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
-    state.setProjectSelected('p1', true);
+    const projects = [{ id: 'p1', selected: true }];
+    const projectsStub = sinon.stub(state, 'projects').get(() => projects);
     const events = [];
     const { ColorEvents } = await import('../../www/js/core/EventRegistry.js');
     bus.on(ColorEvents.CHANGED, (p) => events.push(p));
@@ -42,5 +43,6 @@ describe('Color Components Consolidated', () => {
       color: '#111111',
     });
     expect(events.length).to.equal(1);
+    projectsStub.restore();
   });
 });

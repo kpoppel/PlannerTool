@@ -1,6 +1,7 @@
 import { bus } from '../core/EventBus.js';
 import { dataService } from './dataService.js';
 import { featureFlags } from '../config.js';
+import { dataOr } from './result.js';
 import { FilterManager } from './FilterManager.js';
 import { CapacityCalculator } from './CapacityCalculator.js';
 import { BaselineStore } from './BaselineStore.js';
@@ -145,7 +146,7 @@ class State {
     );
 
     // Promise that resolves when initState completes. Consumers may await
-    // `state._initCompleted` to ensure persisted view state and other
+    // `state.initCompleted` to ensure persisted view state and other
     // initialization work has finished before proceeding.
     this._initCompleted = new Promise((resolve) => {
       this._resolveInit = resolve;
@@ -196,10 +197,11 @@ class State {
     };
 
     this.groups = {
-      list: async (planId) => dataService.listGroups(planId),
-      create: async (payload) => dataService.createGroup(payload),
-      update: async (groupId, fields) => dataService.updateGroup(groupId, fields),
-      delete: async (groupId) => dataService.deleteGroup(groupId),
+      list: async (planId) => dataOr(await dataService.listGroups(planId), []),
+      create: async (payload) => dataOr(await dataService.createGroup(payload), null),
+      update: async (groupId, fields) =>
+        dataOr(await dataService.updateGroup(groupId, fields), null),
+      delete: async (groupId) => dataOr(await dataService.deleteGroup(groupId), false),
       getPendingChanges: () => this.getPendingGroupChanges(),
       clearPendingChanges: () => this.clearPendingGroupChanges(),
       confirmCreate: (tempId, realId) => this.confirmGroupCreate(tempId, realId),
@@ -208,51 +210,57 @@ class State {
       updateInScenario: (groupId, fields) => this.updateGroupInScenario(groupId, fields),
       deleteInScenario: (groupId) => this.deleteGroupInScenario(groupId),
       applyMemberDelta: (groupId, taskId, op) => this.applyGroupMemberDelta(groupId, taskId, op),
-      publishBaseline: async (features) => dataService.publishBaseline(features),
+      publishBaseline: async (features) =>
+        dataOr(await dataService.publishBaseline(features), { ok: false }),
     };
 
     this.events = {
-      getAll: async (planId) => dataService.getEvents(planId),
-      getCategories: async () => dataService.getEventCategories(),
-      create: async (payload) => dataService.createEvent(payload),
-      update: async (eventId, payload) => dataService.updateEvent(eventId, payload),
-      delete: async (eventId) => dataService.deleteEvent(eventId),
-      createCategory: async (payload) => dataService.createEventCategory(payload),
+      getAll: async (planId) => dataOr(await dataService.getEvents(planId), []),
+      getCategories: async () => dataOr(await dataService.getEventCategories(), []),
+      create: async (payload) => dataOr(await dataService.createEvent(payload), null),
+      update: async (eventId, payload) => dataOr(await dataService.updateEvent(eventId, payload), null),
+      delete: async (eventId) => dataOr(await dataService.deleteEvent(eventId), false),
+      createCategory: async (payload) => dataOr(await dataService.createEventCategory(payload), null),
       updateCategory: async (categoryId, payload) =>
-        dataService.updateEventCategory(categoryId, payload),
-      deleteCategory: async (categoryId) => dataService.deleteEventCategory(categoryId),
+        dataOr(await dataService.updateEventCategory(categoryId, payload), null),
+      deleteCategory: async (categoryId) =>
+        dataOr(await dataService.deleteEventCategory(categoryId), false),
     };
 
     this.config = {
-      getPref: async (key) => dataService.getLocalPref(key),
-      setPref: async (key, value) => dataService.setLocalPref(key, value),
-      saveAccountConfig: async (account) => dataService.saveConfig(account),
-      updateProjectColor: async (id, color) => dataService.updateProjectColor(id, color),
-      updateTeamColor: async (id, color) => dataService.updateTeamColor(id, color),
+      getPref: async (key) => dataOr(await dataService.getLocalPref(key), null),
+      setPref: async (key, value) =>
+        dataOr(await dataService.setLocalPref(key, value), undefined),
+      saveAccountConfig: async (account) => dataOr(await dataService.saveConfig(account), null),
+      updateProjectColor: async (id, color) =>
+        dataOr(await dataService.updateProjectColor(id, color), undefined),
+      updateTeamColor: async (id, color) =>
+        dataOr(await dataService.updateTeamColor(id, color), undefined),
     };
 
     this.cost = {
-      get: async (overrides) => dataService.getCost(overrides),
-      getTeams: async () => dataService.getCostTeams(),
+      get: async (overrides) => dataOr(await dataService.getCost(overrides), null),
+      getTeams: async () => dataOr(await dataService.getCostTeams(), []),
       updateWorkItemCapacity: async (workItemId, capacity) =>
-        dataService.updateWorkItemCapacity(workItemId, capacity),
+        dataOr(await dataService.updateWorkItemCapacity(workItemId, capacity), { ok: false }),
     };
 
     this.markers = {
-      getAll: async () => dataService.getMarkers(),
+      getAll: async () => dataOr(await dataService.getMarkers(), []),
     };
 
     this.history = {
-      get: async (projectId, opts) => dataService.getHistory(projectId, opts),
+      get: async (projectId, opts) =>
+        dataOr(await dataService.getHistory(projectId, opts), { tasks: [] }),
     };
 
     this.plugins = {
-      getConfig: async () => dataService.getPluginsConfig(),
-      getSchemas: async () => dataService.getPluginsSchemas(),
+      getConfig: async () => dataOr(await dataService.getPluginsConfig(), null),
+      getSchemas: async () => dataOr(await dataService.getPluginsSchemas(), null),
     };
 
     this.server = {
-      health: async () => dataService.checkHealth(),
+      health: async () => dataOr(await dataService.checkHealth(), { status: 'error' }),
     };
   }
 
@@ -279,6 +287,15 @@ class State {
   get timelineScale() {
     return this._viewService.timelineScale;
   }
+  get displayMode() {
+    return this._viewService.displayMode;
+  }
+  get condensedCards() {
+    return this._viewService.condensedCards;
+  }
+  get packedMode() {
+    return this._viewService.packedMode;
+  }
   get hiddenTypes() {
     return this._viewService.hiddenTypes;
   }
@@ -287,6 +304,15 @@ class State {
   }
   get showDependencies() {
     return this._viewService.showDependencies;
+  }
+  get showUnplannedWork() {
+    return this._viewService.showUnplannedWork;
+  }
+  get showUnallocatedCards() {
+    return this._viewService.showUnallocatedCards;
+  }
+  get showOnlyProjectHierarchy() {
+    return this._viewService.showOnlyProjectHierarchy;
   }
   get capacityViewMode() {
     return this._viewService.capacityViewMode;
@@ -301,6 +327,9 @@ class State {
   // TaskFilterService properties
   get taskFilterService() {
     return this._taskFilterService;
+  }
+  get initCompleted() {
+    return this._initCompleted;
   }
 
   // ConfigService properties
@@ -323,6 +352,9 @@ class State {
   get selectedFeatureStateFilter() {
     return this._stateFilterService.selectedFeatureStateFilter;
   }
+  get selectedFeatureStates() {
+    return this._stateFilterService.getSelectedStates();
+  }
 
   // FeatureStateService — state metadata (names + category mappings)
   get featureStateService() {
@@ -335,6 +367,20 @@ class State {
   }
   get teams() {
     return this._projectTeamService.getTeams();
+  }
+  get capacityCalculator() {
+    return this._capacityCalculator;
+  }
+
+  initProjectTeamBaseline(projects, teams) {
+    this._projectTeamService.initFromBaseline(projects || [], teams || []);
+  }
+
+  setBaselineFeatures(features) {
+    const safeFeatures = Array.isArray(features) ? features : [];
+    this.baselineFeatures = safeFeatures;
+    this._baselineStore.setFeatures(safeFeatures);
+    this._availableTaskTypesCache = null;
   }
 
   // ScenarioEventService properties
@@ -408,6 +454,10 @@ class State {
   // Set selected feature states via StateFilterService (re-emit events from the service)
   setSelectedStates(states) {
     this._stateFilterService.setSelectedStates(states);
+  }
+
+  setAvailableFeatureStates(states) {
+    this._stateFilterService.setAvailableStates(states);
   }
 
   // Select or clear all states
@@ -626,7 +676,11 @@ class State {
     for (const s of this.scenarios.list()) {
       if (s.readonly) continue; // Skip readonly scenarios
       if (this._scenarioEventService.isScenarioUnsaved(s)) {
-        dataService.saveScenario(s).catch(() => {});
+        dataService.saveScenario(s).then((res) => {
+          if (!res?.ok) {
+            console.warn('Autosave scenario failed', s.id, res?.error?.message || 'unknown');
+          }
+        });
       }
     }
   }
@@ -948,12 +1002,32 @@ class State {
     this._viewService.setTimelineScale(scale);
   }
 
-  setTypeVisibility(type, visible) {
-    this._viewService.setTypeVisibility(type, visible);
+  setTypeVisibility(type, visible, suppressEmit = false) {
+    this._viewService.setTypeVisibility(type, visible, suppressEmit);
+  }
+
+  setDisplayMode(mode, suppressEmit = false) {
+    this._viewService.setDisplayMode(mode, suppressEmit);
+  }
+
+  setCondensedCards(val, suppressEmit = false) {
+    this._viewService.setCondensedCards(val, suppressEmit);
   }
 
   setShowDependencies(val) {
     this._viewService.setShowDependencies(val);
+  }
+
+  setShowUnplannedWork(val, suppressEmit = false) {
+    this._viewService.setShowUnplannedWork(val, suppressEmit);
+  }
+
+  setShowUnallocatedCards(val, suppressEmit = false) {
+    this._viewService.setShowUnallocatedCards(val, suppressEmit);
+  }
+
+  setShowOnlyProjectHierarchy(val, suppressEmit = false) {
+    this._viewService.setShowOnlyProjectHierarchy(val, suppressEmit);
   }
 
   setCapacityViewMode(mode) {
@@ -1383,7 +1457,7 @@ class State {
     //   - overrides: feature-level scenario overrides
     //   - scenarioGroups: groups created in this scenario (promoted to baseline on publish)
     //   - groupOverrides: per-scenario overrides for baseline groups (members, name, color, deleted)
-    await dataService.saveScenario({
+    const saveResult = await dataService.saveScenario({
       id: scen.id,
       name: scen.name,
       overrides: scen.overrides,
@@ -1394,6 +1468,9 @@ class State {
         ? { ...scen.groupOverrides }
         : undefined,
     });
+    if (!saveResult?.ok) {
+      throw new Error(saveResult?.error?.message || 'Failed to save scenario');
+    }
     this._scenarioEventService.markScenarioSaved(scen.id);
     this._scenarioEventService.emitScenarioUpdated(scen.id, { type: 'saved' });
   }

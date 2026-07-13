@@ -490,7 +490,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _projectColor(feature) {
     try {
-      return state._colorService?.getProjectColor?.(feature.projectId) || null;
+      return state.getProjectColor?.(feature.projectId) || null;
     } catch (_) {
       return null;
     }

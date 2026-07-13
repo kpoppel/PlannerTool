@@ -3,7 +3,7 @@
  * Renders dependency arrows between feature cards as an SVG overlay.
  *
  * Converted from the standalone DependencyRenderer.lit.js component/function
- * into a proper plugin component that extends OverlaySvgPlugin.
+ * into a proper plugin component that extends OverlaySvgComponent.
  *
  * The overlay is always active once the plugin is registered (auto-activate).
  * Visibility is controlled by open()/close(), which are driven by PluginDependencies
@@ -11,7 +11,7 @@
  */
 
 import { html } from '../vendor/lit.js';
-import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
+import { OverlaySvgComponent } from './OverlaySvgComponent.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import {
@@ -27,7 +27,7 @@ import { findInBoard } from '../components/board-utils.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
-export class PluginDependenciesComponent extends OverlaySvgPlugin {
+export class PluginDependenciesComponent extends OverlaySvgComponent {
   // Use a unique CSS class so the overlay div doesn't collide with other plugins
   static overlayClass = 'dependencies-overlay';
   // Render on top of all other content overlays
@@ -112,7 +112,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     }
 
     const features = state.getEffectiveFeatures?.() ?? [];
-    const laneHeight = state._viewService?.condensedCards ? 28 : 100;
+    const laneHeight = state.condensedCards ? 28 : 100;
 
     /**
      * Read the board-space rect of a card from its inline style.

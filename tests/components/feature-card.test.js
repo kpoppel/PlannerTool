@@ -20,15 +20,15 @@ describe('FeatureCard Consolidated Tests', () => {
 
   describe('helpers and computePosition', () => {
     before(() => {
-      state._projectTeamService.initFromBaseline(
+      state.initProjectTeamBaseline(
         [{ id: 'p1', color: '#123' }],
         [{ id: 't1', color: '#abc' }]
       );
       state.setProjectSelected('p1', true);
       state.setTeamSelected('t1', true);
-      state._scenarioEventService._scenarios = [{ id: 'baseline' }];
+      state.initDefaultScenario();
       state.activeScenarioId = 'baseline';
-      state._viewService.setCondensedCards(false);
+      state.setCondensedCards(false);
     });
 
     it('laneHeight returns numeric value', () => {
@@ -69,13 +69,13 @@ describe('FeatureCard Consolidated Tests', () => {
       const original = featureFlags ? featureFlags.USE_LIT_COMPONENTS : undefined;
       try {
         if (featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
-        state._viewService.setCondensedCards(true);
+        state.setCondensedCards(true);
         const h = laneHeight();
         expect(typeof h).to.equal('number');
       } finally {
         if (featureFlags && original !== undefined)
           featureFlags.USE_LIT_COMPONENTS = original;
-        state._viewService.setCondensedCards(false);
+        state.setCondensedCards(false);
       }
     });
 
@@ -117,10 +117,10 @@ describe('FeatureCard Consolidated Tests', () => {
 
       // Ensure state feature lookup returns our source
       const st = await import('../../www/js/services/State.js');
-      st.state._featureService = {
-        getEffectiveFeatureById: (id) => source.find((f) => f.id === id),
-        getEffectiveFeatures: () => source,
-      };
+      const originalGetEffectiveFeatureById = st.state.getEffectiveFeatureById;
+      const originalGetEffectiveFeatures = st.state.getEffectiveFeatures;
+      st.state.getEffectiveFeatureById = (id) => source.find((f) => f.id === id);
+      st.state.getEffectiveFeatures = () => source;
       const mod = await import('../../www/js/components/FeatureBoard.lit.js');
       const update =
         board.updateCardsById || boardHelpers.updateCardsById || mod.updateCardsById;
@@ -132,7 +132,7 @@ describe('FeatureCard Consolidated Tests', () => {
         // Fallback test-only implementation to emulate updateCardsById behavior
         board.updateCardsById = async function (ids = []) {
           for (const id of ids) {
-            const feature = state._featureService.getEffectiveFeatureById(id);
+            const feature = state.getEffectiveFeatureById(id);
             if (!feature) continue;
             const geom = computePosition(feature) || {};
             const left =
@@ -165,6 +165,8 @@ describe('FeatureCard Consolidated Tests', () => {
         };
         await board.updateCardsById(['fx1'], source);
       }
+      st.state.getEffectiveFeatureById = originalGetEffectiveFeatureById;
+      st.state.getEffectiveFeatures = originalGetEffectiveFeatures;
       await new Promise((r) => setTimeout(r, 0));
       expect(called).to.equal(true);
       board.removeChild(el);
@@ -300,11 +302,7 @@ describe('FeatureCard Consolidated Tests', () => {
         capacity: [],
         orgLoad: '0%',
       };
-      // ensure dataInitService exposes a children map the way the component expects
-      if (!state._dataInitService) state._dataInitService = {};
-      if (!state._dataInitService.childrenByParent)
-        state._dataInitService.childrenByParent = new Map();
-      state._dataInitService.childrenByParent.set(parentFeature.id, [{ id: 'CHILD1' }]);
+      state.childrenByParent.set(parentFeature.id, [{ id: 'CHILD1' }]);
 
       const el = await fixture(
         html`<feature-card-lit
@@ -320,7 +318,7 @@ describe('FeatureCard Consolidated Tests', () => {
       const info = el.shadowRoot.querySelector('.dim-info');
       expect(info).to.exist;
       // cleanup
-      state._dataInitService.childrenByParent.delete(parentFeature.id);
+      state.childrenByParent.delete(parentFeature.id);
     });
 
     it('when highlightRelationMode is enabled emits request then selected when not connected', async () => {

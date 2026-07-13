@@ -1,4 +1,5 @@
 import { expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import { render } from '../../www/js/vendor/lit.js';
 import { state } from '../../www/js/services/State.js';
 import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
@@ -6,14 +7,25 @@ import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 
 describe('PluginCost low-coverage branches', () => {
+  let projectsValue;
+  let teamsValue;
+  let projectsStub;
+  let teamsStub;
+
+  beforeEach(() => {
+    projectsValue = [];
+    teamsValue = [];
+    projectsStub = sinon.stub(state, 'projects').get(() => projectsValue);
+    teamsStub = sinon.stub(state, 'teams').get(() => teamsValue);
+  });
+
   afterEach(() => {
-    // restore project/team lists
-    state._projectTeamService.projects = [];
-    state._projectTeamService.teams = [];
+    projectsStub.restore();
+    teamsStub.restore();
   });
 
   it('renderTaskView shows task table for selected project with metrics', () => {
-    state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
+    projectsValue = [{ id: 'p1', name: 'P1', selected: true }];
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -53,7 +65,7 @@ describe('PluginCost low-coverage branches', () => {
   });
 
   it('renderTeamView shows team table and totals when team selected', () => {
-    state._projectTeamService.teams = [{ id: 'team-1', name: 'Alpha', selected: true }];
+    teamsValue = [{ id: 'team-1', name: 'Alpha', selected: true }];
     // provide a project with a feature that has server-side team buckets
     const comp = {
       months: [new Date('2026-01-01')],

@@ -30,7 +30,7 @@ describe('Sidebar Consolidated Tests', () => {
   });
 
   it('project and team All/None toggles work', async () => {
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [
         { id: 'pa', name: 'A' },
         { id: 'pb', name: 'B' },
@@ -59,7 +59,7 @@ describe('Sidebar Consolidated Tests', () => {
     const pmRoot = planMenu.renderRoot || planMenu.shadowRoot || planMenu;
     const pbtn = pmRoot.querySelector('.list-toggle-btn');
     expect(pbtn).to.exist;
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [
         { id: 'pa', name: 'A' },
         { id: 'pb', name: 'B' },

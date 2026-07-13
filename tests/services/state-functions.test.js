@@ -14,7 +14,7 @@ describe('State small function coverage', () => {
   });
 
   it('captureCurrentFilters and captureCurrentView return current selections', () => {
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [{ id: 'p1' }, { id: 'p2' }],
       [{ id: 't1' }, { id: 't2' }]
     );
@@ -24,9 +24,9 @@ describe('State small function coverage', () => {
     expect(filters.projects).to.deep.equal(['p1']);
     expect(filters.teams).to.deep.equal(['t2']);
 
-    state._viewService._capacityViewMode = 'project';
-    state._viewService._displayMode = 'compact'; // formerly _condensedCards = true
-    state._viewService._featureSortMode = 'date';
+    state.setCapacityViewMode('project');
+    state.setDisplayMode('compact');
+    state.setFeatureSortMode('date');
     const view = state.captureCurrentView();
     expect(view.capacityViewMode).to.equal('project');
     expect(view.displayMode).to.equal('compact');
@@ -34,8 +34,8 @@ describe('State small function coverage', () => {
   });
 
   it('setStateFilter, toggleStateSelected, setAllStatesSelected behave', () => {
-    state._stateFilterService.setAvailableStates(['Open', 'Done']);
-    state._stateFilterService.toggleStateSelected('Open'); // Start with Open selected
+    state.setAvailableFeatureStates(['Open', 'Done']);
+    state.toggleStateSelected('Open');
     state.setStateFilter(null);
     expect(Array.from(state.selectedFeatureStateFilter)).to.include.members([
       'Open',
@@ -53,7 +53,7 @@ describe('State small function coverage', () => {
   });
 
   it('computeFeatureOrgLoad computes percentage based on selected teams', () => {
-    state._projectTeamService.initFromBaseline([], [{ id: 't1' }, { id: 't2' }]);
+    state.initProjectTeamBaseline([], [{ id: 't1' }, { id: 't2' }]);
     state.setTeamSelected('t1', true);
     const feature = {
       capacity: [
@@ -73,8 +73,8 @@ describe('State small function coverage', () => {
     expect(state.isTypeVisible('epic')).to.equal(false);
     state.setTypeVisibility('feature', false);
     expect(state.isTypeVisible('feature')).to.equal(false);
-    state._viewService.setDisplayMode('normal');
-    expect(state._viewService.displayMode).to.equal('normal');
+    state.setDisplayMode('normal');
+    expect(state.displayMode).to.equal('normal');
     state.setShowDependencies(true);
     expect(state.showDependencies).to.equal(true);
     state.setCapacityViewMode('team');
@@ -96,7 +96,7 @@ describe('State small function coverage', () => {
       teamColors: {},
     });
     // seed projects/teams
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [{ id: 'pp1' }, { id: 'pp2' }],
       [{ id: 'tt1' }, { id: 'tt2' }, { id: 'tt3' }]
     );
@@ -109,24 +109,24 @@ describe('State small function coverage', () => {
   it('recomputeCapacityMetrics clears metrics on empty selections', () => {
     state.baselineTeams = [];
     state.baselineProjects = [];
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }], [{ id: 't1' }]);
-    state._stateFilterService._selectedStates = new Set();
+    state.initProjectTeamBaseline([{ id: 'p1' }], [{ id: 't1' }]);
+    state.setSelectedStates([]);
     state.recomputeCapacityMetrics();
     expect(Array.isArray(state.capacityDates)).to.equal(true);
   });
 
   it('recomputeCapacityMetrics passes all project IDs to calculator when GRAPH_ONLY_SELECTED_PLANS is false', () => {
     // Setup: p1 selected, p2 NOT selected
-    state._projectTeamService.initFromBaseline(
+    state.initProjectTeamBaseline(
       [{ id: 'p1', type: 'project' }, { id: 'p2', type: 'project' }],
       [{ id: 't1', color: '#aabbcc' }]
     );
     state.setProjectSelected('p1', true);
     state.setProjectSelected('p2', false);
     state.setTeamSelected('t1', true);
-    state._stateFilterService._selectedFeatureStateFilter = new Set(['active']);
+    state.setSelectedStates(['active']);
 
-    const calc = state._capacityCalculator;
+    const calc = state.capacityCalculator;
     const origCalculate = calc.calculate.bind(calc);
     const capturedFilters = [];
     calc.calculate = (features, filters, teams, projects, changed) => {
@@ -158,7 +158,7 @@ describe('State small function coverage', () => {
 
   describe('getEffectiveSelectedProjectIds', () => {
     it('returns raw selected project IDs when expandTeamAllocated is off', () => {
-      state._projectTeamService.initFromBaseline(
+      state.initProjectTeamBaseline(
         [{ id: 'p1' }, { id: 'p2' }],
         [{ id: 't1' }]
       );
@@ -172,7 +172,7 @@ describe('State small function coverage', () => {
     it('includes projects from team-allocated features when expandTeamAllocated is on', () => {
       // Setup: p1 selected, p2 not selected; t1 selected
       // Feature f2 belongs to p2 but is allocated to t1
-      state._projectTeamService.initFromBaseline(
+      state.initProjectTeamBaseline(
         [{ id: 'p1' }, { id: 'p2' }],
         [{ id: 't1' }]
       );
@@ -180,26 +180,22 @@ describe('State small function coverage', () => {
       state.setProjectSelected('p2', false);
       state.setTeamSelected('t1', true);
 
-      // Stub featureService.expandTeamAllocated and getEffectiveFeatures
-      const origFS = state._featureService;
-      state._featureService = {
-        expandTeamAllocated: (teamIds) => new Set(['f2']),
-        getEffectiveFeatures: () => [
-          { id: 'f1', project: 'p1', capacity: [] },
-          { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
-        ],
-      };
-
-      state._expansionState.expandTeamAllocated = true;
+      const previousFeatures = state.baselineFeatures;
+      state.setBaselineFeatures([
+        { id: 'f1', project: 'p1', capacity: [] },
+        { id: 'f2', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
+      ]);
+      state.setExpansionState({ expandTeamAllocated: true });
       const ids = state.getEffectiveSelectedProjectIds();
-      state._featureService = origFS;
+      state.setBaselineFeatures(previousFeatures);
+      state.setExpansionState({ expandTeamAllocated: false });
 
       // p2 must be included because f2 is allocated to the selected team t1
       expect(new Set(ids)).to.deep.equal(new Set(['p1', 'p2']));
     });
 
     it('returns only raw selected IDs when no teams are selected', () => {
-      state._projectTeamService.initFromBaseline(
+      state.initProjectTeamBaseline(
         [{ id: 'p1' }, { id: 'p2' }],
         [{ id: 't1' }]
       );

@@ -46,6 +46,8 @@ export const DEFAULT_STATE_COLOR_MAP = {
   'On Hold': '#e67e22',
 };
 
+import { dataOr } from './result.js';
+
 export class ColorService {
   /**
    * Create a new ColorService
@@ -78,7 +80,10 @@ export class ColorService {
    * @returns {Promise<void>}
    */
   async initColors(projects, teams) {
-    const { projectColors, teamColors } = await this.dataService.getColorMappings();
+    const { projectColors, teamColors } = dataOr(
+      await this.dataService.getColorMappings(),
+      { projectColors: {}, teamColors: {} }
+    );
 
     let pi = 0;
     let ti = 0;

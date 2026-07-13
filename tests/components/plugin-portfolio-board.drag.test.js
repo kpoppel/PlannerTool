@@ -5,15 +5,8 @@ import { state } from '../../www/js/services/State.js';
 
 describe('plugin-portfolio-board drag and drop', () => {
   let stateStubs = [];
-  let originalViewService;
-  let originalTaskFilterService;
-  let originalColorService;
 
   beforeEach(() => {
-    originalViewService = state._viewService;
-    originalTaskFilterService = state._taskFilterService;
-    originalColorService = state._colorService;
-
     stateStubs.push(
       sinon.stub(state, 'projects').get(() => [{ id: 'p1', name: 'Project One', selected: true }])
     );
@@ -28,10 +21,11 @@ describe('plugin-portfolio-board drag and drop', () => {
       sinon.stub(state, 'selectedFeatureStateFilter').get(() => new Set(['New', 'Doing']))
     );
     stateStubs.push(sinon.stub(state, 'expansionState').get(() => ({}) ));
-
-    state._taskFilterService = { featurePassesFilters: () => true };
-    state._viewService = { isTypeVisible: () => true };
-    state._colorService = { getProjectColor: () => '#0f766e' };
+    stateStubs.push(
+      sinon.stub(state, 'taskFilterService').get(() => ({ featurePassesFilters: () => true }))
+    );
+    stateStubs.push(sinon.stub(state, 'isTypeVisible').returns(true));
+    stateStubs.push(sinon.stub(state, 'getProjectColor').returns('#0f766e'));
     stateStubs.push(sinon.stub(state, 'getFeatureStateColors').returns({
       New: { background: '#64748b', text: '#ffffff' },
       Doing: { background: '#16a34a', text: '#ffffff' },
@@ -42,9 +36,6 @@ describe('plugin-portfolio-board drag and drop', () => {
     sinon.restore();
     for (const stub of stateStubs) stub.restore();
     stateStubs = [];
-    state._viewService = originalViewService;
-    state._taskFilterService = originalTaskFilterService;
-    state._colorService = originalColorService;
   });
 
   it('updates feature state on drop and shows success feedback', async () => {

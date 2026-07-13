@@ -1,22 +1,22 @@
 /**
- * OverlaySvgPlugin.js
- * Base class for plugins that render an SVG overlay on the board card area.
+ * OverlaySvgComponent.js
+ * Base class for components that render an SVG overlay on the board card area.
  *
- * Provides common lifecycle management shared by all board overlay plugins:
+ * Provides common lifecycle management shared by all board overlay components:
  *  - Overlay div + SVG creation inside #board-area (firstUpdated)
  *  - Scroll subscription via boardCoords instead of raw DOM scroll listeners
  *  - rAF-debounced render scheduling (_scheduleRender)
  *  - open() / close() visibility management
  *
  * Subclasses MUST implement:
- *  - _renderSvg()            – draw into this._svgEl; called on every scheduled update
- *  - _subscribeBusEvents()   – call bus.on(...) for events that trigger re-renders
- *  - _unsubscribeBusEvents() – matching bus.off(...) calls
+ *  - _renderSvg()            - draw into this._svgEl; called on every scheduled update
+ *  - _subscribeBusEvents()   - call bus.on(...) for events that trigger re-renders
+ *  - _unsubscribeBusEvents() - matching bus.off(...) calls
  *
  * Subclasses MAY override:
- *  - static overlayClass     – CSS class for the wrapper div (default: 'overlay-svg-plugin')
- *  - static zIndex           – CSS z-index for the overlay wrapper (default: '125')
- *  - open() / close()        – extend with data loading or extra DOM work
+ *  - static overlayClass     - CSS class for the wrapper div (default: 'overlay-svg-component')
+ *  - static zIndex           - CSS z-index for the overlay wrapper (default: '125')
+ *  - open() / close()        - extend with data loading or extra DOM work
  *
  * The overlay div is appended into #board-area as a position:absolute sibling of
  * feature-board, so its coordinate system matches board space directly:
@@ -27,13 +27,13 @@ import { LitElement } from '../vendor/lit.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { findInBoard } from '../components/board-utils.js';
 
-export class OverlaySvgPlugin extends LitElement {
+export class OverlaySvgComponent extends LitElement {
   static properties = {
     visible: { type: Boolean, reflect: true },
   };
 
   /** CSS class applied to the overlay wrapper div. Override in subclasses. */
-  static overlayClass = 'overlay-svg-plugin';
+  static overlayClass = 'overlay-svg-component';
 
   /** z-index for the overlay wrapper div. Override in subclasses if needed. */
   static zIndex = '125';
@@ -56,7 +56,7 @@ export class OverlaySvgPlugin extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    // Use boardCoords for scroll events — replaces per-plugin raw scroll listeners
+    // Use boardCoords for scroll events - replaces per-component raw scroll listeners
     this._coordsUnsubscribe = boardCoords.subscribe(() => this._scheduleRender());
     this._subscribeBusEvents();
   }
@@ -87,7 +87,7 @@ export class OverlaySvgPlugin extends LitElement {
 
   /**
    * Creates (or re-connects) the overlay div and SVG inside #board-area.
-   * Idempotent — safe to call again if the element was re-connected.
+   * Idempotent - safe to call again if the element was re-connected.
    */
   _attachOverlay() {
     const boardArea = findInBoard('#board-area');
@@ -142,7 +142,7 @@ export class OverlaySvgPlugin extends LitElement {
 
   /**
    * Schedule a call to _renderSvg() on the next animation frame.
-   * No-ops when the plugin is not visible or a render is already queued.
+   * No-ops when the component is not visible or a render is already queued.
    */
   _scheduleRender() {
     if (!this.visible || this._renderScheduled) return;
@@ -170,7 +170,7 @@ export class OverlaySvgPlugin extends LitElement {
 
   /**
    * Hide the overlay and clear its contents.
-   * Override to clean up plugin-specific state; call super.close().
+   * Override to clean up component-specific state; call super.close().
    */
   close() {
     this.visible = false;
@@ -180,7 +180,7 @@ export class OverlaySvgPlugin extends LitElement {
   }
 
   // ---------------------------------------------------------------------------
-  // Abstract hooks — implement in subclasses
+  // Abstract hooks - implement in subclasses
   // ---------------------------------------------------------------------------
 
   /** Draw into this._svgEl. Called on every scheduled render. */

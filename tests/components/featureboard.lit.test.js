@@ -37,9 +37,9 @@ describe('feature-board', () => {
     // stub state.getEffectiveFeatures
     state.getEffectiveFeatures = () => feats;
     // ensure projects include p1 selected
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
+    state.initProjectTeamBaseline([{ id: 'p1' }], []);
     state.setProjectSelected('p1', true);
-    state._stateFilterService._selectedStates = [];
+    state.setSelectedStates([]);
     board.renderFeatures();
     // after renderFeatures, board.features should be an array containing items mapped from feats
     expect(board.features).to.be.an('array');

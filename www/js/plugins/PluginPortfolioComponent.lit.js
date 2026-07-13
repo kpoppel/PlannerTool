@@ -216,7 +216,7 @@ export class PluginPortfolioComponent extends LitElement {
       : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
 
     const sidebarVisibleTypes = new Set(
-      availableTypes.filter((t) => state._viewService?.isTypeVisible?.(t) !== false)
+      availableTypes.filter((t) => state.isTypeVisible(t) !== false)
     );
 
     const expansion = state.expansionState || {};
@@ -338,7 +338,7 @@ export class PluginPortfolioComponent extends LitElement {
   _projectColorForFeature(feature) {
     try {
       const pid = String(feature?.projectId || feature?.project || '');
-      return state._colorService?.getProjectColor?.(pid) || '#9aa8bf';
+      return state.getProjectColor?.(pid) || '#9aa8bf';
     } catch (_) {
       return '#9aa8bf';
     }

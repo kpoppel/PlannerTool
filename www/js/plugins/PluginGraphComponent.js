@@ -139,8 +139,7 @@ export class PluginGraph extends LitElement {
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
-    // TODO: Should use getViewService...
-    this.mode = state._viewService.capacityViewMode;
+    this.mode = state.capacityViewMode;
   }
 
   _ensureTooltip() {
@@ -217,8 +216,7 @@ export class PluginGraph extends LitElement {
     await this.updateComplete;
 
     // Set graph mode to match current view mode
-    // TODO: should use getViewService
-    this.mode = state._viewService.capacityViewMode;
+    this.mode = state.capacityViewMode;
 
     // Always set date range from the current state.
     const months = getTimelineMonths();

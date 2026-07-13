@@ -1,18 +1,17 @@
 import { expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('PluginCost Project View render paths', () => {
-  let originalProjects;
+  let projectsStub;
 
   beforeEach(() => {
-    // snapshot current projects and replace with controlled test data
-    originalProjects = state._projectTeamService.projects.slice();
+    projectsStub = null;
   });
 
   afterEach(() => {
-    // restore
-    state._projectTeamService.projects = originalProjects;
+    projectsStub?.restore();
   });
 
   it('returns an empty-state when no data present', () => {
@@ -21,7 +20,9 @@ describe('PluginCost Project View render paths', () => {
   });
 
   it('renders project-level empty table when project selected but no features', () => {
-    state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
+    projectsStub = sinon
+      .stub(state, 'projects')
+      .get(() => [{ id: 'p1', name: 'P1', selected: true }]);
 
     const component = {
       months: [new Date('2026-01-01')],

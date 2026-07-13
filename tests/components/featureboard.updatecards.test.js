@@ -1,19 +1,23 @@
 import { expect } from '@esm-bundle/chai';
+import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('feature-board updateCardsById', () => {
   let board;
+  let projectsStub;
+
   beforeEach(() => {
     board = document.createElement('feature-board');
     document.body.appendChild(board);
-    // minimal state
-    state._projectTeamService.initFromBaseline([{ id: 'p1' }], []);
-    state.setProjectSelected('p1', true);
+    projectsStub = sinon
+      .stub(state, 'projects')
+      .get(() => [{ id: 'p1', selected: true }]);
   });
 
   afterEach(() => {
     if (board) board.remove();
+    projectsStub.restore();
   });
 
   it('updateCardsById updates existing nodes via applyVisuals', async () => {

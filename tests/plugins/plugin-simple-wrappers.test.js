@@ -6,19 +6,11 @@ import PluginHistory from '../../www/js/plugins/PluginHistory.js';
 import PluginMarkers from '../../www/js/plugins/PluginMarkers.js';
 import PluginPlanHealth from '../../www/js/plugins/PluginPlanHealth.js';
 import PluginLinkEditor from '../../www/js/plugins/PluginLinkEditor.js';
-import { bus } from '../../www/js/core/EventBus.js';
-import { PluginEvents } from '../../www/js/core/EventRegistry.js';
 import { enable } from '../../www/js/config.js';
 
 describe('Simple plugin wrappers lifecycle', () => {
-  let emitStub;
-
   beforeEach(() => {
     enable('USE_PLUGIN_SYSTEM');
-    emitStub = stub(bus, 'emit');
-  });
-  afterEach(() => {
-    emitStub.restore();
   });
 
   it('PluginGraph activates and deactivates (fullscreen)', async () => {
@@ -38,13 +30,9 @@ describe('Simple plugin wrappers lifecycle', () => {
 
     await p.activate();
     expect(p.active).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
-    expect(emitStub.firstCall.args[0]).to.equal(PluginEvents.ACTIVATED);
 
     await p.deactivate();
     expect(p.active).to.be.false;
-    expect(emitStub.calledTwice).to.be.true;
-    expect(emitStub.secondCall.args[0]).to.equal(PluginEvents.DEACTIVATED);
 
     await p.destroy();
     timeline.remove();
@@ -62,13 +50,12 @@ describe('Simple plugin wrappers lifecycle', () => {
 
     await p.activate();
     expect(p.active).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
 
     await p.refresh();
     expect(p._el.refresh.called).to.be.true;
 
     await p.deactivate();
-    expect(emitStub.calledTwice).to.be.true;
+  expect(p.active).to.be.false;
 
     await p.destroy();
   });
@@ -134,10 +121,9 @@ describe('Simple plugin wrappers lifecycle', () => {
 
     await p.activate();
     expect(p.active).to.be.true;
-    expect(emitStub.calledOnce).to.be.true;
 
     await p.deactivate();
-    expect(emitStub.calledTwice).to.be.true;
+  expect(p.active).to.be.false;
 
     await p.destroy();
     expect(p.initialized).to.be.false;

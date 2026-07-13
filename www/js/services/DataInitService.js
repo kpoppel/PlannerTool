@@ -7,6 +7,7 @@ import {
   StateFilterEvents,
   //DataEvents,
 } from '../core/EventRegistry.js';
+import { dataOr } from './result.js';
 
 /**
  * DataInitService
@@ -44,10 +45,10 @@ export class DataInitService {
    * @returns {Object} - Object containing baselineProjects, baselineTeams, baselineFeatures
    */
   async initState() {
-    const projects = await this._dataService.getProjects();
-    const teams = await this._dataService.getTeams();
-    const features = await this._dataService.getFeatures();
-    const iterationsByProject = await this._dataService.getIterations();
+    const projects = dataOr(await this._dataService.getProjects(), []);
+    const teams = dataOr(await this._dataService.getTeams(), []);
+    const features = dataOr(await this._dataService.getFeatures(), []);
+    const iterationsByProject = dataOr(await this._dataService.getIterations(), {});
 
     // Store baseline data using BaselineStore service
     this._baselineStore.loadBaseline({ projects, teams, features });
@@ -130,10 +131,10 @@ export class DataInitService {
     // baseline refresh via the admin UI (use invalidateAndRefreshBaseline() for that).
 
     // Fetch fresh data from backend
-    const projects = await this._dataService.getProjects();
-    const teams = await this._dataService.getTeams();
-    const features = await this._dataService.getFeatures();
-    const iterationsByProject = await this._dataService.getIterations();
+    const projects = dataOr(await this._dataService.getProjects(), []);
+    const teams = dataOr(await this._dataService.getTeams(), []);
+    const features = dataOr(await this._dataService.getFeatures(), []);
+    const iterationsByProject = dataOr(await this._dataService.getIterations(), {});
 
     // Store grouped iterations
     this.iterationsByProject = iterationsByProject || {};
