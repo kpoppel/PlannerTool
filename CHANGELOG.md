@@ -36,6 +36,7 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Feature visibility/filtering now uses a shared selector + diagnostics service across FeatureBoard, Sidebar funnel counts, and EmptyBoardModal reasons, removing duplicated rule paths while preserving behavior.
 - Modal helper flow is now consolidated and Azure DevOps modal save uses normalized `modal-submit` event semantics (tests updated accordingly).
 - Sidebar component simplification removed deprecated no-op persistence paths and reduced collapsible section/event listener boilerplate.
 - Details panel cleanup now uses stable event handler subscriptions and shared date-update logic with reduced duplicate close paths.

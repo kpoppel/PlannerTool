@@ -9,7 +9,7 @@ import {
   TimelineEvents,
 } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
-import { featureFlags } from '../config.js';
+import { buildVisibilityDiagnostics } from '../services/FeatureVisibilityService.js';
 
 export class EmptyBoardModal extends LitElement {
   static properties = { reasons: { type: Array }, open: { type: Boolean } };
@@ -90,161 +90,20 @@ export class EmptyBoardModal extends LitElement {
   }
 
   _computeReasons() {
-    const reasons = [];
-
-    // Projects / plans selection
-    const selectedProjects = state.projects.filter((p) => p.selected);
-    if (!selectedProjects.length) {
-      reasons.push(
-        'No projects/plans selected. Select one or more projects to display tasks.'
-      );
-    }
-
-    // Feature state filter
-    const stateFilter =
-      state.selectedFeatureStateFilter instanceof Set ?
-        state.selectedFeatureStateFilter
-      : new Set(
-          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
-        );
-    if (stateFilter.size === 0) {
-      reasons.push('Feature state filter excludes all states (no state selected).');
-    }
-
-    // View options — check if all task types are hidden
-    if (state._viewService) {
-      const hiddenTypes = state._viewService.hiddenTypes;
-      const availableTypes = (state.availableTaskTypes || ['epic', 'feature']);
-      const allHidden = availableTypes.every((t) => hiddenTypes.has(t));
-      if (allHidden) {
-        reasons.push('All task types are hidden in view options.');
-      } else {
-        const hiddenLabels = availableTypes.filter((t) => hiddenTypes.has(t));
-        for (const t of hiddenLabels) {
-          reasons.push(`${t.charAt(0).toUpperCase() + t.slice(1)}s are hidden in view options.`);
-        }
-      }
-    }
-
-    // Unplanned work visibility
-    if (featureFlags.SHOW_UNPLANNED_WORK && !state._viewService.showUnplannedWork) {
-      reasons.push('Unplanned work is hidden (unplanned features filtered out).');
-    }
-
-    // Team selection + capacity filtering
-    const selectedTeams = state.teams.filter((t) => t.selected);
-    if (state.teams && state.teams.length && !selectedTeams.length) {
-      reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
-    }
-
-    // If only teams are selected (no projects) and team-allocation expansion is disabled,
-    // explain that team-only selection won't surface tasks unless expansion is enabled.
-    if (
-      selectedTeams.length > 0 &&
-      (!selectedProjects || selectedProjects.length === 0) &&
-      !state.expansionState.expandTeamAllocated
-    ) {
-      reasons.push(
-        "Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks."
-      );
-    }
-
-    // Dimensional task filters (schedule, allocation, hierarchy, relations)
-    try {
-      const taskFilters =
-        (
-          state.taskFilterService &&
-          typeof state.taskFilterService.getFilters === 'function'
-        ) ?
-          state.taskFilterService.getFilters()
-        : null;
-      if (taskFilters) {
-        Object.keys(taskFilters).forEach((dim) => {
-          const opts = taskFilters[dim];
-          const allFalse = Object.keys(opts).every((k) => !opts[k]);
-          if (allFalse) {
-            reasons.push(
-              `${dim.charAt(0).toUpperCase() + dim.slice(1)} filter excludes all options.`
-            );
-          }
-        });
-      }
-    } catch (e) {
-      /* ignore filter read errors */
-    }
-
-    // Hierarchical/project-hierarchy filter
-    if (state._viewService.showOnlyProjectHierarchy) {
-      reasons.push(
-        'Hierarchy filter enabled — only epics from selected project-type plans are shown.'
-      );
-    }
-
-    // Fallback generic hint
-    if (!reasons.length) {
-      reasons.push('No tasks match the current filters and view options.');
-    }
-
-    return reasons;
+    const sourceFeatures = state.getEffectiveFeatures?.() || state.features || [];
+    return buildVisibilityDiagnostics({
+      state,
+      allFeatures: sourceFeatures,
+    }).reasons;
   }
 
   // Determine whether any features would be visible under current filters
   _hasVisibleFeatures() {
-    try {
-      // Use state's expanded feature ids to determine the base visible set (respects expansion options)
-      const sourceFeatures = state.getEffectiveFeatures() || [];
-      if (!sourceFeatures.length) return false;
-
-      const expandedIds = state.getExpandedFeatureIds();
-      if (!expandedIds || expandedIds.size === 0) return false;
-
-      // State filter (preserve configured casing; compare case-insensitively)
-      const stateFilter =
-        state.selectedFeatureStateFilter instanceof Set ?
-          state.selectedFeatureStateFilter
-        : new Set(
-            state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
-          );
-      const stateFilterLower = new Set(
-        Array.from(stateFilter).map((s) => String(s).toLowerCase())
-      );
-
-      // Task/dimensional filters
-      const taskFilterSvc = state.taskFilterService;
-
-      for (const feature of sourceFeatures) {
-        if (!expandedIds.has(feature.id)) continue;
-
-        // state filter (case-insensitive using configured state names)
-        if (stateFilter.size === 0) continue;
-        const featureStateLower = (feature.state || '').toLowerCase();
-        if (!stateFilterLower.has(featureStateLower)) continue;
-
-        // view options
-        if (state._viewService && !state._viewService.isTypeVisible(feature.type)) continue;
-
-        // unplanned work
-        if (featureFlags.SHOW_UNPLANNED_WORK) {
-          const isUnplanned = !feature.start || !feature.end;
-          if (isUnplanned && !state._viewService.showUnplannedWork) continue;
-        }
-
-        // Task/dimensional filters: if service exists, use it to validate feature
-        try {
-          if (taskFilterSvc && typeof taskFilterSvc.featurePassesFilters === 'function') {
-            if (!taskFilterSvc.featurePassesFilters(feature)) continue;
-          }
-        } catch (e) {
-          /* ignore filter errors */
-        }
-
-        // If we reached here, feature would be visible
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
+    const sourceFeatures = state.getEffectiveFeatures?.() || state.features || [];
+    return buildVisibilityDiagnostics({
+      state,
+      allFeatures: sourceFeatures,
+    }).hasVisibleFeatures;
   }
 
   _recomputeAndMaybeClose() {
@@ -260,6 +119,10 @@ export class EmptyBoardModal extends LitElement {
       return;
     }
     if (this._hasVisibleFeatures()) {
+      if (this.open) {
+        this.open = false;
+        this.requestUpdate();
+      }
       this.dispatchEvent(
         new CustomEvent('modal-close', { bubbles: true, composed: true })
       );

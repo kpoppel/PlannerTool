@@ -16,6 +16,10 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { getIconTemplate } from '../services/IconService.js';
+import {
+  buildFeatureVisibilityContext,
+  getVisibleFeatures,
+} from '../services/FeatureVisibilityService.js';
 
 export class SidebarLit extends LitElement {
   static properties = {
@@ -1067,31 +1071,12 @@ export class SidebarLit extends LitElement {
         this.expandRelationsCount = expansionResult.counts.relations;
         this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
 
-        // Displayed tasks: apply state filter and view filters to expanded set
-        const stateFilter = state.selectedFeatureStateFilter || new Set();
-        // Build a lowercase version of the selected state set for case-insensitive checks
-        const stateFilterLower =
-          stateFilter && typeof stateFilter.size !== 'undefined' ?
-            new Set(Array.from(stateFilter).map((s) => String(s).toLowerCase()))
-          : new Set();
-
-        let displayedFeatures = feats.filter((f) => expandedFeatureIds.has(f.id));
-
-        // Apply state filter (case-insensitive using original configured state casing)
-        if (stateFilterLower && stateFilterLower.size > 0) {
-          displayedFeatures = displayedFeatures.filter((f) =>
-            stateFilterLower.has((f.state || '').toLowerCase())
-          );
-        }
-
-        // Apply task filters
-        if (state.taskFilterService) {
-          displayedFeatures = displayedFeatures.filter((f) =>
-            state.taskFilterService.featurePassesFilters(f)
-          );
-        }
-
-        this.displayedTasksCount = displayedFeatures.length;
+        const visibilityContext = buildFeatureVisibilityContext({
+          state,
+          allFeatures: feats,
+          expandedIdsOverride: expandedFeatureIds,
+        });
+        this.displayedTasksCount = getVisibleFeatures(feats, visibilityContext).length;
       } catch (e) {
         console.warn('[Sidebar] _recomputeDataFunnel error:', e);
         this.selectedTasksCount = 0;

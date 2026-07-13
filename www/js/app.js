@@ -8,6 +8,33 @@ import { mergePluginConfig } from './core/pluginConfigMerge.js';
 
 async function init() {
   registerCoreServices();
+  state.setEnvironmentAdapters({
+    viewLayout: {
+      getTimelineSectionWidth: () => {
+        const boardEl = document.querySelector('timeline-board');
+        if (!boardEl) return null;
+        const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
+        const section = root?.querySelector?.('#timelineSection');
+        return section?.clientWidth || null;
+      },
+    },
+    viewManagement: {
+      storage: {
+        getItem: (key) => {
+          if (typeof localStorage === 'undefined') return null;
+          return localStorage.getItem(key);
+        },
+        setItem: (key, value) => {
+          if (typeof localStorage === 'undefined') return;
+          localStorage.setItem(key, value);
+        },
+      },
+      ui: {
+        getSidebarElement: () => document.querySelector('app-sidebar'),
+      },
+    },
+  });
+
   // Register typed events and optional runtime behaviors
   if (featureFlags.LOG_EVENT_HISTORY) {
     bus.enableHistoryLogging(1000);

@@ -26,7 +26,7 @@ import {
   FeatureEvents,
 } from '../core/EventRegistry.js';
 // Local monthWidth mapping to avoid circular import with Timeline component
-function getMonthWidthForScale(scale) {
+function getMonthWidthForScale(scale, layoutAdapter) {
   const ZOOM_LEVELS = {
     weeks: 240,
     months: 120,
@@ -35,17 +35,9 @@ function getMonthWidthForScale(scale) {
     years: 30,
   };
   if (scale === 'threeMonths') {
-    // Find timelineSection inline to avoid circular dependency with board-utils
-    let section = null;
-    if (typeof document !== 'undefined') {
-      const boardEl = document.querySelector('timeline-board');
-      if (boardEl) {
-        const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-        section = root && root.querySelector ? root.querySelector('#timelineSection') : null;
-      }
-    }
-    if (section && section.clientWidth) {
-      return Math.max(30, Math.floor(section.clientWidth / 3));
+    const width = layoutAdapter?.getTimelineSectionWidth?.();
+    if (width) {
+      return Math.max(30, Math.floor(width / 3));
     }
     return 120;
   }
@@ -57,8 +49,11 @@ export class ViewService {
    * Create a new ViewService
    * @param {EventBus} bus - The event bus for emitting view changes
    */
-  constructor(bus) {
+  constructor(bus, layoutAdapter = null) {
     this.bus = bus;
+    this._layoutAdapter = layoutAdapter || {
+      getTimelineSectionWidth: () => null,
+    };
 
     // Timeline properties
     this._timelineScale = 'months';
@@ -84,6 +79,12 @@ export class ViewService {
     this._highlightFeatureRelationMode = true; // If true, highlight features when clicked.
   }
 
+  setLayoutAdapter(layoutAdapter = null) {
+    this._layoutAdapter = layoutAdapter || {
+      getTimelineSectionWidth: () => null,
+    };
+  }
+
   // ========== Timeline Scale ==========
 
   /**
@@ -107,7 +108,7 @@ export class ViewService {
     if (this._timelineScale === scale) return;
     const oldScale = this._timelineScale;
     this._timelineScale = scale;
-    const monthWidth = getMonthWidthForScale(scale);
+    const monthWidth = getMonthWidthForScale(scale, this._layoutAdapter);
     // emit unless suppressed
     if (!arguments[1]) {
       this.bus.emit(TimelineEvents.SCALE_CHANGED, {

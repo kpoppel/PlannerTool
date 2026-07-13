@@ -14,8 +14,18 @@ import { dataService } from './dataService.js';
 import { ViewManagementEvents, FilterEvents } from '../core/EventRegistry.js';
 import { getDefaultViewOptions } from '../config/viewDefaults.js';
 
+const DEFAULT_VIEW_MGMT_ENV = {
+  storage: {
+    getItem: () => null,
+    setItem: () => {},
+  },
+  ui: {
+    getSidebarElement: () => null,
+  },
+};
+
 export class ViewManagementService {
-  constructor(bus, state, viewService) {
+  constructor(bus, state, viewService, env = {}) {
     this._bus = bus;
     this._state = state;
     this._viewService = viewService;
@@ -23,6 +33,18 @@ export class ViewManagementService {
     this._activeViewId = null; // Currently active view ID
     this._activeViewData = null; // Full data of currently active view (for filtering)
     this._lastViewIdStorageKey = 'az_planner:last_view_id';
+    this.setEnvironment(env);
+  }
+
+  setEnvironment(env = {}) {
+    this._env = {
+      storage: env.storage || DEFAULT_VIEW_MGMT_ENV.storage,
+      ui: env.ui || DEFAULT_VIEW_MGMT_ENV.ui,
+    };
+  }
+
+  _getSidebarElement() {
+    return this._env?.ui?.getSidebarElement?.() || null;
   }
 
   /**
@@ -131,7 +153,7 @@ export class ViewManagementService {
 
       // Store the active view data for filtering
       this._activeViewData = response;
-      const sidebarElement = document.querySelector('app-sidebar');
+      const sidebarElement = this._getSidebarElement();
       const viewOptions = response.viewOptions || {};
 
       if (viewId === 'default') {
@@ -311,30 +333,26 @@ export class ViewManagementService {
   }
 
   /**
-   * Save the last active view ID to localStorage
+   * Save the last active view ID to configured storage
    * @private
    * @param {string} viewId - View ID to save
    */
   _saveLastViewId(viewId) {
     try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(this._lastViewIdStorageKey, viewId);
-        console.log('[ViewManagementService] Saved last view ID:', viewId);
-      }
+      this._env.storage.setItem(this._lastViewIdStorageKey, viewId);
+      console.log('[ViewManagementService] Saved last view ID:', viewId);
     } catch (err) {
       console.warn('[ViewManagementService] Failed to save last view ID:', err);
     }
   }
 
   /**
-   * Get the last active view ID from localStorage
+   * Get the last active view ID from configured storage
    * @returns {string|null} Last view ID or null if not found
    */
   getLastViewId() {
     try {
-      if (typeof localStorage !== 'undefined') {
-        return localStorage.getItem(this._lastViewIdStorageKey);
-      }
+      return this._env.storage.getItem(this._lastViewIdStorageKey);
     } catch (err) {
       console.warn('[ViewManagementService] Failed to get last view ID:', err);
     }
@@ -434,7 +452,7 @@ export class ViewManagementService {
   }
 
   /**
-   * Restore the last active view from localStorage
+   * Restore the last active view from configured storage
    * Should be called after views are loaded and projects/teams are available
    * @returns {Promise<boolean>} True if a view was restored, false otherwise
    */
@@ -482,7 +500,7 @@ export class ViewManagementService {
    * @private
    */
   _captureCurrentState() {
-    const sidebarElement = document.querySelector('app-sidebar');
+    const sidebarElement = this._getSidebarElement();
     const snapshot = {
       projects: {},
       teams: {},

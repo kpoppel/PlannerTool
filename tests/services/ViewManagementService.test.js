@@ -64,18 +64,15 @@ describe('ViewManagementService - Expansion Filters', () => {
       selectedTaskTypes: new Set(),
     };
 
-    // Mock document.querySelector
-    global.document = {
-      querySelector: (selector) => {
-        if (selector === 'app-sidebar') return mockSidebar;
-        return null;
-      },
-    };
-
     viewManagementService = new ViewManagementService(
       mockBus,
       mockState,
-      mockViewService
+      mockViewService,
+      {
+        ui: {
+          getSidebarElement: () => mockSidebar,
+        },
+      }
     );
 
     // Save original dataService.getView

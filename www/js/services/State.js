@@ -50,12 +50,27 @@ class State {
     this._featureService = null;
 
     // ========== Service Layer ==========
+    this._envAdapters = {
+      viewLayout: {
+        getTimelineSectionWidth: () => null,
+      },
+      viewManagement: {
+        storage: {
+          getItem: () => null,
+          setItem: () => {},
+        },
+        ui: {
+          getSidebarElement: () => null,
+        },
+      },
+    };
+
     // Core services
     this._baselineStore = new BaselineStore();
     this._capacityCalculator = new CapacityCalculator(bus);
 
     // View and configuration services
-    this._viewService = new ViewService(bus);
+    this._viewService = new ViewService(bus, this._envAdapters.viewLayout);
     // TaskFilterService manages dimensional task filters.
     this._taskFilterService = new TaskFilterService(bus);
     this._colorService = new ColorService(dataService);
@@ -90,7 +105,12 @@ class State {
     );
 
     // View management service
-    this._viewManagementService = new ViewManagementService(bus, this, this._viewService);
+    this._viewManagementService = new ViewManagementService(
+      bus,
+      this,
+      this._viewService,
+      this._envAdapters.viewManagement
+    );
     // Plugin state service (in-memory session store for plugin UI state)
     this._pluginStateService = new PluginStateService(bus, dataService);
 
@@ -239,6 +259,20 @@ class State {
   async init() {
     await dataService.init();
     await this.initState();
+  }
+
+  setEnvironmentAdapters(adapters = {}) {
+    if (adapters.viewLayout) {
+      this._envAdapters.viewLayout = adapters.viewLayout;
+      this._viewService.setLayoutAdapter(this._envAdapters.viewLayout);
+    }
+    if (adapters.viewManagement) {
+      this._envAdapters.viewManagement = {
+        ...this._envAdapters.viewManagement,
+        ...adapters.viewManagement,
+      };
+      this._viewManagementService.setEnvironment(this._envAdapters.viewManagement);
+    }
   }
 
   // ViewService properties

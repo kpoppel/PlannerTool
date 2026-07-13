@@ -16,7 +16,6 @@ import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
-import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
 import {
   isSwimlaneMode,
@@ -24,6 +23,10 @@ import {
   assignFeatureToSwimlane,
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
+import {
+  buildFeatureVisibilityContext,
+  featurePassesFilters,
+} from '../services/FeatureVisibilityService.js';
 import { groupService } from '../services/GroupService.js';
 import { featureBoardStyles } from './FeatureBoard.styles.js';
 import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
@@ -367,142 +370,12 @@ class FeatureBoard extends LitElement {
   }
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
-    // Check if feature is in expanded set (when expansion filters are active)
-    const expansionState = state.expansionState || {};
-    const hasExpansion =
-      expansionState.expandParentChild ||
-      expansionState.expandRelations ||
-      expansionState.expandTeamAllocated;
-
-    if (hasExpansion) {
-      const expandedIds = state.getExpandedFeatureIds();
-      // If expansion is active, only show features in expanded set
-      // Don't require project selection - expansion can pull in features from other projects
-      if (!expandedIds.has(feature.id)) return false;
-    } else {
-      // No expansion active - use standard project filter
-      const project = state.projects.find((p) => p.id === feature.project && p.selected);
-      if (!project) return false;
-    }
-
-    if (state._viewService.showOnlyProjectHierarchy) {
-      const projectTypePlans = state.projects.filter((p) => {
-        const planType = p.type ? String(p.type) : 'project';
-        return p.selected && planType === 'project';
-      });
-      const projectTypePlanIds = new Set(projectTypePlans.map((p) => p.id));
-      const projectTypeEpicIds = new Set(
-        allFeatures
-          .filter((f) => !f.parentId && projectTypePlanIds.has(f.project))
-          .map((f) => f.id)
-      );
-      if (
-        !this._isHierarchicallyLinkedToSelectedProjectEpics(
-          feature,
-          allFeatures,
-          projectTypeEpicIds
-        )
-      )
-        return false;
-    }
-
-    const stateFilter =
-      state.selectedFeatureStateFilter instanceof Set ?
-        state.selectedFeatureStateFilter
-      : new Set(
-          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
-        );
-    if (stateFilter.size === 0) return false;
-
-    // Build lowercase version of selected states for case-insensitive comparison
-    const stateFilterLower = new Set(
-      Array.from(stateFilter).map((s) => String(s).toLowerCase())
-    );
-    const featureStateLower = (feature.state || '').toLowerCase();
-    if (!stateFilterLower.has(featureStateLower)) return false;
-
-    // Apply task filters (schedule, allocation, hierarchy, relations)
-    if (
-      state.taskFilterService &&
-      !state.taskFilterService.featurePassesFilters(feature)
-    ) {
-      return false;
-    }
-
-    if (!state._viewService.isTypeVisible(feature.type)) return false;
-
-    if (featureFlags.SHOW_UNPLANNED_WORK) {
-      if (this._isUnplanned(feature) && !state._viewService.showUnplannedWork)
-        return false;
-    }
-
-    // If a project/plan is selected, show tasks from that project regardless of team selection.
-    const selectedProjectIds = new Set(
-      state.projects.filter((p) => p.selected).map((p) => String(p.id))
-    );
-
-    // A parent item is visible if it has direct or indirect visible children,
-    // or if it itself passes team/project/capacity checks.
-    // Use childrenMap to detect parent items generically (no type string check).
-    if (childrenMap.has(feature.id)) {
-      const children = childrenMap.get(feature.id) || [];
-      const anyChildVisible = children.some((child) => {
-        const childProject = state.projects.find(
-          (p) => p.id === child.project && p.selected
-        );
-        if (!childProject) return false;
-        if (
-          featureFlags.SHOW_UNPLANNED_WORK &&
-          this._isUnplanned(child) &&
-          !state._viewService.showUnplannedWork
-        )
-          return false;
-        const hasCapacity = child.capacity?.length > 0;
-        if (!hasCapacity) return state._viewService.showUnassignedCards;
-        // If the child's project is among selected projects, ignore team-selection and show it.
-        if (selectedProjectIds.has(String(child.project))) return true;
-        return child.capacity.some((tl) =>
-          state.teams.find((t) => t.id === tl.team && t.selected)
-        );
-      });
-      const hasCapacity = feature.capacity?.length > 0;
-      const epicVisible =
-        hasCapacity ?
-          selectedProjectIds.has(String(feature.project)) ||
-          feature.capacity.some((tl) =>
-            state.teams.find((t) => t.id === tl.team && t.selected)
-          )
-        : // Unassigned parent: only visible if it belongs to a selected plan.
-          // Features from expanded (non-selected) plans must always match the team
-          // filter; showUnassignedCards is not a bypass for cross-plan expansion.
-          selectedProjectIds.has(String(feature.project)) &&
-          state._viewService.showUnassignedCards;
-      if (!epicVisible && !anyChildVisible) return false;
-    } else {
-      const hasCapacity = feature.capacity?.length > 0;
-      if (!hasCapacity) {
-        // Unassigned leaf: only visible if it belongs to a selected plan.
-        // Features from expanded (non-selected) plans must always match the team
-        // filter; showUnassignedCards is not a bypass for cross-plan expansion.
-        if (
-          !selectedProjectIds.has(String(feature.project)) ||
-          !state._viewService.showUnassignedCards
-        )
-          return false;
-      } else {
-        // If this feature belongs to a selected project, ignore team-selection and show it.
-        if (
-          !(
-            selectedProjectIds.has(String(feature.project)) ||
-            feature.capacity.some((tl) =>
-              state.teams.find((t) => t.id === tl.team && t.selected)
-            )
-          )
-        )
-          return false;
-      }
-    }
-    return true;
+    const context = buildFeatureVisibilityContext({
+      state,
+      allFeatures,
+      childrenMap,
+    });
+    return featurePassesFilters(feature, context);
   }
 
   // ---- Render features ----
@@ -529,12 +402,17 @@ class FeatureBoard extends LitElement {
       return true;
     });
     const childrenMap = this._buildChildrenMap(sourceFeatures);
+    const visibilityContext = buildFeatureVisibilityContext({
+      state,
+      allFeatures: sourceFeatures,
+      childrenMap,
+    });
     const months = getTimelineMonths();
     const isPacked = state._viewService.packedMode;
     const expansionState = state.expansionState || {};
     const visibleFeatures = [];
     for (const feature of sourceFeatures) {
-      if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+      if (!featurePassesFilters(feature, visibilityContext)) continue;
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
@@ -622,15 +500,16 @@ class FeatureBoard extends LitElement {
         for (const feature of bucket) {
           // Any feature whose own project is a different swimlane contributes
           // to this band's origin list — regardless of whether that source lane
-          // is hidden or visible.  This ensures selected team-plan participants
+          const sourcePlanId = String(feature.project);
+          // is hidden or visible. This ensures selected team-plan participants
           // (type='plan') are counted in the project swimlane label even when
           // they still have their own band for unlinked tasks.
-          const sourcePlanId = String(feature.project);
           if (sourcePlanId !== String(swimlane.id)) {
             const sourcePlanSwimlane = swimlaneById.get(sourcePlanId);
             if (
               sourcePlanSwimlane &&
-              (sourcePlanSwimlane.type === 'plan' || sourcePlanSwimlane.type === 'expanded-plan')
+              (sourcePlanSwimlane.type === 'plan' ||
+                sourcePlanSwimlane.type === 'expanded-plan')
             ) {
               planOrigins.set(sourcePlanId, {
                 id: sourcePlanId,
@@ -783,7 +662,7 @@ class FeatureBoard extends LitElement {
         // Group-aware layout — handles both packed and normal modes.
         // Filter to only visible features first.
         const visibleFiltered = ordered.filter(
-          (f) => this._featurePassesFilters(f, childrenMap, sourceFeatures)
+          (f) => featurePassesFilters(f, visibilityContext)
         );
         const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
           visibleFiltered, allGroups, 0, months,
@@ -796,7 +675,7 @@ class FeatureBoard extends LitElement {
         // --- Packed mode: features with non-overlapping dates share a lane ---
         const filtered = [];
         for (const feature of sourceFeatures) {
-          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+          if (!featurePassesFilters(feature, visibilityContext)) continue;
           // Unplanned features (no dates) cannot be positioned in packed mode
           if (!feature.start || !feature.end) continue;
           const pos = computePosition(feature, months);
@@ -826,7 +705,7 @@ class FeatureBoard extends LitElement {
         // --- Normal / Compact mode: one lane per feature, no groups ---
         let laneIndex = 0;
         for (const feature of ordered) {
-          if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
+          if (!featurePassesFilters(feature, visibilityContext)) continue;
           const pos = computePosition(feature, months) || {};
           renderList.push({
               feature,
@@ -863,6 +742,14 @@ class FeatureBoard extends LitElement {
       const mh = await import('./modalHelpers.js');
       if (typeof mh?.openEmptyBoardModal === 'function') {
         mh.openEmptyBoardModal({ parent: document.body }).catch(() => {});
+      }
+    } else {
+      const emptyModal = document.body.querySelector('empty-board-modal');
+      if (emptyModal) {
+        emptyModal.open = false;
+        emptyModal.dispatchEvent(
+          new CustomEvent('modal-close', { bubbles: true, composed: true })
+        );
       }
     }
   }
