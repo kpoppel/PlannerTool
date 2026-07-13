@@ -147,6 +147,98 @@ class State {
     this._availableTaskTypesCache = null;
     // Cache for the merged task type hierarchy from loaded projects
     this._taskTypeHierarchyCache = null;
+
+    // Public namespaced API surface used by UI/plugins.
+    this._initNamespaces();
+  }
+
+  _initNamespaces() {
+    this.scenarios = {
+      list: () => this._scenarioEventService.getScenarios(),
+      activate: (id) => this.activateScenario(id),
+      rename: (id, newName) => this.renameScenario(id, newName),
+      delete: (id) => this.deleteScenario(id),
+      save: async (id) => this.saveScenario(id),
+      clone: (sourceId, name) => this.cloneScenario(sourceId, name),
+      getActiveId: () => this.activeScenarioId,
+      getActive: () => this.getActiveScenario(),
+    };
+
+    this.views = {
+      list: () => this._viewManagementService.getViews(),
+      save: async (name, viewId = null) => this._viewManagementService.saveCurrentView(name, viewId),
+      rename: async (viewId, newName) => this._viewManagementService.renameView(viewId, newName),
+      delete: async (viewId) => this._viewManagementService.deleteView(viewId),
+      load: async (viewId) => this._viewManagementService.loadAndApplyView(viewId),
+      restoreLast: async () => this._viewManagementService.restoreLastView(),
+      getActiveId: () => this._viewManagementService.getActiveViewId(),
+      getActiveData: () => this._viewManagementService.getActiveViewData(),
+    };
+
+    this.groups = {
+      list: async (planId) => dataService.listGroups(planId),
+      create: async (payload) => dataService.createGroup(payload),
+      update: async (groupId, fields) => dataService.updateGroup(groupId, fields),
+      delete: async (groupId) => dataService.deleteGroup(groupId),
+      getPendingChanges: () => this.getPendingGroupChanges(),
+      clearPendingChanges: () => this.clearPendingGroupChanges(),
+      confirmCreate: (tempId, realId) => this.confirmGroupCreate(tempId, realId),
+      createInScenario: (planId, name, color = null, parentId = null) =>
+        this.createGroupInScenario(planId, name, color, parentId),
+      updateInScenario: (groupId, fields) => this.updateGroupInScenario(groupId, fields),
+      deleteInScenario: (groupId) => this.deleteGroupInScenario(groupId),
+      applyMemberDelta: (groupId, taskId, op) => this.applyGroupMemberDelta(groupId, taskId, op),
+      publishBaseline: async (features) => dataService.publishBaseline(features),
+    };
+
+    this.events = {
+      getAll: async (planId) => dataService.getEvents(planId),
+      getCategories: async () => dataService.getEventCategories(),
+      create: async (payload) => dataService.createEvent(payload),
+      update: async (eventId, payload) => dataService.updateEvent(eventId, payload),
+      delete: async (eventId) => dataService.deleteEvent(eventId),
+      createCategory: async (payload) => dataService.createEventCategory(payload),
+      updateCategory: async (categoryId, payload) =>
+        dataService.updateEventCategory(categoryId, payload),
+      deleteCategory: async (categoryId) => dataService.deleteEventCategory(categoryId),
+    };
+
+    this.config = {
+      getPref: async (key) => dataService.getLocalPref(key),
+      setPref: async (key, value) => dataService.setLocalPref(key, value),
+      saveAccountConfig: async (account) => dataService.saveConfig(account),
+      updateProjectColor: async (id, color) => dataService.updateProjectColor(id, color),
+      updateTeamColor: async (id, color) => dataService.updateTeamColor(id, color),
+    };
+
+    this.cost = {
+      get: async (overrides) => dataService.getCost(overrides),
+      getTeams: async () => dataService.getCostTeams(),
+      updateWorkItemCapacity: async (workItemId, capacity) =>
+        dataService.updateWorkItemCapacity(workItemId, capacity),
+    };
+
+    this.markers = {
+      getAll: async () => dataService.getMarkers(),
+    };
+
+    this.history = {
+      get: async (projectId, opts) => dataService.getHistory(projectId, opts),
+    };
+
+    this.plugins = {
+      getConfig: async () => dataService.getPluginsConfig(),
+      getSchemas: async () => dataService.getPluginsSchemas(),
+    };
+
+    this.server = {
+      health: async () => dataService.checkHealth(),
+    };
+  }
+
+  async init() {
+    await dataService.init();
+    await this.initState();
   }
 
   // ViewService properties
@@ -212,9 +304,6 @@ class State {
   }
 
   // ScenarioEventService properties
-  get scenarios() {
-    return this._scenarioEventService.getScenarios();
-  }
   get activeScenarioId() {
     return this._scenarioEventService.getActiveScenarioId();
   }
@@ -500,7 +589,7 @@ class State {
    */
   _performAutosave() {
     // Autosave any non-readonly scenarios with unsaved changes
-    for (const s of this.scenarios) {
+    for (const s of this.scenarios.list()) {
       if (s.readonly) continue; // Skip readonly scenarios
       if (this._scenarioEventService.isScenarioUnsaved(s)) {
         dataService.saveScenario(s).catch(() => {});
@@ -870,7 +959,7 @@ class State {
     if (!this._featureService) {
       // FeatureService requires BaselineStore and a way to get active scenario
       const getActiveScenarioFn = () => {
-        return this.scenarios.find((s) => s.id === this.activeScenarioId);
+        return this.scenarios.list().find((s) => s.id === this.activeScenarioId);
       };
 
       // Allow swapping in an experimental queued implementation via feature flag
@@ -1104,12 +1193,12 @@ class State {
   getActiveScenario() {
     const id = this.activeScenarioId;
     if (!id) return null;
-    return this.scenarios.find((s) => s.id === id) || null;
+    return this.scenarios.list().find((s) => s.id === id) || null;
   }
 
   /** Return the active writable (non-readonly) scenario, or null. */
   _getActiveWritableScenario() {
-    return this.scenarios.find(
+    return this.scenarios.list().find(
       (s) => s.id === this.activeScenarioId && !s.readonly
     ) || null;
   }

@@ -8,7 +8,6 @@ import {
   DataEvents,
   ViewManagementEvents,
 } from '../core/EventRegistry.js';
-import { dataService } from '../services/dataService.js';
 import './PlanMenu.lit.js';
 import './TeamMenu.lit.js';
 import './ScenarioMenu.lit.js';
@@ -267,7 +266,7 @@ export class TopMenuBarLit extends LitElement {
       this.activeScenarioId = payload?.scenarioId || null;
     };
     this._onScenariosUpdated = () => {
-      this.scenarios = state.getScenarios?.() || [];
+      this.scenarios = state.scenarios.list() || [];
     };
     this._onViewsList = (payload) => {
       this.views = payload?.views || [];
@@ -294,7 +293,7 @@ export class TopMenuBarLit extends LitElement {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
       this._onScenariosList({
-        scenarios: state.scenarios,
+        scenarios: state.scenarios.list(),
         activeScenarioId: state.activeScenarioId,
       });
       this._onViewsList({

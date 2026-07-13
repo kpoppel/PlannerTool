@@ -4,7 +4,6 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-import { dataService } from '../services/dataService.js';
 import { bus } from '../core/EventBus.js';
 import { PlanEventEvents } from '../core/EventRegistry.js';
 
@@ -232,8 +231,8 @@ export class EventsPanel extends LitElement {
   async _load() {
     this.loading = true;
     const [events, categories] = await Promise.all([
-      dataService.getEvents(this.planId),
-      dataService.getEventCategories(),
+      state.events.getAll(this.planId),
+      state.events.getCategories(),
     ]);
     this.events = events || [];
     this.categories = categories || [];
@@ -268,7 +267,7 @@ export class EventsPanel extends LitElement {
       category: this._editCategory,
       end_date: this._editEndDate ?? '',
     };
-    const updated = await dataService.updateEvent(this._editId, payload);
+    const updated = await state.events.update(this._editId, payload);
     if (updated) {
       await this._load();
       bus.emit(PlanEventEvents.CHANGED);
@@ -278,7 +277,7 @@ export class EventsPanel extends LitElement {
   }
 
   async _deleteEvent(eventId) {
-    await dataService.deleteEvent(eventId);
+    await state.events.delete(eventId);
     await this._load();
     bus.emit(PlanEventEvents.CHANGED);
   }
@@ -293,7 +292,7 @@ export class EventsPanel extends LitElement {
       category: this._newCategory ?? '',
     };
     if (this._newEndDate) payload.end_date = this._newEndDate;
-    const created = await dataService.createEvent(payload);
+    const created = await state.events.create(payload);
     if (created) {
       await this._load();
       bus.emit(PlanEventEvents.CHANGED);

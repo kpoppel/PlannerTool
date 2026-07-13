@@ -1,7 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { state } from '../services/State.js';
-import { dataService } from '../services/dataService.js';
 
 export class ScenarioDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -37,7 +36,7 @@ export class ScenarioDeleteModal extends LitElement {
         if (cancelBtn) cancelBtn.disabled = true;
         try {
           state.deleteScenario(this.id);
-          await dataService.deleteScenario(this.id).catch(() => {});
+          await state.scenarios.delete(this.id).catch(() => {});
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Delete failed.';

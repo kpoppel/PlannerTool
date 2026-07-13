@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, TeamEvents, ColorEvents } from '../core/EventRegistry.js';
@@ -109,13 +108,13 @@ export class ColorPopoverLit extends LitElement {
         const p = state.projects.find((x) => x.id === this.entityId);
         if (!p) return;
         p.color = color;
-        await dataService.updateProjectColor(this.entityId, color);
+        await state.config.updateProjectColor(this.entityId, color);
         bus.emit(ProjectEvents.CHANGED, state.projects);
       } else if (this.entityType === 'team') {
         const t = state.teams.find((x) => x.id === this.entityId);
         if (!t) return;
         t.color = color;
-        await dataService.updateTeamColor(this.entityId, color);
+        await state.config.updateTeamColor(this.entityId, color);
         bus.emit(TeamEvents.CHANGED, state.teams);
       }
       bus.emit(ColorEvents.CHANGED, {

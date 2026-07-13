@@ -54,7 +54,7 @@ export async function initBoard() {
 
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
-    const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
+    const activeScenario = state.scenarios.list().find((s) => s.id === scenarioId);
     // Apply scenario-mode class on #board-area (the background container) so
     // the correct stripe colour is shown.
     const boardArea = findInBoard('#board-area');

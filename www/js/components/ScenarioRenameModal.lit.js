@@ -1,6 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
 
 export class ScenarioRenameModal extends LitElement {
@@ -45,7 +44,7 @@ export class ScenarioRenameModal extends LitElement {
             /* ignore local state update errors */
           }
           // Persist to backend (best-effort)
-          await dataService.renameScenario(this.id, val).catch(() => {});
+          await state.scenarios.rename(this.id, val).catch(() => {});
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Rename failed.';

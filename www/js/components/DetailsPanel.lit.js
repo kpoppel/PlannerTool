@@ -933,7 +933,7 @@ export class DetailsPanelLit extends LitElement {
       const workItemId = String(featureId).replace(/^[A-Za-z_]+/, '');
 
       // Call the API to update capacity in Azure DevOps
-      const result = await dataService.updateWorkItemCapacity(workItemId, capacity);
+      const result = await state.cost.updateWorkItemCapacity(workItemId, capacity);
 
       if (!result.ok) {
         console.error('Failed to update capacity:', result.error);

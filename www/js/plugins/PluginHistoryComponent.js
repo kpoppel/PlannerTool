@@ -11,7 +11,6 @@ import { TimelineEvents, ProjectEvents, TeamEvents, ViewEvents } from '../core/E
 import { findInBoard } from '../components/board-utils.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { dataService } from '../services/dataService.js';
 
 export class PluginHistoryComponent extends LitElement {
   static properties = {
@@ -87,7 +86,7 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await dataService.getHistory(project.id, {
+          const data = await state.history.get(project.id, {
             per_page: 500,
           });
           if (data && data.tasks && data.tasks.length) {
@@ -518,7 +517,7 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await dataService.getHistory(project.id, {
+          const data = await state.history.get(project.id, {
             per_page: 500,
             invalidate_cache: !!invalidateCache,
           });

@@ -322,7 +322,7 @@ export class PluginPortfolioComponent extends LitElement {
     try {
       this._activeScenarioId = state.activeScenarioId || 'baseline';
 
-      const activeScenario = (state.scenarios || []).find(
+      const activeScenario = (state.scenarios.list() || []).find(
         (s) => s.id === this._activeScenarioId
       );
       this._pendingChangesCount =

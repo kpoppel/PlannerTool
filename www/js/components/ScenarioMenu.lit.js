@@ -1,6 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
@@ -154,7 +153,7 @@ export class ScenarioMenuLit extends LitElement {
     this._onScenariosList = (payload) => {
       // Use full scenarios from state to get overrides data
       try {
-        const full = state.scenarios || [];
+        const full = state.scenarios.list() || [];
         this.scenarios = Array.isArray(full) ? [...full] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
@@ -171,7 +170,7 @@ export class ScenarioMenuLit extends LitElement {
     };
 
     this._onScenariosUpdated = () => {
-      const scenarios = state.getScenarios?.() || [];
+      const scenarios = state.scenarios.list() || [];
       this.scenarios = scenarios ? [...scenarios] : [];
       this.requestUpdate();
     };
@@ -302,7 +301,7 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveToAzure(e, scenario) {
     e.stopPropagation();
     try {
-      const fullScenarios = state.getScenarios?.() || state.scenarios || [];
+      const fullScenarios = state.scenarios.list() || [];
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
@@ -347,7 +346,7 @@ export class ScenarioMenuLit extends LitElement {
             rank: op.group.rank ?? 0,
             members: [...committedMembers],
           };
-          const created = await dataService.createGroup(payload);
+          const created = await state.groups.create(payload);
           if (created) {
             const realId = String(created.id);
             state.confirmGroupCreate(op.group.id, realId);
@@ -387,7 +386,7 @@ export class ScenarioMenuLit extends LitElement {
             updatePayload.members = [...baseMembers];
           }
 
-          await dataService.updateGroup(op.groupId, updatePayload);
+          await state.groups.update(op.groupId, updatePayload);
 
           // Remove only the committed deltas from groupOverrides; leave others.
           if (activeScen?.groupOverrides?.[op.groupId]) {
@@ -408,7 +407,7 @@ export class ScenarioMenuLit extends LitElement {
           const g = groupService.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
-          await dataService.deleteGroup(op.groupId);
+          await state.groups.delete(op.groupId);
           const activeScen = state.getActiveScenario();
           if (activeScen?.groupOverrides?.[op.groupId]) {
             delete activeScen.groupOverrides[op.groupId];
@@ -433,7 +432,7 @@ export class ScenarioMenuLit extends LitElement {
 
       // 2. Persist accepted feature overrides.
       if (features.length > 0) {
-        await dataService.publishBaseline(features);
+        await state.groups.publishBaseline(features);
         console.log('[ScenarioMenu] Saved feature changes', features);
       }
 

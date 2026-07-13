@@ -12,7 +12,6 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
-import { dataService } from '../services/dataService.js';
 import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
 
 import { renderProjectView } from './PluginCostProjectView.js';
@@ -779,7 +778,7 @@ export class PluginCostComponent extends LitElement {
       }));
 
       // Fetch cost data
-      const json = await dataService.getCost({ features: featuresPayload });
+      const json = await state.cost.get({ features: featuresPayload });
 
       // Normalize projects structure: backend returns an array of projects
       // while older clients expect an object keyed by project id. Convert
@@ -819,7 +818,7 @@ export class PluginCostComponent extends LitElement {
 
       // Fetch cost teams metadata (members + sites) to enable per-site breakdowns
       try {
-        const ct = await dataService.getCostTeams();
+        const ct = await state.cost.getTeams();
         this.costTeams = ct && ct.teams ? ct : { teams: [] };
       } catch (e) {
         this.costTeams = { teams: [] };

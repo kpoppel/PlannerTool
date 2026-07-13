@@ -57,10 +57,8 @@ async function init() {
     // Prefetch lightweight modal helpers during idle to improve perceived performance
     import('./components/modalHelpers.js');
 
-    //Populate the app state from backend
-    const { dataService } = await import('./services/dataService.js');
-    await dataService.init();
-    await state.initState();
+    // Populate app state via the State facade
+    await state.init();
 
     // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {
@@ -75,10 +73,10 @@ async function init() {
 
       // Fetch runtime plugin config from backend (non-fatal: falls back to
       // metadata defaults when unavailable or when the server has no saved config).
-      const runtimeConfig = await dataService.getPluginsConfig().catch(() => null);
+      const runtimeConfig = await state.plugins.getConfig().catch(() => null);
 
       // Fetch plugin schemas for all plugins (non-fatal: continues without schemas if unavailable)
-      const pluginSchemas = await dataService.getPluginsSchemas().catch(() => ({}));
+      const pluginSchemas = await state.plugins.getSchemas().catch(() => ({}));
       window.APP_PLUGIN_SCHEMAS = pluginSchemas || {};
 
       const mergedCfg = mergePluginConfig(cfg, runtimeConfig?.plugins || null);

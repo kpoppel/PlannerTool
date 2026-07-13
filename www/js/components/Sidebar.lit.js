@@ -14,7 +14,6 @@ import {
   TimelineEvents,
   FeatureEvents,
 } from '../core/EventRegistry.js';
-import { dataService } from '../services/dataService.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 
@@ -977,12 +976,12 @@ export class SidebarLit extends LitElement {
       this._recomputeDataFunnel && this._recomputeDataFunnel();
     };
     this._onScenariosList = (payload) => {
-      // Use the authoritative scenario objects from `state.scenarios` so
+      // Use the authoritative scenario objects from `state.scenarios.list()` so
       // the UI has access to `overrides` and `isChanged` flags. The
       // ScenarioEvents.LIST payload contains reduced metadata for lists,
       // which would strip overrides and unsaved markers.
       try {
-        const full = state.scenarios || [];
+        const full = state.scenarios.list() || [];
         this.scenarios = Array.isArray(full) ? [...full] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
@@ -999,7 +998,7 @@ export class SidebarLit extends LitElement {
         payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId;
     };
     this._onScenariosUpdated = () => {
-      const sc = state.scenarios || [];
+      const sc = state.scenarios.list() || [];
       this.scenarios = [...sc];
       this.activeScenarioId = state.activeScenarioId;
     };
@@ -1219,7 +1218,7 @@ export class SidebarLit extends LitElement {
       this._onProjectsChanged(state.projects);
       this._onTeamsChanged(state.teams);
       this._onScenariosList({
-        scenarios: state.scenarios,
+        scenarios: state.scenarios.list(),
         activeScenarioId: state.activeScenarioId,
       });
       console.log('[Sidebar] Initializing views from state:', state.savedViews);
@@ -1698,12 +1697,7 @@ export class SidebarLit extends LitElement {
 
   async refreshServerStatus() {
     try {
-      if (!dataService || typeof dataService.checkHealth !== 'function') {
-        this.serverStatus = 'unknown';
-        this.requestUpdate();
-        return;
-      }
-      const h = await dataService.checkHealth();
+      const h = await state.server.health();
       const status = (h && (h.status || (h.ok ? 'ok' : null))) || 'error';
       this.serverName = (h && (h.server_name || h.server)) || this.serverName;
       const ups = Number(h && h.uptime_seconds);

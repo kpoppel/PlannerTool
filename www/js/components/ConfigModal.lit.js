@@ -2,7 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import './Modal.lit.js';
 import { ConfigEvents } from '../core/EventRegistry.js';
-import { dataService } from '../services/dataService.js';
+import { state } from '../services/State.js';
 
 class ConfigModal extends LitElement {
   static properties = {
@@ -34,9 +34,9 @@ class ConfigModal extends LitElement {
   async _populate() {
     const emailInput = this._qs('#configEmail');
     const autosaveInput = this._qs('#autosaveInterval');
-    const storedEmail = await dataService.getLocalPref('user.email');
+    const storedEmail = await state.config.getPref('user.email');
     if (storedEmail) emailInput.value = storedEmail;
-    const storedAutosave = await dataService.getLocalPref('autosave.interval');
+    const storedAutosave = await state.config.getPref('autosave.interval');
     if (storedAutosave !== undefined && autosaveInput)
       autosaveInput.value = storedAutosave;
   }
@@ -152,12 +152,12 @@ class ConfigModal extends LitElement {
           status.textContent = 'Invalid PAT format. Remove spaces or control characters.';
           return;
         }
-        if (email) await dataService.setLocalPref('user.email', email);
-        await dataService.setLocalPref('autosave.interval', autosaveInterval);
+        if (email) await state.config.setPref('user.email', email);
+        await state.config.setPref('autosave.interval', autosaveInterval);
         let patText = '';
         if (pat) patText = 'Access token updated.';
         try {
-          const res = await dataService.saveConfig({ email, pat });
+          const res = await state.config.saveAccountConfig({ email, pat });
           if (res && res.ok) {
             status.textContent = 'Configuration saved. ' + patText;
           } else {

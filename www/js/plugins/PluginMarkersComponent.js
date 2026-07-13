@@ -8,7 +8,6 @@ import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/EventRegistry.js';
-import { dataService } from '../services/dataService.js';
 import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -311,7 +310,7 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
   async refresh() {
     this.loading = true;
     try {
-      this.markers = (await dataService.getMarkers()) || [];
+      this.markers = (await state.markers.getAll()) || [];
       // Initialize selected colors - all colors selected by default
       this._initializeColorSelection();
     } catch (err) {
