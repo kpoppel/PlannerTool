@@ -6,6 +6,7 @@ import {
   FilterEvents,
   GroupEvents,
   ProjectEvents,
+  ScenarioEvents,
   TeamEvents,
 } from '../core/EventRegistry.js';
 import { BaselineStore } from '../services/BaselineStore.js';
@@ -19,10 +20,7 @@ import { FeatureService } from '../services/FeatureService.js';
 import { FeatureStateService } from '../services/FeatureStateService.js';
 import { PluginStateService } from '../services/PluginStateService.js';
 import { ProjectTeamService } from '../services/ProjectTeamService.js';
-import { QueuedFeatureService } from '../services/QueuedFeatureService.js';
-import { ScenarioEventService } from '../services/ScenarioEventService.js';
 import { ScenarioGroupService } from '../services/ScenarioGroupService.js';
-import { ScenarioManager } from '../services/ScenarioManager.js';
 import { StateFilterService } from '../services/StateFilterService.js';
 import { TaskFilterService } from '../services/TaskFilterService.js';
 import { ViewManagementService } from '../services/ViewManagementService.js';
@@ -74,6 +72,37 @@ const DEFAULT_ADAPTERS = {
   },
 };
 
+function cloneJson(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : {};
+}
+
+function buildScenarioDefaultName(items = [], date = new Date()) {
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  let maxN = 0;
+  const re = /^\d{2}-\d{2} Scenario (\d+)$/i;
+  for (const item of items) {
+    const match = re.exec(item?.name || '');
+    if (!match) continue;
+    const value = Number.parseInt(match[1], 10);
+    if (Number.isFinite(value) && value > maxN) maxN = value;
+  }
+  return `${mm}-${dd} Scenario ${maxN + 1}`;
+}
+
+function ensureUniqueScenarioName(items = [], baseName, excludeId = null) {
+  let candidate = String(baseName || '').trim();
+  let counter = 2;
+  while (
+    items.some(
+      (item) => item?.id !== excludeId && String(item?.name || '').toLowerCase() === candidate.toLowerCase()
+    )
+  ) {
+    candidate = `${baseName} ${counter++}`;
+  }
+  return candidate;
+}
+
 function bindDataPort(dataService, definitions) {
   return Object.fromEntries(
     definitions.map(([name, method, fallback]) => [
@@ -91,12 +120,12 @@ function bindMethodDelegates(target, source, methodNames) {
 
 function createScenarioPort(runtime) {
   return Object.freeze({
-    list: () => runtime.scenarioEventService.getScenarios(),
-    activate: (id) => runtime.activateScenario(id),
-    rename: (id, name) => runtime.renameScenario(id, name),
-    delete: (id) => runtime.deleteScenario(id),
-    save: (id) => runtime.saveScenario(id),
-    clone: (sourceId, name) => runtime.cloneScenario(sourceId, name),
+    list: () => runtime.getScenarios(),
+    activate: (id) => runtime._bindings.commands.activateScenario(id),
+    rename: (id, name) => runtime._bindings.commands.renameScenario(id, name),
+    delete: (id) => runtime._bindings.commands.deleteScenario(id),
+    save: (id) => runtime._bindings.commands.saveScenario(id),
+    clone: (sourceId, name) => runtime._bindings.commands.cloneScenario(sourceId, name),
     getActiveId: () => runtime.activeScenarioId,
     getActive: () => runtime.getActiveScenario(),
   });
@@ -181,9 +210,9 @@ function applyBaselineResult(runtime, { baselineProjects, baselineTeams, baselin
 }
 
 function resetScenarioAfterBaseline(runtime) {
-  runtime.scenarioEventService.initDefaultScenario(() => runtime.captureCurrentFilters());
-  runtime.scenarioEventService.emitScenarioList();
-  runtime.scenarioEventService.emitScenarioActivated();
+  runtime.ensureBaselineScenario();
+  runtime.emitScenarioList();
+  runtime.emitScenarioActivated();
 }
 
 function recomputeAndEmitCapacity(runtime) {
@@ -209,8 +238,8 @@ async function refreshBaseline(runtime, loadBaseline, label) {
 
 async function performAutosave(runtime, { logFailures = true } = {}) {
   const scenarios = selectUnsavedWritableScenarios(
-    runtime.scenarios.list(),
-    (scenario) => runtime.scenarioEventService.isScenarioUnsaved(scenario)
+    runtime.getScenarios(),
+    (scenario) => runtime.isScenarioUnsaved(scenario)
   );
   return Promise.all(
     scenarios.map(async (scenario) => {
@@ -237,12 +266,10 @@ function recomputeCapacityAndEmit(runtime, changedFeatureIds = null, { onlyIfCal
   return calculated;
 }
 
-function applySelectionMutation(runtime, mutate, event, items) {
-  if (!mutate()) return false;
+function applySelectionEffects(runtime, event, items) {
   runtime._bus.emit(event, items);
   recomputeCapacityAndEmit(runtime);
   runtime.emitFeatureUpdated();
-  return true;
 }
 
 function applyStateFilterMutation(runtime, mutate) {
@@ -270,10 +297,10 @@ function createViewStatePort(runtime) {
     get pluginStateService() {
       return runtime.pluginStateService;
     },
-    setProjectsSelectedBulk: (selections) => runtime.setProjectsSelectedBulk(selections),
-    setTeamsSelectedBulk: (selections) => runtime.setTeamsSelectedBulk(selections),
+    setProjectsSelectedBulk: (selections) => runtime._bindings.commands.setProjectsSelectedBulk(selections),
+    setTeamsSelectedBulk: (selections) => runtime._bindings.commands.setTeamsSelectedBulk(selections),
     setSelectedStates: (states) => runtime.setSelectedStates(states),
-    setExpansionState: (options) => runtime.setExpansionState(options),
+    setExpansionState: (options) => runtime._bindings.commands.setExpansionState(options),
     applyViewSelectionRestore: (payload) => runtime.applyViewSelectionRestore(payload),
     applyViewOptionsRestore: (payload) => runtime.applyViewOptionsRestore(payload),
     applyViewPluginStateRestore: (payload) => runtime.applyViewPluginStateRestore(payload),
@@ -313,11 +340,6 @@ class PlannerRuntime {
     this.projectDailyCapacity = [];
     this.totalOrgDailyCapacity = [];
     this.totalOrgDailyPerTeamAvg = [];
-    this._expansionState = {
-      expandParentChild: false,
-      expandRelations: false,
-      expandTeamAllocated: false,
-    };
     this._sidebarDisabled = {};
 
     this.baselineStore = new BaselineStore();
@@ -344,6 +366,10 @@ class PlannerRuntime {
     this.stateFilterService = new StateFilterService(this._bus);
     this.featureStateService = new FeatureStateService();
     this.projectTeamService = new ProjectTeamService(this._bus);
+    this.projectTeamService.setSelectionProvider({
+      getProjectIds: () => this._store.getState().selection.projectIds,
+      getTeamIds: () => this._store.getState().selection.teamIds,
+    });
     this.dataInitService = new DataInitService(
       this._bus,
       this._dataService,
@@ -352,15 +378,6 @@ class PlannerRuntime {
       this.stateFilterService,
       this.featureStateService,
       this.colorService
-    );
-    this.scenarioManager = new ScenarioManager(this._bus, this.baselineStore, {
-      captureCurrentFilters: () => this.captureCurrentFilters(),
-      captureCurrentView: () => this.captureCurrentView(),
-    });
-    this.scenarioEventService = new ScenarioEventService(
-      this._bus,
-      this.scenarioManager,
-      this.viewService
     );
     this.pluginStateService = new PluginStateService(this._bus, this._dataService);
     this.viewManagementService = new ViewManagementService(
@@ -373,44 +390,14 @@ class PlannerRuntime {
       bus: this._bus,
       getActiveScenario: () => this.getActiveScenario(),
       getActiveWritableScenario: () => this.getActiveWritableScenario(),
-      markChanged: () => this.markActiveScenarioChanged(),
+      markChanged: (scenario) => this.markActiveScenarioChanged(scenario),
     });
 
-    const FeatureServiceImplementation =
-      featureFlags.USE_QUEUED_FEATURE_SERVICE ? QueuedFeatureService : FeatureService;
-    this.featureService = new FeatureServiceImplementation(this.baselineStore, () =>
+    this.featureService = new FeatureService(this.baselineStore, () =>
       this.getActiveScenario()
     );
     this.featureService.setProjectTeamService(this.projectTeamService);
     Object.assign(this, {
-      setProjectSelected: (id, selected) =>
-        applySelectionMutation(
-          this,
-          () => this.projectTeamService.setProjectSelected(id, selected),
-          ProjectEvents.CHANGED,
-          this.projects
-        ),
-      setTeamSelected: (id, selected) =>
-        applySelectionMutation(
-          this,
-          () => this.projectTeamService.setTeamSelected(id, selected),
-          TeamEvents.CHANGED,
-          this.teams
-        ),
-      setProjectsSelectedBulk: (selections) =>
-        applySelectionMutation(
-          this,
-          () => this.projectTeamService.setProjectsSelectedBulk(selections),
-          ProjectEvents.CHANGED,
-          this.projects
-        ),
-      setTeamsSelectedBulk: (selections) =>
-        applySelectionMutation(
-          this,
-          () => this.projectTeamService.setTeamsSelectedBulk(selections),
-          TeamEvents.CHANGED,
-          this.teams
-        ),
       setSelectedStates: (states) =>
         applyStateFilterMutation(this, () => this.stateFilterService.setSelectedStates(states)),
       setAvailableFeatureStates: (states) => this.stateFilterService.setAvailableStates(states),
@@ -425,19 +412,23 @@ class PlannerRuntime {
       setStateFilter: (stateName) =>
         applyStateFilterMutation(this, () => this.stateFilterService.setStateFilter(stateName)),
       updateFeatureDates: (updates) => {
-        const count = this.featureService.updateFeatureDates(updates);
+        const count = this.mutateActiveScenario('scenario.featureDates.command', (scenario) =>
+          this.featureService.updateFeatureDates(updates, undefined, scenario)
+        );
         if (count && this.getActiveScenario()) {
           recomputeCapacityAndEmit(this);
         }
         return count;
       },
       updateFeatureField: (id, field, value) => {
-        const updated = this.featureService.updateFeatureField(id, field, value);
+        const updated = this.mutateActiveScenario('scenario.featureField.command', (scenario) =>
+          this.featureService.updateFeatureField(id, field, value, undefined, scenario)
+        );
         if (!updated) return false;
         if (field === 'start' || field === 'end' || field === 'capacity') {
           recomputeCapacityAndEmit(this, [id]);
         }
-        this.scenarioEventService.emitScenarioUpdated(this.activeScenarioId, {
+        this.emitScenarioUpdated(this.activeScenarioId, {
           type: 'field',
           id,
           field,
@@ -445,9 +436,11 @@ class PlannerRuntime {
         return true;
       },
       updateFeatureRelations: (id, relations) => {
-        const updated = this.featureService.updateFeatureRelations(id, relations);
+        const updated = this.mutateActiveScenario('scenario.featureRelations.command', (scenario) =>
+          this.featureService.updateFeatureRelations(id, relations, scenario)
+        );
         if (updated) {
-          this.scenarioEventService.emitScenarioUpdated(this.activeScenarioId, {
+          this.emitScenarioUpdated(this.activeScenarioId, {
             type: 'relations',
             id,
           });
@@ -455,31 +448,43 @@ class PlannerRuntime {
         return updated;
       },
       revertFeature: (id) => {
-        const reverted = this.featureService.revertFeature(id);
+        const reverted = this.mutateActiveScenario('scenario.featureRevert.command', (scenario) =>
+          this.featureService.revertFeature(id, undefined, scenario)
+        );
         if (!reverted) return false;
         recomputeCapacityAndEmit(this, [id]);
-        this.scenarioEventService.emitScenarioUpdated(this.activeScenarioId, { type: 'revert', id });
+        this.emitScenarioUpdated(this.activeScenarioId, { type: 'revert', id });
         return true;
       },
       activateScenario: (id) => {
         if (this.activeScenarioId === id) return;
-        this.scenarioManager.activateScenario(id);
-        this.scenarioEventService.setActiveScenarioId(this.scenarioManager.activeScenarioId);
-        this.scenarioEventService.emitScenarioActivated();
+        this.emitScenarioActivated(id);
         recomputeCapacityAndEmit(this);
         this.emitFeatureUpdated();
         this._bus.emit(GroupEvents.CHANGED, { op: 'scenarioSwitched' });
       },
       setScenarioOverride: (featureId, start, end) => {
-        this.scenarioManager.setScenarioOverride(featureId, start, end);
-        if (this.activeScenarioId !== 'baseline') {
-          this.scenarioEventService.emitScenarioUpdated(this.activeScenarioId, {
+        const updated = this.mutateActiveScenario('scenario.featureOverride.command', (scenario) => {
+          scenario.overrides ||= {};
+          scenario.overrides[featureId] = {
+            ...(scenario.overrides[featureId] || {}),
+            start,
+            end,
+          };
+          scenario.isChanged = true;
+          return true;
+        });
+        if (updated && this.activeScenarioId !== 'baseline') {
+          this.emitScenarioUpdated(this.activeScenarioId, {
             type: 'override',
             featureId,
           });
         }
-        recomputeCapacityAndEmit(this, [featureId]);
-        this.emitFeatureUpdated([featureId]);
+        if (updated) {
+          recomputeCapacityAndEmit(this, [featureId]);
+          this.emitFeatureUpdated([featureId]);
+        }
+        return updated;
       },
     });
     bindMethodDelegates(this, this.featureService, [
@@ -489,7 +494,6 @@ class PlannerRuntime {
       'allCountsForProject',
       'allCountsForTeam',
     ]);
-    bindMethodDelegates(this, this.scenarioEventService, ['isScenarioUnsaved']);
     bindMethodDelegates(this, this.featureStateService, ['compareFeatureStates']);
     bindMethodDelegates(this, this.projectTeamService, [
       'computeFeatureOrgLoad',
@@ -508,8 +512,12 @@ class PlannerRuntime {
     this.history = this._dataPorts.history;
     this.server = this._dataPorts.server;
 
-    this._unsubscribeScenariosData = this._bus.on(DataEvents.SCENARIOS_DATA, () => {
-      const activeScenario = this.scenarioEventService.getScenarioById(this.activeScenarioId);
+    this._unsubscribeScenariosChanged = this._bus.on(DataEvents.SCENARIOS_CHANGED, () => {
+      this.emitScenarioList();
+    });
+    this._unsubscribeScenariosData = this._bus.on(DataEvents.SCENARIOS_DATA, (scenarios) => {
+      this._bindings.commands.hydrateScenarioData(scenarios);
+      const activeScenario = this.getActiveScenario();
       if (
         (activeScenario?.scenarioGroups || []).length > 0 ||
         Object.keys(activeScenario?.groupOverrides || {}).length > 0
@@ -603,11 +611,13 @@ class PlannerRuntime {
   }
 
   get activeScenarioId() {
-    return this.scenarioEventService.getActiveScenarioId();
+    return this._store.getState().scenarios.activeId || null;
   }
 
   set activeScenarioId(id) {
-    this.scenarioEventService.setActiveScenarioId(id);
+    this._store.update('scenario.active.runtime', (draft) => {
+      draft.scenarios.activeId = id || null;
+    });
   }
 
   get timelineScale() {
@@ -659,7 +669,12 @@ class PlannerRuntime {
   }
 
   get expansionState() {
-    return this._expansionState;
+    const expansion = this._store.getState().view.expansion;
+    return {
+      expandParentChild: !!expansion.parentChild,
+      expandRelations: !!expansion.relations,
+      expandTeamAllocated: !!expansion.teamAllocated,
+    };
   }
 
   get savedViews() {
@@ -742,9 +757,9 @@ class PlannerRuntime {
       features: this.getEffectiveFeatures(),
       childrenByParent: this.childrenByParent,
       expansion: {
-        parentChild: this._expansionState.expandParentChild,
-        relations: this._expansionState.expandRelations,
-        teamAllocated: this._expansionState.expandTeamAllocated,
+        parentChild: this.expansionState.expandParentChild,
+        relations: this.expansionState.expandRelations,
+        teamAllocated: this.expansionState.expandTeamAllocated,
       },
     });
   }
@@ -753,26 +768,139 @@ class PlannerRuntime {
     const features = selectTeamAllocationExpansionFeatures({
       features: this.getEffectiveFeatures(),
       selectedTeamIds: selectSelectedIds(this.teams),
-      expandTeamAllocated: this._expansionState.expandTeamAllocated,
+      expandTeamAllocated: this.expansionState.expandTeamAllocated,
     });
     return selectEffectiveSelectedProjectIds({
       projects: this.projects,
       teams: this.teams,
       features,
-      expandTeamAllocated: this._expansionState.expandTeamAllocated,
+      expandTeamAllocated: this.expansionState.expandTeamAllocated,
     });
   }
 
   getActiveScenario() {
-    return selectActiveScenario(this.scenarios.list(), this.activeScenarioId);
+    return selectActiveScenario(this._store.getState().scenarios.items, this.activeScenarioId);
   }
 
   getActiveWritableScenario() {
-    return selectActiveWritableScenario(this.scenarios.list(), this.activeScenarioId);
+    return selectActiveWritableScenario(this._store.getState().scenarios.items, this.activeScenarioId);
+  }
+
+  mutateActiveScenario(label, mutate) {
+    let result = false;
+    this._store.update(label, (draft) => {
+      const scenario = selectActiveWritableScenario(
+        draft.scenarios.items,
+        draft.scenarios.activeId
+      );
+      if (scenario) result = mutate(scenario);
+    });
+    return result;
   }
 
   getScenarios() {
-    return this.scenarios.list();
+    return this._store.getState().scenarios.items || [];
+  }
+
+  getScenarioById(id) {
+    return this.getScenarios().find((scenario) => scenario?.id === id);
+  }
+
+  isScenarioUnsaved(scenario) {
+    return scenario?.isChanged === true;
+  }
+
+  ensureBaselineScenario() {
+    this._store.update('scenario.ensureBaseline.runtime', (draft) => {
+      const existing = draft.scenarios.items.find((scenario) => scenario?.id === 'baseline');
+      if (existing) {
+        existing.overrides = {};
+        existing.isChanged = false;
+        existing.readonly = true;
+      } else {
+        draft.scenarios.items = [
+          {
+            id: 'baseline',
+            name: 'Baseline',
+            overrides: {},
+            filters: cloneJson(this.captureCurrentFilters()),
+            view: cloneJson(this.captureCurrentView()),
+            isChanged: false,
+            readonly: true,
+          },
+          ...draft.scenarios.items,
+        ];
+      }
+      if (!draft.scenarios.activeId) draft.scenarios.activeId = 'baseline';
+    });
+  }
+
+  prepareScenarioHydration(remoteScenarios = []) {
+    const currentItems = this.getScenarios();
+    const readonly = currentItems.filter((scenario) => scenario?.readonly);
+    const items = [...readonly];
+    for (const scenario of remoteScenarios || []) {
+      const merged = Object.assign(
+        {
+          overrides: {},
+          filters: cloneJson(this.captureCurrentFilters()),
+          view: cloneJson(this.captureCurrentView()),
+          isChanged: false,
+          readonly: false,
+        },
+        scenario
+      );
+      if (!items.some((existing) => existing.id === merged.id)) {
+        items.push(merged);
+      }
+    }
+    const activeId =
+      items.find((item) => item.id === this.activeScenarioId)?.id ||
+      items.find((item) => item.readonly)?.id ||
+      items[0]?.id ||
+      'baseline';
+    return { items, activeId };
+  }
+
+  buildScenarioClone(sourceId, name) {
+    const items = this.getScenarios();
+    const source = items.find((scenario) => scenario?.id === sourceId && !scenario?.readonly);
+    const baseName = name ? name.trim() : buildScenarioDefaultName(items);
+    return {
+      id: `scen_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      name: ensureUniqueScenarioName(items, baseName),
+      overrides: source ? cloneJson(source.overrides) : {},
+      filters: source ? cloneJson(source.filters) : cloneJson(this.captureCurrentFilters()),
+      view: source ? cloneJson(source.view) : cloneJson(this.captureCurrentView()),
+      isChanged: true,
+      readonly: false,
+    };
+  }
+
+  normalizeScenarioName(id, name) {
+    return ensureUniqueScenarioName(this.getScenarios(), String(name || '').trim(), id);
+  }
+
+  emitScenarioList() {
+    this._bus.emit(ScenarioEvents.LIST, {
+      scenarios: this.getScenarios().map((scenario) => ({
+        id: scenario.id,
+        name: scenario.name,
+        overridesCount: Object.keys(scenario.overrides || {}).length,
+        unsaved: this.isScenarioUnsaved(scenario),
+        readonly: scenario.readonly === true,
+      })),
+      activeScenarioId: this.activeScenarioId,
+    });
+  }
+
+  emitScenarioActivated(id = this.activeScenarioId) {
+    this._bus.emit(ScenarioEvents.ACTIVATED, { scenarioId: id });
+  }
+
+  emitScenarioUpdated(id, change) {
+    this._bus.emit(ScenarioEvents.UPDATED, { scenarioId: id, change });
+    this.emitScenarioList();
   }
 
   getActiveView() {
@@ -784,7 +912,7 @@ class PlannerRuntime {
   }
 
   initDefaultScenario() {
-    this.scenarioEventService.initDefaultScenario(() => this.captureCurrentFilters());
+    this.ensureBaselineScenario();
   }
 
   getSidebarDisabledElements() {
@@ -800,25 +928,23 @@ class PlannerRuntime {
     this.setSidebarDisabledElements({});
   }
 
-  setExpansionState(options = {}) {
-    const previous = this._expansionState.expandTeamAllocated;
-    if (options.expandParentChild !== undefined) {
-      this._expansionState.expandParentChild = !!options.expandParentChild;
-    }
-    if (options.expandRelations !== undefined) {
-      this._expansionState.expandRelations = !!options.expandRelations;
-    }
-    if (options.expandTeamAllocated !== undefined) {
-      this._expansionState.expandTeamAllocated = !!options.expandTeamAllocated;
-    }
-    if (previous !== this._expansionState.expandTeamAllocated) {
+  handleProjectSelectionChanged() {
+    applySelectionEffects(this, ProjectEvents.CHANGED, this.projects);
+  }
+
+  handleTeamSelectionChanged() {
+    applySelectionEffects(this, TeamEvents.CHANGED, this.teams);
+  }
+
+  handleExpansionChanged(previousTeamAllocation) {
+    if (previousTeamAllocation !== this.expansionState.expandTeamAllocated) {
       recomputeCapacityAndEmit(this, null, { onlyIfCalculated: true });
     }
   }
 
   applyViewSelectionRestore(payload = {}) {
-    if (payload.projectSelections) this.setProjectsSelectedBulk(payload.projectSelections);
-    if (payload.teamSelections) this.setTeamsSelectedBulk(payload.teamSelections);
+    if (payload.projectSelections) this._bindings.commands.setProjectsSelectedBulk(payload.projectSelections);
+    if (payload.teamSelections) this._bindings.commands.setTeamsSelectedBulk(payload.teamSelections);
     if (Array.isArray(payload.selectedStates)) this.setSelectedStates(payload.selectedStates);
     if (payload.resetTaskFilters) this.taskFilterService.resetFilters();
     else if (payload.taskFilters) this.taskFilterService.restoreFilters(payload.taskFilters);
@@ -835,7 +961,7 @@ class PlannerRuntime {
       this._bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: payload.selectedTaskTypes });
     }
     if (payload.expansion) {
-      this.setExpansionState(payload.expansion);
+      this._bindings.commands.setExpansionState(payload.expansion);
       if (payload.emitExpansionFilterChange) {
         this._bus.emit(FilterEvents.CHANGED, {
           expansion: {
@@ -854,64 +980,69 @@ class PlannerRuntime {
   }
 
   cloneScenario(sourceId, name) {
-    const scenario = this.scenarioManager.cloneScenario(sourceId, name);
-    this.scenarioEventService.syncScenariosFromManager();
-    this.scenarioEventService.emitScenarioList();
-    return scenario;
+    return this.buildScenarioClone(sourceId, name);
   }
 
   renameScenario(id, name) {
-    this.scenarioManager.renameScenario(id, name);
-    this.scenarioEventService.emitScenarioUpdated(id, { type: 'rename', name });
+    return this.normalizeScenarioName(id, name);
   }
 
   deleteScenario(id) {
-    const wasActive = id === this.activeScenarioId;
-    this.scenarioManager.deleteScenario(id);
-    this.scenarioEventService.setActiveScenarioId(this.scenarioManager.activeScenarioId);
-    this.scenarioEventService.syncScenariosFromManager();
-    this.scenarioEventService.emitScenarioUpdated(id, { type: 'delete' });
-    if (wasActive) this.scenarioEventService.emitScenarioActivated();
+    this.emitScenarioUpdated(id, { type: 'delete' });
     this.emitFeatureUpdated();
   }
 
   async saveScenario(id) {
-    const scenario = this.scenarioEventService.getScenarioById(id);
+    const scenario = this.getScenarioById(id);
     if (!scenario) return;
     const result = await this._dataService.saveScenario(selectScenarioSavePayload(scenario));
     if (!result?.ok) throw new Error(result?.error?.message || 'Failed to save scenario');
-    this.scenarioEventService.markScenarioSaved(id);
-    this.scenarioEventService.emitScenarioUpdated(id, { type: 'saved' });
+    return true;
   }
 
-  markActiveScenarioChanged() {
-    const activeScenario = this.getActiveWritableScenario();
+  markActiveScenarioChanged(activeScenario = this.getActiveWritableScenario()) {
     if (activeScenario) activeScenario.isChanged = true;
-    this.scenarioEventService.emitScenarioList();
+    this.emitScenarioList();
   }
 
   clearPendingGroupChanges() {
-    this.scenarioGroupService.clearPendingChanges();
+    this.mutateActiveScenario('scenario.group.clearPending.command', (scenario) => {
+      this.scenarioGroupService.clearPendingChanges(scenario);
+      return true;
+    });
   }
 
   confirmGroupCreate(tempId, realId) {
-    this.scenarioGroupService.confirmCreate(tempId, realId);
+    return this.mutateActiveScenario('scenario.group.confirmCreate.command', (scenario) => {
+      this.scenarioGroupService.confirmCreate(tempId, realId, scenario);
+      return true;
+    });
   }
 
   createGroupInScenario(planId, name, color = null, parentId = null) {
-    return this.scenarioGroupService.create(planId, name, color, parentId);
+    return this.mutateActiveScenario('scenario.group.create.command', (scenario) =>
+      this.scenarioGroupService.create(planId, name, color, parentId, scenario)
+    );
   }
 
   updateGroupInScenario(groupId, fields) {
-    return this.scenarioGroupService.update(groupId, fields);
+    return this.mutateActiveScenario('scenario.group.update.command', (scenario) =>
+      this.scenarioGroupService.update(groupId, fields, scenario)
+    );
   }
 
   deleteGroupInScenario(groupId) {
-    this.scenarioGroupService.delete(groupId);
+    return this.mutateActiveScenario('scenario.group.delete.command', (scenario) => {
+      this.scenarioGroupService.delete(groupId, scenario);
+      return true;
+    });
   }
 
   applyGroupMemberDelta(groupId, taskId, op) {
-    this.scenarioGroupService.applyMemberDelta(groupId, taskId, op);
+    return this.mutateActiveScenario('scenario.group.memberDelta.command', (scenario) => {
+      this.scenarioGroupService.applyMemberDelta(groupId, taskId, op, scenario);
+      return true;
+    });
   }
 
   async performAutosave({ logFailures = true } = {}) {
@@ -966,6 +1097,7 @@ class PlannerRuntime {
   }
 
   async destroy() {
+    this._unsubscribeScenariosChanged?.();
     this._unsubscribeScenariosData?.();
     this.configService.destroy();
   }

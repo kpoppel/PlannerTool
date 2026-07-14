@@ -48,7 +48,31 @@ describe('PlannerApi', () => {
       totalOrgDailyPerTeamAvg: [1],
     };
 
-    const api = createPlannerApi(state);
+    const commands = {
+      setProjectSelected: (...args) => calls.push(['project', args]),
+      setTeamSelected: (...args) => calls.push(['team', args]),
+      setProjectsSelectedBulk: (value) => calls.push(['projects', value]),
+      setTeamsSelectedBulk: (value) => calls.push(['teams', value]),
+      setExpansionState: (value) => calls.push(['expansion', value]),
+      activateScenario: (id) => calls.push(['activate', id]),
+      cloneScenario: (...args) => calls.push(['clone', args]),
+      renameScenario: (...args) => calls.push(['rename', args]),
+      deleteScenario: (id) => calls.push(['delete', id]),
+      saveScenario: (id) => calls.push(['save', id]),
+    };
+    const selectors = {
+      projects: () => state.projects,
+      teams: () => state.teams,
+      expandedFeatureIds: () => new Set(['f1']),
+      view: () => ({
+        expansion: {
+          parentChild: false,
+          relations: false,
+          teamAllocated: false,
+        },
+      }),
+    };
+    const api = createPlannerApi({ runtime: state, commands, selectors });
     api.features.updateDates([{ id: 'f1' }]);
     api.features.updateRelations('f1', [{ type: 'Related', id: 'f2' }]);
     api.selection.selectProject('p1', true);

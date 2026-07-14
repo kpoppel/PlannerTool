@@ -47,20 +47,18 @@ export class ScenarioGroupService {
     return operations;
   }
 
-  clearPendingChanges() {
-    const scenario = this._getActiveWritableScenario();
+  clearPendingChanges(scenario = this._getActiveWritableScenario()) {
     if (!scenario) return;
     scenario.scenarioGroups = [];
     scenario.groupOverrides = {};
   }
 
-  confirmCreate(tempId, realId) {
-    const group = this._getActiveScenario()?.scenarioGroups?.find((item) => item.id === tempId);
+  confirmCreate(tempId, realId, scenario = this._getActiveScenario()) {
+    const group = scenario?.scenarioGroups?.find((item) => item.id === tempId);
     if (group) group.id = realId;
   }
 
-  create(planId, name, color = null, parentId = null) {
-    const scenario = this._getActiveWritableScenario();
+  create(planId, name, color = null, parentId = null, scenario = this._getActiveWritableScenario()) {
     if (!scenario) return null;
 
     const now = this._now();
@@ -76,13 +74,12 @@ export class ScenarioGroupService {
 
     if (!scenario.scenarioGroups) scenario.scenarioGroups = [];
     scenario.scenarioGroups.push(group);
-    this._changed();
+    this._changed(scenario);
     this._emit({ op: 'created', group });
     return group;
   }
 
-  update(groupId, fields) {
-    const scenario = this._getActiveWritableScenario();
+  update(groupId, fields, scenario = this._getActiveWritableScenario()) {
     if (!scenario) return null;
 
     const localIndex = (scenario.scenarioGroups || []).findIndex(
@@ -94,7 +91,7 @@ export class ScenarioGroupService {
         ...fields,
       };
       const group = scenario.scenarioGroups[localIndex];
-      this._changed();
+      this._changed(scenario);
       this._emit({ op: 'updated', group });
       return group;
     }
@@ -105,13 +102,12 @@ export class ScenarioGroupService {
       ...fields,
     };
     scenario.groupOverrides[String(groupId)] = override;
-    this._changed();
+    this._changed(scenario);
     this._emit({ op: 'updated', groupId, fields });
     return override;
   }
 
-  delete(groupId) {
-    const scenario = this._getActiveWritableScenario();
+  delete(groupId, scenario = this._getActiveWritableScenario()) {
     if (!scenario) return;
 
     const localGroups = scenario.scenarioGroups || [];
@@ -119,7 +115,7 @@ export class ScenarioGroupService {
     const hasLocalGroup = localGroups.some((group) => removedIds.has(String(group.id)));
     if (hasLocalGroup) {
       scenario.scenarioGroups = localGroups.filter((group) => !removedIds.has(String(group.id)));
-      this._changed();
+      this._changed(scenario);
       this._emit({ op: 'deleted', groupId });
       return;
     }
@@ -129,12 +125,11 @@ export class ScenarioGroupService {
       ...(scenario.groupOverrides[String(groupId)] || {}),
       _deleted: true,
     };
-    this._changed();
+    this._changed(scenario);
     this._emit({ op: 'deleted', groupId });
   }
 
-  applyMemberDelta(groupId, taskId, op) {
-    const scenario = this._getActiveWritableScenario();
+  applyMemberDelta(groupId, taskId, op, scenario = this._getActiveWritableScenario()) {
     if (!scenario) return;
     if (!scenario.groupOverrides) scenario.groupOverrides = {};
 
@@ -144,7 +139,7 @@ export class ScenarioGroupService {
     );
     memberDeltas.push({ taskId: String(taskId), op });
     scenario.groupOverrides[String(groupId)] = { ...override, memberDeltas };
-    this._changed();
+    this._changed(scenario);
     this._emit({ op: 'memberDelta', groupId, taskId, delta: op });
   }
 
@@ -163,8 +158,8 @@ export class ScenarioGroupService {
     return ids;
   }
 
-  _changed() {
-    this._markChanged();
+  _changed(scenario) {
+    this._markChanged(scenario);
   }
 
   _emit(payload) {

@@ -177,14 +177,14 @@ describe('GroupService.addMemberToGroup', () => {
     const stateRef = {
       getActiveScenario: () => scenario,
       applyGroupMemberDelta: vi.fn(),
-      markGroupChanged: vi.fn(),
+      updateGroupInScenario: vi.fn(),
     };
 
     svc.addMemberToGroup('tmp_123', 'task-99', stateRef);
 
-    // The scenarioGroups entry should be updated
-    expect(scenario.scenarioGroups[0].members).toContain('task-99');
-    expect(stateRef.markGroupChanged).toHaveBeenCalledTimes(1);
+    expect(stateRef.updateGroupInScenario).toHaveBeenCalledWith('tmp_123', {
+      members: ['task-99'],
+    });
   });
 
   it('does not add duplicate members', async () => {
@@ -193,12 +193,12 @@ describe('GroupService.addMemberToGroup', () => {
 
     const sg = mkGroup('tmp_123', 'p1', 'Local', { members: ['task-99'] });
     const scenario = { id: 'scen-1', overrides: {}, groupOverrides: {}, scenarioGroups: [sg] };
-    const stateRef = { getActiveScenario: () => scenario, markGroupChanged: vi.fn() };
+    const stateRef = { getActiveScenario: () => scenario, updateGroupInScenario: vi.fn() };
 
     svc.addMemberToGroup('tmp_123', 'task-99', stateRef);
 
     expect(scenario.scenarioGroups[0].members).toHaveLength(1);
-    expect(stateRef.markGroupChanged).not.toHaveBeenCalled();
+    expect(stateRef.updateGroupInScenario).not.toHaveBeenCalled();
   });
 
   it('calls stateRef.applyGroupMemberDelta for baseline group', async () => {
@@ -232,12 +232,13 @@ describe('GroupService.removeMemberFromGroup', () => {
 
     const sg = mkGroup('tmp_123', 'p1', 'Local', { members: ['task-1', 'task-2'] });
     const scenario = { id: 'scen-1', overrides: {}, groupOverrides: {}, scenarioGroups: [sg] };
-    const stateRef = { getActiveScenario: () => scenario, markGroupChanged: vi.fn() };
+    const stateRef = { getActiveScenario: () => scenario, updateGroupInScenario: vi.fn() };
 
     svc.removeMemberFromGroup('tmp_123', 'task-1', stateRef);
 
-    expect(scenario.scenarioGroups[0].members).toEqual(['task-2']);
-    expect(stateRef.markGroupChanged).toHaveBeenCalledTimes(1);
+    expect(stateRef.updateGroupInScenario).toHaveBeenCalledWith('tmp_123', {
+      members: ['task-2'],
+    });
   });
 
   it('calls stateRef.applyGroupMemberDelta for baseline group removal', async () => {

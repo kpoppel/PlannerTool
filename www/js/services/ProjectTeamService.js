@@ -10,6 +10,11 @@ export class ProjectTeamService {
     this._bus = bus;
     this.projects = [];
     this.teams = [];
+    this._selection = null;
+  }
+
+  setSelectionProvider(selection) {
+    this._selection = selection;
   }
 
   /**
@@ -134,7 +139,12 @@ export class ProjectTeamService {
    * @returns {Array} - Working copy of projects
    */
   getProjects() {
-    return this.projects;
+    if (!this._selection) return this.projects;
+    const selectedIds = new Set(this._selection.getProjectIds());
+    return this.projects.map((project) => ({
+      ...project,
+      selected: selectedIds.has(project.id),
+    }));
   }
 
   /**
@@ -142,7 +152,12 @@ export class ProjectTeamService {
    * @returns {Array} - Working copy of teams
    */
   getTeams() {
-    return this.teams;
+    if (!this._selection) return this.teams;
+    const selectedIds = new Set(this._selection.getTeamIds());
+    return this.teams.map((team) => ({
+      ...team,
+      selected: selectedIds.has(team.id),
+    }));
   }
 
   /**
@@ -151,8 +166,12 @@ export class ProjectTeamService {
    */
   captureCurrentFilters() {
     return {
-      projects: this.getSelectedProjectIds(),
-      teams: this.getSelectedTeamIds(),
+      projects: this.getProjects()
+        .filter((project) => project.selected)
+        .map((project) => project.id),
+      teams: this.getTeams()
+        .filter((team) => team.selected)
+        .map((team) => team.id),
     };
   }
 
@@ -166,11 +185,12 @@ export class ProjectTeamService {
    * @returns {string} - Organization load percentage
    */
   computeFeatureOrgLoad(feature) {
-    const selectedTeamCount = this.teams.filter((t) => t.selected).length;
+    const teams = this.getTeams();
+    const selectedTeamCount = teams.filter((team) => team.selected).length;
     const numTeamsGlobal = selectedTeamCount === 0 ? 1 : selectedTeamCount;
     let sum = 0;
     for (const tl of feature.capacity || []) {
-      const t = this.teams.find((x) => x.id === tl.team && x.selected);
+      const t = teams.find((team) => team.id === tl.team && team.selected);
       if (!t) continue;
       sum += tl.capacity;
     }

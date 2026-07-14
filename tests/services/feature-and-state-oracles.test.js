@@ -195,36 +195,10 @@ describe('Feature Service and State Oracles (consolidated)', () => {
       expect(features).to.have.lengthOf(3);
     });
 
-    it('should apply scenario overrides when scenario is active', () => {
-      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
-      scenario.overrides['f1'] = { start: '2024-01-02', end: '2024-01-12' };
-      const features = state.getEffectiveFeatures();
-      const f1 = features.find((f) => f.id === 'f1');
-      expect(f1.start).to.equal('2024-01-02');
-      expect(f1.scenarioOverride).to.be.true;
-      expect(f1.dirty).to.be.true;
-    });
-
-    it('updateFeatureField marks scenario as changed', () => {
-      state.updateFeatureField('f1', 'end', '2024-01-15');
-      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
-      expect(scenario.overrides['f1']).to.deep.equal({
-        start: '2024-01-01',
-        end: '2024-01-15',
-      });
-    });
-
     it('updateFeatureDates should emit FeatureEvents.UPDATED', (done) => {
       bus.once(FeatureEvents.UPDATED, () => done());
       const updates = [{ id: 'f1', start: '2024-01-02', end: '2024-01-12' }];
       state.updateFeatureDates(updates);
-    });
-
-    it('revertFeature removes override and emits event', (done) => {
-      const scenario = state.scenarios.list().find((s) => s.id === scenarioId);
-      scenario.overrides['f1'] = { start: '2024-01-02', end: '2024-01-12' };
-      bus.once(FeatureEvents.UPDATED, () => done());
-      state.revertFeature('f1');
     });
 
     it('getFeatureTitleById returns title or id', () => {

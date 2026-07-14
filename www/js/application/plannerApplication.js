@@ -49,5 +49,9 @@ export const plannerApplication = createPlannerApplication({
     createPlannerCommands({ store, services, selectors }),
 });
 
-  export const applicationApi = createPlannerApi(plannerApplication.services.runtime);
+export const applicationApi = createPlannerApi({
+  runtime: plannerApplication.services.runtime,
+  commands: plannerApplication.commands,
+  selectors: plannerApplication.selectors,
+});
 

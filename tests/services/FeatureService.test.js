@@ -101,6 +101,19 @@ describe('FeatureService public methods', () => {
     expect(bus.emitted.length).to.be.greaterThan(0);
   });
 
+  it('updates an explicitly provided scenario draft', () => {
+    const draft = { overrides: {}, isChanged: false };
+
+    const updated = fs.updateFeatureField('f2', 'end', '2025-02-12', undefined, draft);
+
+    expect(updated).to.equal(true);
+    expect(draft.overrides.f2).to.deep.equal({
+      start: '2025-02-01',
+      end: '2025-02-12',
+    });
+    expect(activeScenario.overrides).to.deep.equal({});
+  });
+
   it('updateFeatureRelations stores a scenario override and emits', () => {
     const relations = [{ type: 'Related', id: 'f1' }];
 

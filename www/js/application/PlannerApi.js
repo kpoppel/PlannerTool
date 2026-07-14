@@ -44,8 +44,11 @@ function buildDefaultScenarioCloneName(scenarios = [], date = new Date()) {
   return `${mm}-${dd} Scenario ${maxN + 1}`;
 }
 
-export function createPlannerApi(state) {
+export function createPlannerApi({ runtime: state, commands, selectors }) {
   if (!state) throw new TypeError('PlannerApi requires an application state adapter');
+  if (!commands || !selectors) {
+    throw new TypeError('PlannerApi requires application commands and selectors');
+  }
 
   const api = {
     version: PLANNER_API_VERSION,
@@ -64,15 +67,22 @@ export function createPlannerApi(state) {
       passesTaskFilters: (feature) => state.taskFilterService.featurePassesFilters(feature),
     }),
     selection: Object.freeze({
-      getProjects: () => state.projects,
-      getTeams: () => state.teams,
-      selectProject: (id, selected) => state.setProjectSelected(id, selected),
-      selectTeam: (id, selected) => state.setTeamSelected(id, selected),
-      setProjects: (selections) => state.setProjectsSelectedBulk(selections),
-      setTeams: (selections) => state.setTeamsSelectedBulk(selections),
-      getExpandedFeatureIds: () => state.getExpandedFeatureIds(),
+      getProjects: () => selectors.projects(),
+      getTeams: () => selectors.teams(),
+      selectProject: (id, selected) => commands.setProjectSelected(id, selected),
+      selectTeam: (id, selected) => commands.setTeamSelected(id, selected),
+      setProjects: (selections) => commands.setProjectsSelectedBulk(selections),
+      setTeams: (selections) => commands.setTeamsSelectedBulk(selections),
+      getExpandedFeatureIds: () => selectors.expandedFeatureIds(),
       getChildrenByParent: () => state.childrenByParent,
-      getExpansionState: () => state.expansionState,
+      getExpansionState: () => {
+        const expansion = selectors.view().expansion;
+        return {
+          expandParentChild: !!expansion.parentChild,
+          expandRelations: !!expansion.relations,
+          expandTeamAllocated: !!expansion.teamAllocated,
+        };
+      },
     }),
     filters: Object.freeze({
       getFeatureStates: () => Array.from(state.selectedFeatureStateFilter || []),
@@ -109,7 +119,7 @@ export function createPlannerApi(state) {
       getHighlightFeatureRelationMode: () => state.highlightFeatureRelationMode,
       setCapacityMode: (mode) => state.setCapacityViewMode(mode),
       getHiddenTypes: () => Array.from(state.hiddenTypes || []),
-      setExpansion: (options) => state.setExpansionState(options),
+      setExpansion: (options) => commands.setExpansionState(options),
       setShowDependencies: (visible) => state.setShowDependencies(visible),
       getShowDependencies: () => state.showDependencies,
       getCondensedCards: () => state.condensedCards,
@@ -123,11 +133,11 @@ export function createPlannerApi(state) {
       getDefaultCloneName: (date = new Date()) =>
         buildDefaultScenarioCloneName(state.scenarios.list() || [], date),
       hasUnsavedChanges: (scenario) => state.isScenarioUnsaved(scenario),
-      activate: (id) => state.activateScenario(id),
-      clone: (sourceId, name) => state.cloneScenario(sourceId, name),
-      rename: (id, name) => state.renameScenario(id, name),
-      delete: (id) => state.deleteScenario(id),
-      save: (id) => state.saveScenario(id),
+      activate: (id) => commands.activateScenario(id),
+      clone: (sourceId, name) => commands.cloneScenario(sourceId, name),
+      rename: (id, name) => commands.renameScenario(id, name),
+      delete: (id) => commands.deleteScenario(id),
+      save: (id) => commands.saveScenario(id),
       refreshBaseline: () => state.refreshBaseline(),
       invalidateAndRefreshBaseline: () => state.invalidateAndRefreshBaseline(),
     }),
@@ -353,11 +363,11 @@ export function createPlannerApi(state) {
     captureCurrentView: () => state.captureCurrentView(),
     allCountsForProject: (projectId) => state.allCountsForProject(projectId),
     allCountsForTeam: (teamId) => state.allCountsForTeam(teamId),
-    setProjectSelected: (id, selected) => state.setProjectSelected(id, selected),
-    setTeamSelected: (id, selected) => state.setTeamSelected(id, selected),
-    setProjectsSelectedBulk: (selections) => state.setProjectsSelectedBulk(selections),
-    setTeamsSelectedBulk: (selections) => state.setTeamsSelectedBulk(selections),
-    setExpansionState: (options) => state.setExpansionState(options),
+    setProjectSelected: (id, selected) => commands.setProjectSelected(id, selected),
+    setTeamSelected: (id, selected) => commands.setTeamSelected(id, selected),
+    setProjectsSelectedBulk: (selections) => commands.setProjectsSelectedBulk(selections),
+    setTeamsSelectedBulk: (selections) => commands.setTeamsSelectedBulk(selections),
+    setExpansionState: (options) => commands.setExpansionState(options),
     setTypeVisibility: (type, visible, suppressEmit) =>
       state.setTypeVisibility(type, visible, suppressEmit),
     isTypeVisible: (type) => state.isTypeVisible(type),

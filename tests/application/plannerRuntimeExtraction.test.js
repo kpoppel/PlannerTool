@@ -244,7 +244,7 @@ describe('planner runtime extraction', () => {
     expect(state.baseline.features.map((feature) => feature.id)).to.deep.equal(['feature-b']);
   });
 
-  it('routes runtime mutations through command wrappers and syncs canonical state', async () => {
+  it('commits selection and expansion to canonical state', async () => {
     const runtime = createRuntime();
     const application = createPlannerApplication({
       createServices: () => ({ runtime }),
@@ -262,7 +262,40 @@ describe('planner runtime extraction', () => {
     expect(state.view.expansion.teamAllocated).to.equal(false);
   });
 
-  it('syncs feature and scenario changes via command wrappers', async () => {
+  it('does not mutate or resnapshot runtime selection and expansion state', async () => {
+    const runtime = createRuntime();
+    let projectEffects = 0;
+    let expansionEffects = 0;
+    runtime.setProjectSelected = () => {
+      throw new Error('selection must not mutate the runtime');
+    };
+    runtime.setExpansionState = () => {
+      throw new Error('expansion must not mutate the runtime');
+    };
+    runtime.handleProjectSelectionChanged = () => {
+      projectEffects += 1;
+    };
+    runtime.handleExpansionChanged = () => {
+      expansionEffects += 1;
+    };
+    const application = createPlannerApplication({
+      createServices: () => ({ runtime }),
+      createSelectors: ({ store }) => createPlannerSelectors({ store }),
+      createCommands: ({ store, services }) => createPlannerCommands({ store, services }),
+    });
+
+    await application.initialize();
+    const revisionBefore = application.store.revision;
+
+    application.commands.setProjectSelected('project-a', false);
+    application.commands.setExpansionState({ expandTeamAllocated: false });
+
+    expect(application.store.revision).to.equal(revisionBefore + 2);
+    expect(projectEffects).to.equal(1);
+    expect(expansionEffects).to.equal(1);
+  });
+
+  it('syncs scenario activation via command wrappers', async () => {
     const runtime = createRuntime();
     const application = createPlannerApplication({
       createServices: () => ({ runtime }),
@@ -272,19 +305,9 @@ describe('planner runtime extraction', () => {
 
     await application.initialize();
 
-    const relationsUpdated = application.commands.updateFeatureRelations('feature-root', []);
-    application.commands.updateFeatureField('feature-child', 'type', 'Story');
-    application.commands.setScenarioOverride('feature-child', '2026-02-01', '2026-02-03');
     application.commands.activateScenario('baseline');
 
     const state = application.getState();
-    expect(relationsUpdated).to.equal(true);
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-root')?.relations)
-      .to.deep.equal([]);
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.type)
-      .to.equal('Story');
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.start)
-      .to.equal('2026-02-01');
     expect(state.scenarios.activeId).to.equal('baseline');
   });
 
@@ -330,119 +353,6 @@ describe('planner runtime extraction', () => {
     const state = application.getState();
     expect(state.selection.projectIds).to.deep.equal([]);
     expect(state.view.expansion.teamAllocated).to.equal(false);
-  });
-
-  it('lets commands own feature-date capacity side-effect sequencing', async () => {
-    const runtime = createRuntime();
-    let capacitySideEffects = 0;
-
-    runtime._shouldRunFeatureDateCapacitySideEffects = (updates) =>
-      Array.isArray(updates) && updates.length > 0;
-
-    runtime._applyFeatureDateCapacitySideEffectsLegacy = () => {
-      capacitySideEffects += 1;
-    };
-
-    runtime._updateFeatureDatesLegacy = (updates, options = {}) => {
-      if (!Array.isArray(updates) || updates.length === 0) return 0;
-      const update = updates[0];
-      const feature = runtime.baselineFeatures.find((item) => item.id === update.id);
-      if (!feature) return 0;
-      feature.start = update.start;
-      feature.end = update.end;
-      if (options.emitCapacitySideEffects !== false) {
-        capacitySideEffects += 1;
-      }
-      return 1;
-    };
-
-    const application = createPlannerApplication({
-      createServices: () => ({ runtime }),
-      createSelectors: ({ store }) => createPlannerSelectors({ store }),
-      createCommands: ({ store, services }) => createPlannerCommands({ store, services }),
-    });
-
-    await application.initialize();
-
-    application.commands.updateFeatureDates([
-      { id: 'feature-child', start: '2026-04-01', end: '2026-04-03' },
-    ]);
-
-    const state = application.getState();
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.start)
-      .to.equal('2026-04-01');
-    expect(capacitySideEffects).to.equal(1);
-  });
-
-  it('lets commands own feature-field and revert side-effect sequencing', async () => {
-    const runtime = createRuntime();
-    let capacitySideEffects = 0;
-    let scenarioSideEffects = 0;
-
-    runtime._shouldRunFeatureFieldCapacitySideEffects = (field, updated) =>
-      !!updated && (field === 'start' || field === 'end' || field === 'capacity');
-
-    runtime._applyFeatureFieldCapacitySideEffectsLegacy = () => {
-      capacitySideEffects += 1;
-    };
-
-    runtime._emitFeatureFieldScenarioSideEffectsLegacy = () => {
-      scenarioSideEffects += 1;
-    };
-
-    runtime._updateFeatureFieldLegacy = (id, field, value, options = {}) => {
-      const feature = runtime.baselineFeatures.find((item) => item.id === id);
-      if (!feature) return false;
-      feature[field] = value;
-      if (options.emitCapacitySideEffects !== false && (field === 'start' || field === 'end')) {
-        capacitySideEffects += 1;
-      }
-      if (options.emitScenarioSideEffects !== false) {
-        scenarioSideEffects += 1;
-      }
-      return true;
-    };
-
-    runtime._shouldRunFeatureRevertCapacitySideEffects = (reverted) => !!reverted;
-
-    runtime._applyFeatureRevertCapacitySideEffectsLegacy = () => {
-      capacitySideEffects += 1;
-    };
-
-    runtime._emitFeatureRevertScenarioSideEffectsLegacy = () => {
-      scenarioSideEffects += 1;
-    };
-
-    runtime._revertFeatureLegacy = (id, options = {}) => {
-      const feature = runtime.baselineFeatures.find((item) => item.id === id);
-      if (!feature) return false;
-      feature.start = undefined;
-      feature.end = undefined;
-      if (options.emitCapacitySideEffects !== false) {
-        capacitySideEffects += 1;
-      }
-      if (options.emitScenarioSideEffects !== false) {
-        scenarioSideEffects += 1;
-      }
-      return true;
-    };
-
-    const application = createPlannerApplication({
-      createServices: () => ({ runtime }),
-      createSelectors: ({ store }) => createPlannerSelectors({ store }),
-      createCommands: ({ store, services }) => createPlannerCommands({ store, services }),
-    });
-
-    await application.initialize();
-
-    application.commands.updateFeatureField('feature-child', 'start', '2026-05-01');
-    application.commands.revertFeature('feature-child');
-
-    const state = application.getState();
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.start)
-      .to.equal(undefined);
-    expect(capacitySideEffects).to.equal(2);
-    expect(scenarioSideEffects).to.equal(2);
   });
 
   it('lets commands own autosave failure logging sequencing', async () => {
@@ -702,33 +612,4 @@ describe('planner runtime extraction', () => {
     expect(state.scenarios.items.some((item) => item.id === 'scenario-a')).to.equal(false);
   });
 
-  it('keeps command-first feature commits when runtime feature mutators no-op', async () => {
-    const runtime = createRuntime();
-    runtime.updateFeatureField = () => {};
-    runtime.updateFeatureRelations = () => true;
-    runtime.revertFeature = () => {};
-    runtime.setScenarioOverride = () => {};
-
-    const application = createPlannerApplication({
-      createServices: () => ({ runtime }),
-      createSelectors: ({ store }) => createPlannerSelectors({ store }),
-      createCommands: ({ store, services }) => createPlannerCommands({ store, services }),
-    });
-
-    await application.initialize();
-
-    application.commands.updateFeatureField('feature-child', 'type', 'Story');
-    const relationsUpdated = application.commands.updateFeatureRelations('feature-root', []);
-    application.commands.setScenarioOverride('feature-child', '2026-03-01', '2026-03-03');
-    application.commands.revertFeature('feature-child');
-
-    const state = application.getState();
-    expect(relationsUpdated).to.equal(true);
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.type)
-      .to.equal('Story');
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-root')?.relations)
-      .to.deep.equal([]);
-    expect(state.baseline.features.find((feature) => feature.id === 'feature-child')?.start)
-      .to.equal(undefined);
-  });
 });

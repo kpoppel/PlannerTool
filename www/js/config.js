@@ -21,9 +21,6 @@ export const featureFlags = {
 
   serviceInstrumentation: false,
 
-  // Enable the experimental queued/idle processing FeatureService
-  USE_QUEUED_FEATURE_SERVICE: false,
-
   // Epic capacity handling/cost calculation modes:
   // false: 'ignoreIfHasChildren' - Ignore parent capacity entirely if it has any children
   // true: 'teamAwareChildPrecedence' - Children take full precedence for their team only.

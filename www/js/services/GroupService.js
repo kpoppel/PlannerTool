@@ -144,10 +144,11 @@ export class GroupService {
     );
     if (sgIdx !== -1) {
       const sg = scenario.scenarioGroups[sgIdx];
-      if (!Array.isArray(sg.members)) sg.members = [];
-      if (!sg.members.includes(String(taskId))) {
-        sg.members = [...sg.members, String(taskId)];
-        stateRef.markGroupChanged?.();
+      const members = Array.isArray(sg.members) ? sg.members : [];
+      if (!members.includes(String(taskId))) {
+        stateRef.updateGroupInScenario?.(String(groupId), {
+          members: [...members, String(taskId)],
+        });
       }
       bus.emit(GroupEvents.CHANGED, { op: 'memberAdded', groupId, taskId });
       return;
@@ -187,8 +188,9 @@ export class GroupService {
     );
     if (sgIdx !== -1) {
       const sg = scenario.scenarioGroups[sgIdx];
-      sg.members = (sg.members || []).filter((m) => String(m) !== String(taskId));
-      stateRef.markGroupChanged?.();
+      stateRef.updateGroupInScenario?.(String(groupId), {
+        members: (sg.members || []).filter((m) => String(m) !== String(taskId)),
+      });
       bus.emit(GroupEvents.CHANGED, { op: 'memberRemoved', groupId, taskId });
       return;
     }

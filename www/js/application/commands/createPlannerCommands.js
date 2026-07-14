@@ -15,10 +15,10 @@ function asObject(value) {
  * - initialize: state idempotent, IO guarded (depends on service init ordering)
  * - destroy: strong idempotent
  */
-export function createPlannerCommands({ store, services }) {
+export function createPlannerCommands({ store, services, selectors }) {
   function updateSelectionIds(label, key, selections) {
     const safeSelections = asObject(selections);
-    store.update(label, (draft) => {
+    return store.update(label, (draft) => {
       const next = new Set(asArray(draft.selection[key]));
       for (const [id, selected] of Object.entries(safeSelections)) {
         if (selected) next.add(id);
@@ -29,25 +29,11 @@ export function createPlannerCommands({ store, services }) {
   }
 
   function updateScenarioItems(label, mutateItems, finalizeDraft) {
-    store.update(label, (draft) => {
+    return store.update(label, (draft) => {
       const nextItems = mutateItems(asArray(draft.scenarios.items));
       draft.scenarios.items = nextItems;
       finalizeDraft?.(draft, nextItems);
     });
-  }
-
-  function updateFeatureItems(label, mutateFeature) {
-    let updated = false;
-    store.update(label, (draft) => {
-      draft.baseline.features = asArray(draft.baseline.features).map((feature) => {
-        if (!feature?.id) return feature;
-        const nextFeature = mutateFeature(feature);
-        if (nextFeature === feature) return feature;
-        updated = true;
-        return nextFeature;
-      });
-    });
-    return updated;
   }
 
   function runRuntimeMutation(label, applyMutation, syncOptions = {}) {
@@ -71,24 +57,24 @@ export function createPlannerCommands({ store, services }) {
   }
 
   function commitSelectionProject(id, selected) {
-    updateSelectionIds('selection.project.command', 'projectIds', { [id]: !!selected });
+    return updateSelectionIds('selection.project.command', 'projectIds', { [id]: !!selected });
   }
 
   function commitSelectionTeam(id, selected) {
-    updateSelectionIds('selection.team.command', 'teamIds', { [id]: !!selected });
+    return updateSelectionIds('selection.team.command', 'teamIds', { [id]: !!selected });
   }
 
   function commitSelectionProjectBulk(selections) {
-    updateSelectionIds('selection.project.bulk.command', 'projectIds', selections);
+    return updateSelectionIds('selection.project.bulk.command', 'projectIds', selections);
   }
 
   function commitSelectionTeamBulk(selections) {
-    updateSelectionIds('selection.team.bulk.command', 'teamIds', selections);
+    return updateSelectionIds('selection.team.bulk.command', 'teamIds', selections);
   }
 
   function commitExpansion(options) {
     const safeOptions = asObject(options);
-    store.update('view.expansion.command', (draft) => {
+    return store.update('view.expansion.command', (draft) => {
       if (safeOptions.expandParentChild !== undefined) {
         draft.view.expansion.parentChild = !!safeOptions.expandParentChild;
       }
@@ -102,18 +88,19 @@ export function createPlannerCommands({ store, services }) {
   }
 
   function commitActiveScenario(id) {
-    store.update('scenario.activate.command', (draft) => {
+    return store.update('scenario.activate.command', (draft) => {
       draft.scenarios.activeId = id || null;
     });
   }
 
   function commitRenameScenario(id, newName) {
-    updateScenarioItems('scenario.rename.command', (items) =>
+    return updateScenarioItems('scenario.rename.command', (items) =>
       items.map((scenario) =>
         scenario?.id === id
           ? {
               ...scenario,
               name: newName,
+              isChanged: true,
             }
           : scenario
       )
@@ -121,19 +108,19 @@ export function createPlannerCommands({ store, services }) {
   }
 
   function commitDeleteScenario(id) {
-    updateScenarioItems(
+    return updateScenarioItems(
       'scenario.delete.command',
-      (items) => items.filter((scenario) => scenario?.id !== id),
-      (draft, nextItems) => {
+      (items) => items.filter((scenario) => scenario?.id !== id || scenario?.readonly),
+      (draft) => {
         if (draft.scenarios.activeId === id) {
-          draft.scenarios.activeId = nextItems[0]?.id || null;
+          draft.scenarios.activeId = draft.scenarios.items.find((scenario) => scenario?.readonly)?.id || null;
         }
       }
     );
   }
 
   function commitSavedScenario(id) {
-    updateScenarioItems('scenario.save.command', (items) =>
+    return updateScenarioItems('scenario.save.command', (items) =>
       items.map((scenario) =>
         scenario?.id === id
           ? {
@@ -142,52 +129,6 @@ export function createPlannerCommands({ store, services }) {
             }
           : scenario
       )
-    );
-  }
-
-  function commitFeatureField(id, field, value) {
-    updateFeatureItems('feature.field.command', (feature) =>
-      feature?.id === id
-        ? {
-            ...feature,
-            [field]: value,
-          }
-        : feature
-    );
-  }
-
-  function commitFeatureRelations(id, relations) {
-    return updateFeatureItems('feature.relations.command', (feature) =>
-      feature?.id === id
-        ? {
-            ...feature,
-            relations,
-          }
-        : feature
-    );
-  }
-
-  function commitFeatureRevert(id) {
-    updateFeatureItems('feature.revert.command', (feature) =>
-      feature?.id === id
-        ? {
-            ...feature,
-            start: undefined,
-            end: undefined,
-          }
-        : feature
-    );
-  }
-
-  function commitScenarioOverride(featureId, start, end) {
-    updateFeatureItems('scenario.override.command', (feature) =>
-      feature?.id === featureId
-        ? {
-            ...feature,
-            start,
-            end,
-          }
-        : feature
     );
   }
 
@@ -204,6 +145,19 @@ export function createPlannerCommands({ store, services }) {
       const runtime = services?.runtime;
       if (!runtime) return;
       syncRuntimeSnapshot(store, runtime, 'runtime.syncFromLegacyState');
+    },
+
+    hydrateScenarioData(items) {
+      const runtime = services?.runtime;
+      if (!runtime) return;
+      const next = runtime.prepareScenarioHydration(items);
+      store.update('scenario.remoteData.command', (draft) => {
+        draft.scenarios.items = asArray(next.items);
+        draft.scenarios.activeId = next.activeId || null;
+      });
+      runtime.emitScenarioList();
+      runtime.emitScenarioActivated();
+      runtime.emitFeatureUpdated([]);
     },
 
     async performAutosaveTick() {
@@ -257,38 +211,34 @@ export function createPlannerCommands({ store, services }) {
     },
 
     setProjectSelected(id, selected) {
-      commitSelectionProject(id, !!selected);
-      runRuntimeMutation('runtime.setProjectSelected', (runtime) => {
-        runtime.setProjectSelected?.(id, selected);
-      }, { preserveSelection: true });
+      if (commitSelectionProject(id, !!selected)) {
+        services?.runtime?.handleProjectSelectionChanged?.();
+      }
     },
 
     setTeamSelected(id, selected) {
-      commitSelectionTeam(id, !!selected);
-      runRuntimeMutation('runtime.setTeamSelected', (runtime) => {
-        runtime.setTeamSelected?.(id, selected);
-      }, { preserveSelection: true });
+      if (commitSelectionTeam(id, !!selected)) {
+        services?.runtime?.handleTeamSelectionChanged?.();
+      }
     },
 
     setProjectsSelectedBulk(selections) {
-      commitSelectionProjectBulk(selections);
-      runRuntimeMutation('runtime.setProjectsSelectedBulk', (runtime) => {
-        runtime.setProjectsSelectedBulk?.(selections);
-      }, { preserveSelection: true });
+      if (commitSelectionProjectBulk(selections)) {
+        services?.runtime?.handleProjectSelectionChanged?.();
+      }
     },
 
     setTeamsSelectedBulk(selections) {
-      commitSelectionTeamBulk(selections);
-      runRuntimeMutation('runtime.setTeamsSelectedBulk', (runtime) => {
-        runtime.setTeamsSelectedBulk?.(selections);
-      }, { preserveSelection: true });
+      if (commitSelectionTeamBulk(selections)) {
+        services?.runtime?.handleTeamSelectionChanged?.();
+      }
     },
 
     setExpansionState(options) {
-      commitExpansion(options);
-      runRuntimeMutation('runtime.setExpansionState', (runtime) => {
-        runtime.setExpansionState?.(options);
-      }, { preserveExpansion: true, preserveSelection: true });
+      const previousTeamAllocation = !!store.getState().view.expansion.teamAllocated;
+      if (commitExpansion(options)) {
+        services?.runtime?.handleExpansionChanged?.(previousTeamAllocation);
+      }
     },
 
     setSidebarDisabledElements: createRuntimeDelegate(
@@ -368,142 +318,85 @@ export function createPlannerCommands({ store, services }) {
       'setHighlightFeatureRelationMode'
     ),
 
-    clearPendingGroupChanges: createRuntimeDelegate(
-      'runtime.clearPendingGroupChanges',
-      'clearPendingGroupChanges'
-    ),
+    clearPendingGroupChanges() {
+      return services?.runtime?.clearPendingGroupChanges?.();
+    },
 
-    confirmGroupCreate: createRuntimeDelegate('runtime.confirmGroupCreate', 'confirmGroupCreate'),
+    confirmGroupCreate(tempId, realId) {
+      return services?.runtime?.confirmGroupCreate?.(tempId, realId);
+    },
 
-    createGroupInScenario: createRuntimeDelegate(
-      'runtime.createGroupInScenario',
-      'createGroupInScenario'
-    ),
+    createGroupInScenario(planId, name, color = null, parentId = null) {
+      return services?.runtime?.createGroupInScenario?.(planId, name, color, parentId) || null;
+    },
 
-    updateGroupInScenario: createRuntimeDelegate(
-      'runtime.updateGroupInScenario',
-      'updateGroupInScenario'
-    ),
+    updateGroupInScenario(groupId, fields) {
+      return services?.runtime?.updateGroupInScenario?.(groupId, fields) || null;
+    },
 
-    deleteGroupInScenario: createRuntimeDelegate(
-      'runtime.deleteGroupInScenario',
-      'deleteGroupInScenario'
-    ),
+    deleteGroupInScenario(groupId) {
+      return services?.runtime?.deleteGroupInScenario?.(groupId);
+    },
 
-    applyGroupMemberDelta: createRuntimeDelegate(
-      'runtime.applyGroupMemberDelta',
-      'applyGroupMemberDelta'
-    ),
-
-    markGroupChanged: createRuntimeDelegate('runtime.markGroupChanged', 'markGroupChanged'),
+    applyGroupMemberDelta(groupId, taskId, op) {
+      return services?.runtime?.applyGroupMemberDelta?.(groupId, taskId, op);
+    },
 
     updateFeatureDates(updates) {
-      runRuntimeMutation('runtime.updateFeatureDates', (runtime) => {
-        if (typeof runtime._updateFeatureDatesLegacy === 'function') {
-          runtime._updateFeatureDatesLegacy(updates, {
-            emitCapacitySideEffects: false,
-          });
-          if (runtime._shouldRunFeatureDateCapacitySideEffects?.(updates)) {
-            runtime._applyFeatureDateCapacitySideEffectsLegacy?.(updates);
-          }
-          return;
-        }
-        runtime.updateFeatureDates?.(updates);
-      });
+      return services?.runtime?.updateFeatureDates?.(updates) || 0;
     },
 
     updateFeatureField(id, field, value) {
-      commitFeatureField(id, field, value);
-      runRuntimeMutation('runtime.updateFeatureField', (runtime) => {
-        if (typeof runtime._updateFeatureFieldLegacy === 'function') {
-          const updated = runtime._updateFeatureFieldLegacy(id, field, value, {
-            emitCapacitySideEffects: false,
-            emitScenarioSideEffects: false,
-          });
-          if (
-            updated !== false &&
-            runtime._shouldRunFeatureFieldCapacitySideEffects?.(field, updated)
-          ) {
-            runtime._applyFeatureFieldCapacitySideEffectsLegacy?.(id);
-          }
-          if (updated !== false) {
-            runtime._emitFeatureFieldScenarioSideEffectsLegacy?.(id, field);
-          }
-          return;
-        }
-        runtime.updateFeatureField?.(id, field, value);
-      }, { preserveBaselineFeatures: true });
+      return services?.runtime?.updateFeatureField?.(id, field, value) || false;
     },
 
     updateFeatureRelations(id, relations) {
-      const updated = commitFeatureRelations(id, relations);
-      if (!updated) return false;
-      return runRuntimeMutation('runtime.updateFeatureRelations', (runtime) => {
-        if (typeof runtime._updateFeatureRelationsLegacy === 'function') {
-          return !!runtime._updateFeatureRelationsLegacy(id, relations);
-        }
-        return !!runtime.updateFeatureRelations?.(id, relations);
-      }, { preserveBaselineFeatures: true });
+      return services?.runtime?.updateFeatureRelations?.(id, relations) || false;
     },
 
     revertFeature(id) {
-      commitFeatureRevert(id);
-      runRuntimeMutation('runtime.revertFeature', (runtime) => {
-        if (typeof runtime._revertFeatureLegacy === 'function') {
-          const reverted = runtime._revertFeatureLegacy(id, {
-            emitCapacitySideEffects: false,
-            emitScenarioSideEffects: false,
-          });
-          if (
-            reverted !== false &&
-            runtime._shouldRunFeatureRevertCapacitySideEffects?.(reverted)
-          ) {
-            runtime._applyFeatureRevertCapacitySideEffectsLegacy?.(id);
-          }
-          if (reverted !== false) {
-            runtime._emitFeatureRevertScenarioSideEffectsLegacy?.(id);
-          }
-          return;
-        }
-        runtime.revertFeature?.(id);
-      }, { preserveBaselineFeatures: true });
+      return services?.runtime?.revertFeature?.(id) || false;
     },
 
     activateScenario(id) {
-      commitActiveScenario(id);
-      runRuntimeMutation('runtime.activateScenario', (runtime) => {
-        runtime.activateScenario?.(id);
-      }, { preserveScenarios: true });
+      if (!commitActiveScenario(id)) return false;
+      services?.runtime?.activateScenario?.(id);
+      return true;
     },
 
     setScenarioOverride(featureId, start, end) {
-      commitScenarioOverride(featureId, start, end);
-      runRuntimeMutation('runtime.setScenarioOverride', (runtime) => {
-        runtime.setScenarioOverride?.(featureId, start, end);
-      }, { preserveBaselineFeatures: true });
+      return services?.runtime?.setScenarioOverride?.(featureId, start, end) || false;
     },
 
-    cloneScenario: createRuntimeDelegate('runtime.cloneScenario', 'cloneScenario'),
+    cloneScenario(sourceId, name) {
+      const scenario = services?.runtime?.cloneScenario?.(sourceId, name);
+      if (!scenario) return null;
+      updateScenarioItems('scenario.clone.command', (items) => [...items, scenario]);
+      services?.runtime?.emitScenarioUpdated?.(scenario.id, { type: 'clone', from: sourceId });
+      return scenario;
+    },
 
     renameScenario(id, newName) {
-      commitRenameScenario(id, newName);
-      runRuntimeMutation('runtime.renameScenario', (runtime) => {
-        runtime.renameScenario?.(id, newName);
-      }, { preserveScenarios: true });
+      const normalized = services?.runtime?.renameScenario?.(id, newName) ?? newName;
+      if (!commitRenameScenario(id, normalized)) return false;
+      services?.runtime?.emitScenarioUpdated?.(id, { type: 'rename', name: normalized });
+      return true;
     },
 
     deleteScenario(id) {
-      commitDeleteScenario(id);
-      runRuntimeMutation('runtime.deleteScenario', (runtime) => {
-        runtime.deleteScenario?.(id);
-      }, { preserveScenarios: true });
+      const wasActive = selectors?.scenarios?.().activeId === id;
+      if (!commitDeleteScenario(id)) return false;
+      services?.runtime?.deleteScenario?.(id);
+      if (wasActive) services?.runtime?.emitScenarioActivated?.();
+      return true;
     },
 
     async saveScenario(id) {
+      const saved = await services?.runtime?.saveScenario?.(id);
+      if (!saved) return saved;
       commitSavedScenario(id);
-      return runRuntimeMutationAsync('runtime.saveScenario', async (runtime) => {
-        return runtime.saveScenario?.(id);
-      }, { preserveScenarios: true });
+      services?.runtime?.emitScenarioUpdated?.(id, { type: 'saved' });
+      return saved;
     },
   };
 }

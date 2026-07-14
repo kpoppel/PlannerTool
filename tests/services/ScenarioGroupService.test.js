@@ -13,9 +13,9 @@ function createHarness(scenario = null) {
     bus,
     getActiveScenario: () => scenario,
     getActiveWritableScenario: () => (scenario?.readonly ? null : scenario),
-    markChanged: () => {
+    markChanged: (targetScenario = scenario) => {
       changed += 1;
-      scenario.isChanged = true;
+      if (targetScenario) targetScenario.isChanged = true;
     },
     now: () => 100,
     random: () => 0.5,
@@ -121,6 +121,24 @@ describe('ScenarioGroupService', () => {
         groupOverrides: {},
       });
       expect(harness.events).to.deep.equal([]);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  it('can mutate an explicitly provided scenario draft', () => {
+    const scenario = { id: 's1', scenarioGroups: [], groupOverrides: {}, isChanged: false };
+    const harness = createHarness();
+
+    try {
+      const created = harness.service.create('p1', 'Local', '#fff', null, scenario);
+      harness.service.applyMemberDelta('baseline-1', 'task-1', 'add', scenario);
+
+      expect(created.id).to.equal('tmp_100_i');
+      expect(scenario.isChanged).to.equal(true);
+      expect(scenario.groupOverrides['baseline-1']).to.deep.equal({
+        memberDeltas: [{ taskId: 'task-1', op: 'add' }],
+      });
     } finally {
       harness.dispose();
     }

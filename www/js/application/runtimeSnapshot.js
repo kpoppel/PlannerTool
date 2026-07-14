@@ -128,33 +128,20 @@ export function buildRuntimeSnapshot(runtime) {
 }
 
 export function publishRuntimeSnapshot(store, snapshot, label, options = {}) {
-  const preserveSelection = !!options.preserveSelection;
-  const preserveExpansion = !!options.preserveExpansion;
-  const preserveScenarios = !!options.preserveScenarios;
-  const preserveBaselineFeatures = !!options.preserveBaselineFeatures;
-
   store.update(label, (draft) => {
     draft.baseline.revision += 1;
     draft.baseline.projects = snapshot.baseline.projects;
     draft.baseline.teams = snapshot.baseline.teams;
-    if (!preserveBaselineFeatures) {
-      draft.baseline.features = snapshot.baseline.features;
-    }
+    draft.baseline.features = snapshot.baseline.features;
     draft.baseline.iterationsByProject = snapshot.baseline.iterationsByProject;
 
-    if (!preserveScenarios) {
-      draft.scenarios = snapshot.scenarios;
-    }
-    if (!preserveSelection) {
-      draft.selection = { ...draft.selection, ...snapshot.selection };
-    }
+    draft.scenarios = snapshot.scenarios;
+    draft.selection = { ...draft.selection, ...snapshot.selection };
 
     draft.view.activeId = snapshot.view.activeId;
     draft.view.saved = snapshot.view.saved;
     draft.view.options = snapshot.view.options;
-    if (!preserveExpansion) {
-      draft.view.expansion = snapshot.view.expansion;
-    }
+    draft.view.expansion = snapshot.view.expansion;
 
     draft.capacity = snapshot.capacity;
   });

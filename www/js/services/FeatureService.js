@@ -8,7 +8,6 @@ import { featureFlags } from '../config.js';
 export class FeatureService {
   constructor(baselineStore, getActiveScenarioFn) {
     this._baselineStore = baselineStore;
-    // getActiveScenarioFn can be either a function or a ScenarioManager instance
     if (typeof getActiveScenarioFn === 'function') {
       this._getActiveScenario = getActiveScenarioFn;
     } else if (
@@ -208,8 +207,8 @@ export class FeatureService {
    * Update feature dates (batch operation with epic-child constraints)
    * Returns updated count
    */
-  updateFeatureDates(updates, capacityCallback) {
-    const activeScenario = this._getActiveScenario();
+  updateFeatureDates(updates, capacityCallback, scenario = this._getActiveScenario()) {
+    const activeScenario = scenario;
 
     if (!activeScenario) return 0;
     if (!Array.isArray(updates) || updates.length === 0) return 0;
@@ -370,8 +369,14 @@ export class FeatureService {
   /**
    * Update a single feature field (scenario override)
    */
-  updateFeatureField(id, field, value, capacityCallback) {
-    const activeScenario = this._getActiveScenario();
+  updateFeatureField(
+    id,
+    field,
+    value,
+    capacityCallback,
+    scenario = this._getActiveScenario()
+  ) {
+    const activeScenario = scenario;
     if (!activeScenario) return false;
 
     const baselineFeatures = this._baselineStore.getFeatures();
@@ -465,12 +470,12 @@ export class FeatureService {
    * @param {Array<object>} relations
    * @returns {boolean}
    */
-  updateFeatureRelations(id, relations) {
+  updateFeatureRelations(id, relations, scenario = this._getActiveScenario()) {
     if (!Array.isArray(relations)) {
       throw new TypeError('Feature relations must be an array');
     }
 
-    const activeScenario = this._getActiveScenario();
+    const activeScenario = scenario;
     if (!activeScenario) return false;
 
     const baselineFeatures = this._baselineStore.getFeatures();
@@ -489,8 +494,8 @@ export class FeatureService {
   /**
    * Revert feature to baseline (remove scenario override)
    */
-  revertFeature(id, capacityCallback) {
-    const activeScenario = this._getActiveScenario();
+  revertFeature(id, capacityCallback, scenario = this._getActiveScenario()) {
+    const activeScenario = scenario;
     if (!activeScenario) return false;
 
     if (activeScenario.overrides[id]) {
