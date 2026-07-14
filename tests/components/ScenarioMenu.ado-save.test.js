@@ -18,20 +18,6 @@ const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = v
   mockOpenAzureDevopsModal: vi.fn(),
 }));
 
-vi.mock('../../www/js/services/State.js', () => ({
-  state: {
-    getScenarios: () => [],
-    scenarios: { list: () => [] },
-    groups: { publishBaseline: mockPublishBaseline },
-    refreshBaseline: mockRefreshBaseline,
-    getPendingGroupChanges: vi.fn(() => []),
-    clearPendingGroupChanges: vi.fn(),
-    confirmGroupCreate: vi.fn(),
-    saveScenario: vi.fn().mockResolvedValue(undefined),
-    activeScenarioId: null,
-  },
-}));
-
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     publishBaseline: mockPublishBaseline,
@@ -59,14 +45,45 @@ vi.mock('../../www/js/services/GroupService.js', () => ({
   },
 }));
 
+vi.mock('../../www/js/application/plannerApplication.js', () => ({
+  applicationApi: {
+    scenarios: {
+      list: () => [],
+      getActive: () => null,
+      activate: vi.fn(),
+      clone: vi.fn(),
+      delete: vi.fn(),
+      getDefaultCloneName: () => '07-14 Scenario 1',
+      hasUnsavedChanges: () => false,
+      invalidateAndRefreshBaseline: vi.fn(),
+      refreshBaseline: mockRefreshBaseline,
+      rename: vi.fn(),
+      save: vi.fn().mockResolvedValue(undefined),
+    },
+    groups: {
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      getPendingChanges: () => [],
+      clearPendingChanges: vi.fn(),
+      confirmCreate: vi.fn(),
+      publishBaseline: mockPublishBaseline,
+    },
+  },
+}));
+
 vi.mock('../../www/js/core/EventBus.js', () => ({
   bus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
 }));
 
-vi.mock('../../www/js/core/EventRegistry.js', () => ({
-  ScenarioEvents: { UPDATED: 'scenario:updated', ACTIVATED: 'scenario:activated' },
-  DataEvents: { SCENARIOS_CHANGED: 'data:scenarios_changed' },
-}));
+vi.mock('../../www/js/core/EventRegistry.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ScenarioEvents: { ...actual.ScenarioEvents, UPDATED: 'scenario:updated', ACTIVATED: 'scenario:activated' },
+    DataEvents: { ...actual.DataEvents, SCENARIOS_CHANGED: 'data:scenarios_changed' },
+  };
+});
 
 // Minimal Lit stub so the component class can be imported without a real browser
 vi.mock('../../www/js/vendor/lit.js', () => ({
@@ -119,6 +136,8 @@ describe('ScenarioMenu._onSaveToAzure', () => {
 
     expect(mockPublishBaseline).toHaveBeenCalledOnce();
     expect(mockRefreshBaseline).toHaveBeenCalledOnce();
+    expect(mockOpenAzureDevopsModal.mock.calls[0][0].api).toBeTypeOf('object');
+    expect(mockOpenAzureDevopsModal.mock.calls[0][0].state).toBeUndefined();
   });
 
   it('does NOT call state.refreshBaseline() when user cancels the modal', async () => {

@@ -1,17 +1,16 @@
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
 import { createPlannerApplication } from './createPlannerApplication.js';
 import { createPlannerApi } from './PlannerApi.js';
+import { createPlannerSelectors } from './selectors/createPlannerSelectors.js';
+import { createPlannerCommands } from './commands/createPlannerCommands.js';
+import { createPlannerRuntimeServices } from './createPlannerRuntimeServices.js';
 
 /**
  * Browser application composition root.
  *
- * `State` is the current implementation of the composed runtime service. It
- * is intentionally imported only here; runtime consumers obtain either the
- * versioned `applicationApi` or the composed `applicationRuntime` service.
+ * Runtime collaborators are explicitly composed here. Consumers obtain the
+ * versioned `applicationApi`; they do not import service implementations.
  */
-export const applicationApi = createPlannerApi(state);
-
 export const plannerApplication = createPlannerApplication({
   eventBus: bus,
   adapters: {
@@ -33,20 +32,22 @@ export const plannerApplication = createPlannerApplication({
       },
     },
   },
-  createServices: ({ adapters }) => ({
-    runtime: state,
-    initialize: () => {
-      state.setEnvironmentAdapters({
-        viewLayout: adapters.viewLayout,
-        viewManagement: adapters.viewManagement,
-      });
-      return state.init();
-    },
-  }),
+  createServices: ({ eventBus, adapters, store }) => {
+    const runtimeServices = createPlannerRuntimeServices({
+      eventBus,
+      adapters,
+      store,
+    });
+    return {
+      ...runtimeServices,
+      initialize: () => runtimeServices.runtime.initialize(),
+      destroy: () => runtimeServices.runtime.destroy(),
+    };
+  },
+  createSelectors: ({ store }) => createPlannerSelectors({ store }),
+  createCommands: ({ store, services, selectors }) =>
+    createPlannerCommands({ store, services, selectors }),
 });
 
-/**
- * The runtime service composed for browser UI modules. New integrations should
- * prefer the narrow, versioned `applicationApi` surface.
- */
-export const applicationRuntime = plannerApplication.services.runtime;
+  export const applicationApi = createPlannerApi(plannerApplication.services.runtime);
+

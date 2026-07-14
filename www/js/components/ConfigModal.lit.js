@@ -2,7 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import './Modal.lit.js';
 import { ConfigEvents } from '../core/EventRegistry.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 
 class ConfigModal extends LitElement {
   static properties = {

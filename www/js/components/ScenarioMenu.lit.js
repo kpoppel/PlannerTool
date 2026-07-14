@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as plannerApi } from '../application/plannerApplication.js';
 import { groupService } from '../services/GroupService.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
@@ -146,6 +146,10 @@ export class ScenarioMenuLit extends LitElement {
     this.activeScenarioId = null;
   }
 
+  _getDefaultCloneName() {
+    return plannerApi.scenarios.getDefaultCloneName();
+  }
+
   connectedCallback() {
     super.connectedCallback();
 
@@ -153,7 +157,7 @@ export class ScenarioMenuLit extends LitElement {
     this._onScenariosList = (payload) => {
       // Use full scenarios from state to get overrides data
       try {
-        const full = state.scenarios.list() || [];
+        const full = plannerApi.scenarios.list() || [];
         this.scenarios = Array.isArray(full) ? [...full] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
@@ -170,7 +174,7 @@ export class ScenarioMenuLit extends LitElement {
     };
 
     this._onScenariosUpdated = () => {
-      const scenarios = state.scenarios.list() || [];
+      const scenarios = plannerApi.scenarios.list() || [];
       this.scenarios = scenarios ? [...scenarios] : [];
       this.requestUpdate();
     };
@@ -197,13 +201,13 @@ export class ScenarioMenuLit extends LitElement {
   _onScenarioClick(e, scenario) {
     e.stopPropagation();
     // Activate the scenario
-    state.activateScenario(scenario.id);
+    plannerApi.scenarios.activate(scenario.id);
   }
 
   async _onSaveScenario(e, scenario) {
     e.stopPropagation();
     try {
-      await state.saveScenario(scenario.id);
+      await plannerApi.scenarios.save(scenario.id);
       console.log('[ScenarioMenu] Saved scenario:', scenario.name);
     } catch (err) {
       console.error('[ScenarioMenu] Failed to save scenario:', err);
@@ -213,21 +217,8 @@ export class ScenarioMenuLit extends LitElement {
   async _onCloneScenario(e, scenario) {
     e.stopPropagation();
     try {
-      const now = new Date();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const scenarios = state.getScenarios?.() || [];
-      const maxN = Math.max(
-        0,
-        ...scenarios
-          .map((sc) => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-          .filter(Boolean)
-          .map((n) => parseInt(n, 10))
-      );
-      const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
-
       const { openScenarioCloneModal } = await import('./modalHelpers.js');
-      await openScenarioCloneModal({ id: scenario.id, name: defaultCloneName });
+      await openScenarioCloneModal({ id: scenario.id, name: this._getDefaultCloneName() });
     } catch (err) {
       console.error('[ScenarioMenu] Failed to clone scenario:', err);
     }
@@ -258,7 +249,7 @@ export class ScenarioMenuLit extends LitElement {
     try {
       // User explicitly requested a refresh — invalidate the server cache first
       // so stale data is not served, then reload.
-      await state.invalidateAndRefreshBaseline();
+      await plannerApi.scenarios.invalidateAndRefreshBaseline();
       console.log('[ScenarioMenu] Refreshed baseline');
     } catch (err) {
       console.error('[ScenarioMenu] Failed to refresh baseline:', err);
@@ -275,23 +266,10 @@ export class ScenarioMenuLit extends LitElement {
         return;
       }
 
-      const now = new Date();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const scenarios = state.getScenarios?.() || [];
-      const maxN = Math.max(
-        0,
-        ...scenarios
-          .map((sc) => /^\d{2}-\d{2} Scenario (\d+)$/i.exec(sc.name)?.[1])
-          .filter(Boolean)
-          .map((n) => parseInt(n, 10))
-      );
-      const defaultCloneName = `${mm}-${dd} Scenario ${maxN + 1}`;
-
       const { openScenarioCloneModal } = await import('./modalHelpers.js');
       await openScenarioCloneModal({
         id: activeScenario.id,
-        name: defaultCloneName,
+        name: this._getDefaultCloneName(),
       });
     } catch (err) {
       console.error('[ScenarioMenu] Failed to copy scenario:', err);
@@ -301,11 +279,11 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveToAzure(e, scenario) {
     e.stopPropagation();
     try {
-      const fullScenarios = state.scenarios.list() || [];
+      const fullScenarios = plannerApi.scenarios.list() || [];
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
-      const pendingGroupChanges = state.getPendingGroupChanges();
+      const pendingGroupChanges = plannerApi.groups.getPendingChanges();
       const hasFeatureChanges = Object.keys(overrides).length > 0;
       const hasGroupChanges = pendingGroupChanges.length > 0;
 
@@ -315,7 +293,11 @@ export class ScenarioMenuLit extends LitElement {
       }
 
       const { openAzureDevopsModal } = await import('./modalHelpers.js');
-      const result = await openAzureDevopsModal({ overrides, pendingGroupChanges, state });
+      const result = await openAzureDevopsModal({
+        overrides,
+        pendingGroupChanges,
+        api: plannerApi,
+      });
       if (!result) return; // user cancelled
 
       const { features = [], groupChanges = [] } = result;
@@ -333,7 +315,7 @@ export class ScenarioMenuLit extends LitElement {
           const committedMembers = new Set((op.group.members || []).map(String));
           // All members originally in the scenario group, including any that were
           // deselected in the modal and therefore not in committedMembers.
-          const activeScen = state.getActiveScenario();
+          const activeScen = plannerApi.scenarios.getActive();
           const originalMembers = (
             (activeScen?.scenarioGroups || []).find((g) => String(g.id) === String(op.group.id))
               ?.members || []
@@ -346,10 +328,10 @@ export class ScenarioMenuLit extends LitElement {
             rank: op.group.rank ?? 0,
             members: [...committedMembers],
           };
-          const created = await state.groups.create(payload);
+          const created = await plannerApi.groups.create(payload);
           if (created) {
             const realId = String(created.id);
-            state.confirmGroupCreate(op.group.id, realId);
+            plannerApi.groups.confirmCreate(op.group.id, realId);
             // Remove this group from scenarioGroups (now baseline).
             if (activeScen?.scenarioGroups) {
               activeScen.scenarioGroups = activeScen.scenarioGroups.filter(
@@ -372,7 +354,7 @@ export class ScenarioMenuLit extends LitElement {
             if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
           }
         } else if (op.type === 'update' && op.groupId) {
-          const activeScen = state.getActiveScenario();
+          const activeScen = plannerApi.scenarios.getActive();
           const updatePayload = { ...(op.fields || {}) };
 
           // Apply any committed member deltas to compute the new full members list.
@@ -386,7 +368,7 @@ export class ScenarioMenuLit extends LitElement {
             updatePayload.members = [...baseMembers];
           }
 
-          await state.groups.update(op.groupId, updatePayload);
+          await plannerApi.groups.update(op.groupId, updatePayload);
 
           // Remove only the committed deltas from groupOverrides; leave others.
           if (activeScen?.groupOverrides?.[op.groupId]) {
@@ -407,8 +389,8 @@ export class ScenarioMenuLit extends LitElement {
           const g = groupService.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
-          await state.groups.delete(op.groupId);
-          const activeScen = state.getActiveScenario();
+          await plannerApi.groups.delete(op.groupId);
+          const activeScen = plannerApi.scenarios.getActive();
           if (activeScen?.groupOverrides?.[op.groupId]) {
             delete activeScen.groupOverrides[op.groupId];
           }
@@ -432,7 +414,7 @@ export class ScenarioMenuLit extends LitElement {
 
       // 2. Persist accepted feature overrides.
       if (features.length > 0) {
-        await state.groups.publishBaseline(features);
+        await plannerApi.groups.publishBaseline(features);
         console.log('[ScenarioMenu] Saved feature changes', features);
       }
 
@@ -441,13 +423,13 @@ export class ScenarioMenuLit extends LitElement {
       //    This prevents stale temp IDs, already-deleted groups, and already-
       //    committed overrides from reappearing after a page reload.
       if (features.length > 0 || groupChanges.length > 0) {
-        await state.saveScenario(scenario.id);
+        await plannerApi.scenarios.save(scenario.id);
       }
 
       // 4. Refresh baseline so the board reflects the now-persisted state.
       if (features.length > 0 || groupChanges.length > 0) {
         try {
-          await state.refreshBaseline();
+          await plannerApi.scenarios.refreshBaseline();
           console.log('[ScenarioMenu] Baseline refreshed after save');
         } catch (refreshErr) {
           console.warn('[ScenarioMenu] Baseline refresh failed:', refreshErr);
@@ -477,7 +459,7 @@ export class ScenarioMenuLit extends LitElement {
                 @click=${(e) => this._onScenarioClick(e, s)}
               >
                 <span class="scenario-name" title="${s.name}">${s.name}</span>
-                ${state.isScenarioUnsaved?.(s) ?
+                ${plannerApi.scenarios.hasUnsavedChanges(s) ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
                 ${s.readonly ?
@@ -507,7 +489,7 @@ export class ScenarioMenuLit extends LitElement {
                         (
                           (s.overrides && Object.keys(s.overrides).length > 0) ||
                           s.overridesCount > 0 ||
-                          state.getPendingGroupChanges?.().length > 0
+                          plannerApi.groups.getPendingChanges().length > 0
                         ) ?
                         html`
                           <button

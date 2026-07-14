@@ -3,7 +3,7 @@
  * Rendered inside PlanMenu for a specific plan.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { bus } from '../core/EventBus.js';
 import { PlanEventEvents } from '../core/EventRegistry.js';
 

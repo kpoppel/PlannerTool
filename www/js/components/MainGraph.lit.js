@@ -2,7 +2,7 @@
 // Lit 3.3.1 web component for main organizational load graph
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {

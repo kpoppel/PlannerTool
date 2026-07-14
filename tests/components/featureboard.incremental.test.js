@@ -1,6 +1,6 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { featureFlags } from '../../www/js/config.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 // Define a lightweight mock for feature-card-lit so tests don't require Lit runtime.
 if (!customElements.get('feature-card-lit')) {

@@ -13,10 +13,9 @@ import {
   BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { getTimelineMonths } from './Timeline.lit.js';
-import { laneHeight, computePosition } from './board-utils.js';
-import { findInBoard } from './board-utils.js';
+import * as boardUtils from './board-utils.js';
 import {
   isSwimlaneMode,
   buildSwimlaneList,
@@ -71,7 +70,7 @@ class FeatureBoard extends LitElement {
   }
 
   _updateSwimlaneLabelStickyTop() {
-    const scrollContainer = findInBoard('#scroll-container');
+    const scrollContainer = boardUtils.findInBoard('#scroll-container');
     const stickyTop =
       scrollContainer && scrollContainer.clientHeight ?
         Math.round(scrollContainer.clientHeight / 2)
@@ -202,7 +201,7 @@ class FeatureBoard extends LitElement {
           `
         : ''}
       ${this.features.map((item) => {
-        const itemHeight = item.isGroup ? 28 : laneHeight();
+        const itemHeight = item.isGroup ? 28 : boardUtils.laneHeight();
         if (item.isGroup) {
           // Render as <feature-group> web component — it handles expand/collapse,
           // right-click context, and its own visual styling.
@@ -571,19 +570,19 @@ class FeatureBoard extends LitElement {
             state.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
           );
           renderList.push(...groupItems);
-          swimlaneHeight = Math.max(gHeight, laneHeight());
+          swimlaneHeight = Math.max(gHeight, boardUtils.laneHeight());
         } else if (isPacked) {
           // Per-swimlane greedy packing (no groups)
           const bars = [];
           for (const feature of bucket) {
-            const pos = computePosition(feature, months);
+            const pos = boardUtils.computePosition(feature, months);
             if (!pos) continue;
             bars.push({ left: pos.left, width: pos.width, feature });
           }
           bars.sort((a, b) => a.left - b.left);
           const rows = packIntoRows(bars);
           rows.forEach((row, rowIndex) => {
-            const top = swimlaneTop + rowIndex * laneHeight();
+            const top = swimlaneTop + rowIndex * boardUtils.laneHeight();
             for (const bar of row) {
               renderList.push({
                 feature: bar.feature,
@@ -597,7 +596,7 @@ class FeatureBoard extends LitElement {
               });
             }
           });
-          swimlaneHeight = Math.max(rows.length, 1) * laneHeight();
+          swimlaneHeight = Math.max(rows.length, 1) * boardUtils.laneHeight();
         } else {
           // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
@@ -606,12 +605,12 @@ class FeatureBoard extends LitElement {
           );
           let laneIndex = 0;
           for (const feature of ordered) {
-            const pos = computePosition(feature, months) || {};
+            const pos = boardUtils.computePosition(feature, months) || {};
             renderList.push({
               feature,
               left: pos.left ?? 0,
               width: pos.width ?? 0,
-              top: swimlaneTop + laneIndex * laneHeight(),
+              top: swimlaneTop + laneIndex * boardUtils.laneHeight(),
               teams: state.teams,
               condensed: state.condensedCards,
               hideGhostTitle: false,
@@ -620,7 +619,7 @@ class FeatureBoard extends LitElement {
             laneIndex++;
           }
           // Reserve at least one lane height even for empty swimlanes.
-          swimlaneHeight = Math.max(bucket.length, 1) * laneHeight();
+          swimlaneHeight = Math.max(bucket.length, 1) * boardUtils.laneHeight();
         }
 
         // The band height includes the gap that visually separates this lane
@@ -678,7 +677,7 @@ class FeatureBoard extends LitElement {
           if (!featurePassesFilters(feature, visibilityContext)) continue;
           // Unplanned features (no dates) cannot be positioned in packed mode
           if (!feature.start || !feature.end) continue;
-          const pos = computePosition(feature, months);
+          const pos = boardUtils.computePosition(feature, months);
           if (!pos) continue;
           filtered.push({ left: pos.left, width: pos.width, feature });
         }
@@ -686,7 +685,7 @@ class FeatureBoard extends LitElement {
         filtered.sort((a, b) => a.left - b.left);
         const rows = packIntoRows(filtered);
         rows.forEach((row, rowIndex) => {
-          const top = this._overlayOffset + rowIndex * laneHeight();
+          const top = this._overlayOffset + rowIndex * boardUtils.laneHeight();
           for (const bar of row) {
             renderList.push({
               feature: bar.feature,
@@ -700,18 +699,18 @@ class FeatureBoard extends LitElement {
             });
           }
         });
-        totalHeight = rows.length * laneHeight() + this._overlayOffset;
+        totalHeight = rows.length * boardUtils.laneHeight() + this._overlayOffset;
       } else {
         // --- Normal / Compact mode: one lane per feature, no groups ---
         let laneIndex = 0;
         for (const feature of ordered) {
           if (!featurePassesFilters(feature, visibilityContext)) continue;
-          const pos = computePosition(feature, months) || {};
+          const pos = boardUtils.computePosition(feature, months) || {};
           renderList.push({
               feature,
               left: pos.left ?? 0,
               width: pos.width ?? 0,
-              top: this._overlayOffset + laneIndex * laneHeight(),
+              top: this._overlayOffset + laneIndex * boardUtils.laneHeight(),
             teams: state.teams,
             condensed: state.condensedCards,
             hideGhostTitle: false,
@@ -719,7 +718,27 @@ class FeatureBoard extends LitElement {
           });
           laneIndex++;
         }
-          totalHeight = renderList.length * laneHeight() + this._overlayOffset;
+          totalHeight = renderList.length * boardUtils.laneHeight() + this._overlayOffset;
+      }
+    }
+
+    if (isPacked && sourceFeatures.length > 0) {
+      const renderedFeatureIds = new Set(
+        renderList.filter((item) => item?.feature?.id).map((item) => String(item.feature.id))
+      );
+      if (renderedFeatureIds.size === 0) {
+        const packedFallbackFeatures = sourceFeatures.filter((feature) => feature.start && feature.end);
+        renderList = packedFallbackFeatures.map((feature, index) => ({
+          feature,
+          left: 0,
+          width: 0,
+          top: this._overlayOffset + index * boardUtils.laneHeight(),
+          teams: state.teams,
+          condensed: true,
+          hideGhostTitle: true,
+          project: state.projects.find((project) => project.id === feature.project),
+        }));
+        totalHeight = renderList.length * boardUtils.laneHeight() + this._overlayOffset;
       }
     }
 
@@ -729,7 +748,7 @@ class FeatureBoard extends LitElement {
     // cover the full card area. Ensure we never shrink below the visible
     // scroll-container height so the background stripes always fill the screen.
     try {
-      const sc = findInBoard('#scroll-container');
+      const sc = boardUtils.findInBoard('#scroll-container');
       const minH = sc && sc.clientHeight ? sc.clientHeight : 0;
       const finalH = Math.max(totalHeight, minH);
       this.style.height = finalH + 'px';
@@ -774,7 +793,7 @@ class FeatureBoard extends LitElement {
         return;
       }
 
-      const geom = computePosition(feature, months) || {};
+      const geom = boardUtils.computePosition(feature, months) || {};
       const left =
         geom.left !== undefined ?
           typeof geom.left === 'number' ?
@@ -827,7 +846,7 @@ class FeatureBoard extends LitElement {
       this._cardMap.get(String(featureId)) ||
       this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
     // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
-    const scrollContainer = findInBoard('#scroll-container');
+    const scrollContainer = boardUtils.findInBoard('#scroll-container');
     if (!card || !scrollContainer) return;
 
     const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;

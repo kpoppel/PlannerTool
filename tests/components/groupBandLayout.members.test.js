@@ -18,14 +18,6 @@ vi.mock('../../www/js/components/board-utils.js', () => ({
   laneHeight: vi.fn(() => 48),
 }));
 
-// Stub state (used in groupBandLayout for state.teams, state.projects)
-vi.mock('../../www/js/services/State.js', () => ({
-  state: {
-    teams: [],
-    projects: [],
-  },
-}));
-
 import { buildGroupBandItems } from '../../www/js/components/groupBandLayout.js';
 
 // ---------------------------------------------------------------------------

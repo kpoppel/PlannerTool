@@ -9,6 +9,7 @@ import { expect } from '@esm-bundle/chai';
 import { ColorService } from '../../www/js/services/ColorService.js';
 import { ConfigService } from '../../www/js/services/ConfigService.js';
 import { StateFilterService } from '../../www/js/services/StateFilterService.js';
+import { TaskFilterService } from '../../www/js/services/TaskFilterService.js';
 import {
   ViewEvents,
   FilterEvents,
@@ -24,6 +25,7 @@ describe('Service Integration Tests', () => {
   let colorService;
   let configService;
   let stateFilterService;
+  let taskFilterService;
   let emitCalls;
 
   beforeEach(async () => {
@@ -54,6 +56,7 @@ describe('Service Integration Tests', () => {
     colorService = new ColorService(mockDataService);
     configService = new ConfigService(mockBus, mockDataService);
     stateFilterService = new StateFilterService(mockBus);
+    taskFilterService = new TaskFilterService(mockBus);
   });
 
   afterEach(() => {
@@ -90,6 +93,44 @@ describe('Service Integration Tests', () => {
       expect(emitCalls.some((call) => call.event === FeatureEvents.UPDATED)).to.equal(
         true
       );
+    });
+
+    it('should route filter emissions through custom gateways when provided', () => {
+      const stateFilterEvents = [];
+      const taskFilterEvents = [];
+      const gatewayStateFilterService = new StateFilterService(mockBus, {
+        events: {
+          emitStateFilterChanged: (_bus, payload) => {
+            stateFilterEvents.push(['stateList', payload]);
+          },
+          emitFilterChanged: (_bus, payload) => {
+            stateFilterEvents.push(['filterChanged', payload]);
+          },
+          emitFeatureUpdated: (_bus, payload) => {
+            stateFilterEvents.push(['featureUpdated', payload]);
+          },
+        },
+      });
+      const gatewayTaskFilterService = new TaskFilterService(mockBus, {
+        events: {
+          emitFilterChanged: (_bus, payload) => {
+            taskFilterEvents.push(['filterChanged', payload]);
+          },
+          emitFeatureUpdated: (_bus, payload) => {
+            taskFilterEvents.push(['featureUpdated', payload]);
+          },
+        },
+      });
+
+      gatewayStateFilterService.setAvailableStates(['New']);
+      gatewayStateFilterService.toggleStateSelected('New');
+      gatewayTaskFilterService.setFilter('schedule', 'unplanned', false);
+
+      expect(stateFilterEvents.some((call) => call[0] === 'stateList')).to.equal(true);
+      expect(stateFilterEvents.some((call) => call[0] === 'filterChanged')).to.equal(true);
+      expect(stateFilterEvents.some((call) => call[0] === 'featureUpdated')).to.equal(true);
+      expect(taskFilterEvents.some((call) => call[0] === 'filterChanged')).to.equal(true);
+      expect(taskFilterEvents.some((call) => call[0] === 'featureUpdated')).to.equal(true);
     });
 
     it('should emit config events when autosave changes', () => {
@@ -227,6 +268,7 @@ describe('Service Integration Tests', () => {
       viewService.setTypeVisibility('epic', false);
       stateFilterService.setAvailableStates(['New']);
       configService.setupAutosave(5, () => {});
+      taskFilterService.setFilter('schedule', 'unplanned', true);
 
       // Should have events from all three services
       const viewEventCount = emitCalls.filter(
@@ -244,9 +286,14 @@ describe('Service Integration Tests', () => {
         (call) => call.event === ConfigEvents.AUTOSAVE
       ).length;
 
+      const taskFilterEventCount = emitCalls.filter(
+        (call) => call.event === FilterEvents.CHANGED && call.data.taskFilters
+      ).length;
+
       expect(viewEventCount).to.be.greaterThan(0);
       expect(stateFilterEventCount).to.be.greaterThan(0);
       expect(configEventCount).to.be.greaterThan(0);
+      expect(taskFilterEventCount).to.be.greaterThan(0);
     });
   });
 });

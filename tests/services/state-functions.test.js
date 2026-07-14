@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { state, PALETTE } from '../../www/js/services/State.js';
+import { state, PALETTE } from '../helpers/runtimeState.js';
 import { dataService } from '../../www/js/services/dataService.js';
 import { featureFlags } from '../../www/js/config.js';
 
@@ -67,19 +67,15 @@ describe('State small function coverage', () => {
   });
 
   it('rebuilds task type derivations after applying refreshed baseline data', () => {
-    state._applyBaselineResult({
-      baselineProjects: [{ id: 'p1', task_type_hierarchy: [{ types: ['Feature'] }] }],
-      baselineTeams: [],
-      baselineFeatures: [{ id: 'f1', type: 'Feature' }],
-    });
+    state.baselineProjects = [{ id: 'p1', task_type_hierarchy: [{ types: ['Feature'] }] }];
+    state.baselineTeams = [];
+    state.setBaselineFeatures([{ id: 'f1', type: 'Feature' }]);
     expect(state.availableTaskTypes).to.deep.equal(['Feature']);
     expect(state.taskTypeHierarchy[0].types).to.deep.equal(['Feature']);
 
-    state._applyBaselineResult({
-      baselineProjects: [{ id: 'p2', task_type_hierarchy: [{ types: ['Epic'] }] }],
-      baselineTeams: [],
-      baselineFeatures: [{ id: 'f2', type: 'Epic' }],
-    });
+    state.baselineProjects = [{ id: 'p2', task_type_hierarchy: [{ types: ['Epic'] }] }];
+    state.baselineTeams = [];
+    state.setBaselineFeatures([{ id: 'f2', type: 'Epic' }]);
 
     expect(state.availableTaskTypes).to.deep.equal(['Epic']);
     expect(state.taskTypeHierarchy[0].types).to.deep.equal(['Epic']);

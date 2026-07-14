@@ -70,7 +70,7 @@ describe('FeatureBoard & DragSurface Tests', () => {
       },
     ];
     // ensure state feature lookup works for updateCardsById
-    const { state } = await import('../../www/js/services/State.js');
+    const { state } = await import('../helpers/runtimeState.js');
     const originalGetEffectiveFeatureById = state.getEffectiveFeatureById;
     const originalGetEffectiveFeatures = state.getEffectiveFeatures;
     state.getEffectiveFeatureById = (id) => features.find((f) => f.id === id);

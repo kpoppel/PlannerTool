@@ -8,7 +8,7 @@ import {
   ViewEvents,
   TimelineEvents,
 } from '../core/EventRegistry.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { buildVisibilityDiagnostics } from '../services/FeatureVisibilityService.js';
 
 export class EmptyBoardModal extends LitElement {
@@ -90,7 +90,7 @@ export class EmptyBoardModal extends LitElement {
   }
 
   _computeReasons() {
-    const sourceFeatures = state.getEffectiveFeatures?.() || state.features || [];
+    const sourceFeatures = state.getEffectiveFeatures?.() || [];
     return buildVisibilityDiagnostics({
       state,
       allFeatures: sourceFeatures,
@@ -99,7 +99,7 @@ export class EmptyBoardModal extends LitElement {
 
   // Determine whether any features would be visible under current filters
   _hasVisibleFeatures() {
-    const sourceFeatures = state.getEffectiveFeatures?.() || state.features || [];
+    const sourceFeatures = state.getEffectiveFeatures?.() || [];
     return buildVisibilityDiagnostics({
       state,
       allFeatures: sourceFeatures,

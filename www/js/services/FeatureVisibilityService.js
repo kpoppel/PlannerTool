@@ -97,7 +97,23 @@ export function buildFeatureVisibilityContext({
 
   const normalizedFilter = normalizeStateFilter(state?.selectedFeatureStateFilter);
   const map = childrenMap || buildChildrenMap(allFeatures);
-  const viewService = state?._viewService;
+  const legacyViewService = state?._viewService;
+  const viewService = {
+    showOnlyProjectHierarchy:
+      state?.showOnlyProjectHierarchy ?? legacyViewService?.showOnlyProjectHierarchy ?? false,
+    showUnplannedWork:
+      state?.showUnplannedWork ?? legacyViewService?.showUnplannedWork ?? false,
+    showUnassignedCards:
+      state?.showUnallocatedCards ?? legacyViewService?.showUnassignedCards ?? false,
+    hiddenTypes: new Set(
+      state?.view?.getHiddenTypes?.() ?? state?.hiddenTypes ?? legacyViewService?.hiddenTypes ?? []
+    ),
+    isTypeVisible: (type) =>
+      state?.taskTypes?.isVisible?.(type) ??
+      state?.isTypeVisible?.(type) ??
+      legacyViewService?.isTypeVisible?.(type) ??
+      true,
+  };
 
   let projectTypeEpicIds = null;
   if (viewService?.showOnlyProjectHierarchy) {

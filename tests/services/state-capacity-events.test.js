@@ -2,7 +2,7 @@ import { expect } from '@esm-bundle/chai';
 
 import { bus } from '../../www/js/core/EventBus.js';
 import { CapacityEvents } from '../../www/js/core/EventRegistry.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('State capacity event ownership', () => {
   it('publishes one capacity update after a selection causes a calculation', () => {

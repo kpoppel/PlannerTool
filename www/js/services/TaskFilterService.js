@@ -6,9 +6,26 @@
 
 import { FilterEvents, FeatureEvents } from '../core/EventRegistry.js';
 
+const DEFAULT_TASK_FILTER_ENV = {
+  events: {
+    emitFilterChanged: (bus, payload) => {
+      bus?.emit?.(FilterEvents.CHANGED, payload);
+    },
+    emitFeatureUpdated: (bus, payload) => {
+      bus?.emit?.(FeatureEvents.UPDATED, payload);
+    },
+  },
+};
+
 export class TaskFilterService {
-  constructor(bus) {
+  constructor(bus, env = {}) {
     this.bus = bus;
+    this._env = {
+      events: {
+        ...DEFAULT_TASK_FILTER_ENV.events,
+        ...(env.events || {}),
+      },
+    };
 
     // Each dimension has two checkboxes that can be independently toggled
     // Default: all checked (show everything)
@@ -132,8 +149,8 @@ export class TaskFilterService {
    * Emit filter change event
    */
   _emitFilterChanged() {
-    this.bus.emit(FilterEvents.CHANGED, { taskFilters: this._filters });
-    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
+    this._env.events.emitFilterChanged(this.bus, { taskFilters: this._filters });
+    this._env.events.emitFeatureUpdated(this.bus, { ids: [] });
   }
 
   /**

@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { bus } from '../core/EventBus.js';
 import { ViewManagementEvents } from '../core/EventRegistry.js';
 
@@ -171,7 +171,7 @@ export class ViewMenuLit extends LitElement {
     e.stopPropagation();
     // Load and apply the view
     try {
-      await state.viewManagementService.loadAndApplyView(view.id);
+      await state.views.load(view.id);
     } catch (err) {
       console.error('[ViewMenu] Failed to load view:', err);
       // Dispatch error event for parent to handle
@@ -188,7 +188,7 @@ export class ViewMenuLit extends LitElement {
   async _onUpdateView(e, view) {
     e.stopPropagation();
     try {
-      await state.viewManagementService.saveCurrentView(view.name, view.id);
+      await state.views.save(view.name, view.id);
       console.log('[ViewMenu] Updated view:', view.name);
     } catch (err) {
       console.error('[ViewMenu] Failed to update view:', err);

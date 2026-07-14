@@ -1,7 +1,7 @@
 import { expect, fixture, html, waitUntil } from '@open-wc/testing';
 import { oneEvent } from '@open-wc/testing';
 import '../../www/js/components/Modal.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('Modal Consolidated Tests', () => {
   it('renders title and slotted content', async () => {

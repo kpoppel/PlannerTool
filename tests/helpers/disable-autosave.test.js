@@ -1,4 +1,4 @@
-import { state } from '../../www/js/services/State.js';
+import { state } from './runtimeState.js';
 
 describe('disable-autosave helper', () => {
   // Prevent the State service from starting autosave intervals during tests.

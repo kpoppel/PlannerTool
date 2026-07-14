@@ -24,7 +24,7 @@
 import { LitElement, html } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { groupService } from '../services/GroupService.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { groupContextMenuStyles } from './GroupContextMenu.styles.js';
 import './Modal.lit.js';
 

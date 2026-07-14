@@ -1,6 +1,6 @@
 import { expect } from '@open-wc/testing';
 import { FeatureService } from '../../www/js/services/FeatureService.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 

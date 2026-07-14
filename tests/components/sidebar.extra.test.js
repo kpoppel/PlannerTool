@@ -1,6 +1,6 @@
 import { expect } from '@esm-bundle/chai';
 import '../../www/js/components/Sidebar.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 import { pluginManager } from '../../www/js/core/PluginManager.js';
 
 describe('app-sidebar extra', () => {

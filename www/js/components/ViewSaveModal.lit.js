@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 
 export class ViewSaveModal extends LitElement {
   static properties = {
@@ -50,7 +50,7 @@ export class ViewSaveModal extends LitElement {
     this._saving = true;
     this._status = '';
     try {
-      await state.viewManagementService.saveCurrentView(val);
+      await state.views.save(val);
       this.dispatchEvent(
         new CustomEvent('modal-close', { bubbles: true, composed: true })
       );

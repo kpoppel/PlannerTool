@@ -27,6 +27,8 @@ function callLifecycle(target, method, context) {
  * - Writes happen through labeled transactions (`store.update`).
  * - Selectors are pure reads over store snapshots.
  * - Services may compute/perform IO but must not directly mutate AppStore snapshots.
+ * - A service container may expose `bind(context)` to receive the completed
+ *   selector and command collaborators after composition.
  *
  * @param {{
  *   eventBus?: object,
@@ -56,6 +58,16 @@ export function createPlannerApplication(options = {}) {
     options.createCommands?.({ ...runtime, services, selectors }),
     'createCommands'
   );
+  if (typeof services.bind === 'function') {
+    services.bind(
+      Object.freeze({
+        ...runtime,
+        services,
+        selectors,
+        commands,
+      })
+    );
+  }
 
   let initializePromise = null;
   let initialized = false;

@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 
 export class ViewDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -35,7 +35,7 @@ export class ViewDeleteModal extends LitElement {
         delBtn.disabled = true;
         if (cancelBtn) cancelBtn.disabled = true;
         try {
-          await state.viewManagementService.deleteView(this.id);
+          await state.views.delete(this.id);
           this.remove();
         } catch (err) {
           if (status) status.textContent = `Failed to delete view: ${err.message || err}`;

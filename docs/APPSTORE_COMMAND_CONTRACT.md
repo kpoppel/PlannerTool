@@ -84,3 +84,23 @@ Each command module must declare its idempotency class in module-level JSDoc.
 - Legacy facade methods become thin adapters that call commands/selectors only.
 - No new business logic may be added to compatibility methods.
 - Any migrated facade method should be deleted from the shell in the next pruning pass.
+
+## 9. UI effect descriptor contract
+
+Some commands may return UI effect descriptors for adapter-driven execution. This
+keeps state mutation and UI mutation separate while preserving deterministic command
+results.
+
+Descriptor shape:
+
+- `type: 'setSelectedTaskTypes'` + `{ selectedTaskTypes: string[] }`
+- `type: 'setGraphType'` + `{ graphType: string }`
+- `type: 'setExpansionState'` + `{ expansion: { expandParentChild: boolean, expandRelations: boolean, expandTeamAllocated: boolean } }`
+- `type: 'recomputeDataFunnel'`
+- `type: 'requestSidebarUpdate'`
+
+Rules:
+
+- Commands/selectors return descriptor objects only; they do not mutate DOM/UI directly.
+- Services execute descriptors only via injected UI adapters.
+- Direct sidebar/property mutation is forbidden outside adapter implementations.

@@ -8,6 +8,7 @@ describe('PlannerApi', () => {
     const state = {
       getEffectiveFeatures: () => [{ id: 'f1' }],
       getEffectiveFeatureById: (id) => ({ id }),
+      getFeatureTitleById: (id) => `title:${id}`,
       updateFeatureDates: (updates) => calls.push(['dates', updates]),
       updateFeatureField: (...args) => calls.push(['field', args]),
       updateFeatureRelations: (...args) => calls.push(['relations', args]),
@@ -22,7 +23,22 @@ describe('PlannerApi', () => {
       scenarios: { list: () => [{ id: 's1' }] },
       getActiveScenario: () => ({ id: 's1' }),
       activateScenario: (id) => calls.push(['activate', id]),
+      cloneScenario: (...args) => calls.push(['clone', args]),
+      renameScenario: (...args) => calls.push(['rename', args]),
+      deleteScenario: (id) => calls.push(['delete', id]),
       saveScenario: (id) => calls.push(['save', id]),
+      refreshBaseline: () => calls.push(['refreshBaseline']),
+      invalidateAndRefreshBaseline: () => calls.push(['invalidateAndRefreshBaseline']),
+      isScenarioUnsaved: (scenario) => scenario.id === 's1',
+      groups: {
+        create: (...args) => calls.push(['groupCreate', args]),
+        update: (...args) => calls.push(['groupUpdate', args]),
+        delete: (...args) => calls.push(['groupDelete', args]),
+        getPendingChanges: () => [{ id: 'pending' }],
+        clearPendingChanges: () => calls.push(['groupClearPending']),
+        confirmCreate: (...args) => calls.push(['groupConfirmCreate', args]),
+        publishBaseline: (...args) => calls.push(['groupPublishBaseline', args]),
+      },
       views: { list: () => [{ id: 'v1' }], getActiveId: () => 'v1', load: (id) => calls.push(['load', id]) },
       capacityDates: ['2025-01-01'],
       teamDailyCapacity: [[1]],
@@ -37,17 +53,25 @@ describe('PlannerApi', () => {
     api.features.updateRelations('f1', [{ type: 'Related', id: 'f2' }]);
     api.selection.selectProject('p1', true);
     api.scenarios.activate('s1');
+    api.scenarios.rename('s1', 'Renamed');
     api.views.load('v1');
 
     expect(api.version).to.equal(PLANNER_API_VERSION);
     expect(api.features.list()).to.deep.equal([{ id: 'f1' }]);
+    expect(api.features.getTitle('f1')).to.equal('title:f1');
     expect(api.selection.getExpandedFeatureIds()).to.deep.equal(new Set(['f1']));
+    expect(api.scenarios.hasUnsavedChanges({ id: 's1' })).to.equal(true);
+    expect(api.scenarios.getDefaultCloneName(new Date('2026-07-14T00:00:00Z'))).to.equal(
+      '07-14 Scenario 1'
+    );
+    expect(api.groups.getPendingChanges()).to.deep.equal([{ id: 'pending' }]);
     expect(api.capacity.get().dates).to.deep.equal(['2025-01-01']);
     expect(calls).to.deep.equal([
       ['dates', [{ id: 'f1' }]],
       ['relations', ['f1', [{ type: 'Related', id: 'f2' }]]],
       ['project', ['p1', true]],
       ['activate', 's1'],
+      ['rename', ['s1', 'Renamed']],
       ['load', 'v1'],
     ]);
     expect(Object.isFrozen(api)).to.equal(true);

@@ -4,7 +4,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';

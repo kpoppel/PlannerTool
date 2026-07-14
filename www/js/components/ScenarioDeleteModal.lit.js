@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as plannerApi } from '../application/plannerApplication.js';
 
 export class ScenarioDeleteModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -11,32 +11,18 @@ export class ScenarioDeleteModal extends LitElement {
     this.name = '';
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-  }
-
-  _getInner() {
-    return this.renderRoot.querySelector('modal-lit');
-  }
-
-  _qs(selector) {
-    const inner = this._getInner();
-    return inner ? inner.querySelector(selector) : null;
-  }
-
   firstUpdated() {
-    const inner = this._getInner();
+    const inner = this.renderRoot.querySelector('modal-lit');
     if (inner) inner.open = true;
-    const delBtn = this._qs('#deleteBtn');
-    const cancelBtn = this._qs('#cancelDeleteBtn');
-    const status = this._qs('#deleteStatus');
+    const delBtn = this.renderRoot.querySelector('#deleteBtn');
+    const cancelBtn = this.renderRoot.querySelector('#cancelDeleteBtn');
+    const status = this.renderRoot.querySelector('#deleteStatus');
     if (delBtn)
       delBtn.addEventListener('click', async () => {
         delBtn.disabled = true;
         if (cancelBtn) cancelBtn.disabled = true;
         try {
-          state.deleteScenario(this.id);
-          await state.scenarios.delete(this.id).catch(() => {});
+          plannerApi.scenarios.delete(this.id);
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Delete failed.';

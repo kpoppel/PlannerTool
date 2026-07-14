@@ -1,5 +1,5 @@
 import { expect } from '@esm-bundle/chai';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 // Previously skipped; updated to assert basic public viewService state
 describe('viewOptions extra', () => {

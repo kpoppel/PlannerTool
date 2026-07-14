@@ -2,7 +2,7 @@ import { expect, fixture, html } from '@open-wc/testing';
 import { bus } from '../../www/js/core/EventBus.js';
 import '../../www/js/components/Timeline.lit.js';
 import { TimelineEvents } from '../../www/js/core/EventRegistry.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('Timeline Consolidated Tests', () => {
   it('renders header with month cells and exposes APIs', async () => {

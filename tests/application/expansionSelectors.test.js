@@ -5,6 +5,7 @@ import {
   selectExpandedFeatureIds,
   selectExpandedFeatureSet,
   selectParentChildClosure,
+  selectTeamAllocationExpansionFeatures,
   selectTeamAllocatedFeatureIds,
 } from '../../www/js/application/selectors/expansionSelectors.js';
 
@@ -98,5 +99,23 @@ describe('expansion selectors', () => {
     });
 
     expect([...expandedIds].sort()).to.deep.equal(['descendant', 'root', 'selected']);
+  });
+
+  it('returns expansion features only when team-allocation mode is active with selected teams', () => {
+    expect(
+      selectTeamAllocationExpansionFeatures({
+        features,
+        selectedTeamIds: ['t1'],
+        expandTeamAllocated: true,
+      })
+    ).to.deep.equal(features);
+
+    expect(
+      selectTeamAllocationExpansionFeatures({
+        features,
+        selectedTeamIds: [],
+        expandTeamAllocated: true,
+      })
+    ).to.deep.equal([]);
   });
 });

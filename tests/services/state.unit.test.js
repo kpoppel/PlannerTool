@@ -1,6 +1,6 @@
 import { expect } from '@open-wc/testing';
 
-import { state as S } from '../../www/js/services/State.js';
+import { state as S } from '../helpers/runtimeState.js';
 
 // Use exported singleton `state` but snapshot/restore properties we mutate
 describe('State (unit)', () => {

@@ -2,7 +2,7 @@
 // Lit 3.3.1 web component for timeline header
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { parseDate, addMonths, dateRangeInclusiveMonths } from './util.js';
@@ -200,7 +200,7 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats = state.getEffectiveFeatures?.() ?? state.features ?? [];
+  const feats = state.getEffectiveFeatures?.() ?? [];
   if (!feats?.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
@@ -419,7 +419,7 @@ async function renderTimelineHeader(payload) {
   // we can skip recomputing months and avoid a header re-render.
   if (monthsCache?.length && payload?.ids?.length) {
     try {
-      const feats = state.getEffectiveFeatures?.() ?? state.features ?? [];
+      const feats = state.getEffectiveFeatures?.() ?? [];
       const firstMonthStart = monthsCache[0].getTime();
       const lastMonth = monthsCache[monthsCache.length - 1];
       const afterLastMonth = new Date(

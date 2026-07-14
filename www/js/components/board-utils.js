@@ -1,6 +1,6 @@
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { parseDate, daysInMonth } from './util.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';

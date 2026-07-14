@@ -17,13 +17,33 @@
 
 import { FilterEvents, FeatureEvents, StateFilterEvents } from '../core/EventRegistry.js';
 
+const DEFAULT_STATE_FILTER_ENV = {
+  events: {
+    emitStateFilterChanged: (bus, payload) => {
+      bus?.emit?.(StateFilterEvents.CHANGED, payload);
+    },
+    emitFilterChanged: (bus, payload) => {
+      bus?.emit?.(FilterEvents.CHANGED, payload);
+    },
+    emitFeatureUpdated: (bus, payload) => {
+      bus?.emit?.(FeatureEvents.UPDATED, payload);
+    },
+  },
+};
+
 export class StateFilterService {
   /**
    * Create a new StateFilterService
    * @param {EventBus} bus - Event bus for emitting filter changes
    */
-  constructor(bus) {
+  constructor(bus, env = {}) {
     this.bus = bus;
+    this._env = {
+      events: {
+        ...DEFAULT_STATE_FILTER_ENV.events,
+        ...(env.events || {}),
+      },
+    };
 
     // Available states discovered from features
     this._availableFeatureStates = [];
@@ -56,7 +76,7 @@ export class StateFilterService {
     }
 
     // Emit state list changed event
-    this.bus.emit(StateFilterEvents.CHANGED, this._availableFeatureStates);
+    this._env.events.emitStateFilterChanged(this.bus, this._availableFeatureStates);
   }
 
   // ========== Selected States Management ==========
@@ -163,10 +183,10 @@ export class StateFilterService {
    * @private
    */
   _emitFilterChanged() {
-    this.bus.emit(FilterEvents.CHANGED, {
+    this._env.events.emitFilterChanged(this.bus, {
       selectedFeatureStateFilter: Array.from(this._selectedFeatureStateFilter),
     });
-    this.bus.emit(FeatureEvents.UPDATED, { ids: [] });
+    this._env.events.emitFeatureUpdated(this.bus, { ids: [] });
   }
 
   /**

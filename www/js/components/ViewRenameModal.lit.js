@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 
 export class ViewRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -40,7 +40,7 @@ export class ViewRenameModal extends LitElement {
       }
       this._disableButtons(true);
       try {
-        await state.viewManagementService.renameView(this.id, val);
+        await state.views.rename(this.id, val);
         this.remove();
       } catch (err) {
         status.textContent = `Failed to rename view: ${err.message || err}`;

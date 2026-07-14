@@ -7,6 +7,15 @@ const SCAN_ROOT = path.join(ROOT, 'www', 'js');
 const ALLOWED_STATE_IMPORT_FILE = path.normalize(
   path.join('www', 'js', 'application', 'plannerApplication.js')
 );
+const VIEW_MANAGEMENT_FILE = path.normalize(
+  path.join('www', 'js', 'services', 'ViewManagementService.js')
+);
+const STATE_FILTER_FILE = path.normalize(
+  path.join('www', 'js', 'services', 'StateFilterService.js')
+);
+const TASK_FILTER_FILE = path.normalize(
+  path.join('www', 'js', 'services', 'TaskFilterService.js')
+);
 
 const JS_FILE_EXTENSIONS = new Set(['.js', '.mjs']);
 const ASSIGNMENT_OPERATORS = ['=', '+=', '-=', '*=', '/=', '%='];
@@ -62,6 +71,31 @@ function hasAliasMutation(line, alias) {
   return new RegExp(`\\b${aliasPattern}[^;]*(\\+\\+|--)`).test(line);
 }
 
+function hasDirectSidebarMutation(line) {
+  if (
+    /\bsidebarElement\.(selectedTaskTypes|_graphType|expandParentChild|expandRelations|expandTeamAllocated)\s*=/.test(
+      line
+    )
+  ) {
+    return true;
+  }
+  if (/\bsidebarElement(?:\?\.)?\._recomputeDataFunnel(?:\?\.)?\(/.test(line)) {
+    return true;
+  }
+  if (/\bsidebarElement(?:\?\.)?\.requestUpdate(?:\?\.)?\(/.test(line)) {
+    return true;
+  }
+  return false;
+}
+
+function hasDirectViewManagementBusEmit(line) {
+  return /\bthis\._bus\.emit\s*\(/.test(line);
+}
+
+function hasDirectServiceBusEmit(line) {
+  return /\bthis\.bus\.emit\s*\(/.test(line);
+}
+
 function run() {
   if (!fs.existsSync(SCAN_ROOT)) {
     console.error('Runtime guard failed: www/js directory is missing.');
@@ -77,9 +111,25 @@ function run() {
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split(/\r?\n/);
     const snapshotAliases = new Map();
+    const isViewManagementFile = relativePath === VIEW_MANAGEMENT_FILE;
+    const isStateFilterFile = relativePath === STATE_FILTER_FILE;
+    const isTaskFilterFile = relativePath === TASK_FILTER_FILE;
+    let inDefaultViewMgmtEnv = false;
+    let defaultViewMgmtEnvBraceDepth = 0;
 
     lines.forEach((line, index) => {
       const lineNumber = index + 1;
+
+      if (isViewManagementFile && line.includes('const DEFAULT_VIEW_MGMT_ENV = {')) {
+        inDefaultViewMgmtEnv = true;
+        defaultViewMgmtEnvBraceDepth = 0;
+      }
+
+      if (isViewManagementFile && inDefaultViewMgmtEnv) {
+        const openBraces = (line.match(/\{/g) || []).length;
+        const closeBraces = (line.match(/}/g) || []).length;
+        defaultViewMgmtEnvBraceDepth += openBraces - closeBraces;
+      }
 
       if (isStateImportLine(line) && relativePath !== ALLOWED_STATE_IMPORT_FILE) {
         violations.push(
@@ -93,9 +143,31 @@ function run() {
         );
       }
 
+      if (
+        isViewManagementFile &&
+        hasDirectSidebarMutation(line) &&
+        !inDefaultViewMgmtEnv
+      ) {
+        violations.push(
+          `${displayPath}:${lineNumber} direct sidebar mutation is forbidden outside DEFAULT_VIEW_MGMT_ENV.ui adapters`
+        );
+      }
+
       const alias = getAliasFromStateSnapshot(line);
       if (alias) {
         snapshotAliases.set(alias, lineNumber);
+      }
+
+      if (isViewManagementFile && hasDirectViewManagementBusEmit(line)) {
+        violations.push(
+          `${displayPath}:${lineNumber} direct bus emission is forbidden outside DEFAULT_VIEW_MGMT_ENV.events adapters`
+        );
+      }
+
+      if ((isStateFilterFile || isTaskFilterFile) && hasDirectServiceBusEmit(line)) {
+        violations.push(
+          `${displayPath}:${lineNumber} direct bus emission is forbidden outside default event adapters`
+        );
       }
 
       for (const [aliasName, aliasLine] of snapshotAliases.entries()) {
@@ -105,6 +177,14 @@ function run() {
             `${displayPath}:${lineNumber} AppStore snapshot alias '${aliasName}' is mutated (declared at line ${aliasLine})`
           );
         }
+      }
+
+      if (
+        isViewManagementFile &&
+        inDefaultViewMgmtEnv &&
+        defaultViewMgmtEnvBraceDepth <= 0
+      ) {
+        inDefaultViewMgmtEnv = false;
       }
     });
   }

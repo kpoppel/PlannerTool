@@ -11,7 +11,7 @@
  */
 import { expect } from '@esm-bundle/chai';
 import '../../www/js/components/Sidebar.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { ViewEvents } from '../../www/js/core/EventRegistry.js';
 

@@ -20,8 +20,41 @@ const DEFAULT_VIEW_MGMT_ENV = {
     getItem: () => null,
     setItem: () => {},
   },
+  events: {
+    emitViewsList: (bus, payload) => {
+      bus?.emit?.(ViewManagementEvents.LIST, payload);
+    },
+    emitViewActivated: (bus, payload) => {
+      bus?.emit?.(ViewManagementEvents.ACTIVATED, payload);
+    },
+    emitFilterChanged: (bus, payload) => {
+      bus?.emit?.(FilterEvents.CHANGED, payload);
+    },
+  },
   ui: {
     getSidebarElement: () => null,
+    setSelectedTaskTypes: (sidebarElement, selectedTaskTypes) => {
+      if (!sidebarElement) return;
+      sidebarElement.selectedTaskTypes = new Set(selectedTaskTypes || []);
+    },
+    setGraphType: (sidebarElement, graphType) => {
+      if (!sidebarElement || !graphType) return;
+      if (typeof sidebarElement._graphType !== 'undefined') {
+        sidebarElement._graphType = graphType;
+      }
+    },
+    setExpansionState: (sidebarElement, expansion) => {
+      if (!sidebarElement || !expansion) return;
+      sidebarElement.expandParentChild = expansion.expandParentChild;
+      sidebarElement.expandRelations = expansion.expandRelations;
+      sidebarElement.expandTeamAllocated = expansion.expandTeamAllocated;
+    },
+    recomputeDataFunnel: (sidebarElement) => {
+      sidebarElement?._recomputeDataFunnel?.();
+    },
+    requestSidebarUpdate: (sidebarElement) => {
+      sidebarElement?.requestUpdate?.();
+    },
   },
 };
 
@@ -39,8 +72,18 @@ export class ViewManagementService {
 
   setEnvironment(env = {}) {
     this._env = {
-      storage: env.storage || DEFAULT_VIEW_MGMT_ENV.storage,
-      ui: env.ui || DEFAULT_VIEW_MGMT_ENV.ui,
+      storage: {
+        ...DEFAULT_VIEW_MGMT_ENV.storage,
+        ...(env.storage || {}),
+      },
+      events: {
+        ...DEFAULT_VIEW_MGMT_ENV.events,
+        ...(env.events || {}),
+      },
+      ui: {
+        ...DEFAULT_VIEW_MGMT_ENV.ui,
+        ...(env.ui || {}),
+      },
     };
   }
 
@@ -161,45 +204,70 @@ export class ViewManagementService {
 
       if (viewId === 'default') {
         const defaults = getDefaultViewOptions();
-        this._viewService.restoreView(defaults);
-        this._applySelections(this._state.projects, null, true, (s) =>
-          this._state.setProjectsSelectedBulk(s)
-        );
-        this._applySelections(this._state.teams, null, true, (s) =>
-          this._state.setTeamsSelectedBulk(s)
-        );
-        this._state.setSelectedStates([...(this._state.availableFeatureStates || [])]);
-        this._state.taskFilterService?.resetFilters();
-        this._applyExpansionState({
+        const restorePayload = {
+          projectSelections: this._buildSelections(this._state.projects, null, true),
+          teamSelections: this._buildSelections(this._state.teams, null, true),
+          selectedStates: [...(this._state.availableFeatureStates || [])],
+          resetTaskFilters: true,
+        };
+        this._applyViewSelectionRestore(restorePayload);
+        const expansion = this._buildExpansionState({
           expandParentChild: defaults.expandParentChild || false,
           expandRelations: defaults.expandRelations || false,
           expandTeamAllocated: defaults.expandTeamAllocated || false,
-        }, sidebarElement, false);
-        this._syncSidebarViewState(sidebarElement, {
-          graphType: 'team',
-          updateTaskTypes: true,
         });
+        const selectedTaskTypes = this._deriveSelectedTaskTypes(sidebarElement, true);
+        this._applyViewOptionsRestore({
+          viewOptions: defaults,
+          graphType: 'team',
+          selectedTaskTypes,
+          expansion,
+          emitExpansionFilterChange: false,
+        });
+        this._applyViewRestoreUiEffects(
+          sidebarElement,
+          this._planViewRestoreUiEffects({
+            graphType: 'team',
+            selectedTaskTypes,
+            expansion,
+          })
+        );
       } else {
-        this._applySelections(this._state.projects, response.selectedProjects, false, (s) =>
-          this._state.setProjectsSelectedBulk(s)
-        );
-        this._applySelections(this._state.teams, response.selectedTeams, false, (s) =>
-          this._state.setTeamsSelectedBulk(s)
-        );
+        const restorePayload = {
+          projectSelections: this._buildSelections(
+            this._state.projects,
+            response.selectedProjects,
+            false
+          ),
+          teamSelections: this._buildSelections(this._state.teams, response.selectedTeams, false),
+        };
         this._viewService.restoreView(viewOptions);
         if (viewOptions.taskFilters) {
-          this._state.taskFilterService?.restoreFilters(viewOptions.taskFilters);
+          restorePayload.taskFilters = viewOptions.taskFilters;
         }
         if (Array.isArray(viewOptions.selectedFeatureStates)) {
           const availableStates = this._state.availableFeatureStates || [];
           const validStates = viewOptions.selectedFeatureStates.filter((s) => availableStates.includes(s));
-          this._state.setSelectedStates(validStates);
+          restorePayload.selectedStates = validStates;
         }
-        this._syncSidebarViewState(sidebarElement, {
+        this._applyViewSelectionRestore(restorePayload);
+        const selectedTaskTypes = this._deriveSelectedTaskTypes(sidebarElement, true);
+        const expansion = this._extractExpansionState(viewOptions);
+        this._applyViewOptionsRestore({
+          viewOptions,
           graphType: viewOptions.graphType,
-          updateTaskTypes: true,
+          selectedTaskTypes,
+          expansion,
+          emitExpansionFilterChange: true,
         });
-        this._applyExpansionState(viewOptions, sidebarElement, true);
+        this._applyViewRestoreUiEffects(
+          sidebarElement,
+          this._planViewRestoreUiEffects({
+            graphType: viewOptions.graphType,
+            selectedTaskTypes,
+            expansion,
+          })
+        );
       }
 
       await this._restorePluginState(viewOptions);
@@ -314,7 +382,7 @@ export class ViewManagementService {
       this._views.length,
       'views'
     );
-    this._bus.emit(ViewManagementEvents.LIST, {
+    this._env.events.emitViewsList(this._bus, {
       views: this._views,
       activeViewId: this._activeViewId,
       activeViewData: this._activeViewData,
@@ -328,7 +396,7 @@ export class ViewManagementService {
   _emitViewActivated() {
     if (!this._bus) return;
     console.log('[ViewManagementService] Emitting view activated:', this._activeViewId);
-    this._bus.emit(ViewManagementEvents.ACTIVATED, {
+    this._env.events.emitViewActivated(this._bus, {
       id: this._activeViewId,
       data: this._activeViewData,
     });
@@ -380,74 +448,162 @@ export class ViewManagementService {
 
   _applySelections(items, selectedMap, selectAll, setter) {
     if (!items || typeof setter !== 'function') return;
+    setter(this._buildSelections(items, selectedMap, selectAll));
+  }
+
+  _buildSelections(items, selectedMap, selectAll) {
+    if (!items) return {};
     const selections = {};
     items.forEach((item) => {
       selections[item.id] = selectAll ? true : selectedMap?.[item.id] === true;
     });
-    setter(selections);
+    return selections;
   }
 
-  _syncSidebarViewState(sidebarElement, { graphType, updateTaskTypes }) {
-    if (!sidebarElement) return;
-    if (updateTaskTypes) {
-      const availableTypes = sidebarElement.availableTaskTypes || [];
-      sidebarElement.selectedTaskTypes = new Set(
-        availableTypes.filter((t) => this._viewService.isTypeVisible(t))
-      );
-      this._bus.emit(FilterEvents.CHANGED, {
-        selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-      });
+  _applyViewSelectionRestore(payload) {
+    if (typeof this._state.applyViewSelectionRestore === 'function') {
+      this._state.applyViewSelectionRestore(payload);
+      return;
     }
-    if (graphType && typeof sidebarElement._graphType !== 'undefined') {
-      sidebarElement._graphType = graphType;
-      this._viewService.setCapacityViewMode(graphType);
+
+    if (payload?.projectSelections) {
+      this._state.setProjectsSelectedBulk(payload.projectSelections);
     }
-    if (typeof sidebarElement.requestUpdate === 'function') {
-      sidebarElement.requestUpdate();
+    if (payload?.teamSelections) {
+      this._state.setTeamsSelectedBulk(payload.teamSelections);
+    }
+    if (Array.isArray(payload?.selectedStates)) {
+      this._state.setSelectedStates(payload.selectedStates);
+    }
+    if (payload?.resetTaskFilters) {
+      this._state.taskFilterService?.resetFilters?.();
+    } else if (payload?.taskFilters) {
+      this._state.taskFilterService?.restoreFilters?.(payload.taskFilters);
     }
   }
 
-  _applyExpansionState(viewOptions, sidebarElement, emitFilterChange) {
+  _deriveSelectedTaskTypes(sidebarElement, updateTaskTypes) {
+    if (!sidebarElement || !updateTaskTypes) return null;
+    const availableTypes = sidebarElement.availableTaskTypes || [];
+    return availableTypes.filter((t) => this._viewService.isTypeVisible(t));
+  }
+
+  _extractExpansionState(viewOptions) {
     const hasExpansionSetting =
       typeof viewOptions.expandParentChild !== 'undefined' ||
       typeof viewOptions.expandRelations !== 'undefined' ||
       typeof viewOptions.expandTeamAllocated !== 'undefined';
-    if (!hasExpansionSetting) return;
+    if (!hasExpansionSetting) return null;
 
-    const expansion = {
+    return this._buildExpansionState(viewOptions);
+  }
+
+  _buildExpansionState(viewOptions) {
+    return {
       expandParentChild: viewOptions.expandParentChild || false,
       expandRelations: viewOptions.expandRelations || false,
       expandTeamAllocated: viewOptions.expandTeamAllocated || false,
     };
-    this._state.setExpansionState(expansion);
+  }
 
-    if (sidebarElement) {
-      sidebarElement.expandParentChild = expansion.expandParentChild;
-      sidebarElement.expandRelations = expansion.expandRelations;
-      sidebarElement.expandTeamAllocated = expansion.expandTeamAllocated;
-      if (typeof sidebarElement._recomputeDataFunnel === 'function') {
-        sidebarElement._recomputeDataFunnel();
-      }
-      if (typeof sidebarElement.requestUpdate === 'function') {
-        sidebarElement.requestUpdate();
-      }
+  _applyViewOptionsRestore(payload) {
+    const expansion = payload?.expansion || null;
+    if (typeof this._state.applyViewOptionsRestore === 'function') {
+      this._state.applyViewOptionsRestore(payload);
+      return;
     }
 
-    if (emitFilterChange) {
-      this._bus.emit(FilterEvents.CHANGED, {
-        expansion: {
-          parentChild: expansion.expandParentChild,
-          relations: expansion.expandRelations,
-          teamAllocated: expansion.expandTeamAllocated,
-        },
+    if (payload?.viewOptions) {
+      this._viewService.restoreView(payload.viewOptions);
+    }
+    if (payload?.graphType) {
+      this._viewService.setCapacityViewMode(payload.graphType);
+    }
+    if (Array.isArray(payload?.selectedTaskTypes)) {
+      this._env.events.emitFilterChanged(this._bus, {
+        selectedTaskTypes: payload.selectedTaskTypes,
       });
+    }
+    if (expansion) {
+      this._state.setExpansionState(expansion);
+      if (payload?.emitExpansionFilterChange) {
+        this._env.events.emitFilterChanged(this._bus, {
+          expansion: {
+            parentChild: expansion.expandParentChild,
+            relations: expansion.expandRelations,
+            teamAllocated: expansion.expandTeamAllocated,
+          },
+        });
+      }
+    }
+  }
+
+  _planViewRestoreUiEffects(payload) {
+    if (typeof this._state.planViewRestoreUiEffects === 'function') {
+      return this._state.planViewRestoreUiEffects(payload) || [];
+    }
+
+    const effects = [];
+    if (Array.isArray(payload?.selectedTaskTypes)) {
+      effects.push({
+        type: 'setSelectedTaskTypes',
+        selectedTaskTypes: payload.selectedTaskTypes,
+      });
+    }
+    if (payload?.graphType) {
+      effects.push({
+        type: 'setGraphType',
+        graphType: payload.graphType,
+      });
+    }
+    if (payload?.expansion) {
+      effects.push({
+        type: 'setExpansionState',
+        expansion: payload.expansion,
+      });
+      effects.push({ type: 'recomputeDataFunnel' });
+    }
+    effects.push({ type: 'requestSidebarUpdate' });
+    return effects;
+  }
+
+  _applyViewRestoreUiEffects(sidebarElement, effects) {
+    if (!sidebarElement || !Array.isArray(effects)) return;
+
+    for (const effect of effects) {
+      if (!effect || typeof effect !== 'object') continue;
+      switch (effect.type) {
+        case 'setSelectedTaskTypes':
+          this._env.ui.setSelectedTaskTypes(sidebarElement, effect.selectedTaskTypes || []);
+          break;
+        case 'setGraphType':
+          this._env.ui.setGraphType(sidebarElement, effect.graphType);
+          break;
+        case 'setExpansionState':
+          this._env.ui.setExpansionState(sidebarElement, effect.expansion || {});
+          break;
+        case 'recomputeDataFunnel':
+          this._env.ui.recomputeDataFunnel(sidebarElement);
+          break;
+        case 'requestSidebarUpdate':
+          this._env.ui.requestSidebarUpdate(sidebarElement);
+          break;
+        default:
+          break;
+      }
     }
   }
 
   async _restorePluginState(viewOptions) {
+    const pluginState = viewOptions?.pluginState || {};
+    if (typeof this._state?.applyViewPluginStateRestore === 'function') {
+      await this._state.applyViewPluginStateRestore({ pluginState });
+      return;
+    }
+
     if (!this._state?.pluginStateService?.restoreFromView) return;
     try {
-      await this._state.pluginStateService.restoreFromView(viewOptions?.pluginState || {});
+      await this._state.pluginStateService.restoreFromView(pluginState);
     } catch (e) {
       console.warn('[ViewManagementService] Failed to restore plugin state from view', e);
     }

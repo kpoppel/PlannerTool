@@ -64,3 +64,4 @@ Notes.md
 *.tmp
 backup/
 .aider*
+graphify-out/

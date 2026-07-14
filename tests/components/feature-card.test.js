@@ -8,7 +8,7 @@ import {
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
 import { featureFlags } from '../../www/js/config.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureCard Consolidated Tests', () => {
   before(async () => {
@@ -116,7 +116,7 @@ describe('FeatureCard Consolidated Tests', () => {
       } catch (e) {}
 
       // Ensure state feature lookup returns our source
-      const st = await import('../../www/js/services/State.js');
+      const st = await import('../helpers/runtimeState.js');
       const originalGetEffectiveFeatureById = st.state.getEffectiveFeatureById;
       const originalGetEffectiveFeatures = st.state.getEffectiveFeatures;
       st.state.getEffectiveFeatureById = (id) => source.find((f) => f.id === id);

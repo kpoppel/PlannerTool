@@ -4,7 +4,7 @@ import '../../www/js/components/ColorPopover.lit.js';
 // Ensure dependent menu elements are registered for tests that await them
 import '../../www/js/components/PlanMenu.lit.js';
 import '../../www/js/components/TeamMenu.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { ProjectEvents, TeamEvents } from '../../www/js/core/EventRegistry.js';
 

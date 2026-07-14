@@ -110,6 +110,22 @@ export function selectTeamAllocatedFeatureIds(features, selectedTeamIds) {
 }
 
 /**
+ * Select features that should participate in expand-by-team-allocation mode.
+ * Returns an empty list when team-allocation expansion is off or no team is selected.
+ *
+ * @param {{ features?: Array<object>, selectedTeamIds?: string[], expandTeamAllocated?: boolean }} input
+ * @returns {Array<object>}
+ */
+export function selectTeamAllocationExpansionFeatures({
+  features = [],
+  selectedTeamIds = [],
+  expandTeamAllocated = false,
+} = {}) {
+  if (!expandTeamAllocated || asArray(selectedTeamIds).length === 0) return [];
+  return asArray(features);
+}
+
+/**
  * Combine independent expansion modes. Parent/child and relation traversals
  * always start from the original selected set, so modes never compound.
  *

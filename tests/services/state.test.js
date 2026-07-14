@@ -1,5 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('State core behaviors', () => {
   it('computeFeatureOrgLoad respects selected teams', () => {

@@ -60,7 +60,7 @@ describe('modalHelpers', () => {
     // Test save path
     const savePromise = openAzureDevopsModal({
       overrides: { a: 1 },
-      state: null,
+      api: null,
     });
     let el = await waitFor('azure-devops-modal');
     el.dispatchEvent(new CustomEvent('modal-submit', { detail: [{ id: 'x' }] }));
@@ -68,7 +68,7 @@ describe('modalHelpers', () => {
     expect(saved).to.deep.equal([{ id: 'x' }]);
 
     // Test close path
-    const closePromise = openAzureDevopsModal({ overrides: {}, state: null });
+    const closePromise = openAzureDevopsModal({ overrides: {}, api: null });
     el = await waitFor('azure-devops-modal');
     el.dispatchEvent(new CustomEvent('modal-close'));
     const closed = await closePromise;

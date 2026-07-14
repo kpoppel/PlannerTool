@@ -76,6 +76,26 @@ describe('ViewManagementService pluginState integration', () => {
     expect(restoreCalled).to.equal(true);
   });
 
+  it('loadAndApplyView routes pluginState restore through state applyViewPluginStateRestore', async () => {
+    const pluginMap = { 'plugin-cost': { startDate: '2026-03-03' } };
+    let hookCalled = false;
+    mockState.applyViewPluginStateRestore = async ({ pluginState }) => {
+      hookCalled = true;
+      expect(pluginState).to.deep.equal(pluginMap);
+    };
+
+    dataService.getView = async () => ({
+      id: 'v3',
+      name: 'v3',
+      selectedProjects: {},
+      selectedTeams: {},
+      viewOptions: { pluginState: pluginMap },
+    });
+
+    await viewService.loadAndApplyView('v3');
+    expect(hookCalled).to.equal(true);
+  });
+
   it('loadAndApplyView clears persisted pluginState when the view has none', async () => {
     let restoreCalled = false;
     mockState.pluginStateService = {

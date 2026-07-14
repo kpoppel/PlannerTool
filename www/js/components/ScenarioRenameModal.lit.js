@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as plannerApi } from '../application/plannerApplication.js';
 
 export class ScenarioRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -11,40 +11,20 @@ export class ScenarioRenameModal extends LitElement {
     this.name = '';
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-  }
-
-  _getInner() {
-    return this.renderRoot.querySelector('modal-lit');
-  }
-
-  _qs(selector) {
-    const inner = this._getInner();
-    return inner ? inner.querySelector(selector) : null;
-  }
-
   firstUpdated() {
     // open after render
-    const inner = this._getInner();
+    const inner = this.renderRoot.querySelector('modal-lit');
     if (inner) inner.open = true;
-    const saveBtn = this._qs('#renameBtn');
-    const closeBtn = this._qs('#cancelRenameBtn');
-    const input = this._qs('#renameInput');
-    const status = this._qs('#renameStatus');
+    const saveBtn = this.renderRoot.querySelector('#renameBtn');
+    const closeBtn = this.renderRoot.querySelector('#cancelRenameBtn');
+    const input = this.renderRoot.querySelector('#renameInput');
+    const status = this.renderRoot.querySelector('#renameStatus');
     if (saveBtn)
       saveBtn.addEventListener('click', async () => {
         const val = input.value.trim();
         this._disableButtons(true);
         try {
-          // Update local state first so sidebar and other UI update immediately
-          try {
-            state.renameScenario(this.id, val);
-          } catch (e) {
-            /* ignore local state update errors */
-          }
-          // Persist to backend (best-effort)
-          await state.scenarios.rename(this.id, val).catch(() => {});
+          plannerApi.scenarios.rename(this.id, val);
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Rename failed.';
@@ -61,8 +41,8 @@ export class ScenarioRenameModal extends LitElement {
   }
 
   _disableButtons(dis) {
-    const saveBtn = this._qs('#renameBtn');
-    const closeBtn = this._qs('#cancelRenameBtn');
+    const saveBtn = this.renderRoot.querySelector('#renameBtn');
+    const closeBtn = this.renderRoot.querySelector('#cancelRenameBtn');
     if (saveBtn) saveBtn.disabled = dis;
     if (closeBtn) closeBtn.disabled = dis;
   }

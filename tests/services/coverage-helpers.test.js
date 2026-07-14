@@ -1,7 +1,7 @@
 import { expect } from '@esm-bundle/chai';
 import { bus, EventBus } from '../../www/js/core/EventBus.js';
 import { dataService } from '../../www/js/services/dataService.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('Coverage helpers', () => {
   it('exercise EventBus utilities', () => {

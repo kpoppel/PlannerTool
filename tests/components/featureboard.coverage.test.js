@@ -1,7 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureBoard helper coverage', () => {
   beforeEach(async () => {

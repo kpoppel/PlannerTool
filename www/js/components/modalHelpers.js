@@ -113,12 +113,13 @@ export const openOnboardingModal = async (opts = { parent: document.body }) => {
 export const openAzureDevopsModal = async ({
   overrides = {},
   pendingGroupChanges = [],
+  api = null,
   state = null,
   parent = document.body,
 } = {}) => {
   const { el, cleanup } = await _createModal('./AzureDevopsModal.lit.js', 'azure-devops-modal', {
     parent,
-    attrs: { overrides, pendingGroupChanges, state },
+    attrs: { overrides, pendingGroupChanges, api: api || state },
   });
   return _waitForModalResult(el, cleanup, {
     submitEvent: MODAL_SUBMIT_EVENT,

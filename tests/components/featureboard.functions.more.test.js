@@ -7,7 +7,7 @@ import * as boardUtils from '../../www/js/components/board-utils.js';
 if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
   Element.prototype.scrollTo = function () {};
 }
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureBoard helper coverage (additional)', () => {
   beforeEach(async () => {

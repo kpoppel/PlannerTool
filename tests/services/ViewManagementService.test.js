@@ -40,6 +40,7 @@ describe('ViewManagementService - Expansion Filters', () => {
       _stateFilterService: null,
       setProjectsSelectedBulk: () => {},
       setTeamsSelectedBulk: () => {},
+      setSelectedStates: () => {},
       setExpansionState: (options) => {
         mockState._expansionState = {
           ...mockState._expansionState,
@@ -199,6 +200,211 @@ describe('ViewManagementService - Expansion Filters', () => {
         (call) => call.event === FilterEvents.CHANGED && call.data.expansion
       );
       expect(expansionFilterEvent).to.be.undefined;
+    });
+
+    it('should route view restore selection chain through state applyViewSelectionRestore', async () => {
+      let restorePayload = null;
+      mockState.projects = [{ id: 'p1' }, { id: 'p2' }];
+      mockState.teams = [{ id: 't1' }];
+      mockState.availableFeatureStates = ['New', 'Doing'];
+      mockState.applyViewSelectionRestore = (payload) => {
+        restorePayload = payload;
+      };
+
+      dataService.getView = async () => ({
+        id: 'default',
+        name: 'Default View',
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {},
+      });
+
+      viewManagementService.initDefaultView();
+
+      await viewManagementService.loadAndApplyView('default');
+
+      expect(restorePayload).to.exist;
+      expect(restorePayload.projectSelections).to.deep.equal({ p1: true, p2: true });
+      expect(restorePayload.teamSelections).to.deep.equal({ t1: true });
+      expect(restorePayload.selectedStates).to.deep.equal(['New', 'Doing']);
+      expect(restorePayload.resetTaskFilters).to.equal(true);
+    });
+
+    it('should route view option and expansion restore through state applyViewOptionsRestore', async () => {
+      let optionsPayload = null;
+      mockState.applyViewOptionsRestore = (payload) => {
+        optionsPayload = payload;
+      };
+
+      mockSidebar.availableTaskTypes = ['Epic', 'Task'];
+      mockViewService.isTypeVisible = (type) => type === 'Epic';
+
+      const mockViewData = {
+        id: 'test-view-options',
+        name: 'Test View Options',
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {
+          graphType: 'team',
+          expandParentChild: true,
+          expandRelations: false,
+          expandTeamAllocated: true,
+        },
+      };
+
+      dataService.getView = async () => mockViewData;
+
+      await viewManagementService.loadAndApplyView('test-view-options');
+
+      expect(optionsPayload).to.exist;
+      expect(optionsPayload.graphType).to.equal('team');
+      expect(optionsPayload.selectedTaskTypes).to.deep.equal(['Epic']);
+      expect(optionsPayload.emitExpansionFilterChange).to.equal(true);
+      expect(optionsPayload.expansion).to.deep.equal({
+        expandParentChild: true,
+        expandRelations: false,
+        expandTeamAllocated: true,
+      });
+    });
+
+    it('should route sidebar sync through UI adapter hooks', async () => {
+      const uiCalls = [];
+      const serviceWithUiAdapter = new ViewManagementService(mockBus, mockState, mockViewService, {
+        ui: {
+          getSidebarElement: () => mockSidebar,
+          setSelectedTaskTypes: (_sidebar, types) => {
+            uiCalls.push(['setSelectedTaskTypes', types]);
+          },
+          setGraphType: (_sidebar, graphType) => {
+            uiCalls.push(['setGraphType', graphType]);
+          },
+          setExpansionState: (_sidebar, expansion) => {
+            uiCalls.push(['setExpansionState', expansion]);
+          },
+          recomputeDataFunnel: () => {
+            uiCalls.push(['recomputeDataFunnel']);
+          },
+          requestSidebarUpdate: () => {
+            uiCalls.push(['requestSidebarUpdate']);
+          },
+        },
+      });
+
+      mockSidebar.availableTaskTypes = ['Epic', 'Task'];
+      mockViewService.isTypeVisible = (type) => type === 'Epic';
+
+      const mockViewData = {
+        id: 'test-view-ui-adapter',
+        name: 'Test View UI Adapter',
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {
+          graphType: 'team',
+          expandParentChild: true,
+          expandRelations: true,
+          expandTeamAllocated: false,
+        },
+      };
+
+      dataService.getView = async () => mockViewData;
+
+      await serviceWithUiAdapter.loadAndApplyView('test-view-ui-adapter');
+
+      expect(uiCalls.some((call) => call[0] === 'setSelectedTaskTypes')).to.equal(true);
+      expect(uiCalls.some((call) => call[0] === 'setGraphType' && call[1] === 'team')).to.equal(
+        true
+      );
+      expect(uiCalls.some((call) => call[0] === 'setExpansionState')).to.equal(true);
+    });
+
+    it('should route view events through the event gateway when provided', async () => {
+      const eventCalls = [];
+      const serviceWithEventGateway = new ViewManagementService(
+        mockBus,
+        mockState,
+        mockViewService,
+        {
+          events: {
+            emitViewsList: (_bus, payload) => {
+              eventCalls.push(['emitViewsList', payload]);
+            },
+            emitViewActivated: (_bus, payload) => {
+              eventCalls.push(['emitViewActivated', payload]);
+            },
+            emitFilterChanged: (_bus, payload) => {
+              eventCalls.push(['emitFilterChanged', payload]);
+            },
+          },
+        }
+      );
+
+      serviceWithEventGateway.initDefaultView();
+      serviceWithEventGateway._views = [{ id: 'view-1' }];
+      serviceWithEventGateway._emitViewsList();
+      serviceWithEventGateway.clearActiveView();
+      serviceWithEventGateway._applyViewOptionsRestore({
+        selectedTaskTypes: ['Epic'],
+        expansion: {
+          expandParentChild: true,
+          expandRelations: false,
+          expandTeamAllocated: true,
+        },
+        emitExpansionFilterChange: true,
+      });
+
+      expect(eventCalls.some((call) => call[0] === 'emitViewsList')).to.equal(true);
+      expect(eventCalls.some((call) => call[0] === 'emitViewActivated')).to.equal(true);
+      expect(eventCalls.filter((call) => call[0] === 'emitFilterChanged')).to.have.length(2);
+    });
+
+    it('should execute restore without direct sidebar mutation when adapter hooks are provided', async () => {
+      const uiCalls = [];
+      const frozenSidebar = Object.freeze({
+        availableTaskTypes: ['Epic', 'Task'],
+      });
+
+      const serviceWithUiAdapter = new ViewManagementService(mockBus, mockState, mockViewService, {
+        ui: {
+          getSidebarElement: () => frozenSidebar,
+          setSelectedTaskTypes: (_sidebar, selectedTaskTypes) => {
+            uiCalls.push(['setSelectedTaskTypes', selectedTaskTypes]);
+          },
+          setGraphType: (_sidebar, graphType) => {
+            uiCalls.push(['setGraphType', graphType]);
+          },
+          setExpansionState: (_sidebar, expansion) => {
+            uiCalls.push(['setExpansionState', expansion]);
+          },
+          recomputeDataFunnel: () => {
+            uiCalls.push(['recomputeDataFunnel']);
+          },
+          requestSidebarUpdate: () => {
+            uiCalls.push(['requestSidebarUpdate']);
+          },
+        },
+      });
+
+      mockViewService.isTypeVisible = (type) => type === 'Task';
+
+      dataService.getView = async () => ({
+        id: 'test-view-no-direct-sidebar-mutation',
+        name: 'No Direct Sidebar Mutation',
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {
+          graphType: 'team',
+          expandParentChild: true,
+          expandRelations: false,
+          expandTeamAllocated: true,
+        },
+      });
+
+      await serviceWithUiAdapter.loadAndApplyView('test-view-no-direct-sidebar-mutation');
+
+      expect(uiCalls.some((call) => call[0] === 'setSelectedTaskTypes')).to.equal(true);
+      expect(uiCalls.some((call) => call[0] === 'setGraphType')).to.equal(true);
+      expect(uiCalls.some((call) => call[0] === 'setExpansionState')).to.equal(true);
+      expect(uiCalls.some((call) => call[0] === 'requestSidebarUpdate')).to.equal(true);
     });
   });
 });

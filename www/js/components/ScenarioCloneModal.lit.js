@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as plannerApi } from '../application/plannerApplication.js';
 
 export class ScenarioCloneModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -11,34 +11,21 @@ export class ScenarioCloneModal extends LitElement {
     this.name = '';
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-  }
-
-  _getInner() {
-    return this.renderRoot.querySelector('modal-lit');
-  }
-
-  _qs(selector) {
-    const inner = this._getInner();
-    return inner ? inner.querySelector(selector) : null;
-  }
-
   firstUpdated() {
     // open after render
-    const inner = this._getInner();
+    const inner = this.renderRoot.querySelector('modal-lit');
     if (inner) inner.open = true;
-    const saveBtn = this._qs('#cloneBtn');
-    const closeBtn = this._qs('#cancelCloneBtn');
-    const input = this._qs('#cloneInput');
-    const status = this._qs('#cloneStatus');
+    const saveBtn = this.renderRoot.querySelector('#cloneBtn');
+    const closeBtn = this.renderRoot.querySelector('#cancelCloneBtn');
+    const input = this.renderRoot.querySelector('#cloneInput');
+    const status = this.renderRoot.querySelector('#cloneStatus');
     if (saveBtn)
       saveBtn.addEventListener('click', async () => {
         const val = input.value.trim();
         this._disableButtons(true);
         try {
-          const newScen = state.cloneScenario(this.id, val);
-          if (newScen) state.activateScenario(newScen.id);
+          const newScen = plannerApi.scenarios.clone(this.id, val);
+          if (newScen) plannerApi.scenarios.activate(newScen.id);
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Clone failed.';
@@ -55,8 +42,8 @@ export class ScenarioCloneModal extends LitElement {
   }
 
   _disableButtons(dis) {
-    const saveBtn = this._qs('#cloneBtn');
-    const closeBtn = this._qs('#cancelCloneBtn');
+    const saveBtn = this.renderRoot.querySelector('#cloneBtn');
+    const closeBtn = this.renderRoot.querySelector('#cancelCloneBtn');
     if (saveBtn) saveBtn.disabled = dis;
     if (closeBtn) closeBtn.disabled = dis;
   }

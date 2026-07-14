@@ -36,8 +36,34 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Phase 6 completed: extracted shared runtime snapshot/UI-effect helpers, collapsed duplicated command/runtime boilerplate, modernized legacy-coupled tests, and updated architecture docs, reducing `www/js/application` by 131 lines while keeping tests, build, and runtime guards green.
+- Phase 5 completed: switched browser composition to explicit runtime services, removed all State/applicationRuntime imports, deleted the legacy State facade, and migrated view plus test boundaries to public runtime contracts.
+- Added an explicit application-layer Planner runtime service container that constructs State collaborators without importing or exporting the legacy State singleton.
+- Phase 5 continued: removed remaining underscore-based autosave fallback usage from the command layer, added a public autosave runtime method, and kept the focused runtime/API suite green.
+- Phase 5 continued: simplified the command factory by removing legacy runtime fallback branches and deleted bridge-specific runtime extraction tests.
+- Phase 5 started: removed the legacy command-dispatch bridge from runtime composition and trimmed an unused PlannerApi view-service alias.
+- Phase 4 completed: first-party UI modules now consume PlannerApi instead of the `applicationRuntime` facade, and the unused compatibility proxy shell was removed from `plannerApplication.js`.
+- Phase 4 kickoff: expanded PlannerApi for first-party scenario/group flows, migrated ScenarioMenu and scenario modals off direct runtime-facade imports, and removed duplicate scenario rename/delete dispatch paths.
+- Phase 3 kickoff for AppStore migration: selection legacy mutators now support side-effect suppression and selection commands explicitly trigger selection side effects, starting service-boundary hardening toward command-owned event sequencing.
+- Phase 3.2 kickoff for callback hardening: `updateFeatureDates` now separates legacy mutation from capacity side effects, and command wrappers explicitly orchestrate the capacity-side-effect step.
+- Phase 3.2 continuation: `updateFeatureField` and `revertFeature` now separate legacy mutation from capacity/scenario side effects, and command wrappers explicitly orchestrate those side-effect steps.
+- Phase 3.2 continuation: autosave timer ticks now route through command dispatch, with autosave failure logging sequenced by command wrappers instead of legacy timer callback paths.
+- Phase 3.2 continuation: view restore selection/filter application now routes through a single command-dispatchable state restore hook instead of direct multi-call service orchestration.
+- Phase 3.2 continuation: view option and expansion restore sequencing now routes through a command-dispatchable state options hook, including view restore, capacity mode restore, and expansion filter emission orchestration.
+- Phase 3.2 continuation: view plugin-state restore now routes through a command-dispatchable state hook and async command wrapper instead of direct service-level restore calls.
+- Phase 3.2 continuation: ViewManagement sidebar sync side effects now route through explicit UI adapter hooks, with environment adapter merging to preserve compatibility for partial adapters.
+- Phase 3.2 continuation: view restore now uses explicit command-planned UI effect descriptors that are executed via the ViewManagement UI adapter, reducing direct sidebar mutation coupling.
+- Phase 3.2 continuation: documented UI effect descriptor schema in command contract docs and added guard-style tests proving adapter-hook execution works without direct sidebar mutation requirements.
+- Phase 3.2 continuation: runtime guard now includes a focused static check that blocks direct sidebar mutation in ViewManagementService outside the default UI adapter definitions.
+- Phase 3.3 continuation: ViewManagementService event emissions now flow through explicit event-gateway adapters, with a guard against direct bus emission in that service.
+- Phase 3 completion: StateFilterService and TaskFilterService now emit through explicit event gateways, and runtime guards enforce the service boundary hardening path across the migrated services.
 - Phase 0 AppStore canonical migration guardrails: documented runtime invariants, added lint/runtime checks that block new `State.js` imports outside composition root, and added a CI guard against direct AppStore snapshot mutation patterns.
 - Phase 1 AppStore migration planning: added canonical AppState coverage audit, full State mutation-to-command mapping, and a formal command contract for transaction labels, idempotency, and side effect policy.
+- Phase 2 AppStore migration start: added application command/selector factories, wired them into `plannerApplication` composition, and added integration tests verifying AppStore hydration from legacy runtime state.
+- Phase 2.2 selector extraction start: moved active-scenario, iteration lookup, and capacity-payload derivations into pure application selectors and delegated matching State read paths to those selectors.
+- Phase 2.2 selector extraction continuation: moved feature dirty-field derivation and writable-unsaved scenario selection into selectors, and delegated State autosave/diff read logic to selector calls.
+- Phase 2.2 selector extraction continuation: moved scenario save-payload shaping and bulk feature-id derivation to selectors, and delegated matching State read transforms to selector calls.
+- Phase 2.2 completed: moved remaining expansion/capacity input-shaping derivations to selectors and delegated the corresponding State read paths; selector and integration tests were expanded to lock behavior.
 - Added the initial explicit application-composition and immutable store foundation for the staged frontend state-architecture migration.
 - Extracted pure expansion/task-type selectors, scenario-group and capacity coordination services, removed the unused FilterManager, and introduced a versioned PlannerApi injection point for plugins.
 - Migrated all first-party plugins, including cost analysis, from direct State imports to narrow injected PlannerApi domains.
@@ -88,6 +114,7 @@ Template - do not change :
 ### Fixed
 - Save modal recalculated changed items per row, causing a large lag from click to UI update.
 - Portfolio Board plugin now limits state columns and cards to the states currently selected in the Sidebar Task Filters.
+- DetailsPanel component tests now use a test-only applicationRuntime delegate override hook so command-owned feature/date writes can be observed without stubbing frozen runtime objects.
 
 ## [v4.1.5] - 2026-07-08
 ### Fixed

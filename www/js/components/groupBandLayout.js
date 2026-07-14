@@ -11,8 +11,8 @@
  *   packIntoRows(bars)
  *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups, planId)
  */
-import { computePosition, laneHeight } from './board-utils.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import * as boardUtils from './board-utils.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 
 /**
  * Greedy interval-packing: place each bar in the first sub-row where it does
@@ -107,12 +107,12 @@ export function buildGroupBandItems(
 
   /** Compute pill left/width, falling back to today → today+1 month for empty groups. */
   const pillPosition = (start, end) => {
-    if (start && end) return computePosition({ start, end }, months);
+    if (start && end) return boardUtils.computePosition({ start, end }, months);
     const today = new Date();
     const next = new Date(today);
     next.setMonth(today.getMonth() + 1);
     const fmt = (d) => d.toISOString().slice(0, 10);
-    return computePosition({ start: fmt(today), end: fmt(next) }, months);
+    return boardUtils.computePosition({ start: fmt(today), end: fmt(next) }, months);
   };
 
   /** Sort groups by earliest child start date, then by rank. */
@@ -133,17 +133,35 @@ export function buildGroupBandItems(
   /** Push feature card render items for a list of features (flat or packed). */
   const addFeatureRows = (features) => {
     if (packed) {
-      const bars = features
-        .filter((f) => f.start && f.end)
+      const plannedFeatures = features.filter((f) => f.start && f.end);
+      const bars = plannedFeatures
         .map((f) => {
-          const p = computePosition(f, months);
+          const p = boardUtils.computePosition(f, months);
           return p ? { left: p.left, width: p.width, feature: f } : null;
         })
         .filter(Boolean)
         .sort((a, b) => a.left - b.left);
+
+      if (bars.length === 0 && plannedFeatures.length > 0) {
+        for (const feature of plannedFeatures) {
+          items.push({
+            feature,
+            left: 0,
+            width: 0,
+            top: rowTop,
+            teams: state.teams,
+            condensed: true,
+            hideGhostTitle: true,
+            project: state.projects.find((p) => p.id === feature.project),
+          });
+          rowTop += boardUtils.laneHeight();
+        }
+        return;
+      }
+
       const rows = packIntoRows(bars);
       rows.forEach((row, rowIndex) => {
-        const top = rowTop + rowIndex * laneHeight();
+        const top = rowTop + rowIndex * boardUtils.laneHeight();
         for (const bar of row) {
           items.push({
             feature: bar.feature,
@@ -157,10 +175,10 @@ export function buildGroupBandItems(
           });
         }
       });
-      rowTop += Math.max(rows.length, 0) * laneHeight();
+      rowTop += Math.max(rows.length, 0) * boardUtils.laneHeight();
     } else {
       for (const feature of features) {
-        const fpos = computePosition(feature, months) || {};
+        const fpos = boardUtils.computePosition(feature, months) || {};
         items.push({
           feature,
           left: fpos.left ?? 0,
@@ -171,7 +189,7 @@ export function buildGroupBandItems(
           hideGhostTitle: false,
           project: state.projects.find((p) => p.id === feature.project),
         });
-        rowTop += laneHeight();
+        rowTop += boardUtils.laneHeight();
       }
     }
   };

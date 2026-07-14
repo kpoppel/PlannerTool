@@ -10,7 +10,7 @@ import { fixture, html, expect } from '@open-wc/testing';
 import * as boardUtils from '../../www/js/components/board-utils.js';
 import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureBoard._packIntoRows', () => {
   let el;
@@ -126,6 +126,9 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     // Ensure project p1 is selected and passes filters
     state.initProjectTeamBaseline([{ id: 'p1', selected: true }], []);
     state.setProjectSelected('p1', true);
+    state.taskFilterService.resetFilters();
+    state.setTypeVisibility('feature', true, true);
+    state.setTypeVisibility('epic', true, true);
     state.setShowOnlyProjectHierarchy(false);
     state.setShowUnplannedWork(true);
     state.setShowUnallocatedCards(true);

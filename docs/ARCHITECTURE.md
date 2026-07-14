@@ -14,9 +14,9 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 2. **Core Orchestration (core/):** Provides infrastructure for cross-cutting concerns. Includes EventBus (typed event routing), EventRegistry (event type definitions), PluginManager (plugin lifecycle and loading), and the Plugin base class. Application dependency composition lives in `application/`, not in a service locator or DI container.
 
-3. **Application (application/):** Contains explicit application composition, immutable store primitives, versioned plugin APIs, and pure selectors. Expansion and task-type selectors are side-effect free; `plannerApplication.js` owns the transitional State adapter while consumers migrate to narrow APIs.
+3. **Application (application/):** Contains explicit application composition, immutable store primitives, versioned plugin APIs, command modules, runtime snapshot helpers, and pure selectors. `plannerApplication.js` composes the browser application from `AppStore`, `createPlannerCommands`, `createPlannerSelectors`, and `createPlannerRuntimeServices`.
 
-4. **Application Services (services/):** Encapsulates business logic, application state, and domain computations. Includes legacy state compatibility (State.js, BaselineStore), feature/scenario operations (FeatureService, ScenarioManager, ScenarioEventService, ScenarioGroupService), filtering (ProjectTeamService, StateFilterService), capacity calculation/co-ordination (CapacityCalculator, CapacityCoordinator, PluginCostCalculator), and utility services (ColorService, IconService, ConfigService, ViewService). Services own narrow responsibilities and numeric calculation code does not emit capacity events.
+4. **Application Services (services/):** Encapsulates business logic, runtime collaborators, and domain computations. Includes baseline storage (BaselineStore), feature/scenario operations (FeatureService, ScenarioManager, ScenarioEventService, ScenarioGroupService), filtering (ProjectTeamService, StateFilterService), capacity calculation/co-ordination (CapacityCalculator, CapacityCoordinator, PluginCostCalculator), and utility services (ColorService, IconService, ConfigService, ViewService). Services own narrow responsibilities and numeric calculation code does not emit capacity events.
 
 5. **Data Access Layer (providers + dataService):** Abstract persistence and remote data. Includes ProviderREST (HTTP), preferences storage, and DataInitService. The dataService adapter wires the active provider so services and components use a single interface regardless of backend.
 
@@ -36,7 +36,7 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 - **Event-Driven Communication:** The EventBus provides typed, symbol-based events (defined in EventRegistry) for decoupled module interaction. Components and services subscribe/unsubscribe in lifecycle methods (connectedCallback/disconnectedCallback or equivalent) to avoid memory leaks.
 
-- **Immutable State & Derived Computation:** `application/AppStore.js` provides immutable transactional state for new workflows. BaselineStore and the legacy State facade remain active during migration. Pure selectors derive expansion and task-type data; CapacityCalculator is a pure numeric service and CapacityCoordinator owns its input policy.
+- **Immutable State & Derived Computation:** `application/AppStore.js` is the canonical mutable runtime truth exposed through immutable snapshots and labeled transactions. Pure selectors derive expansion, scenario, capacity, and task-type data; CapacityCalculator is a pure numeric service and CapacityCoordinator owns its input policy.
 
 - **Service APIs:** Services expose imperative methods to modify state and emit events when state changes. Consumers call service methods rather than mutating state directly. This maintains a single source of truth and enables undo/redo and scenario management.
 
@@ -55,19 +55,35 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 **State Management Architecture**
 
-The browser starts through `application/plannerApplication.js`, the explicit composition root. It owns the sole browser import of `State.js`, provides `applicationApi` to plugins, and composes `applicationRuntime` for UI modules. `State.js` is the current implementation of that runtime service:
-- Pure application selectors own task-type and expansion derivation.
-- ScenarioGroupService owns scenario-local group overlays and member deltas.
-- CapacityCoordinator prepares capacity inputs; State emits the one compatibility capacity-update event after storing the result.
-- ViewManagementService receives a narrow view-state port instead of the full State instance.
-- PluginManager injects `PlannerApi` version 1. New plugin code must use this API rather than importing State or service internals.
+The browser starts through `application/plannerApplication.js`, the explicit composition root. It wires together `createPlannerApplication`, `createPlannerRuntimeServices`, `createPlannerCommands`, `createPlannerSelectors`, and `createPlannerApi`. The runtime service container exposes narrow imperative collaborators for UI and plugins, while AppStore remains the sole canonical runtime truth.
+
+```mermaid
+flowchart TD
+	UI[Components and Menus] --> API[PlannerApi]
+	UI --> CMD[Commands]
+	API --> CMD
+	CMD --> STORE[AppStore]
+	CMD --> RT[Planner Runtime Services]
+	RT --> SVC[Domain Services]
+	SVC --> DATA[dataService and Providers]
+	STORE --> SEL[Selectors]
+	SEL --> UI
+	RT --> BUS[EventBus]
+	CMD --> BUS
+```
+
+- AppStore owns canonical runtime state and is mutated only through command transactions.
+- `createPlannerCommands` owns mutation orchestration, command-first sync policy, and runtime reconciliation.
+- `createPlannerSelectors` owns pure derived reads for expansion, scenario, iteration, feature, and capacity state.
+- `createPlannerRuntimeServices` composes scenario, view, group, capacity, filter, and plugin collaborators behind narrow ports for browser consumers.
+- ViewManagementService receives a narrow view-state port rather than a monolithic runtime object.
+- PluginManager injects `PlannerApi` version 1. Plugins and first-party UI consume this API instead of importing service implementations.
 
 **Runtime Invariants (Migration Guardrails)**
 
-- AppStore is the only canonical mutable runtime truth during migration completion; no second mutable runtime owner may be introduced.
+- AppStore is the only canonical mutable runtime truth; no second mutable runtime owner may be introduced.
 - Runtime state writes must occur through commands/transaction labels (`AppStore.update(...)`); UI/components and services must not mutate AppStore snapshots directly.
 - Selectors remain pure derivations with no side effects and no in-place writes.
-- `services/State.js` imports are restricted to the browser composition root (`application/plannerApplication.js`) while compatibility remains.
 - Services may compute and perform IO, but they must not directly mutate canonical AppStore state.
 
 **Plugin Configuration Management**
@@ -131,7 +147,7 @@ The plugin system uses a two-tier configuration model separating static metadata
 **Known Limitations & Future Improvements**
 
 - Provider interface could be more strongly typed (e.g., TypeScript or JSDoc @typedef).
-- Scenario management logic (in ScenarioManager and State) is complex; could be split further.
+- Scenario management logic (in ScenarioManager and the runtime service container) is still dense and could be split further.
 - Some legacy DOM wiring remains; full migration to Lit components is ongoing.
 - Feature flag cleanup: old flags should be removed as migrations complete.
 

@@ -1,6 +1,6 @@
 import { bus } from '../core/EventBus.js';
 import { DragEvents } from '../core/EventRegistry.js';
-import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { applicationApi as state } from '../application/plannerApplication.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
@@ -21,8 +21,7 @@ function getAllFeatures() {
   ) {
     return state.featureService.getEffectiveFeatures() || [];
   }
-  // Fallback to state.features if FeatureService isn't available
-  return state.features || [];
+  return state.getEffectiveFeatures?.() || [];
 }
 
 /**

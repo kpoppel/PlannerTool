@@ -1,7 +1,11 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import { state } from '../../www/js/services/State.js';
+import {
+  clearPlannerApiOverride,
+  setPlannerApiOverride,
+} from '../../www/js/application/PlannerApi.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('DetailsPanel helper coverage', () => {
   beforeEach(async () => {
@@ -32,13 +36,13 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._saveCapacityEdit('t1', '50');
     expect(stub.calledOnce).to.be.true;
     const args = stub.getCall(0).args;
     expect(args[0]).to.equal('f1');
     expect(args[1]).to.equal('capacity');
-    stub.restore();
     expect(el.editingCapacityTeam).to.equal(null);
   });
 
@@ -50,7 +54,8 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     const form = document.createElement('form');
     const select = document.createElement('select');
     select.innerHTML = '<option value="t2">T2</option>';
@@ -66,7 +71,6 @@ describe('DetailsPanel helper coverage', () => {
     const args = stub.getCall(0).args;
     expect(args[0]).to.equal('f2');
     expect(args[1]).to.equal('capacity');
-    stub.restore();
   });
 
   it('capacity input value updates when switching features', async () => {

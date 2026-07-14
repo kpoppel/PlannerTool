@@ -37,7 +37,7 @@ const isStructuralOp = (op) =>
 export class AzureDevopsModal extends LitElement {
   static properties = {
     overrides: { type: Object },
-    state: { type: Object },
+    api: { type: Object },
     /** Array<{ type:'create'|'update'|'delete', group?, groupId?, groupName?, fields? }> */
     pendingGroupChanges: { type: Array },
   };
@@ -45,9 +45,40 @@ export class AzureDevopsModal extends LitElement {
   constructor() {
     super();
     this.overrides = {};
-    this.state = null;
+    this.api = null;
     this.pendingGroupChanges = [];
     this._selected = new Set();
+  }
+
+  _getFeatureTitle(id) {
+    if (this.api?.features?.getTitle) return this.api.features.getTitle(id);
+    if (typeof this.api?.getFeatureTitleById === 'function') return this.api.getFeatureTitleById(id);
+    return id;
+  }
+
+  _getBaselineFeatures() {
+    if (typeof this.api?.features?.getBaseline === 'function') return this.api.features.getBaseline() || [];
+    return this.api?.baselineFeatures || [];
+  }
+
+  _getProjects() {
+    if (typeof this.api?.selection?.getProjects === 'function') return this.api.selection.getProjects() || [];
+    return this.api?.projects || [];
+  }
+
+  _getTeams() {
+    if (typeof this.api?.selection?.getTeams === 'function') return this.api.selection.getTeams() || [];
+    return this.api?.teams || [];
+  }
+
+  _revertFeature(id) {
+    if (typeof this.api?.features?.revert === 'function') {
+      this.api.features.revert(id);
+      return;
+    }
+    if (typeof this.api?.revertFeature === 'function') {
+      this.api.revertFeature(id);
+    }
   }
 
   firstUpdated() {
@@ -308,7 +339,7 @@ export class AzureDevopsModal extends LitElement {
    * @param {string} id  Feature / task id
    */
   _onRevertFeature(id) {
-    if (!this.state) return;
+    if (!this.api) return;
     // Remove any selected keys for this feature so the selection stays consistent.
     const next = new Set(this._selected);
     for (const key of next) {
@@ -316,7 +347,7 @@ export class AzureDevopsModal extends LitElement {
     }
     this._selected = next;
     // Revert the override in the active scenario (mutates the shared object in place).
-    this.state.revertFeature(id);
+    this._revertFeature(id);
     // Force re-render so the now-absent override no longer shows a row.
     this.requestUpdate();
   }
@@ -389,9 +420,7 @@ export class AzureDevopsModal extends LitElement {
   _computeRows(entries) {
     const normDate = (v) => v || null;
     // Build an id→feature map once so each row lookup is O(1) instead of O(n).
-    const baselineById = new Map(
-      (this.state?.baselineFeatures || []).map((f) => [f.id, f])
-    );
+    const baselineById = new Map(this._getBaselineFeatures().map((f) => [f.id, f]));
     return entries
       .filter(([, ov]) => ov && typeof ov === 'object')
       .map(([id, ov]) => {
@@ -414,7 +443,7 @@ export class AzureDevopsModal extends LitElement {
         // Format capacity diff for display
         let capacityContent = '';
         if (capacityChanged) {
-          const teams = this.state?.teams || [];
+          const teams = this._getTeams();
           const origMap = new Map(origCapacity.map((c) => [c.team, c.capacity]));
           const newMap = new Map(ov.capacity.map((c) => [c.team, c.capacity]));
           const allTeams = new Set([...origMap.keys(), ...newMap.keys()]);
@@ -531,7 +560,7 @@ export class AzureDevopsModal extends LitElement {
                 </td>`;
               })()}
               <td>
-                ${this.state ? this.state.getFeatureTitleById(r.id) : r.id}
+                ${this._getFeatureTitle(r.id)}
               </td>
               <td style="padding:6px 8px;">
                 <button
@@ -576,7 +605,7 @@ export class AzureDevopsModal extends LitElement {
                 ?? (op.groupId ? groupService.getGroupById(String(op.groupId)) : null);
               const planId = resolvedGroup?.plan_id || op.planId;
               const planName = planId
-                ? (this.state?.projects?.find((p) => String(p.id) === String(planId))?.name ?? planId)
+                ? (this._getProjects().find((p) => String(p.id) === String(planId))?.name ?? planId)
                 : '';
               const grpName = op.group?.name ?? this._resolveGroupName(op.groupId, groupOps);
               const itemLabel = planName
@@ -621,7 +650,7 @@ export class AzureDevopsModal extends LitElement {
                     title="Toggle all changes on this row"
                   />
                 </td>
-                <td>${this.state ? this.state.getFeatureTitleById(d.taskId) : d.taskId}</td>
+                <td>${this._getFeatureTitle(d.taskId)}</td>
                 <td style="padding:6px 8px;">
                   <button
                     type="button"

@@ -6,7 +6,7 @@ import {
   _resetTimelineState,
   ensureScrollToMonth,
 } from '../../www/js/components/Timeline.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('Timeline extra API', () => {
   beforeEach(() => {

@@ -1,7 +1,11 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import { state } from '../../www/js/services/State.js';
+import {
+  clearPlannerApiOverride,
+  setPlannerApiOverride,
+} from '../../www/js/application/PlannerApi.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('DetailsPanel additional function coverage', () => {
   beforeEach(async () => {
@@ -9,6 +13,8 @@ describe('DetailsPanel additional function coverage', () => {
   });
 
   afterEach(() => {
+    clearPlannerApiOverride('updateFeatureField');
+    clearPlannerApiOverride('updateFeatureDates');
     sinon.restore();
   });
 
@@ -36,7 +42,8 @@ describe('DetailsPanel additional function coverage', () => {
     stubGet.withArgs('c1').returns({ id: 'c1', start: '2025-01-05', end: '2025-01-10' });
     stubGet.withArgs('c2').returns({ id: 'c2', start: '2025-01-01', end: '2025-01-12' });
 
-    const stubUpdate = sinon.stub(state, 'updateFeatureDates');
+    const stubUpdate = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stubUpdate);
     await el._shrinkwrapEpic({ stopPropagation: () => {} });
     expect(stubUpdate.calledOnce).to.be.true;
     const arg = stubUpdate.getCall(0).args[0][0];
@@ -45,7 +52,6 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.end).to.equal('2025-01-12');
 
     stubGet.restore();
-    stubUpdate.restore();
     childrenStub.restore();
   });
 
@@ -73,7 +79,8 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f1', capacity: [{ team: 't1', capacity: 10 }] };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
 
     // Enter key
     const enterEv = { key: 'Enter', target: { value: '42' } };
@@ -87,21 +94,20 @@ describe('DetailsPanel additional function coverage', () => {
     el._handleCapacityInputKeydown('t1', escEv);
     expect(el.editingCapacityTeam).to.be.null;
 
-    stub.restore();
   });
 
   it('_saveCapacityEdit clamps values and calls updateFeatureField', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f2', capacity: [{ team: 't1', capacity: 20 }] };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._saveCapacityEdit('t1', '300');
     expect(stub.calledOnce).to.be.true;
     const newCap = stub.getCall(0).args[2] || stub.getCall(0).args[1];
     // ensure capacity value clamped to 100 inside the payload (search payload)
     const payload = stub.getCall(0).args;
     expect(stub.called).to.be.true;
-    stub.restore();
   });
 
   it('_handleDeleteCapacity removes team and calls updateFeatureField', async () => {
@@ -114,12 +120,12 @@ describe('DetailsPanel additional function coverage', () => {
       ],
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._handleDeleteCapacity('t2', { stopPropagation: () => {} });
     expect(stub.calledOnce).to.be.true;
     const args = stub.getCall(0).args;
     expect(args[0]).to.equal('f3');
-    stub.restore();
   });
 
   it('_handleAddTeamClick toggles popover', async () => {
@@ -135,7 +141,8 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f4', state: 'New' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._onStateClick({ stopPropagation: () => {} });
     el._stateEditValue = 'In Progress';
     el._saveStateEdit();
@@ -143,7 +150,6 @@ describe('DetailsPanel additional function coverage', () => {
     const args = stub.getCall(0).args;
     expect(args[0]).to.equal('f4');
     expect(args[1]).to.equal('state');
-    stub.restore();
   });
 
   it('_addTag adds a new tag via state.updateFeatureField', async () => {
@@ -152,13 +158,13 @@ describe('DetailsPanel additional function coverage', () => {
     el._newTagText = 'three';
     await el.updateComplete;
 
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._addTag();
 
     expect(stub.calledOnce).to.be.true;
     expect(stub.getCall(0).args).to.deep.equal(['f-tags-1', 'tags', 'one; two; three']);
     expect(el._newTagText).to.equal('');
-    stub.restore();
   });
 
   it('_removeTag clears tags when removing the last tag', async () => {
@@ -166,12 +172,12 @@ describe('DetailsPanel additional function coverage', () => {
     el.feature = { id: 'f-tags-2', tags: 'solo' };
     await el.updateComplete;
 
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', stub);
     el._removeTag('solo');
 
     expect(stub.calledOnce).to.be.true;
     expect(stub.getCall(0).args).to.deep.equal(['f-tags-2', 'tags', null]);
-    stub.restore();
   });
 
   it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
@@ -188,8 +194,10 @@ describe('DetailsPanel additional function coverage', () => {
     // trigger the load that runs in updated lifecycle
     await el._loadIterationsForFeature();
 
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
+    const datesStub = sinon.spy();
+    const fieldStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', datesStub);
+    setPlannerApiOverride('updateFeatureField', fieldStub);
     // simulate selection change - component accepts full path or suffix
     // select elements may pass either full path or suffix; use suffix to match endsWith
     const ev = { target: { value: 'It1' } };
@@ -203,15 +211,14 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.end).to.equal('2025-02-10');
 
     getIterationsStub.restore();
-    datesStub.restore();
-    fieldStub.restore();
   });
 
   it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f20', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stub);
 
     el._onStartDateChange({ target: { value: '2025-01-15' } });
 
@@ -220,14 +227,14 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('f20');
     expect(arg.start).to.equal('2025-01-15');
     expect(arg.end).to.equal('2025-02-01');
-    stub.restore();
   });
 
   it('_onEndDateChange calls state.updateFeatureDates with new end', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f21', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stub);
 
     el._onEndDateChange({ target: { value: '2025-03-01' } });
 
@@ -236,28 +243,28 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('f21');
     expect(arg.start).to.equal('2025-01-01');
     expect(arg.end).to.equal('2025-03-01');
-    stub.restore();
   });
 
   it('_onStartDateChange treats empty value as null', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f22', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stub);
 
     el._onStartDateChange({ target: { value: '' } });
 
     expect(stub.calledOnce).to.be.true;
     const arg = stub.getCall(0).args[0][0];
     expect(arg.start).to.equal(null);
-    stub.restore();
   });
 
   it('_clearDates calls state.updateFeatureDates with null dates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f23', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stub);
 
     el._clearDates();
 
@@ -266,15 +273,16 @@ describe('DetailsPanel additional function coverage', () => {
     expect(arg.id).to.equal('f23');
     expect(arg.start).to.equal(null);
     expect(arg.end).to.equal(null);
-    stub.restore();
   });
 
   it('_clearDates also clears iterationPath when one is set', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f24', start: '2025-01-01', end: '2025-02-01', iterationPath: 'Team\\Sprint 3' };
     await el.updateComplete;
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
+    const fieldStub = sinon.spy();
+    const datesStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', fieldStub);
+    setPlannerApiOverride('updateFeatureDates', datesStub);
 
     el._clearDates();
 
@@ -283,33 +291,31 @@ describe('DetailsPanel additional function coverage', () => {
     expect(fieldStub.getCall(0).args).to.deep.equal(['f24', 'iterationPath', null]);
     expect(datesStub.calledOnce).to.be.true;
     expect(datesStub.getCall(0).args[0][0]).to.deep.include({ id: 'f24', start: null, end: null });
-    fieldStub.restore();
-    datesStub.restore();
   });
 
   it('_clearDates does not call updateFeatureField when no iterationPath is set', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f25', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
+    const fieldStub = sinon.spy();
+    const datesStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureField', fieldStub);
+    setPlannerApiOverride('updateFeatureDates', datesStub);
 
     el._clearDates();
 
     expect(fieldStub.called).to.be.false;
     expect(datesStub.calledOnce).to.be.true;
-    fieldStub.restore();
-    datesStub.restore();
   });
 
   it('_clearDates does nothing when no feature is set', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', stub);
 
     el._clearDates();
 
     expect(stub.called).to.be.false;
-    stub.restore();
   });
 
   it('_snapStartDate snaps start to earliest child, keeps current end', async () => {
@@ -322,7 +328,8 @@ describe('DetailsPanel additional function coverage', () => {
     const getStub = sinon.stub(state, 'getEffectiveFeatureById');
     getStub.withArgs('c1').returns({ id: 'c1', start: '2025-02-01', end: '2025-02-15' });
     getStub.withArgs('c2').returns({ id: 'c2', start: '2025-01-10', end: '2025-02-20' });
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const updateStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', updateStub);
 
     el._snapStartDate({ stopPropagation: () => {} });
 
@@ -334,7 +341,6 @@ describe('DetailsPanel additional function coverage', () => {
 
     childrenStub.restore();
     getStub.restore();
-    updateStub.restore();
   });
 
   it('_snapEndDate snaps end to latest child, keeps current start', async () => {
@@ -347,7 +353,8 @@ describe('DetailsPanel additional function coverage', () => {
     const getStub = sinon.stub(state, 'getEffectiveFeatureById');
     getStub.withArgs('c3').returns({ id: 'c3', start: '2025-01-05', end: '2025-02-10' });
     getStub.withArgs('c4').returns({ id: 'c4', start: '2025-01-08', end: '2025-03-15' });
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const updateStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', updateStub);
 
     el._snapEndDate({ stopPropagation: () => {} });
 
@@ -359,7 +366,6 @@ describe('DetailsPanel additional function coverage', () => {
 
     childrenStub.restore();
     getStub.restore();
-    updateStub.restore();
   });
 
   it('_snapStartDate does nothing when feature has no children', async () => {
@@ -368,14 +374,14 @@ describe('DetailsPanel additional function coverage', () => {
     await el.updateComplete;
 
     const childrenStub = sinon.stub(state, 'childrenByParent').get(() => new Map());
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const updateStub = sinon.spy();
+    setPlannerApiOverride('updateFeatureDates', updateStub);
 
     el._snapStartDate({ stopPropagation: () => {} });
 
     expect(updateStub.called).to.be.false;
 
     childrenStub.restore();
-    updateStub.restore();
   });
 
   it('_activeIterationPath returns matching path when dates match exactly', async () => {
