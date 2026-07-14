@@ -783,10 +783,10 @@ export function computeEffectiveDataMaps(features, childrenMap, monthKeys) {
  *
  * @param {Array<Object>} projects
  * @param {Array<Date>} months
- * @param {Object} state - global app state used to resolve epic children
+ * @param {Map<string, string[]>} childrenByParent - Loaded feature hierarchy.
  * @returns {Object} { projects: Array, footerHours: Object, footerTotalHours: number }
  */
-export function buildProjects(projects, months, state) {
+export function buildProjects(projects, months, childrenByParent = new Map()) {
   const monthKeys = months.map(monthKey);
   const useEpicGapFills = isEnabled('USE_PARENT_CAPACITY_GAP_FILLS');
 
@@ -796,11 +796,11 @@ export function buildProjects(projects, months, state) {
 
     const childrenMap = new Map();
     const featuresList = p.features || [];
-    if (state?.childrenByParent?.get) {
+    if (childrenByParent instanceof Map) {
       for (const f of featuresList) {
         const raw =
-          state.childrenByParent.get(Number(f.id)) ||
-          state.childrenByParent.get(String(f.id)) ||
+          childrenByParent.get(Number(f.id)) ||
+          childrenByParent.get(String(f.id)) ||
           [];
         if (raw.length) childrenMap.set(String(f.id), raw.map(String));
       }

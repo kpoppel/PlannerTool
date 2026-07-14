@@ -1,27 +1,32 @@
 import { expect } from '@open-wc/testing';
-import sinon from 'sinon';
 import { render } from '../../www/js/vendor/lit.js';
-import { state } from '../../www/js/services/State.js';
-import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
-import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
+import { renderTaskView as renderTaskViewTemplate } from '../../www/js/plugins/PluginCostTaskView.js';
+import { renderTeamView as renderTeamViewTemplate } from '../../www/js/plugins/PluginCostTeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 
-describe('PluginCost low-coverage branches', () => {
-  let projectsValue;
-  let teamsValue;
-  let projectsStub;
-  let teamsStub;
+let projectsValue;
+let teamsValue;
 
+function renderTaskView(component) {
+  component.api = {
+    selection: { getProjects: () => projectsValue, getChildrenByParent: () => new Map() },
+    filters: { getTaskFilters: () => ({ schedule: { unplanned: true } }) },
+  };
+  return renderTaskViewTemplate(component);
+}
+
+function renderTeamView(component) {
+  component.api = {
+    selection: { getTeams: () => teamsValue, getChildrenByParent: () => new Map() },
+    filters: { getTaskFilters: () => ({ schedule: { unplanned: true } }) },
+  };
+  return renderTeamViewTemplate(component);
+}
+
+describe('PluginCost low-coverage branches', () => {
   beforeEach(() => {
     projectsValue = [];
     teamsValue = [];
-    projectsStub = sinon.stub(state, 'projects').get(() => projectsValue);
-    teamsStub = sinon.stub(state, 'teams').get(() => teamsValue);
-  });
-
-  afterEach(() => {
-    projectsStub.restore();
-    teamsStub.restore();
   });
 
   it('renderTaskView shows task table for selected project with metrics', () => {

@@ -62,6 +62,7 @@ class PluginXYBoard {
       this._el.style.display = 'none';
       this._host.appendChild(this._el);
     }
+    this._el.api = this.api;
     // Hide the timeline board while this fullscreen plugin is active
     if (this.config.fullscreen) {
       const timelineBoard = document.querySelector('timeline-board');

@@ -25,7 +25,7 @@ import {
   GroupEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { groupService } from '../services/GroupService.js';
 import { findInBoard } from './board-utils.js';
 

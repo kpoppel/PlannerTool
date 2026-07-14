@@ -12,7 +12,7 @@
  *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups, planId)
  */
 import { computePosition, laneHeight } from './board-utils.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 
 /**
  * Greedy interval-packing: place each bar in the first sub-row where it does

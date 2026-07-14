@@ -57,6 +57,7 @@ class PluginPortfolio {
       this._el.style.display = 'none';
       this._host.appendChild(this._el);
     }
+    this._el.api = this.api;
 
     if (this.config.fullscreen) {
       const timelineBoard = document.querySelector('timeline-board');

@@ -1,8 +1,20 @@
 import { expect } from '@open-wc/testing';
-import sinon from 'sinon';
-import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
+import { renderProjectView as renderProjectViewTemplate } from '../../www/js/plugins/PluginCostProjectView.js';
 import { render } from '../../www/js/vendor/lit.js';
-import { state } from '../../www/js/services/State.js';
+
+let projectsValue;
+let childrenMap;
+
+function renderProjectView(component) {
+  component.api = {
+    selection: {
+      getProjects: () => projectsValue,
+      getChildrenByParent: () => childrenMap,
+    },
+    filters: { getTaskFilters: () => ({ schedule: { unplanned: true } }) },
+  };
+  return renderProjectViewTemplate(component);
+}
 
 function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
   const metrics = {
@@ -17,21 +29,9 @@ function mkFeature(id, teamName, monthKey, costInt = 100, hoursInt = 5) {
 }
 
 describe('PluginCost Project View deeper branches', () => {
-  let projectsValue;
-  let childrenMap;
-  let projectsStub;
-  let childrenStub;
-
   beforeEach(() => {
     projectsValue = [{ id: 'p1', name: 'P1', selected: true }];
     childrenMap = new Map();
-    projectsStub = sinon.stub(state, 'projects').get(() => projectsValue);
-    childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
-  });
-
-  afterEach(() => {
-    projectsStub.restore();
-    childrenStub.restore();
   });
 
   it('renders team-month table and summary when project has features', () => {

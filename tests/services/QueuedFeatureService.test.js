@@ -73,6 +73,13 @@ describe('QueuedFeatureService basic behavior', () => {
     expect(list.find((x) => x.id === 'f1')).to.have.property('title', 'F1');
   });
 
+  it('inherits the canonical read, count, and expansion API', () => {
+    expect(qfs.getEffectiveFeatureById('f1')).to.include({ id: 'f1' });
+    expect(qfs.getFeatureTitleById('f1')).to.equal('F1');
+    expect(qfs.allCountsForProject('__unknown__').get('feature')).to.equal(2);
+    expect(qfs.computeExpandedFeatureSet(new Set(['f1']))).to.have.property('expandedIds');
+  });
+
   it('_recomputeDerived detects changed fields', () => {
     const base = {
       id: 'x',

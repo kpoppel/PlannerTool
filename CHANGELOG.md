@@ -36,6 +36,13 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Phase 0 AppStore canonical migration guardrails: documented runtime invariants, added lint/runtime checks that block new `State.js` imports outside composition root, and added a CI guard against direct AppStore snapshot mutation patterns.
+- Phase 1 AppStore migration planning: added canonical AppState coverage audit, full State mutation-to-command mapping, and a formal command contract for transaction labels, idempotency, and side effect policy.
+- Added the initial explicit application-composition and immutable store foundation for the staged frontend state-architecture migration.
+- Extracted pure expansion/task-type selectors, scenario-group and capacity coordination services, removed the unused FilterManager, and introduced a versioned PlannerApi injection point for plugins.
+- Migrated all first-party plugins, including cost analysis, from direct State imports to narrow injected PlannerApi domains.
+- Switched browser bootstrap and UI modules to the canonical composed application root; `plannerApplication.js` is now the sole browser module that imports the legacy State implementation.
+- Added a composed browser application architecture diagram documenting the composition root, runtime service, plugin API boundary, event flow, and data access layers.
 - Frontend architecture unification (Part 6A): removed unused DI container/service-registry startup path and corresponding DI-only client tests.
 - Frontend architecture unification (Part 6B): migrated runtime components/plugins/view-management from private state member reach-through to State facade APIs.
 - Frontend architecture unification (Part 6C): updated selected component tests to validate public State facade behavior instead of private state internals.

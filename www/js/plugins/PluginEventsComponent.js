@@ -22,7 +22,6 @@ import {
   PluginEvents,
   BoardEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -79,6 +78,11 @@ export class PluginEventsComponent extends OverlaySvgComponent {
     this._editCatName = '';
     this._newCatName = '';
     this._catSaving = false;
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginEventsComponent requires PlannerApi');
+    return this.api;
   }
 
   static styles = css`
@@ -507,8 +511,8 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   async refresh() {
     this.loading = true;
     const [events, categories] = await Promise.all([
-      state.events.getAll(),
-      state.events.getCategories(),
+      this._api.events.getAll(),
+      this._api.events.getCategories(),
     ]);
     this.events = events || [];
     this.categories = categories || [];
@@ -549,7 +553,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
       category: this._editCategory,
       end_date: this._editEndDate ?? '',
     };
-    const updated = await state.events.update(this._editId, payload);
+    const updated = await this._api.events.update(this._editId, payload);
     if (updated) {
       await this.refresh();
       bus.emit(PlanEventEvents.CHANGED);
@@ -559,7 +563,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   }
 
   async _deleteEvent(eventId) {
-    await state.events.delete(eventId);
+    await this._api.events.delete(eventId);
     await this.refresh();
     bus.emit(PlanEventEvents.CHANGED);
   }
@@ -573,7 +577,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
     this._saving = true;
     const payload = { date, title, plan_id: planId, category };
     if (endDate) payload.end_date = endDate;
-    const created = await state.events.create(payload);
+    const created = await this._api.events.create(payload);
     if (created) {
       this._newDates = { ...this._newDates, [planId]: '' };
       this._newEndDates = { ...this._newEndDates, [planId]: '' };
@@ -603,7 +607,9 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   async _saveCatEdit() {
     if (!this._editCatName.trim()) return;
     this._catSaving = true;
-    const updated = await state.events.updateCategory(this._editCatId, { name: this._editCatName.trim() });
+    const updated = await this._api.events.updateCategory(this._editCatId, {
+      name: this._editCatName.trim(),
+    });
     if (updated) {
       await this.refresh();
       this._cancelCatEdit();
@@ -612,14 +618,14 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   }
 
   async _toggleSpecial(cat) {
-    await state.events.updateCategory(cat.id, { is_special: !cat.is_special });
+    await this._api.events.updateCategory(cat.id, { is_special: !cat.is_special });
     await this.refresh();
   }
 
   async _addCategory() {
     if (!this._newCatName.trim()) return;
     this._catSaving = true;
-    const created = await state.events.createCategory({ name: this._newCatName.trim() });
+    const created = await this._api.events.createCategory({ name: this._newCatName.trim() });
     if (created) {
       this._newCatName = '';
       await this.refresh();
@@ -628,7 +634,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   }
 
   async _deleteCategory(categoryId) {
-    await state.events.deleteCategory(categoryId);
+    await this._api.events.deleteCategory(categoryId);
     await this.refresh();
   }
 
@@ -706,7 +712,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
-      const plans = state.projects || [];
+      const plans = this._api.selection.getProjects() || [];
       return html`
         <div class="edit-row">
           <input
@@ -842,7 +848,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
   }
 
   render() {
-    const selectedPlans = (state.projects || []).filter((p) => p.selected);
+    const selectedPlans = (this._api.selection.getProjects() || []).filter((p) => p.selected);
     return html`
       <div class="floating-toolbar">
         <button class="close-btn" @click=${this._handleClose} title="Close">✕</button>
@@ -901,7 +907,9 @@ export class PluginEventsComponent extends OverlaySvgComponent {
     this._svgEl.style.width = `${boardRect.width}px`;
     this._svgEl.style.height = `${boardRect.height}px`;
 
-    const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
+    const selectedProjects = (this._api.selection.getProjects() || [])
+      .filter((p) => p.selected)
+      .map((p) => p.id);
     const hasSelected = selectedProjects.length > 0;
     const hasGlobal = this.events.some((ev) => !ev.plan_id && !this._hiddenCategories[ev.category]);
     if (!hasSelected && !hasGlobal) {
@@ -997,7 +1005,7 @@ export class PluginEventsComponent extends OverlaySvgComponent {
    * @param {boolean} markersActive Whether the markers overlay is also visible
    */
   _createEventTag(xStart, xEnd, ev, boardHeight, scrollY, row, markersActive) {
-    const plan = (state.projects || []).find((p) => p.id === ev.plan_id);
+    const plan = (this._api.selection.getProjects() || []).find((p) => p.id === ev.plan_id);
     const color = plan?.color || '#1565c0';
 
     const tagPadding = 6;

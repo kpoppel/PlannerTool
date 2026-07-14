@@ -14,6 +14,12 @@ describe('PluginCost', () => {
     timeline.style.display = 'block';
 
     const p = new PluginCost('cost-test', { fullscreen: true });
+    p.api = {
+      plugins: {
+        getState: () => ({}),
+        setState: () => {},
+      },
+    };
     // avoid dynamic import
     p._componentLoaded = true;
     p._host = host;

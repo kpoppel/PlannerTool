@@ -1,19 +1,50 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import sinon from 'sinon';
 import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
-import { state } from '../../www/js/services/State.js';
 
 describe('PluginCostComponent', () => {
   let el;
-  let pluginStateGetterStub;
+  let updateState;
+  let subscribe;
+  let api;
+
+  function createApi() {
+    return {
+      features: {
+        list: () => [],
+        passesTaskFilters: () => true,
+      },
+      selection: {
+        getProjects: () => [],
+        getTeams: () => [],
+        getChildrenByParent: () => new Map(),
+        getExpandedFeatureIds: () => new Set(),
+      },
+      filters: {
+        getTaskFilters: () => ({ schedule: { unplanned: false } }),
+        setTaskFilter: () => {},
+        setAllFeatureStatesSelected: () => {},
+        setTaskTypes: () => {},
+        getAvailableFeatureStates: () => [],
+      },
+      taskTypes: { getAvailable: () => [] },
+      view: { setExpansion: () => {} },
+      sidebar: { setDisabled: () => {}, clearDisabled: () => {} },
+      plugins: {
+        updateState: (...args) => updateState(...args),
+        subscribe: (...args) => subscribe(...args),
+      },
+      cost: { get: async () => null, getTeams: async () => ({ teams: [] }) },
+    };
+  }
 
   beforeEach(async () => {
-    pluginStateGetterStub = null;
-    el = await fixture(html`<plugin-cost></plugin-cost>`);
-  });
-
-  afterEach(() => {
-    pluginStateGetterStub?.restore();
+    updateState = sinon.stub();
+    subscribe = () => () => {};
+    api = createApi();
+    el = document.createElement('plugin-cost');
+    el.api = api;
+    el = await fixture(el);
   });
 
   it('renders toolbar and default view', () => {
@@ -151,7 +182,7 @@ describe('PluginCostComponent', () => {
   it('persists date range into pluginStateService while still open', () => {
     const updateStub = sinon.stub();
     const loadDataStub = sinon.stub(el, 'loadData');
-    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({ update: updateStub }));
+    updateState = updateStub;
 
     el.startDate = '2026-03-01';
     el.endDate = '2026-04-30';
@@ -172,15 +203,15 @@ describe('PluginCostComponent', () => {
     const unsubscribe = sinon.stub();
 
     el.remove();
-    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({
-      subscribe: (pluginId, cb) => {
-        expect(pluginId).to.equal('plugin-cost');
-        subscriber = cb;
-        return unsubscribe;
-      },
-    }));
+    subscribe = (pluginId, callback) => {
+      expect(pluginId).to.equal('plugin-cost');
+      subscriber = callback;
+      return unsubscribe;
+    };
 
-    el = await fixture(html`<plugin-cost></plugin-cost>`);
+    el = document.createElement('plugin-cost');
+    el.api = api;
+    el = await fixture(el);
     const loadDataStub = sinon.stub(el, 'loadData');
     el.setAttribute('visible', '');
 
@@ -206,7 +237,7 @@ describe('PluginCostComponent', () => {
   it('updates plugin state while open and restores it when reopened', async () => {
     const updateStub = sinon.stub();
     const loadDataStub = sinon.stub(el, 'loadData');
-    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({ update: updateStub }));
+    updateState = updateStub;
 
     el.startDate = '2026-03-01';
     el.endDate = '2026-04-30';
@@ -223,16 +254,15 @@ describe('PluginCostComponent', () => {
     let subscriber;
     const unsubscribe = sinon.stub();
     el.remove();
-    pluginStateGetterStub.restore();
-    pluginStateGetterStub = sinon.stub(state, 'pluginStateService').get(() => ({
-      subscribe: (pluginId, cb) => {
-        expect(pluginId).to.equal('plugin-cost');
-        subscriber = cb;
-        return unsubscribe;
-      },
-    }));
+    subscribe = (pluginId, callback) => {
+      expect(pluginId).to.equal('plugin-cost');
+      subscriber = callback;
+      return unsubscribe;
+    };
 
-    el = await fixture(html`<plugin-cost></plugin-cost>`);
+    el = document.createElement('plugin-cost');
+    el.api = api;
+    el = await fixture(el);
     const restoreLoadDataStub = sinon.stub(el, 'loadData');
     el.setAttribute('visible', '');
 

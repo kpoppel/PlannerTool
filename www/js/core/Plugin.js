@@ -8,6 +8,9 @@ export class Plugin {
   constructor(id, config = {}) {
     this.id = id;
     this.config = config;
+    // Injected by PluginManager. Plugins must use this versioned public API
+    // instead of importing the legacy State facade or service internals.
+    this.api = null;
     this.initialized = false;
     this.active = false;
   }

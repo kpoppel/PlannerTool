@@ -6,19 +6,23 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 - **Tech stack:** ES modules, vanilla JavaScript with Lit for web components. No heavy client framework. Data access via pluggable providers (REST, local storage, mock).
 - **Design principles:** layered separation of concerns (components, core orchestration, services, providers); small, testable, single-responsibility modules; typed event bus for decoupled communication; pluggable plugin and provider extension points.
 
+![Composed browser application architecture](diagrams/composed-application-architecture.svg)
+
 **Layered Architecture: www/js (Main Application)**
 
 1. **Presentation (components/):** Lit element components responsible for rendering UI and managing direct DOM interactions. Components stay thin: they emit domain events to the bus and consume state-change events. Examples: feature cards, timeline, sidebar controls, modals, graphs, dependency renderers. Lifecycle management (attach/detach listeners) is critical here.
 
-2. **Core Orchestration (core/):** Provides infrastructure for module wiring and cross-cutting concerns. Includes EventBus (typed event routing), EventRegistry (event type definitions), PluginManager (plugin lifecycle and loading), Plugin base class, ServiceRegistry (service discovery), and Container (dependency injection).
+2. **Core Orchestration (core/):** Provides infrastructure for cross-cutting concerns. Includes EventBus (typed event routing), EventRegistry (event type definitions), PluginManager (plugin lifecycle and loading), and the Plugin base class. Application dependency composition lives in `application/`, not in a service locator or DI container.
 
-3. **Application Services (services/):** Encapsulates business logic, application state, and domain computations. Includes state management (State.js, BaselineStore), feature/scenario operations (FeatureService, ScenarioManager, ScenarioEventService), filtering (FilterManager, StateFilterService), capacity calculations (CapacityCalculator, PluginCostCalculator), and utility services (ColorService, IconService, ConfigService, ProjectTeamService, ViewService). Services own their state, expose imperative APIs for modifications, emit events for derived updates, and remain decoupled via the event bus.
+3. **Application (application/):** Contains explicit application composition, immutable store primitives, versioned plugin APIs, and pure selectors. Expansion and task-type selectors are side-effect free; `plannerApplication.js` owns the transitional State adapter while consumers migrate to narrow APIs.
 
-4. **Data Access Layer (providers + dataService):** Abstract persistence and remote data. Includes ProviderREST (HTTP), ProviderLocalStorage (fallback), ProviderMock (testing), and DataInitService. The dataService adapter wires the active provider so services and components use a single interface regardless of backend.
+4. **Application Services (services/):** Encapsulates business logic, application state, and domain computations. Includes legacy state compatibility (State.js, BaselineStore), feature/scenario operations (FeatureService, ScenarioManager, ScenarioEventService, ScenarioGroupService), filtering (ProjectTeamService, StateFilterService), capacity calculation/co-ordination (CapacityCalculator, CapacityCoordinator, PluginCostCalculator), and utility services (ColorService, IconService, ConfigService, ViewService). Services own narrow responsibilities and numeric calculation code does not emit capacity events.
 
-5. **Plugins (plugins/):** Optional, loadable modules for extensibility. Plugins declare metadata (id, dependencies, mount point) in modules.config.json and have optional schema definitions in .schema.json files. Current plugins include markers, cost analysis, and export functionality. Plugins register themselves with the core infrastructure, consume runtime configuration, and clean up on deactivation. Runtime configuration is managed separately via the admin panel and merged with static metadata at app startup.
+5. **Data Access Layer (providers + dataService):** Abstract persistence and remote data. Includes ProviderREST (HTTP), preferences storage, and DataInitService. The dataService adapter wires the active provider so services and components use a single interface regardless of backend.
 
-6. **Utilities & Helpers (tour/, vendor/, and standalone files):** Reusable helpers like board-utils.js (layout/render helpers), dragManager.js (drag-and-drop), util.js (date/geometry math), viewOptions.js (UI state), and modalHelpers.js (modal management). vendor/ holds third-party libraries (e.g., Lit).
+6. **Plugins (plugins/):** Optional, loadable modules for extensibility. Plugins declare metadata (id, dependencies, mount point) in modules.config.json and have optional schema definitions in .schema.json files. Current plugins include markers, cost analysis, and export functionality. PluginManager injects the versioned `PlannerApi` into plugin instances; first-party plugins use this API rather than importing State. Runtime configuration is managed separately via the admin panel and merged with static metadata at app startup.
+
+7. **Utilities & Helpers (tour/, vendor/, and standalone files):** Reusable helpers like board-utils.js (layout/render helpers), dragManager.js (drag-and-drop), util.js (date/geometry math), viewOptions.js (UI state), and modalHelpers.js (modal management). vendor/ holds third-party libraries (e.g., Lit).
 
 **Layered Architecture: www-admin/js (Admin Panel)**
 
@@ -32,7 +36,7 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 - **Event-Driven Communication:** The EventBus provides typed, symbol-based events (defined in EventRegistry) for decoupled module interaction. Components and services subscribe/unsubscribe in lifecycle methods (connectedCallback/disconnectedCallback or equivalent) to avoid memory leaks.
 
-- **Immutable State & Derived Computation:** Application state in State.js and BaselineStore treats baseline data as immutable. Derived data (effective features, capacity per day, filtered views) is computed on-demand or cached. This keeps the render path fast and state predictable.
+- **Immutable State & Derived Computation:** `application/AppStore.js` provides immutable transactional state for new workflows. BaselineStore and the legacy State facade remain active during migration. Pure selectors derive expansion and task-type data; CapacityCalculator is a pure numeric service and CapacityCoordinator owns its input policy.
 
 - **Service APIs:** Services expose imperative methods to modify state and emit events when state changes. Consumers call service methods rather than mutating state directly. This maintains a single source of truth and enables undo/redo and scenario management.
 
@@ -51,13 +55,20 @@ Purpose: a concise overview of the architecture and module responsibilities for 
 
 **State Management Architecture**
 
-The State.js service is the central orchestrator:
-- Owns baseline data (features, teams, projects, config).
-- Exposes APIs to modify features (create, update, delete, revert).
-- Delegates to sub-services: FeatureService (feature derivations), ScenarioManager (scenario CRUD), FilterManager (project/team selection), CapacityCalculator (daily capacity math).
-- Emits events whenever derived state changes, triggering UI updates.
+The browser starts through `application/plannerApplication.js`, the explicit composition root. It owns the sole browser import of `State.js`, provides `applicationApi` to plugins, and composes `applicationRuntime` for UI modules. `State.js` is the current implementation of that runtime service:
+- Pure application selectors own task-type and expansion derivation.
+- ScenarioGroupService owns scenario-local group overlays and member deltas.
+- CapacityCoordinator prepares capacity inputs; State emits the one compatibility capacity-update event after storing the result.
+- ViewManagementService receives a narrow view-state port instead of the full State instance.
+- PluginManager injects `PlannerApi` version 1. New plugin code must use this API rather than importing State or service internals.
 
-Services like QueuedFeatureService and SidebarPersistenceService handle secondary concerns (queued edits, UI preferences).
+**Runtime Invariants (Migration Guardrails)**
+
+- AppStore is the only canonical mutable runtime truth during migration completion; no second mutable runtime owner may be introduced.
+- Runtime state writes must occur through commands/transaction labels (`AppStore.update(...)`); UI/components and services must not mutate AppStore snapshots directly.
+- Selectors remain pure derivations with no side effects and no in-place writes.
+- `services/State.js` imports are restricted to the browser composition root (`application/plannerApplication.js`) while compatibility remains.
+- Services may compute and perform IO, but they must not directly mutate canonical AppStore state.
 
 **Plugin Configuration Management**
 
@@ -77,7 +88,7 @@ The plugin system uses a two-tier configuration model separating static metadata
 
 **Testing Strategy**
 
-- **Unit tests:** Focus on services and domain logic (ScenarioManager, FeatureService, FilterManager, CapacityCalculator). Keep these isolated, fast, and deterministic.
+- **Unit tests:** Focus on services and domain logic (ScenarioManager, FeatureService, ProjectTeamService, CapacityCalculator). Keep these isolated, fast, and deterministic.
 - **Component tests:** Use a headless test runner (configured in package.json) to render components, assert DOM and attributes, and verify event emission. Mock bus and state to isolate components.
 - **Integration tests:** Exercise dataService + provider + state wiring to verify end-to-end flows.
 - **E2E tests:** Use Playwright for smoke and user-flow tests (load baseline, open details, create/save scenarios, drag/resize).

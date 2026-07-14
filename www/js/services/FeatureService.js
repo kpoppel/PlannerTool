@@ -459,6 +459,34 @@ export class FeatureService {
   }
 
   /**
+   * Replace a feature's relations through the active scenario override.
+   *
+   * @param {string} id
+   * @param {Array<object>} relations
+   * @returns {boolean}
+   */
+  updateFeatureRelations(id, relations) {
+    if (!Array.isArray(relations)) {
+      throw new TypeError('Feature relations must be an array');
+    }
+
+    const activeScenario = this._getActiveScenario();
+    if (!activeScenario) return false;
+
+    const baselineFeatures = this._baselineStore.getFeatures();
+    const base = baselineFeatures.find((feature) => String(feature.id) === String(id));
+    if (!base) return false;
+
+    if (!activeScenario.overrides) activeScenario.overrides = {};
+    const override = activeScenario.overrides[id] || {};
+    override.relations = relations.map((relation) => ({ ...relation }));
+    activeScenario.overrides[id] = override;
+    activeScenario.isChanged = true;
+    this._emitUpdated([id]);
+    return true;
+  }
+
+  /**
    * Revert feature to baseline (remove scenario override)
    */
   revertFeature(id, capacityCallback) {

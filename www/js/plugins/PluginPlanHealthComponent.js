@@ -9,7 +9,6 @@ import {
   TeamEvents,
   TimelineEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -36,6 +35,11 @@ export class PluginPlanHealthComponent extends LitElement {
       'dependency-violations': true,
       'state-consistency': true,
     };
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginPlanHealthComponent requires PlannerApi');
+    return this.api;
   }
 
   static styles = css`
@@ -540,7 +544,7 @@ export class PluginPlanHealthComponent extends LitElement {
    */
   _getTeamName(teamId) {
     try {
-      const teams = state.teams || [];
+      const teams = this._api.selection.getTeams() || [];
       const team = teams.find((t) => String(t.id) === String(teamId));
       return team ? team.name : `Team ${teamId}`;
     } catch (e) {
@@ -557,10 +561,10 @@ export class PluginPlanHealthComponent extends LitElement {
     const issues = [];
 
     try {
-      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const allFeatures = this._api.features.list() || [];
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
-      const projects = state.projects || [];
+      const projects = this._api.selection.getProjects() || [];
       const projectMap = new Map((projects || []).map((p) => [String(p.id), p]));
 
       // Find all plan ids that are type 'team'
@@ -576,7 +580,7 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!visibleIds.has(String(feature.id))) continue;
         const projectIdStr = feature.project ? String(feature.project) : null;
         if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
-        const level = state.getTypeLevel(feature.type);
+        const level = this._api.taskTypes.getLevel(feature.type);
         const current = planMinLevel.get(projectIdStr);
         if (current === undefined || level < current) {
           planMinLevel.set(projectIdStr, level);
@@ -592,14 +596,14 @@ export class PluginPlanHealthComponent extends LitElement {
         const projectIdStr = feature.project ? String(feature.project) : null;
         if (!projectIdStr || !teamPlanIds.has(projectIdStr)) continue;
 
-        const typeLevel = state.getTypeLevel(feature.type);
+        const typeLevel = this._api.taskTypes.getLevel(feature.type);
         const topLevel = planMinLevel.get(projectIdStr) ?? 9999;
 
         // Top-level type for this plan: not flagged as orphan
         if (typeLevel === topLevel) continue;
 
         const typeLabel =
-          state.getTypeDisplayName(feature.type) ||
+          this._api.taskTypes.getDisplayName(feature.type) ||
           (feature.type ?
             feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
           : 'Item');
@@ -652,13 +656,13 @@ export class PluginPlanHealthComponent extends LitElement {
     const issues = [];
 
     try {
-      const hierarchy = state.taskTypeHierarchy;
+      const hierarchy = this._api.taskTypes.getHierarchy();
       if (!hierarchy || hierarchy.length === 0) return issues; // no hierarchy configured
 
-      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const allFeatures = this._api.features.list() || [];
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
-      const projects = state.projects || [];
+      const projects = this._api.selection.getProjects() || [];
       const projectMap = new Map((projects || []).map((p) => [String(p.id), p]));
 
       const teamPlanIds = new Set(
@@ -672,7 +676,7 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!visibleIds.has(String(feature.id))) continue;
         const planId = feature.project ? String(feature.project) : null;
         if (!planId || !teamPlanIds.has(planId)) continue;
-        const level = state.getTypeLevel(feature.type);
+        const level = this._api.taskTypes.getLevel(feature.type);
         const current = planMinLevel.get(planId);
         if (current === undefined || level < current) {
           planMinLevel.set(planId, level);
@@ -684,9 +688,9 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!visibleIds.has(featureIdStr)) continue;
 
         const planId = feature.project ? String(feature.project) : null;
-        const typeLevel = state.getTypeLevel(feature.type);
+        const typeLevel = this._api.taskTypes.getLevel(feature.type);
         const typeLabel =
-          state.getTypeDisplayName(feature.type) || feature.type || 'Item';
+          this._api.taskTypes.getDisplayName(feature.type) || feature.type || 'Item';
 
         // ----------------------------------------------------------------
         // Check A: top-level item in a team plan must have a parent in a
@@ -744,14 +748,14 @@ export class PluginPlanHealthComponent extends LitElement {
         if (!parent) continue; // orphan check handles missing parent
 
         const childLevel = typeLevel;
-        const parentLevel = state.getTypeLevel(parent.type);
+        const parentLevel = this._api.taskTypes.getLevel(parent.type);
 
         // If either type is unknown (9999) skip — we cannot evaluate hierarchy
         // for types not present in the configuration.
         if (childLevel === 9999 || parentLevel === 9999) continue;
 
         const parentTypeLabel =
-          state.getTypeDisplayName(parent.type) || parent.type || 'Item';
+          this._api.taskTypes.getDisplayName(parent.type) || parent.type || 'Item';
 
         if (parentLevel === childLevel) {
           issues.push({
@@ -1020,7 +1024,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const board = findInBoard('feature-board');
 
       // Get full feature data from state (includes all properties like status)
-      const allFeatures = state.getEffectiveFeatures() || [];
+      const allFeatures = this._api.features.list() || [];
 
       // Get IDs of visible features from board
       let visibleIds = new Set();
@@ -1036,7 +1040,7 @@ export class PluginPlanHealthComponent extends LitElement {
       // Filter to only visible features but keep full feature data with all properties
       const visibleFeatures = allFeatures.filter((f) => visibleIds.has(String(f.id)));
 
-      const childrenByParent = state.childrenByParent || new Map();
+      const childrenByParent = this._api.selection.getChildrenByParent() || new Map();
 
       const checkResults = [];
 
@@ -1152,7 +1156,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const issueIdStr = String(issue.featureId);
 
       // Find and select the feature
-      const features = state.getEffectiveFeatures() || [];
+      const features = this._api.features.list() || [];
       const feature = features.find((f) => String(f.id) === issueIdStr);
 
       if (feature) {

@@ -13,11 +13,22 @@ describe('PluginGraphPlugin lifecycle', () => {
 
   it('initializes and activates/deactivates/destroys', async () => {
     const plugin = new PluginGraphPlugin('plugin-graph', { fullscreen: true });
+    plugin.api = {
+      version: 1,
+      features: { list: () => [] },
+      selection: { getProjects: () => [], getTeams: () => [] },
+      filters: { getFeatureStates: () => [] },
+      view: { getCapacityMode: () => 'project' },
+      capacity: {
+        get: () => ({ dates: [], teamDailyCapacity: [], projectDailyCapacity: [] }),
+      },
+    };
     plugin._componentLoaded = true;
     plugin._host = document.createElement('div');
     document.body.appendChild(plugin._host);
     await plugin.init();
     await plugin.activate();
+    expect(plugin._el.api).to.equal(plugin.api);
     // Ensure element is mounted in DOM for destroy logic
     if (plugin._el && plugin._host && plugin._el.parentNode !== plugin._host)
       plugin._host.appendChild(plugin._el);

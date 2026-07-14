@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="720" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description">
+  <title id="title">Composed browser application architecture</title>
+  <desc id="description">The browser bootstrap creates the planner application composition root. Components use its composed runtime service, plugins receive a narrow Planner API, and the composition root owns the State implementation.</desc>
+  <style>
+    .title { font: 700 22px sans-serif; fill: #102030; }
+    .subtitle { font: 13px sans-serif; fill: #425466; }
+    .heading { font: 700 15px sans-serif; fill: #102030; }
+    .label { font: 13px sans-serif; fill: #243746; }
+    .small { font: 11px sans-serif; fill: #425466; }
+    .node { stroke: #405466; stroke-width: 1.5; rx: 10; }
+    .bootstrap { fill: #e8f2ff; }
+    .application { fill: #e9f8f1; stroke: #177b58; }
+    .api { fill: #fff6d9; stroke: #b77b00; }
+    .adapter { fill: #fceee8; stroke: #b64c35; }
+    .service { fill: #f2efff; stroke: #705bc8; }
+    .external { fill: #f7f9fb; }
+    .arrow { stroke: #405466; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .event { stroke: #705bc8; stroke-width: 1.5; stroke-dasharray: 6 5; fill: none; marker-end: url(#event-arrow); }
+    .boundary { fill: none; stroke: #9aacba; stroke-width: 1.25; stroke-dasharray: 7 5; rx: 14; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#405466"/>
+    </marker>
+    <marker id="event-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#705bc8"/>
+    </marker>
+  </defs>
+
+  <text x="48" y="42" class="title">PlannerTool composed browser architecture</text>
+  <text x="48" y="66" class="subtitle">State implementation ownership is centralized at the composition root; plugins use a versioned API.</text>
+
+  <rect x="40" y="100" width="1120" height="455" class="boundary"/>
+  <text x="58" y="124" class="small">Browser application boundary</text>
+
+  <rect x="75" y="155" width="210" height="90" class="node bootstrap"/>
+  <text x="95" y="186" class="heading">Browser bootstrap</text>
+  <text x="95" y="209" class="label">app.js</text>
+  <text x="95" y="229" class="small">Starts lifecycle and plugins</text>
+
+  <rect x="385" y="135" width="430" height="145" class="node application"/>
+  <text x="410" y="167" class="heading">plannerApplication.js</text>
+  <text x="410" y="190" class="label">Explicit composition root</text>
+  <text x="410" y="212" class="small">AppStore · adapters · lifecycle · service wiring</text>
+  <text x="410" y="235" class="small">The sole browser import of State.js</text>
+
+  <rect x="915" y="155" width="205" height="90" class="node api"/>
+  <text x="936" y="186" class="heading">PlannerApi v1</text>
+  <text x="936" y="209" class="label">Versioned public API</text>
+  <text x="936" y="229" class="small">Queries and commands</text>
+
+  <rect x="75" y="360" width="250" height="110" class="node external"/>
+  <text x="96" y="392" class="heading">Lit UI components</text>
+  <text x="96" y="415" class="label">Timeline · sidebar · menus · modals</text>
+  <text x="96" y="438" class="small">Use composed applicationRuntime service</text>
+
+  <rect x="465" y="360" width="270" height="110" class="node external"/>
+  <text x="486" y="392" class="heading">First-party plugins</text>
+  <text x="486" y="415" class="label">Graph · cost · export · events · boards</text>
+  <text x="486" y="438" class="small">Injected PlannerApi; no State imports</text>
+
+  <rect x="875" y="345" width="245" height="140" class="node adapter"/>
+  <text x="896" y="377" class="heading">Application runtime service</text>
+  <text x="896" y="400" class="label">State.js</text>
+  <text x="896" y="423" class="small">State.js implementation and orchestration</text>
+  <text x="896" y="446" class="small">Owned by the composition root</text>
+
+  <rect x="160" y="590" width="290" height="90" class="node service"/>
+  <text x="181" y="621" class="heading">Focused application services</text>
+  <text x="181" y="644" class="label">Feature · scenario · view · groups</text>
+  <text x="181" y="664" class="small">CapacityCoordinator · pure selectors</text>
+
+  <rect x="525" y="590" width="210" height="90" class="node service"/>
+  <text x="546" y="621" class="heading">EventBus</text>
+  <text x="546" y="644" class="label">Typed domain events</text>
+  <text x="546" y="664" class="small">EventRegistry symbols</text>
+
+  <rect x="820" y="590" width="300" height="90" class="node external"/>
+  <text x="841" y="621" class="heading">Data access</text>
+  <text x="841" y="644" class="label">dataService · ProviderREST · preferences</text>
+  <text x="841" y="664" class="small">Backend APIs and persisted views</text>
+
+  <path d="M285 200 L385 200" class="arrow"/>
+  <text x="307" y="188" class="small">initialize</text>
+  <path d="M815 200 L915 200" class="arrow"/>
+  <text x="835" y="188" class="small">exports</text>
+
+  <path d="M200 360 L520 280" class="arrow"/>
+  <text x="280" y="320" class="small">applicationRuntime service</text>
+  <path d="M600 360 L1015 245" class="arrow"/>
+  <text x="733" y="301" class="small">injected API</text>
+  <path d="M1017 280 L1000 345" class="arrow"/>
+  <path d="M1000 485 L980 590" class="arrow"/>
+  <path d="M875 420 L735 420" class="arrow"/>
+  <text x="753" y="408" class="small">delegates</text>
+  <path d="M875 440 L450 630" class="arrow"/>
+  <path d="M875 455 L735 630" class="arrow"/>
+
+  <path d="M325 415 L525 630" class="event"/>
+  <path d="M735 415 L630 590" class="event"/>
+  <path d="M450 635 L820 635" class="arrow"/>
+  <text x="637" y="623" class="small">requests and persistence</text>
+</svg>

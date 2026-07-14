@@ -1,37 +1,15 @@
 import { bus } from './core/EventBus.js';
-import { state } from './services/State.js';
+import {
+  applicationApi as plannerApi,
+  plannerApplication,
+} from './application/plannerApplication.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
 import { mergePluginConfig } from './core/pluginConfigMerge.js';
 
 async function init() {
-  state.setEnvironmentAdapters({
-    viewLayout: {
-      getTimelineSectionWidth: () => {
-        const boardEl = document.querySelector('timeline-board');
-        if (!boardEl) return null;
-        const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-        const section = root?.querySelector?.('#timelineSection');
-        return section?.clientWidth || null;
-      },
-    },
-    viewManagement: {
-      storage: {
-        getItem: (key) => {
-          if (typeof localStorage === 'undefined') return null;
-          return localStorage.getItem(key);
-        },
-        setItem: (key, value) => {
-          if (typeof localStorage === 'undefined') return;
-          localStorage.setItem(key, value);
-        },
-      },
-      ui: {
-        getSidebarElement: () => document.querySelector('app-sidebar'),
-      },
-    },
-  });
+  pluginManager.setApi(plannerApi);
 
   // Register typed events and optional runtime behaviors
   if (featureFlags.LOG_EVENT_HISTORY) {
@@ -82,8 +60,10 @@ async function init() {
     // Prefetch lightweight modal helpers during idle to improve perceived performance
     import('./components/modalHelpers.js');
 
-    // Populate app state via the State facade
-    await state.init();
+    // Populate app state through the transitional composition root. State stays
+    // available during the staged migration for components and plugins that
+    // have not yet moved to the application API.
+    await plannerApplication.initialize();
 
     // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {
@@ -98,10 +78,10 @@ async function init() {
 
       // Fetch runtime plugin config from backend (non-fatal: falls back to
       // metadata defaults when unavailable or when the server has no saved config).
-      const runtimeConfig = await state.plugins.getConfig().catch(() => null);
+      const runtimeConfig = await plannerApi.plugins.getConfig().catch(() => null);
 
       // Fetch plugin schemas for all plugins (non-fatal: continues without schemas if unavailable)
-      const pluginSchemas = await state.plugins.getSchemas().catch(() => ({}));
+      const pluginSchemas = await plannerApi.plugins.getSchemas().catch(() => ({}));
       window.APP_PLUGIN_SCHEMAS = pluginSchemas || {};
 
       const mergedCfg = mergePluginConfig(cfg, runtimeConfig?.plugins || null);

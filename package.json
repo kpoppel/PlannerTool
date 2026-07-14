@@ -8,10 +8,11 @@
     "test": "NODE_OPTIONS='--no-deprecation' NODE_ENV=production vitest --run",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui --browser.enabled=true",
+    "guard:runtime-state": "node scripts/check-runtime-state-guard.mjs",
     "build": "vite build",
     "build:vendor": "rollup -c",
     "format": "prettier --write .",
-    "lint": "eslint .",
+    "lint": "npm run guard:runtime-state && eslint .",
     "lint:fix": "eslint . --fix"
   },
   "author": "",

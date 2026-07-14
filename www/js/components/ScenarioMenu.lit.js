@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { groupService } from '../services/GroupService.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';

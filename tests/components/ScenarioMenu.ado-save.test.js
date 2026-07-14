@@ -21,7 +21,8 @@ const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = v
 vi.mock('../../www/js/services/State.js', () => ({
   state: {
     getScenarios: () => [],
-    scenarios: [],
+    scenarios: { list: () => [] },
+    groups: { publishBaseline: mockPublishBaseline },
     refreshBaseline: mockRefreshBaseline,
     getPendingGroupChanges: vi.fn(() => []),
     clearPendingGroupChanges: vi.fn(),

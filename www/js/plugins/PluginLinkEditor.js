@@ -41,11 +41,13 @@ export class PluginLinkEditor extends Plugin {
    */
   async init() {
     console.log('[PluginLinkEditor] init');
+    this._linkEditorState.setApi(this.api);
 
     // Create component if it doesn't exist
     if (!this._component) {
       this._component = document.createElement('plugin-link-editor');
     }
+    this._component.api = this.api;
 
     this.initialized = true;
   }
@@ -60,6 +62,8 @@ export class PluginLinkEditor extends Plugin {
     if (!this._component) {
       await this.init();
     }
+    this._linkEditorState.setApi(this.api);
+    this._component.api = this.api;
 
     // Attach component to the board
     try {

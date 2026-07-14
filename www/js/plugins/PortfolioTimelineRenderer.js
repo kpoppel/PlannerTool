@@ -6,8 +6,6 @@ import {
   buildPortfolioTimelineSvgMarkup,
   formatTimelineMonthLabel,
 } from './portfolioTimeline.js';
-import { state } from '../services/State.js';
-
 const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
 
 /**
@@ -15,8 +13,8 @@ const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
  * @param {object} feature
  * @returns {string}
  */
-function getTimelineBarCategory(feature) {
-  const category = state.featureStateService?.getCategoryForState?.(feature?.state);
+function getTimelineBarCategory(feature, getStateCategory) {
+  const category = getStateCategory(feature?.state);
   return String(category || '').toLowerCase();
 }
 
@@ -25,8 +23,8 @@ function getTimelineBarCategory(feature) {
  * @param {object} feature
  * @returns {number}
  */
-function getTimelineBarOpacity(feature) {
-  return TIMELINE_FADED_CATEGORIES.has(getTimelineBarCategory(feature)) ? 0.36 : 0.92;
+function getTimelineBarOpacity(feature, getStateCategory) {
+  return TIMELINE_FADED_CATEGORIES.has(getTimelineBarCategory(feature, getStateCategory)) ? 0.36 : 0.92;
 }
 
 /**
@@ -58,6 +56,7 @@ function toTitle(value) {
  * @param {boolean} options.isOpen - Whether the timeline panel is open
  * @param {function} options.onToggle - Callback when the panel is toggled
  * @param {function} options.getProjectColor - Callback to get project color for a feature
+ * @param {function} options.getStateCategory - Callback to get a feature-state category
  * @returns {TemplateResult}
  */
 export function renderPortfolioTimeline({
@@ -66,6 +65,7 @@ export function renderPortfolioTimeline({
   isOpen,
   onToggle,
   getProjectColor,
+  getStateCategory,
 }) {
   const hasTimeline = !layout.empty;
   const subtitle = hasTimeline
@@ -81,7 +81,7 @@ export function renderPortfolioTimeline({
     ? unsafeSVG(
         buildPortfolioTimelineSvgMarkup(layout, {
           getBarColor: getProjectColor,
-          getBarOpacity: (feature) => getTimelineBarOpacity(feature),
+          getBarOpacity: (feature) => getTimelineBarOpacity(feature, getStateCategory),
           getBarTooltip: (feature) => getTimelineBarTooltip(feature, getProjectName(feature)),
         })
       )

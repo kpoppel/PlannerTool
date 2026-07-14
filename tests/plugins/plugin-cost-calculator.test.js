@@ -44,7 +44,7 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
       name: 'P',
       features: [makeFeature(10, '2026-06-01', '2026-06-30', 100, 50, 10, 5)],
     };
-    const res = buildProjects([p], months, {});
+    const res = buildProjects([p], months, new Map());
     const project = res.projects[0];
     const mk = monthKey(months[0]);
     expect(project.features[0].values.internal[mk]).to.equal(100);
@@ -59,7 +59,7 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
       name: 'P',
       features: [makeFeature(13, '2026-06-10', '2026-06-20', 10, 5, 2, 1)],
     };
-    const res = buildProjects([p], months, {});
+    const res = buildProjects([p], months, new Map());
     const feat = res.projects[0].features[0];
     expect(feat.start).to.equal('2026-06-10');
     expect(feat.end).to.equal('2026-06-20');
@@ -84,7 +84,7 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
         },
       ],
     };
-    const res = buildProjects([p], months, {});
+    const res = buildProjects([p], months, new Map());
     const feat = res.projects[0].features[0];
     expect(feat.start).to.equal(null);
     expect(feat.end).to.equal(null);
@@ -98,7 +98,7 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
     // Feature spans 2026-06-01 .. 2026-07-01 (31 days in June, 1 day in July)
     const f = makeFeature(11, '2026-06-01', '2026-07-01', 36.31, 7.64, 36.31, 7.64);
     const p = { id: 1, name: 'P', features: [f] };
-    const res = buildProjects([p], months, {});
+    const res = buildProjects([p], months, new Map());
     const feat = res.projects[0].features[0];
     const mkJun = monthKey(months[0]);
     const mkJul = monthKey(months[1]);
@@ -117,7 +117,7 @@ describe('PluginCostCalculator - day-overlap distribution', () => {
     const months = buildMonths(cfg);
     const f = makeFeature(12, '2026-06-15', '2026-06-15', 10, 0, 8, 0);
     const p = { id: 1, name: 'P', features: [f] };
-    const res = buildProjects([p], months, {});
+    const res = buildProjects([p], months, new Map());
     const feat = res.projects[0].features[0];
     const mkJun = monthKey(months[0]);
     expect(feat.values.internal[mkJun]).to.equal(10);
@@ -184,7 +184,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
         },
       ],
     };
-    const res = buildProjects([epic], months, {});
+    const res = buildProjects([epic], months, new Map([[100, ['101', '102']]]));
     const project = res.projects[0];
     const featMap = Object.fromEntries(project.features.map((f) => [f.id, f]));
     // With gap fills disabled the epic total equals the sum of its children (100 + 100 = 200).
@@ -224,7 +224,7 @@ describe('PluginCostCalculator - helpers and epic handling', () => {
         },
       ],
     };
-    const res = buildProjects([epic], months, {});
+    const res = buildProjects([epic], months, new Map());
     const project = res.projects[0];
     const featMap = Object.fromEntries(project.features.map((f) => [f.id, f]));
     const mkFeb = monthKey(months[1]);

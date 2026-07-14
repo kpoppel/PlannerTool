@@ -1,6 +1,5 @@
 import { html } from '../vendor/lit.js';
 import { monthLabel, monthKey, buildTaskTree, buildByTeam, flattenTree } from './PluginCostCalculator.js';
-import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
@@ -14,7 +13,7 @@ export function renderTeamView(component) {
     `;
   }
 
-  const selectedTeams = (state.teams || []).filter((t) => t.selected);
+  const selectedTeams = (component.api.selection.getTeams() || []).filter((t) => t.selected);
   if (selectedTeams.length === 0) {
     return html`
       <div class="empty-state">
@@ -37,7 +36,7 @@ export function renderTeamView(component) {
 
   return html`
     <div>
-      ${renderCountingBanner()}
+      ${renderCountingBanner(component)}
       ${renderClipBanner(allFeatures, component.startDate, component.endDate)}
       ${selectedTeams.map((team) => renderTeamTable(component, team, monthKeys))}
     </div>
@@ -92,7 +91,7 @@ function renderTeamTable(component, team, monthKeys) {
   // Build full hierarchy: childrenMap for buildByTeam, parentMap for root detection
   const { childrenMap, parentMap } = buildTaskTree(
     allFeatures,
-    state.childrenByParent || new Map()
+    component.api.selection.getChildrenByParent() || new Map()
   );
 
   // Hierarchy-aware, window-restricted per-team rollup across all features

@@ -1,89 +1,18 @@
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
+import { FeatureService } from './FeatureService.js';
 
 /**
  * QueuedFeatureService - experimental queued/idle processing wrapper around FeatureService
  * Mirrors the public API of FeatureService so it can be swapped in safely.
  */
-export class QueuedFeatureService {
+export class QueuedFeatureService extends FeatureService {
   constructor(baselineStore, getActiveScenarioFn) {
-    // Delegate to the original FeatureService implementation where possible
-    // to avoid duplicating behavior. Import dynamically to keep file isolated.
-    this._baselineStore = baselineStore;
-    if (typeof getActiveScenarioFn === 'function') {
-      this._getActiveScenario = getActiveScenarioFn;
-    } else if (
-      getActiveScenarioFn &&
-      typeof getActiveScenarioFn.getActiveScenario === 'function'
-    ) {
-      this._scenarioManager = getActiveScenarioFn;
-      this._getActiveScenario = () => this._scenarioManager.getActiveScenario();
-    } else {
-      this._getActiveScenario = () => null;
-    }
-    this._childrenByParent = new Map();
+    super(baselineStore, getActiveScenarioFn);
     this._updateQueue = [];
     this._processingQueue = false;
     this._pendingCapacityCallbacks = [];
-  }
-
-  setChildrenByParent(childrenMap) {
-    this._childrenByParent = childrenMap;
-  }
-
-  setProjectTeamService(projectTeamService) {
-    this._projectTeamService = projectTeamService;
-  }
-
-  getEffectiveFeatures() {
-    const baselineFeatures =
-      this._baselineStore && typeof this._baselineStore.getFeatures === 'function' ?
-        this._baselineStore.getFeatures()
-      : [];
-    const activeScenario = this._getActiveScenario();
-    if (!activeScenario) return baselineFeatures.map((f) => ({ ...f }));
-    return baselineFeatures.map((base) => {
-      const ov = activeScenario.overrides ? activeScenario.overrides[base.id] : undefined;
-      const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
-      const derived = this._recomputeDerived(base, ov);
-      effective.changedFields = derived.changedFields;
-      effective.dirty = derived.dirty;
-
-      // Always recalculate orgLoad based on effective capacity to ensure it's current
-      if (this._projectTeamService && effective.capacity) {
-        effective.orgLoad = this._projectTeamService.computeFeatureOrgLoad(effective);
-      }
-
-      return effective;
-    });
-  }
-
-  _recomputeDerived(featureBase, override) {
-    const changedFields = [];
-    if (override) {
-      const normaliseTags = (value) =>
-        String(value || '')
-          .split(';')
-          .map((tag) => tag.trim().toLowerCase())
-          .filter(Boolean);
-      if (override.start && override.start !== featureBase.start)
-        changedFields.push('start');
-      if (override.end && override.end !== featureBase.end) changedFields.push('end');
-      if (
-        override.capacity &&
-        JSON.stringify(override.capacity) !== JSON.stringify(featureBase.capacity)
-      )
-        changedFields.push('capacity');
-      if (
-        'tags' in override &&
-        JSON.stringify(normaliseTags(override.tags)) !==
-          JSON.stringify(normaliseTags(featureBase.tags))
-      ) {
-        changedFields.push('tags');
-      }
-    }
-    return { changedFields, dirty: changedFields.length > 0 };
   }
 
   // Simple pass-through for single-field updates (no queue)

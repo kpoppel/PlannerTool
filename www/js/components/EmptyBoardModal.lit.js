@@ -8,7 +8,7 @@ import {
   ViewEvents,
   TimelineEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { buildVisibilityDiagnostics } from '../services/FeatureVisibilityService.js';
 
 export class EmptyBoardModal extends LitElement {

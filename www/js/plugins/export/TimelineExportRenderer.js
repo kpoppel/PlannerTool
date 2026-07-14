@@ -10,7 +10,6 @@
  * - User annotations
  */
 
-import { state } from '../../services/State.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight } from '../../components/board-utils.js';
 import { findInBoard } from '../../components/board-utils.js';
@@ -45,10 +44,16 @@ const ICON_GAP = 4;
 // ============================================================================
 
 export class TimelineExportRenderer {
-  constructor() {
+  constructor(api = null) {
+    this.api = api;
     this._svg = null;
     this._width = 0;
     this._height = 0;
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('TimelineExportRenderer requires PlannerApi');
+    return this.api;
   }
 
   /**
@@ -648,7 +653,7 @@ export class TimelineExportRenderer {
     // If the caller explicitly requests dependencies disabled, skip rendering
     if (includeDependencies === false) return;
     // If caller did not specify, fall back to the global view setting
-    if (includeDependencies === undefined && !state.showDependencies) return;
+    if (includeDependencies === undefined && !this._api.view.getShowDependencies()) return;
 
     const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;
@@ -670,7 +675,7 @@ export class TimelineExportRenderer {
     }
 
     // Get all features with relations
-    const allFeatures = state.getEffectiveFeatures?.() || [];
+    const allFeatures = this._api.features.list() || [];
     const drawn = new Set();
 
     for (const f of allFeatures) {
@@ -1054,9 +1059,11 @@ let _rendererInstance = null;
  * Get the singleton export renderer instance
  * @returns {TimelineExportRenderer}
  */
-export function getExportRenderer() {
+export function getExportRenderer(api = null) {
   if (!_rendererInstance) {
-    _rendererInstance = new TimelineExportRenderer();
+    _rendererInstance = new TimelineExportRenderer(api);
+  } else if (api) {
+    _rendererInstance.api = api;
   }
   return _rendererInstance;
 }
@@ -1066,7 +1073,7 @@ export function getExportRenderer() {
  * @param {Object} options - { includeAnnotations }
  * @returns {Promise<{success: boolean, filename?: string}>}
  */
-export async function exportTimelineToPng(options = {}) {
-  const renderer = getExportRenderer();
+export async function exportTimelineToPng(options = {}, api = null) {
+  const renderer = getExportRenderer(api);
   return renderer.exportToPng(options);
 }

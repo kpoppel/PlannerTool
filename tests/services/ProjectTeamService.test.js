@@ -71,7 +71,7 @@ describe('ProjectTeamService', () => {
       service.refreshFromBaseline(
         [
           { id: 'p1', name: 'Project 1' },
-          { id: 'p2', name: 'Project 2' },
+          { id: 'p2', name: 'Project 2', selected: false },
         ],
         []
       );
@@ -141,6 +141,41 @@ describe('ProjectTeamService', () => {
       const result = service.setTeamSelected('t99', true);
       expect(result).to.be.false;
       expect(emitCalls).to.have.lengthOf(0);
+    });
+  });
+
+  describe('bulk selection', () => {
+    beforeEach(() => {
+      service.initFromBaseline(
+        [
+          { id: 'p1', name: 'Project 1' },
+          { id: 'p2', name: 'Project 2', selected: false },
+        ],
+        [
+          { id: 't1', name: 'Team 1' },
+          { id: 't2', name: 'Team 2' },
+        ]
+      );
+    });
+
+    it('updates only changed project selections and ignores unknown IDs', () => {
+      const changed = service.setProjectsSelectedBulk({
+        p1: true,
+        p2: false,
+        missing: true,
+      });
+
+      expect(changed).to.equal(1);
+      expect(service.getSelectedProjectIds()).to.deep.equal(['p1']);
+      expect(service.setProjectsSelectedBulk({ p1: true })).to.equal(0);
+    });
+
+    it('updates only changed team selections and rejects invalid bulk input', () => {
+      const changed = service.setTeamsSelectedBulk({ t1: true, t2: true });
+
+      expect(changed).to.equal(2);
+      expect(service.getSelectedTeamIds()).to.deep.equal(['t1', 't2']);
+      expect(service.setTeamsSelectedBulk(null)).to.equal(0);
     });
   });
 

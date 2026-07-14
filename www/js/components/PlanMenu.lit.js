@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state, PALETTE } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { PALETTE } from '../services/ColorService.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
@@ -157,13 +158,6 @@ export class PlanMenuLit extends LitElement {
     }
 
   `;
-
-  static properties = {
-    projects: { type: Array },
-    activeViewId: { type: String },
-    activeViewData: { type: Object },
-    _eventsOpenPlanId: { type: String, state: true },
-  };
 
   constructor() {
     super();

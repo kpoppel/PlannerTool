@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state, PALETTE } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
+import { PALETTE } from '../services/ColorService.js';
 import { bus } from '../core/EventBus.js';
 import {
   ProjectEvents,

@@ -1,6 +1,6 @@
 import { expect } from '@open-wc/testing';
 
-describe('Providers, FilterManager and CapacityCalculator (consolidated)', () => {
+describe('Providers and CapacityCalculator (consolidated)', () => {
   describe('ProviderREST coverage', () => {
     it('listScenarios and getScenario emit events', async () => {
       const mod = await import('/www/js/services/providerREST.js');
@@ -73,32 +73,7 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
     });
   });
 
-  describe('FilterManager and CapacityCalculator', () => {
-    it('FilterManager basic toggles and events', async () => {
-      const mod = await import('../../www/js/services/FilterManager.js');
-      const { FilterManager } = mod;
-      const busModule = await import('../../www/js/core/EventBus.js');
-      const bus = busModule.bus;
-      if (bus.listeners && typeof bus.listeners.clear === 'function')
-        bus.listeners.clear();
-
-      const projects = [
-        { id: 'p1', name: 'P1', selected: true },
-        { id: 'p2', name: 'P2', selected: false },
-      ];
-      const teams = [
-        { id: 't1', name: 'T1', selected: true },
-        { id: 't2', name: 'T2', selected: false },
-      ];
-      const manager = new FilterManager(bus, projects, teams);
-
-      manager.toggleProject('p1');
-      expect(projects[0].selected).to.equal(false);
-
-      manager.selectAllTeams();
-      expect(teams.every((t) => t.selected)).to.be.true;
-    });
-
+  describe('CapacityCalculator', () => {
     it('CapacityCalculator calculates capacities', async () => {
       const mod = await import('../../www/js/services/CapacityCalculator.js');
       const { CapacityCalculator } = mod;

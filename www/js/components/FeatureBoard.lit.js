@@ -13,7 +13,7 @@ import {
   BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { findInBoard } from './board-utils.js';

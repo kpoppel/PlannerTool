@@ -62,6 +62,18 @@ describe('PluginDependenciesComponent', () => {
     return featureBoard.shadowRoot.querySelector('#feature-board-host') || featureBoard.shadowRoot;
   }
 
+  function createDependenciesComponent() {
+    const element = document.createElement('plugin-dependencies');
+    element.api = {
+      features: { list: () => state.getEffectiveFeatures() },
+      view: {
+        getShowDependencies: () => state.showDependencies,
+        getCondensedCards: () => state.condensedCards,
+      },
+    };
+    return element;
+  }
+
   it('draws a Bezier path between two feature cards', async () => {
     // Uses cards 1 and 2 from the global setup (left:10,top:10 and left:160,top:10)
     state.getEffectiveFeatures = () => [
@@ -70,7 +82,7 @@ describe('PluginDependenciesComponent', () => {
     ];
     state.setShowDependencies(true);
 
-    component = document.createElement('plugin-dependencies');
+    component = createDependenciesComponent();
     document.body.appendChild(component);
     await component.updateComplete;
 
@@ -91,7 +103,7 @@ describe('PluginDependenciesComponent', () => {
     ];
     state.setShowDependencies(true);
 
-    component = document.createElement('plugin-dependencies');
+    component = createDependenciesComponent();
     document.body.appendChild(component);
     await component.updateComplete;
 
@@ -116,7 +128,7 @@ describe('PluginDependenciesComponent', () => {
     ];
     state.setShowDependencies(true);
 
-    component = document.createElement('plugin-dependencies');
+    component = createDependenciesComponent();
     document.body.appendChild(component);
     await component.updateComplete;
 

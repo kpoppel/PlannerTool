@@ -1,5 +1,4 @@
 import { html } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import {
   monthLabel,
   monthKey,
@@ -58,7 +57,7 @@ export function renderProjectView(component) {
     `;
   }
 
-  const selectedProjects = (state.projects || []).filter((p) => p.selected);
+  const selectedProjects = (component.api.selection.getProjects() || []).filter((p) => p.selected);
   if (selectedProjects.length === 0) {
     return html`
       <div class="empty-state">
@@ -97,7 +96,7 @@ function renderProjectTable(component, project, monthKeys) {
   );
   const expandedFeatures = expandDataset(
     projectData.features,
-    state.childrenByParent || new Map(),
+    component.api.selection.getChildrenByParent() || new Map(),
     allFeatures
   );
 
@@ -112,7 +111,7 @@ function renderProjectTable(component, project, monthKeys) {
 
   return html`
     <div style="margin-bottom: 32px;">
-      ${renderCountingBanner()}
+      ${renderCountingBanner(component)}
       ${renderClipBanner(expandedFeatures, component.startDate, component.endDate)}
       <div
         class="project-header expandable"
@@ -189,7 +188,7 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
   // are never double-counted.
   const { roots, childrenMap } = buildTaskTree(
     features,
-    state.childrenByParent || new Map()
+    component.api.selection.getChildrenByParent() || new Map()
   );
 
   // Per-team, per-feature rollup (respects the "children are authoritative for
@@ -256,14 +255,6 @@ function renderProjectSummaryTable(
 
   for (const teamName of teams) {
     const teamData = teamAllocations.get(teamName);
-    // DEBUG: print team allocation for server/client comparison
-    if (false) {
-      if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
-        component.__dbg_logged_team_arch = true;
-        console.debug('[PluginCost][DBG][client] team-architecture', teamData);
-      }
-    }
-
     if (!teamData) continue;
     for (const mKey of monthKeys) {
       const iHours = teamData.hours.internal.get(mKey) || 0;
@@ -276,22 +267,6 @@ function renderProjectSummaryTable(
       totals.internal.cost.set(mKey, (totals.internal.cost.get(mKey) || 0) + iCost);
       totals.external.cost.set(mKey, (totals.external.cost.get(mKey) || 0) + eCost);
     }
-  }
-
-  // DEBUG: show totals and server-provided project totals for inspection
-  if (false) {
-    const pid = projectData && projectData.id ? projectData.id : '(unknown)';
-    console.debug('[PluginCost][DBG][client][summary]', {
-      project: pid,
-      monthKeys,
-      totals_internal_hours: Object.fromEntries(
-        Array.from(totals.internal.hours.entries())
-      ),
-      totals_internal_cost: Object.fromEntries(
-        Array.from(totals.internal.cost.entries())
-      ),
-      projectTotals: projectData && projectData.totals ? projectData.totals : null,
-    });
   }
 
   // Only sum the months inside the display window; the map may contain server data
@@ -682,7 +657,7 @@ function renderFeatureList(component, features, monthKeys) {
   const featureMap = new Map(features.map((f) => [String(f.id), f]));
   const { roots, childrenMap } = buildTaskTree(
     features,
-    state.childrenByParent || new Map()
+    component.api.selection.getChildrenByParent() || new Map()
   );
   const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
 

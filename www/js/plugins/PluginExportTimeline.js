@@ -48,6 +48,7 @@ class PluginExportTimeline {
     if (!this._el) {
       this._el = document.createElement('plugin-export-timeline');
     }
+    this._el.api = this.api;
     // TODO: Crazy stuff. Just mount to the board shadow DOM
     if (this._el && !this._el.parentNode) {
       const appRoot =

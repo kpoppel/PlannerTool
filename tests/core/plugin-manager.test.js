@@ -58,6 +58,19 @@ describe('PluginManager & Plugin base', () => {
     expect(plugin.initCalled).to.be.true;
   });
 
+  it('injects the configured application API into registered plugins', async () => {
+    const api = Object.freeze({ version: 1 });
+    manager.setApi(api);
+    const plugin = new TestPlugin('test-plugin');
+
+    await manager.register(plugin);
+    expect(plugin.api).to.equal(api);
+
+    const nextApi = Object.freeze({ version: 2 });
+    manager.setApi(nextApi);
+    expect(plugin.api).to.equal(nextApi);
+  });
+
   it('should emit plugin:registered event', async () => {
     const plugin = new TestPlugin('test-plugin');
 

@@ -9,7 +9,7 @@
  * card to appear in every matching cell.
  *
  * Toolbar selectors (task types, X field, Y field, card details) are
- * fully plugin-controlled and persisted via state.pluginStateService.
+ * fully plugin-controlled and persisted via PlannerApi plugin state.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
@@ -17,7 +17,6 @@ import {
   FeatureEvents, AppEvents, ProjectEvents,
   ScenarioEvents, ViewManagementEvents, UIEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
 import { computeGrid } from './xyBoardUtils.js';
 import '../components/XYCard.lit.js';
 
@@ -291,6 +290,11 @@ export class PluginXYBoardComponent extends LitElement {
     this._boundRefreshOnDetails = this._refresh.bind(this);
   }
 
+  get _api() {
+    if (!this.api) throw new Error('PluginXYBoardComponent requires PlannerApi');
+    return this.api;
+  }
+
   connectedCallback() {
     super.connectedCallback();
     bus.on(FeatureEvents.UPDATED, this._boundRefresh);
@@ -336,14 +340,14 @@ export class PluginXYBoardComponent extends LitElement {
   // ---- Data ----
 
   _onProjectsChanged(_projects) {
-    // Plan menu selection changed — recompute grid using latest state.projects
+    // Plan menu selection changed — recompute grid using the latest selection.
     this._refresh();
   }
 
   _refresh() {
     let features = [];
     try {
-      features = state.getEffectiveFeatures() || [];
+      features = this._api.features.list() || [];
     } catch (_) {
       // state not yet ready — will be called again on AppEvents.READY
       return;
@@ -352,7 +356,7 @@ export class PluginXYBoardComponent extends LitElement {
     // Derive available task types — union of baseline cache and effective features
     // so all types are visible in the select even if filtered
     const typeSet = new Set([
-      ...(state.availableTaskTypes || []),
+      ...(this._api.taskTypes.getAvailable() || []),
       ...features.map((f) => f.type || f.workItemType).filter(Boolean),
     ]);
     this._availableTypes = Array.from(typeSet).sort();
@@ -376,9 +380,9 @@ export class PluginXYBoardComponent extends LitElement {
 
     // Apply plan-menu project filter.
     // Features use `f.project` (string) to reference their parent project.
-    // When state.projects is empty (not yet loaded) show everything.
+    // When projects are empty (not yet loaded) show everything.
     // When all projects are deselected show nothing (empty board).
-    const allProjects = state.projects || [];
+    const allProjects = this._api.selection.getProjects() || [];
     let afterProjectFilter;
     if (allProjects.length === 0) {
       // Projects not yet loaded — do not filter
@@ -399,10 +403,7 @@ export class PluginXYBoardComponent extends LitElement {
         ? afterProjectFilter.filter((f) => this.selectedTypes.includes(f.type || f.workItemType))
         : afterProjectFilter;
 
-    const stateComparator =
-      typeof state.compareFeatureStates === 'function'
-        ? (a, b) => state.compareFeatureStates(a, b)
-        : null;
+    const stateComparator = (a, b) => this._api.taskTypes.compareFeatureStates(a, b);
     const { xVals, yVals, grid } = computeGrid(filtered, this.xField, this.yField, {
       xSort: this.xField === 'state' ? stateComparator : null,
       ySort: this.yField === 'state' ? stateComparator : null,
@@ -421,7 +422,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _saveState() {
     try {
-      state.pluginStateService.set(STATE_KEY, {
+      this._api.plugins.setState(STATE_KEY, {
         xField: this.xField,
         yField: this.yField,
         selectedTypes: this.selectedTypes,
@@ -434,7 +435,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _loadState() {
     try {
-      const saved = state.pluginStateService.get(STATE_KEY);
+      const saved = this._api.plugins.getState(STATE_KEY);
       if (!saved) return;
       if (saved.xField) this.xField = saved.xField;
       if (saved.yField) this.yField = saved.yField;
@@ -490,7 +491,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _projectColor(feature) {
     try {
-      return state.getProjectColor?.(feature.projectId) || null;
+      return this._api.colors.getProject(feature.projectId) || null;
     } catch (_) {
       return null;
     }

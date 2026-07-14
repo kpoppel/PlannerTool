@@ -1,6 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { CapacityCalculator } from '../../www/js/services/CapacityCalculator.js';
 import { bus } from '../../www/js/core/EventBus.js';
+import { CapacityEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('CapacityCalculator (unit)', () => {
   it('empty inputs produce empty result', () => {
@@ -64,6 +65,38 @@ describe('CapacityCalculator (unit)', () => {
     expect(res.totalOrgDailyCapacity).to.be.an('array');
     // each day should have total org capacity 2
     expect(res.totalOrgDailyCapacity.every((v) => v === 2)).to.be.true;
+  });
+
+  it('calculates without publishing global capacity events', () => {
+    const events = [];
+    const unsubscribe = bus.on(CapacityEvents.UPDATED, (payload) => events.push(payload));
+    const calc = new CapacityCalculator();
+
+    try {
+      calc.calculate(
+        [
+          {
+            id: 'f1',
+            project: 'p1',
+            state: 'active',
+            start: '2025-01-01',
+            end: '2025-01-01',
+            capacity: [{ team: 't1', capacity: 2 }],
+          },
+        ],
+        {
+          selectedProjects: ['p1'],
+          selectedTeams: ['t1'],
+          selectedStates: ['active'],
+        },
+        [{ id: 't1' }],
+        [{ id: 'p1' }]
+      );
+    } finally {
+      unsubscribe();
+    }
+
+    expect(events).to.have.lengthOf(0);
   });
 
   it('incremental delta updates adjust cached result', () => {

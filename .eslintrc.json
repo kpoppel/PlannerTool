@@ -14,9 +14,21 @@
   "rules": {
     "no-var": "error",
     "prefer-const": "warn",
-    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }]
+    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": ["**/services/State.js"]
+      }
+    ]
   },
   "overrides": [
+    {
+      "files": ["www/js/application/plannerApplication.js"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
     {
       "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"]
     }

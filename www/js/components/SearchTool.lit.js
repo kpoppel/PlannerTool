@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { findInBoard } from './board-utils.js';
 export class SearchTool extends LitElement {
   static properties = {

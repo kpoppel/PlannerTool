@@ -6,7 +6,6 @@
  * Views: Project, Task, Team - each with monthly cost/hours breakdowns.
  */
 import { isEnabled } from '../config.js';
-import { state } from '../services/State.js';
 
 class PluginCost {
   constructor(id = 'plugin-cost', config = {}) {
@@ -61,6 +60,7 @@ class PluginCost {
     if (!this._el) {
       this._el = document.createElement('plugin-cost');
       this._el.pluginId = this.id;
+      this._el.api = this.api;
       // Mount as peer to timeline-board with same layout class
       this._el.classList.add('main');
       this._el.style.display = 'none'; // Start hidden
@@ -76,7 +76,7 @@ class PluginCost {
 
     // Restore persisted plugin state (if any) before opening so the component
     // loads data for the same window the user selected previously.
-    const ps = state.pluginStateService.get(this.id) || {};
+    const ps = this.api.plugins.getState(this.id) || {};
     if (ps.startDate) this._el.startDate = ps.startDate;
     if (ps.endDate) this._el.endDate = ps.endDate;
 
@@ -95,7 +95,7 @@ class PluginCost {
       startDate: this._el.startDate,
       endDate: this._el.endDate,
     };
-    state.pluginStateService.set(this.id, s, { saveToView: true });
+    this.api.plugins.setState(this.id, s, { saveToView: true });
 
 
     this._el.close();

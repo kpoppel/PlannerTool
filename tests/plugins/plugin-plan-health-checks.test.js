@@ -1,12 +1,10 @@
 /**
  * Unit tests for PluginPlanHealthComponent orphan and hierarchy-violation checks.
  *
- * These tests stub the `state` singleton so the methods can run in isolation
- * without a full DOM / server environment.
+ * These tests provide a narrow PlannerApi double so the methods can run in
+ * isolation without a full DOM / server environment.
  */
 import { expect } from '@open-wc/testing';
-import sinon from 'sinon';
-import { state } from '../../www/js/services/State.js';
 
 // Import the element class (does not mount it)
 import { PluginPlanHealthComponent } from '../../www/js/plugins/PluginPlanHealthComponent.js';
@@ -71,25 +69,25 @@ function displayNameFromHierarchy(type) {
 // Setup / teardown
 // ---------------------------------------------------------------------------
 let comp;
-let stateStubs = [];
 
 function stubState(features, projects) {
-  stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns(features));
-  stateStubs.push(sinon.stub(state, 'projects').get(() => projects));
-  stateStubs.push(sinon.stub(state, 'taskTypeHierarchy').get(() => HIERARCHY));
-  stateStubs.push(sinon.stub(state, 'getTypeLevel').callsFake(typeLevelFromHierarchy));
-  stateStubs.push(
-    sinon.stub(state, 'getTypeDisplayName').callsFake(displayNameFromHierarchy)
-  );
+  comp.api = {
+    features: { list: () => features },
+    selection: {
+      getProjects: () => projects,
+      getTeams: () => [],
+      getChildrenByParent: () => new Map(),
+    },
+    taskTypes: {
+      getHierarchy: () => HIERARCHY,
+      getLevel: typeLevelFromHierarchy,
+      getDisplayName: displayNameFromHierarchy,
+    },
+  };
 }
 
 beforeEach(() => {
   comp = new PluginPlanHealthComponent();
-});
-
-afterEach(() => {
-  for (const s of stateStubs) s.restore();
-  stateStubs = [];
 });
 
 // ---------------------------------------------------------------------------
@@ -410,11 +408,9 @@ describe('PluginPlanHealthComponent._checkHierarchyViolations', () => {
     const parentEpic = mkEpic('e1', 'team-plan', null);
     const childEpic = mkEpic('e2', 'team-plan', 'e1');
     const projects = [{ id: 'team-plan', type: 'team' }];
-    // Override taskTypeHierarchy stub to return empty
+    // Override the task type hierarchy for this check.
     stubState([parentEpic, childEpic], projects);
-    // Replace the hierarchy stub with empty
-    stateStubs[stateStubs.length - 3].restore(); // taskTypeHierarchy is 3rd from end
-    stateStubs.push(sinon.stub(state, 'taskTypeHierarchy').get(() => []));
+    comp.api.taskTypes.getHierarchy = () => [];
 
     const visibleIds = new Set(['e1', 'e2']);
     const issues = comp._checkHierarchyViolations([parentEpic, childEpic], visibleIds);

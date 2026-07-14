@@ -1,6 +1,6 @@
 import { bus } from '../core/EventBus.js';
 import { DragEvents } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
@@ -188,7 +188,7 @@ export function startResize(
   function endDateFromWidth(width) {
     let remaining = width;
     let current = new Date(startDate);
-    while (true) {
+    while (remaining > 0) {
       const daysInMonth = new Date(
         current.getFullYear(),
         current.getMonth() + 1,
@@ -208,6 +208,7 @@ export function startResize(
       remaining -= widthForRemainingMonth;
       current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
     }
+    return current;
   }
 
   function widthForSpan(sDate, eDate) {

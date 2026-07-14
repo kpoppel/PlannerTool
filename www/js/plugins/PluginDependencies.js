@@ -6,8 +6,6 @@
  * to replace the former initDependencyRenderer() call in app.js.
  * The overlay content is toggled by ViewEvents.DEPENDENCIES from the sidebar.
  */
-import { state } from '../services/State.js';
-
 class PluginDependencies {
   constructor(id = 'plugin-dependencies', config = {}) {
     this.id = id;
@@ -40,17 +38,18 @@ class PluginDependencies {
 
     if (!this._el) {
       this._el = document.createElement('plugin-dependencies');
+      this._el.api = this.api;
       document.body.appendChild(this._el);
     }
 
     // Sync state flag silently to avoid circular event before overlay is ready
-    state.setShowDependencies(true, true);
+    this.api.view.setShowDependencies(true);
     if (this._el?.open) this._el.open();
     this.active = true;
   }
 
   async deactivate() {
-    state.setShowDependencies(false, true);
+    this.api.view.setShowDependencies(false);
     if (this._el?.close) this._el.close();
     this.active = false;
   }

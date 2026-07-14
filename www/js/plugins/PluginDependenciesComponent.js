@@ -12,7 +12,6 @@
 
 import { html } from '../vendor/lit.js';
 import { OverlaySvgComponent } from './OverlaySvgComponent.js';
-import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import {
   FeatureEvents,
@@ -40,6 +39,11 @@ export class PluginDependenciesComponent extends OverlaySvgComponent {
     // Bound event handler references for reliable bus.off()
     this._onUpdate = this._scheduleRender.bind(this);
     this._onDepsToggle = this._handleDepsToggle.bind(this);
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginDependenciesComponent requires PlannerApi');
+    return this.api;
   }
 
   // No floating toolbar — dependencies are a passive overlay
@@ -83,7 +87,7 @@ export class PluginDependenciesComponent extends OverlaySvgComponent {
    * Controls overlay visibility so saved view state is honoured.
    */
   _handleDepsToggle() {
-    if (state?._viewService?.showDependencies) {
+    if (this._api.view.getShowDependencies()) {
       this.open();
     } else {
       this.close();
@@ -111,8 +115,8 @@ export class PluginDependenciesComponent extends OverlaySvgComponent {
       if (id) cardById.set(String(id), c);
     }
 
-    const features = state.getEffectiveFeatures?.() ?? [];
-    const laneHeight = state.condensedCards ? 28 : 100;
+    const features = this._api.features.list();
+    const laneHeight = this._api.view.getCondensedCards() ? 28 : 100;
 
     /**
      * Read the board-space rect of a card from its inline style.

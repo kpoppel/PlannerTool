@@ -3,16 +3,14 @@
  * Calculates team/project capacity from features
  */
 
-import { CapacityEvents } from '../core/EventRegistry.js';
 import { isEnabled } from '../config.js';
 
 // Special project ID for unfunded/orphaned allocations
 const UNFUNDED_PROJECT_ID = '__unfunded__';
 
 export class CapacityCalculator {
-  constructor(eventBus, childrenByParentMap = null) {
-    this.bus = eventBus;
-    this.childrenByParent = childrenByParentMap || new Map();
+  constructor(childrenByParentMap = null) {
+    this.childrenByParent = childrenByParentMap instanceof Map ? childrenByParentMap : new Map();
     // Caches for incremental updates
     this._lastResultCache = null; // { dates, teamDaily, teamDailyMap, projectDaily, projectDailyMap, totalOrgDaily }
     this._lastFeaturesById = new Map(); // featureId -> feature (last seen)
@@ -179,7 +177,6 @@ export class CapacityCalculator {
         totalOrgDailyCapacity: cached.totalOrgDaily,
         totalOrgDailyPerTeamAvg,
       };
-      this.bus.emit(CapacityEvents.UPDATED, result);
       return result;
     }
 
@@ -227,9 +224,6 @@ export class CapacityCalculator {
     };
     // Store snapshot of features for delta subtraction
     this._lastFeaturesById = new Map(features.map((f) => [f.id, f]));
-
-    // Emit event
-    this.bus.emit(CapacityEvents.UPDATED, result);
 
     return result;
   }

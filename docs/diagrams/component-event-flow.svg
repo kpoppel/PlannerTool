@@ -25,7 +25,7 @@
 
   <rect x="40" y="180" width="250" height="120" class="node" rx="6"/>
   <text x="60" y="204" class="title">Services</text>
-  <text x="60" y="228" class="label">State, FilterManager, ScenarioManager</text>
+  <text x="60" y="228" class="label">State, ProjectTeamService, ScenarioManager</text>
 
   <rect x="380" y="220" width="240" height="80" class="node" rx="6"/>
   <text x="400" y="244" class="title">FeatureService</text>

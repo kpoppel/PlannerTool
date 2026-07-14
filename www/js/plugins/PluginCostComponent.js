@@ -11,7 +11,6 @@
  * and cost/hours toggle controls.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
 
 import { renderProjectView } from './PluginCostProjectView.js';
@@ -65,6 +64,11 @@ export class PluginCostComponent extends LitElement {
     this.months = [];
     this._unsubscribes = [];
     this._reloadTimer = null;
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginCostComponent requires PlannerApi');
+    return this.api;
   }
 
   static styles = css`
@@ -491,8 +495,8 @@ export class PluginCostComponent extends LitElement {
     }
 
     // Restore sidebar controls and expansion defaults when plugin UI closes.
-    state.clearSidebarDisabledElements();
-    state.setExpansionState({
+    this._api.sidebar.clearDisabled();
+    this._api.view.setExpansion({
       expandParentChild: false,
       expandRelations: false,
       expandTeamAllocated: false,
@@ -505,7 +509,7 @@ export class PluginCostComponent extends LitElement {
       endDate: this.endDate,
     };
 
-    state.pluginStateService.update(this._getPluginId(), snapshot, { saveToView: true });
+    this._api.plugins.updateState(this._getPluginId(), snapshot, { saveToView: true });
   }
 
   _getPluginId() {
@@ -535,29 +539,28 @@ export class PluginCostComponent extends LitElement {
   // Apply the sidebar disabled configuration
   _applySidebarDisabled() {
     // Ensure unplanned is unchecked, and all other task filters are checked
-    state.taskFilterService.setFilter('schedule', 'unplanned', false);
+    this._api.filters.setTaskFilter('schedule', 'unplanned', false);
     // Schedule: ensure planned is true
-    state.taskFilterService.setFilter('schedule', 'planned', true);
+    this._api.filters.setTaskFilter('schedule', 'planned', true);
     // Allocation
-    state.taskFilterService.setFilter('allocation', 'allocated', true);
-    state.taskFilterService.setFilter('allocation', 'unallocated', true);
+    this._api.filters.setTaskFilter('allocation', 'allocated', true);
+    this._api.filters.setTaskFilter('allocation', 'unallocated', true);
     // Hierarchy
-    state.taskFilterService.setFilter('hierarchy', 'hasParent', true);
-    state.taskFilterService.setFilter('hierarchy', 'noParent', true);
+    this._api.filters.setTaskFilter('hierarchy', 'hasParent', true);
+    this._api.filters.setTaskFilter('hierarchy', 'noParent', true);
     // Relations
-    state.taskFilterService.setFilter('relations', 'hasLinks', true);
-    state.taskFilterService.setFilter('relations', 'noLinks', true);
+    this._api.filters.setTaskFilter('relations', 'hasLinks', true);
+    this._api.filters.setTaskFilter('relations', 'noLinks', true);
 
     // Force all states selected via public State API
-    state.setAllStatesSelected(true);
+    this._api.filters.setAllFeatureStatesSelected(true);
 
     // Ensure all task types are checked via public State API
     // Prefer the sidebar's known available task types. The ViewManagementService
     // does not reliably expose the loaded task types at runtime.
     // Read available task types from State service (preferred) or fall back
     // to any saved view options. Do NOT query other components' internals.
-    console.log(state.availableTaskTypes);
-    state.setSelectedTaskTypes(state.availableTaskTypes);
+    this._api.filters.setTaskTypes(this._api.taskTypes.getAvailable());
 
     // Now disable buttons
     const disabled = {
@@ -569,16 +572,16 @@ export class PluginCostComponent extends LitElement {
       },
       taskTypes: [],
       states:
-        Array.isArray(state.availableFeatureStates) ?
-          Array.from(state.availableFeatureStates)
+        Array.isArray(this._api.filters.getAvailableFeatureStates()) ?
+          Array.from(this._api.filters.getAvailableFeatureStates())
         : [],
       expansion: ['parentChild', 'relations', 'teamAllocated'],
     };
-    state.setSidebarDisabledElements(disabled);
+    this._api.sidebar.setDisabled(disabled);
     // Ensure Parent/Child expansion is enabled while plugin is active so
     // children from selected plans are included in calculations and the
     // Sidebar shows Parent/Child Links as checked.
-    state.setExpansionState({
+    this._api.view.setExpansion({
       expandParentChild: true,
       expandRelations: true,
       expandTeamAllocated: true,
@@ -597,7 +600,7 @@ export class PluginCostComponent extends LitElement {
     this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
     this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
     this._unsubscribes.push(
-      state.pluginStateService.subscribe(this._getPluginId(), (pluginState) => {
+      this._api.plugins.subscribe(this._getPluginId(), (pluginState) => {
         this._applyPluginState(pluginState);
       })
     );
@@ -617,9 +620,9 @@ export class PluginCostComponent extends LitElement {
       this._reloadTimer = null;
     }
 
-    state.clearSidebarDisabledElements();
+    this._api.sidebar.clearDisabled();
     // restore expansion defaults when plugin unloads
-    state.setExpansionState({
+    this._api.view.setExpansion({
       expandParentChild: false,
       expandRelations: false,
       expandTeamAllocated: false,
@@ -659,10 +662,7 @@ export class PluginCostComponent extends LitElement {
       });
 
       // Get effective features from state
-      const effectiveFeatures =
-        state && typeof state.getEffectiveFeatures === 'function' ?
-          state.getEffectiveFeatures()
-        : [];
+      const effectiveFeatures = this._api.features.list() || [];
 
       if (effectiveFeatures.length === 0) {
         throw new Error(
@@ -691,10 +691,10 @@ export class PluginCostComponent extends LitElement {
         selectedTypes = null;
       }
 
-      // Helper: determine if a feature has children according to state.childrenByParent
+      // Helper: determine if a feature has children according to the current hierarchy.
       const hasChildren = (fid) => {
         try {
-          const map = state.childrenByParent || new Map();
+          const map = this._api.selection.getChildrenByParent() || new Map();
           const list = map.get(Number(fid)) || map.get(String(fid)) || [];
           return Array.isArray(list) && list.length > 0;
         } catch (e) {
@@ -715,12 +715,11 @@ export class PluginCostComponent extends LitElement {
       });
 
       // Apply task filters (planned/unplanned, allocation, etc.) from TaskFilterService
-      const tfs = state.taskFilterService;
+      const taskFilters = this._api.filters.getTaskFilters();
       // If the schedule.unplanned option is turned off, proactively
       // filter out features that are truly unplanned. Some backends
       // set placeholder dates (today) for unplanned items which would
       // otherwise appear as "planned"; treat those as unplanned too.
-      const taskFilters = tfs.getFilters();
       if (taskFilters.schedule.unplanned === false) {
         const today = new Date().toISOString().slice(0, 10);
         filteredFeatures = filteredFeatures.filter((f) => {
@@ -740,7 +739,7 @@ export class PluginCostComponent extends LitElement {
           return true;
         });
 
-        const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
+        const ff = filteredFeatures.filter((feature) => this._api.features.passesTaskFilters(feature));
         filteredFeatures.length = 0;
         Array.prototype.push.apply(filteredFeatures, ff);
       }
@@ -749,11 +748,11 @@ export class PluginCostComponent extends LitElement {
       // Include any features from the expanded feature id set so the server
       // will compute costs for those child/related features even if they
       // are not part of the original filtered set.
-      if (typeof state.getExpandedFeatureIds === 'function') {
-        const expandedIds = state.getExpandedFeatureIds() || new Set();
+      {
+        const expandedIds = this._api.selection.getExpandedFeatureIds() || new Set();
         if (expandedIds.size > 0) {
           const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
-          const allEffective = state.getEffectiveFeatures() || [];
+          const allEffective = this._api.features.list() || [];
           const byId = new Map(allEffective.map((f) => [String(f.id), f]));
           for (const id of expandedIds) {
             const sid = String(id);
@@ -778,7 +777,7 @@ export class PluginCostComponent extends LitElement {
       }));
 
       // Fetch cost data
-      const json = await state.cost.get({ features: featuresPayload });
+      const json = await this._api.cost.get({ features: featuresPayload });
 
       // Normalize projects structure: backend returns an array of projects
       // while older clients expect an object keyed by project id. Convert
@@ -818,7 +817,7 @@ export class PluginCostComponent extends LitElement {
 
       // Fetch cost teams metadata (members + sites) to enable per-site breakdowns
       try {
-        const ct = await state.cost.getTeams();
+        const ct = await this._api.cost.getTeams();
         this.costTeams = ct && ct.teams ? ct : { teams: [] };
       } catch (e) {
         this.costTeams = { teams: [] };
@@ -826,7 +825,7 @@ export class PluginCostComponent extends LitElement {
 
       // Start with project sections expanded for all selected projects
       try {
-        const selectedProjects = (state.projects || [])
+        const selectedProjects = (this._api.selection.getProjects() || [])
           .filter((p) => p.selected)
           .map((p) => p.id);
         this.expandedProjects = new Set(selectedProjects);

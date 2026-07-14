@@ -42,6 +42,7 @@ export class OverlayPlugin extends Plugin {
 
     if (!this._el) {
       this._el = document.createElement(this._tagName);
+      this._el.api = this.api;
       this.getMountTarget().appendChild(this._el);
     }
 

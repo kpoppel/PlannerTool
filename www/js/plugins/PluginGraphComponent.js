@@ -1,7 +1,7 @@
 /**
  * PluginGraph component
  * Single-responsibility: render an interactive SVG 'mountain view' showing
- * capacity across days. This component reads global `state` to compute
+ * capacity across days. This component reads the injected `PlannerApi` to compute
  * per-day totals and renders either project stacked bars or team lines.
  *
  * Notes on intent:
@@ -10,7 +10,6 @@
  * - Date math uniformly uses UTC-localized days to avoid timezone surprises.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { findInBoard } from '../components/board-utils.js';
@@ -28,12 +27,14 @@ export class PluginGraph extends LitElement {
   static properties = {
     visible: { type: Boolean },
     mode: { type: String },
+    api: { attribute: false },
   };
 
   constructor() {
     super();
     this.visible = false;
     this.mode = 'project';
+    this.api = null;
     this._scheduledRenderTimer = null;
     this.svgEl = null;
     this.tooltipEl = null;
@@ -139,7 +140,7 @@ export class PluginGraph extends LitElement {
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
-    this.mode = state.capacityViewMode;
+    this.mode = this._api.view.getCapacityMode();
   }
 
   _ensureTooltip() {
@@ -216,9 +217,9 @@ export class PluginGraph extends LitElement {
     await this.updateComplete;
 
     // Set graph mode to match current view mode
-    this.mode = state.capacityViewMode;
+    this.mode = this._api.view.getCapacityMode();
 
-    // Always set date range from the current state.
+    // Always set date range from the current application data.
     const months = getTimelineMonths();
     const d0 = months[0];
     const last = months[months.length - 1];
@@ -292,17 +293,19 @@ export class PluginGraph extends LitElement {
     return dd.toISOString().slice(0, 10);
   }
 
+  get _api() {
+    if (!this.api) throw new Error('PluginGraphComponent requires PlannerApi');
+    return this.api;
+  }
+
   _computeDailyTotals(mode, sDate, eDate) {
-    const effective = state.getEffectiveFeatures();
-    const teams = state.teams || [];
-    const allProjects = state.projects || [];
+    const api = this._api;
+    const effective = api.features.list();
+    const teams = api.selection.getTeams() || [];
+    const allProjects = api.selection.getProjects() || [];
     const selectedTeams = teams.filter((t) => t.selected).map((t) => t.id);
     const selectedProjects = allProjects.filter((p) => p.selected).map((p) => p.id);
-    const selectedStates =
-      state.selectedFeatureStateFilter instanceof Set ?
-        Array.from(state.selectedFeatureStateFilter)
-      : state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter]
-      : [];
+    const selectedStates = api.filters.getFeatureStates();
     const projectSetSelected = new Set(selectedProjects);
     const teamSetSelected = new Set(selectedTeams);
     const stateSetSelected = new Set(selectedStates);
@@ -312,9 +315,10 @@ export class PluginGraph extends LitElement {
     if (stateSetSelected.size === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
-    const stateDates = state.capacityDates || [];
-    const teamDaily = state.teamDailyCapacity || [];
-    const projectDaily = state.projectDailyCapacity || [];
+    const capacity = api.capacity.get();
+    const stateDates = capacity.dates || [];
+    const teamDaily = capacity.teamDailyCapacity || [];
+    const projectDaily = capacity.projectDailyCapacity || [];
     if (stateDates && stateDates.length && teamDaily && projectDaily) {
       const dateIndexMap = new Map(stateDates.map((ds, i) => [ds, i]));
       const totals = new Array(days)
@@ -365,7 +369,7 @@ export class PluginGraph extends LitElement {
     const projectDayMap = new Map();
     // Only teams the user has selected count towards the org-load denominator,
     // consistent with CapacityCalculator/MainGraph. The fast path above
-    // already benefits automatically since state.projectDailyCapacity is
+    // already benefits automatically since capacity.projectDailyCapacity is
     // pre-normalized by CapacityCalculator using the same selected-team count.
     const numTeamsGlobal = teamSetSelected.size === 0 ? 1 : teamSetSelected.size;
     function addRawTeam(dayIdx, teamId, raw) {
@@ -577,7 +581,7 @@ export class PluginGraph extends LitElement {
         rect.setAttribute('y', String(y));
         rect.setAttribute('width', String(w));
         rect.setAttribute('height', String(hSeg));
-        const proj = (state.projects || []).find((p) => p.id === pid);
+        const proj = (this._api.selection.getProjects() || []).find((p) => p.id === pid);
         // Use a subtle pastel brown for unfunded, otherwise use project color
         const color =
           pid === '__unfunded__' ? '#C49E78'
@@ -595,7 +599,7 @@ export class PluginGraph extends LitElement {
   }
 
   _renderTeamLines(data, width, height, parent, maxY = 100) {
-    const teams = state.teams || [];
+    const teams = this._api.selection.getTeams() || [];
     const { days, totals } = data;
     const self = this;
     teams.slice(0, Math.min(teams.length, teams.length)).forEach((t, idx) => {
@@ -637,7 +641,7 @@ export class PluginGraph extends LitElement {
         if (entries.length) {
           html += '<div style="display:flex; flex-direction:column; gap:4px;">';
           entries.slice(0, 10).forEach((e) => {
-            const p = (state.projects || []).find((x) => x.id === e.id);
+            const p = (this._api.selection.getProjects() || []).find((x) => x.id === e.id);
             const isUnfunded = e.id === '__unfunded__';
             const color =
               isUnfunded ? '#C49E78'
@@ -658,7 +662,7 @@ export class PluginGraph extends LitElement {
         if (entries.length) {
           html += '<div style="display:flex; flex-direction:column; gap:4px;">';
           entries.slice(0, 10).forEach((e) => {
-            const t = (state.teams || []).find((x) => x.id === e.id);
+            const t = (this._api.selection.getTeams() || []).find((x) => x.id === e.id);
             const color = t ? t.color : '#888';
             const name = t ? t.name : e.id;
             html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style="width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;"></span><span style="flex:1; color:#ddd;">${name}</span><span style="margin-left:8px; color:#fff; font-weight:700;">${Math.round(e.v)}%</span></div>`;

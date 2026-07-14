@@ -54,6 +54,7 @@ class PluginGraphPlugin {
     }
     if (!this._el) {
       this._el = document.createElement('plugin-graph');
+      this._el.api = this.api;
       // Mount as peer to timeline-board with same layout class
       this._el.classList.add('main');
       this._el.style.display = 'none'; // Start hidden

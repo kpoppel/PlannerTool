@@ -147,6 +147,7 @@ export class GroupService {
       if (!Array.isArray(sg.members)) sg.members = [];
       if (!sg.members.includes(String(taskId))) {
         sg.members = [...sg.members, String(taskId)];
+        stateRef.markGroupChanged?.();
       }
       bus.emit(GroupEvents.CHANGED, { op: 'memberAdded', groupId, taskId });
       return;
@@ -187,6 +188,7 @@ export class GroupService {
     if (sgIdx !== -1) {
       const sg = scenario.scenarioGroups[sgIdx];
       sg.members = (sg.members || []).filter((m) => String(m) !== String(taskId));
+      stateRef.markGroupChanged?.();
       bus.emit(GroupEvents.CHANGED, { op: 'memberRemoved', groupId, taskId });
       return;
     }

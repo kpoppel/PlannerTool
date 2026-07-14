@@ -20,7 +20,7 @@
  */
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
 import { BoardEvents, UIEvents, TimelineEvents } from '../core/EventRegistry.js';

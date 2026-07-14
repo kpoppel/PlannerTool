@@ -2,11 +2,12 @@ import { bus } from '../core/EventBus.js';
 import { dataService } from './dataService.js';
 import { featureFlags } from '../config.js';
 import { dataOr } from './result.js';
-import { FilterManager } from './FilterManager.js';
 import { CapacityCalculator } from './CapacityCalculator.js';
+import { CapacityCoordinator } from './CapacityCoordinator.js';
 import { BaselineStore } from './BaselineStore.js';
 import { ScenarioManager } from './ScenarioManager.js';
 import { FeatureService } from './FeatureService.js';
+import { QueuedFeatureService } from './QueuedFeatureService.js';
 import { ViewService } from './ViewService.js';
 import { TaskFilterService } from './TaskFilterService.js';
 import { ColorService } from './ColorService.js';
@@ -18,6 +19,18 @@ import { DataInitService } from './DataInitService.js';
 import { ScenarioEventService } from './ScenarioEventService.js';
 import { ViewManagementService } from './ViewManagementService.js';
 import { PluginStateService } from './PluginStateService.js';
+import { ScenarioGroupService } from './ScenarioGroupService.js';
+import {
+  selectEffectiveSelectedProjectIds,
+  selectExpandedFeatureIds,
+} from '../application/selectors/expansionSelectors.js';
+import {
+  selectAvailableTaskTypes,
+  selectOrderedTaskTypes,
+  selectTaskTypeDisplayName,
+  selectTaskTypeHierarchy,
+  selectTaskTypeLevel,
+} from '../application/selectors/taskTypeSelectors.js';
 export { PALETTE, DEFAULT_STATE_COLOR_MAP } from './ColorService.js';
 import {
   FeatureEvents,
@@ -40,9 +53,6 @@ class State {
     this.baselineProjects = [];
     this.baselineTeams = [];
     this.baselineFeatures = [];
-
-    // FilterManager - lazy init after data loads
-    this._filterManager = null;
 
     // ScenarioManager - lazy init
     this._scenarioManager = null;
@@ -68,7 +78,8 @@ class State {
 
     // Core services
     this._baselineStore = new BaselineStore();
-    this._capacityCalculator = new CapacityCalculator(bus);
+    this._capacityCalculator = new CapacityCalculator();
+    this._capacityCoordinator = new CapacityCoordinator(this._capacityCalculator);
 
     // View and configuration services
     this._viewService = new ViewService(bus, this._envAdapters.viewLayout);
@@ -108,12 +119,18 @@ class State {
     // View management service
     this._viewManagementService = new ViewManagementService(
       bus,
-      this,
+      this._createViewStatePort(),
       this._viewService,
       this._envAdapters.viewManagement
     );
     // Plugin state service (in-memory session store for plugin UI state)
     this._pluginStateService = new PluginStateService(bus, dataService);
+    this._scenarioGroupService = new ScenarioGroupService({
+      bus,
+      getActiveScenario: () => this.getActiveScenario(),
+      getActiveWritableScenario: () => this._getActiveWritableScenario(),
+      markChanged: () => this._markActiveScenarioChanged(),
+    });
 
     // On page load, scenarios are fetched from the backend and broadcast via
     // SCENARIOS_DATA.  Emit GroupEvents.CHANGED so the board re-renders with
@@ -171,6 +188,34 @@ class State {
 
     // Public namespaced API surface used by UI/plugins.
     this._initNamespaces();
+  }
+
+  _createViewStatePort() {
+    const state = this;
+    return Object.freeze({
+      get projects() {
+        return state.projects;
+      },
+      get teams() {
+        return state.teams;
+      },
+      get availableFeatureStates() {
+        return state.availableFeatureStates;
+      },
+      get selectedFeatureStates() {
+        return state.selectedFeatureStates;
+      },
+      get taskFilterService() {
+        return state.taskFilterService;
+      },
+      get pluginStateService() {
+        return state.pluginStateService;
+      },
+      setProjectsSelectedBulk: (selections) => state.setProjectsSelectedBulk(selections),
+      setTeamsSelectedBulk: (selections) => state.setTeamsSelectedBulk(selections),
+      setSelectedStates: (states) => state.setSelectedStates(states),
+      setExpansionState: (options) => state.setExpansionState(options),
+    });
   }
 
   _initNamespaces() {
@@ -424,7 +469,7 @@ class State {
     // expandTeamAllocated changes the effective project set used for capacity
     // calculation, so we must recompute immediately.
     if (this._expansionState.expandTeamAllocated !== prevExpandTeamAllocated) {
-      this.recomputeCapacityMetrics();
+      if (this.recomputeCapacityMetrics()) this._emitCapacityUpdated();
     }
   }
 
@@ -486,25 +531,17 @@ class State {
    * @returns {string[]}
    */
   getEffectiveSelectedProjectIds() {
-    const rawSelected = (this.projects || []).filter((p) => p.selected).map((p) => p.id);
-    if (!this._expansionState.expandTeamAllocated) return rawSelected;
-
-    const selectedTeams = (this.teams || []).filter((t) => t.selected).map((t) => t.id);
-    if (selectedTeams.length === 0) return rawSelected;
-
-    const featureService = this._getFeatureService();
-    if (!featureService || !featureService.expandTeamAllocated) return rawSelected;
-
-    // Collect the project of every feature allocated to a selected team
-    const teamAllocatedIds = featureService.expandTeamAllocated(selectedTeams);
-    const allFeatures = featureService.getEffectiveFeatures();
-    const featureById = new Map(allFeatures.map((f) => [f.id, f]));
-    const derived = new Set(rawSelected);
-    for (const fid of teamAllocatedIds) {
-      const f = featureById.get(fid);
-      if (f && f.project) derived.add(f.project);
-    }
-    return Array.from(derived);
+    const hasSelectedTeam = (this.teams || []).some((team) => team?.selected);
+    const features =
+      this._expansionState.expandTeamAllocated && hasSelectedTeam ?
+        this._getFeatureService().getEffectiveFeatures()
+      : [];
+    return selectEffectiveSelectedProjectIds({
+      projects: this.projects,
+      teams: this.teams,
+      features,
+      expandTeamAllocated: this._expansionState.expandTeamAllocated,
+    });
   }
 
   /**
@@ -520,34 +557,18 @@ class State {
       return new Set();
     }
 
-    const allFeatures = featureService.getEffectiveFeatures();
-    const selectedProjectIds = this.projects
-      .filter((p) => p && p.selected)
-      .map((p) => p.id);
-    const selectedFeatureIds = new Set(
-      allFeatures.filter((f) => selectedProjectIds.includes(f.project)).map((f) => f.id)
-    );
-
-    // If no expansion filters are active, return base selected set
-    if (
-      !this._expansionState.expandParentChild &&
-      !this._expansionState.expandRelations &&
-      !this._expansionState.expandTeamAllocated
-    ) {
-      this._expandedFeatureIdsCache = selectedFeatureIds;
-      return selectedFeatureIds;
-    }
-
-    const selectedTeamIds = this.teams.filter((t) => t && t.selected).map((t) => t.id);
-    const expansionResult = featureService.computeExpandedFeatureSet(selectedFeatureIds, {
-      expandParentChild: this._expansionState.expandParentChild,
-      expandRelations: this._expansionState.expandRelations,
-      expandTeamAllocated: this._expansionState.expandTeamAllocated,
-      selectedTeamIds: selectedTeamIds,
+    this._expandedFeatureIdsCache = selectExpandedFeatureIds({
+      projects: this.projects,
+      teams: this.teams,
+      features: featureService.getEffectiveFeatures(),
+      childrenByParent: this.childrenByParent,
+      expansion: {
+        parentChild: this._expansionState.expandParentChild,
+        relations: this._expansionState.expandRelations,
+        teamAllocated: this._expansionState.expandTeamAllocated,
+      },
     });
-
-    this._expandedFeatureIdsCache = expansionResult.expandedIds;
-    return expansionResult.expandedIds;
+    return this._expandedFeatureIdsCache;
   }
   // FeatureService accessor (lazy-initialized via _getFeatureService)
   get featureService() {
@@ -580,14 +601,7 @@ class State {
       // explicit transfer of `task_types` from the backend.
       if (this._availableTaskTypesCache && Array.isArray(this._availableTaskTypesCache))
         return this._availableTaskTypesCache;
-      // Derive from baseline features if cache is null/empty
-      const baseline = this.baselineFeatures || [];
-      const types = new Set();
-      baseline.forEach((f) => {
-        const t = f.type || f.workItemType || f.work_item_type || null;
-        if (t) types.add(String(t));
-      });
-      this._availableTaskTypesCache = Array.from(types).sort();
+      this._availableTaskTypesCache = selectAvailableTaskTypes(this.baselineFeatures);
       return this._availableTaskTypesCache;
     } catch (e) {
       this._availableTaskTypesCache = [];
@@ -602,14 +616,7 @@ class State {
    */
   get taskTypeHierarchy() {
     if (this._taskTypeHierarchyCache !== null) return this._taskTypeHierarchyCache;
-    const projects = this.baselineProjects || [];
-    for (const p of projects) {
-      if (Array.isArray(p.task_type_hierarchy) && p.task_type_hierarchy.length > 0) {
-        this._taskTypeHierarchyCache = p.task_type_hierarchy;
-        return this._taskTypeHierarchyCache;
-      }
-    }
-    this._taskTypeHierarchyCache = [];
+    this._taskTypeHierarchyCache = selectTaskTypeHierarchy(this.baselineProjects);
     return this._taskTypeHierarchyCache;
   }
 
@@ -620,13 +627,7 @@ class State {
    * @returns {number}
    */
   getTypeLevel(type) {
-    const hierarchy = this.taskTypeHierarchy;
-    const key = String(type || '').toLowerCase();
-    for (let i = 0; i < hierarchy.length; i++) {
-      const types = (hierarchy[i].types || []).map((t) => String(t).toLowerCase());
-      if (types.includes(key)) return i;
-    }
-    return 9999;
+    return selectTaskTypeLevel(this.taskTypeHierarchy, type);
   }
 
   /**
@@ -637,13 +638,7 @@ class State {
    * @returns {string}
    */
   getTypeDisplayName(type) {
-    const hierarchy = this.taskTypeHierarchy;
-    const key = String(type || '').toLowerCase();
-    for (const level of hierarchy) {
-      const canonical = (level.types || []).find((t) => String(t).toLowerCase() === key);
-      if (canonical !== undefined) return canonical;
-    }
-    return type;
+    return selectTaskTypeDisplayName(this.taskTypeHierarchy, type);
   }
 
   /**
@@ -653,16 +648,7 @@ class State {
    * Display names are normalised to use the capitalisation from the hierarchy.
    */
   get availableTaskTypesOrdered() {
-    const all = this.availableTaskTypes || [];
-    if (!this.taskTypeHierarchy.length) return all;
-    return [...all]
-      .sort((a, b) => {
-        const la = this.getTypeLevel(a);
-        const lb = this.getTypeLevel(b);
-        if (la !== lb) return la - lb;
-        return a.localeCompare(b);
-      })
-      .map((t) => this.getTypeDisplayName(t));
+    return selectOrderedTaskTypes(this.availableTaskTypes, this.taskTypeHierarchy);
   }
 
   // ========== Autosave Helper ==========
@@ -722,31 +708,8 @@ class State {
   async initState() {
     // Delegate to DataInitService
     const result = await this._dataInitService.initState();
-
-    // Sync loaded baseline data to state properties
-    this.baselineProjects = result.baselineProjects;
-    this.baselineTeams = result.baselineTeams;
-    this.baselineFeatures = result.baselineFeatures;
-    // Populate available task types. Clear the cache first so the getter always
-    // re-derives from the freshly-loaded features
-    this._availableTaskTypesCache = null;
-    // Invalidate the hierarchy cache so it is recomputed from the newly
-    // loaded project data (which may now include task_type_hierarchy).
-    this._taskTypeHierarchyCache = null;
-
-    // Update FeatureService with new childrenByParent if it exists
-    if (this._featureService) {
-      this._featureService.setChildrenByParent(this.childrenByParent);
-    }
-
-    // Initialize default scenario
-    this._scenarioEventService.initDefaultScenario(() =>
-      this._projectTeamService.captureCurrentFilters()
-    );
-
-    // Emit scenario events before loading views
-    this._scenarioEventService.emitScenarioList();
-    this._scenarioEventService.emitScenarioActivated();
+    this._applyBaselineResult(result);
+    this._resetScenarioAfterBaseline();
 
     // Initialize plugin state service so plugins can read state during view load/restore
     await this._pluginStateService.init();
@@ -759,7 +722,7 @@ class State {
     await this._viewManagementService.restoreLastView();
 
     // Calculate initial capacity metrics now that all data is loaded and selections are restored
-    this.recomputeCapacityMetrics();
+    if (this.recomputeCapacityMetrics()) this._emitCapacityUpdated();
 
     // Signal that initState has completed so other components waiting on
     // restored view state (eg. timeline) can proceed deterministically.
@@ -769,24 +732,8 @@ class State {
   async refreshBaseline() {
     // Delegate to DataInitService (no cache invalidation — used after scenario push)
     const result = await this._dataInitService.refreshBaseline();
-
-    // Sync to state properties
-    this.baselineProjects = result.baselineProjects;
-    this.baselineTeams = result.baselineTeams;
-    this.baselineFeatures = result.baselineFeatures;
-
-    // Update FeatureService with new childrenByParent if it exists
-    if (this._featureService) {
-      this._featureService.setChildrenByParent(this.childrenByParent);
-    }
-
-    // Reinitialize default scenario
-    this._scenarioEventService.initDefaultScenario(() =>
-      this._projectTeamService.captureCurrentFilters()
-    );
-
-    this._scenarioEventService.emitScenarioList();
-    this._scenarioEventService.emitScenarioActivated();
+    this._applyBaselineResult(result);
+    this._resetScenarioAfterBaseline();
 
     // Recompute capacity metrics after refresh
     this.recomputeCapacityMetrics();
@@ -801,23 +748,31 @@ class State {
     // Delegate invalidation to DataInitService, then follow the same
     // post-processing path as refreshBaseline().
     const result = await this._dataInitService.invalidateAndRefreshBaseline();
+    this._applyBaselineResult(result);
+    this._resetScenarioAfterBaseline();
 
-    this.baselineProjects = result.baselineProjects;
-    this.baselineTeams = result.baselineTeams;
-    this.baselineFeatures = result.baselineFeatures;
+    this.recomputeCapacityMetrics();
+    this._emitCapacityUpdated();
+  }
+
+  _applyBaselineResult({ baselineProjects, baselineTeams, baselineFeatures }) {
+    this.baselineProjects = baselineProjects;
+    this.baselineTeams = baselineTeams;
+    this.baselineFeatures = baselineFeatures;
+    this._availableTaskTypesCache = null;
+    this._taskTypeHierarchyCache = null;
 
     if (this._featureService) {
       this._featureService.setChildrenByParent(this.childrenByParent);
     }
+  }
 
+  _resetScenarioAfterBaseline() {
     this._scenarioEventService.initDefaultScenario(() =>
       this._projectTeamService.captureCurrentFilters()
     );
     this._scenarioEventService.emitScenarioList();
     this._scenarioEventService.emitScenarioActivated();
-
-    this.recomputeCapacityMetrics();
-    this._emitCapacityUpdated();
   }
 
   setStateFilter(stateName) {
@@ -919,6 +874,18 @@ class State {
     }
   }
 
+  updateFeatureRelations(id, relations) {
+    const updated = this._getFeatureService().updateFeatureRelations(id, relations);
+    if (updated) {
+      const activeId = this._getScenarioManager().activeScenarioId;
+      this.emitScenarioUpdated(activeId, {
+        type: 'overrideRelations',
+        featureId: id,
+      });
+    }
+    return updated;
+  }
+
   revertFeature(id) {
     const capacityCallback = () => {
       this.recomputeCapacityMetrics([id]);
@@ -933,35 +900,14 @@ class State {
     }
   }
 
-  // Ensure FilterManager is initialized
-  _ensureFilterManager() {
-    if (!this._filterManager && this.projects && this.teams) {
-      this._filterManager = new FilterManager(bus, this.projects, this.teams);
-    }
-  }
-
   setProjectSelected(id, selected) {
-    this._ensureFilterManager();
     if (!this._projectTeamService.setProjectSelected(id, selected)) return;
-    // Invalidate expansion cache since project selection changed
-    this._expandedFeatureIdsCache = null;
-    // Notify UI listeners of project list change (single consolidated event)
-    bus.emit(ProjectEvents.CHANGED, this.projects);
-    this.recomputeCapacityMetrics();
-    this._emitCapacityUpdated();
-    this._emitFeatureUpdated();
+    this._afterSelectionChange(ProjectEvents.CHANGED, this.projects);
   }
 
   setTeamSelected(id, selected) {
-    this._ensureFilterManager();
     if (!this._projectTeamService.setTeamSelected(id, selected)) return;
-    // Invalidate expansion cache since team selection changed
-    this._expandedFeatureIdsCache = null;
-    // Notify UI listeners of team list change (single consolidated event)
-    bus.emit(TeamEvents.CHANGED, this.teams);
-    this.recomputeCapacityMetrics();
-    this._emitCapacityUpdated();
-    this._emitFeatureUpdated();
+    this._afterSelectionChange(TeamEvents.CHANGED, this.teams);
   }
 
   /**
@@ -969,16 +915,9 @@ class State {
    * @param {Object} selections - Mapping of projectId -> boolean
    */
   setProjectsSelectedBulk(selections) {
-    this._ensureFilterManager();
     const changed = this._projectTeamService.setProjectsSelectedBulk(selections);
     if (!changed) return;
-    // Invalidate expansion cache since project selection changed
-    this._expandedFeatureIdsCache = null;
-    // Notify listeners that project selection changed (single consolidated event)
-    bus.emit(ProjectEvents.CHANGED, this.projects);
-    this.recomputeCapacityMetrics();
-    this._emitCapacityUpdated();
-    this._emitFeatureUpdated();
+    this._afterSelectionChange(ProjectEvents.CHANGED, this.projects);
   }
 
   /**
@@ -986,13 +925,14 @@ class State {
    * @param {Object} selections - Mapping of teamId -> boolean
    */
   setTeamsSelectedBulk(selections) {
-    this._ensureFilterManager();
     const changed = this._projectTeamService.setTeamsSelectedBulk(selections);
     if (!changed) return;
-    // Invalidate expansion cache since team selection changed
+    this._afterSelectionChange(TeamEvents.CHANGED, this.teams);
+  }
+
+  _afterSelectionChange(event, items) {
     this._expandedFeatureIdsCache = null;
-    // Notify listeners that team selection changed (single consolidated event)
-    bus.emit(TeamEvents.CHANGED, this.teams);
+    bus.emit(event, items);
     this.recomputeCapacityMetrics();
     this._emitCapacityUpdated();
     this._emitFeatureUpdated();
@@ -1070,22 +1010,12 @@ class State {
         return this.scenarios.list().find((s) => s.id === this.activeScenarioId);
       };
 
-      // Allow swapping in an experimental queued implementation via feature flag
-      if (featureFlags && featureFlags.USE_QUEUED_FEATURE_SERVICE) {
-        // Dynamic import preserves module semantics and avoids circular import issues
-        // Note: dynamic import returns a promise; use then() to synchronously assign when available.
-        import('./QueuedFeatureService.js').then((mod) => {
-          this._featureService = new mod.QueuedFeatureService(
-            this._baselineStore,
-            getActiveScenarioFn
-          );
-        });
-      } else {
-        this._featureService = new FeatureService(
-          this._baselineStore,
-          getActiveScenarioFn
-        );
-      }
+      const FeatureServiceImplementation =
+        featureFlags.USE_QUEUED_FEATURE_SERVICE ? QueuedFeatureService : FeatureService;
+      this._featureService = new FeatureServiceImplementation(
+        this._baselineStore,
+        getActiveScenarioFn
+      );
       // Provide fallback to baselineFeatures if BaselineStore returns empty
       this._featureService._getBaselineFallback = () => this.baselineFeatures;
       this._featureService.setChildrenByParent(this.childrenByParent);
@@ -1239,34 +1169,7 @@ class State {
    * @returns {Array}
    */
   getPendingGroupChanges() {
-    const activeScen = this.getActiveScenario();
-    const ops = [];
-
-    // Creates: groups in scenario.scenarioGroups
-    for (const g of (activeScen?.scenarioGroups || [])) {
-      ops.push({ type: 'create', group: g });
-    }
-
-    // Deletes/updates from groupOverrides
-    for (const [groupId, ov] of Object.entries(activeScen?.groupOverrides || {})) {
-      if (ov._deleted) {
-        ops.push({ type: 'delete', groupId });
-      } else {
-        const { _deleted, memberDeltas, ...fields } = ov;
-        const hasFields = Object.keys(fields).length > 0;
-        const hasDeltas = memberDeltas?.length > 0;
-        if (hasFields || hasDeltas) {
-          ops.push({
-            type: 'update',
-            groupId,
-            ...(hasFields && { fields }),
-            ...(hasDeltas && { memberDeltas }),
-          });
-        }
-      }
-    }
-
-    return ops;
+    return this._scenarioGroupService.getPendingChanges();
   }
 
   /**
@@ -1275,10 +1178,7 @@ class State {
    * Called by ScenarioMenu after changes have been persisted to the server.
    */
   clearPendingGroupChanges() {
-    const activeScen = this._getActiveWritableScenario();
-    if (!activeScen) return;
-    activeScen.scenarioGroups = [];
-    activeScen.groupOverrides = {};
+    this._scenarioGroupService.clearPendingChanges();
   }
 
   /**
@@ -1288,11 +1188,7 @@ class State {
    * @param {string} realId
    */
   confirmGroupCreate(tempId, realId) {
-    const sg = this.getActiveScenario()?.scenarioGroups;
-    if (sg) {
-      const g = sg.find((g) => g.id === tempId);
-      if (g) g.id = realId;
-    }
+    this._scenarioGroupService.confirmCreate(tempId, realId);
   }
 
   /** Return the currently active (non-null) scenario object, or null.
@@ -1321,25 +1217,7 @@ class State {
    * @returns {object|null} The created group, or null if no active scenario.
    */
   createGroupInScenario(planId, name, color = null, parentId = null) {
-    const activeScen = this._getActiveWritableScenario();
-    if (!activeScen) return null;
-
-    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const group = {
-      id: tempId,
-      plan_id: String(planId),
-      name,
-      rank: Date.now(),
-      members: [],
-      color: color || null,
-      parent_id: parentId || null,
-    };
-
-    if (!activeScen.scenarioGroups) activeScen.scenarioGroups = [];
-    activeScen.scenarioGroups.push(group);
-    this._markActiveScenarioChanged();
-    bus.emit(GroupEvents.CHANGED, { op: 'created', group });
-    return group;
+    return this._scenarioGroupService.create(planId, name, color, parentId);
   }
 
   /**
@@ -1351,32 +1229,7 @@ class State {
    * @returns {object|null} Updated group, or null if not found.
    */
   updateGroupInScenario(groupId, fields) {
-    const activeScen = this._getActiveWritableScenario();
-    if (!activeScen) return null;
-
-    // Check scenario-local groups first
-    const sgIdx = (activeScen.scenarioGroups || []).findIndex(
-      (g) => String(g.id) === String(groupId)
-    );
-    if (sgIdx !== -1) {
-      activeScen.scenarioGroups[sgIdx] = {
-        ...activeScen.scenarioGroups[sgIdx],
-        ...fields,
-      };
-      this._markActiveScenarioChanged();
-      bus.emit(GroupEvents.CHANGED, { op: 'updated', group: activeScen.scenarioGroups[sgIdx] });
-      return activeScen.scenarioGroups[sgIdx];
-    }
-
-    // Baseline group — store as group override
-    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
-    activeScen.groupOverrides[String(groupId)] = {
-      ...(activeScen.groupOverrides[String(groupId)] || {}),
-      ...fields,
-    };
-    this._markActiveScenarioChanged();
-    bus.emit(GroupEvents.CHANGED, { op: 'updated', groupId, fields });
-    return activeScen.groupOverrides[String(groupId)];
+    return this._scenarioGroupService.update(groupId, fields);
   }
 
   /**
@@ -1386,38 +1239,7 @@ class State {
    * @param {string} groupId
    */
   deleteGroupInScenario(groupId) {
-    const activeScen = this._getActiveWritableScenario();
-    if (!activeScen) return;
-
-    // Check scenario-local groups first (and cascade sub-groups)
-    const sgList = activeScen.scenarioGroups || [];
-    const toRemove = new Set([String(groupId)]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const g of sgList) {
-        if (g.parent_id && toRemove.has(String(g.parent_id)) && !toRemove.has(String(g.id))) {
-          toRemove.add(String(g.id));
-          changed = true;
-        }
-      }
-    }
-    const hadLocal = sgList.some((g) => toRemove.has(String(g.id)));
-    if (hadLocal) {
-      activeScen.scenarioGroups = sgList.filter((g) => !toRemove.has(String(g.id)));
-      this._markActiveScenarioChanged();
-      bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
-      return;
-    }
-
-    // Baseline group — mark as deleted in groupOverrides
-    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
-    activeScen.groupOverrides[String(groupId)] = {
-      ...(activeScen.groupOverrides[String(groupId)] || {}),
-      _deleted: true,
-    };
-    this._markActiveScenarioChanged();
-    bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
+    this._scenarioGroupService.delete(groupId);
   }
 
   /**
@@ -1429,17 +1251,11 @@ class State {
    * @param {'add'|'remove'} op
    */
   applyGroupMemberDelta(groupId, taskId, op) {
-    const activeScen = this._getActiveWritableScenario();
-    if (!activeScen) return;
-    if (!activeScen.groupOverrides) activeScen.groupOverrides = {};
-    const ov = activeScen.groupOverrides[String(groupId)] || {};
-    const deltas = (ov.memberDeltas || []).filter(
-      (d) => String(d.taskId) !== String(taskId)  // last write wins
-    );
-    deltas.push({ taskId: String(taskId), op });
-    activeScen.groupOverrides[String(groupId)] = { ...ov, memberDeltas: deltas };
+    this._scenarioGroupService.applyMemberDelta(groupId, taskId, op);
+  }
+
+  markGroupChanged() {
     this._markActiveScenarioChanged();
-    bus.emit(GroupEvents.CHANGED, { op: 'memberDelta', groupId, taskId, delta: op });
   }
 
   /** Mark the active (non-readonly) scenario as having unsaved changes. */
@@ -1483,11 +1299,6 @@ class State {
   recomputeCapacityMetrics(changedFeatureIds = null) {
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
-    // Always use all projects for capacity calculations to ensure features from all projects are counted.
-    // Project type filtering should only affect display/grouping, not calculation.
-    const projectsForCapacity = projects || [];
-    // Use expansion-aware project IDs so the graph stays populated when
-    // "expand by team allocation" makes features visible from unselected plans.
     const selectedProjects = this.getEffectiveSelectedProjectIds();
     const selectedTeams = (this.teams || []).filter((t) => t.selected).map((t) => t.id);
     const selectedStateIds =
@@ -1495,63 +1306,39 @@ class State {
         Array.from(this.selectedFeatureStateFilter)
       : this.selectedFeatureStateFilter || [];
 
-    // When GRAPH_ONLY_SELECTED_PLANS is false (default), the capacity graph
-    // always reflects ALL plans so overallocation from unselected plans is visible.
-    // When true, only features from the user-selected projects are counted (legacy).
-    const graphOnlySelected = featureFlags.GRAPH_ONLY_SELECTED_PLANS;
-    const projectsForFilter = graphOnlySelected ?
-      selectedProjects
-    : (this.projects || []).map((p) => p.id);
+    const { result, calculated } = this._capacityCoordinator.calculate({
+      features: this.getEffectiveFeatures(),
+      baselineTeams: teams,
+      baselineProjects: projects,
+      selectedProjectIds: selectedProjects,
+      allProjectIds: (this.projects || []).map((project) => project.id),
+      selectedTeamIds: selectedTeams,
+      selectedStateIds,
+      graphOnlySelected: featureFlags.GRAPH_ONLY_SELECTED_PLANS,
+      requireProjectSelection: (this.projects || []).length > 0,
+      requireTeamSelection: (this.teams || []).length > 0,
+      stateFilterActive: !!this.selectedFeatureStateFilter,
+      childrenByParent: this.childrenByParent,
+      changedFeatureIds,
+    });
 
-    // Check for empty selections. When graphOnlySelected is false, project
-    // selection on the board is irrelevant to the graph so we skip that check.
-    if (
-      (graphOnlySelected &&
-        this.projects &&
-        this.projects.length > 0 &&
-        selectedProjects.length === 0) ||
-      (this.teams && this.teams.length > 0 && selectedTeams.length === 0) ||
-      (this.selectedFeatureStateFilter && selectedStateIds.length === 0)
-    ) {
-      // Clear metrics
-      this.capacityDates = [];
-      this.teamDailyCapacity = [];
-      this.teamDailyCapacityMap = [];
-      this.projectDailyCapacityRaw = [];
-      this.projectDailyCapacity = [];
-      this.projectDailyCapacityMap = [];
-      this.totalOrgDailyCapacity = [];
-      this.totalOrgDailyPerTeamAvg = [];
+    this._setCapacityMetrics(result);
+    if (!calculated) {
       console.debug(
         '[state] recomputeCapacityMetrics - empty selection -> cleared metrics'
       );
-      return;
+      return false;
     }
 
-    // Ensure childrenByParent map is set in calculator
-    this._capacityCalculator.setChildrenByParent(
-      this._dataInitService.getChildrenByParentMap()
+    console.debug(
+      '[state] recomputeCapacityMetrics - computed',
+      this.capacityDates.length,
+      'days of capacity metrics (using CapacityCalculator service)'
     );
+    return true;
+  }
 
-    const filters = {
-      selectedProjects: projectsForFilter,
-      selectedTeams,
-      selectedStates: selectedStateIds,
-    };
-
-    // Get effective features with scenario overrides
-    const features = this.getEffectiveFeatures();
-
-    // Calculate using service (pass changed ids for incremental update when available)
-    const result = this._capacityCalculator.calculate(
-      features,
-      filters,
-      teams,
-      projectsForCapacity,
-      changedFeatureIds
-    );
-
-    // Assign results to state properties
+  _setCapacityMetrics(result) {
     this.capacityDates = result.dates;
     this.teamDailyCapacity = result.teamDailyCapacity;
     this.teamDailyCapacityMap = result.teamDailyCapacityMap;
@@ -1560,12 +1347,6 @@ class State {
     this.projectDailyCapacityMap = result.projectDailyCapacityMap;
     this.totalOrgDailyCapacity = result.totalOrgDailyCapacity;
     this.totalOrgDailyPerTeamAvg = result.totalOrgDailyPerTeamAvg;
-
-    console.debug(
-      '[state] recomputeCapacityMetrics - computed',
-      this.capacityDates.length,
-      'days of capacity metrics (using CapacityCalculator service)'
-    );
   }
 }
 

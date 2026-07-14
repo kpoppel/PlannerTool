@@ -34,6 +34,16 @@ class LinkEditorState {
     // Track edited relations per feature (stored as scenario overrides)
     // This is not persisted here but rather synced with the active scenario
     this.relationEdits = new Map();
+    this.api = null;
+  }
+
+  setApi(api) {
+    this.api = api;
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('LinkEditorState requires PlannerApi');
+    return this.api;
   }
 
   /**
@@ -115,10 +125,10 @@ class LinkEditorState {
     }
 
     // Create or update the relation
-    this._applyRelationChange(action, fromId, targetId);
+    const updated = this._applyRelationChange(action, fromId, targetId);
 
     this.cancelAction();
-    return true;
+    return updated;
   }
 
   /**
@@ -136,81 +146,37 @@ class LinkEditorState {
    * @private
    */
   _applyRelationChange(action, fromId, targetId) {
-    // Import state management here to avoid circular dependencies
-    import('../../services/State.js').then(({ state }) => {
-      try {
-        const scenario = state.scenarioManager?.getActiveScenario();
-        if (!scenario) {
-          console.warn('[LinkEditorState] No active scenario');
-          return;
-        }
-
-        // Get the baseline feature
-        const baselineFeature = state.baselineStore?.getFeatureById()?.get(fromId);
-        if (!baselineFeature) {
-          console.warn('[LinkEditorState] Feature not found:', fromId);
-          return;
-        }
-
-        // Get current effective relations (baseline + override)
-        let relations = [];
-        if (
-          scenario.overrides &&
-          scenario.overrides[fromId] &&
-          scenario.overrides[fromId].relations
-        ) {
-          relations = [...scenario.overrides[fromId].relations];
-        } else if (baselineFeature.relations) {
-          relations = [...baselineFeature.relations];
-        }
-
-        // Apply the change based on action type
-        if (action === ACTIONS.PARENT) {
-          // Parent is special - replace any existing Parent relation
-          relations = relations.filter((r) => {
-            const relType = r.type || r.relationType || 'Related';
-            return relType !== 'Parent';
-          });
-          relations.push({ type: 'Parent', id: targetId });
-        } else {
-          // For Predecessor, Successor, Related - add if not exists
-          const existingIndex = relations.findIndex((r) => {
-            const relType = r.type || r.relationType || 'Related';
-            const relId = String(r.id || r);
-            return relType === action && relId === String(targetId);
-          });
-
-          if (existingIndex === -1) {
-            relations.push({ type: action, id: targetId });
-          }
-        }
-
-        // Update scenario override
-        if (!scenario.overrides) scenario.overrides = {};
-        if (!scenario.overrides[fromId]) {
-          scenario.overrides[fromId] = {};
-        }
-        scenario.overrides[fromId].relations = relations;
-
-        // Trigger feature update event
-        import('../../core/EventBus.js').then(({ bus }) => {
-          import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
-            bus.emit(FeatureEvents.UPDATED, { ids: [fromId] });
-            console.log(
-              '[LinkEditorState] Created link:',
-              action,
-              fromId,
-              '->',
-              targetId
-            );
-          });
-        });
-
-        this.notify();
-      } catch (err) {
-        console.error('[LinkEditorState] Error applying relation change:', err);
+    try {
+      const feature = this._api.features.getById(fromId);
+      if (!feature) {
+        console.warn('[LinkEditorState] Feature not found:', fromId);
+        return false;
       }
-    });
+
+      let relations = Array.isArray(feature.relations) ? [...feature.relations] : [];
+      if (action === ACTIONS.PARENT) {
+        relations = relations.filter((relation) => {
+          const relationType = relation.type || relation.relationType || 'Related';
+          return relationType !== ACTIONS.PARENT;
+        });
+        relations.push({ type: ACTIONS.PARENT, id: targetId });
+      } else if (!relations.some((relation) => {
+        const relationType = relation.type || relation.relationType || 'Related';
+        return relationType === action && String(relation.id || relation) === String(targetId);
+      })) {
+        relations.push({ type: action, id: targetId });
+      }
+
+      const updated = this._api.features.updateRelations(fromId, relations);
+      if (updated) {
+        console.log('[LinkEditorState] Created link:', action, fromId, '->', targetId);
+        this.notify();
+      }
+      return updated;
+    } catch (error) {
+      console.error('[LinkEditorState] Error applying relation change:', error);
+      return false;
+    }
   }
 
   /**
@@ -220,59 +186,24 @@ class LinkEditorState {
    * @param {string} relationType - relation type
    */
   removeRelation(fromId, targetId, relationType) {
-    import('../../services/State.js').then(({ state }) => {
-      try {
-        const scenario = state.scenarioManager?.getActiveScenario();
-        if (!scenario) return;
+    try {
+      const feature = this._api.features.getById(fromId);
+      if (!feature) return false;
 
-        const baselineFeature = state.baselineStore?.getFeatureById()?.get(fromId);
-        if (!baselineFeature) return;
-
-        // Get current effective relations
-        let relations = [];
-        if (
-          scenario.overrides &&
-          scenario.overrides[fromId] &&
-          scenario.overrides[fromId].relations
-        ) {
-          relations = [...scenario.overrides[fromId].relations];
-        } else if (baselineFeature.relations) {
-          relations = [...baselineFeature.relations];
-        }
-
-        // Remove the matching relation
-        const filtered = relations.filter((r) => {
-          const relType = r.type || r.relationType || 'Related';
-          const relId = String(r.id || r);
-          return !(relType === relationType && relId === String(targetId));
-        });
-
-        // Update scenario override
-        if (!scenario.overrides) scenario.overrides = {};
-        if (!scenario.overrides[fromId]) {
-          scenario.overrides[fromId] = {};
-        }
-        scenario.overrides[fromId].relations = filtered;
-
-        // Trigger feature update event
-        import('../../core/EventBus.js').then(({ bus }) => {
-          import('../../core/EventRegistry.js').then(({ FeatureEvents }) => {
-            bus.emit(FeatureEvents.UPDATED, { ids: [fromId] });
-            console.log(
-              '[LinkEditorState] Removed link:',
-              relationType,
-              fromId,
-              '->',
-              targetId
-            );
-          });
-        });
-
+      const relations = (feature.relations || []).filter((relation) => {
+        const type = relation.type || relation.relationType || 'Related';
+        return !(type === relationType && String(relation.id || relation) === String(targetId));
+      });
+      const updated = this._api.features.updateRelations(fromId, relations);
+      if (updated) {
+        console.log('[LinkEditorState] Removed link:', relationType, fromId, '->', targetId);
         this.notify();
-      } catch (err) {
-        console.error('[LinkEditorState] Error removing relation:', err);
       }
-    });
+      return updated;
+    } catch (error) {
+      console.error('[LinkEditorState] Error removing relation:', error);
+      return false;
+    }
   }
 
   /**

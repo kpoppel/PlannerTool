@@ -101,6 +101,18 @@ describe('FeatureService public methods', () => {
     expect(bus.emitted.length).to.be.greaterThan(0);
   });
 
+  it('updateFeatureRelations stores a scenario override and emits', () => {
+    const relations = [{ type: 'Related', id: 'f1' }];
+
+    const updated = fs.updateFeatureRelations('f2', relations);
+
+    expect(updated).to.equal(true);
+    expect(activeScenario.isChanged).to.equal(true);
+    expect(activeScenario.overrides.f2.relations).to.deep.equal(relations);
+    expect(activeScenario.overrides.f2.relations).to.not.equal(relations);
+    expect(bus.emitted.length).to.be.greaterThan(0);
+  });
+
   it('getEffectiveFeatureById marks tags as changed when tags override differs', () => {
     activeScenario.overrides['f2'] = { tags: 'gamma; delta' };
     const eff = fs.getEffectiveFeatureById('f2');

@@ -41,21 +41,17 @@ vi.mock('../../www/js/plugins/annotations/index.js', () => {
   };
 });
 
-// Provide a minimal state used by renderer (dependencies)
-vi.mock('../../www/js/services/State.js', () => {
-  return {
-    state: {
-      showDependencies: true,
-      _viewService: { condensedCards: false },
-      getEffectiveFeatures: () => [
-        { id: '1', relations: [{ id: '2', type: 'Predecessor' }] },
-        { id: '2', relations: [] },
-      ],
-    },
-  };
-});
-
 import { getExportRenderer } from '../../www/js/plugins/export/TimelineExportRenderer.js';
+
+const API = {
+  features: {
+    list: () => [
+      { id: '1', relations: [{ id: '2', type: 'Predecessor' }] },
+      { id: '2', relations: [] },
+    ],
+  },
+  view: { getShowDependencies: () => true },
+};
 
 describe('Plugin export renderer', () => {
   beforeEach(() => {
@@ -138,7 +134,7 @@ describe('Plugin export renderer', () => {
   });
 
   it('exports SVG containing timeline, graph, feature cards, dependencies and annotations', async () => {
-    const renderer = getExportRenderer();
+    const renderer = getExportRenderer(API);
 
     const svg = await renderer.getExportSvg({
       includeAnnotations: true,
@@ -188,7 +184,7 @@ describe('Plugin export renderer', () => {
   });
 
   it('can produce a PNG blob from the SVG export (stubbed conversion)', async () => {
-    const renderer = getExportRenderer();
+    const renderer = getExportRenderer(API);
     const blob = await renderer.exportToPngBlob({
       includeAnnotations: true,
       includeDependencies: true,

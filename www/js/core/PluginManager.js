@@ -13,8 +13,16 @@ import PluginRegistry from './pluginRegistry.js';
  * - `plugins`: Map<id, Plugin>
  */
 export class PluginManager {
-  constructor() {
+  constructor(api = null) {
     this.plugins = new Map();
+    this.api = api;
+  }
+
+  setApi(api) {
+    this.api = api;
+    for (const plugin of this.plugins.values()) {
+      plugin.api = api;
+    }
   }
 
   async register(plugin) {
@@ -36,6 +44,7 @@ export class PluginManager {
       throw new Error(msg);
     }
 
+    plugin.api = this.api;
     this.plugins.set(plugin.id, plugin);
     await plugin.init();
     plugin.initialized = true;

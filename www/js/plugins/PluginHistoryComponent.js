@@ -9,7 +9,6 @@ import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.j
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, ViewEvents } from '../core/EventRegistry.js';
 import { findInBoard } from '../components/board-utils.js';
-import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginHistoryComponent extends LitElement {
@@ -40,6 +39,11 @@ export class PluginHistoryComponent extends LitElement {
     this.tasksInvestigated = 0;
   }
 
+  get _api() {
+    if (!this.api) throw new Error('PluginHistoryComponent requires PlannerApi');
+    return this.api;
+  }
+
   async _ensureVisibleProjectsLoaded() {
     try {
       const board = findInBoard('feature-board');
@@ -66,7 +70,9 @@ export class PluginHistoryComponent extends LitElement {
 
       if (visibleProjectIds.size === 0) return;
 
-      const selectedProjects = (state.projects || []).filter((p) => p.selected);
+      const selectedProjects = (this._api.selection.getProjects() || []).filter(
+        (project) => project.selected
+      );
       const toFetch = selectedProjects.filter(
         (p) => visibleProjectIds.has(String(p.id)) && !this._loadedProjects.has(p.id)
       );
@@ -86,7 +92,7 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await state.history.get(project.id, {
+          const data = await this._api.history.get(project.id, {
             per_page: 500,
           });
           if (data && data.tasks && data.tasks.length) {
@@ -391,7 +397,9 @@ export class PluginHistoryComponent extends LitElement {
 
   render() {
     const taskCount = this.historyData?.length || 0;
-    const selectedProjects = (state.projects || []).filter((p) => p.selected);
+    const selectedProjects = (this._api.selection.getProjects() || []).filter(
+      (project) => project.selected
+    );
     const projectCount = selectedProjects.length;
 
     return this.visible ?
@@ -479,7 +487,9 @@ export class PluginHistoryComponent extends LitElement {
     this.loading = true;
     try {
       // Get all selected projects
-      const selectedProjects = (state.projects || []).filter((p) => p.selected);
+      const selectedProjects = (this._api.selection.getProjects() || []).filter(
+        (project) => project.selected
+      );
 
       if (selectedProjects.length === 0) {
         console.warn('[PluginHistory] No project selected');
@@ -517,7 +527,7 @@ export class PluginHistoryComponent extends LitElement {
         this.currentPlanId = project.id;
         this.requestUpdate();
         try {
-          const data = await state.history.get(project.id, {
+          const data = await this._api.history.get(project.id, {
             per_page: 500,
             invalidate_cache: !!invalidateCache,
           });

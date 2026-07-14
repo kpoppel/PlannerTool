@@ -1,7 +1,5 @@
 import { expect } from '@open-wc/testing';
-import { stub } from 'sinon';
 import { PluginMarkersComponent } from '../../www/js/plugins/PluginMarkersComponent.js';
-import { state } from '../../www/js/services/State.js';
 
 describe('PluginMarkersComponent marker filtering', () => {
   const MARKERS = [
@@ -14,25 +12,20 @@ describe('PluginMarkersComponent marker filtering', () => {
     const c = new PluginMarkersComponent();
     c.markers = MARKERS;
     c.selectedColors = { '#ff0000': true };
-    // Stub state.projects and state.teams
-    stub(state, 'projects').get(() => projects);
-    stub(state, 'teams').get(() => teams);
+    c.api = {
+      selection: {
+        getProjects: () => projects,
+        getTeams: () => teams,
+      },
+      markers: { getAll: async () => MARKERS },
+    };
     return c;
   }
 
-  afterEach(() => {
-    // Restore any stubs applied to state
-    ['projects', 'teams'].forEach((prop) => {
-      const desc = Object.getOwnPropertyDescriptor(state, prop);
-      if (desc && desc.get?.restore) desc.get.restore();
-      if (desc && desc.restore) desc.restore();
-    });
-  });
-
   /** Invoke the private filter directly by reading what _renderSvg would keep */
   function runFilter(c) {
-    const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
-    const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
+    const selectedProjects = c.api.selection.getProjects().filter((p) => p.selected).map((p) => p.id);
+    const selectedTeams = c.api.selection.getTeams().filter((t) => t.selected).map((t) => t.id);
     const hasProjectSelection = selectedProjects.length > 0;
     const hasTeamSelection = selectedTeams.length > 0;
 

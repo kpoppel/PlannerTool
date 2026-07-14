@@ -24,6 +24,12 @@ describe('PluginCost', () => {
     disable('USE_PLUGIN_SYSTEM');
 
     const p = new PluginCost('pcv2-test', { mountPoint: 'test-app' });
+    p.api = {
+      plugins: {
+        getState: () => ({}),
+        setState: () => {},
+      },
+    };
     // mark component as loaded to avoid init path in activate
     p._componentLoaded = true;
     p._host = host;

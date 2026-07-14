@@ -1,12 +1,8 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
-import {
-  exportTimelineToPng,
-  getExportRenderer,
-} from './export/TimelineExportRenderer.js';
+import { getExportRenderer } from './export/TimelineExportRenderer.js';
 import { copyPngBlobToClipboard } from './export/ExportUtils.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 
@@ -27,6 +23,15 @@ export class PluginExportTimeline extends LitElement {
     this.includeDependencies = true;
     this.annotationsAvailable = false;
     this._annotationState = null;
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginExportTimeline requires PlannerApi');
+    return this.api;
+  }
+
+  _getRenderer() {
+    return getExportRenderer(this._api);
   }
 
   connectedCallback() {
@@ -475,7 +480,7 @@ export class PluginExportTimeline extends LitElement {
       const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
       const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
-      await exportTimelineToPng({
+      await this._getRenderer().exportToPng({
         includeAnnotations,
         includeDependencies: this.includeDependencies,
         scrollLeft: currentScrollLeft,
@@ -501,7 +506,7 @@ export class PluginExportTimeline extends LitElement {
       const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
       const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
-      const renderer = getExportRenderer();
+      const renderer = this._getRenderer();
       const svg = await renderer.getExportSvg({
         includeAnnotations,
         includeDependencies: this.includeDependencies,
@@ -542,7 +547,7 @@ export class PluginExportTimeline extends LitElement {
       const currentScrollLeft = this._capturedScrollLeft ?? boardCoords.scrollX;
       const currentScrollTop = this._capturedScrollTop ?? boardCoords.scrollY;
 
-      const renderer = getExportRenderer();
+      const renderer = this._getRenderer();
       const blob = await renderer.exportToPngBlob({
         includeAnnotations,
         includeDependencies: this.includeDependencies,
@@ -567,19 +572,19 @@ export class PluginExportTimeline extends LitElement {
   }
 
   _collectTimelineData() {
-    // Collect a sensible snapshot from global state used by timeline components
+    const capacity = this._api.capacity.get();
     const out = {
       generatedAt: new Date().toISOString(),
-      projects: state.projects || [],
-      teams: state.teams || [],
-      capacityDates: state.capacityDates || [],
-      projectDailyCapacity: state.projectDailyCapacity || [],
-      teamDailyCapacity: state.teamDailyCapacity || [],
-      features: state.features || [],
+      projects: this._api.selection.getProjects() || [],
+      teams: this._api.selection.getTeams() || [],
+      capacityDates: capacity.dates || [],
+      projectDailyCapacity: capacity.projectDailyCapacity || [],
+      teamDailyCapacity: capacity.teamDailyCapacity || [],
+      features: this._api.features.list() || [],
       view: {
-        capacityMode: state.capacityViewMode,
-        hiddenTypes: Array.from(state.hiddenTypes || []),
-        showDependencies: !!state.showDependencies,
+        capacityMode: this._api.view.getCapacityMode(),
+        hiddenTypes: this._api.view.getHiddenTypes(),
+        showDependencies: this._api.view.getShowDependencies(),
       },
     };
     return out;

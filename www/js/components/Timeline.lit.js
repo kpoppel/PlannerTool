@@ -2,7 +2,7 @@
 // Lit 3.3.1 web component for timeline header
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { parseDate, addMonths, dateRangeInclusiveMonths } from './util.js';

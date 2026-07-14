@@ -111,8 +111,7 @@ export class EventBus {
    * @returns {Function} Unsubscribe function
    */
   once(event, handler) {
-    let unsub;
-    unsub = this.on(event, (...args) => {
+    const unsub = this.on(event, (...args) => {
       try {
         handler(...args);
       } finally {

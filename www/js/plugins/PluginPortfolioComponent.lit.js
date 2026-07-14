@@ -12,7 +12,6 @@ import {
   ViewManagementEvents,
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
   TIMELINE_HEADER_HEIGHT,
@@ -107,6 +106,11 @@ export class PluginPortfolioComponent extends LitElement {
     this._boundPointerUp = this._handleGlobalPointerUp.bind(this);
   }
 
+  get _api() {
+    if (!this.api) throw new Error('PluginPortfolioComponent requires PlannerApi');
+    return this.api;
+  }
+
   connectedCallback() {
     super.connectedCallback();
 
@@ -163,7 +167,7 @@ export class PluginPortfolioComponent extends LitElement {
   _refresh() {
     let features = [];
     try {
-      features = state.getEffectiveFeatures() || [];
+      features = this._api.features.list() || [];
     } catch (_) {
       return;
     }
@@ -175,8 +179,8 @@ export class PluginPortfolioComponent extends LitElement {
     }
     const deduped = Array.from(uniqueById.values());
 
-    const projects = state.projects || [];
-    const teams = state.teams || [];
+    const projects = this._api.selection.getProjects() || [];
+    const teams = this._api.selection.getTeams() || [];
     const selectedProjects = new Set(
       projects.filter((p) => p?.selected).map((p) => String(p.id))
     );
@@ -185,22 +189,16 @@ export class PluginPortfolioComponent extends LitElement {
 
     this._projectById = Object.fromEntries(projects.map((p) => [String(p.id), p]));
 
-    const sidebarStateFilterRaw =
-      state.selectedFeatureStateFilter instanceof Set ?
-        Array.from(state.selectedFeatureStateFilter)
-      : state.selectedFeatureStateFilter || [];
+    const sidebarStateFilterRaw = this._api.filters.getFeatureStates();
     const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
 
     const allAvailableStates =
-      (state.availableFeatureStates || []).length > 0 ?
-        [...state.availableFeatureStates]
+      (this._api.filters.getAvailableFeatureStates() || []).length > 0 ?
+        [...this._api.filters.getAvailableFeatureStates()]
       : Array.from(
           new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
         ).sort((a, b) => {
-          if (typeof state.compareFeatureStates === 'function') {
-            return state.compareFeatureStates(a, b);
-          }
-          return a.localeCompare(b);
+          return this._api.filters.compareFeatureStates(a, b);
         });
 
     // Sidebar state selection is the source of truth for visible portfolio columns.
@@ -211,22 +209,21 @@ export class PluginPortfolioComponent extends LitElement {
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 
     const availableTypes =
-      (state.availableTaskTypes || []).length > 0 ?
-        [...state.availableTaskTypes]
+      (this._api.taskTypes.getAvailable() || []).length > 0 ?
+        [...this._api.taskTypes.getAvailable()]
       : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
 
     const sidebarVisibleTypes = new Set(
-      availableTypes.filter((t) => state.isTypeVisible(t) !== false)
+      availableTypes.filter((t) => this._api.taskTypes.isVisible(t) !== false)
     );
 
-    const expansion = state.expansionState || {};
+    const expansion = this._api.selection.getExpansionState() || {};
     const hasExpansion =
       !!expansion.expandParentChild ||
       !!expansion.expandRelations ||
       !!expansion.expandTeamAllocated;
 
-    const expandedIds = hasExpansion ? state.getExpandedFeatureIds() : null;
-    const taskFilterService = state.taskFilterService;
+    const expandedIds = hasExpansion ? this._api.selection.getExpandedFeatureIds() : null;
 
     const rows = selectedTeams.map((team) => {
       const cells = {};
@@ -255,7 +252,7 @@ export class PluginPortfolioComponent extends LitElement {
       const featureType = getFeatureType(feature);
       if (!sidebarVisibleTypes.has(featureType)) return false;
 
-      if (taskFilterService && !taskFilterService.featurePassesFilters(feature)) return false;
+      if (!this._api.features.passesTaskFilters(feature)) return false;
 
       if (hasAnyCapacity(feature)) {
         const hasSelectedTeamAllocation =
@@ -320,9 +317,9 @@ export class PluginPortfolioComponent extends LitElement {
 
   _updateScenarioInfo() {
     try {
-      this._activeScenarioId = state.activeScenarioId || 'baseline';
+      this._activeScenarioId = this._api.scenarios.getActiveId() || 'baseline';
 
-      const activeScenario = (state.scenarios.list() || []).find(
+      const activeScenario = (this._api.scenarios.list() || []).find(
         (s) => s.id === this._activeScenarioId
       );
       this._pendingChangesCount =
@@ -338,7 +335,7 @@ export class PluginPortfolioComponent extends LitElement {
   _projectColorForFeature(feature) {
     try {
       const pid = String(feature?.projectId || feature?.project || '');
-      return state.getProjectColor?.(pid) || '#9aa8bf';
+      return this._api.colors.getProject(pid) || '#9aa8bf';
     } catch (_) {
       return '#9aa8bf';
     }
@@ -356,6 +353,7 @@ export class PluginPortfolioComponent extends LitElement {
       isOpen: this._timelineOpen,
       onToggle: () => { this._timelineOpen = !this._timelineOpen; },
       getProjectColor: (feature) => this._projectColorForFeature(feature),
+      getStateCategory: (stateName) => this._api.colors.getFeatureStateCategory(stateName),
     });
   }
 
@@ -367,9 +365,9 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _getStateColorInfo(stateName) {
-    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    const stateColors = this._api.colors.getFeatureStateColors() || {};
     const configured = stateColors?.[stateName] || null;
-    const background = configured?.background || state.getFeatureStateColor?.(stateName) || '#94a3b8';
+    const background = configured?.background || this._api.colors.getFeatureState(stateName) || '#94a3b8';
     const text = configured?.text || '#ffffff';
     return { background, text };
   }
@@ -524,7 +522,7 @@ export class PluginPortfolioComponent extends LitElement {
     }
 
     try {
-      const updated = state.updateFeatureField(featureId, 'state', nextState);
+      const updated = this._api.features.updateField(featureId, 'state', nextState);
       if (updated) {
         this._showStatus(`Moved ${featureId} to ${nextState}`);
       }
@@ -645,10 +643,6 @@ export class PluginPortfolioComponent extends LitElement {
     }
 
     return ordered;
-  }
-
-  _toggleUnallocated() {
-    this._unallocatedOpen = !this._unallocatedOpen;
   }
 
   _renderCard(feature, allocation, teamId, depth = 0) {

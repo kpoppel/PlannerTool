@@ -7,7 +7,6 @@
  *                            selected display window so sums are window-restricted.
  */
 import { html } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 
 /**
  * Yellow banner describing the active counting rules (task types, unplanned
@@ -15,11 +14,10 @@ import { state } from '../services/State.js';
  *
  * @returns {import('lit').TemplateResult|string}
  */
-export function renderCountingBanner() {
+export function renderCountingBanner(component) {
   try {
     const sidebar = document.querySelector('app-sidebar');
-    const tfs = state.taskFilterService;
-    const taskFilters = tfs ? tfs.getFilters() : null;
+    const taskFilters = component.api.filters.getTaskFilters();
     const showUnplanned = taskFilters ? !!taskFilters.schedule.unplanned : true;
     const selectedTypes =
       sidebar && sidebar.selectedTaskTypes ?

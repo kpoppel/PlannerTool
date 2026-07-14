@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { state } from '../services/State.js';
+import { applicationRuntime as state } from '../application/plannerApplication.js';
 
 export class ViewRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };

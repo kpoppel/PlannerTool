@@ -66,6 +66,25 @@ describe('State small function coverage', () => {
     expect(pct.endsWith('%')).to.equal(true);
   });
 
+  it('rebuilds task type derivations after applying refreshed baseline data', () => {
+    state._applyBaselineResult({
+      baselineProjects: [{ id: 'p1', task_type_hierarchy: [{ types: ['Feature'] }] }],
+      baselineTeams: [],
+      baselineFeatures: [{ id: 'f1', type: 'Feature' }],
+    });
+    expect(state.availableTaskTypes).to.deep.equal(['Feature']);
+    expect(state.taskTypeHierarchy[0].types).to.deep.equal(['Feature']);
+
+    state._applyBaselineResult({
+      baselineProjects: [{ id: 'p2', task_type_hierarchy: [{ types: ['Epic'] }] }],
+      baselineTeams: [],
+      baselineFeatures: [{ id: 'f2', type: 'Epic' }],
+    });
+
+    expect(state.availableTaskTypes).to.deep.equal(['Epic']);
+    expect(state.taskTypeHierarchy[0].types).to.deep.equal(['Epic']);
+  });
+
   it('set and toggle display and modes update properties', () => {
     state.setTimelineScale('weeks');
     expect(state.timelineScale).to.equal('weeks');

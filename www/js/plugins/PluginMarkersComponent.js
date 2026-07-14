@@ -8,7 +8,6 @@ import { boardCoords } from '../services/BoardCoordinateService.js';
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginMarkersComponent extends OverlaySvgComponent {
@@ -27,6 +26,11 @@ export class PluginMarkersComponent extends OverlaySvgComponent {
     this.loading = false;
     this.selectedColors = {}; // Map of color -> boolean
     this.selectedPlans = {};  // Map of plan_id -> boolean
+  }
+
+  get _api() {
+    if (!this.api) throw new Error('PluginMarkersComponent requires PlannerApi');
+    return this.api;
   }
 
   static styles = css`
@@ -207,10 +211,10 @@ export class PluginMarkersComponent extends OverlaySvgComponent {
     // Calculate filtered count for display
     let displayCount = totalUniqueCount;
     if (this.visible && this.markers.length > 0) {
-      const selectedProjects = (state.projects || [])
+      const selectedProjects = (this._api.selection.getProjects() || [])
         .filter((p) => p.selected)
         .map((p) => p.id);
-      const selectedTeams = (state.teams || [])
+      const selectedTeams = (this._api.selection.getTeams() || [])
         .filter((t) => t.selected)
         .map((t) => t.id);
 
@@ -310,7 +314,7 @@ export class PluginMarkersComponent extends OverlaySvgComponent {
   async refresh() {
     this.loading = true;
     try {
-      this.markers = (await state.markers.getAll()) || [];
+      this.markers = (await this._api.markers.getAll()) || [];
       // Initialize selected colors - all colors selected by default
       this._initializeColorSelection();
     } catch (err) {
@@ -431,10 +435,12 @@ export class PluginMarkersComponent extends OverlaySvgComponent {
     this._svgEl.style.height = `${boardRect.height}px`;
 
     // Filter markers by selected projects and teams
-    const selectedProjects = (state.projects || [])
+    const selectedProjects = (this._api.selection.getProjects() || [])
       .filter((p) => p.selected)
       .map((p) => p.id);
-    const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
+    const selectedTeams = (this._api.selection.getTeams() || [])
+      .filter((team) => team.selected)
+      .map((team) => team.id);
 
     const filteredMarkers = this.markers.filter((markerEntry) => {
       // When no project is selected, show nothing
