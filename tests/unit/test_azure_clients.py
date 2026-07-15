@@ -97,6 +97,32 @@ def test_get_projects_uses_connection():
     assert 'ProjA' in projs and 'ProjB' in projs
 
 
+def test_connect_context_keeps_outer_connection_alive(monkeypatch):
+    c = AzureClient('org', DummyStorage())
+    calls = {'connect': 0}
+
+    def fake_connect_with_pat(pat):
+        calls['connect'] += 1
+        c._connected = True
+        c.conn = object()
+
+    monkeypatch.setattr(c, '_connect_with_pat', fake_connect_with_pat)
+
+    with c.connect('pat-1'):
+        outer_conn = c.conn
+        assert c._connected is True
+        with c.connect('pat-1'):
+            assert c._connected is True
+            assert c.conn is outer_conn
+        # Inner context exit must not disconnect the outer context.
+        assert c._connected is True
+        assert c.conn is outer_conn
+
+    assert c._connected is False
+    assert c.conn is None
+    assert calls['connect'] == 1
+
+
 def test_wit_client_query_by_wiql_calls_sdk():
     """wit_client property returns the SDK WIT client; callers use it directly."""
     c = AzureClient('org', DummyStorage())

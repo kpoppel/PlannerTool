@@ -4,6 +4,7 @@ from planner_lib.storage.base import StorageBackend
 import logging
 import re
 from contextlib import contextmanager
+from threading import RLock
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ class AzureClient:
     def __init__(self, organization_url: str, storage: StorageBackend, *, cache_plans: bool = True):
         self.organization_url = organization_url
         self._connected = False
+        self._connect_lock = RLock()
+        self._connect_refcount = 0
         # Simple in-memory runtime caches for plans/teams (avoid repeated API calls
         # within the same process lifetime when cache_plans is True).
         self._plans_cache: dict[str, list] = {}
@@ -76,14 +79,21 @@ class AzureClient:
         @contextmanager
         def _cm():
             try:
-                self._connect_with_pat(pat)
+                with self._connect_lock:
+                    if self._connect_refcount == 0:
+                        self._connect_with_pat(pat)
+                    self._connect_refcount += 1
                 try:
                     yield self
                 finally:
-                    try:
-                        self.close()
-                    except Exception:
-                        pass
+                    with self._connect_lock:
+                        if self._connect_refcount > 0:
+                            self._connect_refcount -= 1
+                        if self._connect_refcount == 0:
+                            try:
+                                self.close()
+                            except Exception:
+                                pass
             finally:
                 # Explicitly clear any sensitive references (none are stored)
                 pass
@@ -91,9 +101,11 @@ class AzureClient:
         return _cm()
 
     def close(self) -> None:
-        # clear references; SDK connection has no explicit close
-        self.conn = None
-        self._connected = False
+        with self._connect_lock:
+            # clear references; SDK connection has no explicit close
+            self.conn = None
+            self._connected = False
+            self._connect_refcount = 0
 
     # ------------------------------------------------------------------
     # SDK sub-client properties — operation helpers must use these instead

@@ -15,6 +15,8 @@ Template - do not change :
 ---
 ## [v4.2.0] - unreleased
 ### Fixed
+- Fixed intermittent Azure backend disconnects during overlapping task/iteration reads by making Azure client connection contexts reference-counted instead of closing shared connections on each nested exit.
+- Fixed blank taskboard rendering on large datasets by restoring missing runtime snapshot/view-restore helper imports in `createPlannerRuntimeServices`, eliminating startup `ReferenceError` exceptions (`buildRuntimeSnapshot` / `planViewRestoreUiEffects`).
 - Fixed view menu duplication after saving/reloading views by rebuilding the saved-view list from canonical default plus fresh backend results instead of appending prior in-memory entries.
 - Removed the startup console fallback noise in ViewManagementService by exposing canonical saved view metadata on the runtime view-state port, so the default view is available during initial restore.
 - Removed duplicate non-default view option restoration in ViewManagementService so command-owned apply hooks are the single restore path and side-effect ordering stays consistent.

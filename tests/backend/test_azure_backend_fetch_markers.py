@@ -146,7 +146,7 @@ def test_fetch_iterations_uses_configured_azure_project_for_default_roots():
         root_path='SW\\Iteration\\FitXP',
     )
     assert result == {
-        'SW\\FitXP\\Sprint 1': {
+        'FitXP\\Sprint 1': {
             'startDate': '2026-01-01',
             'finishDate': '2026-01-14',
             'name': 'Sprint 1',
