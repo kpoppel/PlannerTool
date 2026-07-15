@@ -149,10 +149,10 @@ export function buildGroupBandItems(
             left: 0,
             width: 0,
             top: rowTop,
-            teams: state.teams,
+            teams: state.selection.getTeams(),
             condensed: true,
             hideGhostTitle: true,
-            project: state.projects.find((p) => p.id === feature.project),
+            project: state.selection.getProjects().find((p) => p.id === feature.project),
           });
           rowTop += boardUtils.laneHeight();
         }
@@ -168,10 +168,10 @@ export function buildGroupBandItems(
             left: bar.left,
             width: bar.width,
             top,
-            teams: state.teams,
+            teams: state.selection.getTeams(),
             condensed: true,
             hideGhostTitle: true,
-            project: state.projects.find((p) => p.id === bar.feature.project),
+            project: state.selection.getProjects().find((p) => p.id === bar.feature.project),
           });
         }
       });
@@ -184,10 +184,10 @@ export function buildGroupBandItems(
           left: fpos.left ?? 0,
           width: fpos.width ?? 0,
           top: rowTop,
-          teams: state.teams,
+          teams: state.selection.getTeams(),
           condensed,
           hideGhostTitle: false,
-          project: state.projects.find((p) => p.id === feature.project),
+          project: state.selection.getProjects().find((p) => p.id === feature.project),
         });
         rowTop += boardUtils.laneHeight();
       }

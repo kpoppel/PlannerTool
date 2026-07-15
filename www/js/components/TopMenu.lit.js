@@ -290,18 +290,18 @@ export class TopMenuBarLit extends LitElement {
     // emitted before this element was connected. This ensures the component
     // has current data immediately instead of waiting for subsequent events.
     try {
-      this._onProjectsChanged(state.projects);
-      this._onTeamsChanged(state.teams);
+      this._onProjectsChanged(state.selection.getProjects());
+      this._onTeamsChanged(state.selection.getTeams());
       this._onScenariosList({
         scenarios: state.scenarios.list(),
-        activeScenarioId: state.activeScenarioId,
+        activeScenarioId: state.scenarios.getActiveId(),
       });
       this._onViewsList({
-        views: state.savedViews,
-        activeId: state.activeViewId,
+        views: state.views.list(),
+        activeId: state.views.getActiveId(),
       });
       // Also get current view data
-      const currentView = state.getActiveView?.();
+      const currentView = state.views.getActiveData();
       if (currentView) {
         this.activeViewData = currentView;
       }
@@ -364,8 +364,8 @@ export class TopMenuBarLit extends LitElement {
     if (scenario) return scenario.name || scenario.id;
 
     // Fallback: try state if available
-    if (state.activeScenarioId === this.activeScenarioId) {
-      const scenarios = state.getScenarios?.() || [];
+    if (state.scenarios.getActiveId() === this.activeScenarioId) {
+      const scenarios = state.scenarios.list() || [];
       const stateScenario = scenarios.find((s) => s.id === this.activeScenarioId);
       if (stateScenario) return stateScenario.name || stateScenario.id;
     }

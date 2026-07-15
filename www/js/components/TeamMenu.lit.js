@@ -203,7 +203,7 @@ export class TeamMenuLit extends LitElement {
   _toggleTeam(tid) {
     const current = (this.teams || []).find((t) => t.id === tid);
     const newVal = !(current && current.selected);
-    state.setTeamSelected(tid, newVal);
+    state.selection.selectTeam(tid, newVal);
   }
 
   _handleTeamToggle() {
@@ -212,7 +212,7 @@ export class TeamMenuLit extends LitElement {
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
     teams.forEach((t) => (selections[t.id] = anyUnchecked));
-    state.setTeamsSelectedBulk(selections);
+    state.selection.setTeams(selections);
   }
 
   _anyUncheckedTeams() {
@@ -229,7 +229,7 @@ export class TeamMenuLit extends LitElement {
 
   render() {
     const teams = this.teams;
-    const taskTypes = state.availableTaskTypesOrdered;
+    const taskTypes = state.taskTypes.getOrdered();
 
     return html`
       <div class="menu-popover">
@@ -248,7 +248,7 @@ export class TeamMenuLit extends LitElement {
 
         <ul class="sidebar-list">
           ${teams.map((team) => {
-            const counts = state.allCountsForTeam(team.id);
+            const counts = state.featureService.allCountsForTeam(team.id);
 
             return html`
               <li class="sidebar-list-item">

@@ -3,6 +3,7 @@ import { PALETTE } from '../../www/js/services/ColorService.js';
 import { selectFeatureDirtyMetadata } from '../../www/js/application/selectors/featureSelectors.js';
 
 const { runtime } = plannerApplication.services;
+const { commands } = plannerApplication;
 
 runtime.initProjectTeamBaseline = (projects, teams) => {
   runtime.projectTeamService.initFromBaseline(projects || [], teams || []);
@@ -17,6 +18,13 @@ runtime.setBaselineFeatures = (features) => {
 
 runtime.recomputeDerived = (featureBase, override) =>
   selectFeatureDirtyMetadata(featureBase, override);
+
+// Route legacy state-facade calls through the command layer used by refactored runtime.
+runtime.setProjectSelected = (id, selected) => commands.setProjectSelected(id, selected);
+runtime.setTeamSelected = (id, selected) => commands.setTeamSelected(id, selected);
+runtime.cloneScenario = (sourceId, name) => commands.cloneScenario(sourceId, name);
+runtime.setExpansionState = (options) => commands.setExpansionState(options);
+runtime.updateFeatureDates = (updates) => commands.updateFeatureDates(updates);
 
 Object.defineProperties(runtime, {
   _projectTeamService: { get: () => runtime.projectTeamService },

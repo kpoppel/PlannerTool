@@ -1,4 +1,5 @@
-import { planViewRestoreUiEffects, syncRuntimeSnapshot } from '../runtimeSnapshot.js';
+import { selectScenarioSavePayload } from '../selectors/scenarioSelectors.js';
+import { FilterEvents } from '../../core/EventRegistry.js';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -9,6 +10,46 @@ function asObject(value) {
 }
 
 /**
+ * Build UI effect objects from view restore payload.
+ * @param {object} payload
+ * @returns {Array<object>}
+ */
+function planViewRestoreUiEffects(payload = {}) {
+  const effects = [];
+  const selectedTaskTypes = Array.isArray(payload?.selectedTaskTypes)
+    ? payload.selectedTaskTypes.filter(Boolean)
+    : null;
+  const graphType = typeof payload?.graphType === 'string' ? payload.graphType : null;
+  const expansion =
+    payload?.expansion && typeof payload.expansion === 'object' ? payload.expansion : null;
+
+  if (selectedTaskTypes) {
+    effects.push({
+      type: 'setSelectedTaskTypes',
+      selectedTaskTypes,
+    });
+  }
+
+  if (graphType) {
+    effects.push({
+      type: 'setGraphType',
+      graphType,
+    });
+  }
+
+  if (expansion) {
+    effects.push({
+      type: 'setExpansionState',
+      expansion,
+    });
+    effects.push({ type: 'recomputeDataFunnel' });
+  }
+
+  effects.push({ type: 'requestSidebarUpdate' });
+  return effects;
+}
+
+/**
  * Command factory for Planner application composition.
  *
  * Idempotency classes:
@@ -16,6 +57,33 @@ function asObject(value) {
  * - destroy: strong idempotent
  */
 export function createPlannerCommands({ store, services, selectors }) {
+  function mutateActiveWritableScenario(label, mutate) {
+    let result = false;
+    store.update(label, (draft) => {
+      const items = asArray(draft.scenarios.items);
+      const activeId = draft.scenarios.activeId;
+      const scenario = items.find(
+        (item) => item?.id === activeId && item?.readonly !== true
+      );
+      if (!scenario) return;
+      result = mutate(scenario, draft);
+    });
+    return result;
+  }
+
+  function recomputeRuntimeCapacity(changedFeatureIds = null, { onlyIfCalculated = false } = {}) {
+    const runtime = services?.runtime;
+    if (!runtime?.recomputeCapacityMetrics || !runtime?.emitCapacityUpdated) {
+      return false;
+    }
+
+    const calculated = runtime.recomputeCapacityMetrics(changedFeatureIds);
+    if (!onlyIfCalculated || calculated) {
+      runtime.emitCapacityUpdated();
+    }
+    return calculated;
+  }
+
   function updateSelectionIds(label, key, selections) {
     const safeSelections = asObject(selections);
     return store.update(label, (draft) => {
@@ -34,26 +102,6 @@ export function createPlannerCommands({ store, services, selectors }) {
       draft.scenarios.items = nextItems;
       finalizeDraft?.(draft, nextItems);
     });
-  }
-
-  function runRuntimeMutation(label, applyMutation, syncOptions = {}) {
-    const runtime = services?.runtime;
-    if (!runtime || typeof applyMutation !== 'function') return;
-    const result = applyMutation(runtime);
-    syncRuntimeSnapshot(store, runtime, label, syncOptions);
-    return result;
-  }
-
-  async function runRuntimeMutationAsync(label, applyMutation, syncOptions = {}) {
-    const runtime = services?.runtime;
-    if (!runtime || typeof applyMutation !== 'function') return undefined;
-    const result = await applyMutation(runtime);
-    syncRuntimeSnapshot(store, runtime, label, syncOptions);
-    return result;
-  }
-
-  function createRuntimeDelegate(label, methodName, syncOptions = {}) {
-    return (...args) => runRuntimeMutation(label, (runtime) => runtime[methodName]?.(...args), syncOptions);
   }
 
   function commitSelectionProject(id, selected) {
@@ -85,6 +133,100 @@ export function createPlannerCommands({ store, services, selectors }) {
         draft.view.expansion.teamAllocated = !!safeOptions.expandTeamAllocated;
       }
     });
+  }
+
+  function commitSidebarDisabled(controls) {
+    const safeControls = asObject(controls);
+    return store.update('selection.sidebarDisabled.command', (draft) => {
+      draft.selection.sidebarDisabled = safeControls;
+    });
+  }
+
+  function commitViewOptions(label, updates) {
+    const safeUpdates = asObject(updates);
+    return store.update(label, (draft) => {
+      draft.view.options = {
+        ...asObject(draft.view.options),
+        ...safeUpdates,
+      };
+    });
+  }
+
+  function commitFeatureStateSelection(label, states) {
+    const nextStates = asArray(states).filter(Boolean);
+    return store.update(label, (draft) => {
+      draft.selection.featureStateNames = nextStates;
+    });
+  }
+
+  function commitTaskTypeSelection(label, taskTypeNames) {
+    const nextTypes = Array.from(new Set(asArray(taskTypeNames).filter(Boolean)));
+    return store.update(label, (draft) => {
+      draft.selection.taskTypeNames = nextTypes;
+    });
+  }
+
+  function readSelectedFeatureStates(runtime) {
+    const selectedStates = runtime?.selectedFeatureStateFilter || runtime?.selectedFeatureStates;
+    if (selectedStates instanceof Set) return Array.from(selectedStates);
+    return asArray(selectedStates);
+  }
+
+  function commitFeatureStateSelectionFromRuntime(label, runtime) {
+    commitFeatureStateSelection(label, readSelectedFeatureStates(runtime));
+  }
+
+  function readSelectedTaskTypeNames(runtime) {
+    return asArray(runtime?._store?.getState?.()?.selection?.taskTypeNames).filter(Boolean);
+  }
+
+  function normalizeDisplayMode(mode) {
+    return mode === 'compact' || mode === 'packed' ? mode : 'normal';
+  }
+
+  function normalizeViewOptions(rawViewOptions) {
+    const viewOptions = asObject(rawViewOptions);
+    const updates = {};
+
+    if (viewOptions.displayMode !== undefined) {
+      const normalized = normalizeDisplayMode(viewOptions.displayMode);
+      updates.displayMode = normalized;
+      if (viewOptions.condensedCards === undefined) {
+        updates.condensedCards = normalized !== 'normal';
+      }
+    }
+    if (viewOptions.condensedCards !== undefined) {
+      const normalized = !!viewOptions.condensedCards;
+      updates.condensedCards = normalized;
+      if (viewOptions.displayMode === undefined) {
+        updates.displayMode = normalized ? 'compact' : 'normal';
+      }
+    }
+    if (viewOptions.showDependencies !== undefined) {
+      updates.showDependencies = !!viewOptions.showDependencies;
+    }
+    if (viewOptions.showUnplannedWork !== undefined) {
+      updates.showUnplannedWork = !!viewOptions.showUnplannedWork;
+    }
+    if (viewOptions.showUnallocatedCards !== undefined) {
+      updates.showUnallocatedCards = !!viewOptions.showUnallocatedCards;
+    } else if (viewOptions.showUnassignedCards !== undefined) {
+      updates.showUnallocatedCards = !!viewOptions.showUnassignedCards;
+    }
+    if (viewOptions.showOnlyProjectHierarchy !== undefined) {
+      updates.showOnlyProjectHierarchy = !!viewOptions.showOnlyProjectHierarchy;
+    }
+    if (viewOptions.capacityViewMode === 'team' || viewOptions.capacityViewMode === 'project') {
+      updates.capacityViewMode = viewOptions.capacityViewMode;
+    }
+    if (viewOptions.featureSortMode === 'rank' || viewOptions.featureSortMode === 'date') {
+      updates.featureSortMode = viewOptions.featureSortMode;
+    }
+    if (viewOptions.highlightFeatureRelationMode !== undefined) {
+      updates.highlightFeatureRelationMode = !!viewOptions.highlightFeatureRelationMode;
+    }
+
+    return updates;
   }
 
   function commitActiveScenario(id) {
@@ -133,18 +275,14 @@ export function createPlannerCommands({ store, services, selectors }) {
   }
 
   return {
-    initialize() {
-      const runtime = services?.runtime;
-      if (!runtime) return;
-      syncRuntimeSnapshot(store, runtime, 'runtime.initialize');
-    },
+    initialize() {},
 
     destroy() {},
 
     syncFromLegacyState() {
       const runtime = services?.runtime;
-      if (!runtime) return;
-      syncRuntimeSnapshot(store, runtime, 'runtime.syncFromLegacyState');
+      if (!runtime?.captureSnapshot) return;
+      runtime.captureSnapshot('runtime.syncFromLegacyState');
     },
 
     hydrateScenarioData(items) {
@@ -180,10 +318,24 @@ export function createPlannerCommands({ store, services, selectors }) {
       return [];
     },
 
-    applyViewSelectionRestore: createRuntimeDelegate(
-      'runtime.applyViewSelectionRestore',
-      'applyViewSelectionRestore'
-    ),
+    applyViewSelectionRestore(payload = {}) {
+      const runtime = services?.runtime;
+      if (payload.projectSelections) this.setProjectsSelectedBulk(payload.projectSelections);
+      if (payload.teamSelections) this.setTeamsSelectedBulk(payload.teamSelections);
+      if (Array.isArray(payload.selectedStates)) {
+        runtime?.setSelectedStates?.(payload.selectedStates);
+        commitFeatureStateSelection('selection.featureStates.restore.command', payload.selectedStates);
+      }
+      if (Array.isArray(payload.selectedTaskTypes)) this.setSelectedTaskTypes(payload.selectedTaskTypes);
+      if (payload.resetTaskFilters) runtime?.taskFilterService?.resetFilters?.();
+      else if (payload.taskFilters) runtime?.taskFilterService?.restoreFilters?.(payload.taskFilters);
+      commitTaskTypeSelection(
+        'selection.taskTypeNames.restore.command',
+        Array.isArray(payload.selectedTaskTypes)
+          ? payload.selectedTaskTypes
+          : readSelectedTaskTypeNames(runtime)
+      );
+    },
 
     planViewRestoreUiEffects(payload = {}) {
       const runtime = services?.runtime;
@@ -196,17 +348,40 @@ export function createPlannerCommands({ store, services, selectors }) {
       return planViewRestoreUiEffects(payload);
     },
 
-    applyViewOptionsRestore: createRuntimeDelegate(
-      'runtime.applyViewOptionsRestore',
-      'applyViewOptionsRestore'
-    ),
+    applyViewOptionsRestore(payload = {}) {
+      const runtime = services?.runtime;
+      const viewOptions = asObject(payload.viewOptions);
+      const updates = normalizeViewOptions(viewOptions);
+
+      if (Object.keys(updates).length > 0) {
+        commitViewOptions('view.options.restore.command', updates);
+      }
+      if (Object.keys(viewOptions).length > 0) {
+        runtime?.viewService?.restoreView?.(viewOptions);
+      }
+
+      if (payload.graphType) this.setCapacityViewMode(payload.graphType);
+      if (Array.isArray(payload.selectedTaskTypes)) this.setSelectedTaskTypes(payload.selectedTaskTypes);
+      if (payload.expansion) {
+        this.setExpansionState(payload.expansion);
+        if (payload.emitExpansionFilterChange) {
+          runtime?._bus?.emit?.(FilterEvents.CHANGED, {
+            expansion: {
+              parentChild: !!payload.expansion.expandParentChild,
+              relations: !!payload.expansion.expandRelations,
+              teamAllocated: !!payload.expansion.expandTeamAllocated,
+            },
+          });
+        }
+      }
+    },
 
     async applyViewPluginStateRestore(payload) {
-      return runRuntimeMutationAsync('runtime.applyViewPluginStateRestore', async (runtime) => {
-        return runtime.applyViewPluginStateRestore?.({
-          ...(payload || {}),
-          logFailures: false,
-        });
+      const runtime = services?.runtime;
+      if (!runtime?.applyViewPluginStateRestore) return undefined;
+      return runtime.applyViewPluginStateRestore({
+        ...(payload || {}),
+        logFailures: false,
       });
     },
 
@@ -241,121 +416,236 @@ export function createPlannerCommands({ store, services, selectors }) {
       }
     },
 
-    setSidebarDisabledElements: createRuntimeDelegate(
-      'runtime.setSidebarDisabledElements',
-      'setSidebarDisabledElements'
-    ),
+    setSidebarDisabledElements(controls) {
+      const safeControls = asObject(controls);
+      commitSidebarDisabled(safeControls);
+      services?.runtime?.setSidebarDisabledElements?.(safeControls);
+    },
 
-    clearSidebarDisabledElements: createRuntimeDelegate(
-      'runtime.clearSidebarDisabledElements',
-      'clearSidebarDisabledElements'
-    ),
+    clearSidebarDisabledElements() {
+      commitSidebarDisabled({});
+      services?.runtime?.clearSidebarDisabledElements?.();
+    },
 
-    setSelectedTaskTypes: createRuntimeDelegate(
-      'runtime.setSelectedTaskTypes',
-      'setSelectedTaskTypes'
-    ),
+    setSelectedTaskTypes(types) {
+      const nextTypes = Array.from(new Set(asArray(types).filter(Boolean)));
+      commitTaskTypeSelection('selection.taskTypeNames.command', nextTypes);
+      services?.runtime?.setSelectedTaskTypes?.(nextTypes);
+    },
 
-    setSelectedStates: createRuntimeDelegate('runtime.setSelectedStates', 'setSelectedStates'),
+    setSelectedStates(states) {
+      const runtime = services?.runtime;
+      runtime?.setSelectedStates?.(states);
+      commitFeatureStateSelectionFromRuntime('selection.featureStates.command', runtime);
+    },
 
-    setAvailableFeatureStates: createRuntimeDelegate(
-      'runtime.setAvailableFeatureStates',
-      'setAvailableFeatureStates'
-    ),
+    setAvailableFeatureStates(states) {
+      services?.runtime?.setAvailableFeatureStates?.(states);
+    },
 
-    setAllStatesSelected: createRuntimeDelegate(
-      'runtime.setAllStatesSelected',
-      'setAllStatesSelected'
-    ),
+    setAllStatesSelected(selected) {
+      const runtime = services?.runtime;
+      runtime?.setAllStatesSelected?.(selected);
+      commitFeatureStateSelectionFromRuntime('selection.featureStates.selectAll.command', runtime);
+    },
 
-    toggleStateSelected: createRuntimeDelegate(
-      'runtime.toggleStateSelected',
-      'toggleStateSelected'
-    ),
+    toggleStateSelected(stateName) {
+      const runtime = services?.runtime;
+      runtime?.toggleStateSelected?.(stateName);
+      commitFeatureStateSelectionFromRuntime('selection.featureStates.toggle.command', runtime);
+    },
 
-    setStateFilter: createRuntimeDelegate('runtime.setStateFilter', 'setStateFilter'),
+    setStateFilter(stateName) {
+      const runtime = services?.runtime;
+      runtime?.setStateFilter?.(stateName);
+      commitFeatureStateSelectionFromRuntime('selection.featureStates.filter.command', runtime);
+    },
 
-    setTimelineScale: createRuntimeDelegate('runtime.setTimelineScale', 'setTimelineScale'),
+    setTimelineScale(scale, suppressEmit) {
+      services?.runtime?.setTimelineScale?.(scale, suppressEmit);
+    },
 
-    setTypeVisibility: createRuntimeDelegate('runtime.setTypeVisibility', 'setTypeVisibility'),
+    setTypeVisibility(type, visible, suppressEmit) {
+      services?.runtime?.setTypeVisibility?.(type, visible, suppressEmit);
+    },
 
-    setDisplayMode: createRuntimeDelegate('runtime.setDisplayMode', 'setDisplayMode'),
+    setDisplayMode(mode) {
+      commitViewOptions('view.options.displayMode.command', normalizeViewOptions({ displayMode: mode }));
+      services?.runtime?.setDisplayMode?.(mode);
+    },
 
-    setCondensedCards: createRuntimeDelegate('runtime.setCondensedCards', 'setCondensedCards'),
+    setCondensedCards(condensed) {
+      const normalized = !!condensed;
+      commitViewOptions(
+        'view.options.condensedCards.command',
+        normalizeViewOptions({ condensedCards: normalized })
+      );
+      services?.runtime?.setCondensedCards?.(normalized);
+    },
 
-    setShowDependencies: createRuntimeDelegate(
-      'runtime.setShowDependencies',
-      'setShowDependencies'
-    ),
+    setShowDependencies(visible) {
+      const normalized = !!visible;
+      commitViewOptions('view.options.showDependencies.command', {
+        showDependencies: normalized,
+      });
+      services?.runtime?.setShowDependencies?.(normalized);
+    },
 
-    setShowUnplannedWork: createRuntimeDelegate(
-      'runtime.setShowUnplannedWork',
-      'setShowUnplannedWork'
-    ),
+    setShowUnplannedWork(visible) {
+      const normalized = !!visible;
+      commitViewOptions('view.options.showUnplannedWork.command', {
+        showUnplannedWork: normalized,
+      });
+      services?.runtime?.setShowUnplannedWork?.(normalized);
+    },
 
-    setShowUnallocatedCards: createRuntimeDelegate(
-      'runtime.setShowUnallocatedCards',
-      'setShowUnallocatedCards'
-    ),
+    setShowUnallocatedCards(visible) {
+      const normalized = !!visible;
+      commitViewOptions('view.options.showUnallocatedCards.command', {
+        showUnallocatedCards: normalized,
+      });
+      services?.runtime?.setShowUnallocatedCards?.(normalized);
+    },
 
-    setShowOnlyProjectHierarchy: createRuntimeDelegate(
-      'runtime.setShowOnlyProjectHierarchy',
-      'setShowOnlyProjectHierarchy'
-    ),
+    setShowOnlyProjectHierarchy(visible) {
+      const normalized = !!visible;
+      commitViewOptions('view.options.showOnlyProjectHierarchy.command', {
+        showOnlyProjectHierarchy: normalized,
+      });
+      services?.runtime?.setShowOnlyProjectHierarchy?.(normalized);
+    },
 
-    setCapacityViewMode: createRuntimeDelegate(
-      'runtime.setCapacityViewMode',
-      'setCapacityViewMode'
-    ),
+    setCapacityViewMode(mode) {
+      if (mode !== 'team' && mode !== 'project') return;
+      commitViewOptions('view.options.capacityViewMode.command', {
+        capacityViewMode: mode,
+      });
+      services?.runtime?.setCapacityViewMode?.(mode);
+    },
 
-    setFeatureSortMode: createRuntimeDelegate(
-      'runtime.setFeatureSortMode',
-      'setFeatureSortMode'
-    ),
+    setFeatureSortMode(mode) {
+      if (mode !== 'rank' && mode !== 'date') return;
+      commitViewOptions('view.options.featureSortMode.command', {
+        featureSortMode: mode,
+      });
+      services?.runtime?.setFeatureSortMode?.(mode);
+    },
 
-    setHighlightFeatureRelationMode: createRuntimeDelegate(
-      'runtime.setHighlightFeatureRelationMode',
-      'setHighlightFeatureRelationMode'
-    ),
+    setHighlightFeatureRelationMode(mode) {
+      const normalized = !!mode;
+      commitViewOptions('view.options.highlightFeatureRelationMode.command', {
+        highlightFeatureRelationMode: normalized,
+      });
+      services?.runtime?.setHighlightFeatureRelationMode?.(normalized);
+    },
 
     clearPendingGroupChanges() {
-      return services?.runtime?.clearPendingGroupChanges?.();
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return false;
+      return mutateActiveWritableScenario('scenario.group.clearPending.command', (scenario) => {
+        runtime.scenarioGroupService.clearPendingChanges(scenario);
+        return true;
+      });
     },
 
     confirmGroupCreate(tempId, realId) {
-      return services?.runtime?.confirmGroupCreate?.(tempId, realId);
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return false;
+      return mutateActiveWritableScenario('scenario.group.confirmCreate.command', (scenario) => {
+        runtime.scenarioGroupService.confirmCreate(tempId, realId, scenario);
+        return true;
+      });
     },
 
     createGroupInScenario(planId, name, color = null, parentId = null) {
-      return services?.runtime?.createGroupInScenario?.(planId, name, color, parentId) || null;
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return null;
+      return mutateActiveWritableScenario('scenario.group.create.command', (scenario) =>
+        runtime.scenarioGroupService.create(planId, name, color, parentId, scenario)
+      );
     },
 
     updateGroupInScenario(groupId, fields) {
-      return services?.runtime?.updateGroupInScenario?.(groupId, fields) || null;
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return null;
+      return mutateActiveWritableScenario('scenario.group.update.command', (scenario) =>
+        runtime.scenarioGroupService.update(groupId, fields, scenario)
+      );
     },
 
     deleteGroupInScenario(groupId) {
-      return services?.runtime?.deleteGroupInScenario?.(groupId);
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return false;
+      return mutateActiveWritableScenario('scenario.group.delete.command', (scenario) => {
+        runtime.scenarioGroupService.delete(groupId, scenario);
+        return true;
+      });
     },
 
     applyGroupMemberDelta(groupId, taskId, op) {
-      return services?.runtime?.applyGroupMemberDelta?.(groupId, taskId, op);
+      const runtime = services?.runtime;
+      if (!runtime?.scenarioGroupService) return false;
+      return mutateActiveWritableScenario('scenario.group.memberDelta.command', (scenario) => {
+        runtime.scenarioGroupService.applyMemberDelta(groupId, taskId, op, scenario);
+        return true;
+      });
     },
 
     updateFeatureDates(updates) {
-      return services?.runtime?.updateFeatureDates?.(updates) || 0;
+      const runtime = services?.runtime;
+      if (!runtime?.featureService) return 0;
+      const count = mutateActiveWritableScenario('scenario.featureDates.command', (scenario) =>
+        runtime.featureService.updateFeatureDates(updates, undefined, scenario)
+      );
+      if (count && runtime.getActiveScenario?.()) {
+        recomputeRuntimeCapacity();
+      }
+      return count || 0;
     },
 
     updateFeatureField(id, field, value) {
-      return services?.runtime?.updateFeatureField?.(id, field, value) || false;
+      const runtime = services?.runtime;
+      if (!runtime?.featureService) return false;
+      const updated = mutateActiveWritableScenario('scenario.featureField.command', (scenario) =>
+        runtime.featureService.updateFeatureField(id, field, value, undefined, scenario)
+      );
+      if (!updated) return false;
+      if (field === 'start' || field === 'end' || field === 'capacity') {
+        recomputeRuntimeCapacity([id]);
+      }
+      runtime.emitScenarioUpdated?.(runtime.activeScenarioId, {
+        type: 'field',
+        id,
+        field,
+      });
+      return true;
     },
 
     updateFeatureRelations(id, relations) {
-      return services?.runtime?.updateFeatureRelations?.(id, relations) || false;
+      const runtime = services?.runtime;
+      if (!runtime?.featureService) return false;
+      const updated = mutateActiveWritableScenario('scenario.featureRelations.command', (scenario) =>
+        runtime.featureService.updateFeatureRelations(id, relations, scenario)
+      );
+      if (updated) {
+        runtime.emitScenarioUpdated?.(runtime.activeScenarioId, {
+          type: 'relations',
+          id,
+        });
+      }
+      return !!updated;
     },
 
     revertFeature(id) {
-      return services?.runtime?.revertFeature?.(id) || false;
+      const runtime = services?.runtime;
+      if (!runtime?.featureService) return false;
+      const reverted = mutateActiveWritableScenario('scenario.featureRevert.command', (scenario) =>
+        runtime.featureService.revertFeature(id, undefined, scenario)
+      );
+      if (!reverted) return false;
+      recomputeRuntimeCapacity([id]);
+      runtime.emitScenarioUpdated?.(runtime.activeScenarioId, { type: 'revert', id });
+      return true;
     },
 
     activateScenario(id) {
@@ -369,34 +659,48 @@ export function createPlannerCommands({ store, services, selectors }) {
     },
 
     cloneScenario(sourceId, name) {
-      const scenario = services?.runtime?.cloneScenario?.(sourceId, name);
+      const runtime = services?.runtime;
+      const scenario = runtime?.buildScenarioClone?.(sourceId, name);
       if (!scenario) return null;
       updateScenarioItems('scenario.clone.command', (items) => [...items, scenario]);
-      services?.runtime?.emitScenarioUpdated?.(scenario.id, { type: 'clone', from: sourceId });
+      runtime?.emitScenarioUpdated?.(scenario.id, { type: 'clone', from: sourceId });
       return scenario;
     },
 
     renameScenario(id, newName) {
-      const normalized = services?.runtime?.renameScenario?.(id, newName) ?? newName;
+      const runtime = services?.runtime;
+      const normalized = runtime?.normalizeScenarioName?.(id, newName) ?? newName;
       if (!commitRenameScenario(id, normalized)) return false;
-      services?.runtime?.emitScenarioUpdated?.(id, { type: 'rename', name: normalized });
+      runtime?.emitScenarioUpdated?.(id, { type: 'rename', name: normalized });
       return true;
     },
 
     deleteScenario(id) {
+      const runtime = services?.runtime;
       const wasActive = selectors?.scenarios?.().activeId === id;
       if (!commitDeleteScenario(id)) return false;
-      services?.runtime?.deleteScenario?.(id);
-      if (wasActive) services?.runtime?.emitScenarioActivated?.();
+      runtime?.emitScenarioUpdated?.(id, { type: 'delete' });
+      runtime?.emitFeatureUpdated?.();
+      if (wasActive) runtime?.emitScenarioActivated?.();
       return true;
     },
 
     async saveScenario(id) {
-      const saved = await services?.runtime?.saveScenario?.(id);
-      if (!saved) return saved;
+      const runtime = services?.runtime;
+      const scenarios = runtime?.getScenarios?.() || runtime?.scenarios?.list?.() || [];
+      const scenario = asArray(scenarios).find((item) => item?.id === id);
+      if (!scenario || !runtime?.saveScenarioPayload) {
+        return undefined;
+      }
+
+      const result = await runtime.saveScenarioPayload(selectScenarioSavePayload(scenario));
+      if (!result?.ok) {
+        throw new Error(result?.error?.message || 'Failed to save scenario');
+      }
+
       commitSavedScenario(id);
-      services?.runtime?.emitScenarioUpdated?.(id, { type: 'saved' });
-      return saved;
+      runtime?.emitScenarioUpdated?.(id, { type: 'saved' });
+      return true;
     },
   };
 }

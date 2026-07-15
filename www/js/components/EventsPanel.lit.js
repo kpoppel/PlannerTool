@@ -306,7 +306,7 @@ export class EventsPanel extends LitElement {
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
-      const plans = (state.projects || []);
+      const plans = (state.selection.getProjects() || []);
       return html`
         <div class="edit-row">
           <input

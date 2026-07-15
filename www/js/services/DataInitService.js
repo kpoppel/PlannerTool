@@ -89,8 +89,8 @@ export class DataInitService {
 
     // Initialize colors
     await this._colorService.initColors(
-      this._projectTeamService.getProjects(),
-      this._projectTeamService.getTeams()
+      this._projectTeamService.projects,
+      this._projectTeamService.teams
     );
 
     // Cache grouped iterations in client state for local per-project lookup.
@@ -184,8 +184,8 @@ export class DataInitService {
 
     console.log('Re-initializing colors after baseline refresh');
     await this._colorService.initColors(
-      this._projectTeamService.getProjects(),
-      this._projectTeamService.getTeams()
+      this._projectTeamService.projects,
+      this._projectTeamService.teams
     );
 
     // Emit refresh events

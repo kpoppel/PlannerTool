@@ -136,6 +136,28 @@ class TestPatEncryption:
         loaded = mgr.load('user@example.com')
         assert loaded['pat'] == 'original-PAT'
 
+    def test_existing_permissions_preserved_when_pat_updates(self, monkeypatch):
+        """Saving PAT updates without explicit permissions must not strip admin access."""
+        monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+        from planner_lib.accounts.config import AccountPayload
+        from planner_lib.accounts.constants import AccountPermissions
+        storage = self._make_storage()
+        mgr = self._make_manager(storage)
+
+        mgr.save(
+            AccountPayload(
+                email='admin@example.com',
+                pat='original-PAT',
+                permissions=[AccountPermissions.ADMIN],
+            )
+        )
+        mgr.save(AccountPayload(email='admin@example.com', pat='updated-PAT'))
+        loaded = mgr.load('admin@example.com')
+        assert loaded['pat'] == 'updated-PAT'
+        assert mgr.has_permission('admin@example.com', AccountPermissions.ADMIN)
+        stored = storage.load('accounts', 'admin@example.com')
+        assert AccountPermissions.ADMIN in stored.get('permissions', [])
+
 
 # ---------------------------------------------------------------------------
 # 3. Scenario/view store deduplication — generic UserDataStore

@@ -52,32 +52,27 @@ export class AzureDevopsModal extends LitElement {
 
   _getFeatureTitle(id) {
     if (this.api?.features?.getTitle) return this.api.features.getTitle(id);
-    if (typeof this.api?.getFeatureTitleById === 'function') return this.api.getFeatureTitleById(id);
     return id;
   }
 
   _getBaselineFeatures() {
     if (typeof this.api?.features?.getBaseline === 'function') return this.api.features.getBaseline() || [];
-    return this.api?.baselineFeatures || [];
+    return [];
   }
 
   _getProjects() {
     if (typeof this.api?.selection?.getProjects === 'function') return this.api.selection.getProjects() || [];
-    return this.api?.projects || [];
+    return [];
   }
 
   _getTeams() {
     if (typeof this.api?.selection?.getTeams === 'function') return this.api.selection.getTeams() || [];
-    return this.api?.teams || [];
+    return [];
   }
 
   _revertFeature(id) {
     if (typeof this.api?.features?.revert === 'function') {
       this.api.features.revert(id);
-      return;
-    }
-    if (typeof this.api?.revertFeature === 'function') {
-      this.api.revertFeature(id);
     }
   }
 

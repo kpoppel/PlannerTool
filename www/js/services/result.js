@@ -41,7 +41,13 @@ export function fail(error, fallbackMessage = 'Request failed') {
 }
 
 export function isResult(value) {
-  return !!value && typeof value === 'object' && typeof value.ok === 'boolean';
+  if (!value || typeof value !== 'object' || typeof value.ok !== 'boolean') {
+    return false;
+  }
+  if (value.ok) {
+    return Object.prototype.hasOwnProperty.call(value, 'data');
+  }
+  return Object.prototype.hasOwnProperty.call(value, 'error');
 }
 
 export function asResult(value, opts = {}) {

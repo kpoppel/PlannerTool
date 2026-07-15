@@ -140,7 +140,11 @@ class AccountManager:
             encrypted_pat = existing.get('pat')
         else:
             encrypted_pat = _encrypt_pat(config.pat) if config.pat else None
-        payload = { 'email': config.email, 'pat': encrypted_pat, 'permissions': config.permissions or [] }
+        if config.permissions is None:
+            permissions = list((existing or {}).get('permissions') or [])
+        else:
+            permissions = list(config.permissions)
+        payload = { 'email': config.email, 'pat': encrypted_pat, 'permissions': permissions }
         self._storage.save(self.DEFAULT_NS, config.email, payload)
 
         logger.info('Saved account configuration for %s', config.email)

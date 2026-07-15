@@ -41,7 +41,6 @@ import { selectIterationsForProject } from './selectors/iterationSelectors.js';
 import {
   selectActiveScenario,
   selectActiveWritableScenario,
-  selectScenarioSavePayload,
   selectUnsavedWritableScenarios,
 } from './selectors/scenarioSelectors.js';
 import {
@@ -51,11 +50,6 @@ import {
   selectTaskTypeHierarchy,
   selectTaskTypeLevel,
 } from './selectors/taskTypeSelectors.js';
-import {
-  buildRuntimeSnapshot,
-  planViewRestoreUiEffects,
-  publishRuntimeSnapshot,
-} from './runtimeSnapshot.js';
 
 const DEFAULT_ADAPTERS = {
   viewLayout: {
@@ -118,94 +112,13 @@ function bindMethodDelegates(target, source, methodNames) {
   }
 }
 
-function createScenarioPort(runtime) {
-  return Object.freeze({
-    list: () => runtime.getScenarios(),
-    activate: (id) => runtime._bindings.commands.activateScenario(id),
-    rename: (id, name) => runtime._bindings.commands.renameScenario(id, name),
-    delete: (id) => runtime._bindings.commands.deleteScenario(id),
-    save: (id) => runtime._bindings.commands.saveScenario(id),
-    clone: (sourceId, name) => runtime._bindings.commands.cloneScenario(sourceId, name),
-    getActiveId: () => runtime.activeScenarioId,
-    getActive: () => runtime.getActiveScenario(),
-  });
-}
-
-function createViewPort(runtime) {
-  return Object.freeze({
-    list: () => runtime.viewManagementService.getViews(),
-    save: (name, viewId = null) => runtime.viewManagementService.saveCurrentView(name, viewId),
-    rename: (viewId, name) => runtime.viewManagementService.renameView(viewId, name),
-    delete: (viewId) => runtime.viewManagementService.deleteView(viewId),
-    load: (viewId) => runtime.viewManagementService.loadAndApplyView(viewId),
-    restoreLast: () => runtime.viewManagementService.restoreLastView(),
-    getActiveId: () => runtime.viewManagementService.getActiveViewId(),
-    getActiveData: () => runtime.viewManagementService.getActiveViewData(),
-  });
-}
-
-function createGroupPort(runtime) {
-  return Object.freeze({
-    ...bindDataPort(runtime._dataService, [
-      ['list', 'listGroups', []],
-      ['create', 'createGroup', null],
-      ['update', 'updateGroup', null],
-      ['delete', 'deleteGroup', false],
-      ['publishBaseline', 'publishBaseline', { ok: false }],
-    ]),
-    getPendingChanges: () => runtime.scenarioGroupService.getPendingChanges(),
-    clearPendingChanges: () => runtime.clearPendingGroupChanges(),
-    confirmCreate: (tempId, realId) => runtime.confirmGroupCreate(tempId, realId),
-    createInScenario: (planId, name, color = null, parentId = null) =>
-      runtime.createGroupInScenario(planId, name, color, parentId),
-    updateInScenario: (groupId, fields) => runtime.updateGroupInScenario(groupId, fields),
-    deleteInScenario: (groupId) => runtime.deleteGroupInScenario(groupId),
-    applyMemberDelta: (groupId, taskId, op) => runtime.applyGroupMemberDelta(groupId, taskId, op),
-  });
-}
-
-function createDataPorts(runtime) {
-  return Object.freeze({
-    events: Object.freeze(
-      bindDataPort(runtime._dataService, [
-        ['getAll', 'getEvents', []],
-        ['getCategories', 'getEventCategories', []],
-        ['create', 'createEvent', null],
-        ['update', 'updateEvent', null],
-        ['delete', 'deleteEvent', false],
-        ['createCategory', 'createEventCategory', null],
-        ['updateCategory', 'updateEventCategory', null],
-        ['deleteCategory', 'deleteEventCategory', false],
-      ])
-    ),
-    config: Object.freeze({
-      ...bindDataPort(runtime._dataService, [
-        ['getPref', 'getLocalPref', null],
-        ['setPref', 'setLocalPref', undefined],
-        ['saveAccountConfig', 'saveConfig', null],
-        ['updateProjectColor', 'updateProjectColor', undefined],
-        ['updateTeamColor', 'updateTeamColor', undefined],
-      ]),
-    }),
-    plugins: Object.freeze(bindDataPort(runtime._dataService, [
-      ['getConfig', 'getPluginsConfig', null],
-      ['getSchemas', 'getPluginsSchemas', null],
-    ])),
-    cost: Object.freeze(bindDataPort(runtime._dataService, [
-      ['get', 'getCost', null],
-      ['getTeams', 'getCostTeams', []],
-      ['updateWorkItemCapacity', 'updateWorkItemCapacity', { ok: false }],
-    ])),
-    markers: Object.freeze(bindDataPort(runtime._dataService, [['getAll', 'getMarkers', []]])),
-    history: Object.freeze(bindDataPort(runtime._dataService, [['get', 'getHistory', { tasks: [] }]])),
-    server: Object.freeze(bindDataPort(runtime._dataService, [['health', 'checkHealth', { status: 'error' }]])),
-  });
-}
-
 function applyBaselineResult(runtime, { baselineProjects, baselineTeams, baselineFeatures }) {
-  runtime.baselineProjects = baselineProjects;
-  runtime.baselineTeams = baselineTeams;
-  runtime.baselineFeatures = baselineFeatures;
+  runtime.replaceBaselineState({
+    projects: baselineProjects,
+    teams: baselineTeams,
+    features: baselineFeatures,
+    iterationsByProject: runtime.iterations,
+  });
   runtime.featureService.setChildrenByParent(runtime.childrenByParent);
 }
 
@@ -279,6 +192,13 @@ function applyStateFilterMutation(runtime, mutate) {
 
 function createViewStatePort(runtime) {
   return Object.freeze({
+    replaceViewState: ({ saved, activeId } = {}) => runtime.replaceViewState({ saved, activeId }),
+    get savedViews() {
+      return runtime.savedViews;
+    },
+    get activeViewId() {
+      return runtime.activeViewId;
+    },
     get projects() {
       return runtime.projects;
     },
@@ -329,17 +249,6 @@ class PlannerRuntime {
       this._resolveInitCompleted = resolve;
     });
 
-    this.baselineProjects = [];
-    this.baselineTeams = [];
-    this.baselineFeatures = [];
-    this.capacityDates = [];
-    this.teamDailyCapacity = [];
-    this.teamDailyCapacityMap = [];
-    this.projectDailyCapacityRaw = [];
-    this.projectDailyCapacityMap = [];
-    this.projectDailyCapacity = [];
-    this.totalOrgDailyCapacity = [];
-    this.totalOrgDailyPerTeamAvg = [];
     this._sidebarDisabled = {};
 
     this.baselineStore = new BaselineStore();
@@ -360,7 +269,7 @@ class PlannerRuntime {
       'setFeatureSortMode',
       'setHighlightFeatureRelationMode',
     ]);
-    this.taskFilterService = new TaskFilterService(this._bus);
+    this.taskFilterService = new TaskFilterService(this._bus, { store: this._store });
     this.colorService = new ColorService(this._dataService);
     this.configService = new ConfigService(this._bus, this._dataService);
     this.stateFilterService = new StateFilterService(this._bus);
@@ -411,53 +320,7 @@ class PlannerRuntime {
         applyStateFilterMutation(this, () => this.stateFilterService.toggleStateSelected(stateName)),
       setStateFilter: (stateName) =>
         applyStateFilterMutation(this, () => this.stateFilterService.setStateFilter(stateName)),
-      updateFeatureDates: (updates) => {
-        const count = this.mutateActiveScenario('scenario.featureDates.command', (scenario) =>
-          this.featureService.updateFeatureDates(updates, undefined, scenario)
-        );
-        if (count && this.getActiveScenario()) {
-          recomputeCapacityAndEmit(this);
-        }
-        return count;
-      },
-      updateFeatureField: (id, field, value) => {
-        const updated = this.mutateActiveScenario('scenario.featureField.command', (scenario) =>
-          this.featureService.updateFeatureField(id, field, value, undefined, scenario)
-        );
-        if (!updated) return false;
-        if (field === 'start' || field === 'end' || field === 'capacity') {
-          recomputeCapacityAndEmit(this, [id]);
-        }
-        this.emitScenarioUpdated(this.activeScenarioId, {
-          type: 'field',
-          id,
-          field,
-        });
-        return true;
-      },
-      updateFeatureRelations: (id, relations) => {
-        const updated = this.mutateActiveScenario('scenario.featureRelations.command', (scenario) =>
-          this.featureService.updateFeatureRelations(id, relations, scenario)
-        );
-        if (updated) {
-          this.emitScenarioUpdated(this.activeScenarioId, {
-            type: 'relations',
-            id,
-          });
-        }
-        return updated;
-      },
-      revertFeature: (id) => {
-        const reverted = this.mutateActiveScenario('scenario.featureRevert.command', (scenario) =>
-          this.featureService.revertFeature(id, undefined, scenario)
-        );
-        if (!reverted) return false;
-        recomputeCapacityAndEmit(this, [id]);
-        this.emitScenarioUpdated(this.activeScenarioId, { type: 'revert', id });
-        return true;
-      },
       activateScenario: (id) => {
-        if (this.activeScenarioId === id) return;
         this.emitScenarioActivated(id);
         recomputeCapacityAndEmit(this);
         this.emitFeatureUpdated();
@@ -500,17 +363,32 @@ class PlannerRuntime {
       'captureCurrentFilters',
     ]);
     bindMethodDelegates(this, this.viewService, ['captureCurrentView']);
-    this.scenarios = createScenarioPort(this);
-    this.views = createViewPort(this);
-    this.groups = createGroupPort(this);
-    this._dataPorts = createDataPorts(this);
-    this.events = this._dataPorts.events;
-    this.config = this._dataPorts.config;
-    this.plugins = this._dataPorts.plugins;
-    this.cost = this._dataPorts.cost;
-    this.markers = this._dataPorts.markers;
-    this.history = this._dataPorts.history;
-    this.server = this._dataPorts.server;
+    this.scenarios = Object.freeze({
+      list: () => this.getScenarios(), activate: (id) => this._bindings.commands.activateScenario(id),
+      rename: (id, name) => this._bindings.commands.renameScenario(id, name), delete: (id) => this._bindings.commands.deleteScenario(id),
+      save: (id) => this._bindings.commands.saveScenario(id), clone: (sourceId, name) => this._bindings.commands.cloneScenario(sourceId, name),
+      getActiveId: () => this.activeScenarioId, getActive: () => this.getActiveScenario(),
+    });
+    this.views = Object.freeze({
+      list: () => this.viewManagementService.getViews(), save: (name, viewId = null) => this.viewManagementService.saveCurrentView(name, viewId),
+      rename: (viewId, name) => this.viewManagementService.renameView(viewId, name), delete: (viewId) => this.viewManagementService.deleteView(viewId),
+      load: (viewId) => this.viewManagementService.loadAndApplyView(viewId), restoreLast: () => this.viewManagementService.restoreLastView(),
+      getActiveId: () => this.viewManagementService.getActiveViewId(), getActiveData: () => this.viewManagementService.getActiveViewData(),
+    });
+    this.groups = Object.freeze({
+      ...bindDataPort(this._dataService, [['list', 'listGroups', []], ['create', 'createGroup', null], ['update', 'updateGroup', null], ['delete', 'deleteGroup', false], ['publishBaseline', 'publishBaseline', { ok: false }]]),
+      getPendingChanges: () => this.scenarioGroupService.getPendingChanges(), clearPendingChanges: () => this._bindings.commands.clearPendingGroupChanges(),
+      confirmCreate: (tempId, realId) => this._bindings.commands.confirmGroupCreate(tempId, realId), createInScenario: (planId, name, color = null, parentId = null) => this._bindings.commands.createGroupInScenario(planId, name, color, parentId),
+      updateInScenario: (groupId, fields) => this._bindings.commands.updateGroupInScenario(groupId, fields), deleteInScenario: (groupId) => this._bindings.commands.deleteGroupInScenario(groupId),
+      applyMemberDelta: (groupId, taskId, op) => this._bindings.commands.applyGroupMemberDelta(groupId, taskId, op),
+    });
+    this.events = Object.freeze(bindDataPort(this._dataService, [['getAll', 'getEvents', []], ['getCategories', 'getEventCategories', []], ['create', 'createEvent', null], ['update', 'updateEvent', null], ['delete', 'deleteEvent', false], ['createCategory', 'createEventCategory', null], ['updateCategory', 'updateEventCategory', null], ['deleteCategory', 'deleteEventCategory', false]]));
+    this.config = Object.freeze({ ...bindDataPort(this._dataService, [['getPref', 'getLocalPref', null], ['setPref', 'setLocalPref', undefined], ['saveAccountConfig', 'saveConfig', null], ['updateProjectColor', 'updateProjectColor', undefined], ['updateTeamColor', 'updateTeamColor', undefined]]) });
+    this.plugins = Object.freeze(bindDataPort(this._dataService, [['getConfig', 'getPluginsConfig', null], ['getSchemas', 'getPluginsSchemas', null]]));
+    this.cost = Object.freeze(bindDataPort(this._dataService, [['get', 'getCost', null], ['getTeams', 'getCostTeams', []], ['updateWorkItemCapacity', 'updateWorkItemCapacity', { ok: false }]]));
+    this.markers = Object.freeze(bindDataPort(this._dataService, [['getAll', 'getMarkers', []]]));
+    this.history = Object.freeze(bindDataPort(this._dataService, [['get', 'getHistory', { tasks: [] }]]));
+    this.server = Object.freeze(bindDataPort(this._dataService, [['health', 'checkHealth', { status: 'error' }]]));
 
     this._unsubscribeScenariosChanged = this._bus.on(DataEvents.SCENARIOS_CHANGED, () => {
       this.emitScenarioList();
@@ -578,6 +456,35 @@ class PlannerRuntime {
     return this.dataInitService.iterationsByProject || {};
   }
 
+  replaceBaselineState({ projects, teams, features, iterationsByProject } = {}) {
+    this._store.update('baseline.replace.runtime', (draft) => {
+      if (projects !== undefined) draft.baseline.projects = Array.isArray(projects) ? projects : [];
+      if (teams !== undefined) draft.baseline.teams = Array.isArray(teams) ? teams : [];
+      if (features !== undefined) draft.baseline.features = Array.isArray(features) ? features : [];
+      if (iterationsByProject !== undefined) {
+        draft.baseline.iterationsByProject =
+          iterationsByProject && typeof iterationsByProject === 'object' ? iterationsByProject : {};
+      }
+    });
+  }
+
+  replaceCapacityState(nextCapacity = {}) {
+    this._store.update('capacity.recompute.runtime', (draft) => {
+      draft.capacity = {
+        ...(draft.capacity || {}),
+        ...nextCapacity,
+      };
+    });
+  }
+
+  get baselineFeatures() {
+    return this._store.getState().baseline.features || [];
+  }
+
+  set baselineFeatures(features) {
+    this.replaceBaselineState({ features });
+  }
+
   get baselineFeatureById() {
     return this.dataInitService.baselineFeatureById;
   }
@@ -587,11 +494,11 @@ class PlannerRuntime {
   }
 
   get availableTaskTypes() {
-    return selectAvailableTaskTypes(this.baselineFeatures);
+    return selectAvailableTaskTypes(this._store.getState().baseline.features || []);
   }
 
   get taskTypeHierarchy() {
-    return selectTaskTypeHierarchy(this.baselineProjects);
+    return selectTaskTypeHierarchy(this._store.getState().baseline.projects || []);
   }
 
   get availableTaskTypesOrdered() {
@@ -678,11 +585,18 @@ class PlannerRuntime {
   }
 
   get savedViews() {
-    return this.viewManagementService.getViews();
+    return this._store.getState().view.saved || [];
   }
 
   get activeViewId() {
-    return this.viewManagementService.getActiveViewId();
+    return this._store.getState().view.activeId || null;
+  }
+
+  replaceViewState({ saved, activeId } = {}) {
+    this._store.update('view.replace.runtime', (draft) => {
+      if (saved !== undefined) draft.view.saved = Array.isArray(saved) ? saved : [];
+      if (activeId !== undefined) draft.view.activeId = activeId || null;
+    });
   }
 
   async initialize() {
@@ -731,7 +645,11 @@ class PlannerRuntime {
   }
 
   getProjectColor(projectId) {
-    return this.colorService.getProjectColor(projectId, this.projects, this.baselineProjects);
+    return this.colorService.getProjectColor(
+      projectId,
+      this.projects,
+      this._store.getState().baseline.projects || []
+    );
   }
 
   getTeamColor(teamId) {
@@ -979,70 +897,13 @@ class PlannerRuntime {
     return true;
   }
 
-  cloneScenario(sourceId, name) {
-    return this.buildScenarioClone(sourceId, name);
-  }
-
-  renameScenario(id, name) {
-    return this.normalizeScenarioName(id, name);
-  }
-
-  deleteScenario(id) {
-    this.emitScenarioUpdated(id, { type: 'delete' });
-    this.emitFeatureUpdated();
-  }
-
-  async saveScenario(id) {
-    const scenario = this.getScenarioById(id);
-    if (!scenario) return;
-    const result = await this._dataService.saveScenario(selectScenarioSavePayload(scenario));
-    if (!result?.ok) throw new Error(result?.error?.message || 'Failed to save scenario');
-    return true;
-  }
-
   markActiveScenarioChanged(activeScenario = this.getActiveWritableScenario()) {
     if (activeScenario) activeScenario.isChanged = true;
     this.emitScenarioList();
   }
 
-  clearPendingGroupChanges() {
-    this.mutateActiveScenario('scenario.group.clearPending.command', (scenario) => {
-      this.scenarioGroupService.clearPendingChanges(scenario);
-      return true;
-    });
-  }
-
-  confirmGroupCreate(tempId, realId) {
-    return this.mutateActiveScenario('scenario.group.confirmCreate.command', (scenario) => {
-      this.scenarioGroupService.confirmCreate(tempId, realId, scenario);
-      return true;
-    });
-  }
-
-  createGroupInScenario(planId, name, color = null, parentId = null) {
-    return this.mutateActiveScenario('scenario.group.create.command', (scenario) =>
-      this.scenarioGroupService.create(planId, name, color, parentId, scenario)
-    );
-  }
-
-  updateGroupInScenario(groupId, fields) {
-    return this.mutateActiveScenario('scenario.group.update.command', (scenario) =>
-      this.scenarioGroupService.update(groupId, fields, scenario)
-    );
-  }
-
-  deleteGroupInScenario(groupId) {
-    return this.mutateActiveScenario('scenario.group.delete.command', (scenario) => {
-      this.scenarioGroupService.delete(groupId, scenario);
-      return true;
-    });
-  }
-
-  applyGroupMemberDelta(groupId, taskId, op) {
-    return this.mutateActiveScenario('scenario.group.memberDelta.command', (scenario) => {
-      this.scenarioGroupService.applyMemberDelta(groupId, taskId, op, scenario);
-      return true;
-    });
+  saveScenarioPayload(payload) {
+    return this._dataService.saveScenario(payload);
   }
 
   async performAutosave({ logFailures = true } = {}) {
@@ -1050,10 +911,11 @@ class PlannerRuntime {
   }
 
   recomputeCapacityMetrics(changedFeatureIds = null) {
+    const baseline = this._store.getState().baseline || {};
     const { result, calculated } = this.capacityCoordinator.calculate({
       features: this.getEffectiveFeatures(),
-      baselineTeams: this.baselineTeams,
-      baselineProjects: this.baselineProjects,
+      baselineTeams: baseline.teams || [],
+      baselineProjects: baseline.projects || [],
       selectedProjectIds: this.getEffectiveSelectedProjectIds(),
       allProjectIds: selectAllIds(this.projects),
       selectedTeamIds: selectSelectedIds(this.teams),
@@ -1065,30 +927,24 @@ class PlannerRuntime {
       childrenByParent: this.childrenByParent,
       changedFeatureIds,
     });
-    this.capacityDates = result.dates;
-    this.teamDailyCapacity = result.teamDailyCapacity;
-    this.teamDailyCapacityMap = result.teamDailyCapacityMap;
-    this.projectDailyCapacityRaw = result.projectDailyCapacityRaw;
-    this.projectDailyCapacity = result.projectDailyCapacity;
-    this.projectDailyCapacityMap = result.projectDailyCapacityMap;
-    this.totalOrgDailyCapacity = result.totalOrgDailyCapacity;
-    this.totalOrgDailyPerTeamAvg = result.totalOrgDailyPerTeamAvg;
+    this.replaceCapacityState({
+      dates: result.dates,
+      teamDaily: result.teamDailyCapacity,
+      teamDailyMap: result.teamDailyCapacityMap,
+      projectDailyRaw: result.projectDailyCapacityRaw,
+      projectDaily: result.projectDailyCapacity,
+      projectDailyMap: result.projectDailyCapacityMap,
+      organizationDaily: result.totalOrgDailyCapacity,
+      organizationDailyPerTeamAverage: result.totalOrgDailyPerTeamAvg,
+    });
     return calculated;
   }
 
   emitCapacityUpdated() {
+    const capacity = this._store.getState().capacity || {};
     this._bus.emit(
       CapacityEvents.UPDATED,
-      selectCapacityEventPayload({
-        dates: this.capacityDates,
-        teamDaily: this.teamDailyCapacity,
-        teamDailyMap: this.teamDailyCapacityMap,
-        projectDailyRaw: this.projectDailyCapacityRaw,
-        projectDaily: this.projectDailyCapacity,
-        projectDailyMap: this.projectDailyCapacityMap,
-        organizationDaily: this.totalOrgDailyCapacity,
-        organizationDailyPerTeamAverage: this.totalOrgDailyPerTeamAvg,
-      })
+      selectCapacityEventPayload(capacity)
     );
   }
 

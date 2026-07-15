@@ -67,11 +67,62 @@ function normalizeStateFilter(selectedFeatureStateFilter) {
   const stateFilter =
     selectedFeatureStateFilter instanceof Set ?
       selectedFeatureStateFilter
-    : new Set(selectedFeatureStateFilter ? [selectedFeatureStateFilter] : []);
+    : Array.isArray(selectedFeatureStateFilter) ?
+      new Set(selectedFeatureStateFilter.filter(Boolean))
+    : selectedFeatureStateFilter ?
+      new Set([selectedFeatureStateFilter])
+    : new Set();
   const stateFilterLower = new Set(
     Array.from(stateFilter).map((s) => String(s).toLowerCase())
   );
   return { stateFilter, stateFilterLower };
+}
+
+function readSelectionList(state, key) {
+  if (key === 'projects') {
+    return state?.selection?.getProjects?.() || [];
+  }
+  if (key === 'teams') {
+    return state?.selection?.getTeams?.() || [];
+  }
+  return [];
+}
+
+function readSelectedFeatureStates(state) {
+  const namespaced = state?.filters?.getFeatureStates?.();
+  if (Array.isArray(namespaced)) return new Set(namespaced.filter(Boolean));
+
+  return new Set();
+}
+
+function readExpansionState(state) {
+  const namespaced = state?.selection?.getExpansionState?.();
+  if (namespaced && typeof namespaced === 'object') {
+    return {
+      expandParentChild: !!namespaced.expandParentChild,
+      expandRelations: !!namespaced.expandRelations,
+      expandTeamAllocated: !!namespaced.expandTeamAllocated,
+    };
+  }
+
+  return {
+    expandParentChild: false,
+    expandRelations: false,
+    expandTeamAllocated: false,
+  };
+}
+
+function readExpandedIds(state, hasExpansion, expandedIdsOverride) {
+  if (expandedIdsOverride) {
+    return expandedIdsOverride instanceof Set ? expandedIdsOverride : new Set(expandedIdsOverride);
+  }
+  if (!hasExpansion) return null;
+
+  const namespaced = state?.selection?.getExpandedFeatureIds?.();
+  if (namespaced instanceof Set) return namespaced;
+  if (Array.isArray(namespaced)) return new Set(namespaced);
+
+  return null;
 }
 
 export function buildFeatureVisibilityContext({
@@ -80,9 +131,9 @@ export function buildFeatureVisibilityContext({
   childrenMap = null,
   expandedIdsOverride = null,
 }) {
-  const projects = state?.projects || [];
-  const teams = state?.teams || [];
-  const expansionState = state?.expansionState || {};
+  const projects = readSelectionList(state, 'projects');
+  const teams = readSelectionList(state, 'teams');
+  const expansionState = readExpansionState(state);
   const hasExpansion =
     !!expansionState.expandParentChild ||
     !!expansionState.expandRelations ||
@@ -95,24 +146,14 @@ export function buildFeatureVisibilityContext({
     teams.filter((t) => t?.selected).map((t) => String(t.id))
   );
 
-  const normalizedFilter = normalizeStateFilter(state?.selectedFeatureStateFilter);
+  const normalizedFilter = normalizeStateFilter(readSelectedFeatureStates(state));
   const map = childrenMap || buildChildrenMap(allFeatures);
-  const legacyViewService = state?._viewService;
   const viewService = {
-    showOnlyProjectHierarchy:
-      state?.showOnlyProjectHierarchy ?? legacyViewService?.showOnlyProjectHierarchy ?? false,
-    showUnplannedWork:
-      state?.showUnplannedWork ?? legacyViewService?.showUnplannedWork ?? false,
-    showUnassignedCards:
-      state?.showUnallocatedCards ?? legacyViewService?.showUnassignedCards ?? false,
-    hiddenTypes: new Set(
-      state?.view?.getHiddenTypes?.() ?? state?.hiddenTypes ?? legacyViewService?.hiddenTypes ?? []
-    ),
-    isTypeVisible: (type) =>
-      state?.taskTypes?.isVisible?.(type) ??
-      state?.isTypeVisible?.(type) ??
-      legacyViewService?.isTypeVisible?.(type) ??
-      true,
+    showOnlyProjectHierarchy: state?.view?.getShowOnlyProjectHierarchy?.() ?? false,
+    showUnplannedWork: state?.view?.getShowUnplannedWork?.() ?? false,
+    showUnassignedCards: state?.view?.getShowUnallocatedCards?.() ?? false,
+    hiddenTypes: new Set(state?.view?.getHiddenTypes?.() ?? []),
+    isTypeVisible: (type) => state?.taskTypes?.isVisible?.(type) ?? true,
   };
 
   let projectTypeEpicIds = null;
@@ -132,11 +173,7 @@ export function buildFeatureVisibilityContext({
     );
   }
 
-  const expandedIds =
-    expandedIdsOverride ||
-    (hasExpansion && typeof state?.getExpandedFeatureIds === 'function' ?
-      state.getExpandedFeatureIds()
-    : null);
+  const expandedIds = readExpandedIds(state, hasExpansion, expandedIdsOverride);
 
   return {
     state,
@@ -195,7 +232,7 @@ export function featurePassesFilters(feature, ctx) {
   if (ctx.childrenMap.has(String(feature.id))) {
     const children = ctx.childrenMap.get(String(feature.id)) || [];
     const anyChildVisible = children.some((child) => {
-      if (!ctx.selectedProjectIds.has(String(child.project))) return false;
+      const childProjectSelected = ctx.selectedProjectIds.has(String(child.project));
       if (
         featureFlags.SHOW_UNPLANNED_WORK &&
         isUnplannedFeature(child) &&
@@ -204,8 +241,8 @@ export function featurePassesFilters(feature, ctx) {
         return false;
       }
       const hasCapacity = child.capacity?.length > 0;
-      if (!hasCapacity) return ctx.viewService.showUnassignedCards;
-      if (ctx.selectedProjectIds.has(String(child.project))) return true;
+      if (!hasCapacity) return childProjectSelected && ctx.viewService.showUnassignedCards;
+      if (childProjectSelected) return true;
       return child.capacity.some((tl) => ctx.selectedTeamIds.has(String(tl.team)));
     });
 
@@ -296,7 +333,7 @@ export function buildVisibilityDiagnostics({ state, allFeatures = [], context = 
   if (
     ctx.selectedTeamIds.size > 0 &&
     ctx.selectedProjectIds.size === 0 &&
-    !state?.expansionState?.expandTeamAllocated
+    !ctx.hasExpansion
   ) {
     reasons.push(
       "Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks."

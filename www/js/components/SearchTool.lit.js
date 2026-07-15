@@ -198,7 +198,7 @@ export class SearchTool extends LitElement {
       return;
     }
 
-    const all = state.getEffectiveFeatures() || [];
+    const all = state.features.list() || [];
     const qLower = q.toLowerCase();
 
     const idMatches = [];

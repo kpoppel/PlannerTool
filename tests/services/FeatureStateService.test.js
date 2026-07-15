@@ -234,7 +234,7 @@ describe('FeatureStateService', () => {
 
   // ── compareStates ────────────────────────────────────────────────────────
 
-  it('compareStates follows configured order', () => {
+  it('compareFeatureStates follows configured order', () => {
     svc.loadFromProjects([
       {
         display_states: ['New', 'Active', 'Closed'],
@@ -245,11 +245,11 @@ describe('FeatureStateService', () => {
         ],
       },
     ]);
-    expect(svc.compareStates('New', 'Active')).toBeLessThan(0);
-    expect(svc.compareStates('Closed', 'Active')).toBeGreaterThan(0);
+    expect(svc.compareFeatureStates('New', 'Active')).toBeLessThan(0);
+    expect(svc.compareFeatureStates('Closed', 'Active')).toBeGreaterThan(0);
   });
 
-  it('compareStates puts unknown states after known states', () => {
+  it('compareFeatureStates puts unknown states after known states', () => {
     svc.loadFromProjects([
       {
         display_states: ['New', 'Active'],
@@ -259,11 +259,11 @@ describe('FeatureStateService', () => {
         ],
       },
     ]);
-    expect(svc.compareStates('New', 'Custom')).toBeLessThan(0);
-    expect(svc.compareStates('Custom', 'Active')).toBeGreaterThan(0);
+    expect(svc.compareFeatureStates('New', 'Custom')).toBeLessThan(0);
+    expect(svc.compareFeatureStates('Custom', 'Active')).toBeGreaterThan(0);
   });
 
-  it('compareStates always puts Unassigned last', () => {
+  it('compareFeatureStates always puts Unassigned last', () => {
     svc.loadFromProjects([
       {
         display_states: ['New', 'Active'],
@@ -273,8 +273,23 @@ describe('FeatureStateService', () => {
         ],
       },
     ]);
-    expect(svc.compareStates('Unassigned', 'New')).toBeGreaterThan(0);
-    expect(svc.compareStates('Active', 'Unassigned')).toBeLessThan(0);
+    expect(svc.compareFeatureStates('Unassigned', 'New')).toBeGreaterThan(0);
+    expect(svc.compareFeatureStates('Active', 'Unassigned')).toBeLessThan(0);
+  });
+
+  it('compareFeatureStates follows configured order (plugin/runtime contract)', () => {
+    svc.loadFromProjects([
+      {
+        display_states: ['New', 'Active', 'Closed'],
+        state_display_sequence: [
+          { types: ['New'] },
+          { types: ['Active'] },
+          { types: ['Closed'] },
+        ],
+      },
+    ]);
+    expect(svc.compareFeatureStates('New', 'Active')).toBeLessThan(0);
+    expect(svc.compareFeatureStates('Closed', 'Active')).toBeGreaterThan(0);
   });
 
   it('ignores legacy flat-array sequence format', () => {

@@ -60,8 +60,10 @@ describe('Modal Consolidated Tests', () => {
   it('openSaveToAzureModal returns selected items when Save clicked', async () => {
     const overrides = { f1: { start: '2025-01-01', end: '2025-01-02' } };
     const s = {
-      getFeatureTitleById: (id) => 'Title-' + id,
-      baselineFeatures: [{ id: 'f1', start: '', end: '' }],
+      features: {
+        getTitle: (id) => 'Title-' + id,
+        getBaseline: () => [{ id: 'f1', start: '', end: '' }],
+      },
     };
     const { openAzureDevopsModal } =
       await import('../../www/js/components/modalHelpers.js');
@@ -105,12 +107,14 @@ describe('Modal Consolidated Tests', () => {
       f3: { start: '2025-03-01', end: '2025-03-10' },
     };
     const s = {
-      getFeatureTitleById: (id) => 'Title-' + id,
-      baselineFeatures: [
-        { id: 'f1', start: '', end: '' },
-        { id: 'f2', start: '', end: '' },
-        { id: 'f3', start: '', end: '' },
-      ],
+      features: {
+        getTitle: (id) => 'Title-' + id,
+        getBaseline: () => [
+          { id: 'f1', start: '', end: '' },
+          { id: 'f2', start: '', end: '' },
+          { id: 'f3', start: '', end: '' },
+        ],
+      },
     };
     const { openAzureDevopsModal } =
       await import('../../www/js/components/modalHelpers.js');

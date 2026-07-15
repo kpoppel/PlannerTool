@@ -178,11 +178,13 @@ export class FeatureStateService {
   /**
    * Compare two state names using the current display ordering.
    * Unknown states sort after known states. "Unassigned" always sorts last.
+   *
+   * This name matches the PlannerApi/runtime contract used by plugins.
    * @param {string} a
    * @param {string} b
    * @returns {number}
    */
-  compareStates(a, b) {
+  compareFeatureStates(a, b) {
     const aText = String(a || '');
     const bText = String(b || '');
     const aLower = aText.toLowerCase();

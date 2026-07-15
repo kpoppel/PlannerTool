@@ -4,6 +4,7 @@
  */
 
 import { expect } from '@esm-bundle/chai';
+import sinon from 'sinon';
 import { ViewManagementService } from '../../www/js/services/ViewManagementService.js';
 import { dataService } from '../../www/js/services/dataService.js';
 import { FilterEvents } from '../../www/js/core/EventRegistry.js';
@@ -36,11 +37,17 @@ describe('ViewManagementService - Expansion Filters', () => {
       projects: [],
       teams: [],
       availableFeatureStates: [],
+      savedViews: [],
+      activeViewId: null,
       taskFilterService: null,
       _stateFilterService: null,
       setProjectsSelectedBulk: () => {},
       setTeamsSelectedBulk: () => {},
       setSelectedStates: () => {},
+      replaceViewState: ({ saved, activeId } = {}) => {
+        if (saved !== undefined) mockState.savedViews = saved;
+        if (activeId !== undefined) mockState.activeViewId = activeId;
+      },
       setExpansionState: (options) => {
         mockState._expansionState = {
           ...mockState._expansionState,
@@ -235,6 +242,8 @@ describe('ViewManagementService - Expansion Filters', () => {
       mockState.applyViewOptionsRestore = (payload) => {
         optionsPayload = payload;
       };
+      const directRestoreSpy = sinon.spy();
+      mockViewService.restoreView = directRestoreSpy;
 
       mockSidebar.availableTaskTypes = ['Epic', 'Task'];
       mockViewService.isTypeVisible = (type) => type === 'Epic';
@@ -265,6 +274,7 @@ describe('ViewManagementService - Expansion Filters', () => {
         expandRelations: false,
         expandTeamAllocated: true,
       });
+      expect(directRestoreSpy.called).to.equal(false);
     });
 
     it('should route sidebar sync through UI adapter hooks', async () => {

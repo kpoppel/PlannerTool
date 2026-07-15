@@ -15,6 +15,12 @@ Template - do not change :
 ---
 ## [v4.2.0] - unreleased
 ### Fixed
+- Fixed view menu duplication after saving/reloading views by rebuilding the saved-view list from canonical default plus fresh backend results instead of appending prior in-memory entries.
+- Removed the startup console fallback noise in ViewManagementService by exposing canonical saved view metadata on the runtime view-state port, so the default view is available during initial restore.
+- Removed duplicate non-default view option restoration in ViewManagementService so command-owned apply hooks are the single restore path and side-effect ordering stays consistent.
+- Removed remaining command-layer runtime snapshot bridge usage (`initialize`/`syncFromLegacyState`/plugin-view restore sync) so snapshot publication is runtime-owned and command orchestration no longer performs snapshot reconciliation.
+- Restored scenario/view interaction stability after refactor: scenario selection now emits activation effects correctly, feature visibility filter inputs accept the namespaced API shape, and missing swimlane colors no longer crash FeatureBoard during view changes.
+- Fixed XYBoard plugin comparator runtime error by restoring the canonical feature-state comparison contract (`compareFeatureStates`) in `FeatureStateService` while preserving backward-compatible aliasing.
 - Removed dead `plugin-cost-v2` wrapper and component files that were not registered and referenced missing imports.
 - Removed the legacy `plugin-cost-v1` stack and moved shared cost helper logic into the active calculator module.
 - Cost plugin naming is now explicit: `plugin-cost` is the active implementation; state persistence/subscription/deactivation now use runtime plugin ids consistently.
@@ -36,6 +42,23 @@ Template - do not change :
 - Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
 - Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
 ### Changed
+- Docs: rewrote `docs/ARCHITECTURE.md` to reflect the post-migration AppStore/commands/selectors/PlannerApi architecture with current module inventories and mermaid diagrams, preserved the pre-refactor version as `docs/ARCHITECTURE_LEGACY.md`, and added `docs/ARCHITECTURE_ASSESSMENT.md` rating the codebase against best-in-class practice with a prioritized code-reduction backlog.
+- Part 4d adapter/port forwarder collapse: runtime scenario, view, group, and data-port wrappers were inlined into `PlannerRuntime`, removing the dead forwarding factories while keeping the public runtime shape stable.
+- Part 4c selection-filter ownership cutover: task filters now persist through AppStore-backed selection state, selected task types are restored through the canonical command path, and TaskFilterService no longer keeps a private durable filter cache.
+- Part 4b view/session cutover: saved views and active view ID now live in AppStore, and ViewManagementService uses store-backed view metadata instead of a private durable cache.
+- Part 4a AppStore ownership cutover: runtime baseline/capacity recompute paths now commit canonical `baseline`/`capacity` slices in AppStore, and API/snapshot capacity reads now prefer selector/store-backed state.
+- Part 3c API-boundary reduction: removed PlannerApi legacy top-level mirror exports, migrated remaining first-party component call sites to namespaced groups, and dropped Azure DevOps modal compatibility fallbacks to mirror-only methods.
+- Modernized runtime-facing Vitest helpers/tests to route legacy selection/scenario/expansion/date-update calls through command-owned APIs, and updated color initialization assertions to use color accessors after refactor.
+- Code-reduction migration plan update: Part 1 is now closed (including direct-mutation audit completion) and Part 2 overlap assessment baseline was recorded to guide implementation sequencing.
+- Part 2b command/runtime overlap reduction: scenario-group and feature write commands now mutate active scenario drafts directly via command-owned store transactions and services; PlannerApi routes these writes through commands, and redundant runtime wrapper methods for these write paths were removed.
+- Part 2c command/runtime overlap reduction: scenario lifecycle commands now own clone/rename/delete/save orchestration using runtime primitives plus command commits, redundant runtime lifecycle wrapper methods were removed from PlannerRuntime, and temporary legacy lifecycle fallbacks in commands were removed after test-fixture modernization.
+- Phase 2 follow-up: scenario save command orchestration now uses a public runtime save primitive (`saveScenarioPayload`) instead of depending on private runtime internals.
+- Part 2d started: removed runtime delegate/snapshot wrappers for sidebar-disabled controls and core view-option toggles; these command paths now commit AppStore directly while invoking explicit runtime side effects.
+- Part 2d continued: removed runtime delegate wrappers for task-type and feature-state selection/filter commands; these paths now commit AppStore directly and invoke runtime effects explicitly.
+- Part 2d continued: removed runtime delegate wrappers for timeline scale and task-type visibility commands; these paths now call runtime view mutators directly without full snapshot sync.
+- Part 2d completed: view-restore command paths (`applyViewSelectionRestore`, `applyViewOptionsRestore`) are now command-owned orchestration instead of runtime delegate-plus-snapshot wrappers, and the unused synchronous command delegate helper path was removed.
+- Follow-up cleanup: deduplicated restore/update normalization in command orchestration by centralizing view-option normalization and selected-feature-state commit helpers in `createPlannerCommands`.
+- Part 2 finalized: command/runtime facade overlap reduction is complete across 2a/2b/2c/2d slices, with consolidated Phase 2 validation suite, runtime-state guard, and build all passing.
 - Removed the legacy `ScenarioManager` and `ScenarioEventService`; scenario lifecycle normalization and effects now run directly against AppStore-backed runtime state with command-owned commits.
 - Scenario-group create/update/delete/member-delta flows now mutate the active AppStore scenario draft directly, and scenario-local membership edits route through `updateGroupInScenario` instead of mutating read objects.
 - Feature edits now mutate the active AppStore scenario draft directly; removed baseline-copy reconciliation and tests for obsolete private mutation hooks.
@@ -324,6 +347,7 @@ After the migration, the data/config/*.yml files can be removed.
   This alllows for further persmissions later on.
 
 ### Fixed:
+- Fixed a regression where team-allocated expansion could find tasks in the sidebar but still hide them on the board when no plans were selected.
 - PAT decryption failure (corrupt stored PAT, key rotation, or pre-migration plaintext value) no longer crashes session creation with a 500 error. `AccountManager.load()` now treats any `InvalidToken` / base64 error as "no PAT" and logs a warning, so users can recover by re-entering their PAT rather than being locked out.
 - Added PAT format validation (printable non-whitespace ASCII, max 512 chars) in `AccountManager.save()`, the admin initial-setup endpoint, the user config modal, and the admin first-user form to prevent obviously malformed tokens from being persisted in the first place.
 - Admin backup now exports PATs as plaintext so the dump is portable: restoring to a fresh installation with a new or rotated `PLANNER_SECRET_KEY` works correctly. PATs are re-encrypted on restore. Old encrypted backups (no `_meta` marker) are passed through unchanged for backward compatibility.

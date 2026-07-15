@@ -53,7 +53,7 @@ class TimelineBoard extends LitElement {
         bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
       }
 
-      if (state && state.initCompleted) await state.initCompleted;
+      if (state?.app?.initCompleted) await state.app.initCompleted();
 
       await import('./MainGraph.lit.js');
       const mod_t = await import('./Timeline.lit.js');
@@ -121,7 +121,7 @@ class TimelineBoard extends LitElement {
       // correct way to detect that an inner handler already claimed this event.
       if (e.defaultPrevented) return;
       e.preventDefault();
-      const selectedPlans = state.projects.filter((p) => p.selected);
+      const selectedPlans = state.selection.getProjects().filter((p) => p.selected);
       const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
       GroupContextMenu.show({ type: 'board', planId, clientX: e.clientX, clientY: e.clientY });
     };

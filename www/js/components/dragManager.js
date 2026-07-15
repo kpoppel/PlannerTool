@@ -14,14 +14,7 @@ const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
  * regardless of current plan filters.
  */
 function getAllFeatures() {
-  // Use FeatureService to get effective features (baseline + scenario overrides)
-  if (
-    state.featureService &&
-    typeof state.featureService.getEffectiveFeatures === 'function'
-  ) {
-    return state.featureService.getEffectiveFeatures() || [];
-  }
-  return state.getEffectiveFeatures?.() || [];
+  return state.features.list() || [];
 }
 
 /**
@@ -64,7 +57,7 @@ export function startDragMove(
   e,
   feature,
   card,
-  updateDatesCb = state.updateFeatureDates.bind(state)
+  updateDatesCb = state.features.updateDates
 ) {
   const months = getTimelineMonths();
   const monthWidth = getMonthWidth();
@@ -171,7 +164,7 @@ export function startResize(
   feature,
   card,
   datesEl,
-  updateDatesCb = state.updateFeatureDates.bind(state)
+  updateDatesCb = state.features.updateDates
 ) {
   const monthWidth = getMonthWidth();
 

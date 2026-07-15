@@ -98,22 +98,22 @@ export class MainGraphLit extends LitElement {
       const months = getTimelineMonths() || [];
       // Use expansion-aware project IDs so the graph is consistent with the
       // feature cards shown on the board (e.g. when expand-by-allocation is on).
-      const selectedProjectIds =
-        state.getEffectiveSelectedProjectIds ?
-          state.getEffectiveSelectedProjectIds()
-        : (state.projects || []).filter((p) => p.selected).map((p) => p.id);
+      const selectedProjectIds = state.view.getEffectiveSelectedProjectIds();
+      const teams = state.selection.getTeams() || [];
+      const projects = state.selection.getProjects() || [];
+      const capacity = state.capacity.get() || {};
       return {
         months,
-        teams: state.teams || [],
-        projects: state.projects || [],
-        capacityDates: state.capacityDates || [],
-        teamDailyCapacity: state.teamDailyCapacity || [],
-        teamDailyCapacityMap: state.teamDailyCapacityMap || null,
-        projectDailyCapacity: state.projectDailyCapacity || [],
-        projectDailyCapacityMap: state.projectDailyCapacityMap || null,
-        totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg || [],
-        capacityViewMode: state.capacityViewMode || 'team',
-        selectedTeamIds: (state.teams || []).filter((t) => t.selected).map((t) => t.id),
+        teams,
+        projects,
+        capacityDates: capacity.dates || [],
+        teamDailyCapacity: capacity.teamDailyCapacity || [],
+        teamDailyCapacityMap: capacity.teamDailyCapacityMap || null,
+        projectDailyCapacity: capacity.projectDailyCapacity || [],
+        projectDailyCapacityMap: capacity.projectDailyCapacityMap || null,
+        totalOrgDailyPerTeamAvg: capacity.totalOrgDailyPerTeamAvg || [],
+        capacityViewMode: state.view.getCapacityMode() || 'team',
+        selectedTeamIds: teams.filter((t) => t.selected).map((t) => t.id),
         selectedProjectIds,
       };
     };

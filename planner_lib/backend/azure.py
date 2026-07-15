@@ -462,14 +462,34 @@ class AzureDevOpsBackend(BackendPort):
         credential: Optional[BackendCredential] = None,
     ) -> Dict[str, Any]:
         pat = self._require_credential(credential, 'fetch_iterations')
+        source_project = project
+        default_roots: List[str] = []
+        if self._config is not None:
+            try:
+                iterations_config = self._config.fetch_iterations_config()
+            except Exception:
+                iterations_config = {}
+        else:
+            iterations_config = (
+                self._storage.load('config', 'iterations')
+                if self._storage.exists('config', 'iterations')
+                else {}
+            )
+        if isinstance(iterations_config, dict):
+            configured_project = iterations_config.get('azure_project')
+            if configured_project:
+                source_project = str(configured_project)
+            default_roots = iterations_config.get('default_roots', []) if isinstance(iterations_config.get('default_roots', []), list) else []
+
+        roots = root_paths if root_paths is not None else default_roots
         with self._conn.connect(pat) as client:
             iteration_map: Dict[str, Any] = {}
-            for raw_root in (root_paths or [None]):
+            for raw_root in (roots or [None]):
                 # Construct the full ADO path: "<project>\Iteration\<sub-path>".
                 # raw_root is a plain sub-path from iterations.yml (e.g. "eSW\Platform").
-                root = f"{project}\\Iteration\\{raw_root}" if raw_root else None
+                root = f"{source_project}\\Iteration\\{raw_root}" if raw_root else None
                 try:
-                    for it in client.get_iterations(project, root_path=root):
+                    for it in client.get_iterations(source_project, root_path=root):
                         raw_path = it.get('path', '')
                         norm = self._strip_iteration_segment(raw_path)
                         if norm:

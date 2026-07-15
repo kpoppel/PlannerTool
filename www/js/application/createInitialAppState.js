@@ -26,7 +26,24 @@ export function createInitialAppState() {
       projectIds: [],
       teamIds: [],
       featureStateNames: [],
-      taskFilters: {},
+      taskFilters: {
+        schedule: {
+          planned: true,
+          unplanned: true,
+        },
+        allocation: {
+          allocated: true,
+          unallocated: true,
+        },
+        hierarchy: {
+          hasParent: true,
+          noParent: true,
+        },
+        relations: {
+          hasLinks: true,
+          noLinks: true,
+        },
+      },
       taskTypeNames: [],
       sidebarDisabled: {},
     },

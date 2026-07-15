@@ -86,7 +86,7 @@ export async function initBoard() {
   // to the server.  When a plan is deselected its cache entry is evicted so
   // the next selection always triggers a fresh fetch.
   const loadGroupsForSelectedPlans = () => {
-    const selected = state.projects.filter((p) => p.selected);
+    const selected = state.selection.getProjects().filter((p) => p.selected);
     for (const plan of selected) {
       if (!groupService.hasPlanLoaded(plan.id)) {
         groupService.loadGroups(plan.id).catch((err) =>
@@ -98,8 +98,8 @@ export async function initBoard() {
   // Evict the cache for plans that become de-selected so the next time the plan
   // is selected its groups are fetched fresh from the server.
   const evictDeselectedPlans = () => {
-    const selectedIds = new Set(state.projects.filter((p) => p.selected).map((p) => String(p.id)));
-    for (const plan of state.projects) {
+    const selectedIds = new Set(state.selection.getProjects().filter((p) => p.selected).map((p) => String(p.id)));
+    for (const plan of state.selection.getProjects()) {
       if (!selectedIds.has(String(plan.id)) && groupService.hasPlanLoaded(plan.id)) {
         groupService.evictPlan(plan.id);
       }

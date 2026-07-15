@@ -87,21 +87,21 @@ export class ViewSaveModal extends LitElement {
     };
 
     // Get selected projects
-    if (state.projects) {
-      this.previewData.selectedProjects = state.projects
+    if (state.selection.getProjects()) {
+      this.previewData.selectedProjects = state.selection.getProjects()
         .filter((p) => p.selected)
         .map((p) => p.name || p.id);
     }
 
     // Get selected teams
-    if (state.teams) {
-      this.previewData.selectedTeams = state.teams
+    if (state.selection.getTeams()) {
+      this.previewData.selectedTeams = state.selection.getTeams()
         .filter((t) => t.selected)
         .map((t) => t.name || t.id);
     }
 
     // Get view options
-    const vo = state.captureCurrentView();
+    const vo = state.view.captureCurrent();
     this.previewData.viewOptions = {
       timelineScale: vo.timelineScale || 'months',
       condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),

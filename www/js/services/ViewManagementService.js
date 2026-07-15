@@ -63,8 +63,6 @@ export class ViewManagementService {
     this._bus = bus;
     this._state = state;
     this._viewService = viewService;
-    this._views = []; // List of saved views (metadata)
-    this._activeViewId = null; // Currently active view ID
     this._activeViewData = null; // Full data of currently active view (for filtering)
     this._lastViewIdStorageKey = 'az_planner:last_view_id';
     this.setEnvironment(env);
@@ -91,12 +89,46 @@ export class ViewManagementService {
     return this._env?.ui?.getSidebarElement?.() || null;
   }
 
+  _getViews() {
+    return this._state?.savedViews || [];
+  }
+
+  _getActiveViewId() {
+    return this._state?.activeViewId || null;
+  }
+
+  _syncViewState({ views, activeId } = {}) {
+    this._state?.replaceViewState?.({ saved: views, activeId });
+  }
+
+  _composeViews(userViews = []) {
+    this.initDefaultView();
+    const existingDefault = this._getViews().find((view) => view.id === 'default');
+    const views = [];
+    const seenIds = new Set();
+
+    const addUniqueView = (view) => {
+      if (!view || !view.id || seenIds.has(view.id)) return;
+      seenIds.add(view.id);
+      views.push(view);
+    };
+
+    addUniqueView(existingDefault);
+    (Array.isArray(userViews) ? userViews : []).forEach((view) => {
+      if (view?.id === 'default') return;
+      addUniqueView(view);
+    });
+
+    return views;
+  }
+
   /**
    * Initialize default view (readonly view that shows all)
    */
   initDefaultView() {
     const DEFAULT_ID = 'default';
-    const existing = this._views.find((v) => v.id === DEFAULT_ID);
+    const views = this._getViews();
+    const existing = views.find((v) => v.id === DEFAULT_ID);
 
     if (!existing) {
       const defaultView = {
@@ -108,11 +140,7 @@ export class ViewManagementService {
         selectedTeams: {},
         viewOptions: {},
       };
-      this._views.unshift(defaultView); // Add at beginning
-      // Only set activeViewId to default if no view is currently active
-      if (!this._activeViewId) {
-        this._activeViewId = DEFAULT_ID;
-      }
+      this._syncViewState({ views: [defaultView, ...views], activeId: this._getActiveViewId() || DEFAULT_ID });
     }
   }
 
@@ -125,20 +153,24 @@ export class ViewManagementService {
       const userViews = dataOr(await dataService.listViews(), []) || [];
       console.log('[ViewManagementService] Loaded user views:', userViews);
 
-      // Combine default view + user views
-      this._views = [];
-      this.initDefaultView();
-      this._views.push(...userViews);
+      const views = this._composeViews(userViews);
 
-      console.log('[ViewManagementService] Total views:', this._views);
+      const activeId =
+        views.find((view) => view.id === this._getActiveViewId())?.id ||
+        views.find((view) => view.readonly)?.id ||
+        views[0]?.id ||
+        'default';
+      this._syncViewState({ views, activeId });
+
+      console.log('[ViewManagementService] Total views:', views);
       this._emitViewsList();
-      return this._views;
+      return views;
     } catch (err) {
       console.error('[ViewManagementService] Error loading views:', err);
-      this._views = [];
-      this.initDefaultView();
+      const views = this._composeViews(this._getViews());
+      this._syncViewState({ views, activeId: views.find((view) => view.readonly)?.id || views[0]?.id || null });
       this._emitViewsList();
-      return this._views;
+      return views;
     }
   }
 
@@ -169,7 +201,7 @@ export class ViewManagementService {
       console.log('[ViewManagementService] Saved view:', response);
 
       // Set the active view to the saved/updated view
-      this._activeViewId = response.id;
+      this._syncViewState({ activeId: response.id });
       this._activeViewData = response;
 
       // Reload views list (this will emit LIST event with updated activeViewId)
@@ -241,7 +273,6 @@ export class ViewManagementService {
           ),
           teamSelections: this._buildSelections(this._state.teams, response.selectedTeams, false),
         };
-        this._viewService.restoreView(viewOptions);
         if (viewOptions.taskFilters) {
           restorePayload.taskFilters = viewOptions.taskFilters;
         }
@@ -272,7 +303,7 @@ export class ViewManagementService {
 
       await this._restorePluginState(viewOptions);
 
-      this._activeViewId = viewId;
+      this._syncViewState({ activeId: viewId });
       this._saveLastViewId(viewId);
       this._emitViewActivated();
     } catch (err) {
@@ -296,7 +327,7 @@ export class ViewManagementService {
       console.log('[ViewManagementService] Renamed view:', viewId, 'to', newName);
 
       // Preserve active view if this view is currently active
-      const wasActive = this._activeViewId === viewId;
+      const wasActive = this._getActiveViewId() === viewId;
 
       // Reload views list
       await this.loadViews();
@@ -326,8 +357,8 @@ export class ViewManagementService {
       console.log('[ViewManagementService] Deleted view:', viewId);
 
       // Clear active view if it was deleted
-      if (this._activeViewId === viewId) {
-        this._activeViewId = null;
+      if (this._getActiveViewId() === viewId) {
+        this._syncViewState({ activeId: null });
         this._activeViewData = null;
       }
 
@@ -344,7 +375,7 @@ export class ViewManagementService {
    * @returns {Array} Array of view metadata
    */
   getViews() {
-    return this._views;
+    return this._getViews();
   }
 
   /**
@@ -352,14 +383,15 @@ export class ViewManagementService {
    * @returns {string|null}
    */
   getActiveViewId() {
-    return this._activeViewId;
+    return this._getActiveViewId();
   }
 
   /**
    * Clear active view (set back to unsaved state)
    */
   clearActiveView() {
-    this._activeViewId = null;
+    this._syncViewState({ activeId: null });
+    this._activeViewData = null;
     this._emitViewActivated();
   }
 
@@ -377,14 +409,15 @@ export class ViewManagementService {
    */
   _emitViewsList() {
     if (!this._bus) return;
+    const views = this._getViews();
     console.log(
       '[ViewManagementService] Emitting views list:',
-      this._views.length,
+      views.length,
       'views'
     );
     this._env.events.emitViewsList(this._bus, {
-      views: this._views,
-      activeViewId: this._activeViewId,
+      views,
+      activeViewId: this._getActiveViewId(),
       activeViewData: this._activeViewData,
     });
   }
@@ -395,9 +428,10 @@ export class ViewManagementService {
    */
   _emitViewActivated() {
     if (!this._bus) return;
-    console.log('[ViewManagementService] Emitting view activated:', this._activeViewId);
+    const activeViewId = this._getActiveViewId();
+    console.log('[ViewManagementService] Emitting view activated:', activeViewId);
     this._env.events.emitViewActivated(this._bus, {
-      id: this._activeViewId,
+      id: activeViewId,
       data: this._activeViewData,
     });
   }
@@ -431,7 +465,7 @@ export class ViewManagementService {
 
   async _loadViewById(viewId) {
     if (viewId === 'default') {
-      const view = this._views.find((v) => v.id === 'default');
+      const view = this._getViews().find((v) => v.id === 'default');
       if (!view) {
         console.warn('[ViewManagementService] Default view not found');
         return null;
@@ -627,7 +661,7 @@ export class ViewManagementService {
       }
 
       // Check if the view exists
-      const viewExists = this._views.some((v) => v.id === lastViewId);
+      const viewExists = this._getViews().some((v) => v.id === lastViewId);
 
       if (viewExists) {
         console.log('[ViewManagementService] Restoring last view:', lastViewId);

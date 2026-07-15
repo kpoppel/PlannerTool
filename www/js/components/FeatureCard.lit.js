@@ -713,8 +713,8 @@ export class FeatureCardLit extends LitElement {
         this.feature,
         this,
         datesEl,
-        (updates) => state.updateFeatureDates(updates),
-        state.getEffectiveFeatures()
+        (updates) => state.features.updateDates(updates),
+        state.features.list()
       );
       return;
     }
@@ -730,8 +730,8 @@ export class FeatureCardLit extends LitElement {
           e,
           self.feature,
           self,
-          (updates) => state.updateFeatureDates(updates),
-          state.getEffectiveFeatures()
+          (updates) => state.features.updateDates(updates),
+          state.features.list()
         );
       }
     };
@@ -759,8 +759,8 @@ export class FeatureCardLit extends LitElement {
     if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
     if (e.detail === 2) return;
 
-    const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    if (state.highlightFeatureRelationMode) {
+    const eff = state.features.getById(this.feature?.id) || this.feature;
+    if (state.view.getHighlightFeatureRelationMode()) {
       // If this card is in the current connected set, treat it as selecting
       // the item within the set (highlight previous selection and new selection)
       if (this._connected) {
@@ -790,14 +790,14 @@ export class FeatureCardLit extends LitElement {
 
   _handleDoubleClick(e) {    const path = (e.composedPath && e.composedPath()) || [];
     if (path.some((p) => p?.classList?.contains?.('drag-handle'))) return;
-    if (this.feature?.id) state.revertFeature(this.feature.id);
+    if (this.feature?.id) state.features.revert(this.feature.id);
   }
 
   _renderTeamLoadRow() {
     if (this.condensed) return '';
     const hasChildren = (() => {
       try {
-        const map = state.childrenByParent;
+        const map = state.features.getChildrenByParent();
         const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
       } catch (e) {

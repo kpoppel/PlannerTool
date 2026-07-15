@@ -1,9 +1,15 @@
 import { expect } from '@open-wc/testing';
 import { EventBus } from '../../www/js/core/EventBus.js';
 import { dataService } from '../../www/js/services/dataService.js';
+import { dataOr } from '../../www/js/services/result.js';
 
 describe('Scenario Manager and DataService (consolidated)', () => {
   describe('DataService wrapper coverage', () => {
+    it('preserves raw backend success payloads with ok fields', () => {
+      const payload = { ok: true, email: 'kim.poulsen@wsa.com' };
+      expect(dataOr(payload, null)).to.deep.equal(payload);
+    });
+
     it('calls wrapper methods safely', async () => {
       await dataService.init();
       const health = await dataService.checkHealth();

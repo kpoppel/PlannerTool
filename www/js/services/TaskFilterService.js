@@ -20,40 +20,43 @@ const DEFAULT_TASK_FILTER_ENV = {
 export class TaskFilterService {
   constructor(bus, env = {}) {
     this.bus = bus;
+    this._store = env.store || null;
     this._env = {
       events: {
         ...DEFAULT_TASK_FILTER_ENV.events,
         ...(env.events || {}),
       },
     };
+  }
 
-    // Each dimension has two checkboxes that can be independently toggled
-    // Default: all checked (show everything)
-    this._filters = {
-      schedule: {
-        planned: true, // Has start and end dates
-        unplanned: true, // Missing dates
-      },
-      allocation: {
-        allocated: true, // Has team capacity allocations
-        unallocated: true, // No capacity allocations
-      },
-      hierarchy: {
-        hasParent: true, // Has a parent epic
-        noParent: true, // No parent (orphan or top-level epic)
-      },
-      relations: {
-        hasLinks: true, // Has dependency links (predecessor/successor/related)
-        noLinks: true, // No dependency links
-      },
+  _defaultFilters() {
+    return {
+      schedule: { planned: true, unplanned: true },
+      allocation: { allocated: true, unallocated: true },
+      hierarchy: { hasParent: true, noParent: true },
+      relations: { hasLinks: true, noLinks: true },
     };
+  }
+
+  _readFilters() {
+    return this._store?.getState?.()?.selection?.taskFilters || this._defaultFilters();
+  }
+
+  _writeFilters(nextFilters) {
+    if (this._store?.update) {
+      this._store.update('selection.taskFilters.command', (draft) => {
+        draft.selection.taskFilters = nextFilters;
+      });
+      return;
+    }
+    this._fallbackFilters = nextFilters;
   }
 
   /**
    * Get current filter state
    */
   getFilters() {
-    return JSON.parse(JSON.stringify(this._filters)); // Deep copy
+    return JSON.parse(JSON.stringify(this._readFilters()));
   }
 
   /**
@@ -62,12 +65,15 @@ export class TaskFilterService {
    * @param {string} option - The specific option within the dimension
    */
   toggleFilter(dimension, option) {
-    if (!this._filters[dimension] || this._filters[dimension][option] === undefined) {
+    const filters = this._readFilters();
+    if (!filters[dimension] || filters[dimension][option] === undefined) {
       console.warn(`[TaskFilterService] Invalid filter: ${dimension}.${option}`);
       return;
     }
 
-    this._filters[dimension][option] = !this._filters[dimension][option];
+    const nextFilters = JSON.parse(JSON.stringify(filters));
+    nextFilters[dimension][option] = !nextFilters[dimension][option];
+    this._writeFilters(nextFilters);
     this._emitFilterChanged();
   }
 
@@ -75,12 +81,15 @@ export class TaskFilterService {
    * Set a specific filter option
    */
   setFilter(dimension, option, value) {
-    if (!this._filters[dimension] || this._filters[dimension][option] === undefined) {
+    const filters = this._readFilters();
+    if (!filters[dimension] || filters[dimension][option] === undefined) {
       console.warn(`[TaskFilterService] Invalid filter: ${dimension}.${option}`);
       return;
     }
 
-    this._filters[dimension][option] = !!value;
+    const nextFilters = JSON.parse(JSON.stringify(filters));
+    nextFilters[dimension][option] = !!value;
+    this._writeFilters(nextFilters);
     this._emitFilterChanged();
   }
 
@@ -90,11 +99,12 @@ export class TaskFilterService {
    * @returns {boolean}
    */
   featurePassesFilters(feature) {
+    const filters = this._readFilters();
+
     // Schedule filter
     const hasSchedule = !!(feature.start && feature.end);
     const scheduleOk =
-      (hasSchedule && this._filters.schedule.planned) ||
-      (!hasSchedule && this._filters.schedule.unplanned);
+      (hasSchedule && filters.schedule.planned) || (!hasSchedule && filters.schedule.unplanned);
     if (!scheduleOk) return false;
 
     // Allocation filter
@@ -103,22 +113,19 @@ export class TaskFilterService {
       feature.capacity.length > 0 &&
       feature.capacity.some((c) => c && c.capacity && Number(c.capacity) > 0);
     const allocationOk =
-      (hasAllocation && this._filters.allocation.allocated) ||
-      (!hasAllocation && this._filters.allocation.unallocated);
+      (hasAllocation && filters.allocation.allocated) || (!hasAllocation && filters.allocation.unallocated);
     if (!allocationOk) return false;
 
     // Hierarchy filter
     const hasParent = !!feature.parentId;
     const hierarchyOk =
-      (hasParent && this._filters.hierarchy.hasParent) ||
-      (!hasParent && this._filters.hierarchy.noParent);
+      (hasParent && filters.hierarchy.hasParent) || (!hasParent && filters.hierarchy.noParent);
     if (!hierarchyOk) return false;
 
     // Relations filter
     const hasLinks = feature.relations && feature.relations.length > 0;
     const relationsOk =
-      (hasLinks && this._filters.relations.hasLinks) ||
-      (!hasLinks && this._filters.relations.noLinks);
+      (hasLinks && filters.relations.hasLinks) || (!hasLinks && filters.relations.noLinks);
     if (!relationsOk) return false;
 
     return true;
@@ -131,15 +138,18 @@ export class TaskFilterService {
     if (!savedFilters) return;
 
     // Merge saved filters with defaults
-    Object.keys(this._filters).forEach((dimension) => {
+    const nextFilters = this._defaultFilters();
+    Object.keys(nextFilters).forEach((dimension) => {
       if (savedFilters[dimension]) {
-        Object.keys(this._filters[dimension]).forEach((option) => {
+        Object.keys(nextFilters[dimension]).forEach((option) => {
           if (savedFilters[dimension][option] !== undefined) {
-            this._filters[dimension][option] = savedFilters[dimension][option];
+            nextFilters[dimension][option] = savedFilters[dimension][option];
           }
         });
       }
     });
+
+    this._writeFilters(nextFilters);
 
     // Emit event to notify UI components to update
     this._emitFilterChanged();
@@ -149,7 +159,7 @@ export class TaskFilterService {
    * Emit filter change event
    */
   _emitFilterChanged() {
-    this._env.events.emitFilterChanged(this.bus, { taskFilters: this._filters });
+    this._env.events.emitFilterChanged(this.bus, { taskFilters: this._readFilters() });
     this._env.events.emitFeatureUpdated(this.bus, { ids: [] });
   }
 
@@ -157,12 +167,7 @@ export class TaskFilterService {
    * Reset all filters to default (all checked)
    */
   resetFilters() {
-    this._filters = {
-      schedule: { planned: true, unplanned: true },
-      allocation: { allocated: true, unallocated: true },
-      hierarchy: { hasParent: true, noParent: true },
-      relations: { hasLinks: true, noLinks: true },
-    };
+    this._writeFilters(this._defaultFilters());
     this._emitFilterChanged();
   }
 }

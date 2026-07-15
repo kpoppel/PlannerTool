@@ -105,17 +105,17 @@ export class ColorPopoverLit extends LitElement {
     if (!this.entityId || !this.entityType) return;
     try {
       if (this.entityType === 'project') {
-        const p = state.projects.find((x) => x.id === this.entityId);
+        const p = state.selection.getProjects().find((x) => x.id === this.entityId);
         if (!p) return;
         p.color = color;
         await state.config.updateProjectColor(this.entityId, color);
-        bus.emit(ProjectEvents.CHANGED, state.projects);
+        bus.emit(ProjectEvents.CHANGED, state.selection.getProjects());
       } else if (this.entityType === 'team') {
-        const t = state.teams.find((x) => x.id === this.entityId);
+        const t = state.selection.getTeams().find((x) => x.id === this.entityId);
         if (!t) return;
         t.color = color;
         await state.config.updateTeamColor(this.entityId, color);
-        bus.emit(TeamEvents.CHANGED, state.teams);
+        bus.emit(TeamEvents.CHANGED, state.selection.getTeams());
       }
       bus.emit(ColorEvents.CHANGED, {
         entityType: this.entityType,

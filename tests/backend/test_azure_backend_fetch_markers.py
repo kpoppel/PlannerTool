@@ -109,3 +109,46 @@ def test_fetch_markers_returns_empty_list_when_none_found():
     backend, _ = _make_backend(markers=[])
     result = backend.fetch_markers(_AREA, plan_id=_PLAN_ID, credential=_CRED)
     assert result == []
+
+
+class _IterationsConfig:
+    def fetch_iterations_config(self):
+        return {
+            'azure_project': 'SW',
+            'default_roots': ['FitXP'],
+            'project_overrides': {},
+        }
+
+
+def test_fetch_iterations_uses_configured_azure_project_for_default_roots():
+    backend, _ = _make_backend()
+    backend._config = _IterationsConfig()
+
+    fake_client = MagicMock()
+    fake_client.get_iterations.return_value = [
+        {
+            'path': 'SW\\Iteration\\FitXP\\Sprint 1',
+            'name': 'Sprint 1',
+            'startDate': '2026-01-01',
+            'finishDate': '2026-01-14',
+        }
+    ]
+
+    @contextmanager
+    def _fake_connect(_pat):
+        yield fake_client
+
+    backend._conn.connect = _fake_connect
+    result = backend.fetch_iterations('Platform_Development', credential=_CRED)
+
+    fake_client.get_iterations.assert_called_once_with(
+        'SW',
+        root_path='SW\\Iteration\\FitXP',
+    )
+    assert result == {
+        'SW\\FitXP\\Sprint 1': {
+            'startDate': '2026-01-01',
+            'finishDate': '2026-01-14',
+            'name': 'Sprint 1',
+        }
+    }

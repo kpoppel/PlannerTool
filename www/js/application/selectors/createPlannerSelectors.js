@@ -33,9 +33,9 @@ function withSelectedFlag(items, selectedIds) {
 function readExpansionState(state) {
   const expansion = asObject(state?.view?.expansion);
   return {
-    expandParentChild: !!expansion.parentChild,
-    expandRelations: !!expansion.relations,
-    expandTeamAllocated: !!expansion.teamAllocated,
+    parentChild: !!expansion.parentChild,
+    relations: !!expansion.relations,
+    teamAllocated: !!expansion.teamAllocated,
   };
 }
 

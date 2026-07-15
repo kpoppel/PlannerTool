@@ -116,8 +116,8 @@ describe('State small function coverage', () => {
       [{ id: 'tt1' }, { id: 'tt2' }, { id: 'tt3' }]
     );
     await state.initColors();
-    expect(state.projects[0].color).to.match(/^#/);
-    expect(state.teams[2].color).to.match(/^#/);
+    expect(state.getProjectColor('pp1')).to.match(/^#/);
+    expect(state.getTeamColor('tt3')).to.match(/^#/);
     dataService.getColorMappings = orig;
   }).timeout(2000);
 

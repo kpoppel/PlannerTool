@@ -90,7 +90,7 @@ export class EmptyBoardModal extends LitElement {
   }
 
   _computeReasons() {
-    const sourceFeatures = state.getEffectiveFeatures?.() || [];
+    const sourceFeatures = state.features.list() || [];
     return buildVisibilityDiagnostics({
       state,
       allFeatures: sourceFeatures,
@@ -99,7 +99,7 @@ export class EmptyBoardModal extends LitElement {
 
   // Determine whether any features would be visible under current filters
   _hasVisibleFeatures() {
-    const sourceFeatures = state.getEffectiveFeatures?.() || [];
+    const sourceFeatures = state.features.list() || [];
     return buildVisibilityDiagnostics({
       state,
       allFeatures: sourceFeatures,
@@ -110,7 +110,7 @@ export class EmptyBoardModal extends LitElement {
     // If no baseline features have been loaded yet (likely missing credentials),
     // do not show the empty-board modal — wait until data finishes loading.
     const baselineLoaded =
-      Array.isArray(state.baselineFeatures) && state.baselineFeatures.length > 0;
+      Array.isArray(state.features.getBaseline()) && state.features.getBaseline().length > 0;
     if (!baselineLoaded) {
       if (this.open) {
         this.open = false;

@@ -80,7 +80,7 @@ class FeatureBoard extends LitElement {
 
   // Build and maintain connected feature sets (parent/child and relations)
   _computeConnectedSet(startFeature) {
-    let features = state.getEffectiveFeatures();
+    let features = state.features.list();
     if (!features) features = [];
     const idKey = (v) => String(v);
     const byId = new Map(features.map((f) => [idKey(f.id), f]));
@@ -142,6 +142,9 @@ class FeatureBoard extends LitElement {
   }
 
   _hexToRgba(hex, alpha) {
+    if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length < 7) {
+      return `rgba(136,136,136,${alpha})`;
+    }
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
@@ -157,45 +160,51 @@ class FeatureBoard extends LitElement {
       ${this._swimlanes.length
         ? html`
             ${this._swimlanes.map(
-              (s) => html`<div
-                class="swimlane-band"
-                style="top:${s.topPx}px; height:${s.heightPx}px; background: ${this._hexToRgba(s.color, 0.15)}; border-top: 2px solid ${this._hexToRgba(s.color, 0.3)};"
-                aria-hidden="true"
-              ></div>`
+              (s) => {
+                const swimlaneColor = s.color || '#888888';
+                return html`<div
+                  class="swimlane-band"
+                  style="top:${s.topPx}px; height:${s.heightPx}px; background: ${this._hexToRgba(swimlaneColor, 0.15)}; border-top: 2px solid ${this._hexToRgba(swimlaneColor, 0.3)};"
+                  aria-hidden="true"
+                ></div>`;
+              }
             )}
             <div class="swimlane-labels" aria-hidden="true">
               ${this._swimlanes.map(
-                (s) => html`<div
-                  class="swimlane-label-slot"
-                  style="top:${s.topPx}px; height:${s.heightPx}px;"
-                >
-                  <div
-                    class="swimlane-label type-${s.type}"
-                    style="border-left-color:${s.color};"
-                    title="${s.name}"
+                (s) => {
+                  const swimlaneColor = s.color || '#888888';
+                  return html`<div
+                    class="swimlane-label-slot"
+                    style="top:${s.topPx}px; height:${s.heightPx}px;"
                   >
-                    <span class="swimlane-label-text">${s.name}</span>
-                    ${s.expansionOriginCount ?
-                      html`<span class="swimlane-origin-wrap">
-                        <span
-                          class="swimlane-origin-indicator"
-                          aria-label="${s.expansionOriginTooltip}"
-                        >+${s.expansionOriginCount}</span>
-                        <span class="swimlane-origin-tooltip" role="tooltip">
-                          ${(s.expansionOrigins || []).map(
-                            (origin) => html`<span class="swimlane-origin-item">
-                              <span
-                                class="swimlane-origin-swatch"
-                                style="background:${origin.color || '#888'};"
-                              ></span>
-                              <span class="swimlane-origin-name">${origin.name}</span>
-                            </span>`
-                          )}
-                        </span>
-                      </span>`
-                    : ''}
-                  </div>
-                </div>`
+                    <div
+                      class="swimlane-label type-${s.type}"
+                      style="border-left-color:${swimlaneColor};"
+                      title="${s.name}"
+                    >
+                      <span class="swimlane-label-text">${s.name}</span>
+                      ${s.expansionOriginCount ?
+                        html`<span class="swimlane-origin-wrap">
+                          <span
+                            class="swimlane-origin-indicator"
+                            aria-label="${s.expansionOriginTooltip}"
+                          >+${s.expansionOriginCount}</span>
+                          <span class="swimlane-origin-tooltip" role="tooltip">
+                            ${(s.expansionOrigins || []).map(
+                              (origin) => html`<span class="swimlane-origin-item">
+                                <span
+                                  class="swimlane-origin-swatch"
+                                  style="background:${origin.color || '#888'};"
+                                ></span>
+                                <span class="swimlane-origin-name">${origin.name}</span>
+                              </span>`
+                            )}
+                          </span>
+                        </span>`
+                      : ''}
+                    </div>
+                  </div>`;
+                }
               )}
             </div>
           `
@@ -389,7 +398,7 @@ class FeatureBoard extends LitElement {
    */
   async renderFeatures() {
     this._updateSwimlaneLabelStickyTop();
-    const rawFeatures = state.getEffectiveFeatures();
+    const rawFeatures = state.features.list();
     // Deduplicate by feature ID — getEffectiveFeatures() can return the same ID
     // twice when a scenario overlay collides with a baseline entry, which would
     // produce duplicate cards in the render list.
@@ -407,16 +416,21 @@ class FeatureBoard extends LitElement {
       childrenMap,
     });
     const months = getTimelineMonths();
-    const isPacked = state.packedMode;
-    const expansionState = state.expansionState || {};
+    const isPacked = state.view.getPackedMode();
+    const uiExpansionState = state.selection.getExpansionState() || {};
+    const expansionState = {
+      expandParentChild: !!uiExpansionState.expandParentChild,
+      expandRelations: !!uiExpansionState.expandRelations,
+      expandTeamAllocated: !!uiExpansionState.expandTeamAllocated,
+    };
     const visibleFeatures = [];
     for (const feature of sourceFeatures) {
       if (!featurePassesFilters(feature, visibilityContext)) continue;
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
-    const selectedProjects = state.projects;
-    const selectedTeams = state.teams;
+    const selectedProjects = state.selection.getProjects();
+    const selectedTeams = state.selection.getTeams();
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       selectedTeams,
@@ -556,18 +570,18 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? groupService.getEffectiveGroups(String(swimlane.id), state.getActiveScenario())
+          ? groupService.getEffectiveGroups(String(swimlane.id), state.scenarios.getActive())
           : [];
 
         if (planGroups.length > 0) {
           // Group-aware layout: group pills + packed or flat features per group
           const orderedBucket = this._orderFeaturesHierarchically(
             bucket,
-            state.featureSortMode
+            state.view.getFeatureSortMode()
           );
           const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
             orderedBucket, planGroups, swimlaneTop, months,
-            state.condensedCards, isPacked, this._collapsedGroups, String(swimlane.id)
+            state.view.getCondensedCards(), isPacked, this._collapsedGroups, String(swimlane.id)
           );
           renderList.push(...groupItems);
           swimlaneHeight = Math.max(gHeight, boardUtils.laneHeight());
@@ -589,10 +603,10 @@ class FeatureBoard extends LitElement {
                 left: bar.left,
                 width: bar.width,
                 top,
-                teams: state.teams,
+                teams: state.selection.getTeams(),
                 condensed: true,
                 hideGhostTitle: true,
-                project: state.projects.find((p) => p.id === bar.feature.project),
+                project: state.selection.getProjects().find((p) => p.id === bar.feature.project),
               });
             }
           });
@@ -601,7 +615,7 @@ class FeatureBoard extends LitElement {
           // Per-swimlane flat hierarchical sort (no groups)
           const ordered = this._orderFeaturesHierarchically(
             bucket,
-            state.featureSortMode
+            state.view.getFeatureSortMode()
           );
           let laneIndex = 0;
           for (const feature of ordered) {
@@ -611,10 +625,10 @@ class FeatureBoard extends LitElement {
               left: pos.left ?? 0,
               width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * boardUtils.laneHeight(),
-              teams: state.teams,
-              condensed: state.condensedCards,
+              teams: state.selection.getTeams(),
+              condensed: state.view.getCondensedCards(),
               hideGhostTitle: false,
-              project: state.projects.find((p) => p.id === feature.project),
+              project: state.selection.getProjects().find((p) => p.id === feature.project),
             });
             laneIndex++;
           }
@@ -647,13 +661,13 @@ class FeatureBoard extends LitElement {
       // Order features once; used by both group and flat paths.
       const ordered = this._orderFeaturesHierarchically(
         sourceFeatures,
-        state.featureSortMode
+        state.view.getFeatureSortMode()
       );
       // Scope groups to the currently-selected plans only.  getAllGroups()
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
       const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
-      const activeScenario = state.getActiveScenario();
+      const activeScenario = state.scenarios.getActive();
       const allGroups = selectedPlanIds.flatMap((id) => groupService.getEffectiveGroups(id, activeScenario));
       renderList = [];
 
@@ -665,7 +679,7 @@ class FeatureBoard extends LitElement {
         );
         const { items: groupItems, totalHeight: gHeight } = buildGroupBandItems(
           visibleFiltered, allGroups, 0, months,
-          state.condensedCards, isPacked, this._collapsedGroups,
+          state.view.getCondensedCards(), isPacked, this._collapsedGroups,
           selectedPlanIds.length === 1 ? String(selectedPlanIds[0]) : 'multi'
         );
         renderList = groupItems;
@@ -692,10 +706,10 @@ class FeatureBoard extends LitElement {
               left: bar.left,
               width: bar.width,
               top,
-              teams: state.teams,
+              teams: state.selection.getTeams(),
               condensed: true, // packed always uses compact card height
               hideGhostTitle: true, // ghost titles would overlap packed neighbours
-              project: state.projects.find((p) => p.id === bar.feature.project),
+              project: state.selection.getProjects().find((p) => p.id === bar.feature.project),
             });
           }
         });
@@ -711,10 +725,10 @@ class FeatureBoard extends LitElement {
               left: pos.left ?? 0,
               width: pos.width ?? 0,
               top: this._overlayOffset + laneIndex * boardUtils.laneHeight(),
-            teams: state.teams,
-            condensed: state.condensedCards,
+              teams: state.selection.getTeams(),
+              condensed: state.view.getCondensedCards(),
             hideGhostTitle: false,
-            project: state.projects.find((p) => p.id === feature.project),
+              project: state.selection.getProjects().find((p) => p.id === feature.project),
           });
           laneIndex++;
         }
@@ -733,10 +747,10 @@ class FeatureBoard extends LitElement {
           left: 0,
           width: 0,
           top: this._overlayOffset + index * boardUtils.laneHeight(),
-          teams: state.teams,
+          teams: state.selection.getTeams(),
           condensed: true,
           hideGhostTitle: true,
-          project: state.projects.find((project) => project.id === feature.project),
+          project: state.selection.getProjects().find((project) => project.id === feature.project),
         }));
         totalHeight = renderList.length * boardUtils.laneHeight() + this._overlayOffset;
       }
@@ -776,7 +790,7 @@ class FeatureBoard extends LitElement {
   async updateCardsById(ids = []) {
     // In packed mode any date change can shift a card into an occupied lane.
     // A full repack is required to keep the layout consistent.
-    if (state.packedMode) {
+    if (state.view.getPackedMode()) {
       await this.renderFeatures();
       return;
     }
@@ -784,7 +798,7 @@ class FeatureBoard extends LitElement {
     const months = getTimelineMonths();
 
     for (const id of ids) {
-      const feature = state.getEffectiveFeatureById(id);
+      const feature = state.features.getById(id);
       if (!feature) continue;
 
       const existing = this._cardMap.get(id);
@@ -806,7 +820,7 @@ class FeatureBoard extends LitElement {
             `${geom.width}px`
           : geom.width
         : '';
-      const project = state.projects.find((p) => p.id === feature.project);
+      const project = state.selection.getProjects().find((p) => p.id === feature.project);
 
       existing.feature = { ...feature };
       existing.selected = !!feature.selected;

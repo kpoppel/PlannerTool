@@ -10,6 +10,7 @@ import { fixture, html, expect } from '@open-wc/testing';
 import * as boardUtils from '../../www/js/components/board-utils.js';
 import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
+import { plannerApplication } from '../../www/js/application/plannerApplication.js';
 import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureBoard._packIntoRows', () => {
@@ -236,15 +237,13 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     });
     timelineBoard.appendChild(scrollContainer);
 
-    state.initProjectTeamBaseline(
-      [
-        { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
-        { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
-      ],
-      []
-    );
-    state.setProjectSelected('p1', true);
-    state.setProjectSelected('p2', true);
+    plannerApplication.store.update('test.featureBoardSwimlaneSeed', (draft) => {
+      draft.baseline.projects = [
+        { id: 'p1', name: 'Plan A', color: '#aa0000' },
+        { id: 'p2', name: 'Plan B', color: '#00aa00' },
+      ];
+      draft.selection.projectIds = ['p1', 'p2'];
+    });
     state.getEffectiveFeatures = () => [makeFeature('f1'), { ...makeFeature('f2'), project: 'p2' }];
 
     try {

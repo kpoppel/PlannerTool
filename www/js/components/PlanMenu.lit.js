@@ -197,7 +197,7 @@ export class PlanMenuLit extends LitElement {
   _toggleProject(pid) {
     const current = (this.projects || []).find((p) => p.id === pid);
     const newVal = !(current && current.selected);
-    state.setProjectSelected(pid, newVal);
+    state.selection.selectProject(pid, newVal);
   }
 
   _handleProjectToggle() {
@@ -206,7 +206,7 @@ export class PlanMenuLit extends LitElement {
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
     projects.forEach((p) => (selections[p.id] = anyUnchecked));
-    state.setProjectsSelectedBulk(selections);
+    state.selection.setProjects(selections);
   }
 
   _anyUncheckedProjects() {
@@ -223,7 +223,7 @@ export class PlanMenuLit extends LitElement {
 
   _renderProjectsList(projects, taskTypes) {
     return html`${projects.map((project) => {
-      const counts = state.allCountsForProject(project.id);
+      const counts = state.featureService.allCountsForProject(project.id);
 
       return html`
         <li class="sidebar-list-item">
@@ -259,7 +259,7 @@ export class PlanMenuLit extends LitElement {
     const projects = this.projects;
     const delivery = projects.filter((p) => (p.type || 'project') === 'project');
     const teamBacklogs = projects.filter((p) => (p.type || 'project') !== 'project');
-    const taskTypes = state.availableTaskTypesOrdered;
+    const taskTypes = state.taskTypes.getOrdered();
 
     return html`
       <div class="menu-popover">

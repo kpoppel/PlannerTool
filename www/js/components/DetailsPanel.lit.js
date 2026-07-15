@@ -954,7 +954,7 @@ export class DetailsPanelLit extends LitElement {
     const ids = payload?.ids || [];
     if (ids.includes(this.feature.id)) {
       // Get fresh feature data from state
-      const updated = state.getEffectiveFeatureById(this.feature.id);
+      const updated = state.features.getById(this.feature.id);
       if (updated) {
         this.feature = updated;
         this.requestUpdate();
@@ -1014,7 +1014,7 @@ export class DetailsPanelLit extends LitElement {
     const existingNorm = new Set(current.map((tag) => tag.toLowerCase()));
     if (!existingNorm.has(newTag.toLowerCase())) {
       current.push(newTag);
-      state.updateFeatureField(this.feature.id, 'tags', this._tagsToString(current));
+      state.features.updateField(this.feature.id, 'tags', this._tagsToString(current));
     }
     this._newTagText = '';
     this.requestUpdate();
@@ -1026,7 +1026,7 @@ export class DetailsPanelLit extends LitElement {
     const remaining = this._parseTags(this.feature.tags).filter(
       (tag) => tag.toLowerCase() !== removeNorm
     );
-    state.updateFeatureField(
+    state.features.updateField(
       this.feature.id,
       'tags',
       remaining.length ? this._tagsToString(remaining) : null
@@ -1039,13 +1039,14 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     const f = this.feature;
     // shrinkwrap applies to any parent item (has children in the hierarchy)
-    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
+    const childrenByParent = state.features.getChildrenByParent();
+    if (!childrenByParent || !childrenByParent.has(f.id)) return;
 
     // childrenByParent uses baseline ids as keys; try both string/number
     const childIds =
-      state.childrenByParent.get(f.id) ||
-      state.childrenByParent.get(String(f.id)) ||
-      state.childrenByParent.get(Number(f.id)) ||
+      childrenByParent.get(f.id) ||
+      childrenByParent.get(String(f.id)) ||
+      childrenByParent.get(Number(f.id)) ||
       [];
     if (!childIds || !childIds.length) return;
 
@@ -1053,7 +1054,7 @@ export class DetailsPanelLit extends LitElement {
     let minStartMs = null;
     let maxEndMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = state.features.getById(cid);
       if (!eff) continue;
       const s = eff.start;
       const e = eff.end;
@@ -1072,8 +1073,7 @@ export class DetailsPanelLit extends LitElement {
     const newStart = toIsoDate(minStartMs);
     const newEnd = toIsoDate(maxEndMs);
 
-    // Use state.updateFeatureDates to update both start and end together
-    state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
+    state.features.updateDates([{ id: f.id, start: newStart, end: newEnd }]);
   }
 
   /**
@@ -1083,16 +1083,17 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
+    const childrenByParent = state.features.getChildrenByParent();
+    if (!childrenByParent || !childrenByParent.has(f.id)) return;
     const childIds =
-      state.childrenByParent.get(f.id) ||
-      state.childrenByParent.get(String(f.id)) ||
-      state.childrenByParent.get(Number(f.id)) ||
+      childrenByParent.get(f.id) ||
+      childrenByParent.get(String(f.id)) ||
+      childrenByParent.get(Number(f.id)) ||
       [];
     if (!childIds || !childIds.length) return;
     let minStartMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = state.features.getById(cid);
       if (!eff || !eff.start) continue;
       const ms = Date.parse(eff.start);
       if (!isNaN(ms) && (minStartMs === null || ms < minStartMs)) minStartMs = ms;
@@ -1100,7 +1101,7 @@ export class DetailsPanelLit extends LitElement {
     if (minStartMs === null) return;
     const newStart = new Date(minStartMs).toISOString().slice(0, 10);
     const currentEnd = f.end || null;
-    state.updateFeatureDates([{ id: f.id, start: newStart, end: currentEnd }]);
+    state.features.updateDates([{ id: f.id, start: newStart, end: currentEnd }]);
   }
 
   /**
@@ -1110,16 +1111,17 @@ export class DetailsPanelLit extends LitElement {
     e && e.stopPropagation();
     if (!this.feature) return;
     const f = this.feature;
-    if (!state.childrenByParent || !state.childrenByParent.has(f.id)) return;
+    const childrenByParent = state.features.getChildrenByParent();
+    if (!childrenByParent || !childrenByParent.has(f.id)) return;
     const childIds =
-      state.childrenByParent.get(f.id) ||
-      state.childrenByParent.get(String(f.id)) ||
-      state.childrenByParent.get(Number(f.id)) ||
+      childrenByParent.get(f.id) ||
+      childrenByParent.get(String(f.id)) ||
+      childrenByParent.get(Number(f.id)) ||
       [];
     if (!childIds || !childIds.length) return;
     let maxEndMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = state.features.getById(cid);
       if (!eff || !eff.end) continue;
       const ms = Date.parse(eff.end);
       if (!isNaN(ms) && (maxEndMs === null || ms > maxEndMs)) maxEndMs = ms;
@@ -1127,7 +1129,7 @@ export class DetailsPanelLit extends LitElement {
     if (maxEndMs === null) return;
     const newEnd = new Date(maxEndMs).toISOString().slice(0, 10);
     const currentStart = f.start || null;
-    state.updateFeatureDates([{ id: f.id, start: currentStart, end: newEnd }]);
+    state.features.updateDates([{ id: f.id, start: currentStart, end: newEnd }]);
   }
 
   /**
@@ -1160,7 +1162,7 @@ export class DetailsPanelLit extends LitElement {
   _updateFeatureDates(start, end, warnContext) {
     if (!this.feature) return;
     try {
-      state.updateFeatureDates([{ id: this.feature.id, start, end }]);
+      state.features.updateDates([{ id: this.feature.id, start, end }]);
     } catch (err) {
       console.warn(warnContext, err);
     }
@@ -1202,7 +1204,7 @@ export class DetailsPanelLit extends LitElement {
         c.team === teamId ? { ...c, capacity: clampedCapacity } : { ...c }
       );
       // Store as override in the scenario
-      state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+      state.features.updateField(this.feature.id, 'capacity', newCapacity);
     }
 
     this.editingCapacityTeam = null;
@@ -1215,7 +1217,7 @@ export class DetailsPanelLit extends LitElement {
       // Create a new capacity array without the deleted team
       const newCapacity = this.feature.capacity.filter((c) => c.team !== teamId);
       // Store as override in the scenario
-      state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+      state.features.updateField(this.feature.id, 'capacity', newCapacity);
       this.requestUpdate();
     }
   }
@@ -1247,7 +1249,7 @@ export class DetailsPanelLit extends LitElement {
           { team: teamId, capacity: clampedCapacity },
         ];
         // Store as override in the scenario
-        state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+        state.features.updateField(this.feature.id, 'capacity', newCapacity);
       }
     }
 
@@ -1303,7 +1305,7 @@ export class DetailsPanelLit extends LitElement {
     }
     const val = this._stateEditValue;
     if (val && val !== this.feature.state) {
-      state.updateFeatureField(this.feature.id, 'state', val);
+      state.features.updateField(this.feature.id, 'state', val);
     }
     this.editingState = false;
     this._stateEditValue = null;
@@ -1313,7 +1315,7 @@ export class DetailsPanelLit extends LitElement {
   _onStateChipSelect(s) {
     if (!this.feature) return;
     if (s && s !== this.feature.state) {
-      state.updateFeatureField(this.feature.id, 'state', s);
+      state.features.updateField(this.feature.id, 'state', s);
     }
     this.editingState = false;
     this._stateEditValue = null;
@@ -1339,7 +1341,7 @@ export class DetailsPanelLit extends LitElement {
       }
 
       const projectId = f.project ? String(f.project) : null;
-      this.iterations = state.getIterationsForProject(projectId);
+      this.iterations = state.view.getIterationsForProject(projectId);
       // Lit's property-binding diff skips re-setting `.value` on the <select>
       // when `selectedPath` hasn't changed between renders (same card reopened).
       // Waiting for updateComplete ensures <option> elements exist, then we
@@ -1396,7 +1398,7 @@ export class DetailsPanelLit extends LitElement {
       // cleared because keeping a sprint label without any dates would be
       // contradictory ("iteration as quick-fill preset" paradigm).
       if (this.feature.iterationPath) {
-        state.updateFeatureField(this.feature.id, 'iterationPath', null);
+        state.features.updateField(this.feature.id, 'iterationPath', null);
       }
       this._updateFeatureDates(null, null, 'Failed to clear dates');
     } catch (err) {
@@ -1416,7 +1418,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     try {
       // Persist the iterationPath field first so it is included in the override
-      state.updateFeatureField(this.feature.id, 'iterationPath', sel);
+      state.features.updateField(this.feature.id, 'iterationPath', sel);
       // Then update dates (preserves iterationPath already stored in override)
       if (start && end) {
         this._updateFeatureDates(start, end, 'Failed to update iteration');
@@ -1444,15 +1446,15 @@ export class DetailsPanelLit extends LitElement {
     const feature = this.feature;
     // Build a state color chip using state service helper
     // Use ColorService directly
-    const stateColors = state.getFeatureStateColors();
+    const stateColors = state.colors.getFeatureStateColors();
     const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
     const stateCls = stateChanged ? 'details-value details-changed' : 'details-value';
     const originalStateSpan =
       stateChanged ? html` <span class="original-date">(was ${stateOrig})</span>` : '';
-    // Derive plan (project) name from feature.project -> state.projects
-    const planObj = (state.projects || []).find((p) => p.id === feature.project);
+    // Derive plan (project) name from feature.project
+    const planObj = (state.selection.getProjects() || []).find((p) => p.id === feature.project);
     const planName = planObj ? planObj.name : null;
 
     // Use orgLoad for total allocation (organizational capacity allocated to this feature)
@@ -1461,7 +1463,7 @@ export class DetailsPanelLit extends LitElement {
 
     // Render capacity bars
     const capacityBars = (feature.capacity || []).map((tl) => {
-      const t = state.teams.find((x) => x.id === tl.team);
+      const t = state.selection.getTeams().find((x) => x.id === tl.team);
       if (!t) return null;
 
       const cap = tl.capacity || 0;
@@ -1519,7 +1521,7 @@ export class DetailsPanelLit extends LitElement {
 
     // Get available teams for the add team dropdown (exclude already allocated teams)
     const allocatedTeamIds = new Set((feature.capacity || []).map((c) => c.team));
-    const availableTeams = state.teams.filter((t) => !allocatedTeamIds.has(t.id));
+    const availableTeams = state.selection.getTeams().filter((t) => !allocatedTeamIds.has(t.id));
 
     // Add team button with inline form
     const addTeamButton = html`
@@ -1582,7 +1584,7 @@ export class DetailsPanelLit extends LitElement {
       // Build segments for visual bar
       const segments = (feature.capacity || [])
         .map((tl) => {
-          const t = state.teams.find((x) => x.id === tl.team);
+          const t = state.selection.getTeams().find((x) => x.id === tl.team);
           if (!t) return null;
           const cap = tl.capacity || 0;
           // Calculate width as percentage of total available width (scale to max 100% visual width)
@@ -1628,7 +1630,7 @@ export class DetailsPanelLit extends LitElement {
             title="Revert changes"
             @click=${(ev) => {
               ev.stopPropagation();
-              state.revertFeature(feature.id);
+              state.features.revert(feature.id);
             }}
           >
             ↺
@@ -1670,9 +1672,9 @@ export class DetailsPanelLit extends LitElement {
             for (const r of groupItems) {
               const otherId = r.id ? String(r.id) : null;
 
-              const linked = state.baselineFeatureById.get(otherId);
+              const linked = state.features.getBaselineById(otherId);
               if (linked && String(linked.project) !== String(feature.project)) {
-                const proj = state.projects.find((p) => p.id === linked.project);
+                const proj = state.selection.getProjects().find((p) => p.id === linked.project);
                 if (proj.name) otherPlanNames.add(proj.name);
               }
             }
@@ -1688,8 +1690,8 @@ export class DetailsPanelLit extends LitElement {
             groupItems = [...groupItems].sort((a, b) => {
               const aId = a.id ? String(a.id) : null;
               const bId = b.id ? String(b.id) : null;
-              const aLinked = state.baselineFeatureById.get(aId);
-              const bLinked = state.baselineFeatureById.get(bId);
+              const aLinked = state.features.getBaselineById(aId);
+              const bLinked = state.features.getBaselineById(bId);
               
               // Loaded vs non-loaded: loaded first
               if (aLinked && !bLinked) return -1;
@@ -1699,8 +1701,8 @@ export class DetailsPanelLit extends LitElement {
               if (aLinked && bLinked) {
                 const aState = aLinked.state || '';
                 const bState = bLinked.state || '';
-                const aCategory = state.featureStateService?.getCategoryForState(aState) || '';
-                const bCategory = state.featureStateService?.getCategoryForState(bState) || '';
+                const aCategory = state.colors.getFeatureStateCategory(aState) || '';
+                const bCategory = state.colors.getFeatureStateCategory(bState) || '';
                 const aIdx = CATEGORY_ORDER.indexOf(aCategory);
                 const bIdx = CATEGORY_ORDER.indexOf(bCategory);
                 const aCatOrder = aIdx >= 0 ? aIdx : 999;
@@ -1724,7 +1726,7 @@ export class DetailsPanelLit extends LitElement {
             const href = url ? url : '';
             let title = '';
 
-            const linked = state.baselineFeatureById.get(otherId);
+            const linked = state.features.getBaselineById(otherId);
             if (linked && linked.title) {
               title = linked.title;
             } else if (type === 'Child' && otherId) {
@@ -1781,7 +1783,8 @@ export class DetailsPanelLit extends LitElement {
       relationsTemplate = html`<div class="details-value">—</div>`;
     }
 
-    if (feature && feature.type && state.childrenByParent && state.childrenByParent.has(feature.id)) {
+    const childrenByParent = state.features.getChildrenByParent();
+    if (feature && feature.type && childrenByParent && childrenByParent.has(feature.id)) {
       console.debug('[DetailsPanel] rendering shrinkwrap button for parent item', feature.id);
     }
 
@@ -1831,7 +1834,7 @@ export class DetailsPanelLit extends LitElement {
                     tabindex="-1"
                   >
                     <div class="state-choices">
-                      ${(state.availableFeatureStates || []).map((s) => {
+                      ${(state.filters.getAvailableFeatureStates() || []).map((s) => {
                         const sc = stateColors && stateColors[s] ? stateColors[s] : null;
                         const isSelected = s === (this._stateEditValue || feature.state);
                         const selClass = isSelected ? 'selected' : '';
@@ -1894,8 +1897,8 @@ export class DetailsPanelLit extends LitElement {
             const hasChildren =
               feature &&
               feature.type &&
-              state.childrenByParent &&
-              state.childrenByParent.has(feature.id);
+              childrenByParent &&
+              childrenByParent.has(feature.id);
 
             // Selected iteration is always the ADO iterationPath field
             const selectedPath = feature.iterationPath || '';

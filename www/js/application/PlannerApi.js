@@ -7,29 +7,6 @@
  */
 export const PLANNER_API_VERSION = 1;
 
-const PLANNER_API_OVERRIDES = new Map();
-
-export function setPlannerApiOverride(name, handler) {
-  if (!name) return;
-  if (typeof handler === 'function') {
-    PLANNER_API_OVERRIDES.set(name, handler);
-  } else {
-    PLANNER_API_OVERRIDES.delete(name);
-  }
-}
-
-export function clearPlannerApiOverride(name) {
-  if (!name) return;
-  PLANNER_API_OVERRIDES.delete(name);
-}
-
-function callPlannerApi(name, fallback, ...args) {
-  if (PLANNER_API_OVERRIDES.has(name)) {
-    return PLANNER_API_OVERRIDES.get(name)(...args);
-  }
-  return fallback(...args);
-}
-
 function buildDefaultScenarioCloneName(scenarios = [], date = new Date()) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
@@ -50,6 +27,22 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
     throw new TypeError('PlannerApi requires application commands and selectors');
   }
 
+  function readCapacitySnapshot() {
+    if (typeof selectors.capacitySnapshot === 'function') {
+      return selectors.capacitySnapshot();
+    }
+    return {
+      dates: state.capacityDates || [],
+      teamDaily: state.teamDailyCapacity || [],
+      teamDailyMap: state.teamDailyCapacityMap || [],
+      projectDailyRaw: state.projectDailyCapacityRaw || [],
+      projectDaily: state.projectDailyCapacity || [],
+      projectDailyMap: state.projectDailyCapacityMap || [],
+      organizationDaily: state.totalOrgDailyCapacity || [],
+      organizationDailyPerTeamAverage: state.totalOrgDailyPerTeamAvg || [],
+    };
+  }
+
   const api = {
     version: PLANNER_API_VERSION,
     features: Object.freeze({
@@ -59,11 +52,10 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
       getBaselineById: (id) => state.baselineFeatureById?.get?.(id),
       getBaseline: () => state.baselineFeatures,
       getChildrenByParent: () => state.childrenByParent,
-      updateDates: (updates) => callPlannerApi('updateFeatureDates', state.updateFeatureDates.bind(state), updates),
-      updateField: (id, field, value) =>
-        callPlannerApi('updateFeatureField', state.updateFeatureField.bind(state), id, field, value),
-      updateRelations: (id, relations) => state.updateFeatureRelations(id, relations),
-      revert: (id) => state.revertFeature(id),
+      updateDates: (updates) => commands.updateFeatureDates(updates),
+      updateField: (id, field, value) => commands.updateFeatureField(id, field, value),
+      updateRelations: (id, relations) => commands.updateFeatureRelations(id, relations),
+      revert: (id) => commands.revertFeature(id),
       passesTaskFilters: (feature) => state.taskFilterService.featurePassesFilters(feature),
     }),
     selection: Object.freeze({
@@ -86,6 +78,8 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
     }),
     filters: Object.freeze({
       getFeatureStates: () => Array.from(state.selectedFeatureStateFilter || []),
+      isFeatureStateSelected: (stateName) =>
+        !!state.selectedFeatureStateFilter?.has?.(stateName),
       getAvailableFeatureStates: () => state.availableFeatureStates,
       compareFeatureStates: (left, right) => state.compareFeatureStates(left, right),
       getTaskFilters: () => state.taskFilterService.getFilters(),
@@ -110,6 +104,11 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
     view: Object.freeze({
       getCapacityMode: () => state.capacityViewMode,
       getTimelineScale: () => state.timelineScale,
+      getEffectiveSelectedProjectIds: () => state.getEffectiveSelectedProjectIds(),
+      getShowUnplannedWork: () => state.showUnplannedWork,
+      getShowUnallocatedCards: () => state.showUnallocatedCards,
+      getShowOnlyProjectHierarchy: () => state.showOnlyProjectHierarchy,
+      getIterationsForProject: (projectId) => state.getIterationsForProject(projectId),
       setTimelineScale: (scale) => state.setTimelineScale(scale),
       getDisplayMode: () => state.displayMode,
       setDisplayMode: (mode, suppressEmit) => state.setDisplayMode(mode, suppressEmit),
@@ -159,23 +158,27 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
       clearPendingChanges: () => state.groups.clearPendingChanges(),
       confirmCreate: (tempId, realId) => state.groups.confirmCreate(tempId, realId),
       createInScenario: (planId, name, color = null, parentId = null) =>
-        state.groups.createInScenario(planId, name, color, parentId),
-      updateInScenario: (groupId, fields) => state.groups.updateInScenario(groupId, fields),
-      deleteInScenario: (groupId) => state.groups.deleteInScenario(groupId),
-      applyMemberDelta: (groupId, taskId, op) => state.groups.applyMemberDelta(groupId, taskId, op),
+        commands.createGroupInScenario(planId, name, color, parentId),
+      updateInScenario: (groupId, fields) => commands.updateGroupInScenario(groupId, fields),
+      deleteInScenario: (groupId) => commands.deleteGroupInScenario(groupId),
+      applyMemberDelta: (groupId, taskId, op) =>
+        commands.applyGroupMemberDelta(groupId, taskId, op),
       publishBaseline: (features) => state.groups.publishBaseline(features),
     }),
     capacity: Object.freeze({
-      get: () => ({
-        dates: state.capacityDates,
-        teamDailyCapacity: state.teamDailyCapacity,
-        teamDailyCapacityMap: state.teamDailyCapacityMap,
-        projectDailyCapacityRaw: state.projectDailyCapacityRaw,
-        projectDailyCapacity: state.projectDailyCapacity,
-        projectDailyCapacityMap: state.projectDailyCapacityMap,
-        totalOrgDailyCapacity: state.totalOrgDailyCapacity,
-        totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg,
-      }),
+      get: () => {
+        const snapshot = readCapacitySnapshot();
+        return {
+          dates: snapshot.dates,
+          teamDailyCapacity: snapshot.teamDaily,
+          teamDailyCapacityMap: snapshot.teamDailyMap,
+          projectDailyCapacityRaw: snapshot.projectDailyRaw,
+          projectDailyCapacity: snapshot.projectDaily,
+          projectDailyCapacityMap: snapshot.projectDailyMap,
+          totalOrgDailyCapacity: snapshot.organizationDaily,
+          totalOrgDailyPerTeamAvg: snapshot.organizationDailyPerTeamAverage,
+        };
+      },
     }),
     plugins: Object.freeze({
       getState: (id) => state.pluginStateService.get(id),
@@ -229,6 +232,9 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
     server: Object.freeze({
       health: () => state.server.health(),
     }),
+    app: Object.freeze({
+      initCompleted: () => state.initCompleted,
+    }),
     featureService: Object.freeze({
       getEffectiveFeatures: () => state.getEffectiveFeatures(),
       computeExpandedFeatureSet: (selectedFeatureIds, options) =>
@@ -248,148 +254,6 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
         state.featureStateService.isStateInCategory(stateName, category),
       getCategoryForState: (stateName) => state.featureStateService.getCategoryForState(stateName),
     }),
-    get projects() {
-      return state.projects;
-    },
-    get teams() {
-      return state.teams;
-    },
-    get baselineFeatures() {
-      return state.baselineFeatures;
-    },
-    get baselineFeatureById() {
-      return state.baselineFeatureById;
-    },
-    get childrenByParent() {
-      return state.childrenByParent;
-    },
-    get availableFeatureStates() {
-      return state.availableFeatureStates;
-    },
-    get selectedFeatureStateFilter() {
-      return state.selectedFeatureStateFilter;
-    },
-    get availableTaskTypesOrdered() {
-      return state.availableTaskTypesOrdered;
-    },
-    get taskTypeHierarchy() {
-      return state.taskTypeHierarchy;
-    },
-    get activeScenarioId() {
-      return state.activeScenarioId;
-    },
-    get savedViews() {
-      return state.savedViews;
-    },
-    get activeViewId() {
-      return state.activeViewId;
-    },
-    get timelineScale() {
-      return state.timelineScale;
-    },
-    get displayMode() {
-      return state.displayMode;
-    },
-    get packedMode() {
-      return state.packedMode;
-    },
-    get condensedCards() {
-      return state.condensedCards;
-    },
-    get showDependencies() {
-      return state.showDependencies;
-    },
-    get showUnplannedWork() {
-      return state.showUnplannedWork;
-    },
-    get showUnallocatedCards() {
-      return state.showUnallocatedCards;
-    },
-    get showOnlyProjectHierarchy() {
-      return state.showOnlyProjectHierarchy;
-    },
-    get capacityViewMode() {
-      return state.capacityViewMode;
-    },
-    get featureSortMode() {
-      return state.featureSortMode;
-    },
-    get highlightFeatureRelationMode() {
-      return state.highlightFeatureRelationMode;
-    },
-    get expansionState() {
-      return state.expansionState;
-    },
-    get projectDailyCapacityRaw() {
-      return state.projectDailyCapacityRaw;
-    },
-    get capacityDates() {
-      return state.capacityDates;
-    },
-    get teamDailyCapacity() {
-      return state.teamDailyCapacity;
-    },
-    get teamDailyCapacityMap() {
-      return state.teamDailyCapacityMap;
-    },
-    get projectDailyCapacity() {
-      return state.projectDailyCapacity;
-    },
-    get projectDailyCapacityMap() {
-      return state.projectDailyCapacityMap;
-    },
-    get totalOrgDailyCapacity() {
-      return state.totalOrgDailyCapacity;
-    },
-    get totalOrgDailyPerTeamAvg() {
-      return state.totalOrgDailyPerTeamAvg;
-    },
-    get initCompleted() {
-      return state.initCompleted;
-    },
-    getEffectiveFeatures: () => state.getEffectiveFeatures(),
-    getEffectiveFeatureById: (id) => state.getEffectiveFeatureById(id),
-    getEffectiveSelectedProjectIds: () => state.getEffectiveSelectedProjectIds(),
-    getExpandedFeatureIds: () => state.getExpandedFeatureIds(),
-    getFeatureTitleById: (id) => state.getFeatureTitleById(id),
-    getFeatureStateColor: (stateName) => state.getFeatureStateColor(stateName),
-    getFeatureStateColors: () => state.getFeatureStateColors(),
-    getTypeLevel: (type) => state.getTypeLevel(type),
-    getTypeDisplayName: (type) => state.getTypeDisplayName(type),
-    getIterationsForProject: (projectId) => state.getIterationsForProject(projectId),
-    getScenarios: () => state.getScenarios?.() || state.scenarios.list(),
-    getActiveScenario: () => state.getActiveScenario(),
-    getActiveView: () => state.getActiveView?.() || state.views.getActiveData(),
-    captureCurrentView: () => state.captureCurrentView(),
-    allCountsForProject: (projectId) => state.allCountsForProject(projectId),
-    allCountsForTeam: (teamId) => state.allCountsForTeam(teamId),
-    setProjectSelected: (id, selected) => commands.setProjectSelected(id, selected),
-    setTeamSelected: (id, selected) => commands.setTeamSelected(id, selected),
-    setProjectsSelectedBulk: (selections) => commands.setProjectsSelectedBulk(selections),
-    setTeamsSelectedBulk: (selections) => commands.setTeamsSelectedBulk(selections),
-    setExpansionState: (options) => commands.setExpansionState(options),
-    setTypeVisibility: (type, visible, suppressEmit) =>
-      state.setTypeVisibility(type, visible, suppressEmit),
-    isTypeVisible: (type) => state.isTypeVisible(type),
-    toggleStateSelected: (stateName) => state.toggleStateSelected(stateName),
-    setTimelineScale: (scale) => state.setTimelineScale(scale),
-    setDisplayMode: (mode, suppressEmit) => state.setDisplayMode(mode, suppressEmit),
-    setCondensedCards: (condensed) => state.setCondensedCards(condensed),
-    setFeatureSortMode: (mode) => state.setFeatureSortMode(mode),
-    setCapacityViewMode: (mode) => state.setCapacityViewMode(mode),
-    setShowDependencies: (visible) => state.setShowDependencies(visible),
-    setSidebarDisabledElements: (controls) => state.setSidebarDisabledElements(controls),
-    clearSidebarDisabledElements: () => state.clearSidebarDisabledElements(),
-    updateFeatureDates: (updates) =>
-      callPlannerApi('updateFeatureDates', state.updateFeatureDates.bind(state), updates),
-    updateFeatureField: (id, field, value) =>
-      callPlannerApi('updateFeatureField', state.updateFeatureField.bind(state), id, field, value),
-    updateFeatureRelations: (id, relations) => state.updateFeatureRelations(id, relations),
-    revertFeature: (id) => state.revertFeature(id),
-    createGroupInScenario: (planId, name, color = null, parentId = null) =>
-      state.createGroupInScenario(planId, name, color, parentId),
-    updateGroupInScenario: (groupId, fields) => state.updateGroupInScenario(groupId, fields),
-    deleteGroupInScenario: (groupId) => state.deleteGroupInScenario(groupId),
   };
 
   return Object.freeze(api);

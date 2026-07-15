@@ -1,15 +1,20 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import {
-  clearPlannerApiOverride,
-  setPlannerApiOverride,
-} from '../../www/js/application/PlannerApi.js';
+import { plannerApplication } from '../../www/js/application/plannerApplication.js';
 import { state } from '../helpers/runtimeState.js';
 
 describe('DetailsPanel helper coverage', () => {
   beforeEach(async () => {
     await customElements.whenDefined('details-panel');
+    plannerApplication.store.update('test.seedScenario', (draft) => {
+      draft.scenarios.items = [{ id: 'test-scenario', name: 'Test', overrides: {} }];
+      draft.scenarios.activeId = 'test-scenario';
+    });
+  });
+
+  afterEach(() => {
+    sinon.restore();
   });
 
   it('_stripCapacityFromDescription removes planner block', async () => {
@@ -36,8 +41,7 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.spy();
-    setPlannerApiOverride('updateFeatureField', stub);
+    const stub = sinon.stub(state.featureService, 'updateFeatureField');
     el._saveCapacityEdit('t1', '50');
     expect(stub.calledOnce).to.be.true;
     const args = stub.getCall(0).args;
@@ -54,8 +58,7 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.spy();
-    setPlannerApiOverride('updateFeatureField', stub);
+    const stub = sinon.stub(state.featureService, 'updateFeatureField');
     const form = document.createElement('form');
     const select = document.createElement('select');
     select.innerHTML = '<option value="t2">T2</option>';
@@ -74,14 +77,16 @@ describe('DetailsPanel helper coverage', () => {
   });
 
   it('capacity input value updates when switching features', async () => {
-    // Stub state.teams getter to return test data
-    const teamsStub = sinon.stub(state, 'teams').get(() => [
-      { id: 't1', name: 'Team Alpha', color: '#ff0000' },
-      { id: 't2', name: 'Team Beta', color: '#00ff00' },
-    ]);
-    const projectsStub = sinon
-      .stub(state, 'projects')
-      .get(() => [{ id: 'p1', name: 'Project 1' }]);
+    // Seed real store paths consumed by PlannerApi selectors.
+    plannerApplication.store.update('test.detailsPanelCoverageSelectionSeed', (draft) => {
+      draft.baseline.projects = [{ id: 'p1', name: 'Project 1' }];
+      draft.baseline.teams = [
+        { id: 't1', name: 'Team Alpha', color: '#ff0000' },
+        { id: 't2', name: 'Team Beta', color: '#00ff00' },
+      ];
+      draft.selection.projectIds = ['p1'];
+      draft.selection.teamIds = ['t1', 't2'];
+    });
 
     const el = await fixture(html`<details-panel></details-panel>`);
 
@@ -123,8 +128,5 @@ describe('DetailsPanel helper coverage', () => {
     expect(input2).to.exist;
     expect(input2.value).to.equal('70');
 
-    // Restore stubs
-    teamsStub.restore();
-    projectsStub.restore();
   });
 });

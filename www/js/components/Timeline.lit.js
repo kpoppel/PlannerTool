@@ -200,7 +200,7 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats = state.getEffectiveFeatures?.() ?? [];
+  const feats = state.features.list() ?? [];
   if (!feats?.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
@@ -348,7 +348,7 @@ export async function initTimeline() {
       });
     });
     // Ensure any restored timeline scale from ViewService is applied now
-    const savedScale = state && state.timelineScale;
+    const savedScale = state && state.view.getTimelineScale();
     if (savedScale) {
       _currentTimelineScale = savedScale;
       if (savedScale === 'threeMonths') {
@@ -419,7 +419,7 @@ async function renderTimelineHeader(payload) {
   // we can skip recomputing months and avoid a header re-render.
   if (monthsCache?.length && payload?.ids?.length) {
     try {
-      const feats = state.getEffectiveFeatures?.() ?? [];
+      const feats = state.features.list() ?? [];
       const firstMonthStart = monthsCache[0].getTime();
       const lastMonth = monthsCache[monthsCache.length - 1];
       const afterLastMonth = new Date(
