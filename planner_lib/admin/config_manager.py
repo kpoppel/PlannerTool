@@ -245,31 +245,17 @@ class ConfigManager:
 
             # Overwrite the account storage with the backup data.  This is simpler than trying to
             # diff and merge with existing data, and the backup is expected to be a complete snapshot of all accounts.
-            # TODO: Use the account manager to create accounts instead of re-encrytping here.
-
-            # Re-encrypt PATs when the backup was produced with plaintext PATs.
-            pat_format = (data.get("_meta") or {}).get("pat_format")
-            if pat_format == "plaintext":
-                try:
-                    from planner_lib.accounts.config import _encrypt_pat
-                    def _reencrypt(record: dict) -> dict:
-                        if not isinstance(record, dict):
-                            return record
-                        rec = dict(record)
-                        if rec.get('pat'):
-                            try:
-                                rec['pat'] = _encrypt_pat(rec['pat'])
-                            except Exception:
-                                logger.warning(
-                                    'Could not re-encrypt PAT for %s during restore; '
-                                    'PAT will be cleared.',
-                                    rec.get('email', '?'),
-                                )
-                                rec['pat'] = None
-                        return rec
-                    users = {k: _reencrypt(v) for k, v in users.items()}
-                except Exception as e:
-                    logger.error('PAT re-encryption during restore failed: %s', e)
+            from planner_lib.accounts.config import _encrypt_pat
+            for record in users.values():
+                if not isinstance(record, dict):
+                    continue
+                if record.get('pat'):
+                    try:
+                        record['pat'] = _encrypt_pat(record['pat'])
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"Could not re-encrypt PAT for {record.get('email', '?')} during restore"
+                        ) from exc
 
             if sync_accounts_fn is not None:
                 # Derive admin set from permissions field in each user record.

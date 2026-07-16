@@ -506,6 +506,12 @@ async def admin_restore_backup(request: Request):
         session_mgr = resolve_service(request, 'session_manager')
         current_user_email = session_mgr.get_val(sid, 'email')
         result = await asyncio.to_thread(admin_svc.restore_backup, payload, current_user_email)
+        try:
+            await asyncio.to_thread(admin_svc.reload_config, session_id=sid)
+        except Exception as e:
+            logger.exception('Failed to reload configuration after restoring backup: %s', e)
+            if isinstance(result, dict):
+                result['warning'] = 'Restore completed, but the live configuration reload failed. Reload the page and verify Data Sources.'
         return JSONResponse(content=result)
     except ValueError as e:
         logger.info('Restore backup rejected: %s', e)

@@ -261,7 +261,6 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
 
     cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
     data = {
-        '_meta': {'pat_format': 'plaintext'},
         'accounts': {
             'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
@@ -275,28 +274,56 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
     assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
 
 
-def test_restore_backup_old_format_passed_through(monkeypatch):
-    """Old encrypted backups (no _meta) must be stored as-is for backward compatibility."""
+def test_restore_backup_encrypts_plaintext_pats_without_metadata(monkeypatch):
+    """Restore must encrypt restored PATs even when the backup omits metadata."""
     monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
     from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.accounts.config import _try_decrypt_pat
 
     synced: dict = {}
 
     def sync(users, admins):
         synced['users'] = users
 
-    # Old-style backup: no _meta field, PAT value is an opaque string (e.g. encrypted blob)
-    fake_encrypted = 'some-old-encrypted-blob-value'
     cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
     data = {
         'accounts': {
-            'users': {'user@example.com': {'email': 'user@example.com', 'pat': fake_encrypted}},
+            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
         },
     }
     cm.restore_backup(data, sync_accounts_fn=sync)
-    # Must be passed through unchanged
-    assert synced['users']['user@example.com']['pat'] == fake_encrypted
+    stored_pat = synced['users']['user@example.com']['pat']
+    assert stored_pat != 'plaintext-pat'
+    assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
+
+
+def test_restore_backup_encrypts_plaintext_pats(monkeypatch):
+    """Restore must encrypt plaintext PATs back into storage on the destination server key."""
+    monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
+    from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.accounts.config import _try_decrypt_pat
+
+    synced: dict = {}
+
+    def sync(users, admins):
+        synced['users'] = users
+        synced['admins'] = admins
+
+    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    data = {
+        '_meta': {'pat_format': 'plaintext'},
+        'accounts': {
+            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
+            'admins': {},
+        },
+    }
+
+    cm.restore_backup(data, sync_accounts_fn=sync)
+
+    stored_pat = synced['users']['user@example.com']['pat']
+    assert stored_pat != 'plaintext-pat'
+    assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
 
 
 def test_get_backup_corrupt_pat_becomes_none(monkeypatch):

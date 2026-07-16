@@ -94,6 +94,14 @@ def build_active_backend(feature_flags: Dict[str, Any], **services: Any) -> Any:
     return cls.build_from_flags(feature_flags, **services)
 
 
+def rebuild_backend_instance(instance: Any, feature_flags: Dict[str, Any], **services: Any) -> Any:
+    """Rebuild *instance* in place for the backend selected by *feature_flags*."""
+    replacement = build_active_backend(feature_flags, **services)
+    instance.__class__ = replacement.__class__
+    instance.__dict__ = replacement.__dict__
+    return instance
+
+
 def get_merged_schema() -> Dict[str, Any]:
     """Return merged ``config_schema()`` properties from all registered backends.
 

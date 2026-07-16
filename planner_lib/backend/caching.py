@@ -445,3 +445,9 @@ class CachingBackend:
             pass
         logger.info("CachingBackend: invalidated %d entries", len(invalidated))
         return {'ok': not errors, 'invalidated': invalidated, 'errors': errors}
+
+    def reload(self) -> None:
+        """Reload the wrapped backend in place and refresh wrapper state."""
+        if hasattr(self._inner, 'reload'):
+            self._inner.reload()
+        self._inner_is_remote = bool(getattr(self._inner, 'is_remote', False))

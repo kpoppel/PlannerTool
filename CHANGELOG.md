@@ -13,8 +13,9 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
-## [v4.2.0] - unreleased
+## [v5.0.0] - unreleased
 ### Fixed
+- Fixed backup/restore not restoring PATs, leaving admins and users without a visible reason why they suddenly cannot load any task data.
 - Fixed intermittent Azure backend disconnects during overlapping task/iteration reads by making Azure client connection contexts reference-counted instead of closing shared connections on each nested exit.
 - Fixed blank taskboard rendering on large datasets by restoring missing runtime snapshot/view-restore helper imports in `createPlannerRuntimeServices`, eliminating startup `ReferenceError` exceptions (`buildRuntimeSnapshot` / `planViewRestoreUiEffects`).
 - Fixed view menu duplication after saving/reloading views by rebuilding the saved-view list from canonical default plus fresh backend results instead of appending prior in-memory entries.
