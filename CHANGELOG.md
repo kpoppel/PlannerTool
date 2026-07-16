@@ -15,6 +15,7 @@ Template - do not change :
 ---
 ## [v5.0.0] - unreleased
 ### Fixed
+- Diskcache-backed config reads now treat missing projects/teams keys as empty values so the client can start before admin setup creates those records.
 - Fixed backup/restore not restoring PATs, leaving admins and users without a visible reason why they suddenly cannot load any task data.
 - Fixed intermittent Azure backend disconnects during overlapping task/iteration reads by making Azure client connection contexts reference-counted instead of closing shared connections on each nested exit.
 - Fixed blank taskboard rendering on large datasets by restoring missing runtime snapshot/view-restore helper imports in `createPlannerRuntimeServices`, eliminating startup `ReferenceError` exceptions (`buildRuntimeSnapshot` / `planViewRestoreUiEffects`).

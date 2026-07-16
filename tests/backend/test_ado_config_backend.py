@@ -100,6 +100,18 @@ def test_fetch_projects_reads_from_storage():
     assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
 
 
+def test_fetch_projects_missing_returns_empty():
+    """fetch_projects returns an empty list when projects config is absent."""
+    cb = ConfigBackend(storage=_MemStore())
+    assert cb.fetch_projects() == []
+
+
+def test_fetch_project_map_missing_returns_empty():
+    """fetch_project_map returns an empty list when projects config is absent."""
+    cb = ConfigBackend(storage=_MemStore())
+    assert cb.fetch_project_map() == []
+
+
 def test_fetch_config_teams_reads_from_storage():
     """fetch_config_teams returns non-excluded teams."""
     storage = _MemStore()
@@ -113,3 +125,9 @@ def test_fetch_config_teams_reads_from_storage():
     teams = cb.fetch_config_teams()
     assert len(teams) == 1
     assert teams[0]['name'] == 'Alpha'
+
+
+def test_fetch_config_teams_missing_returns_empty():
+    """fetch_config_teams returns an empty list when teams config is absent."""
+    cb = ConfigBackend(storage=_MemStore())
+    assert cb.fetch_config_teams() == []

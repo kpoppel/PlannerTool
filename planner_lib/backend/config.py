@@ -75,6 +75,14 @@ class ConfigBackend(
         self._storage = storage
         logger.info("ConfigBackend: initialised (diskcache storage)")
 
+    def _load_optional_config(self, key: str, default: Any) -> Any:
+        """Return a config value or *default* when the diskcache key is absent."""
+        try:
+            value = self._storage.load('config', key)
+        except KeyError:
+            return default
+        return default if value is None else value
+
     # ------------------------------------------------------------------
     # PeopleBackend  (diskcache-backed after migration 0022)
     # ------------------------------------------------------------------
@@ -102,7 +110,7 @@ class ConfigBackend(
         credential: Optional[BackendCredential] = None,
     ) -> List[dict]:
         """Return raw project entries (includes area_path etc.)."""
-        cfg = self._storage.load("config", "projects") or {}
+        cfg = self._load_optional_config('projects', {})
         project_map = cfg.get("project_map") or []
         return [dict(p, id=slugify(p.get("name"), prefix="project-")) for p in project_map]
 
@@ -111,13 +119,13 @@ class ConfigBackend(
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainProject]:
         """Return all configured projects in frontend-ready shape."""
-        cfg = self._storage.load("config", "projects") or {}
+        cfg = self._load_optional_config('projects', {})
         project_map = cfg.get("project_map") or []
 
         global_hierarchy: list = []
         global_state_sequence: list = []
         try:
-            gs = self._storage.load("config", "global_settings") or {}
+            gs = self._load_optional_config('global_settings', {})
             global_hierarchy = gs.get("task_type_hierarchy") or []
             global_state_sequence = gs.get("state_display_sequence") or []
         except Exception:
@@ -147,7 +155,7 @@ class ConfigBackend(
         credential: Optional[BackendCredential] = None,
     ) -> List[DomainTeam]:
         """Return all active (non-excluded) teams."""
-        cfg = self._storage.load("config", "teams") or {}
+        cfg = self._load_optional_config('teams', {})
         return [
             DomainTeam(
                 id=slugify(t.get("name"), prefix="team-"),
@@ -167,9 +175,7 @@ class ConfigBackend(
         credential: Optional[BackendCredential] = None,
     ) -> dict:
         """Return the raw iterations config dict."""
-        if not self._storage.exists("config", "iterations"):
-            return {}
-        return self._storage.load("config", "iterations") or {}
+        return self._load_optional_config('iterations', {})
 
     # ------------------------------------------------------------------
     # PlanConfigBackend
@@ -180,9 +186,7 @@ class ConfigBackend(
         credential: Optional[BackendCredential] = None,
     ) -> dict:
         """Return the raw area_plan_map config dict."""
-        if not self._storage.exists("config", "area_plan_map"):
-            return {}
-        return self._storage.load("config", "area_plan_map") or {}
+        return self._load_optional_config('area_plan_map', {})
 
     # ------------------------------------------------------------------
     # AdoConfigBackend
@@ -193,9 +197,7 @@ class ConfigBackend(
 
         Returns an empty dict when not yet configured.
         """
-        if not self._storage.exists("config", "ado_config"):
-            return {}
-        return self._storage.load("config", "ado_config") or {}
+        return self._load_optional_config('ado_config', {})
 
     def save_ado_config(self, content: dict) -> None:
         """Persist ADO-specific config directly to diskcache."""
@@ -211,9 +213,7 @@ class ConfigBackend(
         Returns an empty dict when not yet configured (defaults to diskcache
         backend — ``event_backend`` is treated as ``"local"`` when absent).
         """
-        if not self._storage.exists("config", "event_config"):
-            return {}
-        return self._storage.load("config", "event_config") or {}
+        return self._load_optional_config('event_config', {})
 
     def save_event_config(self, content: dict) -> None:
         """Persist event-backend config directly to diskcache."""
@@ -230,9 +230,7 @@ class ConfigBackend(
         diskcache backend — ``groups_backend`` is treated as ``"local"``
         when absent).
         """
-        if not self._storage.exists("config", "groups_config"):
-            return {}
-        return self._storage.load("config", "groups_config") or {}
+        return self._load_optional_config('groups_config', {})
 
     def save_groups_config(self, content: dict) -> None:
         """Persist groups-backend config directly to diskcache."""
