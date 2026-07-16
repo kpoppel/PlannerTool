@@ -10,6 +10,7 @@ import {
   computePosition,
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
+import { TIMELINE_CONFIG } from '../../www/js/components/Timeline.lit.js';
 
 describe('Utility helpers coverage', () => {
   it('parseDate handles null, Date, and string', () => {
@@ -46,15 +47,17 @@ describe('Utility helpers coverage', () => {
     // Build simple months array (first of month)
     const months = [new Date(2025, 0, 1), new Date(2025, 1, 1), new Date(2025, 2, 1)];
     _test_resetCache();
+    TIMELINE_CONFIG.monthWidth = 120;
     const featurePlanned = { start: '2025-01-02', end: '2025-01-10' };
     const res = computePosition(featurePlanned, months);
     expect(res).to.have.property('left');
     expect(res).to.have.property('width');
 
-    // Unplanned feature (no start/end) should also produce numbers
+    // Unplanned feature (no start/end) should use a full month width.
     const featureUnplanned = {};
     const res2 = computePosition(featureUnplanned, months);
     expect(res2).to.have.property('left');
     expect(res2).to.have.property('width');
+    expect(res2.width).to.equal(TIMELINE_CONFIG.monthWidth);
   });
 });

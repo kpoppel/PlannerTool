@@ -200,7 +200,10 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats = state.features.list() ?? [];
+  return computeTimelineRange(state.features.list() ?? []);
+}
+
+export function computeTimelineRange(feats = []) {
   if (!feats?.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
@@ -234,6 +237,12 @@ function computeRange() {
   if (!min || !max) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
+  }
+
+  if (featureFlags.SHOW_UNPLANNED_WORK && feats.some((f) => !f.start || !f.end)) {
+    const today = new Date();
+    if (today < min) min = today;
+    if (today > max) max = today;
   }
 
   min = addMonths(min, -1);

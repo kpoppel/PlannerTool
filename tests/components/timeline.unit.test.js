@@ -4,7 +4,9 @@ import {
   Timeline,
   _resetTimelineState,
   getTimelineMonths,
+  computeTimelineRange,
 } from '../../www/js/components/Timeline.lit.js';
+import { featureFlags } from '../../www/js/config.js';
 
 describe('Timeline component unit tests', () => {
   it('_resetTimelineState clears months cache', () => {
@@ -39,5 +41,21 @@ describe('Timeline component unit tests', () => {
     expect(s.scrollLeft).to.equal(100);
 
     el.remove();
+  });
+
+  it('computeTimelineRange includes today when unplanned work exists', () => {
+    const original = featureFlags.SHOW_UNPLANNED_WORK;
+    featureFlags.SHOW_UNPLANNED_WORK = true;
+    try {
+      const today = new Date();
+      const range = computeTimelineRange([
+        { start: '2025-01-01', end: '2025-02-01' },
+        {},
+      ]);
+      expect(range.min.getTime()).to.be.at.most(today.getTime());
+      expect(range.max.getTime()).to.be.at.least(today.getTime());
+    } finally {
+      featureFlags.SHOW_UNPLANNED_WORK = original;
+    }
   });
 });

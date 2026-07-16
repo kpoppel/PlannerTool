@@ -87,14 +87,18 @@ export const computePosition = (feature, monthsArg) => {
     isUnplanned ?
       new Date()
     : (parseDate(feature.start) || new Date('2025-01-01'));
+  if (isUnplanned) {
+    const startIdx = resolveMonthIndex(startDate.getTime());
+    const startDays = _cachedMonthDays[startIdx];
+    const startFraction = (startDate.getDate() - 1) / startDays;
+    const left = (startIdx + startFraction) * monthWidth;
+
+    // Unplanned cards intentionally render as a full month so they remain
+    // draggable/resizable even when the current date is outside the visible range.
+    return { left, width: monthWidth };
+  }
   const endDate =
-    isUnplanned ?
-      (() => {
-        const oneMonthLater = new Date(startDate);
-        oneMonthLater.setMonth(startDate.getMonth() + 1);
-        return oneMonthLater;
-      })()
-    : (parseDate(feature.end) || new Date('2025-01-15'));
+    parseDate(feature.end) || new Date('2025-01-15');
 
   const ms = startDate.getTime();
   const ems = endDate.getTime();
