@@ -1,6 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { FeatureService } from '../../www/js/services/FeatureService.js';
 import { state } from '../helpers/runtimeState.js';
+import { plannerApplication } from '../../www/js/application/plannerApplication.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
@@ -196,15 +197,68 @@ describe('Feature Service and State Oracles (consolidated)', () => {
     });
 
     it('updateFeatureDates should emit FeatureEvents.UPDATED', (done) => {
-      bus.once(FeatureEvents.UPDATED, () => done());
+      bus.once(FeatureEvents.UPDATED, (payload) => {
+        expect(payload.ids).to.include('f1');
+        done();
+      });
       const updates = [{ id: 'f1', start: '2024-01-02', end: '2024-01-12' }];
       state.updateFeatureDates(updates);
+    });
+
+    it('revertFeature should emit FeatureEvents.UPDATED for the reverted feature', (done) => {
+      state.updateFeatureDates([{ id: 'f1', start: '2024-01-02', end: '2024-01-12' }]);
+
+      bus.once(FeatureEvents.UPDATED, (payload) => {
+        expect(payload.ids).to.include('f1');
+        done();
+      });
+
+      plannerApplication.commands.revertFeature('f1');
     });
 
     it('getFeatureTitleById returns title or id', () => {
       const title = state.getFeatureTitleById('f1');
       expect(title).to.equal('Feature 1');
       expect(state.getFeatureTitleById('unknown')).to.equal('unknown');
+    });
+  });
+
+  describe('Baseline scenario edits', () => {
+    let originalBaselineFeatures;
+    let originalScenarioId;
+
+    beforeEach(() => {
+      originalBaselineFeatures = state.baselineFeatures.slice();
+      originalScenarioId = state.scenarios?.activeId;
+
+      state.setBaselineFeatures([
+        {
+          id: 'b1',
+          title: 'Baseline item',
+          type: 'feature',
+          start: '2025-01-01',
+          end: '2025-01-05',
+        },
+      ]);
+      state.initDefaultScenario();
+      state.activateScenario('baseline');
+    });
+
+    afterEach(() => {
+      state.setBaselineFeatures(originalBaselineFeatures);
+      if (originalScenarioId) state.activateScenario(originalScenarioId);
+    });
+
+    it('allows date edits while the baseline scenario is active', () => {
+      const changed = state.updateFeatureDates([
+        { id: 'b1', start: '2025-01-02', end: '2025-01-06' },
+      ]);
+
+      expect(changed).to.equal(1);
+      const eff = state.getEffectiveFeatureById('b1');
+      expect(eff.start).to.equal('2025-01-02');
+      expect(eff.end).to.equal('2025-01-06');
+      expect(eff.dirty).to.equal(true);
     });
   });
 });

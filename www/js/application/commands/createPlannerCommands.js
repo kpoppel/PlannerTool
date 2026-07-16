@@ -62,10 +62,9 @@ export function createPlannerCommands({ store, services, selectors }) {
     store.update(label, (draft) => {
       const items = asArray(draft.scenarios.items);
       const activeId = draft.scenarios.activeId;
-      const scenario = items.find(
-        (item) => item?.id === activeId && item?.readonly !== true
-      );
+      const scenario = items.find((item) => item?.id === activeId);
       if (!scenario) return;
+      if (scenario.readonly === true && scenario.id !== 'baseline') return;
       result = mutate(scenario, draft);
     });
     return result;
@@ -599,6 +598,11 @@ export function createPlannerCommands({ store, services, selectors }) {
       );
       if (count && runtime.getActiveScenario?.()) {
         recomputeRuntimeCapacity();
+        runtime.emitFeatureUpdated(
+          asArray(updates)
+            .map((update) => update?.id)
+            .filter(Boolean)
+        );
       }
       return count || 0;
     },
@@ -612,6 +616,7 @@ export function createPlannerCommands({ store, services, selectors }) {
       if (!updated) return false;
       if (field === 'start' || field === 'end' || field === 'capacity') {
         recomputeRuntimeCapacity([id]);
+        runtime.emitFeatureUpdated([id]);
       }
       runtime.emitScenarioUpdated?.(runtime.activeScenarioId, {
         type: 'field',
@@ -644,6 +649,7 @@ export function createPlannerCommands({ store, services, selectors }) {
       );
       if (!reverted) return false;
       recomputeRuntimeCapacity([id]);
+      runtime.emitFeatureUpdated([id]);
       runtime.emitScenarioUpdated?.(runtime.activeScenarioId, { type: 'revert', id });
       return true;
     },
