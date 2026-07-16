@@ -69,7 +69,9 @@ class IterationRepository:
             if project_id and pid != project_id:
                 continue
 
-            source_project, raw_roots = self._resolve_iteration_source(project, iterations_config)
+            resolution = self._resolve_iteration_source(project, iterations_config)
+            source_project = resolution.get('sourceProject', '')
+            raw_roots = resolution.get('roots', [])
             if not source_project:
                 continue
 
@@ -89,6 +91,9 @@ class IterationRepository:
                     sourceProject=source_project,
                     roots=list(raw_roots),
                     iterations=list(fetched_combos[combo]),
+                    matchedRuleId=resolution.get('matchedRuleId'),
+                    fallbackUsed=bool(resolution.get('fallbackUsed', False)),
+                    resolutionWarnings=list(resolution.get('warnings') or []),
                 )
             except Exception as exc:
                 logger.warning(
@@ -107,8 +112,17 @@ class IterationRepository:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_iteration_source(project: dict, iterations_config: dict) -> tuple[str, List[str]]:
-        """Resolve source ADO project and iteration roots for one configured project."""
+    def _resolve_iteration_source(project: dict, iterations_config: dict) -> Dict[str, Any]:
+        """Resolve source ADO project and iteration roots for one configured project.
+
+        Supports rule-based schema v2 while remaining backward compatible with
+        the legacy shape:
+        {
+          "azure_project": "...",
+          "default_roots": [...],
+          "project_overrides": { ... }
+        }
+        """
         configured_name = str(project.get('name') or '').strip()
         area_path = str(project.get('area_path') or '')
         area_project = (
@@ -118,27 +132,206 @@ class IterationRepository:
             if '/' in area_path
             else area_path
         )
-        default_project = str(iterations_config.get('azure_project') or area_project).strip()
+        normalized_cfg = IterationRepository._normalize_iterations_config(
+            iterations_config,
+            area_project=area_project,
+        )
 
-        project_overrides = iterations_config.get('project_overrides', {})
-        if not isinstance(project_overrides, dict):
-            project_overrides = {}
+        selected = IterationRepository._select_best_rule(
+            configured_name=configured_name,
+            area_path=area_path,
+            rules=normalized_cfg.get('rules') or [],
+        )
 
-        default_roots = iterations_config.get('default_roots', [])
-        override_entry = None
-        if configured_name and configured_name in project_overrides:
-            override_entry = project_overrides.get(configured_name)
+        default_cfg = normalized_cfg.get('default') or {}
+        fallback_project = str(default_cfg.get('source_project') or area_project).strip()
+        fallback_roots = IterationRepository._clean_roots(default_cfg.get('roots'))
 
-        source_project = default_project
-        raw_roots = default_roots
+        warnings: List[str] = []
+        if selected is None:
+            if normalized_cfg.get('rules'):
+                warnings.append('no_rule_matched_using_default')
+            if not fallback_project:
+                warnings.append('missing_default_source_project')
+            return {
+                'sourceProject': fallback_project,
+                'roots': fallback_roots,
+                'matchedRuleId': None,
+                'fallbackUsed': bool(normalized_cfg.get('rules')),
+                'warnings': warnings,
+            }
 
-        if isinstance(override_entry, dict):
-            source_project = str(override_entry.get('azure_project') or default_project).strip()
-            candidate_roots = override_entry.get('roots')
-            raw_roots = candidate_roots if isinstance(candidate_roots, list) else default_roots
+        source_project = str(selected.get('source_project') or fallback_project).strip()
+        roots = IterationRepository._clean_roots(selected.get('roots'))
+        if not roots:
+            roots = fallback_roots
+            warnings.append('rule_missing_roots_using_default')
 
-        clean_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
-        return source_project, clean_roots
+        if not source_project:
+            warnings.append('rule_missing_source_project')
+
+        return {
+            'sourceProject': source_project,
+            'roots': roots,
+            'matchedRuleId': selected.get('rule_id'),
+            'fallbackUsed': False,
+            'warnings': warnings,
+        }
+
+    @staticmethod
+    def _normalize_iterations_config(iterations_config: dict, area_project: str) -> Dict[str, Any]:
+        """Normalize iteration config into a v2-like shape.
+
+        Returned shape:
+        {
+          "default": {"source_project": str, "roots": list[str]},
+          "rules": list[dict]
+        }
+        """
+        cfg = iterations_config if isinstance(iterations_config, dict) else {}
+
+        has_v2_shape = isinstance(cfg.get('rules'), list) or isinstance(cfg.get('default'), dict)
+        if has_v2_shape:
+            default_obj = cfg.get('default') if isinstance(cfg.get('default'), dict) else {}
+            fallback_project = str(default_obj.get('source_project') or cfg.get('azure_project') or area_project).strip()
+            fallback_roots = IterationRepository._clean_roots(
+                default_obj.get('roots') if 'roots' in default_obj else cfg.get('default_roots')
+            )
+
+            normalized_rules: List[Dict[str, Any]] = []
+            for idx, raw_rule in enumerate(cfg.get('rules') or []):
+                if not isinstance(raw_rule, dict):
+                    continue
+                normalized_rules.append(
+                    IterationRepository._normalize_rule(raw_rule, idx)
+                )
+
+            return {
+                'default': {
+                    'source_project': fallback_project,
+                    'roots': fallback_roots,
+                },
+                'rules': normalized_rules,
+            }
+
+        # Legacy compatibility: synthesize low-priority rules from
+        # project_overrides and keep defaults from legacy root fields.
+        fallback_project = str(cfg.get('azure_project') or area_project).strip()
+        fallback_roots = IterationRepository._clean_roots(cfg.get('default_roots'))
+
+        normalized_rules = []
+        project_overrides = cfg.get('project_overrides') if isinstance(cfg.get('project_overrides'), dict) else {}
+        for idx, (project_name, override) in enumerate(project_overrides.items()):
+            if not isinstance(override, dict):
+                continue
+            normalized_rules.append(
+                {
+                    'rule_id': f'legacy-project-{idx + 1}',
+                    'enabled': True,
+                    'priority': 10,
+                    'match': {
+                        'project_names': [str(project_name)],
+                        'area_path_prefixes': [],
+                    },
+                    'source_project': str(override.get('azure_project') or fallback_project).strip(),
+                    'roots': IterationRepository._clean_roots(override.get('roots')),
+                }
+            )
+
+        return {
+            'default': {
+                'source_project': fallback_project,
+                'roots': fallback_roots,
+            },
+            'rules': normalized_rules,
+        }
+
+    @staticmethod
+    def _normalize_rule(raw_rule: Dict[str, Any], idx: int) -> Dict[str, Any]:
+        match_obj = raw_rule.get('match') if isinstance(raw_rule.get('match'), dict) else {}
+        project_names = IterationRepository._as_string_list(
+            match_obj.get('project_names', match_obj.get('project_name'))
+        )
+        area_prefixes = IterationRepository._as_string_list(
+            match_obj.get('area_path_prefixes', match_obj.get('area_path_prefix'))
+        )
+
+        priority_raw = raw_rule.get('priority', 100)
+        try:
+            priority = int(priority_raw)
+        except Exception:
+            priority = 100
+
+        return {
+            'rule_id': str(raw_rule.get('rule_id') or raw_rule.get('id') or f'rule-{idx + 1}'),
+            'enabled': bool(raw_rule.get('enabled', True)),
+            'priority': priority,
+            'match': {
+                'project_names': project_names,
+                'area_path_prefixes': area_prefixes,
+            },
+            'source_project': str(
+                raw_rule.get('source_project') or raw_rule.get('azure_project') or ''
+            ).strip(),
+            'roots': IterationRepository._clean_roots(raw_rule.get('roots')),
+        }
+
+    @staticmethod
+    def _as_string_list(value: Any) -> List[str]:
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if str(v).strip()]
+        if isinstance(value, str):
+            val = value.strip()
+            return [val] if val else []
+        return []
+
+    @staticmethod
+    def _clean_roots(value: Any) -> List[str]:
+        roots = IterationRepository._as_string_list(value)
+        return [r for r in roots if r]
+
+    @staticmethod
+    def _select_best_rule(
+        configured_name: str,
+        area_path: str,
+        rules: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        name_l = configured_name.lower()
+        area_l = area_path.replace('/', '\\').lower()
+        best: Optional[tuple[int, int, int, Dict[str, Any]]] = None
+
+        for idx, rule in enumerate(rules or []):
+            if not isinstance(rule, dict) or not rule.get('enabled', True):
+                continue
+
+            match_obj = rule.get('match') if isinstance(rule.get('match'), dict) else {}
+            rule_names = [n.lower() for n in IterationRepository._as_string_list(match_obj.get('project_names'))]
+            rule_prefixes = [
+                p.replace('/', '\\').lower()
+                for p in IterationRepository._as_string_list(match_obj.get('area_path_prefixes'))
+            ]
+
+            # All configured match dimensions must pass when present.
+            if rule_names and name_l not in rule_names:
+                continue
+
+            matched_prefix_len = 0
+            if rule_prefixes:
+                candidates = [p for p in rule_prefixes if area_l.startswith(p)]
+                if not candidates:
+                    continue
+                matched_prefix_len = max(len(p) for p in candidates)
+
+            try:
+                priority = int(rule.get('priority', 100))
+            except Exception:
+                priority = 100
+
+            candidate = (priority, matched_prefix_len, -idx, rule)
+            if best is None or candidate > best:
+                best = candidate
+
+        return best[3] if best is not None else None
 
     @staticmethod
     def _normalize_iterations(iters_map: Dict[str, Any]) -> List[DomainIteration]:

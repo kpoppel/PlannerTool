@@ -1,7 +1,10 @@
 import { expect } from '@esm-bundle/chai';
 
 import { selectActiveScenario, selectActiveWritableScenario } from '../../www/js/application/selectors/scenarioSelectors.js';
-import { selectIterationsForProject } from '../../www/js/application/selectors/iterationSelectors.js';
+import {
+  selectIterationResolutionForProject,
+  selectIterationsForProject,
+} from '../../www/js/application/selectors/iterationSelectors.js';
 import {
   selectCapacityEventPayload,
   selectCapacitySnapshot,
@@ -46,6 +49,11 @@ describe('runtime selectors', () => {
     const iterationsByProject = {
       projectA: {
         iterations: [{ id: 'it-1' }],
+        matchedRuleId: 'rule-a',
+        fallbackUsed: false,
+        resolutionWarnings: [],
+        sourceProject: 'ADO',
+        roots: ['Root'],
       },
     };
 
@@ -54,6 +62,15 @@ describe('runtime selectors', () => {
     ]);
     expect(selectIterationsForProject(iterationsByProject, 'projectB')).to.deep.equal([]);
     expect(selectIterationsForProject(iterationsByProject, null)).to.deep.equal([]);
+
+    expect(selectIterationResolutionForProject(iterationsByProject, 'projectA')).to.deep.equal({
+      matchedRuleId: 'rule-a',
+      fallbackUsed: false,
+      resolutionWarnings: [],
+      sourceProject: 'ADO',
+      roots: ['Root'],
+    });
+    expect(selectIterationResolutionForProject(iterationsByProject, 'projectB')).to.equal(null);
   });
 
   it('normalizes canonical capacity snapshots and maps to legacy event payload', () => {

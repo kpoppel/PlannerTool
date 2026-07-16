@@ -6,6 +6,7 @@ restore, cost (CRUD + inspect), system, ado (Azure DevOps config), and
 events-config (event backend selection).
 """
 import asyncio
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -19,6 +20,7 @@ from planner_lib.admin import cost_inspector
 from planner_lib.admin import people_inspector
 from planner_lib.admin import area_mapping_service
 from planner_lib.admin.plugin_runtime_config import normalize_plugin_runtime_config
+from planner_lib.repository.iteration_repository import IterationRepository
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -149,13 +151,106 @@ async def admin_save_global_settings(request: Request):
 # Iterations
 # ---------------------------------------------------------------------------
 
+def _to_v2_iterations_config(content: Any) -> Dict[str, Any]:
+    raw = content if isinstance(content, dict) else {}
+    normalized = IterationRepository._normalize_iterations_config(raw, area_project='')
+    default_obj = normalized.get('default') if isinstance(normalized.get('default'), dict) else {}
+    default_source = str(default_obj.get('source_project') or raw.get('azure_project') or '').strip()
+    default_roots = IterationRepository._clean_roots(default_obj.get('roots'))
+
+    rules: List[Dict[str, Any]] = []
+    for idx, rule in enumerate(normalized.get('rules') or []):
+        if not isinstance(rule, dict):
+            continue
+        match_obj = rule.get('match') if isinstance(rule.get('match'), dict) else {}
+        out_match: Dict[str, Any] = {}
+        project_names = IterationRepository._as_string_list(match_obj.get('project_names'))
+        area_prefixes = IterationRepository._as_string_list(match_obj.get('area_path_prefixes'))
+        if project_names:
+            out_match['project_names'] = project_names
+        if area_prefixes:
+            out_match['area_path_prefixes'] = area_prefixes
+
+        rules.append({
+            'rule_id': str(rule.get('rule_id') or f'rule-{idx + 1}'),
+            'enabled': bool(rule.get('enabled', True)),
+            'priority': int(rule.get('priority', 100)),
+            'match': out_match,
+            'source_project': str(rule.get('source_project') or '').strip(),
+            'roots': IterationRepository._clean_roots(rule.get('roots')),
+        })
+
+    return {
+        'schema_version': 2,
+        'default': {
+            'source_project': default_source,
+            'roots': default_roots,
+        },
+        'rules': rules,
+    }
+
+
+def _validate_iterations_v2(config: Dict[str, Any]) -> Dict[str, List[str]]:
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    default_obj = config.get('default') if isinstance(config.get('default'), dict) else {}
+    default_source = str(default_obj.get('source_project') or '').strip()
+    if not default_source:
+        warnings.append('default.source_project is empty; area-path project fallback will be used')
+
+    rule_ids = set()
+    for idx, rule in enumerate(config.get('rules') or []):
+        if not isinstance(rule, dict):
+            errors.append(f'rules[{idx}] must be an object')
+            continue
+        rule_id = str(rule.get('rule_id') or '').strip()
+        if not rule_id:
+            errors.append(f'rules[{idx}].rule_id is required')
+        elif rule_id in rule_ids:
+            errors.append(f'duplicate rule_id: {rule_id}')
+        else:
+            rule_ids.add(rule_id)
+
+        try:
+            int(rule.get('priority', 100))
+        except Exception:
+            errors.append(f'rules[{idx}].priority must be an integer')
+
+        match_obj = rule.get('match') if isinstance(rule.get('match'), dict) else {}
+        project_names = IterationRepository._as_string_list(match_obj.get('project_names'))
+        area_prefixes = IterationRepository._as_string_list(match_obj.get('area_path_prefixes'))
+        if not project_names and not area_prefixes:
+            warnings.append(f'rules[{idx}] has no match constraints and will act as a global rule')
+
+        source_project = str(rule.get('source_project') or '').strip()
+        if not source_project:
+            warnings.append(f'rules[{idx}] has empty source_project; default source will be used')
+
+    return {
+        'errors': errors,
+        'warnings': warnings,
+    }
+
+
+def _get_configured_projects(admin_svc) -> List[Dict[str, Any]]:
+    projects_cfg = admin_svc.get_config('projects', default={}) or {}
+    project_map = projects_cfg.get('project_map') if isinstance(projects_cfg, dict) else []
+    return [p for p in (project_map or []) if isinstance(p, dict)]
+
 @router.get('/admin/v1/iterations')
 @require_admin_session
 async def admin_get_iterations(request: Request):
     """Return the iterations configuration as JSON."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        return {'content': admin_svc.get_config('iterations', default={'default_roots': [], 'project_overrides': {}})}
+        stored = admin_svc.get_config('iterations', default={}) or {}
+        content = _to_v2_iterations_config(stored)
+        validation = _validate_iterations_v2(content)
+        return {
+            'content': content,
+            'validation': validation,
+        }
     except Exception as e:
         logger.exception('Failed to load iterations config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -170,13 +265,77 @@ async def admin_save_iterations(request: Request):
         content = payload.get('content', '')
         if content is None or content == '':
             raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
+
+        normalized = _to_v2_iterations_config(content)
+        validation = _validate_iterations_v2(normalized)
+        if validation['errors']:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    'error': 'invalid_iterations_config',
+                    'errors': validation['errors'],
+                    'warnings': validation['warnings'],
+                },
+            )
+
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('iterations', content)
-        return {'ok': True}
+        admin_svc.save_config('iterations', normalized)
+        return {
+            'ok': True,
+            'validation': validation,
+        }
     except HTTPException:
         raise
     except Exception as e:
         logger.exception('Failed to save iterations config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/iterations/migrate')
+@require_admin_session
+async def admin_migrate_iterations(request: Request):
+    """Migrate legacy iterations config to canonical v2 shape.
+
+    Payload:
+      {
+        "content": optional object,
+        "dry_run": boolean (default false)
+      }
+    """
+    try:
+        payload = await request.json()
+        dry_run = bool(payload.get('dry_run', False))
+
+        admin_svc = resolve_service(request, 'admin_service')
+        source = payload.get('content')
+        if source is None:
+            source = admin_svc.get_config('iterations', default={}) or {}
+
+        migrated = _to_v2_iterations_config(source)
+        validation = _validate_iterations_v2(migrated)
+        if validation['errors']:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    'error': 'invalid_iterations_config',
+                    'errors': validation['errors'],
+                    'warnings': validation['warnings'],
+                },
+            )
+
+        if not dry_run:
+            admin_svc.save_config('iterations', migrated)
+
+        return {
+            'ok': True,
+            'dry_run': dry_run,
+            'content': migrated,
+            'validation': validation,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to migrate iterations config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 
@@ -214,6 +373,139 @@ async def admin_browse_iterations(request: Request):
         raise
     except Exception as e:
         logger.exception('Failed to browse iterations: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/iterations/resolve-preview')
+@require_admin_session
+async def admin_iterations_resolve_preview(request: Request):
+    """Preview rule resolution per configured project with optional Azure fetch diagnostics.
+
+    Payload:
+      {
+        "content": optional iterations config object,
+        "project_ids": optional list of configured project ids,
+        "fetch": optional bool (default true)
+      }
+    """
+    try:
+        payload = await request.json()
+        fetch = bool(payload.get('fetch', True))
+
+        admin_svc = resolve_service(request, 'admin_service')
+        source = payload.get('content')
+        if source is None:
+            source = admin_svc.get_config('iterations', default={}) or {}
+        config = _to_v2_iterations_config(source)
+        validation = _validate_iterations_v2(config)
+        if validation['errors']:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    'error': 'invalid_iterations_config',
+                    'errors': validation['errors'],
+                    'warnings': validation['warnings'],
+                },
+            )
+
+        requested_ids = payload.get('project_ids') if isinstance(payload.get('project_ids'), list) else []
+        requested_ids = [str(x) for x in requested_ids if str(x).strip()]
+        projects = _get_configured_projects(admin_svc)
+        if requested_ids:
+            projects = [p for p in projects if str(p.get('id') or '') in requested_ids]
+
+        results = []
+        total_iterations = 0
+        fetch_errors = 0
+
+        azure_context = None
+        if fetch:
+            sid = _get_session_id_or_raise(request)
+            session_mgr = resolve_service(request, 'session_manager')
+            pat = session_mgr.get_val(sid, 'pat')
+            if not pat:
+                raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
+            azure_svc = resolve_service(request, 'azure_client')
+            azure_context = azure_svc.connect(pat)
+
+        if azure_context is None:
+            for project in projects:
+                resolution = IterationRepository._resolve_iteration_source(project, config)
+                results.append({
+                    'projectId': str(project.get('id') or ''),
+                    'projectName': str(project.get('name') or ''),
+                    'areaPath': str(project.get('area_path') or ''),
+                    'resolution': resolution,
+                    'fetch': {
+                        'attempted': False,
+                        'totalIterations': 0,
+                        'roots': [],
+                    },
+                })
+        else:
+            with azure_context as client:
+                for project in projects:
+                    resolution = IterationRepository._resolve_iteration_source(project, config)
+                    source_project = str(resolution.get('sourceProject') or '').strip()
+                    roots = resolution.get('roots') or []
+
+                    root_results = []
+                    project_total = 0
+                    for root in roots or [None]:
+                        full_root = f"{source_project}\\Iteration\\{root}" if root else None
+                        try:
+                            items = await asyncio.to_thread(
+                                client.get_iterations,
+                                source_project,
+                                full_root,
+                                10,
+                            )
+                            count = len(items or [])
+                            project_total += count
+                            root_results.append({
+                                'root': root,
+                                'fullRootPath': full_root,
+                                'ok': True,
+                                'count': count,
+                            })
+                        except Exception as exc:
+                            fetch_errors += 1
+                            root_results.append({
+                                'root': root,
+                                'fullRootPath': full_root,
+                                'ok': False,
+                                'count': 0,
+                                'error': str(exc),
+                            })
+
+                    total_iterations += project_total
+                    results.append({
+                        'projectId': str(project.get('id') or ''),
+                        'projectName': str(project.get('name') or ''),
+                        'areaPath': str(project.get('area_path') or ''),
+                        'resolution': resolution,
+                        'fetch': {
+                            'attempted': True,
+                            'totalIterations': project_total,
+                            'roots': root_results,
+                        },
+                    })
+
+        return {
+            'ok': True,
+            'validation': validation,
+            'projects': results,
+            'summary': {
+                'projectCount': len(results),
+                'totalIterations': total_iterations,
+                'fetchErrors': fetch_errors,
+                'fetchAttempted': fetch,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to preview iteration resolution: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 

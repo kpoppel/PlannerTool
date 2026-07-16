@@ -187,7 +187,10 @@ export class AdminProviderREST {
   }
 
   async getIterations() {
-    return this._adminGet('/admin/v1/iterations', 'getIterations');
+    return this._getJson('/admin/v1/iterations', 'getIterations', {
+      content: {},
+      validation: { errors: [], warnings: [] },
+    });
   }
 
   async saveIterations(content) {
@@ -197,6 +200,28 @@ export class AdminProviderREST {
   async browseIterations(payload) {
     return this._postJson('/admin/v1/iterations/browse', 'browseIterations', payload, {
       iterations: [],
+    });
+  }
+
+  async previewIterationsResolution(payload) {
+    return this._postJson(
+      '/admin/v1/iterations/resolve-preview',
+      'previewIterationsResolution',
+      payload,
+      {
+        ok: false,
+        projects: [],
+        summary: { projectCount: 0, totalIterations: 0, fetchErrors: 0, fetchAttempted: false },
+      }
+    );
+  }
+
+  async migrateIterations(payload) {
+    return this._postJson('/admin/v1/iterations/migrate', 'migrateIterations', payload, {
+      ok: false,
+      dry_run: true,
+      content: {},
+      validation: { errors: [], warnings: [] },
     });
   }
 

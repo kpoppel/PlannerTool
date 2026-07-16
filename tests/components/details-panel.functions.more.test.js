@@ -174,15 +174,22 @@ describe('DetailsPanel additional function coverage', () => {
 
   it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    el.feature = { id: 'f10' };
-    // Provide iterations via state.getIterationsForProject (current implementation).
-    const getIterationsStub = sinon.stub(state, 'getIterationsForProject').returns([
-      {
-        path: 'Proj\\Iteration\\It1',
-        startDate: '2025-02-01',
-        finishDate: '2025-02-10',
+    state.dataInitService.iterationsByProject = {
+      p1: {
+        projectId: 'p1',
+        projectName: 'Project 1',
+        sourceProject: 'Proj',
+        roots: ['TeamA'],
+        iterations: [
+          {
+            path: 'Proj\\Iteration\\It1',
+            startDate: '2025-02-01',
+            finishDate: '2025-02-10',
+          },
+        ],
       },
-    ]);
+    };
+    el.feature = { id: 'f10', project: 'p1' };
     // trigger the load that runs in updated lifecycle
     await el._loadIterationsForFeature();
 
@@ -193,14 +200,18 @@ describe('DetailsPanel additional function coverage', () => {
     const ev = { target: { value: 'It1' } };
     await el._onIterationChange(ev);
 
-    expect(fieldStub.calledOnceWithExactly('f10', 'iterationPath', 'It1', undefined, sinon.match.any)).to.be.true;
+    expect(fieldStub.calledOnce).to.be.true;
+    expect(fieldStub.getCall(0).args.slice(0, 3)).to.deep.equal([
+      'f10',
+      'iterationPath',
+      'It1',
+    ]);
     expect(datesStub.calledOnce).to.be.true;
     const arg = datesStub.getCall(0).args[0][0];
     expect(arg.id).to.equal('f10');
     expect(arg.start).to.equal('2025-02-01');
     expect(arg.end).to.equal('2025-02-10');
 
-    getIterationsStub.restore();
   });
 
   it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {

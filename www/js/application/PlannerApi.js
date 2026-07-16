@@ -109,6 +109,8 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
       getShowUnallocatedCards: () => state.showUnallocatedCards,
       getShowOnlyProjectHierarchy: () => state.showOnlyProjectHierarchy,
       getIterationsForProject: (projectId) => state.getIterationsForProject(projectId),
+      getIterationResolutionForProject: (projectId) =>
+        state.getIterationResolutionForProject(projectId),
       setTimelineScale: (scale) => state.setTimelineScale(scale),
       getDisplayMode: () => state.displayMode,
       setDisplayMode: (mode, suppressEmit) => state.setDisplayMode(mode, suppressEmit),

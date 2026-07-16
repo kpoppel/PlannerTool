@@ -37,7 +37,10 @@ import {
   selectExpandedFeatureIds,
   selectTeamAllocationExpansionFeatures,
 } from './selectors/expansionSelectors.js';
-import { selectIterationsForProject } from './selectors/iterationSelectors.js';
+import {
+  selectIterationResolutionForProject,
+  selectIterationsForProject,
+} from './selectors/iterationSelectors.js';
 import {
   selectActiveScenario,
   selectActiveWritableScenario,
@@ -663,6 +666,10 @@ class PlannerRuntime {
 
   getIterationsForProject(projectId) {
     return selectIterationsForProject(this.iterations, projectId);
+  }
+
+  getIterationResolutionForProject(projectId) {
+    return selectIterationResolutionForProject(this.iterations, projectId);
   }
 
   getTypeLevel(type) {

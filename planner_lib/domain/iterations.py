@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 
 class DomainIteration(TypedDict):
@@ -20,6 +20,9 @@ class DomainIterationGroup(TypedDict):
     sourceProject: str
     roots: List[str]
     iterations: List[DomainIteration]
+    matchedRuleId: NotRequired[Optional[str]]
+    fallbackUsed: NotRequired[bool]
+    resolutionWarnings: NotRequired[List[str]]
 
 
 DomainIterationsByProject = Dict[str, DomainIterationGroup]

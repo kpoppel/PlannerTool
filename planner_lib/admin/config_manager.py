@@ -156,7 +156,24 @@ class ConfigManager:
         # Configuration files (each key routed to the correct storage)
         for key in self.CONFIG_KEYS:
             try:
-                backup_data["config"][key] = self._storage_for(key).load('config', key)
+                config_value = self._storage_for(key).load('config', key)
+                
+                # Normalize ado_config: ensure mock flags are explicitly set.
+                # This prevents accidental mock mode activation on restore if
+                # generator_config is present but flags are missing.
+                if key == 'ado_config' and isinstance(config_value, dict):
+                    config_value = dict(config_value)  # shallow copy
+                    flags = config_value.get('feature_flags', {})
+                    if isinstance(flags, dict):
+                        flags = dict(flags)  # shallow copy
+                        # Explicitly set mock flags to false unless already true
+                        if 'use_azure_mock_generator' not in flags:
+                            flags['use_azure_mock_generator'] = False
+                        if 'use_azure_mock' not in flags:
+                            flags['use_azure_mock'] = False
+                        config_value['feature_flags'] = flags
+                
+                backup_data["config"][key] = config_value
             except KeyError:
                 backup_data["config"][key] = None
 

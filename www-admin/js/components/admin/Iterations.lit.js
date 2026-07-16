@@ -2,12 +2,13 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
 /**
- * AdminIterations - Manage iteration root paths configuration
+ * AdminIterations - Manage rule-based iteration resolution (schema v2).
  *
  * This component allows admins to:
- * - Browse available iterations for a project
- * - Configure default iteration root paths
- * - Set project-specific overrides
+ * - Browse available iterations for an Azure project/root
+ * - Edit default source/roots and matching rules
+ * - Preview effective resolution for configured projects
+ * - Migrate legacy iterations config to v2 shape
  */
 export class AdminIterations extends LitElement {
   static styles = css`
@@ -15,6 +16,7 @@ export class AdminIterations extends LitElement {
       display: block;
       height: 100%;
     }
+
     h2 {
       margin-top: 0;
       font-size: 1.1rem;
@@ -52,30 +54,17 @@ export class AdminIterations extends LitElement {
     }
 
     .browser-controls {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
       gap: 8px;
       margin-bottom: 12px;
     }
 
     .browser-controls input {
-      flex: 1;
       padding: 6px 10px;
       border: 1px solid #d1d5db;
       border-radius: 4px;
       font-size: 0.9rem;
-    }
-
-    .browser-controls button {
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-
-    .browser-controls button:hover {
-      background: #e5e7eb;
     }
 
     .iterations-list {
@@ -94,9 +83,6 @@ export class AdminIterations extends LitElement {
       border: 1px solid #e5e7eb;
       border-radius: 4px;
       font-size: 0.85rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
     }
 
     .iteration-item .path {
@@ -107,6 +93,7 @@ export class AdminIterations extends LitElement {
     .iteration-item .dates {
       font-size: 0.8rem;
       color: #6b7280;
+      margin-top: 2px;
     }
 
     .config-editor {
@@ -120,111 +107,83 @@ export class AdminIterations extends LitElement {
 
     .config-section label {
       display: block;
-      font-weight: 500;
-      margin-bottom: 4px;
+      font-weight: 600;
+      margin-bottom: 6px;
       font-size: 0.9rem;
     }
 
-    .roots-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    .small-note {
+      color: #6b7280;
+      font-size: 0.82rem;
       margin-bottom: 8px;
     }
 
-    .root-item {
+    .root-item,
+    .field-row {
       display: flex;
       gap: 8px;
       align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .root-item input,
+    .field-row input,
+    .field-row select {
+      flex: 1;
       padding: 6px 8px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 4px;
-    }
-
-    .root-item input {
-      flex: 1;
-      padding: 4px 8px;
       border: 1px solid #d1d5db;
       border-radius: 4px;
       font-size: 0.85rem;
-      font-family: monospace;
+      box-sizing: border-box;
     }
 
-    .root-item button {
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.8rem;
-    }
-
-    .root-item button:hover {
-      background: #e5e7eb;
-    }
-
-    .add-root {
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: 1px solid #3b82f6;
-      background: #eff6ff;
-      color: #3b82f6;
-      cursor: pointer;
-      font-size: 0.85rem;
-      margin-bottom: 8px;
-    }
-
-    .add-root:hover {
-      background: #dbeafe;
-    }
-
-    .project-overrides {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 2px solid #e5e7eb;
-    }
-
-    .override-item {
-      margin-bottom: 12px;
-      padding: 12px;
-      background: #f9fafb;
+    .rule-card {
       border: 1px solid #e5e7eb;
-      border-radius: 4px;
+      border-radius: 6px;
+      padding: 10px;
+      background: #f9fafb;
+      margin-bottom: 10px;
     }
 
-    .override-header {
+    .rule-header {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      gap: 8px;
       margin-bottom: 8px;
+      align-items: center;
     }
 
-    .override-header input {
+    .rule-header .rule-id {
       flex: 1;
-      padding: 4px 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      font-weight: 500;
+      font-family: monospace;
+      font-size: 0.84rem;
     }
 
     .actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px solid #e5e7eb;
     }
 
-    button.primary {
-      padding: 8px 16px;
+    button {
+      padding: 6px 12px;
       border-radius: 6px;
-      background: #3b82f6;
-      color: #fff;
-      border: 1px solid #3b82f6;
+      border: 1px solid #ccc;
+      background: #f3f4f6;
       cursor: pointer;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
+    }
+
+    button:hover {
+      background: #e5e7eb;
+    }
+
+    button.primary {
+      background: #3b82f6;
+      border-color: #3b82f6;
+      color: #fff;
     }
 
     button.primary:hover {
@@ -234,22 +193,64 @@ export class AdminIterations extends LitElement {
     .status {
       margin-left: 8px;
       font-size: 0.9rem;
-      color: #333;
     }
 
     .status.success {
       color: #10b981;
     }
+
     .status.error {
       color: #ef4444;
     }
 
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 40px;
-      color: #6b7280;
+    .warn-list {
+      margin: 8px 0;
+      padding: 8px;
+      border: 1px solid #f59e0b;
+      background: #fffbeb;
+      border-radius: 4px;
+      color: #92400e;
+      font-size: 0.82rem;
+    }
+
+    .error-list {
+      margin: 8px 0;
+      padding: 8px;
+      border: 1px solid #ef4444;
+      background: #fef2f2;
+      border-radius: 4px;
+      color: #991b1b;
+      font-size: 0.82rem;
+    }
+
+    .preview-list {
+      margin-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 10px;
+      max-height: 280px;
+      overflow: auto;
+    }
+
+    .preview-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 6px;
+      background: #fff;
+      font-size: 0.82rem;
+    }
+
+    .preview-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .preview-root-ok {
+      color: #047857;
+    }
+
+    .preview-root-error {
+      color: #b91c1c;
     }
 
     .toggle-mode {
@@ -271,6 +272,15 @@ export class AdminIterations extends LitElement {
       border: 1px solid #d1d5db;
       border-radius: 4px;
       resize: none;
+      box-sizing: border-box;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: #6b7280;
     }
   `;
 
@@ -284,15 +294,14 @@ export class AdminIterations extends LitElement {
     statusType: { type: String },
     useRawMode: { type: Boolean },
     configuredProjects: { type: Array },
+    validationWarnings: { type: Array },
+    validationErrors: { type: Array },
+    previewResult: { type: Object },
   };
 
   constructor() {
     super();
-    this.config = {
-      azure_project: '',
-      default_roots: [],
-      project_overrides: {},
-    };
+    this.config = this._emptyConfig();
     this.browsedIterations = [];
     this.browseProject = '';
     this.browseRoot = '';
@@ -301,32 +310,68 @@ export class AdminIterations extends LitElement {
     this.statusType = '';
     this.useRawMode = false;
     this.configuredProjects = [];
+    this.validationWarnings = [];
+    this.validationErrors = [];
+    this.previewResult = null;
+  }
+
+  _emptyConfig() {
+    return {
+      schema_version: 2,
+      default: {
+        source_project: '',
+        roots: [],
+      },
+      rules: [],
+    };
   }
 
   normalizeConfig(rawConfig) {
     const base = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
-    const rawOverrides =
-      base.project_overrides && typeof base.project_overrides === 'object' ?
-        base.project_overrides
+    const defaultObj =
+      base.default && typeof base.default === 'object' ?
+        base.default
       : {};
 
-    const normalizedOverrides = {};
-    Object.entries(rawOverrides).forEach(([projectName, overrideValue]) => {
-      if (overrideValue && typeof overrideValue === 'object') {
-        const roots = Array.isArray(overrideValue.roots) ? overrideValue.roots : [];
-
-        normalizedOverrides[projectName] = {
-          azure_project: overrideValue.azure_project || '',
-          roots: [...roots],
+    const rules = Array.isArray(base.rules) ? base.rules : [];
+    const normalizedRules = rules
+      .filter((r) => r && typeof r === 'object')
+      .map((rule, index) => {
+        const match = rule.match && typeof rule.match === 'object' ? rule.match : {};
+        return {
+          rule_id: String(rule.rule_id || rule.id || `rule-${index + 1}`),
+          enabled: rule.enabled !== false,
+          priority: Number.isFinite(Number(rule.priority)) ? Number(rule.priority) : 100,
+          match: {
+            project_names: this._asList(match.project_names, match.project_name),
+            area_path_prefixes: this._asList(match.area_path_prefixes, match.area_path_prefix),
+          },
+          source_project: String(rule.source_project || rule.azure_project || ''),
+          roots: this._asList(rule.roots),
         };
-      }
-    });
+      });
 
     return {
-      azure_project: base.azure_project || '',
-      default_roots: Array.isArray(base.default_roots) ? base.default_roots : [],
-      project_overrides: normalizedOverrides,
+      schema_version: 2,
+      default: {
+        source_project: String(defaultObj.source_project || base.azure_project || ''),
+        roots: this._asList(defaultObj.roots, base.default_roots),
+      },
+      rules: normalizedRules,
     };
+  }
+
+  _asList(primary, fallback = null) {
+    const value = primary ?? fallback;
+    if (Array.isArray(value)) {
+      return value
+        .map((v) => String(v || '').trim())
+        .filter((v) => !!v);
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return [value.trim()];
+    }
+    return [];
   }
 
   connectedCallback() {
@@ -339,10 +384,12 @@ export class AdminIterations extends LitElement {
     this.loading = true;
     try {
       const data = await adminProvider.getIterations();
-      this.config = this.normalizeConfig(data);
-      // Pre-fill browseProject from config if available
-      if (this.config.azure_project && !this.browseProject) {
-        this.browseProject = this.config.azure_project;
+      const content = data && data.content ? data.content : data;
+      this.config = this.normalizeConfig(content);
+      this.validationWarnings = data?.validation?.warnings || [];
+      this.validationErrors = data?.validation?.errors || [];
+      if (this.config.default.source_project && !this.browseProject) {
+        this.browseProject = this.config.default.source_project;
       }
       this.statusMsg = '';
     } catch (e) {
@@ -356,14 +403,12 @@ export class AdminIterations extends LitElement {
   async loadProjects() {
     try {
       const data = await adminProvider.getProjects();
-      if (data && data.project_map) {
-        // Extract unique project names from configured projects
-        const names = new Set();
-        data.project_map.forEach((p) => {
-          if (p.name) names.add(p.name);
-        });
-        this.configuredProjects = Array.from(names).sort();
-      }
+      const map = data?.project_map || [];
+      const names = new Set();
+      map.forEach((p) => {
+        if (p?.name) names.add(p.name);
+      });
+      this.configuredProjects = Array.from(names).sort();
     } catch (e) {
       console.error('Failed to load projects:', e);
       this.configuredProjects = [];
@@ -371,17 +416,21 @@ export class AdminIterations extends LitElement {
   }
 
   async browseIterations() {
+    if (!this.browseProject || !this.browseProject.trim()) {
+      this.statusMsg = 'Browse project is required';
+      this.statusType = 'error';
+      return;
+    }
     this.statusMsg = 'Browsing...';
     this.statusType = '';
     try {
-      // Construct full path with Iteration\ prefix for the API
       let fullRootPath = null;
       if (this.browseRoot && this.browseRoot.trim()) {
-        fullRootPath = `${this.browseProject}\\Iteration\\${this.browseRoot}`;
+        fullRootPath = `${this.browseProject}\\Iteration\\${this.browseRoot.trim()}`;
       }
 
       const result = await adminProvider.browseIterations({
-        project: this.browseProject,
+        project: this.browseProject.trim(),
         root_path: fullRootPath,
         depth: 10,
       });
@@ -398,7 +447,6 @@ export class AdminIterations extends LitElement {
     }
   }
 
-  // Strip project\Iteration\ prefix from path for display
   stripIterationPrefix(path) {
     if (!path) return path;
     const match = path.match(/^(.+?)\\Iteration\\(.+)$/);
@@ -406,102 +454,79 @@ export class AdminIterations extends LitElement {
   }
 
   addDefaultRoot() {
-    this.config.default_roots = [...this.config.default_roots, ''];
-    this.requestUpdate();
-  }
-
-  removeDefaultRoot(index) {
-    this.config.default_roots = this.config.default_roots.filter((_, i) => i !== index);
+    this.config.default.roots = [...(this.config.default.roots || []), ''];
     this.requestUpdate();
   }
 
   updateDefaultRoot(index, value) {
-    this.config.default_roots[index] = value;
+    const roots = [...(this.config.default.roots || [])];
+    roots[index] = value;
+    this.config.default.roots = roots;
     this.requestUpdate();
   }
 
-  addProjectOverride() {
-    // Use first available configured project as default
-    const defaultProject =
-      this.configuredProjects.length > 0 ? this.configuredProjects[0] : '';
-    if (defaultProject) {
-      this.config.project_overrides[defaultProject] = {
-        azure_project: '',
+  removeDefaultRoot(index) {
+    this.config.default.roots = (this.config.default.roots || []).filter((_, i) => i !== index);
+    this.requestUpdate();
+  }
+
+  addRule() {
+    this.config.rules = [
+      ...(this.config.rules || []),
+      {
+        rule_id: `rule-${(this.config.rules || []).length + 1}`,
+        enabled: true,
+        priority: 100,
+        match: {
+          project_names: [],
+          area_path_prefixes: [],
+        },
+        source_project: this.config.default.source_project || '',
         roots: [],
-      };
-      this.requestUpdate();
-    } else {
-      alert('No configured projects found. Please configure projects first.');
-    }
-  }
-
-  changeProjectOverrideName(oldName, newName) {
-    if (oldName === newName) return;
-    if (this.config.project_overrides[newName]) {
-      alert('Project override already exists for: ' + newName);
-      return;
-    }
-    this.config.project_overrides[newName] = this.config.project_overrides[oldName];
-    delete this.config.project_overrides[oldName];
+      },
+    ];
     this.requestUpdate();
   }
 
-  removeProjectOverride(projectName) {
-    delete this.config.project_overrides[projectName];
+  removeRule(index) {
+    this.config.rules = (this.config.rules || []).filter((_, i) => i !== index);
     this.requestUpdate();
   }
 
-  addOverrideRoot(projectName) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: [
-        ...current.roots,
-        '',
-      ],
-    };
+  updateRule(index, patch) {
+    const rules = [...(this.config.rules || [])];
+    rules[index] = { ...rules[index], ...patch };
+    this.config.rules = rules;
     this.requestUpdate();
   }
 
-  removeOverrideRoot(projectName, index) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: current.roots.filter((_, i) => i !== index),
-    };
-    this.requestUpdate();
+  updateRuleMatchCsv(index, key, value) {
+    const rule = (this.config.rules || [])[index] || {};
+    const match = rule.match && typeof rule.match === 'object' ? { ...rule.match } : {};
+    const parts = value
+      .split(',')
+      .map((x) => x.trim())
+      .filter((x) => !!x);
+    match[key] = parts;
+    this.updateRule(index, { match });
   }
 
-  updateOverrideRoot(projectName, index, value) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    const nextRoots = [...current.roots];
-    nextRoots[index] = value;
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: nextRoots,
-    };
-    this.requestUpdate();
+  addRuleRoot(index) {
+    const rule = (this.config.rules || [])[index] || { roots: [] };
+    this.updateRule(index, { roots: [...(rule.roots || []), ''] });
   }
 
-  updateOverrideAzureProject(projectName, value) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      azure_project: value,
-    };
-    this.requestUpdate();
+  updateRuleRoot(index, rootIndex, value) {
+    const rule = (this.config.rules || [])[index] || { roots: [] };
+    const roots = [...(rule.roots || [])];
+    roots[rootIndex] = value;
+    this.updateRule(index, { roots });
+  }
+
+  removeRuleRoot(index, rootIndex) {
+    const rule = (this.config.rules || [])[index] || { roots: [] };
+    const roots = (rule.roots || []).filter((_, i) => i !== rootIndex);
+    this.updateRule(index, { roots });
   }
 
   async saveConfig() {
@@ -509,7 +534,6 @@ export class AdminIterations extends LitElement {
     this.statusType = '';
 
     try {
-      // Parse from raw JSON if in raw mode
       if (this.useRawMode) {
         const textarea = this.shadowRoot.querySelector('.raw-editor textarea');
         if (textarea) {
@@ -523,20 +547,243 @@ export class AdminIterations extends LitElement {
         }
       }
 
-      await adminProvider.saveIterations(this.config);
+      const result = await adminProvider.saveIterations(this.config);
+      this.validationWarnings = result?.validation?.warnings || [];
+      this.validationErrors = result?.validation?.errors || [];
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
       setTimeout(() => {
         this.statusMsg = '';
       }, 3000);
     } catch (e) {
-      this.statusMsg = 'Error saving';
+      const detail = e?.message || '';
+      this.statusMsg = detail ? `Error saving: ${detail}` : 'Error saving';
+      this.statusType = 'error';
+    }
+  }
+
+  async migrateToV2() {
+    this.statusMsg = 'Migrating...';
+    this.statusType = '';
+    try {
+      const result = await adminProvider.migrateIterations({ dry_run: false });
+      this.config = this.normalizeConfig(result.content || {});
+      this.validationWarnings = result?.validation?.warnings || [];
+      this.validationErrors = result?.validation?.errors || [];
+      this.statusMsg = 'Migration completed';
+      this.statusType = 'success';
+    } catch (e) {
+      this.statusMsg = 'Migration failed';
+      this.statusType = 'error';
+    }
+  }
+
+  async previewResolution() {
+    this.statusMsg = 'Previewing resolution...';
+    this.statusType = '';
+    try {
+      const result = await adminProvider.previewIterationsResolution({
+        content: this.config,
+        fetch: true,
+      });
+      this.previewResult = result;
+      this.validationWarnings = result?.validation?.warnings || this.validationWarnings;
+      this.statusMsg = 'Resolution preview updated';
+      this.statusType = 'success';
+    } catch (e) {
+      this.previewResult = null;
+      this.statusMsg = 'Failed to preview resolution';
       this.statusType = 'error';
     }
   }
 
   toggleMode() {
     this.useRawMode = !this.useRawMode;
+  }
+
+  _renderValidation() {
+    return html`
+      ${this.validationErrors && this.validationErrors.length ?
+        html`
+          <div class="error-list">
+            <div><strong>Validation errors:</strong></div>
+            ${this.validationErrors.map((w) => html`<div>- ${w}</div>`)}
+          </div>
+        `
+      : ''}
+      ${this.validationWarnings && this.validationWarnings.length ?
+        html`
+          <div class="warn-list">
+            <div><strong>Validation warnings:</strong></div>
+            ${this.validationWarnings.map((w) => html`<div>- ${w}</div>`)}
+          </div>
+        `
+      : ''}
+    `;
+  }
+
+  _renderPreview() {
+    if (!this.previewResult) return '';
+    const summary = this.previewResult.summary || {};
+    const projects = this.previewResult.projects || [];
+
+    return html`
+      <div class="preview-list">
+        <div class="small-note">
+          Preview: ${summary.projectCount || 0} projects, ${summary.totalIterations || 0} iterations,
+          ${summary.fetchErrors || 0} root errors.
+        </div>
+        ${projects.map(
+          (project) => html`
+            <div class="preview-item">
+              <div class="preview-title">${project.projectName || project.projectId}</div>
+              <div>Area: ${project.areaPath || '—'}</div>
+              <div>Rule: ${project.resolution?.matchedRuleId || 'default fallback'}</div>
+              <div>Source: ${project.resolution?.sourceProject || '—'}</div>
+              <div>Roots: ${(project.resolution?.roots || []).join(', ') || '—'}</div>
+              ${(project.fetch?.roots || []).map(
+                (rootResult) => html`
+                  <div class="${rootResult.ok ? 'preview-root-ok' : 'preview-root-error'}">
+                    ${rootResult.ok ? 'OK' : 'ERR'} ${rootResult.fullRootPath || '(default root)'}
+                    ${rootResult.ok ? `(${rootResult.count})` : `(${rootResult.error || 'error'})`}
+                  </div>
+                `
+              )}
+            </div>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  _renderRulesForm() {
+    return html`
+      <div class="config-section">
+        <label>Default Source Project</label>
+        <div class="field-row">
+          <input
+            type="text"
+            .value="${this.config.default.source_project || ''}"
+            @input="${(e) => {
+              this.config.default.source_project = e.target.value;
+              this.requestUpdate();
+            }}"
+            placeholder="e.g. Platform_Development"
+          />
+        </div>
+      </div>
+
+      <div class="config-section">
+        <label>Default Roots</label>
+        <div class="small-note">
+          Relative to &lt;source_project&gt;\\Iteration\\... (e.g. eSW\\Platform)
+        </div>
+        ${(this.config.default.roots || []).map(
+          (root, index) => html`
+            <div class="root-item">
+              <input
+                type="text"
+                .value="${root}"
+                @input="${(e) => this.updateDefaultRoot(index, e.target.value)}"
+                placeholder="e.g. eSW\\Platform"
+              />
+              <button @click="${() => this.removeDefaultRoot(index)}">Remove</button>
+            </div>
+          `
+        )}
+        <button @click="${this.addDefaultRoot}">+ Add Default Root</button>
+      </div>
+
+      <div class="config-section">
+        <label>Rules</label>
+        <div class="small-note">
+          Highest priority wins. Area-prefix specificity is used as tie-breaker.
+        </div>
+        ${(this.config.rules || []).map(
+          (rule, index) => html`
+            <div class="rule-card">
+              <div class="rule-header">
+                <input
+                  class="rule-id"
+                  type="text"
+                  .value="${rule.rule_id || ''}"
+                  @input="${(e) => this.updateRule(index, { rule_id: e.target.value })}"
+                  placeholder="rule id"
+                />
+                <label>
+                  <input
+                    type="checkbox"
+                    .checked="${rule.enabled !== false}"
+                    @change="${(e) => this.updateRule(index, { enabled: e.target.checked })}"
+                  />
+                  Enabled
+                </label>
+                <button @click="${() => this.removeRule(index)}">Remove Rule</button>
+              </div>
+
+              <div class="field-row">
+                <label style="min-width: 70px;">Priority</label>
+                <input
+                  type="number"
+                  .value="${rule.priority ?? 100}"
+                  @input="${(e) =>
+                    this.updateRule(index, { priority: Number.parseInt(e.target.value || '100', 10) })}"
+                />
+              </div>
+
+              <div class="field-row">
+                <label style="min-width: 70px;">Source</label>
+                <input
+                  type="text"
+                  .value="${rule.source_project || ''}"
+                  @input="${(e) => this.updateRule(index, { source_project: e.target.value })}"
+                  placeholder="ADO source project"
+                />
+              </div>
+
+              <div class="field-row">
+                <label style="min-width: 70px;">Projects</label>
+                <input
+                  type="text"
+                  .value="${(rule.match?.project_names || []).join(', ')}"
+                  @input="${(e) =>
+                    this.updateRuleMatchCsv(index, 'project_names', e.target.value)}"
+                  placeholder="Configured project names (comma-separated)"
+                />
+              </div>
+
+              <div class="field-row">
+                <label style="min-width: 70px;">Areas</label>
+                <input
+                  type="text"
+                  .value="${(rule.match?.area_path_prefixes || []).join(', ')}"
+                  @input="${(e) =>
+                    this.updateRuleMatchCsv(index, 'area_path_prefixes', e.target.value)}"
+                  placeholder="Area path prefixes (comma-separated)"
+                />
+              </div>
+
+              <div class="small-note">Rule roots (relative path parts)</div>
+              ${(rule.roots || []).map(
+                (root, rootIndex) => html`
+                  <div class="root-item">
+                    <input
+                      type="text"
+                      .value="${root}"
+                      @input="${(e) => this.updateRuleRoot(index, rootIndex, e.target.value)}"
+                      placeholder="e.g. eSW\\Teams\\Dalton"
+                    />
+                    <button @click="${() => this.removeRuleRoot(index, rootIndex)}">Remove</button>
+                  </div>
+                `
+              )}
+              <button @click="${() => this.addRuleRoot(index)}">+ Add Rule Root</button>
+            </div>
+          `
+        )}
+        <button @click="${this.addRule}">+ Add Rule</button>
+      </div>
+    `;
   }
 
   render() {
@@ -546,16 +793,15 @@ export class AdminIterations extends LitElement {
 
     return html`
       <section>
-        <h2>Iterations Configuration</h2>
+        <h2>Iterations Configuration (Rule-Based)</h2>
         <div class="container">
-          <!-- Left panel: Browse iterations -->
           <div class="panel">
             <h3>Browse Iterations</h3>
             <div class="browser">
               <div class="browser-controls">
                 <input
                   type="text"
-                  placeholder="Azure Project name"
+                  placeholder="Azure project"
                   .value="${this.browseProject}"
                   @input="${(e) => {
                     this.browseProject = e.target.value;
@@ -576,23 +822,21 @@ export class AdminIterations extends LitElement {
                 ${this.browsedIterations.length === 0 ?
                   html`
                     <div style="text-align: center; color: #6b7280; padding: 20px;">
-                      Enter project name and click Browse
+                      Enter project and click Browse
                     </div>
                   `
                 : this.browsedIterations.map(
                     (it) => html`
                       <div class="iteration-item">
-                        <div>
-                          <div class="path">${this.stripIterationPrefix(it.path)}</div>
-                          ${it.startDate || it.finishDate ?
-                            html`
-                              <div class="dates">
-                                ${it.startDate ? `Start: ${it.startDate}` : ''}
-                                ${it.finishDate ? `End: ${it.finishDate}` : ''}
-                              </div>
-                            `
-                          : ''}
-                        </div>
+                        <div class="path">${this.stripIterationPrefix(it.path)}</div>
+                        ${it.startDate || it.finishDate ?
+                          html`
+                            <div class="dates">
+                              ${it.startDate ? `Start: ${it.startDate}` : ''}
+                              ${it.finishDate ? ` End: ${it.finishDate}` : ''}
+                            </div>
+                          `
+                        : ''}
                       </div>
                     `
                   )}
@@ -600,16 +844,16 @@ export class AdminIterations extends LitElement {
             </div>
           </div>
 
-          <!-- Right panel: Configuration -->
           <div class="panel">
             <div
               style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;"
             >
-              <h3 style="margin: 0;">Configuration</h3>
+              <h3 style="margin: 0;">Rules Editor</h3>
               <button class="toggle-mode" @click="${this.toggleMode}">
                 ${this.useRawMode ? 'Form Mode' : 'Raw JSON'}
               </button>
             </div>
+
             ${this.useRawMode ?
               html`
                 <div class="raw-editor">
@@ -619,7 +863,7 @@ export class AdminIterations extends LitElement {
                       try {
                         this.config = this.normalizeConfig(JSON.parse(e.target.value));
                       } catch (err) {
-                        // Keep typing, don't update until valid
+                        // Keep typing
                       }
                     }}"
                   ></textarea>
@@ -627,145 +871,18 @@ export class AdminIterations extends LitElement {
               `
             : html`
                 <div class="config-editor">
-                  <div class="config-section">
-                    <label>Azure Project Name</label>
-                    <div class="root-item">
-                      <input
-                        type="text"
-                        .value="${this.config.azure_project || ''}"
-                        @input="${(e) => {
-                          this.config.azure_project = e.target.value;
-                          this.requestUpdate();
-                        }}"
-                        placeholder="e.g., my_azure_project"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="config-section">
-                    <label>Default Iteration Roots (without 'Iteration\\' prefix)</label>
-                    <div class="roots-list">
-                      ${this.config.default_roots.map(
-                        (root, index) => html`
-                          <div class="root-item">
-                            <input
-                              type="text"
-                              .value="${root}"
-                              @input="${(e) =>
-                                this.updateDefaultRoot(index, e.target.value)}"
-                              placeholder="e.g., my_team or my_path\\my_team"
-                            />
-                            <button @click="${() => this.removeDefaultRoot(index)}">
-                              Remove
-                            </button>
-                          </div>
-                        `
-                      )}
-                    </div>
-                    <button class="add-root" @click="${this.addDefaultRoot}">
-                      + Add Default Root
-                    </button>
-                  </div>
-
-                  <div class="project-overrides">
-                    <label>Project Overrides</label>
-                    <div class="status" style="margin: 6px 0 10px 0; color: #4b5563; font-size: 0.85rem;">
-                      Each configured project can override both the source ADO project and the
-                      iteration roots; roots are relative to Project\\Iteration.
-                    </div>
-                    ${Object.entries(this.config.project_overrides).map(
-                      ([projectName, override]) => html`
-                        <div class="override-item">
-                          <div class="override-header">
-                            <select
-                              .value="${projectName}"
-                              @change="${(e) =>
-                                this.changeProjectOverrideName(
-                                  projectName,
-                                  e.target.value
-                                )}"
-                              style="margin-right: 8px; flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.85rem;"
-                            >
-                              ${this.configuredProjects.map(
-                                (proj) => html`
-                                  <option
-                                    value="${proj}"
-                                    ?selected="${proj === projectName}"
-                                  >
-                                    ${proj}
-                                  </option>
-                                `
-                              )}
-                            </select>
-                            <button
-                              @click="${() => this.removeProjectOverride(projectName)}"
-                            >
-                              Remove Project
-                            </button>
-                          </div>
-                          <div class="root-item" style="margin-bottom: 8px;">
-                            <input
-                              type="text"
-                              .value="${override.azure_project || ''}"
-                              @input="${(e) =>
-                                this.updateOverrideAzureProject(
-                                  projectName,
-                                  e.target.value
-                                )}"
-                              placeholder="ADO project override (optional, defaults to global)"
-                            />
-                          </div>
-                          <div class="roots-list">
-                            ${(override.roots || []).map(
-                              (root, index) => html`
-                                <div class="root-item">
-                                  <input
-                                    type="text"
-                                    .value="${root}"
-                                    @input="${(e) =>
-                                      this.updateOverrideRoot(
-                                        projectName,
-                                        index,
-                                        e.target.value
-                                      )}"
-                                    placeholder="e.g., Team1 or Backend\\Team1"
-                                  />
-                                  <button
-                                    @click="${() =>
-                                      this.removeOverrideRoot(projectName, index)}"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              `
-                            )}
-                            <button
-                              class="add-root"
-                              @click="${() => this.addOverrideRoot(projectName)}"
-                            >
-                              + Add Root
-                            </button>
-                          </div>
-                        </div>
-                      `
-                    )}
-                    <button class="add-root" @click="${this.addProjectOverride}">
-                      + Add Project Override
-                    </button>
-                  </div>
-
-                  <div class="actions">
-                    <button class="primary" @click="${this.saveConfig}">
-                      Save Configuration
-                    </button>
-                    ${this.statusMsg ?
-                      html`
-                        <span class="status ${this.statusType}">${this.statusMsg}</span>
-                      `
-                    : ''}
-                  </div>
+                  ${this._renderValidation()}
+                  ${this._renderRulesForm()}
                 </div>
               `}
+
+            <div class="actions">
+              <button class="primary" @click="${this.saveConfig}">Save Configuration</button>
+              <button @click="${this.previewResolution}">Test Rules</button>
+              <button @click="${this.migrateToV2}">Migrate Legacy to V2</button>
+              ${this.statusMsg ? html`<span class="status ${this.statusType}">${this.statusMsg}</span>` : ''}
+            </div>
+            ${this._renderPreview()}
           </div>
         </div>
       </section>

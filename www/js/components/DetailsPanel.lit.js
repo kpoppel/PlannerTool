@@ -26,6 +26,7 @@ export class DetailsPanelLit extends LitElement {
     feature: { type: Object },
     open: { type: Boolean },
     iterations: { type: Array },
+    iterationResolution: { type: Object },
     editingCapacityTeam: { type: String },
     showAddTeamPopover: { type: Boolean },
   };
@@ -186,6 +187,16 @@ export class DetailsPanelLit extends LitElement {
     .iteration-select.iteration-dirty.dates-override {
       border-style: dashed;
       border-color: #e6a817;
+    }
+    .iteration-resolution-warning {
+      margin-top: 6px;
+      padding: 6px 8px;
+      border: 1px solid #f59e0b;
+      border-radius: 4px;
+      background: #fffbeb;
+      color: #92400e;
+      font-size: 12px;
+      line-height: 1.4;
     }
     /* Status color variants (migrated from global CSS into details panel) */
     .status-new {
@@ -848,6 +859,8 @@ export class DetailsPanelLit extends LitElement {
     super();
     this.feature = null;
     this.open = false;
+    this.iterations = [];
+    this.iterationResolution = null;
     this.editingCapacityTeam = null; // Track which team pill is being edited
     this.showAddTeamPopover = false; // Track if add team popover is visible
     this.editingState = false;
@@ -1337,11 +1350,13 @@ export class DetailsPanelLit extends LitElement {
       const f = this.feature;
       if (!f) {
         this.iterations = [];
+        this.iterationResolution = null;
         return;
       }
 
       const projectId = f.project ? String(f.project) : null;
       this.iterations = state.view.getIterationsForProject(projectId);
+      this.iterationResolution = state.view.getIterationResolutionForProject(projectId);
       // Lit's property-binding diff skips re-setting `.value` on the <select>
       // when `selectedPath` hasn't changed between renders (same card reopened).
       // Waiting for updateComplete ensures <option> elements exist, then we
@@ -1921,6 +1936,10 @@ export class DetailsPanelLit extends LitElement {
             // Dirty: iterationPath was changed from its original (base/ADO) value
             const iterationDirty = orig.iterationPath !== undefined &&
               feature.iterationPath !== orig.iterationPath;
+            const resolutionWarnings = this.iterationResolution?.resolutionWarnings || [];
+            const showResolutionWarning =
+              !!this.iterationResolution &&
+              (this.iterationResolution?.fallbackUsed || resolutionWarnings.length > 0);
 
             // Tooltip text for changed inputs
             const startTitle = startChanged ? `was ${startOrig}` : 'Start date';
@@ -1959,6 +1978,17 @@ export class DetailsPanelLit extends LitElement {
                     )
                   : html`<option disabled>Loading…</option>`}
                 </select>
+                ${showResolutionWarning ?
+                  html`
+                    <div class="iteration-resolution-warning">
+                      Iteration source fallback was used.
+                      ${this.iterationResolution?.sourceProject ?
+                        html` Source: ${this.iterationResolution.sourceProject}.`
+                      : ''}
+                      ${resolutionWarnings.length ? html` Warnings: ${resolutionWarnings.join(', ')}.` : ''}
+                    </div>
+                  `
+                : ''}
               </div>
 
               <!-- Inline date row: [start] → [end] -->

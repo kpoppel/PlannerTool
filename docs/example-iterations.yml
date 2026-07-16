@@ -1,21 +1,47 @@
 # Iterations configuration
-# 
-# This file defines the iteration root paths from which to fetch iterations.
-# 
-# Structure:
-#   default_roots: List of default root iteration paths used when no project override exists
-#   project_overrides: Map of project name -> list of root iteration paths
-# 
-# Example:
-#   default_roots:
-#     - "my_azure_project\\my_team"
-#     - "my_azure_project\\my_other_team"
-#   
-#   project_overrides:
-#     MySpecialProject:
-#       - "MySpecialProject\\Team1"
+#
+# Preferred schema (v2): rule-based resolution.
+# A configured project is matched against rules using priority and match
+# specificity (area_path_prefix). When no rule matches, default is used.
+#
+# Notes:
+# - roots are relative sub-paths under <source_project>\Iteration\...
+# - match.project_name accepts one configured project name
+# - match.project_names accepts a list of configured project names
+# - match.area_path_prefix / area_path_prefixes match the configured project area_path
 
-default_roots:
-  - "my_azure_project\\my_team"
+schema_version: 2
 
-project_overrides: {}
+default:
+  source_project: my_project
+  roots:
+    - my\path
+
+rules:
+  - rule_id: team1-by-name
+    enabled: true
+    priority: 30
+    match:
+      project_name: team1
+    source_project: my_project
+    roots:
+      - path\to\iterations
+
+  - rule_id: team-by-area
+    enabled: true
+    priority: 20
+    match:
+      area_path_prefix: my_project\path\to\team
+    source_project: my_project
+    roots:
+      - path\to\iterations
+
+# Legacy schema is still supported for compatibility:
+# azure_project: my_project
+# default_roots:
+#   - my\path
+# project_overrides:
+#   team1:
+#     azure_project: my_project
+#     roots:
+#       - path\to\iterations
