@@ -77,6 +77,8 @@ export class ViewSaveModal extends LitElement {
       selectedProjects: [],
       selectedTeams: [],
       viewOptions: {},
+      selectedFeatureStates: [],
+      taskFilters: {},
       taskTypes: [],
       graphType: 'team',
       expansionOptions: {
@@ -104,10 +106,14 @@ export class ViewSaveModal extends LitElement {
     const vo = state.view.captureCurrent();
     this.previewData.viewOptions = {
       timelineScale: vo.timelineScale || 'months',
-      condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
+      displayMode: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),
       sortMode: vo.featureSortMode || 'rank',
       showDependencies: vo.showDependencies ? 'Yes' : 'No',
     };
+
+    // Get selected feature states and task filters
+    this.previewData.selectedFeatureStates = state.filters.getFeatureStates() || [];
+    this.previewData.taskFilters = state.filters.getTaskFilters() || {};
 
     // Get task types from sidebar
     const sidebarElement = document.querySelector('app-sidebar');
@@ -276,7 +282,7 @@ export class ViewSaveModal extends LitElement {
                       </li>
                       <li>
                         Display Mode:
-                        <strong>${this.previewData.viewOptions.condensedCards}</strong>
+                        <strong>${this.previewData.viewOptions.displayMode}</strong>
                       </li>
                       <li>
                         Sort Mode:
@@ -304,6 +310,37 @@ export class ViewSaveModal extends LitElement {
                           (type) => html`<span class="preview-badge">${type}</span>`
                         )}
                     </div>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">
+                      Selected Feature States (${this.previewData.selectedFeatureStates.length}):
+                    </div>
+                    <div class="preview-value">
+                      ${this.previewData.selectedFeatureStates.length === 0 ?
+                        html`<em>None</em>`
+                      : this.previewData.selectedFeatureStates.map(
+                          (stateName) => html`<span class="preview-badge">${stateName}</span>`
+                        )}
+                    </div>
+                  </div>
+
+                  <div class="preview-group">
+                    <div class="preview-label">Task Filters:</div>
+                    <ul class="preview-list">
+                      ${Object.entries(this.previewData.taskFilters || {}).map(
+                        ([dimension, options]) => html`
+                          <li>
+                            ${dimension}: <strong
+                              >${Object.entries(options || {})
+                                .filter(([, enabled]) => !!enabled)
+                                .map(([name]) => name)
+                                .join(', ') || 'None'}</strong
+                            >
+                          </li>
+                        `
+                      )}
+                    </ul>
                   </div>
 
                   <div class="preview-group">

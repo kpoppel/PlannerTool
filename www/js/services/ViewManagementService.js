@@ -331,11 +331,19 @@ export class ViewManagementService {
           restorePayload.taskFilters = viewOptions.taskFilters;
         }
         if (Array.isArray(viewOptions.selectedFeatureStates)) {
+          const savedStates = viewOptions.selectedFeatureStates.filter(Boolean);
           const availableStates = this._state.availableFeatureStates || [];
-          const validStates = viewOptions.selectedFeatureStates.filter((s) => availableStates.includes(s));
-          restorePayload.selectedStates = validStates;
+          const validStates =
+            availableStates.length > 0 ?
+              savedStates.filter((s) => availableStates.includes(s))
+            : savedStates;
+          restorePayload.selectedStates = Array.from(new Set(validStates));
         }
-        const selectedTaskTypes = this._deriveSelectedTaskTypes(sidebarElement, true);
+        const selectedTaskTypes = this._resolveSelectedTaskTypes(
+          viewOptions,
+          sidebarElement,
+          true
+        );
         const expansion = this._extractExpansionState(viewOptions);
         this._applyViewRestoreTransaction({
           ...restorePayload,
@@ -623,6 +631,13 @@ export class ViewManagementService {
     // Avoid committing an empty task-type selection in that case.
     if (!Array.isArray(availableTypes) || availableTypes.length === 0) return null;
     return availableTypes.filter((t) => this._viewService.isTypeVisible(t));
+  }
+
+  _resolveSelectedTaskTypes(viewOptions, sidebarElement, updateTaskTypes) {
+    if (Array.isArray(viewOptions?.selectedTaskTypes)) {
+      return Array.from(new Set(viewOptions.selectedTaskTypes.filter(Boolean)));
+    }
+    return this._deriveSelectedTaskTypes(sidebarElement, updateTaskTypes);
   }
 
   _extractExpansionState(viewOptions) {

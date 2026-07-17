@@ -1482,6 +1482,24 @@ class PlannerRuntime {
 
     if (selectedStates) {
       this.stateFilterService.restoreFilterState({ selectedStates });
+      const selectedStatesPayload = {
+        selectedFeatureStateFilter: selectedStates,
+      };
+      if (batchActive) {
+        this._queueViewRestoreFilterPayload(selectedStatesPayload);
+      } else {
+        this._bus.emit(FilterEvents.CHANGED, selectedStatesPayload);
+      }
+    }
+    if (nextTaskFilters) {
+      const taskFiltersPayload = {
+        taskFilters: nextTaskFilters,
+      };
+      if (batchActive) {
+        this._queueViewRestoreFilterPayload(taskFiltersPayload);
+      } else {
+        this._bus.emit(FilterEvents.CHANGED, taskFiltersPayload);
+      }
     }
     if (payload.viewOptions) {
       this.viewService.restoreView(payload.viewOptions, !batchActive);

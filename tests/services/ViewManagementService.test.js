@@ -325,6 +325,31 @@ describe('ViewManagementService - Expansion Filters', () => {
       expect(directRestoreSpy.called).to.equal(false);
     });
 
+    it('uses saved selectedTaskTypes from view options when present', async () => {
+      let optionsPayload = null;
+      mockState.applyViewOptionsRestore = (payload) => {
+        optionsPayload = payload;
+      };
+
+      mockSidebar.availableTaskTypes = ['Epic', 'Task', 'Bug'];
+      mockViewService.isTypeVisible = () => false;
+
+      dataService.getView = async () => ({
+        id: 'test-view-saved-task-types',
+        name: 'Saved Task Types',
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {
+          selectedTaskTypes: ['Task', 'Bug'],
+        },
+      });
+
+      await viewManagementService.loadAndApplyView('test-view-saved-task-types');
+
+      expect(optionsPayload).to.exist;
+      expect(optionsPayload.selectedTaskTypes).to.deep.equal(['Task', 'Bug']);
+    });
+
     it('should route sidebar sync through UI adapter hooks', async () => {
       const uiCalls = [];
       const serviceWithUiAdapter = new ViewManagementService(mockBus, mockState, mockViewService, {

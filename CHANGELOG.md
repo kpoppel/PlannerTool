@@ -15,6 +15,7 @@ Template - do not change :
 ---
 ## [v5.0.0] - unreleased
 ### Fixed
+- Fixed saved-view restore/sidebar sync so saved task types are reapplied from persisted view data, state/task-filter UI updates emit immediately, and the Save View modal preview includes selected states plus task-filter settings.
 - Restored startup default-view behavior so the View menu receives and shows the Default entry immediately, and prevented early startup restore from clearing task-type selections when sidebar task types are not yet initialized.
 - Restored drag/resize dirty-state refresh correctness by forcing post-commit feature update emission after date mutations, preventing one-step stale card state after interactive timeline edits.
 - Reduced startup restore update churn by folding capacity recomputation into the startup view-restore transaction instead of issuing a separate capacity update.
