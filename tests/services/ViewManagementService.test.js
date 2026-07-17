@@ -7,7 +7,7 @@ import { expect } from '@esm-bundle/chai';
 import sinon from 'sinon';
 import { ViewManagementService } from '../../www/js/services/ViewManagementService.js';
 import { dataService } from '../../www/js/services/dataService.js';
-import { FilterEvents } from '../../www/js/core/EventRegistry.js';
+import { FilterEvents, ViewManagementEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('ViewManagementService - Expansion Filters', () => {
   let viewManagementService;
@@ -16,6 +16,7 @@ describe('ViewManagementService - Expansion Filters', () => {
   let mockViewService;
   let mockState;
   let originalGetView;
+  let originalListViews;
   let mockSidebar;
 
   beforeEach(() => {
@@ -85,11 +86,13 @@ describe('ViewManagementService - Expansion Filters', () => {
 
     // Save original dataService.getView
     originalGetView = dataService.getView;
+    originalListViews = dataService.listViews;
   });
 
   afterEach(() => {
     // Restore original method
     dataService.getView = originalGetView;
+    dataService.listViews = originalListViews;
   });
 
   describe('loadAndApplyView with Expansion Filters', () => {
@@ -207,6 +210,51 @@ describe('ViewManagementService - Expansion Filters', () => {
         (call) => call.event === FilterEvents.CHANGED && call.data.expansion
       );
       expect(expansionFilterEvent).to.be.undefined;
+    });
+
+    it('emits views list after startup default restore so the menu receives the default entry', async () => {
+      dataService.listViews = async () => [];
+      dataService.getView = async () => ({
+        id: 'default',
+        name: 'Default View',
+        readonly: true,
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {},
+      });
+
+      emitCalls = [];
+
+      await viewManagementService.loadViews({ deferStateSync: true });
+      await viewManagementService.loadAndApplyView('default', { startup: true });
+
+      const listEvent = emitCalls.find((call) => call.event === ViewManagementEvents.LIST);
+      expect(listEvent).to.exist;
+      const ids = (listEvent.data?.views || []).map((v) => v.id);
+      expect(ids).to.include('default');
+    });
+
+    it('does not force empty selectedTaskTypes on default restore before sidebar task types initialize', async () => {
+      let transactionPayload = null;
+      mockState.applyViewRestoreTransaction = (payload) => {
+        transactionPayload = payload;
+      };
+      mockSidebar.availableTaskTypes = [];
+
+      dataService.getView = async () => ({
+        id: 'default',
+        name: 'Default View',
+        readonly: true,
+        selectedProjects: {},
+        selectedTeams: {},
+        viewOptions: {},
+      });
+
+      viewManagementService.initDefaultView();
+      await viewManagementService.loadAndApplyView('default');
+
+      expect(transactionPayload).to.exist;
+      expect(transactionPayload.selectedTaskTypes).to.equal(null);
     });
 
     it('should route view restore selection chain through state applyViewSelectionRestore', async () => {

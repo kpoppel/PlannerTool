@@ -365,6 +365,9 @@ export class ViewManagementService {
           });
         }
         this._saveLastViewId(viewId);
+        // Ensure View menu consumers receive the canonical saved-view list,
+        // including the default entry after deferred startup restore.
+        this._emitViewsList();
         this._emitViewActivated();
         if (startup) this._startupRestoreCompleted = true;
       } catch (err) {
@@ -616,6 +619,9 @@ export class ViewManagementService {
   _deriveSelectedTaskTypes(sidebarElement, updateTaskTypes) {
     if (!sidebarElement || !updateTaskTypes) return null;
     const availableTypes = sidebarElement.availableTaskTypes || [];
+    // Startup can apply views before sidebar task types are initialized.
+    // Avoid committing an empty task-type selection in that case.
+    if (!Array.isArray(availableTypes) || availableTypes.length === 0) return null;
     return availableTypes.filter((t) => this._viewService.isTypeVisible(t));
   }
 

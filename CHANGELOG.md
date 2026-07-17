@@ -15,6 +15,8 @@ Template - do not change :
 ---
 ## [v5.0.0] - unreleased
 ### Fixed
+- Restored startup default-view behavior so the View menu receives and shows the Default entry immediately, and prevented early startup restore from clearing task-type selections when sidebar task types are not yet initialized.
+- Restored drag/resize dirty-state refresh correctness by forcing post-commit feature update emission after date mutations, preventing one-step stale card state after interactive timeline edits.
 - Reduced startup restore update churn by folding capacity recomputation into the startup view-restore transaction instead of issuing a separate capacity update.
 - Reduced post-Round-6 startup regressions by enforcing one-shot startup view restore and preventing non-batched restore transactions from queuing deferred batch recompute flags that caused extra startup flush work.
 - Enhanced the offline startup restore performance-loop test with repeatable multi-iteration cluster timing output (baseline, restore transaction, batch end, and update-label timings) plus optional p95 regression gates for local performance tuning without a live browser session.

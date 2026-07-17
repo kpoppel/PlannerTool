@@ -627,11 +627,9 @@ export function createPlannerCommands({ store, services, selectors }) {
       );
       if (count && runtime.getActiveScenario?.()) {
         recomputeRuntimeCapacity();
-        runtime.emitFeatureUpdated(
-          asArray(updates)
-            .map((update) => update?.id)
-            .filter(Boolean)
-        );
+        // Emit a post-commit full update so renderers read committed scenario
+        // state rather than pre-commit snapshots from inner service emits.
+        runtime.emitFeatureUpdated();
       }
       return count || 0;
     },
