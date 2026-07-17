@@ -23,10 +23,10 @@ function asObject(value) {
 }
 
 function withSelectedFlag(items, selectedIds) {
-  const selected = new Set(asArray(selectedIds));
+  const selected = new Set(asArray(selectedIds).map((id) => String(id)));
   return asArray(items).map((item) => ({
     ...item,
-    selected: selected.has(item?.id),
+    selected: selected.has(String(item?.id)),
   }));
 }
 

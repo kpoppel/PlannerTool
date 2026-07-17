@@ -118,4 +118,56 @@ describe('expansion selectors', () => {
       })
     ).to.deep.equal([]);
   });
+
+  it('matches team-allocation expansion when selected team IDs are strings and capacity team IDs are numbers', () => {
+    const numericCapacityFeatures = [
+      { id: 'f-1', project: 'p1', capacity: [{ team: 42, capacity: 10 }] },
+    ];
+
+    const teamAllocated = selectTeamAllocatedFeatureIds(numericCapacityFeatures, ['42']);
+    expect([...teamAllocated]).to.deep.equal(['f-1']);
+
+    const expandedIds = selectExpandedFeatureIds({
+      projects: [{ id: 'p1', selected: false }],
+      teams: [{ id: '42', selected: true }],
+      features: numericCapacityFeatures,
+      expansion: { teamAllocated: true },
+    });
+    expect([...expandedIds]).to.deep.equal(['f-1']);
+  });
+
+  it('expands from empty selection when only team-allocation expansion is active', () => {
+    const crossPlanFeatures = [
+      { id: 'a', project: 'p1', capacity: [{ team: 't1', capacity: 1 }] },
+      { id: 'b', project: 'p2', capacity: [{ team: 't1', capacity: 2 }] },
+      { id: 'c', project: 'p3', capacity: [{ team: 't2', capacity: 5 }] },
+    ];
+
+    const expandedIds = selectExpandedFeatureIds({
+      projects: [
+        { id: 'p1', selected: false },
+        { id: 'p2', selected: false },
+        { id: 'p3', selected: false },
+      ],
+      teams: [
+        { id: 't1', selected: true },
+        { id: 't2', selected: false },
+      ],
+      features: crossPlanFeatures,
+      expansion: { teamAllocated: true },
+    });
+
+    expect([...expandedIds].sort()).to.deep.equal(['a', 'b']);
+  });
+
+  it('returns empty expanded IDs when no projects are selected and no expansion mode is active', () => {
+    const expandedIds = selectExpandedFeatureIds({
+      projects: [{ id: 'p1', selected: false }],
+      teams: [{ id: 't1', selected: true }],
+      features: [{ id: 'a', project: 'p1', capacity: [{ team: 't1', capacity: 1 }] }],
+      expansion: { teamAllocated: false, parentChild: false, relations: false },
+    });
+
+    expect([...expandedIds]).to.deep.equal([]);
+  });
 });

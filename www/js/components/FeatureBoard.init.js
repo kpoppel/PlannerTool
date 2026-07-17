@@ -37,9 +37,18 @@ export async function initBoard() {
   }
 
   let _boardReady = false;
+  let _boardActivated = false;
   const renderFeatures = () => {
     if (!board || !_boardReady) return;
     if (typeof board.renderFeatures === 'function') board.renderFeatures();
+  };
+
+  const activateBoard = () => {
+    if (_boardActivated) return;
+    _boardActivated = true;
+    _boardReady = true;
+    loadGroupsForSelectedPlans();
+    renderFeatures();
   };
 
   const updateFeatures = (payload) => {
@@ -148,9 +157,10 @@ export async function initBoard() {
     });
   });
 
-  bus.once(AppEvents.READY, () => {
-    _boardReady = true;
-    loadGroupsForSelectedPlans();
-    renderFeatures();
-  });
+  if (typeof state?.app?.initCompleted === 'function') {
+    await state.app.initCompleted();
+    activateBoard();
+  } else {
+    bus.once(AppEvents.READY, activateBoard);
+  }
 }

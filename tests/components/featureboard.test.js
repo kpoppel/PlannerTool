@@ -1,4 +1,8 @@
 import { fixture, html, expect } from '@open-wc/testing';
+import { dataService } from '../../www/js/services/dataService.js';
+import * as boardUtils from '../../www/js/components/board-utils.js';
+import { plannerApplication } from '../../www/js/application/plannerApplication.js';
+import { state } from '../helpers/runtimeState.js';
 
 describe('FeatureBoard & DragSurface Tests', () => {
   it('updateCardsById patches existing lit cards', async () => {
@@ -113,6 +117,90 @@ describe('FeatureBoard & DragSurface Tests', () => {
     expect(nodes[1].style.left).to.not.equal('200px');
     state.getEffectiveFeatureById = originalGetEffectiveFeatureById;
     state.getEffectiveFeatures = originalGetEffectiveFeatures;
+  });
+
+  it('reloads a saved view with only team selection and renders team-allocated tasks', async () => {
+    await import('../../www/js/components/FeatureBoard.lit.js');
+    const board = await fixture(html`<feature-board></feature-board>`);
+    const originalGetView = dataService.getView;
+    const originalComputePosition = boardUtils.computePosition;
+    const store = plannerApplication.store;
+
+    const features = [
+      {
+        id: 'f-allocated',
+        type: 'feature',
+        start: '2025-01-10',
+        end: '2025-01-20',
+        project: 101,
+        state: 'New',
+        capacity: [{ team: 42, capacity: 3 }],
+      },
+    ];
+
+    dataService.getView = async () => ({
+      id: 'team-only-view',
+      name: 'Team Only View',
+      selectedProjects: { 101: false },
+      selectedTeams: { 42: true },
+      viewOptions: {
+        graphType: 'team',
+        expandParentChild: false,
+        expandRelations: false,
+        expandTeamAllocated: true,
+        selectedFeatureStates: ['New'],
+      },
+    });
+
+    Object.defineProperty(boardUtils, 'computePosition', {
+      configurable: true,
+      writable: true,
+      value: () => ({ left: 100, width: 80 }),
+    });
+
+    try {
+      state.initProjectTeamBaseline([{ id: 101, name: 'Plan 101' }], [{ id: 42, name: 'Team 42' }]);
+      store.update('test.featureBoard.reload.setup', (draft) => {
+        draft.baseline.projects = [{ id: 101, name: 'Plan 101', selected: false }];
+        draft.baseline.teams = [{ id: 42, name: 'Team 42', selected: true }];
+        draft.baseline.features = features;
+        draft.selection.projectIds = [];
+        draft.selection.teamIds = [42];
+        draft.selection.featureStateNames = ['New'];
+        draft.view.expansion.parentChild = false;
+        draft.view.expansion.relations = false;
+        draft.view.expansion.teamAllocated = true;
+      });
+      state.setBaselineFeatures(features);
+
+      await state.views.load('team-only-view');
+      expect(plannerApplication.selectors.selectedTeamIds()).to.deep.equal(['42']);
+      expect(plannerApplication.selectors.view().expansion.teamAllocated).to.equal(true);
+      expect(Array.from(plannerApplication.selectors.expandedFeatureIds())).to.deep.equal(['f-allocated']);
+      await board.renderFeatures();
+
+      expect(board.features.map((item) => item.feature?.id)).to.deep.equal(['f-allocated']);
+      expect(board._swimlanes.map((lane) => lane.id)).to.deep.equal([42]);
+    } finally {
+      dataService.getView = originalGetView;
+      Object.defineProperty(boardUtils, 'computePosition', {
+        configurable: true,
+        writable: true,
+        value: originalComputePosition,
+      });
+      store.update('test.featureBoard.reload.cleanup', (draft) => {
+        draft.baseline.projects = [];
+        draft.baseline.teams = [];
+        draft.baseline.features = [];
+        draft.selection.projectIds = [];
+        draft.selection.teamIds = [];
+        draft.selection.featureStateNames = [];
+        draft.view.expansion.parentChild = false;
+        draft.view.expansion.relations = false;
+        draft.view.expansion.teamAllocated = false;
+      });
+      board.remove();
+    }
   });
 
   it('attachDrag binds mousedown and calls onStart (local adapter)', async () => {

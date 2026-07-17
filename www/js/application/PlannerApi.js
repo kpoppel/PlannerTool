@@ -65,7 +65,12 @@ export function createPlannerApi({ runtime: state, commands, selectors }) {
       selectTeam: (id, selected) => commands.setTeamSelected(id, selected),
       setProjects: (selections) => commands.setProjectsSelectedBulk(selections),
       setTeams: (selections) => commands.setTeamsSelectedBulk(selections),
-      getExpandedFeatureIds: () => selectors.expandedFeatureIds(),
+      // Prefer runtime-expanded IDs so expansion reflects effective features
+      // (including scenario overrides), not just baseline selector inputs.
+      getExpandedFeatureIds: () =>
+        typeof state.getExpandedFeatureIds === 'function' ?
+          state.getExpandedFeatureIds()
+        : selectors.expandedFeatureIds(),
       getChildrenByParent: () => state.childrenByParent,
       getExpansionState: () => {
         const expansion = selectors.view().expansion;

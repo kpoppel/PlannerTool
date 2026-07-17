@@ -94,14 +94,14 @@ export function selectRelationLinkedFeatureIds(features, selectedFeatureIds) {
  * @returns {Set<string>}
  */
 export function selectTeamAllocatedFeatureIds(features, selectedTeamIds) {
-  const selectedTeams = new Set(asArray(selectedTeamIds));
+  const selectedTeams = new Set(asArray(selectedTeamIds).map((id) => String(id)));
   const featureIds = new Set();
 
   for (const feature of asArray(features)) {
     if (!Array.isArray(feature.capacity)) continue;
     const isAllocated = feature.capacity.some((allocation) => {
       const capacity = Number(allocation?.capacity) || 0;
-      return capacity > 0 && selectedTeams.has(allocation?.team);
+      return capacity > 0 && selectedTeams.has(String(allocation?.team));
     });
     if (isAllocated) featureIds.add(feature.id);
   }
@@ -226,11 +226,13 @@ export function selectExpandedFeatureIds({
   expansion = {},
 } = {}) {
   const selectedProjectIds = new Set(
-    asArray(projects).filter((project) => project?.selected).map((project) => project.id)
+    asArray(projects)
+      .filter((project) => project?.selected)
+      .map((project) => String(project.id))
   );
   const selectedFeatureIds = new Set(
     asArray(features)
-      .filter((feature) => selectedProjectIds.has(feature.project))
+      .filter((feature) => selectedProjectIds.has(String(feature.project)))
       .map((feature) => feature.id)
   );
   const selectedTeamIds = asArray(teams)

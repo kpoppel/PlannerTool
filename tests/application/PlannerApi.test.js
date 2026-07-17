@@ -105,4 +105,60 @@ describe('PlannerApi', () => {
     expect(Object.isFrozen(api)).to.equal(true);
     expect(Object.isFrozen(api.features)).to.equal(true);
   });
+
+  it('selection expansion IDs prefer runtime effective expansion over baseline selector expansion', () => {
+    const state = {
+      getEffectiveFeatures: () => [],
+      getEffectiveFeatureById: () => null,
+      getFeatureTitleById: () => '',
+      getExpandedFeatureIds: () => new Set(['effective-only-id']),
+      projects: [],
+      teams: [],
+      scenarios: { list: () => [] },
+      getActiveScenario: () => null,
+      isScenarioUnsaved: () => false,
+      views: { list: () => [], getActiveId: () => null, load: () => null },
+      groups: {
+        create: () => null,
+        update: () => null,
+        delete: () => null,
+        getPendingChanges: () => [],
+        clearPendingChanges: () => null,
+        confirmCreate: () => null,
+        publishBaseline: () => null,
+      },
+    };
+
+    const commands = {
+      setProjectSelected: () => null,
+      setTeamSelected: () => null,
+      setProjectsSelectedBulk: () => null,
+      setTeamsSelectedBulk: () => null,
+      setExpansionState: () => null,
+      activateScenario: () => null,
+      cloneScenario: () => null,
+      renameScenario: () => null,
+      deleteScenario: () => null,
+      saveScenario: () => null,
+      updateFeatureDates: () => null,
+      updateFeatureField: () => null,
+      updateFeatureRelations: () => null,
+      revertFeature: () => null,
+      createGroupInScenario: () => null,
+      updateGroupInScenario: () => null,
+      deleteGroupInScenario: () => null,
+      applyGroupMemberDelta: () => null,
+    };
+
+    const selectors = {
+      projects: () => [],
+      teams: () => [],
+      expandedFeatureIds: () => new Set(['baseline-selector-id']),
+      view: () => ({ expansion: { parentChild: false, relations: false, teamAllocated: true } }),
+    };
+
+    const api = createPlannerApi({ runtime: state, commands, selectors });
+
+    expect(Array.from(api.selection.getExpandedFeatureIds())).to.deep.equal(['effective-only-id']);
+  });
 });

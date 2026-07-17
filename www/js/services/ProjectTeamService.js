@@ -140,10 +140,10 @@ export class ProjectTeamService {
    */
   getProjects() {
     if (!this._selection) return this.projects;
-    const selectedIds = new Set(this._selection.getProjectIds());
+    const selectedIds = new Set(this._selection.getProjectIds().map((id) => String(id)));
     return this.projects.map((project) => ({
       ...project,
-      selected: selectedIds.has(project.id),
+      selected: selectedIds.has(String(project.id)),
     }));
   }
 
@@ -153,10 +153,10 @@ export class ProjectTeamService {
    */
   getTeams() {
     if (!this._selection) return this.teams;
-    const selectedIds = new Set(this._selection.getTeamIds());
+    const selectedIds = new Set(this._selection.getTeamIds().map((id) => String(id)));
     return this.teams.map((team) => ({
       ...team,
-      selected: selectedIds.has(team.id),
+      selected: selectedIds.has(String(team.id)),
     }));
   }
 

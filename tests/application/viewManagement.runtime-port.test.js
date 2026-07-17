@@ -157,4 +157,63 @@ describe('view management runtime port integration', () => {
 
     await runtime.destroy();
   });
+
+  it('restores team-allocation expansion from view with no selected plans and numeric IDs', async () => {
+    const store = new AppStore(createInitialAppState());
+    const bus = {
+      emit: () => {},
+      on: () => () => {},
+    };
+
+    const runtimeServices = createPlannerRuntimeServices({
+      eventBus: bus,
+      store,
+      adapters: {
+        viewManagement: {
+          storage: {
+            getItem: () => null,
+            setItem: () => {},
+          },
+        },
+      },
+      dataService: {
+        getLocalPref: async () => null,
+      },
+    });
+
+    const { runtime } = runtimeServices;
+
+    runtime.projectTeamService.initFromBaseline(
+      [{ id: 101, name: 'Plan 101' }],
+      [{ id: 42, name: 'Team 42' }]
+    );
+    runtime.baselineStore.setFeatures([
+      {
+        id: 'f-allocated',
+        project: 101,
+        state: 'New',
+        type: 'Feature',
+        capacity: [{ team: 42, capacity: 3 }],
+      },
+    ]);
+    runtime.featureService.setChildrenByParent(runtime.childrenByParent);
+
+    runtime.applyViewRestoreTransaction({
+      projectSelections: { 101: false },
+      teamSelections: { 42: true },
+      selectedStates: ['New'],
+      expansion: {
+        expandParentChild: false,
+        expandRelations: false,
+        expandTeamAllocated: true,
+      },
+      emitExpansionFilterChange: true,
+    });
+
+    expect(runtime.teams.find((team) => team.id === 42)?.selected).to.equal(true);
+    expect(runtime.projects.find((project) => project.id === 101)?.selected).to.equal(false);
+    expect([...runtime.getExpandedFeatureIds()]).to.deep.equal(['f-allocated']);
+
+    await runtime.destroy();
+  });
 });
