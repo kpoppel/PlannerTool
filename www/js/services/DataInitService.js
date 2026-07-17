@@ -56,12 +56,11 @@ export class DataInitService {
     // Get baseline data
     const baselineProjects = this._baselineStore.getProjects();
     const baselineTeams = this._baselineStore.getTeams();
-    let baselineFeatures = this._baselineStore.getFeatures();
-
-    // Add originalRank to features
-    baselineFeatures.forEach((f, i) => {
-      f.originalRank = i;
-    });
+    const baselineFeatureSource =
+      typeof this._baselineStore.getFeaturesReadonly === 'function' ?
+        this._baselineStore.getFeaturesReadonly()
+      : this._baselineStore.getFeatures();
+    let baselineFeatures = baselineFeatureSource.map((f, i) => ({ ...f, originalRank: i }));
 
     // Build lookup maps for fast updates
     this._buildLookupMaps(baselineFeatures);
@@ -153,7 +152,11 @@ export class DataInitService {
     // Get baseline data
     const baselineProjects = this._baselineStore.getProjects();
     const baselineTeams = this._baselineStore.getTeams();
-    let baselineFeatures = this._baselineStore.getFeatures();
+    const baselineFeatureSource =
+      typeof this._baselineStore.getFeaturesReadonly === 'function' ?
+        this._baselineStore.getFeaturesReadonly()
+      : this._baselineStore.getFeatures();
+    let baselineFeatures = baselineFeatureSource;
 
     // Refresh working copies in ProjectTeamService (preserves selection)
     this._projectTeamService.refreshFromBaseline(baselineProjects, baselineTeams);

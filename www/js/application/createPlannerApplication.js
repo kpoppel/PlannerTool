@@ -42,6 +42,7 @@ function callLifecycle(target, method, context) {
  */
 export function createPlannerApplication(options = {}) {
   const store = new AppStore(options.initialState || createInitialAppState());
+  const trackLifecycle = options.trackLifecycle !== false;
   const runtime = Object.freeze({
     store,
     eventBus: options.eventBus || null,
@@ -95,10 +96,12 @@ export function createPlannerApplication(options = {}) {
       if (initialized) return application;
       if (initializePromise) return initializePromise;
 
-      store.update('application.initialize', (draft) => {
-        draft.lifecycle.status = 'loading';
-        draft.lifecycle.error = null;
-      });
+      if (trackLifecycle) {
+        store.update('application.initialize', (draft) => {
+          draft.lifecycle.status = 'loading';
+          draft.lifecycle.error = null;
+        });
+      }
 
       const lifecycleContext = Object.freeze({
         ...runtime,
@@ -112,15 +115,19 @@ export function createPlannerApplication(options = {}) {
           await callLifecycle(application.services, 'initialize', lifecycleContext);
           await callLifecycle(application.commands, 'initialize', lifecycleContext);
           initialized = true;
-          store.update('application.ready', (draft) => {
-            draft.lifecycle.status = 'ready';
-          });
+          if (trackLifecycle) {
+            store.update('application.ready', (draft) => {
+              draft.lifecycle.status = 'ready';
+            });
+          }
           return application;
         } catch (error) {
-          store.update('application.failed', (draft) => {
-            draft.lifecycle.status = 'failed';
-            draft.lifecycle.error = error instanceof Error ? error.message : String(error);
-          });
+          if (trackLifecycle) {
+            store.update('application.failed', (draft) => {
+              draft.lifecycle.status = 'failed';
+              draft.lifecycle.error = error instanceof Error ? error.message : String(error);
+            });
+          }
           initializePromise = null;
           throw error;
         }

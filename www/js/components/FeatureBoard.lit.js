@@ -29,6 +29,7 @@ import {
 import { groupService } from '../services/GroupService.js';
 import { featureBoardStyles } from './FeatureBoard.styles.js';
 import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
+import { startPerfProbe, endPerfProbe } from '../services/perfProbe.js';
 import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
@@ -397,6 +398,10 @@ class FeatureBoard extends LitElement {
    * @returns {Array<Array<{ left: number, width: number, feature: Object }>>}
    */
   async renderFeatures() {
+    const renderProbe = startPerfProbe('board.renderFeatures', {
+      packedMode: !!state.view.getPackedMode(),
+      condensedMode: !!state.view.getCondensedCards(),
+    });
     this._updateSwimlaneLabelStickyTop();
     const rawFeatures = state.features.list();
     // Deduplicate by feature ID — getEffectiveFeatures() can return the same ID
@@ -785,6 +790,13 @@ class FeatureBoard extends LitElement {
         );
       }
     }
+
+    endPerfProbe(renderProbe, {
+      sourceFeatureCount: sourceFeatures.length,
+      renderedFeatureCount: renderList.length,
+      swimlaneCount: Array.isArray(this._swimlanes) ? this._swimlanes.length : 0,
+      boardHeightPx: Number.parseInt(this.style.height || '0', 10) || 0,
+    });
   }
 
   async updateCardsById(ids = []) {

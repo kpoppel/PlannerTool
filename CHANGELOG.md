@@ -15,6 +15,22 @@ Template - do not change :
 ---
 ## [v5.0.0] - unreleased
 ### Fixed
+- Reduced startup restore update churn by folding capacity recomputation into the startup view-restore transaction instead of issuing a separate capacity update.
+- Reduced post-Round-6 startup regressions by enforcing one-shot startup view restore and preventing non-batched restore transactions from queuing deferred batch recompute flags that caused extra startup flush work.
+- Enhanced the offline startup restore performance-loop test with repeatable multi-iteration cluster timing output (baseline, restore transaction, batch end, and update-label timings) plus optional p95 regression gates for local performance tuning without a live browser session.
+- Reduced view-restore startup stalls by making restore batching coalesce intermediate selection/filter events and flushing a single consolidated filter/update pass after restore completes.
+- Reduced repeated effective-feature recomputation by threading one shared feature snapshot through sidebar expansion calculations and coalescing sidebar funnel recalculations to one pass per frame.
+- Reduced startup view-restore overhead by removing the intermediate default-view state write in view composition and skipping the extra post-restore initial capacity recompute when restore already recomputed capacity.
+- Reduced baseline feature read overhead on large restores by adding readonly baseline accessors for internal hot paths and reusing one effective-feature snapshot across capacity recomputation.
+- Reduced duplicate startup restore work by deduplicating in-flight `loadAndApplyView` calls and making baseline-scenario refresh idempotent to avoid redundant store updates/events.
+- Reduced startup update churn by skipping no-op selection/filter/view-state writes and by avoiding the heavy runtime snapshot publish pass during initial restore.
+- Started single-pass transaction rollout: view restore now applies selection/filter/options/expansion mutations through one runtime store commit, and baseline replacement plus baseline-scenario ensure now run in one combined startup commit.
+- Continued transaction rollout at command layer: view-restore command hooks now route to the runtime single-pass transaction path when available, and the legacy sync snapshot bridge no longer publishes a full store snapshot.
+- Reduced duplicate init/restore passes by guarding runtime initialization against concurrent re-entry and deferring initial view-list state sync so startup restore performs a single final view-state commit.
+- Further optimized startup-only flow so active-view synchronization is folded into the restore transaction commit, startup restore is guarded as a one-shot operation, and app lifecycle status commits are suppressed in production startup composition.
+- Added startup restore no-op detection to skip duplicate restore transaction commits when state is already aligned, and removed automatic startup snapshot capture to avoid an extra startup long-task pass.
+- Enforced startup-only restore batching with explicit runtime startup phases so initialization keeps coalesced restore behavior while interactive view loads avoid startup batch-flush side effects.
+- Fixed startup restore regression by deduplicating concurrent startup restore invocations and skipping deferred startup recompute when capacity was already recomputed during startup restore.
 - Diskcache-backed config reads now treat missing projects/teams keys as empty values so the client can start before admin setup creates those records.
 - Fixed backup/restore not restoring PATs, leaving admins and users without a visible reason why they suddenly cannot load any task data.
 - Fixed intermittent Azure backend disconnects during overlapping task/iteration reads by making Azure client connection contexts reference-counted instead of closing shared connections on each nested exit.
@@ -35,6 +51,13 @@ Template - do not change :
 - PluginLinkEditor constructor default id now matches modules.config.json: changed from `'link-editor'` to `'plugin-link-editor'` for consistency.
 - Test harness now stubs canvas `getContext()` in jsdom, removing noisy "Error: Not implemented" output when no real test failures exist.
 ### Added
+- Added Phase 1 performance baseline instrumentation with opt-in `/api/tasks` and `/api/iterations` server timing probes, frontend drag/render/recompute probes, and a repeatable baseline capture runbook/script.
+- Added Phase 2 backend performance optimizations: Brotli compression enabled by default, O(1) team lookup indexes for capacity parsing, fast capacity-block parse bailout, and Azure iteration-map memoization across task fetches.
+- Added gzip fallback compression middleware so clients that do not negotiate Brotli still receive compressed API payloads.
+- Changed startup defaults so backend read cache is enabled unless explicitly disabled in `feature_flags`, reducing repeated `/api/tasks` reload wait for large datasets.
+- Changed task-cache soft-expiry behavior to stale-while-revalidate for remote backends, so expired entries are served immediately while refresh runs in the background.
+- Changed TimelineBoard startup to prefetch MainGraph/Timeline/FeatureBoard chunks during app initialization to reduce visible startup idle gaps.
+- Changed app startup sequencing to prefetch `modules.config.json` in parallel with runtime initialization and defer the first capacity recompute off the critical initialization path.
 - Portfolio Board plugin Phase 1: added a fullscreen team-row/state-column board with sidebar-aware filtering, details-panel card selection, persisted plugin toolbar state, and an unallocated tasks panel.
 - Backend: added global plugin runtime configuration support with admin CRUD endpoint (`/admin/v1/plugins-config`), session-protected runtime read endpoint (`/api/plugins/config`), payload normalization, and backup/restore persistence under `plugin_runtime_config`.
 - Admin UI Phase 2: added Plugins section to admin sidebar with `admin-plugins` component for managing plugin enabled/activated/order settings; added `getPluginsConfig`/`savePluginsConfig` to `adminProvider`.
@@ -365,7 +388,7 @@ Summary: A focused cleanup and security-forward release that improves migrations
 - Migrations & Deployment: New migration 0017_encrypt_pats.py to encrypt existing PATs; migrate.py is version-aware; Docker entrypoint runs migrations automatically and validates required env vars; docs updated.
 
 ### Changed:
-- Architecture & Service Cleanup: Large refactor to simplify and modularize startup and services — create_app() split, AdminService reduced via composed managers, TaskUpdateService extracted, DI registration improved with ServiceKeys, and a CacheCoordinator added.
+- Changed view restore to run selection/filter/expansion mutations in a restore batch and perform capacity recompute once at batch end, reducing startup long-task stalls.
 - Caching & Azure Client Improvements: Cache logic consolidated (new caching.py / HistoryCacheManager), AzureClient now builds clients once, AzureCachingClient WIQL ordering fixed, and memory/cache warmup behavior corrected.
 - Storage & Reuse: New UserDataStore centralizes file-locking and CRUD for user stores; MemoryStorage now implements StorageBackend; StorageProtocol renamed to StorageBackend for a single canonical interface.
 - API Stability & Security Fixes: Numerous route and handler cleanups (admin, cost, projects, accounts), OWASP A05 fix (internal errors no longer leak details), safer restore/validation flows, and other bug fixes.

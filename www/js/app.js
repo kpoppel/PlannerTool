@@ -32,6 +32,12 @@ async function init() {
   };
   showModal();
 
+  // Start loading plugin module metadata early so network fetch overlaps
+  // runtime initialization work.
+  const modulesConfigPromise = featureFlags.USE_PLUGIN_SYSTEM
+    ? fetch(new URL('./modules.config.json', import.meta.url).href)
+    : null;
+
   try {
     // TODO/DEBUG: For Debugging: Expose internals for automated tests and debugging
     // window.state = state; window.bus = bus;
@@ -67,12 +73,9 @@ async function init() {
 
     // Load Plugin system
     if (featureFlags.USE_PLUGIN_SYSTEM) {
-      // Load modules config via fetch to avoid JSON module import and
-      // potential strict MIME-type handling by some dev servers/browsers.
       // Plugin registration is driven by modules.config.json merged with
       // admin-persisted runtime config from /api/plugins/config.
-      const url = new URL('./modules.config.json', import.meta.url).href;
-      const res = await fetch(url);
+      const res = await modulesConfigPromise;
       if (!res.ok) throw new Error(`Failed to fetch modules config: ${res.status}`);
       const cfg = await res.json();
 

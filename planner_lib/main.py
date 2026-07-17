@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple, cast
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -42,7 +43,7 @@ class Config:
     storage_backend: str = "diskcache" #"file"
     raw_serializer: str = "raw"
     yaml_serializer: str = "yaml"
-    enable_brotli: bool = False
+    enable_brotli: bool = True
     # Directory to serve the SPA from. "www" for dev, "dist" for production builds.
     static_dir: str = "www"
 
@@ -408,6 +409,11 @@ def _build_app(
         from planner_lib.middleware import BrotliCompression
         app.add_middleware(BrotliCompression)
 
+    # Always provide gzip fallback so clients that do not negotiate Brotli
+    # (for example some HTTP/non-TLS browser paths) still get compression.
+    app.add_middleware(GZipMiddleware, minimum_size=300)
+    logger.info("GZip compression middleware is enabled")
+
     static_dir = config.static_dir
 
     @app.get("/", response_class=HTMLResponse)
@@ -483,6 +489,10 @@ def create_app(config: Config) -> FastAPI:
     from planner_lib.bootstrap import bootstrap_server
     server_cfg = bootstrap_server(storage_yaml, logger)
     feature_flags = server_cfg.get('feature_flags', {})
+    if 'enable_cache' not in feature_flags:
+        # Large datasets depend on cached backend reads for acceptable reload times.
+        # Keep explicit config overrides intact by only defaulting when absent.
+        feature_flags['enable_cache'] = True
 
     container = _build_services(config, storage_diskcache, storage_yaml, server_cfg, feature_flags, logger)
 

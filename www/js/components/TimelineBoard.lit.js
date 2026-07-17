@@ -53,10 +53,17 @@ class TimelineBoard extends LitElement {
         bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
       }
 
+      // Start fetching heavy board modules immediately so network transfer can
+      // overlap with app initialization.
+      const mainGraphImport = import('./MainGraph.lit.js');
+      const timelineImport = import('./Timeline.lit.js');
+      const featureBoardImport = import('./FeatureBoard.lit.js');
+      const groupMenuImport = import('./GroupContextMenu.lit.js');
+
       if (state?.app?.initCompleted) await state.app.initCompleted();
 
-      await import('./MainGraph.lit.js');
-      const mod_t = await import('./Timeline.lit.js');
+      await mainGraphImport;
+      const mod_t = await timelineImport;
 
       // Ensure we register for MONTHS before initializing the timeline so
       // the initial MONTHS emission during initTimeline() isn't missed.
@@ -66,11 +73,11 @@ class TimelineBoard extends LitElement {
       await mod_t.initTimeline();
       mod_t.ensureScrollToMonth();
 
-      const mod_f = await import('./FeatureBoard.lit.js');
+      const mod_f = await featureBoardImport;
       await mod_f.initBoard();
 
       // Mount the singleton group context menu and wire up right-click handlers.
-      const { GroupContextMenu } = await import('./GroupContextMenu.lit.js');
+      const { GroupContextMenu } = await groupMenuImport;
       GroupContextMenu.init();
       this._initGroupContextMenu(GroupContextMenu);
 

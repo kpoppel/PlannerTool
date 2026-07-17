@@ -1,6 +1,7 @@
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
 import { featureFlags } from '../config.js';
+import { selectActiveScenario } from '../application/selectors/scenarioSelectors.js';
 
 /**
  * FeatureService - Manages feature operations and scenario overrides
@@ -91,11 +92,17 @@ export class FeatureService {
   /**
    * Get effective features with scenario overrides applied
    */
-  getEffectiveFeatures() {
+  getEffectiveFeatures(state = null) {
     // Prefer features from BaselineStore; fallback to provided baseline getter if store is empty
-    const activeScenario = this._getActiveScenario();
+    const activeScenario =
+      state && state.scenarios ?
+        selectActiveScenario(state.scenarios.items || [], state.scenarios.activeId)
+      : this._getActiveScenario();
 
-    let baselineFeatures = this._baselineStore.getFeatures();
+    let baselineFeatures =
+      typeof this._baselineStore.getFeaturesReadonly === 'function' ?
+        this._baselineStore.getFeaturesReadonly()
+      : this._baselineStore.getFeatures();
 
     // Apply date defaulting for features without dates when feature flag is OFF
     if (!featureFlags.SHOW_UNPLANNED_WORK) {
@@ -103,7 +110,7 @@ export class FeatureService {
     }
 
     if (!activeScenario) {
-      return baselineFeatures; //.map(f => ({ ...f }));
+      return baselineFeatures;
     }
 
     // Merge baseline features with scenario overrides
@@ -127,13 +134,16 @@ export class FeatureService {
    * Get a single effective feature by id (baseline merged with active scenario override)
    * Returns null if not found.
    */
-  getEffectiveFeatureById(id) {
+  getEffectiveFeatureById(id, state = null) {
     if (id == null) return null;
 
     const base = this._baselineStore.getFeatureById().get(id);
     if (!base) return null;
 
-    const activeScenario = this._getActiveScenario();
+    const activeScenario =
+      state && state.scenarios ?
+        selectActiveScenario(state.scenarios.items || [], state.scenarios.activeId)
+      : this._getActiveScenario();
     if (!activeScenario) return { ...base };
 
     const ov = activeScenario.overrides ? activeScenario.overrides[id] : undefined;
@@ -379,7 +389,10 @@ export class FeatureService {
     const activeScenario = scenario;
     if (!activeScenario) return false;
 
-    const baselineFeatures = this._baselineStore.getFeatures();
+    const baselineFeatures =
+      typeof this._baselineStore.getFeaturesReadonly === 'function' ?
+        this._baselineStore.getFeaturesReadonly()
+      : this._baselineStore.getFeatures();
     const base = baselineFeatures.find((f) => f.id === id);
     if (!base) return false;
 
@@ -478,7 +491,10 @@ export class FeatureService {
     const activeScenario = scenario;
     if (!activeScenario) return false;
 
-    const baselineFeatures = this._baselineStore.getFeatures();
+    const baselineFeatures =
+      typeof this._baselineStore.getFeaturesReadonly === 'function' ?
+        this._baselineStore.getFeaturesReadonly()
+      : this._baselineStore.getFeatures();
     const base = baselineFeatures.find((feature) => String(feature.id) === String(id));
     if (!base) return false;
 
@@ -609,9 +625,9 @@ export class FeatureService {
    * @param {Set<string>} baseIds - Starting feature IDs
    * @returns {Set<string>} - Expanded feature IDs (ancestors + base + true descendants)
    */
-  expandParentChildClosure(baseIds) {
-    const allFeatures = this.getEffectiveFeatures();
-    const featureById = new Map(allFeatures.map((f) => [f.id, f]));
+  expandParentChildClosure(baseIds, allFeatures = null) {
+    const sourceFeatures = allFeatures || this.getEffectiveFeatures();
+    const featureById = new Map(sourceFeatures.map((f) => [f.id, f]));
     const expanded = new Set(baseIds);
     // canExpandDown: base features and true descendants — the only nodes allowed to
     // spawn children.  Ancestors fetched via the upward pass are intentionally
@@ -656,9 +672,9 @@ export class FeatureService {
    * @param {Set<string>} baseIds - Starting feature IDs
    * @returns {Set<string>} - Expanded feature IDs including all linked features
    */
-  expandRelationLinks(baseIds) {
-    const allFeatures = this.getEffectiveFeatures();
-    const featureById = new Map(allFeatures.map((f) => [f.id, f]));
+  expandRelationLinks(baseIds, allFeatures = null) {
+    const sourceFeatures = allFeatures || this.getEffectiveFeatures();
+    const featureById = new Map(sourceFeatures.map((f) => [f.id, f]));
     const expanded = new Set(baseIds);
     const toProcess = [...baseIds];
 
@@ -689,12 +705,12 @@ export class FeatureService {
    * @param {Array<string>} selectedTeamIds - Team IDs to filter by
    * @returns {Set<string>} - Feature IDs that have allocations to any selected team
    */
-  expandTeamAllocated(selectedTeamIds) {
-    const allFeatures = this.getEffectiveFeatures();
+  expandTeamAllocated(selectedTeamIds, allFeatures = null) {
+    const sourceFeatures = allFeatures || this.getEffectiveFeatures();
     const teamIdSet = new Set(selectedTeamIds);
     const expanded = new Set();
 
-    for (const feature of allFeatures) {
+    for (const feature of sourceFeatures) {
       if (!feature.capacity || !Array.isArray(feature.capacity)) continue;
 
       // Check if feature has any capacity allocated to selected teams
@@ -723,7 +739,8 @@ export class FeatureService {
    * @param {Array<string>} expansionOptions.selectedTeamIds - Team IDs for team allocation expansion
    * @returns {Object} - { expandedIds: Set, counts: { parentChild: number, relations: number, teamAllocated: number } }
    */
-  computeExpandedFeatureSet(selectedIds, expansionOptions = {}) {
+  computeExpandedFeatureSet(selectedIds, expansionOptions = {}, allFeatures = null) {
+    const sourceFeatures = allFeatures || this.getEffectiveFeatures();
     // Start with the base selected set
     const expandedIds = new Set(selectedIds);
     const counts = {
@@ -734,7 +751,7 @@ export class FeatureService {
 
     // Apply parent/child expansion FROM ORIGINAL SELECTED SET
     if (expansionOptions.expandParentChild) {
-      const parentChildExpanded = this.expandParentChildClosure(selectedIds);
+      const parentChildExpanded = this.expandParentChildClosure(selectedIds, sourceFeatures);
       const beforeCount = expandedIds.size;
       for (const id of parentChildExpanded) {
         expandedIds.add(id);
@@ -744,7 +761,7 @@ export class FeatureService {
 
     // Apply relation expansion FROM ORIGINAL SELECTED SET (not from parent/child expanded set)
     if (expansionOptions.expandRelations) {
-      const relationsExpanded = this.expandRelationLinks(selectedIds);
+      const relationsExpanded = this.expandRelationLinks(selectedIds, sourceFeatures);
       const beforeCount = expandedIds.size;
       for (const id of relationsExpanded) {
         expandedIds.add(id);
@@ -758,7 +775,10 @@ export class FeatureService {
       expansionOptions.selectedTeamIds &&
       expansionOptions.selectedTeamIds.length > 0
     ) {
-      const teamAllocated = this.expandTeamAllocated(expansionOptions.selectedTeamIds);
+      const teamAllocated = this.expandTeamAllocated(
+        expansionOptions.selectedTeamIds,
+        sourceFeatures
+      );
       const beforeCount = expandedIds.size;
       for (const id of teamAllocated) {
         expandedIds.add(id);

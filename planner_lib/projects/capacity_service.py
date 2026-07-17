@@ -18,16 +18,27 @@ class CapacityService:
     def __init__(self, team_repository):
         # Accepts TeamRepository (or any object with name_to_id / id_to_short_name).
         self._team_repository = team_repository
+        self._block_start = '[PlannerTool Team Capacity]'
 
     def parse(self, description: str) -> List[dict]:
         try:
+            if not description:
+                return []
+            # Fast-bail for the common case: descriptions without capacity blocks.
+            if self._block_start not in description:
+                return []
+
             desc = description
             desc = re.sub(r"<br\s*/?>", "\n", desc, flags=re.I)
             desc = re.sub(r">\s*<", ">\n<", desc)
             desc = re.sub(r"</?\w+[^>]*>", "", desc)
             desc = desc.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
 
-            m = re.search(r"\[PlannerTool Team Capacity\](.*?)\[/PlannerTool Team Capacity\]", desc, flags=re.S)
+            m = re.search(
+                r"\[PlannerTool Team Capacity\](.*?)\[/PlannerTool Team Capacity\]",
+                desc,
+                flags=re.S,
+            )
             if not m:
                 return []
             body = m.group(1)

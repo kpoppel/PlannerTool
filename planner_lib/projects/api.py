@@ -1,4 +1,6 @@
 import asyncio
+import json
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Request, Body, HTTPException, Response
@@ -12,6 +14,23 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _perf_enabled(request: Request) -> bool:
+    raw = (
+        request.query_params.get('perf')
+        or request.headers.get('X-Perf-Probe')
+        or ''
+    )
+    return str(raw).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _to_server_timing(stages: dict[str, float]) -> str:
+    parts = []
+    for name, duration_ms in stages.items():
+        safe_name = ''.join(ch for ch in str(name) if ch.isalnum() or ch in {'_', '-'})
+        parts.append(f"{safe_name};dur={max(0.0, float(duration_ms)):.2f}")
+    return ', '.join(parts)
 
 
 class TaskCapacityEntry(BaseModel):
@@ -69,15 +88,28 @@ async def api_projects(request: Request):
 @router.get('/tasks')
 @require_session
 async def api_tasks(request: Request, response: Response):
+    req_started = time.perf_counter()
+    perf_probe = _perf_enabled(request)
+    timings_ms: dict[str, float] = {}
+
     sid = get_session_id_from_request(request)
     logger.debug("Fetching tasks for session %s", sid)
     task_repo = resolve_service(request, 'task_repository')
+
+    credential_started = time.perf_counter()
     credential, email = _get_credential(request, sid)
+    timings_ms['credential'] = (time.perf_counter() - credential_started) * 1000
+
     project_id = request.query_params.get('project')
     try:
+        read_started = time.perf_counter()
         tasks = await asyncio.to_thread(
-            task_repo.read, project_id=project_id or None, credential=credential
+            task_repo.read,
+            project_id=project_id or None,
+            credential=credential,
+            perf_probe=perf_probe,
         )
+        timings_ms['task_repo_read'] = (time.perf_counter() - read_started) * 1000
     except BackendAuthError:
         raise HTTPException(
             status_code=401,
@@ -96,6 +128,8 @@ async def api_tasks(request: Request, response: Response):
                 'message': 'Task source configuration is invalid. See server logs for project and area path details.',
             },
         )
+
+    warning_started = time.perf_counter()
     try:
         backend = resolve_service(request, 'backend')
         consume_warnings = getattr(backend, 'consume_warnings', None)
@@ -111,6 +145,24 @@ async def api_tasks(request: Request, response: Response):
     except Exception:
         # Warning propagation must never break task reads.
         pass
+
+    timings_ms['warnings'] = (time.perf_counter() - warning_started) * 1000
+    timings_ms['total'] = (time.perf_counter() - req_started) * 1000
+
+    if perf_probe:
+        response.headers['Server-Timing'] = _to_server_timing(timings_ms)
+        response.headers['X-Perf-Tasks'] = json.dumps({
+            'project': project_id or 'all',
+            'taskCount': len(tasks or []),
+            'timingsMs': {k: round(v, 2) for k, v in timings_ms.items()},
+        }, separators=(',', ':'))
+        logger.info(
+            'perf_probe endpoint=/api/tasks project=%s task_count=%d timings_ms=%s',
+            project_id or 'all',
+            len(tasks or []),
+            {k: round(v, 2) for k, v in timings_ms.items()},
+        )
+
     return tasks
 
 
@@ -155,7 +207,7 @@ async def api_tasks_update(
 
 @router.get('/iterations')
 @require_session
-async def api_config_iterations(request: Request):
+async def api_config_iterations(request: Request, response: Response):
     """Return configured iterations keyed by project id, optionally filtered.
 
     Query params:
@@ -164,29 +216,52 @@ async def api_config_iterations(request: Request):
     Returns:
         JSON with project-keyed effective iteration sets.
     """
+    req_started = time.perf_counter()
+    perf_probe = _perf_enabled(request)
     sid = get_session_id_from_request(request)
+    timings_ms: dict[str, float] = {}
 
     # Only require a PAT when talking to the live Azure DevOps endpoint.
     # Mock clients (fixture replay and synthetic generator) work without one.
     azure_client = resolve_service(request, 'azure_client')
     pat_required = getattr(azure_client, 'requires_pat', True)
+    credential_started = time.perf_counter()
     credential, email = _get_credential(request, sid)
+    timings_ms['credential'] = (time.perf_counter() - credential_started) * 1000
     if pat_required and not credential:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
     project_filter = request.query_params.get('project')
     iteration_repo = resolve_service(request, 'iteration_repository')
     try:
+        list_started = time.perf_counter()
         iterations = await asyncio.to_thread(
             iteration_repo.list_iterations,
             project_id=project_filter or None,
             user_id=email or None,
+            perf_probe=perf_probe,
         )
+        timings_ms['iteration_repo_list'] = (time.perf_counter() - list_started) * 1000
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to fetch iterations: %s', e)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+    timings_ms['total'] = (time.perf_counter() - req_started) * 1000
+    if perf_probe:
+        response.headers['Server-Timing'] = _to_server_timing(timings_ms)
+        response.headers['X-Perf-Iterations'] = json.dumps({
+            'project': project_filter or 'all',
+            'projectGroups': len(iterations or {}),
+            'timingsMs': {k: round(v, 2) for k, v in timings_ms.items()},
+        }, separators=(',', ':'))
+        logger.info(
+            'perf_probe endpoint=/api/iterations project=%s project_groups=%d timings_ms=%s',
+            project_filter or 'all',
+            len(iterations or {}),
+            {k: round(v, 2) for k, v in timings_ms.items()},
+        )
 
     return {'iterationsByProject': iterations}
 

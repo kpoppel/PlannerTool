@@ -25,7 +25,30 @@ class TeamRepository:
 
     def __init__(self, local_backend) -> None:
         self._backend = local_backend
+        self._name_to_id_index: Optional[dict[str, str]] = None
+        self._id_to_short_name_index: Optional[dict[str, str]] = None
         logger.info("TeamRepository: initialised")
+
+    def _build_indexes(self) -> None:
+        teams = self._backend.fetch_config_teams()
+        name_index: dict[str, str] = {}
+        short_name_index: dict[str, str] = {}
+        for team in teams:
+            team_id = str(team.get('id') or '').strip()
+            if not team_id:
+                continue
+            team_name = str(team.get('name') or '').strip()
+            team_short_name = str(team.get('short_name') or '').strip()
+            if team_name:
+                name_index[team_name.lower()] = team_id
+            if team_short_name:
+                name_index[team_short_name.lower()] = team_id
+                short_name_index[team_id] = team_short_name
+            elif team_name:
+                short_name_index[team_id] = team_name
+
+        self._name_to_id_index = name_index
+        self._id_to_short_name_index = short_name_index
 
     # ------------------------------------------------------------------
     # Public API
@@ -37,16 +60,14 @@ class TeamRepository:
 
     def name_to_id(self, name: str) -> Optional[str]:
         """Map a team display name or short_name to its canonical slug id."""
+        if self._name_to_id_index is None:
+            self._build_indexes()
         tkn = name.strip().lower()
-        for t in self._backend.fetch_config_teams():
-            if tkn == t.get("name", "").lower() or tkn == (t.get("short_name") or "").lower():
-                return t["id"]
-        return None
+        return (self._name_to_id_index or {}).get(tkn)
 
     def id_to_short_name(self, team_id: str) -> Optional[str]:
         """Map a team slug id back to its short_name (or full name)."""
+        if self._id_to_short_name_index is None:
+            self._build_indexes()
         tid = team_id.strip()
-        for t in self._backend.fetch_config_teams():
-            if t["id"] == tid:
-                return t.get("short_name") or t.get("name")
-        return None
+        return (self._id_to_short_name_index or {}).get(tid)

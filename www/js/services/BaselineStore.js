@@ -41,6 +41,15 @@ export class BaselineStore {
   }
 
   /**
+   * Get projects as read-only reference for internal hot paths.
+   * Callers must treat returned items as immutable.
+   * @returns {Array}
+   */
+  getProjectsReadonly() {
+    return this._projects;
+  }
+
+  /**
    * Set teams
    * @param {Array} teams
    */
@@ -54,6 +63,15 @@ export class BaselineStore {
    */
   getTeams() {
     return JSON.parse(JSON.stringify(this._teams));
+  }
+
+  /**
+   * Get teams as read-only reference for internal hot paths.
+   * Callers must treat returned items as immutable.
+   * @returns {Array}
+   */
+  getTeamsReadonly() {
+    return this._teams;
   }
 
   /**
@@ -71,6 +89,15 @@ export class BaselineStore {
    */
   getFeatures() {
     return JSON.parse(JSON.stringify(this._features));
+  }
+
+  /**
+   * Get features as read-only reference for internal hot paths.
+   * Callers must treat returned items as immutable.
+   * @returns {Array}
+   */
+  getFeaturesReadonly() {
+    return this._features;
   }
 
   /**

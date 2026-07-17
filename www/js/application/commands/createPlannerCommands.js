@@ -85,6 +85,17 @@ export function createPlannerCommands({ store, services, selectors }) {
 
   function updateSelectionIds(label, key, selections) {
     const safeSelections = asObject(selections);
+    const current = new Set(asArray(store.getState()?.selection?.[key]));
+    let changed = false;
+    for (const [id, selected] of Object.entries(safeSelections)) {
+      const has = current.has(id);
+      if ((!!selected && !has) || (!selected && has)) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return false;
+
     return store.update(label, (draft) => {
       const next = new Set(asArray(draft.selection[key]));
       for (const [id, selected] of Object.entries(safeSelections)) {
@@ -281,7 +292,7 @@ export function createPlannerCommands({ store, services, selectors }) {
     syncFromLegacyState() {
       const runtime = services?.runtime;
       if (!runtime?.captureSnapshot) return;
-      runtime.captureSnapshot('runtime.syncFromLegacyState');
+      runtime.captureSnapshot('runtime.syncFromLegacyState', { publish: false });
     },
 
     hydrateScenarioData(items) {
@@ -317,8 +328,22 @@ export function createPlannerCommands({ store, services, selectors }) {
       return [];
     },
 
+    applyViewRestoreTransaction(payload = {}) {
+      const runtime = services?.runtime;
+      if (typeof runtime?.applyViewRestoreTransaction === 'function') {
+        runtime.applyViewRestoreTransaction(payload);
+        return;
+      }
+      this.applyViewSelectionRestore(payload);
+      this.applyViewOptionsRestore(payload);
+    },
+
     applyViewSelectionRestore(payload = {}) {
       const runtime = services?.runtime;
+      if (typeof runtime?.applyViewRestoreTransaction === 'function') {
+        runtime.applyViewRestoreTransaction(payload);
+        return;
+      }
       if (payload.projectSelections) this.setProjectsSelectedBulk(payload.projectSelections);
       if (payload.teamSelections) this.setTeamsSelectedBulk(payload.teamSelections);
       if (Array.isArray(payload.selectedStates)) {
@@ -349,6 +374,10 @@ export function createPlannerCommands({ store, services, selectors }) {
 
     applyViewOptionsRestore(payload = {}) {
       const runtime = services?.runtime;
+      if (typeof runtime?.applyViewRestoreTransaction === 'function') {
+        runtime.applyViewRestoreTransaction(payload);
+        return;
+      }
       const viewOptions = asObject(payload.viewOptions);
       const updates = normalizeViewOptions(viewOptions);
 

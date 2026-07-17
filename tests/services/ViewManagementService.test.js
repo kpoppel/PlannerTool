@@ -416,5 +416,99 @@ describe('ViewManagementService - Expansion Filters', () => {
       expect(uiCalls.some((call) => call[0] === 'setExpansionState')).to.equal(true);
       expect(uiCalls.some((call) => call[0] === 'requestSidebarUpdate')).to.equal(true);
     });
+
+    it('starts restore batching only for startup restore path', async () => {
+      const beginBatchSpy = sinon.stub().returns(true);
+      const endBatchSpy = sinon.stub().returns(true);
+      mockState.beginViewRestoreBatch = beginBatchSpy;
+      mockState.endViewRestoreBatch = endBatchSpy;
+      mockState.savedViews = [
+        {
+          id: 'default',
+          name: 'Default View',
+          readonly: true,
+          selectedProjects: {},
+          selectedTeams: {},
+          viewOptions: {},
+        },
+      ];
+
+      await viewManagementService.loadAndApplyView('default', { startup: true });
+
+      expect(beginBatchSpy.calledOnce).to.equal(true);
+      expect(beginBatchSpy.firstCall.args[0]).to.deep.equal({ startup: true });
+      expect(endBatchSpy.calledOnce).to.equal(true);
+    });
+
+    it('does not flush startup batch end when startup batch did not start', async () => {
+      const beginBatchSpy = sinon.stub().returns(false);
+      const endBatchSpy = sinon.stub().returns(true);
+      mockState.beginViewRestoreBatch = beginBatchSpy;
+      mockState.endViewRestoreBatch = endBatchSpy;
+      mockState.savedViews = [
+        {
+          id: 'default',
+          name: 'Default View',
+          readonly: true,
+          selectedProjects: {},
+          selectedTeams: {},
+          viewOptions: {},
+        },
+      ];
+
+      await viewManagementService.loadAndApplyView('default');
+
+      expect(beginBatchSpy.calledOnce).to.equal(true);
+      expect(beginBatchSpy.firstCall.args[0]).to.deep.equal({ startup: false });
+      expect(endBatchSpy.called).to.equal(false);
+    });
+
+    it('deduplicates concurrent startup restore calls', async () => {
+      let loadCalls = 0;
+      mockState.savedViews = [
+        {
+          id: 'default',
+          name: 'Default View',
+          readonly: true,
+          selectedProjects: {},
+          selectedTeams: {},
+          viewOptions: {},
+        },
+      ];
+      viewManagementService.loadAndApplyView = async () => {
+        loadCalls += 1;
+        await Promise.resolve();
+      };
+
+      await Promise.all([
+        viewManagementService.restoreLastView({ startup: true }),
+        viewManagementService.restoreLastView({ startup: true }),
+      ]);
+
+      expect(loadCalls).to.equal(1);
+    });
+
+    it('skips repeated startup restore after startup restore is already completed', async () => {
+      let loadCalls = 0;
+      mockState.savedViews = [
+        {
+          id: 'default',
+          name: 'Default View',
+          readonly: true,
+          selectedProjects: {},
+          selectedTeams: {},
+          viewOptions: {},
+        },
+      ];
+
+      viewManagementService.loadAndApplyView = async () => {
+        loadCalls += 1;
+      };
+
+      await viewManagementService.restoreLastView({ startup: true });
+      await viewManagementService.restoreLastView({ startup: true });
+
+      expect(loadCalls).to.equal(1);
+    });
   });
 });

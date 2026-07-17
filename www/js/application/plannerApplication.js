@@ -13,6 +13,7 @@ import { createPlannerRuntimeServices } from './createPlannerRuntimeServices.js'
  */
 export const plannerApplication = createPlannerApplication({
   eventBus: bus,
+  trackLifecycle: false,
   adapters: {
     viewLayout: {
       getTimelineSectionWidth: () => {

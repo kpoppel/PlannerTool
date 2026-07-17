@@ -19,6 +19,7 @@ the cache-hit / no-credential fast path.)
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
@@ -100,6 +101,8 @@ class AzureDevOpsBackend(BackendPort):
         self._capacity_service = capacity_service
         self._storage = storage
         self._config = local_backend
+        self._iteration_map_cache: Dict[tuple[str, tuple[str, ...]], Dict[str, Any]] = {}
+        self._iteration_map_cache_lock = threading.Lock()
         logger.info(
             "AzureDevOpsBackend: initialised (org_url=%r, team_repository=%s, capacity_service=%s)",
             organization_url,
@@ -109,6 +112,8 @@ class AzureDevOpsBackend(BackendPort):
 
     def reload(self) -> None:
         """Rebuild the backend in place from the current ADO config."""
+        with self._iteration_map_cache_lock:
+            self._iteration_map_cache.clear()
         try:
             ado_cfg = self._config.fetch_ado_config() if self._config is not None else {}
         except Exception:
@@ -192,6 +197,12 @@ class AzureDevOpsBackend(BackendPort):
             # Azure DevOps expects "<Project>\Iteration\<sub-path>".
             # The config stores only the sub-path, so prepend the full prefix.
             root_paths = [f"{source_project}\\Iteration\\{r}" for r in raw_roots] if raw_roots else []
+            cache_key = (source_project, tuple(root_paths))
+            with self._iteration_map_cache_lock:
+                cached = self._iteration_map_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
             iteration_map: Dict[str, Any] = {}
             for root in (root_paths or [None]):
                 try:
@@ -215,6 +226,10 @@ class AzureDevOpsBackend(BackendPort):
                         root,
                         exc,
                     )
+
+            with self._iteration_map_cache_lock:
+                self._iteration_map_cache[cache_key] = iteration_map
+
             return iteration_map
         except Exception as exc:
             logger.warning(

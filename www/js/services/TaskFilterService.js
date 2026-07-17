@@ -167,7 +167,12 @@ export class TaskFilterService {
    * Reset all filters to default (all checked)
    */
   resetFilters() {
-    this._writeFilters(this._defaultFilters());
+    const defaults = this._defaultFilters();
+    const current = this._readFilters();
+    if (JSON.stringify(current) === JSON.stringify(defaults)) {
+      return;
+    }
+    this._writeFilters(defaults);
     this._emitFilterChanged();
   }
 }

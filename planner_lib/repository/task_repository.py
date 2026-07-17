@@ -23,6 +23,7 @@ in PlanRepository and IterationRepository respectively.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from planner_lib.backend.errors import BackendAuthError, BackendConfigError, BackendUnavailableError
@@ -67,6 +68,7 @@ class TaskRepository:
         self,
         project_id: Optional[str] = None,
         credential: Optional[BackendCredential] = None,
+        perf_probe: bool = False,
     ) -> List[DomainTask]:
         """Return all tasks, optionally filtered to one project.
 
@@ -87,10 +89,19 @@ class TaskRepository:
         """
         project_map = self._project_service.get_project_map()
         items: List[DomainTask] = []
+        read_started = time.perf_counter()
+        project_timings: List[dict[str, Any]] = []
 
         for project in project_map:
+            project_started = time.perf_counter()
             pid = project.get('id')
             if project_id and pid != project_id:
+                if perf_probe:
+                    project_timings.append({
+                        'project': pid,
+                        'skipped': 'project_filter',
+                        'durationMs': round((time.perf_counter() - project_started) * 1000, 2),
+                    })
                 continue
 
             area_path: str = project.get('area_path', '')
@@ -106,6 +117,12 @@ class TaskRepository:
                 )
             except BackendAuthError:
                 # Auth failures must remain explicit to the API layer.
+                if perf_probe:
+                    project_timings.append({
+                        'project': pid,
+                        'error': 'backend_auth',
+                        'durationMs': round((time.perf_counter() - project_started) * 1000, 2),
+                    })
                 raise
             except BackendConfigError as exc:
                 logger.error(
@@ -115,6 +132,12 @@ class TaskRepository:
                     area_path,
                     exc,
                 )
+                if perf_probe:
+                    project_timings.append({
+                        'project': pid,
+                        'error': 'backend_config',
+                        'durationMs': round((time.perf_counter() - project_started) * 1000, 2),
+                    })
                 continue
             except BackendUnavailableError as exc:
                 logger.error(
@@ -124,6 +147,12 @@ class TaskRepository:
                     area_path,
                     exc,
                 )
+                if perf_probe:
+                    project_timings.append({
+                        'project': pid,
+                        'error': 'backend_unavailable',
+                        'durationMs': round((time.perf_counter() - project_started) * 1000, 2),
+                    })
                 continue
 
             # Post-fill the project identifier so consumers can filter by project
@@ -137,8 +166,23 @@ class TaskRepository:
                 len(tasks or []),
                 pid,
             )
+            if perf_probe:
+                project_timings.append({
+                    'project': pid,
+                    'fetched': len(tasks or []),
+                    'durationMs': round((time.perf_counter() - project_started) * 1000, 2),
+                })
 
         logger.debug("TaskRepository.read: %d total tasks returned", len(items))
+        if perf_probe:
+            total_ms = (time.perf_counter() - read_started) * 1000
+            logger.info(
+                "perf_probe repo=task_repository.read total_ms=%.2f projects=%d returned=%d breakdown=%s",
+                total_ms,
+                len(project_map or []),
+                len(items),
+                project_timings,
+            )
         return items
 
     def write(

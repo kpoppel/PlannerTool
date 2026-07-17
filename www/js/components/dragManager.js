@@ -5,6 +5,7 @@ import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
 import { findInBoard } from './board-utils.js';
+import { startPerfProbe, endPerfProbe } from '../services/perfProbe.js';
 
 const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
 
@@ -411,7 +412,15 @@ function computeResizeUpdates(feature, newEndDate, features) {
 
 // Apply a list of updates using provided callback.
 function applyUpdates(updates, updateDatesCb) {
-  updateDatesCb(updates);
+  const probe = startPerfProbe('drag.applyUpdates', {
+    updateCount: Array.isArray(updates) ? updates.length : 0,
+    firstFeatureId: Array.isArray(updates) && updates[0] ? String(updates[0].id || '') : '',
+  });
+  try {
+    updateDatesCb(updates);
+  } finally {
+    endPerfProbe(probe);
+  }
 }
 
 // Export schedule helper functions for tests and other modules

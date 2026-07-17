@@ -193,7 +193,6 @@ export function planViewRestoreUiEffects(payload = {}) {
       type: 'setExpansionState',
       expansion,
     });
-    effects.push({ type: 'recomputeDataFunnel' });
   }
 
   effects.push({ type: 'requestSidebarUpdate' });

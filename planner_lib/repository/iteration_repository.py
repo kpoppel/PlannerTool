@@ -5,6 +5,7 @@ Provides the single authoritative source for iteration data.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date as _date
 from typing import Any, Dict, List, Optional
 
@@ -44,6 +45,7 @@ class IterationRepository:
         self,
         project_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        perf_probe: bool = False,
     ) -> DomainIterationsByProject:
         """Return project-keyed effective iteration sets.
 
@@ -59,14 +61,23 @@ class IterationRepository:
         iterations_config = self._iteration_config.fetch_iterations_config()
 
         out: DomainIterationsByProject = {}
+        list_started = time.perf_counter()
+        combo_timings: List[dict[str, Any]] = []
         # Track (source_project, frozen_roots) combos already fetched to avoid
         # duplicate backend calls when multiple configured projects share the
         # same ADO iteration source.
         fetched_combos: Dict[tuple[str, tuple[str, ...]], List[DomainIteration]] = {}
 
         for project in project_map:
+            item_started = time.perf_counter()
             pid = project.get('id')
             if project_id and pid != project_id:
+                if perf_probe:
+                    combo_timings.append({
+                        'project': pid,
+                        'skipped': 'project_filter',
+                        'durationMs': round((time.perf_counter() - item_started) * 1000, 2),
+                    })
                 continue
 
             source_project, raw_roots = self._resolve_iteration_source(project, iterations_config)
@@ -76,12 +87,31 @@ class IterationRepository:
             combo = (source_project, tuple(raw_roots))
             try:
                 if combo not in fetched_combos:
+                    fetch_started = time.perf_counter()
                     iters_map: Dict[str, Any] = self._backend.fetch_iterations(
                         source_project,
                         root_paths=raw_roots or None,
                         credential=credential,
                     )
                     fetched_combos[combo] = self._normalize_iterations(iters_map)
+                    if perf_probe:
+                        combo_timings.append({
+                            'project': pid,
+                            'sourceProject': source_project,
+                            'roots': list(raw_roots),
+                            'fetchedFromBackend': True,
+                            'iterations': len(fetched_combos[combo]),
+                            'fetchMs': round((time.perf_counter() - fetch_started) * 1000, 2),
+                        })
+                elif perf_probe:
+                    combo_timings.append({
+                        'project': pid,
+                        'sourceProject': source_project,
+                        'roots': list(raw_roots),
+                        'fetchedFromBackend': False,
+                        'iterations': len(fetched_combos[combo]),
+                        'fetchMs': 0.0,
+                    })
 
                 out[str(pid)] = DomainIterationGroup(
                     projectId=str(pid),
@@ -90,6 +120,8 @@ class IterationRepository:
                     roots=list(raw_roots),
                     iterations=list(fetched_combos[combo]),
                 )
+                if perf_probe:
+                    combo_timings[-1]['durationMs'] = round((time.perf_counter() - item_started) * 1000, 2)
             except Exception as exc:
                 logger.warning(
                     "Failed to fetch iterations for configured project '%s' "
@@ -99,6 +131,24 @@ class IterationRepository:
                     raw_roots,
                     exc,
                 )
+                if perf_probe:
+                    combo_timings.append({
+                        'project': pid,
+                        'sourceProject': source_project,
+                        'roots': list(raw_roots),
+                        'error': str(exc),
+                        'durationMs': round((time.perf_counter() - item_started) * 1000, 2),
+                    })
+
+        if perf_probe:
+            logger.info(
+                'perf_probe repo=iteration_repository.list_iterations total_ms=%.2f projects=%d groups=%d unique_combos=%d breakdown=%s',
+                (time.perf_counter() - list_started) * 1000,
+                len(project_map or []),
+                len(out or {}),
+                len(fetched_combos),
+                combo_timings,
+            )
 
         return out
 

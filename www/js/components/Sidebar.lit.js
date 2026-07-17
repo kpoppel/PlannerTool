@@ -929,6 +929,7 @@ export class SidebarLit extends LitElement {
     this.serverName = null;
     // Global popover styles are provided by TopMenu; no sidebar-specific injection needed
     this._didRestoreSidebarState = false;
+    this._dataFunnelRecomputeScheduled = false;
 
     // Reactive properties
     this.projects = [];
@@ -974,11 +975,11 @@ export class SidebarLit extends LitElement {
     // Wire event handlers to update reactive properties
     this._onProjectsChanged = (projects) => {
       this.projects = projects ? [...projects] : [];
-      this._recomputeDataFunnel && this._recomputeDataFunnel();
+      this._scheduleDataFunnelRecompute && this._scheduleDataFunnelRecompute();
     };
     this._onTeamsChanged = (teams) => {
       this.teams = teams ? [...teams] : [];
-      this._recomputeDataFunnel && this._recomputeDataFunnel();
+      this._scheduleDataFunnelRecompute && this._scheduleDataFunnelRecompute();
     };
     this._onScenariosList = (payload) => {
       // Use the authoritative scenario objects from `state.scenarios.list()` so
@@ -1031,6 +1032,14 @@ export class SidebarLit extends LitElement {
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     bus.on(ViewManagementEvents.LIST, this._onViewsList);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+    this._scheduleDataFunnelRecompute = () => {
+      if (this._dataFunnelRecomputeScheduled) return;
+      this._dataFunnelRecomputeScheduled = true;
+      requestAnimationFrame(() => {
+        this._dataFunnelRecomputeScheduled = false;
+        this._recomputeDataFunnel && this._recomputeDataFunnel();
+      });
+    };
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnel = () => {
       try {
@@ -1060,7 +1069,7 @@ export class SidebarLit extends LitElement {
               expandRelations: this.expandRelations,
               expandTeamAllocated: this.expandTeamAllocated,
               selectedTeamIds: selectedTeamIds,
-            })
+            }, feats)
           : {
               expandedIds: selectedFeatureIds,
               counts: { parentChild: 0, relations: 0, teamAllocated: 0 },
@@ -1089,9 +1098,9 @@ export class SidebarLit extends LitElement {
       }
       this.requestUpdate();
     };
-    bus.on(FeatureEvents.UPDATED, this._recomputeDataFunnel);
-    bus.on(FilterEvents.CHANGED, this._recomputeDataFunnel);
-    bus.on(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
+    bus.on(FeatureEvents.UPDATED, this._scheduleDataFunnelRecompute);
+    bus.on(FilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+    bus.on(StateFilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
     // Keep local copies of dynamic state/type lists in sync
     this._onAvailableStatesChanged = (states) => {
       this.availableFeatureStates =
@@ -1266,10 +1275,15 @@ export class SidebarLit extends LitElement {
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
 
+    if (this._scheduleDataFunnelRecompute) {
+      bus.off(FeatureEvents.UPDATED, this._scheduleDataFunnelRecompute);
+      bus.off(FilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+      bus.off(StateFilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+      this._scheduleDataFunnelRecompute = null;
+      this._dataFunnelRecomputeScheduled = false;
+    }
+
     if (this._recomputeDataFunnel) {
-      bus.off(FeatureEvents.UPDATED, this._recomputeDataFunnel);
-      bus.off(FilterEvents.CHANGED, this._recomputeDataFunnel);
-      bus.off(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
       this._recomputeDataFunnel = null;
     }
     if (this._onAvailableStatesChanged)

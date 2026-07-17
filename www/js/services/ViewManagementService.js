@@ -65,6 +65,12 @@ export class ViewManagementService {
     this._viewService = viewService;
     this._activeViewData = null; // Full data of currently active view (for filtering)
     this._lastViewIdStorageKey = 'az_planner:last_view_id';
+    this._inFlightLoadPromise = null;
+    this._inFlightLoadViewId = null;
+    this._deferredViews = null;
+    this._deferredActiveId = null;
+    this._startupRestoreCompleted = false;
+    this._startupRestorePromise = null;
     this.setEnvironment(env);
   }
 
@@ -90,19 +96,32 @@ export class ViewManagementService {
   }
 
   _getViews() {
-    return this._state?.savedViews || [];
+    const current = this._state?.savedViews || [];
+    if (current.length > 0) return current;
+    return this._deferredViews || [];
   }
 
   _getActiveViewId() {
-    return this._state?.activeViewId || null;
+    return this._state?.activeViewId || this._deferredActiveId || null;
   }
 
   _syncViewState({ views, activeId } = {}) {
     this._state?.replaceViewState?.({ saved: views, activeId });
   }
 
+  _createDefaultView() {
+    return {
+      id: 'default',
+      name: 'Default View',
+      readonly: true,
+      // Default view has no filters - shows everything
+      selectedProjects: {},
+      selectedTeams: {},
+      viewOptions: {},
+    };
+  }
+
   _composeViews(userViews = []) {
-    this.initDefaultView();
     const existingDefault = this._getViews().find((view) => view.id === 'default');
     const views = [];
     const seenIds = new Set();
@@ -113,7 +132,7 @@ export class ViewManagementService {
       views.push(view);
     };
 
-    addUniqueView(existingDefault);
+    addUniqueView(existingDefault || this._createDefaultView());
     (Array.isArray(userViews) ? userViews : []).forEach((view) => {
       if (view?.id === 'default') return;
       addUniqueView(view);
@@ -131,15 +150,7 @@ export class ViewManagementService {
     const existing = views.find((v) => v.id === DEFAULT_ID);
 
     if (!existing) {
-      const defaultView = {
-        id: DEFAULT_ID,
-        name: 'Default View',
-        readonly: true,
-        // Default view has no filters - shows everything
-        selectedProjects: {},
-        selectedTeams: {},
-        viewOptions: {},
-      };
+      const defaultView = this._createDefaultView();
       this._syncViewState({ views: [defaultView, ...views], activeId: this._getActiveViewId() || DEFAULT_ID });
     }
   }
@@ -148,7 +159,11 @@ export class ViewManagementService {
    * Load all views from backend
    * @returns {Promise<Array>} Array of view metadata
    */
-  async loadViews() {
+  async loadViews(options = {}) {
+    const deferStateSync = !!options.deferStateSync;
+    if (deferStateSync) {
+      this._startupRestoreCompleted = false;
+    }
     try {
       const userViews = dataOr(await dataService.listViews(), []) || [];
       console.log('[ViewManagementService] Loaded user views:', userViews);
@@ -160,16 +175,31 @@ export class ViewManagementService {
         views.find((view) => view.readonly)?.id ||
         views[0]?.id ||
         'default';
-      this._syncViewState({ views, activeId });
+      if (deferStateSync) {
+        this._deferredViews = views;
+        this._deferredActiveId = activeId;
+      } else {
+        this._deferredViews = null;
+        this._deferredActiveId = null;
+        this._syncViewState({ views, activeId });
+      }
 
       console.log('[ViewManagementService] Total views:', views);
-      this._emitViewsList();
+      if (!deferStateSync) this._emitViewsList();
       return views;
     } catch (err) {
       console.error('[ViewManagementService] Error loading views:', err);
       const views = this._composeViews(this._getViews());
-      this._syncViewState({ views, activeId: views.find((view) => view.readonly)?.id || views[0]?.id || null });
-      this._emitViewsList();
+      const activeId = views.find((view) => view.readonly)?.id || views[0]?.id || null;
+      if (deferStateSync) {
+        this._deferredViews = views;
+        this._deferredActiveId = activeId;
+      } else {
+        this._deferredViews = null;
+        this._deferredActiveId = null;
+        this._syncViewState({ views, activeId });
+        this._emitViewsList();
+      }
       return views;
     }
   }
@@ -222,34 +252,58 @@ export class ViewManagementService {
    * @param {string} viewId - View ID to load
    * @returns {Promise<void>}
    */
-  async loadAndApplyView(viewId) {
-    try {
-      const response = await this._loadViewById(viewId);
-      if (!response) return;
+  async loadAndApplyView(viewId, options = {}) {
+    const startup = !!options.startup;
+    if (startup && this._startupRestoreCompleted && !this._deferredViews) {
+      return;
+    }
+    if (
+      this._getActiveViewId() === viewId &&
+      this._activeViewData?.id === viewId &&
+      !this._deferredViews
+    ) {
+      if (startup) this._startupRestoreCompleted = true;
+      return;
+    }
 
-      console.log('[ViewManagementService] Loading view:', response);
+    if (this._inFlightLoadPromise && this._inFlightLoadViewId === viewId) {
+      return this._inFlightLoadPromise;
+    }
 
-      // Store the active view data for filtering
-      this._activeViewData = response;
-      const sidebarElement = this._getSidebarElement();
-      const viewOptions = response.viewOptions || {};
+    const runRestore = async () => {
+      const startedBatch = this._beginViewRestoreBatch({ startup });
+      try {
+        const response = await this._loadViewById(viewId);
+        if (!response) return;
 
-      if (viewId === 'default') {
+        console.log('[ViewManagementService] Loading view:', response);
+
+        // Store the active view data for filtering
+        this._activeViewData = response;
+        const sidebarElement = this._getSidebarElement();
+        const viewOptions = response.viewOptions || {};
+        const deferredViews = this._deferredViews;
+        this._deferredViews = null;
+        this._deferredActiveId = null;
+
+        if (viewId === 'default') {
         const defaults = getDefaultViewOptions();
-        const restorePayload = {
+          const restorePayload = {
           projectSelections: this._buildSelections(this._state.projects, null, true),
           teamSelections: this._buildSelections(this._state.teams, null, true),
           selectedStates: [...(this._state.availableFeatureStates || [])],
           resetTaskFilters: true,
         };
-        this._applyViewSelectionRestore(restorePayload);
         const expansion = this._buildExpansionState({
           expandParentChild: defaults.expandParentChild || false,
           expandRelations: defaults.expandRelations || false,
           expandTeamAllocated: defaults.expandTeamAllocated || false,
         });
         const selectedTaskTypes = this._deriveSelectedTaskTypes(sidebarElement, true);
-        this._applyViewOptionsRestore({
+          this._applyViewRestoreTransaction({
+            ...restorePayload,
+          ...(deferredViews !== null ? { savedViews: deferredViews } : {}),
+          activeViewId: viewId,
           viewOptions: defaults,
           graphType: 'team',
           selectedTaskTypes,
@@ -264,7 +318,7 @@ export class ViewManagementService {
             expansion,
           })
         );
-      } else {
+        } else {
         const restorePayload = {
           projectSelections: this._buildSelections(
             this._state.projects,
@@ -281,10 +335,12 @@ export class ViewManagementService {
           const validStates = viewOptions.selectedFeatureStates.filter((s) => availableStates.includes(s));
           restorePayload.selectedStates = validStates;
         }
-        this._applyViewSelectionRestore(restorePayload);
         const selectedTaskTypes = this._deriveSelectedTaskTypes(sidebarElement, true);
         const expansion = this._extractExpansionState(viewOptions);
-        this._applyViewOptionsRestore({
+        this._applyViewRestoreTransaction({
+          ...restorePayload,
+          ...(deferredViews !== null ? { savedViews: deferredViews } : {}),
+          activeViewId: viewId,
           viewOptions,
           graphType: viewOptions.graphType,
           selectedTaskTypes,
@@ -301,14 +357,47 @@ export class ViewManagementService {
         );
       }
 
-      await this._restorePluginState(viewOptions);
+        await this._restorePluginState(viewOptions);
+        if (typeof this._state.applyViewRestoreTransaction !== 'function') {
+          this._syncViewState({
+            views: deferredViews !== null ? deferredViews : undefined,
+            activeId: viewId,
+          });
+        }
+        this._saveLastViewId(viewId);
+        this._emitViewActivated();
+        if (startup) this._startupRestoreCompleted = true;
+      } catch (err) {
+        console.error('[ViewManagementService] Error loading view:', err);
+        if (startup) this._startupRestoreCompleted = false;
+        throw err;
+      } finally {
+        if (startedBatch) this._endViewRestoreBatch();
+      }
+    };
 
-      this._syncViewState({ activeId: viewId });
-      this._saveLastViewId(viewId);
-      this._emitViewActivated();
-    } catch (err) {
-      console.error('[ViewManagementService] Error loading view:', err);
-      throw err;
+    const previousRestore = this._inFlightLoadPromise;
+    if (previousRestore) {
+      try {
+        await previousRestore;
+      } catch (_err) {
+        // Keep restore queue moving even if previous restore failed.
+      }
+      if (this._inFlightLoadPromise && this._inFlightLoadViewId === viewId) {
+        return this._inFlightLoadPromise;
+      }
+    }
+
+    const currentRestore = runRestore();
+    this._inFlightLoadPromise = currentRestore;
+    this._inFlightLoadViewId = viewId;
+    try {
+      return await currentRestore;
+    } finally {
+      if (this._inFlightLoadPromise === currentRestore) {
+        this._inFlightLoadPromise = null;
+        this._inFlightLoadViewId = null;
+      }
     }
   }
 
@@ -485,6 +574,14 @@ export class ViewManagementService {
     setter(this._buildSelections(items, selectedMap, selectAll));
   }
 
+  _beginViewRestoreBatch(options = {}) {
+    return !!this._state?.beginViewRestoreBatch?.(options);
+  }
+
+  _endViewRestoreBatch() {
+    return !!this._state?.endViewRestoreBatch?.();
+  }
+
   _buildSelections(items, selectedMap, selectAll) {
     if (!items) return {};
     const selections = {};
@@ -572,6 +669,15 @@ export class ViewManagementService {
     }
   }
 
+  _applyViewRestoreTransaction(payload) {
+    if (typeof this._state.applyViewRestoreTransaction === 'function') {
+      this._state.applyViewRestoreTransaction(payload);
+      return;
+    }
+    this._applyViewSelectionRestore(payload);
+    this._applyViewOptionsRestore(payload);
+  }
+
   _planViewRestoreUiEffects(payload) {
     if (typeof this._state.planViewRestoreUiEffects === 'function') {
       return this._state.planViewRestoreUiEffects(payload) || [];
@@ -648,15 +754,31 @@ export class ViewManagementService {
    * Should be called after views are loaded and projects/teams are available
    * @returns {Promise<boolean>} True if a view was restored, false otherwise
    */
-  async restoreLastView() {
-    try {
+  async restoreLastView(options = {}) {
+    const startup = !!options.startup;
+    if (startup && this._startupRestorePromise) {
+      return this._startupRestorePromise;
+    }
+
+    const runRestore = async () => {
+      try {
+      if (startup && this._startupRestoreCompleted) {
+        return true;
+      }
+
       const lastViewId = this.getLastViewId();
+      const targetViewId = lastViewId || 'default';
+      if (this._getActiveViewId() === targetViewId && this._activeViewData?.id === targetViewId) {
+        if (startup) this._startupRestoreCompleted = true;
+        return true;
+      }
 
       if (!lastViewId) {
         console.log(
           '[ViewManagementService] No last view ID found, activating default view'
         );
-        await this.loadAndApplyView('default');
+        await this.loadAndApplyView('default', { startup });
+        if (startup) this._startupRestoreCompleted = true;
         return true;
       }
 
@@ -665,24 +787,42 @@ export class ViewManagementService {
 
       if (viewExists) {
         console.log('[ViewManagementService] Restoring last view:', lastViewId);
-        await this.loadAndApplyView(lastViewId);
+        await this.loadAndApplyView(lastViewId, { startup });
+        if (startup) this._startupRestoreCompleted = true;
         return true;
       } else {
         console.warn(
           '[ViewManagementService] Last view not found, activating default view'
         );
-        await this.loadAndApplyView('default');
+        await this.loadAndApplyView('default', { startup });
+        if (startup) this._startupRestoreCompleted = true;
         return true;
       }
     } catch (err) {
       console.error('[ViewManagementService] Error restoring last view:', err);
       // Fall back to default view on error
       try {
-        await this.loadAndApplyView('default');
+        await this.loadAndApplyView('default', { startup: !!options?.startup });
+        if (options?.startup) this._startupRestoreCompleted = true;
       } catch (e) {
         console.error('[ViewManagementService] Failed to load default view:', e);
       }
       return false;
+      }
+    };
+
+    if (!startup) {
+      return runRestore();
+    }
+
+    const promise = runRestore();
+    this._startupRestorePromise = promise;
+    try {
+      return await promise;
+    } finally {
+      if (this._startupRestorePromise === promise) {
+        this._startupRestorePromise = null;
+      }
     }
   }
 

@@ -137,6 +137,8 @@ class CachingBackend:
         self._inner_is_remote = bool(getattr(inner, 'is_remote', False))
         self._warnings_lock = threading.Lock()
         self._warnings: List[Dict[str, Any]] = []
+        self._task_refresh_lock = threading.Lock()
+        self._task_refresh_inflight: set[str] = set()
         logger.info(
             "CachingBackend: initialised wrapping %s",
             type(inner).__name__,
@@ -301,6 +303,22 @@ class CachingBackend:
         user_id = (credential or {}).get('user_id') if isinstance(credential, dict) else None
         cached_has_content = bool(cached_value) if have_cached else False
 
+        # Soft-expired entry: serve stale immediately and refresh in background.
+        # This keeps UI latency low when TTL is tuned short to pick up external
+        # ADO changes more frequently.
+        if have_cached and self._inner_is_remote and cached_has_content:
+            self._start_background_task_refresh(
+                inner_method=inner_method,
+                name=name,
+                key=key,
+                meta_key=meta_key,
+                args=args,
+                kwargs=kwargs,
+                user_id=user_id,
+            )
+            logger.debug('CachingBackend: cache HIT %s (stale, refresh scheduled)', key)
+            return cached_value
+
         try:
             result = inner_method(*args, **kwargs)
         except BackendError as exc:
@@ -363,6 +381,79 @@ class CachingBackend:
             key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
         )
         return result
+
+    def _start_background_task_refresh(
+        self,
+        *,
+        inner_method,
+        name: str,
+        key: str,
+        meta_key: str,
+        args: tuple,
+        kwargs: dict,
+        user_id: Optional[str],
+    ) -> None:
+        with self._task_refresh_lock:
+            if key in self._task_refresh_inflight:
+                return
+            self._task_refresh_inflight.add(key)
+
+        def _refresh() -> None:
+            try:
+                result = inner_method(*args, **kwargs)
+                if not result:
+                    logger.warning(
+                        'CachingBackend: background refresh of %s returned no data; keeping existing cached content',
+                        key,
+                    )
+                    return
+
+                ttl = self._ttl_config.ttl_for(name)
+                ttl_seconds = ttl.total_seconds() if ttl is not None else None
+                now = time.time()
+                fresh_until = (now + ttl_seconds) if ttl_seconds is not None else None
+                self._storage.save(_NAMESPACE, key, result, ttl_seconds=None)
+                self._storage.save(_NAMESPACE, meta_key, {'fresh_until': fresh_until}, ttl_seconds=None)
+                logger.debug(
+                    'CachingBackend: background refresh succeeded for %s (fresh_for=%s)',
+                    key,
+                    f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
+                )
+            except BackendError as exc:
+                if isinstance(exc, BackendAuthError):
+                    self._record_warning(
+                        code='tasks_stale_invalid_pat',
+                        message=(
+                            'Your Azure DevOps PAT is invalid or expired. '
+                            'Showing cached task data that may be out of date.'
+                        ),
+                        user_id=user_id,
+                    )
+                else:
+                    self._record_warning(
+                        code='tasks_stale_api_outage',
+                        message=(
+                            'Azure DevOps is currently unreachable. '
+                            'Showing cached task data that may be out of date.'
+                        ),
+                        user_id=user_id,
+                    )
+                logger.warning(
+                    'CachingBackend: background refresh of %s failed (%s); keeping existing cached content',
+                    key,
+                    exc,
+                )
+            except Exception as exc:
+                logger.warning(
+                    'CachingBackend: unexpected background refresh failure for %s: %s',
+                    key,
+                    exc,
+                )
+            finally:
+                with self._task_refresh_lock:
+                    self._task_refresh_inflight.discard(key)
+
+        threading.Thread(target=_refresh, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Explicit mutations
