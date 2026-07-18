@@ -473,6 +473,7 @@ export class FeatureCardLit extends LitElement {
     this._width = 0; // cached from ResizeObserver — no DOM read needed
     this._lastTitle = null; // track title changes for overflow re-check
     this._connected = false; // whether this card is in current connected set
+    this._observerInitScheduled = false;
   }
 
   // ---- Static batched layout scheduler ----
@@ -559,19 +560,7 @@ export class FeatureCardLit extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    // ResizeObserver provides width via contentRect — no DOM read needed.
-    // Callback adds this card to the batched layout scheduler.
-    this._ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        this._width = entry.contentRect.width;
-      }
-      this._requestLayout();
-    });
-    this._ro.observe(this);
-    // Re-render when feature data updates
-    this._unsubFeaturesUpdated = bus.on(FeatureEvents.UPDATED, () => {
-      this.requestUpdate();
-    });
+    this._scheduleObserverInit();
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
       if (p && String(p.featureId) === String(this.feature?.id)) {
@@ -644,7 +633,6 @@ export class FeatureCardLit extends LitElement {
   disconnectedCallback() {
     FeatureCardLit._pendingCards.delete(this);
     this._ro?.disconnect();
-    this._unsubFeaturesUpdated?.();
     this._unsubDragEnd?.();
     this.removeEventListener('mousedown', this._onMouseDown);
     if (this._boundOnFeatureSelected)
@@ -662,6 +650,24 @@ export class FeatureCardLit extends LitElement {
       window.removeEventListener('pointerup', this._boundOnPreUp);
     }
     super.disconnectedCallback();
+  }
+
+  _scheduleObserverInit() {
+    if (this._observerInitScheduled || this._ro) return;
+    this._observerInitScheduled = true;
+    requestAnimationFrame(() => {
+      this._observerInitScheduled = false;
+      if (!this.isConnected || this._ro) return;
+      // Defer ResizeObserver setup until after first paint so large initial card
+      // batches do less work on the critical rendering path.
+      this._ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          this._width = entry.contentRect.width;
+        }
+        this._requestLayout();
+      });
+      this._ro.observe(this);
+    });
   }
 
   /**

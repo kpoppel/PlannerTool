@@ -31,6 +31,10 @@ import './FeatureGroup.lit.js';
 export { initBoard } from './FeatureBoard.init.js';
 
 class FeatureBoard extends LitElement {
+  static LARGE_RENDER_THRESHOLD = 250;
+  static INITIAL_RENDER_CHUNK = 150;
+  static RENDER_CHUNK_SIZE = 200;
+
   static properties = {
     features: { type: Array },
   };
@@ -47,6 +51,7 @@ class FeatureBoard extends LitElement {
     this._collapsedGroups = new Set();
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
     this._overlayOffset = 0;
+    this._renderGeneration = 0;
   }
 
   static styles = featureBoardStyles;
@@ -248,6 +253,7 @@ class FeatureBoard extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._renderGeneration += 1;
     window.removeEventListener('resize', this._handleViewportResize);
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
@@ -844,7 +850,8 @@ class FeatureBoard extends LitElement {
       }
     }
 
-    this.features = renderList;
+    this._applyRenderList(renderList);
+    this._cardMap.clear();
     // Explicitly size the host so #board-area (the positioned parent) has the
     // correct dimensions, allowing position:absolute overlays with inset:0 to
     // cover the full card area. Ensure we never shrink below the visible
@@ -867,6 +874,38 @@ class FeatureBoard extends LitElement {
     }
   }
 
+  _applyRenderList(renderList) {
+    this._renderGeneration += 1;
+    const generation = this._renderGeneration;
+
+    if (renderList.length <= FeatureBoard.LARGE_RENDER_THRESHOLD) {
+      this.features = renderList;
+      this.requestUpdate();
+      return;
+    }
+
+    const initialCount = Math.min(renderList.length, FeatureBoard.INITIAL_RENDER_CHUNK);
+    this.features = renderList.slice(0, initialCount);
+    this.requestUpdate();
+
+    let nextIndex = initialCount;
+    const pushNextChunk = () => {
+      if (generation !== this._renderGeneration || nextIndex >= renderList.length) return;
+      const endIndex = Math.min(
+        renderList.length,
+        nextIndex + FeatureBoard.RENDER_CHUNK_SIZE
+      );
+      this.features = renderList.slice(0, endIndex);
+      this.requestUpdate();
+      nextIndex = endIndex;
+      if (nextIndex < renderList.length) {
+        requestAnimationFrame(pushNextChunk);
+      }
+    };
+
+    requestAnimationFrame(pushNextChunk);
+  }
+
   async updateCardsById(ids = []) {
     // In packed mode any date change can shift a card into an occupied lane.
     // A full repack is required to keep the layout consistent.
@@ -881,7 +920,7 @@ class FeatureBoard extends LitElement {
       const feature = state.getEffectiveFeatureById(id);
       if (!feature) continue;
 
-      const existing = this._cardMap.get(id);
+      const existing = this._getCardNodeById(id);
       if (!existing) {
         this.renderFeatures();
         return;
@@ -915,14 +954,24 @@ class FeatureBoard extends LitElement {
     }
   }
 
-  // After render, update card map
-  updated() {
-    if (!this.shadowRoot) return;
-    const cards = this.shadowRoot.querySelectorAll('feature-card-lit');
-    this._cardMap.clear();
-    cards.forEach((node) => {
-      if (node.feature?.id) this._cardMap.set(node.feature.id, node);
-    });
+  _getCardNodeById(featureId) {
+    const key = String(featureId);
+    const cached = this._cardMap.get(key);
+    if (cached) {
+      const cachedId = String(cached.feature?.id ?? cached.dataset?.featureId ?? cached.dataset?.id ?? '');
+      if (cached.isConnected || cachedId === key) return cached;
+    }
+
+    const escaped = window.CSS?.escape?.(key) ?? key.replace(/["\\]/g, '\\$&');
+    const node = this.shadowRoot?.querySelector(
+      `feature-card-lit[data-feature-id="${escaped}"]`
+    );
+    if (node) {
+      this._cardMap.set(key, node);
+      return node;
+    }
+    this._cardMap.delete(key);
+    return null;
   }
 
   _selectFeature(feature) {
@@ -936,9 +985,7 @@ class FeatureBoard extends LitElement {
   }
 
   centerFeatureById(featureId) {
-    const card =
-      this._cardMap.get(String(featureId)) ||
-      this.shadowRoot?.querySelector(`feature-card-lit[data-feature-id="${featureId}"]`);
+    const card = this._getCardNodeById(featureId);
     // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
     const scrollContainer = findInBoard('#scroll-container');
     if (!card || !scrollContainer) return;

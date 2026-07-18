@@ -962,19 +962,37 @@ export class SidebarLit extends LitElement {
     this._disabledSidebar = {};
     // Snapshot of schedule.unplanned before entering packed mode, for restore on exit.
     this._packedModeUnplannedSnapshot = undefined;
+    this._recomputeDataFunnelScheduled = false;
+    this._computeTaskTypesScheduled = false;
   }
 
   connectedCallback() {
     super.connectedCallback();
+    this._scheduleDataFunnelRecompute = () => {
+      if (this._recomputeDataFunnelScheduled) return;
+      this._recomputeDataFunnelScheduled = true;
+      requestAnimationFrame(() => {
+        this._recomputeDataFunnelScheduled = false;
+        this._recomputeDataFunnelNow?.();
+      });
+    };
+    this._scheduleTaskTypesRecompute = () => {
+      if (this._computeTaskTypesScheduled) return;
+      this._computeTaskTypesScheduled = true;
+      requestAnimationFrame(() => {
+        this._computeTaskTypesScheduled = false;
+        this._computeAvailableTaskTypes();
+      });
+    };
     // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
     this._onProjectsChanged = (projects) => {
       this.projects = projects ? [...projects] : [];
-      this._recomputeDataFunnel && this._recomputeDataFunnel();
+      this._scheduleDataFunnelRecompute();
     };
     this._onTeamsChanged = (teams) => {
       this.teams = teams ? [...teams] : [];
-      this._recomputeDataFunnel && this._recomputeDataFunnel();
+      this._scheduleDataFunnelRecompute();
     };
     this._onScenariosList = (payload) => {
       // Use the authoritative scenario objects from `state.scenarios` so
@@ -1028,7 +1046,7 @@ export class SidebarLit extends LitElement {
     bus.on(ViewManagementEvents.LIST, this._onViewsList);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
     // Recompute data funnel when features or filters change
-    this._recomputeDataFunnel = () => {
+    this._recomputeDataFunnelNow = () => {
       try {
         const feats =
           (state.featureService &&
@@ -1104,9 +1122,9 @@ export class SidebarLit extends LitElement {
       }
       this.requestUpdate();
     };
-    bus.on(FeatureEvents.UPDATED, this._recomputeDataFunnel);
-    bus.on(FilterEvents.CHANGED, this._recomputeDataFunnel);
-    bus.on(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
+    bus.on(FeatureEvents.UPDATED, this._scheduleDataFunnelRecompute);
+    bus.on(FilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+    bus.on(StateFilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
     // Keep local copies of dynamic state/type lists in sync
     this._onAvailableStatesChanged = (states) => {
       this.availableFeatureStates =
@@ -1203,7 +1221,7 @@ export class SidebarLit extends LitElement {
     bus.on(ViewEvents.DISPLAY_MODE, this._onDisplayModeChanged);
 
     this._onFeaturesForTypes = () => {
-      this._computeAvailableTaskTypes();
+      this._scheduleTaskTypesRecompute();
     };
     bus.on(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     // Listen for view option changes to trigger sidebar state save
@@ -1245,7 +1263,7 @@ export class SidebarLit extends LitElement {
       }
       // Initialize state & task type filters
       this.availableFeatureStates = state.availableFeatureStates || [];
-      this._computeAvailableTaskTypes();
+      this._scheduleTaskTypesRecompute();
       // Initialize graph type from current capacityViewMode
       this._graphType = state.capacityViewMode || 'team';
     } catch (e) {
@@ -1325,11 +1343,12 @@ export class SidebarLit extends LitElement {
       bus.off(StateFilterEvents.CHANGED, viewHandler);
       bus.off(TimelineEvents.SCALE_CHANGED, viewHandler);
     }
-    if (this._recomputeDataFunnel) {
-      bus.off(FeatureEvents.UPDATED, this._recomputeDataFunnel);
-      bus.off(FilterEvents.CHANGED, this._recomputeDataFunnel);
-      bus.off(StateFilterEvents.CHANGED, this._recomputeDataFunnel);
-      this._recomputeDataFunnel = null;
+    if (this._scheduleDataFunnelRecompute) {
+      bus.off(FeatureEvents.UPDATED, this._scheduleDataFunnelRecompute);
+      bus.off(FilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+      bus.off(StateFilterEvents.CHANGED, this._scheduleDataFunnelRecompute);
+      this._scheduleDataFunnelRecompute = null;
+      this._recomputeDataFunnelNow = null;
     }
     if (this._onAvailableStatesChanged)
       bus.off(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);

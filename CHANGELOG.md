@@ -35,6 +35,7 @@ Template - do not change :
 ### Changed
 - Startup feature loading now uses BaselineStore reference reads on hot paths and batches initial view/scenario restore updates into a single final capacity/feature refresh, reducing duplicate effective-dataset recalculations during first render.
 - BaselineStore startup optimization no longer tracks an internal baseline version; the baseline is treated as replace-on-refresh, keeping the hot-path store simpler.
+- Board startup rendering now avoids per-card global feature-update subscriptions, defers card ResizeObserver setup until after first paint, lazily resolves card nodes for incremental updates, and progressively inserts large card sets to reduce first-render DOM contention.
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.
 - Portfolio Board timeline overview now uses a two-row header with year labels and numeric month labels to improve readability and avoid overlapping month text.

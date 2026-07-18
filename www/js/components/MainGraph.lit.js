@@ -6,7 +6,6 @@ import { state } from '../services/State.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {
-  FeatureEvents,
   CapacityEvents,
   ProjectEvents,
   TeamEvents,
@@ -143,7 +142,6 @@ export class MainGraphLit extends LitElement {
     };
 
     // Subscribe to bus events (data changes → full rebuild)
-    this._maingraphUnsubs.push(bus.on(FeatureEvents.UPDATED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(CapacityEvents.UPDATED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(ProjectEvents.CHANGED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(TeamEvents.CHANGED, scheduleDataRender));
