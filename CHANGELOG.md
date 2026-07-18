@@ -13,48 +13,32 @@ Template - do not change :
 ### Changed
 ### Fixed
 ---
-## [v4.2.0] - unreleased
-### Fixed
-- Cost plugin naming is now explicit: `plugin-cost` is the current implementation and `plugin-cost-v1` is the legacy implementation; state persistence/subscription/deactivation now use runtime plugin ids consistently.
-- Admin redirect on sub-path deployments (e.g. `/esw/admin`) now correctly includes the root path prefix; previously redirected to `/admin/login` losing the sub-site.
-- Admin JS check endpoint now correctly uses `APP_BASE_URL` prefix so it routes through the reverse proxy sub-path.
-- Admin plugins config save now sends correct payload structure: `{schema_version, plugins}` object instead of array, matching backend validation and GET response format.
-- User app startup now correctly requests runtime plugin config via `dataService` (instead of a non-existent `provider` export), fixing cases where the Tools menu appeared empty and no `/api/plugins/config` request was sent.
-- PluginLinkEditor constructor default id now matches modules.config.json: changed from `'link-editor'` to `'plugin-link-editor'` for consistency.
+
+## [v4.2.0] - 2026-07-18
+
 ### Added
+- Admin interface allows configuration of plugins from the UI now. Plugins can be enabled or disabled in the client application.
+- Plugins can have their own specific static configuration. Sample Plugin demoonstrates this.
 - Portfolio Board plugin Phase 1: added a fullscreen team-row/state-column board with sidebar-aware filtering, details-panel card selection, persisted plugin toolbar state, and an unallocated tasks panel.
-- Backend: added global plugin runtime configuration support with admin CRUD endpoint (`/admin/v1/plugins-config`), session-protected runtime read endpoint (`/api/plugins/config`), payload normalization, and backup/restore persistence under `plugin_runtime_config`.
-- Admin UI Phase 2: added Plugins section to admin sidebar with `admin-plugins` component for managing plugin enabled/activated/order settings; added `getPluginsConfig`/`savePluginsConfig` to `adminProvider`.
-- Plugin runtime Phase 3: user app now fetches runtime plugin config from `/api/plugins/config` and merges it with `modules.config.json` metadata via `pluginConfigMerge.js`; disabled plugins are skipped entirely; Tools menu order follows admin-configured sequence; only the first `activated:true` plugin auto-activates at startup; added `getPluginsConfig()` to user `providerREST`.
-- Admin UI Phase 4: added plugin custom configuration support with schema-driven admin UI; introduced `pluginSchemaRegistry.js` for lightweight schema discovery; plugins expose optional static methods `getAdminConfigSchema()` and `getDefaultAdminConfig()` for custom config schemas; admin component validates `custom_config` fields before save; `SamplePlugin` demonstrates custom config with threshold, logging, and string settings; backend endpoint `/admin/v1/plugins-schemas` prepared for future schema exposition; frontend validation prevents save with missing required config fields.
-- Plugin system Phase 5: `SamplePlugin` now fully demonstrates custom configuration consumption at runtime; admin-configured settings (log prefix, debug logging toggle, numeric threshold) are read from `custom_config` and affect visible behavior; lifecycle logging respects configured prefix and logging level; feature selection event includes configured threshold in log output; added comprehensive tests for schema exposure, default values, and config-driven behavior.
-- Admin UI Phase 5b: added interactive config editor modal to admin plugins panel; plugins with schemas now show a "Config" button to open a JSON editor with visual schema field documentation; custom config changes persist locally until saved; modal displays schema properties and their types to guide configuration; config validation prevents save if required fields are missing.
-- SamplePlugin now has a visible UI component that displays when activated; shows current custom configuration values (setting, logging status, threshold) in a bottom-right floating panel; demonstrates how plugins can render UI and consume admin-configured settings; component has open/close methods and can be toggled by the plugin lifecycle.
-- Admin schema discovery: user app now serves `schemas.json` containing plugin schema metadata; admin UI fetches this file to discover which plugins have custom configuration schemas; enables admin UI to display Config buttons and editor modals without requiring direct plugin class imports.
-- Admin UI Phase 6: added schema-driven form UI for plugin custom configuration editing; config modal now renders typed input fields (text, number, boolean toggle, select, JSON textarea) based on JSON schema instead of raw JSON editor; real-time field validation shows constraint violations inline; save button disabled when validation errors exist; config button only appears for plugins with actual configurable properties; improved logging and error handling for dependency resolution, activation constraints, and config persistence.
+
 ### Changed
-- Startup feature loading now uses BaselineStore reference reads on hot paths and batches initial view/scenario restore updates into a single final capacity/feature refresh, reducing duplicate effective-dataset recalculations during first render.
-- BaselineStore startup optimization no longer tracks an internal baseline version; the baseline is treated as replace-on-refresh, keeping the hot-path store simpler.
-- Board startup rendering now avoids per-card global feature-update subscriptions, defers card ResizeObserver setup until after first paint, lazily resolves card nodes for incremental updates, and progressively inserts large card sets to reduce first-render DOM contention.
-- FeatureBoard now virtualizes large card sets against the visible scroll viewport with overscan, keeping offscreen cards out of the live DOM while preserving incremental updates and scroll-to-card behavior.
-- Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
-- Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.
-- Portfolio Board timeline overview now uses a two-row header with year labels and numeric month labels to improve readability and avoid overlapping month text.
-- Portfolio Board timeline overview is now capped to 50% of viewport height and becomes internally scrollable so the board table remains usable with large datasets.
-- Portfolio Board timeline height cap is now configurable via CSS variable (`--portfolio-timeline-max-height`) with a default of `50vh`.
-- Details panel now shows task tags with add/remove editing, and Save to Azure now includes selectable tag changes in the Azure save modal.
+- Cost Plugin v1.0 renamed to v1.0, deprecated and ready for removal
+- Cost Plugin v2.0 is the primary one now
+- Massive optimisation of application load time from over a minute on a 4500 task instance to a couple of seconds:
+  - Startup feature loading now uses BaselineStore reference reads on hot paths and batches initial view/scenario restore updates into a single final capacity/feature refresh, reducing duplicate effective-dataset recalculations during first render.
+  - BaselineStore startup optimization no longer tracks an internal baseline version; the baseline is treated as replace-on-refresh, keeping the hot-path store simpler.
+  - Server responses now always have gzip compression available, with brotli still used when enabled and negotiated by the client.
+  - FeatureCard ghost-title rendering now stabilizes from first render by deriving overflow from card width immediately and rendering ghost text inline, eliminating delayed ghost text appearance and opacity-restyle flicker while scrolling.
+  - Board startup rendering now avoids per-card global feature-update subscriptions, defers card ResizeObserver setup until after first paint, lazily resolves card nodes for incremental updates, and progressively inserts large card sets to reduce first-render DOM contention.
+  - FeatureBoard now virtualizes large card sets against the visible scroll viewport with overscan, keeping offscreen cards out of the live DOM while preserving incremental updates and scroll-to-card behavior.
 - Save modal features again a checkbox per row.
 - Save modal has added revert button to revert all changes to an item.  This is useful for reverting in this overview, but also if items were changed outside the tool (in ADO) and no longer are loaded, causing a difference between scenario overrides and loaded items.
 - Portfolio Board unallocated table now displays tasks in hierarchical order with parent/child indentation, grouping descendants with their parents and listing root tasks at the end.
-- Portfolio Board now has consistent collapsible section headers (Timeline, Board, Unallocated) with clickable toggles, allowing users to collapse/expand each panel independently and maximize screen space for focused viewing.
-- Portfolio Board plugin refactored into separate modules: PortfolioPluginUtils.js for common utility functions, PortfolioTimelineRenderer.js for timeline SVG rendering, PortfolioUnallocatedRenderer.js for unallocated table rendering, and PluginPortfolioComponent.styles.js for CSS.
+
 ### Fixed
-- Portfolio Board drag-and-drop no longer shows a spurious "Failed to move" warning when dropping a card; the warning is removed and drag state resets silently.
+- Admin redirect on sub-path deployments (e.g. `/esw/admin`) now correctly includes the root path prefix; previously redirected to `/admin/login` losing the sub-site.
+- Admin JS check endpoint now correctly uses `APP_BASE_URL` prefix so it routes through the reverse proxy sub-path.
 - Save modal recalculated changed items per row, causing a large lag from click to UI update.
-- Portfolio Board plugin now limits state columns and cards to the states currently selected in the Sidebar Task Filters.
-- Backend task reads now serve stale cached ADO data immediately on soft TTL expiry and refresh in the background (stale-while-revalidate), eliminating request-time waits on live ADO fetches.
-- Server responses now always have gzip compression available, with brotli still used when enabled and negotiated by the client.
-- FeatureCard ghost-title rendering now stabilizes from first render by deriving overflow from card width immediately and rendering ghost text inline, eliminating delayed ghost text appearance and opacity-restyle flicker while scrolling.
 
 ## [v4.1.5] - 2026-07-08
 ### Fixed
