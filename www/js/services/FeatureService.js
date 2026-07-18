@@ -96,7 +96,7 @@ export class FeatureService {
     // Prefer features from BaselineStore; fallback to provided baseline getter if store is empty
     const activeScenario = this._getActiveScenario();
 
-    let baselineFeatures = this._baselineStore.getFeatures();
+    let baselineFeatures = this._readBaselineFeatures();
 
     // Apply date defaulting for features without dates when feature flag is OFF
     if (!featureFlags.SHOW_UNPLANNED_WORK) {
@@ -382,8 +382,7 @@ export class FeatureService {
     const activeScenario = this._getActiveScenario();
     if (!activeScenario) return false;
 
-    const baselineFeatures = this._baselineStore.getFeatures();
-    const base = baselineFeatures.find((f) => f.id === id);
+    const base = this._baselineStore.getFeatureById().get(id);
     if (!base) return false;
 
     // Support date and capacity fields for overrides
@@ -546,6 +545,13 @@ export class FeatureService {
       }
       return f;
     });
+  }
+
+  _readBaselineFeatures() {
+    if (typeof this._baselineStore.getFeaturesRef === 'function') {
+      return this._baselineStore.getFeaturesRef();
+    }
+    return this._baselineStore.getFeatures();
   }
 
   /**

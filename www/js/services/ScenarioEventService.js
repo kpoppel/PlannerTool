@@ -7,10 +7,14 @@ import { ScenarioEvents, DataEvents, FeatureEvents } from '../core/EventRegistry
  * Handles scenario list emissions, activation events, and data synchronization.
  */
 export class ScenarioEventService {
-  constructor(bus, scenarioManager, viewService) {
+  constructor(bus, scenarioManager, viewService, isFeatureUpdateSuppressedFn = null) {
     this._bus = bus;
     this._scenarioManager = scenarioManager;
     this._viewService = viewService;
+    this._isFeatureUpdateSuppressed =
+      typeof isFeatureUpdateSuppressedFn === 'function' ?
+        isFeatureUpdateSuppressedFn
+      : () => false;
     this._scenarios = []; // Combined scenarios (readonly + managed)
     this._activeScenarioId = null;
     this._captureCurrentFilters = null; // Will be set by initDefaultScenario
@@ -82,7 +86,9 @@ export class ScenarioEventService {
 
     this.emitScenarioList();
     this.emitScenarioActivated();
-    this._bus.emit(FeatureEvents.UPDATED);
+    if (!this._isFeatureUpdateSuppressed()) {
+      this._bus.emit(FeatureEvents.UPDATED);
+    }
   }
 
   /**

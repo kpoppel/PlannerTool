@@ -53,9 +53,9 @@ export class DataInitService {
     this._baselineStore.loadBaseline({ projects, teams, features });
 
     // Get baseline data
-    const baselineProjects = this._baselineStore.getProjects();
-    const baselineTeams = this._baselineStore.getTeams();
-    let baselineFeatures = this._baselineStore.getFeatures();
+    const baselineProjects = this._readBaselineProjects();
+    const baselineTeams = this._readBaselineTeams();
+    let baselineFeatures = this._readBaselineFeatures();
 
     // Add originalRank to features
     baselineFeatures.forEach((f, i) => {
@@ -109,7 +109,6 @@ export class DataInitService {
       StateFilterEvents.CHANGED,
       this._stateFilterService.availableFeatureStates
     );
-    this._bus.emit(FeatureEvents.UPDATED);
 
     return {
       baselineProjects,
@@ -150,9 +149,9 @@ export class DataInitService {
     });
 
     // Get baseline data
-    const baselineProjects = this._baselineStore.getProjects();
-    const baselineTeams = this._baselineStore.getTeams();
-    let baselineFeatures = this._baselineStore.getFeatures();
+    const baselineProjects = this._readBaselineProjects();
+    const baselineTeams = this._readBaselineTeams();
+    let baselineFeatures = this._readBaselineFeatures();
 
     // Refresh working copies in ProjectTeamService (preserves selection)
     this._projectTeamService.refreshFromBaseline(baselineProjects, baselineTeams);
@@ -233,6 +232,27 @@ export class DataInitService {
         this.childrenByParent.get(f.parentId).push(f.id);
       }
     }
+  }
+
+  _readBaselineProjects() {
+    if (typeof this._baselineStore.getProjectsRef === 'function') {
+      return this._baselineStore.getProjectsRef();
+    }
+    return this._baselineStore.getProjects();
+  }
+
+  _readBaselineTeams() {
+    if (typeof this._baselineStore.getTeamsRef === 'function') {
+      return this._baselineStore.getTeamsRef();
+    }
+    return this._baselineStore.getTeams();
+  }
+
+  _readBaselineFeatures() {
+    if (typeof this._baselineStore.getFeaturesRef === 'function') {
+      return this._baselineStore.getFeaturesRef();
+    }
+    return this._baselineStore.getFeatures();
   }
 
   /**

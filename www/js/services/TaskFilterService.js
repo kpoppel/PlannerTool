@@ -155,7 +155,7 @@ export class TaskFilterService {
   /**
    * Restore filters from saved state
    */
-  restoreFilters(savedFilters) {
+  restoreFilters(savedFilters, options = {}) {
     if (!savedFilters) return;
 
     // Merge saved filters with defaults
@@ -170,13 +170,15 @@ export class TaskFilterService {
     });
 
     // Emit event to notify UI components to update
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 
   /**
    * Emit filter change event
    */
-  _emitFilterChanged() {
+  _emitFilterChanged(options = {}) {
+    if (options.suppressEvents) return;
+
     // Emit while suppressing our own listener to avoid loops
     this._suppressSync = true;
     // New payload key `taskFilters` to reflect rename from view->task
@@ -188,13 +190,13 @@ export class TaskFilterService {
   /**
    * Reset all filters to default (all checked)
    */
-  resetFilters() {
+  resetFilters(options = {}) {
     this._filters = {
       schedule: { planned: true, unplanned: true },
       allocation: { allocated: true, unallocated: true },
       hierarchy: { hasParent: true, noParent: true },
       relations: { hasLinks: true, noLinks: true },
     };
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 }

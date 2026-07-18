@@ -41,7 +41,9 @@ export class QueuedFeatureService {
     let baselineFeatures = [];
     try {
       baselineFeatures =
-        this._baselineStore && typeof this._baselineStore.getFeatures === 'function' ?
+        this._baselineStore && typeof this._baselineStore.getFeaturesRef === 'function' ?
+          this._baselineStore.getFeaturesRef()
+        : this._baselineStore && typeof this._baselineStore.getFeatures === 'function' ?
           this._baselineStore.getFeatures()
         : [];
     } catch (e) {
@@ -96,8 +98,7 @@ export class QueuedFeatureService {
   updateFeatureField(id, field, value, capacityCallback) {
     const activeScenario = this._getActiveScenario();
     if (!activeScenario) return false;
-    const baselineFeatures = this._baselineStore.getFeatures();
-    const base = baselineFeatures.find((f) => f.id === id);
+    const base = this._baselineStore.getFeatureById().get(id);
     if (!base) return false;
     if (field === 'start' || field === 'end') {
       const ov = activeScenario.overrides[id] || {

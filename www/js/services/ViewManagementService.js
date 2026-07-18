@@ -124,6 +124,11 @@ export class ViewManagementService {
    */
   async loadAndApplyView(viewId) {
     try {
+      const isInitBatch =
+        this._state && typeof this._state.isInitBatching === 'function' ?
+          this._state.isInitBatching()
+        : false;
+
       let response;
 
       // Handle default view specially
@@ -150,7 +155,7 @@ export class ViewManagementService {
       if (viewId === 'default') {
         // Reset view options to defaults
         const defaults = getDefaultViewOptions();
-        this._viewService.restoreView(defaults);
+        this._viewService.restoreView(defaults, !isInitBatch);
 
         // Select all projects
         if (this._state.projects) {
@@ -158,7 +163,9 @@ export class ViewManagementService {
           this._state.projects.forEach((project) => {
             projectSelections[project.id] = true;
           });
-          this._state.setProjectsSelectedBulk(projectSelections);
+          this._state.setProjectsSelectedBulk(projectSelections, {
+            suppressEvents: isInitBatch,
+          });
         }
 
         // Select all teams
@@ -167,26 +174,33 @@ export class ViewManagementService {
           this._state.teams.forEach((team) => {
             teamSelections[team.id] = true;
           });
-          this._state.setTeamsSelectedBulk(teamSelections);
+          this._state.setTeamsSelectedBulk(teamSelections, {
+            suppressEvents: isInitBatch,
+          });
         }
 
         // Select all available states
         if (this._state._stateFilterService) {
           const allStates = this._state.availableFeatureStates || [];
-          this._state._stateFilterService.setSelectedStates([...allStates]);
+          this._state._stateFilterService.setSelectedStates([...allStates], {
+            suppressEvents: isInitBatch,
+          });
         }
 
         // Reset task filters (schedule, allocation, hierarchy, relations)
         if (this._state.taskFilterService) {
-          this._state.taskFilterService.resetFilters();
+          this._state.taskFilterService.resetFilters({ suppressEvents: isInitBatch });
         }
 
         // Reset expansion options
-        this._state.setExpansionState({
-          expandParentChild: defaults.expandParentChild || false,
-          expandRelations: defaults.expandRelations || false,
-          expandTeamAllocated: defaults.expandTeamAllocated || false,
-        });
+        this._state.setExpansionState(
+          {
+            expandParentChild: defaults.expandParentChild || false,
+            expandRelations: defaults.expandRelations || false,
+            expandTeamAllocated: defaults.expandTeamAllocated || false,
+          },
+          { suppressEvents: isInitBatch }
+        );
 
         // Reset sidebar-local properties (task types and graph type)
         const sidebarElement = document.querySelector('app-sidebar');
@@ -197,9 +211,11 @@ export class ViewManagementService {
             availableTypes.filter((t) => this._viewService.isTypeVisible(t))
           );
           // Emit with the correct Symbol so Sidebar._onSidebarFilterChanged fires
-          this._bus.emit(FilterEvents.CHANGED, {
-            selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-          });
+          if (!isInitBatch) {
+            this._bus.emit(FilterEvents.CHANGED, {
+              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
+            });
+          }
 
           // Reset graph type to default
           if (typeof sidebarElement._graphType !== 'undefined') {
@@ -226,7 +242,9 @@ export class ViewManagementService {
             projectSelections[project.id] =
               response.selectedProjects?.[project.id] === true;
           });
-          this._state.setProjectsSelectedBulk(projectSelections);
+          this._state.setProjectsSelectedBulk(projectSelections, {
+            suppressEvents: isInitBatch,
+          });
         }
 
         if (this._state.teams) {
@@ -234,17 +252,20 @@ export class ViewManagementService {
           this._state.teams.forEach((team) => {
             teamSelections[team.id] = response.selectedTeams?.[team.id] === true;
           });
-          this._state.setTeamsSelectedBulk(teamSelections);
+          this._state.setTeamsSelectedBulk(teamSelections, {
+            suppressEvents: isInitBatch,
+          });
         }
 
         // Apply view options
         if (response.viewOptions) {
-          this._viewService.restoreView(response.viewOptions);
+          this._viewService.restoreView(response.viewOptions, !isInitBatch);
 
           // Restore task filters if present
           if (response.viewOptions.taskFilters && this._state.taskFilterService) {
             this._state.taskFilterService.restoreFilters(
-              response.viewOptions.taskFilters
+              response.viewOptions.taskFilters,
+              { suppressEvents: isInitBatch }
             );
           }
 
@@ -263,7 +284,9 @@ export class ViewManagementService {
             );
 
             // Set the selected states (this will emit events)
-            this._state._stateFilterService.setSelectedStates(validStates);
+            this._state._stateFilterService.setSelectedStates(validStates, {
+              suppressEvents: isInitBatch,
+            });
           }
 
           // Restore sidebar-local properties (task types and graph type)
@@ -276,9 +299,11 @@ export class ViewManagementService {
               availableTypes.filter((t) => this._viewService.isTypeVisible(t))
             );
             // Use the Symbol key so Sidebar._onSidebarFilterChanged fires for proper sync
-            this._bus.emit(FilterEvents.CHANGED, {
-              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-            });
+            if (!isInitBatch) {
+              this._bus.emit(FilterEvents.CHANGED, {
+                selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
+              });
+            }
 
             // Restore graph type if saved
             if (response.viewOptions.graphType) {
@@ -305,25 +330,30 @@ export class ViewManagementService {
 
             // Sync expansion state to State service and trigger updates
             if (expansionChanged) {
-              this._state.setExpansionState({
-                expandParentChild: sidebarElement.expandParentChild,
-                expandRelations: sidebarElement.expandRelations,
-                expandTeamAllocated: sidebarElement.expandTeamAllocated,
-              });
+              this._state.setExpansionState(
+                {
+                  expandParentChild: sidebarElement.expandParentChild,
+                  expandRelations: sidebarElement.expandRelations,
+                  expandTeamAllocated: sidebarElement.expandTeamAllocated,
+                },
+                { suppressEvents: isInitBatch }
+              );
 
               // Trigger data funnel recomputation
-              if (typeof sidebarElement._recomputeDataFunnel === 'function') {
+              if (!isInitBatch && typeof sidebarElement._recomputeDataFunnel === 'function') {
                 sidebarElement._recomputeDataFunnel();
               }
 
               // Emit filter change event so the board updates
-              this._bus.emit('filter:changed', {
-                expansion: {
-                  parentChild: sidebarElement.expandParentChild,
-                  relations: sidebarElement.expandRelations,
-                  teamAllocated: sidebarElement.expandTeamAllocated,
-                },
-              });
+              if (!isInitBatch) {
+                this._bus.emit('filter:changed', {
+                  expansion: {
+                    parentChild: sidebarElement.expandParentChild,
+                    relations: sidebarElement.expandRelations,
+                    teamAllocated: sidebarElement.expandTeamAllocated,
+                  },
+                });
+              }
             }
 
             // Request update to reflect changes

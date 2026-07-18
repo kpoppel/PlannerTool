@@ -9,6 +9,7 @@ export class BaselineStore {
     this._teams = [];
     this._features = [];
     this._originalOrder = [];
+    this._featureById = new Map();
   }
 
   /**
@@ -22,6 +23,7 @@ export class BaselineStore {
 
     // Store original feature order
     this._originalOrder = this._features.map((f) => f.id);
+    this._rebuildFeatureIndex();
   }
 
   /**
@@ -41,6 +43,14 @@ export class BaselineStore {
   }
 
   /**
+   * Get projects reference for hot paths (do not mutate).
+   * @returns {Array}
+   */
+  getProjectsRef() {
+    return this._projects;
+  }
+
+  /**
    * Set teams
    * @param {Array} teams
    */
@@ -57,12 +67,21 @@ export class BaselineStore {
   }
 
   /**
+   * Get teams reference for hot paths (do not mutate).
+   * @returns {Array}
+   */
+  getTeamsRef() {
+    return this._teams;
+  }
+
+  /**
    * Set features
    * @param {Array} features
    */
   setFeatures(features) {
     this._features = [...features];
     this._originalOrder = features.map((f) => f.id);
+    this._rebuildFeatureIndex();
   }
 
   /**
@@ -74,11 +93,19 @@ export class BaselineStore {
   }
 
   /**
+   * Get features reference for hot paths (do not mutate).
+   * @returns {Array}
+   */
+  getFeaturesRef() {
+    return this._features;
+  }
+
+  /**
    * Get feature by ID map for fast lookups
    * @returns {Map<string, Object>}
    */
   getFeatureById() {
-    return new Map(this._features.map((f) => [f.id, f]));
+    return this._featureById;
   }
 
   /**
@@ -97,5 +124,10 @@ export class BaselineStore {
     this._teams = [];
     this._features = [];
     this._originalOrder = [];
+    this._featureById = new Map();
+  }
+
+  _rebuildFeatureIndex() {
+    this._featureById = new Map(this._features.map((f) => [f.id, f]));
   }
 }

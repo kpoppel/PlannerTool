@@ -100,7 +100,7 @@ export class StateFilterService {
    * Set state filter (legacy single-state or select-all behavior)
    * @param {string|null} stateName - State name to select (null = select all)
    */
-  setStateFilter(stateName) {
+  setStateFilter(stateName, options = {}) {
     if (stateName === null) {
       // Select all states
       this._selectedFeatureStateFilter = new Set(this._availableFeatureStates || []);
@@ -109,14 +109,14 @@ export class StateFilterService {
       this._selectedFeatureStateFilter = new Set(stateName ? [stateName] : []);
     }
 
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 
   /**
    * Toggle a single state's selection on/off
    * @param {string} stateName - State name to toggle
    */
-  toggleStateSelected(stateName) {
+  toggleStateSelected(stateName, options = {}) {
     if (!stateName) return;
 
     if (this._selectedFeatureStateFilter.has(stateName)) {
@@ -130,30 +130,30 @@ export class StateFilterService {
       Array.from(this._selectedFeatureStateFilter)
     );
 
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 
   /**
    * Select or clear all states
    * @param {boolean} selectAll - True to select all, false to clear all
    */
-  setAllStatesSelected(selectAll) {
+  setAllStatesSelected(selectAll, options = {}) {
     if (selectAll) {
       this._selectedFeatureStateFilter = new Set(this._availableFeatureStates || []);
     } else {
       this._selectedFeatureStateFilter = new Set();
     }
 
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 
   /**
    * Set selected states from array
    * @param {Array<string>} states - Array of state names to select
    */
-  setSelectedStates(states) {
+  setSelectedStates(states, options = {}) {
     this._selectedFeatureStateFilter = new Set(states || []);
-    this._emitFilterChanged();
+    this._emitFilterChanged(options);
   }
 
   // ========== Helper Methods ==========
@@ -162,7 +162,9 @@ export class StateFilterService {
    * Emit filter change events
    * @private
    */
-  _emitFilterChanged() {
+  _emitFilterChanged(options = {}) {
+    if (options.suppressEvents) return;
+
     this.bus.emit(FilterEvents.CHANGED, {
       selectedFeatureStateFilter: Array.from(this._selectedFeatureStateFilter),
     });

@@ -87,7 +87,8 @@ class State {
     this._scenarioEventService = new ScenarioEventService(
       bus,
       this._scenarioManager,
-      this._viewService
+      this._viewService,
+      () => this._isInitBatching
     );
 
     // View management service
@@ -148,6 +149,13 @@ class State {
     this._availableTaskTypesCache = null;
     // Cache for the merged task type hierarchy from loaded projects
     this._taskTypeHierarchyCache = null;
+
+    // Startup batching flags: suppress intermediate recompute/event storms during init.
+    this._isInitBatching = false;
+    this._pendingCapacityEmit = false;
+    this._pendingFeatureEmit = false;
+    this._pendingProjectEmit = false;
+    this._pendingTeamEmit = false;
   }
 
   // ========== Backward Compatibility Property Accessors ==========
@@ -257,7 +265,7 @@ class State {
     return this._expansionState;
   }
 
-  setExpansionState(options) {
+  setExpansionState(options, runtimeOptions = {}) {
     const prevExpandTeamAllocated = this._expansionState.expandTeamAllocated;
     if (options.expandParentChild !== undefined)
       this._expansionState.expandParentChild = options.expandParentChild;
@@ -270,7 +278,12 @@ class State {
     // expandTeamAllocated changes the effective project set used for capacity
     // calculation, so we must recompute immediately.
     if (this._expansionState.expandTeamAllocated !== prevExpandTeamAllocated) {
-      this.recomputeCapacityMetrics();
+      if (runtimeOptions.suppressEvents || this._isInitBatching) {
+        this._pendingCapacityEmit = true;
+        this._pendingFeatureEmit = true;
+      } else {
+        this.recomputeCapacityMetrics();
+      }
     }
   }
 
@@ -572,6 +585,8 @@ class State {
   }
 
   async initState() {
+    this._beginInitBatch();
+
     // Delegate to DataInitService
     const result = await this._dataInitService.initState();
 
@@ -606,16 +621,48 @@ class State {
     // Load saved views
     await this._viewManagementService.loadViews();
 
-    // Restore the last active view (or default view if none)
-    // This will apply project/team selections and view options
+    // Restore the last active view (or default view if none).
+    // During startup batching this is applied silently, then emitted once at the end.
     await this._viewManagementService.restoreLastView();
 
-    // Calculate initial capacity metrics now that all data is loaded and selections are restored
-    this.recomputeCapacityMetrics();
+    // End init batching and emit one consolidated startup update.
+    this._endInitBatch();
 
     // Signal that initState has completed so other components waiting on
     // restored view state (eg. timeline) can proceed deterministically.
     this._resolveInit(true);
+  }
+
+  isInitBatching() {
+    return this._isInitBatching;
+  }
+
+  _beginInitBatch() {
+    this._isInitBatching = true;
+    this._pendingCapacityEmit = false;
+    this._pendingFeatureEmit = false;
+    this._pendingProjectEmit = false;
+    this._pendingTeamEmit = false;
+  }
+
+  _endInitBatch() {
+    this._isInitBatching = false;
+
+    // Always compute final capacity once after all startup selections are applied.
+    this.recomputeCapacityMetrics();
+
+    // Emit final consolidated state notifications.
+    bus.emit(ProjectEvents.CHANGED, this.projects);
+    bus.emit(TeamEvents.CHANGED, this.teams);
+    bus.emit(CapacityEvents.UPDATED, {
+      dates: this.capacityDates,
+      teamDailyCapacity: this.teamDailyCapacity,
+      projectDailyCapacityRaw: this.projectDailyCapacityRaw,
+      projectDailyCapacity: this.projectDailyCapacity,
+      totalOrgDailyCapacity: this.totalOrgDailyCapacity,
+      totalOrgDailyPerTeamAvg: this.totalOrgDailyPerTeamAvg,
+    });
+    bus.emit(FeatureEvents.UPDATED);
   }
 
   async refreshBaseline() {
@@ -899,12 +946,19 @@ class State {
    * Apply multiple project selection changes at once and emit a single update.
    * @param {Object} selections - Mapping of projectId -> boolean
    */
-  setProjectsSelectedBulk(selections) {
+  setProjectsSelectedBulk(selections, options = {}) {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setProjectsSelectedBulk(selections);
     if (!changed) return;
     // Invalidate expansion cache since project selection changed
     this._expandedFeatureIdsCache = null;
+    if (options.suppressEvents || this._isInitBatching) {
+      this._pendingProjectEmit = true;
+      this._pendingCapacityEmit = true;
+      this._pendingFeatureEmit = true;
+      return;
+    }
+
     // Notify listeners that project selection changed (single consolidated event)
     bus.emit(ProjectEvents.CHANGED, this.projects);
     this.recomputeCapacityMetrics();
@@ -923,12 +977,19 @@ class State {
    * Apply multiple team selection changes at once and emit a single update.
    * @param {Object} selections - Mapping of teamId -> boolean
    */
-  setTeamsSelectedBulk(selections) {
+  setTeamsSelectedBulk(selections, options = {}) {
     this._ensureFilterManager();
     const changed = this._projectTeamService.setTeamsSelectedBulk(selections);
     if (!changed) return;
     // Invalidate expansion cache since team selection changed
     this._expandedFeatureIdsCache = null;
+    if (options.suppressEvents || this._isInitBatching) {
+      this._pendingTeamEmit = true;
+      this._pendingCapacityEmit = true;
+      this._pendingFeatureEmit = true;
+      return;
+    }
+
     // Notify listeners that team selection changed (single consolidated event)
     bus.emit(TeamEvents.CHANGED, this.teams);
     this.recomputeCapacityMetrics();
@@ -1405,6 +1466,11 @@ class State {
   // Optional `changedFeatureIds` (Array) allows incremental recalculation when only
   // a small set of features changed.
   recomputeCapacityMetrics(changedFeatureIds = null) {
+    if (this._isInitBatching) {
+      this._pendingCapacityEmit = true;
+      return;
+    }
+
     const teams = this.baselineTeams || [];
     const projects = this.baselineProjects || [];
     // Always use all projects for capacity calculations to ensure features from all projects are counted.
