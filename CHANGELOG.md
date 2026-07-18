@@ -46,9 +46,10 @@ Template - do not change :
 - Portfolio Board plugin refactored into separate modules: PortfolioPluginUtils.js for common utility functions, PortfolioTimelineRenderer.js for timeline SVG rendering, PortfolioUnallocatedRenderer.js for unallocated table rendering, and PluginPortfolioComponent.styles.js for CSS.
 ### Fixed
 - Portfolio Board drag-and-drop no longer shows a spurious "Failed to move" warning when dropping a card; the warning is removed and drag state resets silently.
-### Fixed
 - Save modal recalculated changed items per row, causing a large lag from click to UI update.
 - Portfolio Board plugin now limits state columns and cards to the states currently selected in the Sidebar Task Filters.
+- Backend task reads now serve stale cached ADO data immediately on soft TTL expiry and refresh in the background (stale-while-revalidate), eliminating request-time waits on live ADO fetches.
+- Server responses now always have gzip compression available, with brotli still used when enabled and negotiated by the client.
 
 ## [v4.1.5] - 2026-07-08
 ### Fixed

@@ -137,6 +137,8 @@ class CachingBackend:
         self._inner_is_remote = bool(getattr(inner, 'is_remote', False))
         self._warnings_lock = threading.Lock()
         self._warnings: List[Dict[str, Any]] = []
+        self._refresh_lock = threading.Lock()
+        self._refresh_inflight: set[str] = set()
         logger.info(
             "CachingBackend: initialised wrapping %s",
             type(inner).__name__,
@@ -267,6 +269,101 @@ class CachingBackend:
     # Task read path: single cached copy with soft-freshness + stale-on-failure
     # ------------------------------------------------------------------
 
+    def _try_mark_refresh_inflight(self, key: str) -> bool:
+        """Mark *key* as in-flight if no refresh is currently running."""
+        with self._refresh_lock:
+            if key in self._refresh_inflight:
+                return False
+            self._refresh_inflight.add(key)
+            return True
+
+    def _clear_refresh_inflight(self, key: str) -> None:
+        with self._refresh_lock:
+            self._refresh_inflight.discard(key)
+
+    def _refresh_tasks_in_background(
+        self,
+        *,
+        inner_method,
+        name: str,
+        key: str,
+        meta_key: str,
+        args: tuple,
+        kwargs: dict,
+        cached_has_content: bool,
+        user_id: Optional[str],
+    ) -> None:
+        """Refresh a stale task cache entry asynchronously.
+
+        This keeps request latency low: stale cached data is served immediately,
+        then the refreshed snapshot is switched in when ready.
+        """
+
+        def _run() -> None:
+            try:
+                try:
+                    result = inner_method(*args, **kwargs)
+                except BackendError as exc:
+                    if cached_has_content:
+                        if isinstance(exc, BackendAuthError):
+                            self._record_warning(
+                                code='tasks_stale_invalid_pat',
+                                message=(
+                                    'Your Azure DevOps PAT is invalid or expired. '
+                                    'Showing cached task data that may be out of date.'
+                                ),
+                                user_id=user_id,
+                            )
+                        else:
+                            self._record_warning(
+                                code='tasks_stale_api_outage',
+                                message=(
+                                    'Azure DevOps is currently unreachable. '
+                                    'Showing cached task data that may be out of date.'
+                                ),
+                                user_id=user_id,
+                            )
+                        logger.warning(
+                            'CachingBackend: background refresh of %s failed (%s); keeping existing cached content',
+                            key, exc,
+                        )
+                    return
+
+                if not result and cached_has_content:
+                    self._record_warning(
+                        code='tasks_stale_no_data',
+                        message=(
+                            'Azure DevOps returned no task data (possible outage). '
+                            'Showing previously cached data that may be out of date.'
+                        ),
+                        user_id=user_id,
+                    )
+                    logger.warning(
+                        'CachingBackend: background refresh of %s returned no data; keeping existing cached content',
+                        key,
+                    )
+                    return
+
+                ttl = self._ttl_config.ttl_for(name)
+                ttl_seconds = ttl.total_seconds() if ttl is not None else None
+                now = time.time()
+
+                # Persist the refreshed snapshot and extend soft freshness.
+                self._storage.save(_NAMESPACE, key, result, ttl_seconds=None)
+                fresh_until = (now + ttl_seconds) if ttl_seconds is not None else None
+                self._storage.save(_NAMESPACE, meta_key, {'fresh_until': fresh_until}, ttl_seconds=None)
+                logger.debug(
+                    'CachingBackend: background refresh complete %s (fresh_for=%s)',
+                    key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
+                )
+            except Exception as exc:
+                logger.warning('CachingBackend: unexpected background refresh error for %s: %s', key, exc)
+            finally:
+                self._clear_refresh_inflight(key)
+
+        t = threading.Thread(target=_run, name=f'cache-refresh-{key[:24]}', daemon=True)
+        t.start()
+
     def _fetch_tasks_cached(self, inner_method, name: str, key: str, args: tuple, kwargs: dict):
         """Cache-first task read that never purges content on error/empty refresh.
 
@@ -300,6 +397,24 @@ class CachingBackend:
         credential = kwargs.get('credential') if isinstance(kwargs, dict) else None
         user_id = (credential or {}).get('user_id') if isinstance(credential, dict) else None
         cached_has_content = bool(cached_value) if have_cached else False
+
+        # For the remote ADO backend, serve stale data immediately and refresh in
+        # the background when soft-expired. This removes request-time ADO waits.
+        if self._inner_is_remote and have_cached:
+            if self._try_mark_refresh_inflight(key):
+                self._refresh_tasks_in_background(
+                    inner_method=inner_method,
+                    name=name,
+                    key=key,
+                    meta_key=meta_key,
+                    args=args,
+                    kwargs=kwargs,
+                    cached_has_content=cached_has_content,
+                    user_id=user_id,
+                )
+            else:
+                logger.debug('CachingBackend: background refresh already in flight for %s', key)
+            return cached_value
 
         try:
             result = inner_method(*args, **kwargs)

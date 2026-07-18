@@ -98,11 +98,14 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
     from planner_lib.backend.caching import CachingBackend
     from planner_lib.backend.errors import BackendAuthError
 
+    import threading
+
     class _CredentialSensitiveBackend:
         is_remote = True
 
         def __init__(self):
             self.fetch_tasks_calls = []
+            self.refresh_attempted = threading.Event()
 
         def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
             self.fetch_tasks_calls.append({
@@ -111,6 +114,7 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
             })
             token = (credential or {}).get('token')
             if token == 'expired-token':
+                self.refresh_attempted.set()
                 raise BackendAuthError('invalid_pat')
             return [dict(_TASK)]
 
@@ -138,6 +142,7 @@ def test_invalid_pat_serves_stale_tasks_snapshot_and_records_warning(storage):
 
     second = caching.fetch_tasks(AREA, credential={'token': 'expired-token', 'user_id': 'u2@example.com'})
     assert len(second) == 1
+    assert inner.refresh_attempted.wait(timeout=1.0)
     assert len(inner.fetch_tasks_calls) == 2
 
     warnings = caching.consume_warnings(user_id='u2@example.com')
@@ -151,16 +156,20 @@ def test_api_outage_serves_stale_tasks_and_records_outage_warning(storage):
     from planner_lib.backend.caching import CachingBackend
     from planner_lib.backend.errors import BackendUnavailableError
 
+    import threading
+
     class _OutageBackend:
         is_remote = True
 
         def __init__(self):
             self.calls = 0
+            self.refresh_attempted = threading.Event()
 
         def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
             self.calls += 1
             if self.calls == 1:
                 return [dict(_TASK)]
+            self.refresh_attempted.set()
             raise BackendUnavailableError('connection timed out')
 
         def write_task(self, task_id, updates, credential):
@@ -180,6 +189,7 @@ def test_api_outage_serves_stale_tasks_and_records_outage_warning(storage):
 
     again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
     assert len(again) == 1  # kept existing content despite the outage
+    assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
 
     warnings = caching.consume_warnings(user_id='u@example.com')
@@ -214,15 +224,20 @@ def test_empty_refresh_keeps_existing_task_content(storage):
     import time
     from planner_lib.backend.caching import CachingBackend
 
+    import threading
+
     class _FlakyBackend:
         is_remote = True
 
         def __init__(self):
             self.calls = 0
+            self.refresh_attempted = threading.Event()
 
         def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
             self.calls += 1
             # First call returns data; later refreshes return nothing.
+            if self.calls > 1:
+                self.refresh_attempted.set()
             return [dict(_TASK)] if self.calls == 1 else []
 
         def write_task(self, task_id, updates, credential):
@@ -242,6 +257,7 @@ def test_empty_refresh_keeps_existing_task_content(storage):
 
     again = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
     assert len(again) == 1  # kept existing content, not the empty refresh
+    assert inner.refresh_attempted.wait(timeout=1.0)
     assert inner.calls == 2
 
     warnings = caching.consume_warnings(user_id='u@example.com')
@@ -326,6 +342,63 @@ def test_non_remote_backend_does_not_serve_stale_on_failure(storage):
 
     # No stale warning should have been queued for a local backend.
     assert caching.consume_warnings(user_id='u@example.com') == []
+
+
+def test_soft_expired_remote_cache_returns_immediately_and_refreshes_in_background(storage):
+    """Soft-expired remote entries are returned immediately while refresh runs async."""
+    import threading
+    import time
+    from planner_lib.backend.caching import CachingBackend
+
+    class _SlowRefreshBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+            self.release_refresh = threading.Event()
+            self.refresh_entered = threading.Event()
+
+        def fetch_tasks(self, area_path, task_types=None, include_states=None, credential=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return [dict(_TASK, title='warm')]
+            self.refresh_entered.set()
+            self.release_refresh.wait(timeout=1.0)
+            return [dict(_TASK, title='fresh')]
+
+        def write_task(self, task_id, updates, credential):
+            return {'ok': True, 'updated': 1, 'errors': []}
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _SlowRefreshBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    assert warm[0]['title'] == 'warm'
+
+    meta_key = caching._meta_key('fetch_tasks', (AREA,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    start = time.perf_counter()
+    stale = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+    elapsed = time.perf_counter() - start
+
+    assert stale[0]['title'] == 'warm'
+    assert elapsed < 0.2, 'stale response should not block on remote refresh'
+    assert inner.refresh_entered.wait(timeout=1.0)
+
+    inner.release_refresh.set()
+
+    # Allow the background refresh to publish the updated snapshot.
+    for _ in range(30):
+        latest = caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
+        if latest and latest[0].get('title') == 'fresh':
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail('background refresh did not publish fresh task snapshot in time')
 
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ from typing import Any, Dict, Tuple, cast
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
@@ -403,10 +404,19 @@ def _build_app(
 
     app.add_middleware(SessionMiddleware, session_manager=session_manager)
 
-    if config.enable_brotli:
+    brotli_enabled = bool(feature_flags.get('enable_brotli_middleware', config.enable_brotli))
+    if brotli_enabled:
         logger.info("Brotli compression middleware is enabled")
         from planner_lib.middleware import BrotliCompression
         app.add_middleware(BrotliCompression)
+    else:
+        logger.info("Brotli compression middleware is disabled")
+
+    # Always enable gzip so large JSON payloads are compressed even when
+    # clients or environments do not use Brotli. Register after Brotli so
+    # Brotli gets first chance to encode when both are accepted.
+    app.add_middleware(GZipMiddleware, minimum_size=300)
+    logger.info("GZip compression middleware is enabled")
 
     static_dir = config.static_dir
 

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from starlette.responses import Response as StarletteResponse
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.testclient import TestClient
 from planner_lib.middleware.brotli import BrotliCompression
 import brotli
@@ -27,6 +28,22 @@ def _make_app(response_body: bytes, content_type: str = 'application/json', extr
         return ResponseShim(content=response_body, headers=headers, media_type=content_type)
 
     app.add_middleware(BrotliCompression, minimum_size=10, quality=1)
+    return app
+
+
+def _make_app_with_gzip_fallback(response_body: bytes, content_type: str = 'application/json', extra_headers=None):
+    """Mirror server compression stack: gzip always on, brotli optional."""
+    app = FastAPI()
+
+    @app.get('/')
+    def index():
+        headers = {'content-type': content_type}
+        if extra_headers:
+            headers.update(extra_headers)
+        return ResponseShim(content=response_body, headers=headers, media_type=content_type)
+
+    app.add_middleware(BrotliCompression, minimum_size=10, quality=1)
+    app.add_middleware(GZipMiddleware, minimum_size=10)
     return app
 
 
@@ -106,3 +123,34 @@ def test_compression_failure_is_suppressed(monkeypatch):
     assert r.status_code == 200
     # compression failed -> no content-encoding header
     assert r.headers.get('content-encoding') is None
+
+
+def test_gzip_used_when_brotli_not_requested():
+    body = b'{' + b' ' * 200 + b'}'
+    app = _make_app_with_gzip_fallback(body, content_type='application/json')
+    client = TestClient(app)
+    r = client.get('/', headers={'Accept-Encoding': 'gzip'})
+    assert r.status_code == 200
+    assert r.headers.get('content-encoding') == 'gzip'
+    assert r.content == body
+
+
+def test_gzip_fallback_when_brotli_fails(monkeypatch):
+    body = b'{' + b' ' * 200 + b'}'
+    app = _make_app_with_gzip_fallback(body, content_type='application/json')
+    monkeypatch.setattr(brotli, 'compress', lambda b, quality: (_ for _ in ()).throw(RuntimeError('boom')))
+    client = TestClient(app)
+    r = client.get('/', headers={'Accept-Encoding': 'br, gzip'})
+    assert r.status_code == 200
+    assert r.headers.get('content-encoding') == 'gzip'
+    assert r.content == body
+
+
+def test_brotli_preferred_when_both_encodings_accepted():
+    body = b'{' + b' ' * 200 + b'}'
+    app = _make_app_with_gzip_fallback(body, content_type='application/json')
+    client = TestClient(app)
+    r = client.get('/', headers={'Accept-Encoding': 'gzip, br'})
+    assert r.status_code == 200
+    assert r.headers.get('content-encoding') == 'br'
+    assert r.content == body
