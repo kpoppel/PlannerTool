@@ -36,6 +36,7 @@ Template - do not change :
 - Startup feature loading now uses BaselineStore reference reads on hot paths and batches initial view/scenario restore updates into a single final capacity/feature refresh, reducing duplicate effective-dataset recalculations during first render.
 - BaselineStore startup optimization no longer tracks an internal baseline version; the baseline is treated as replace-on-refresh, keeping the hot-path store simpler.
 - Board startup rendering now avoids per-card global feature-update subscriptions, defers card ResizeObserver setup until after first paint, lazily resolves card nodes for incremental updates, and progressively inserts large card sets to reduce first-render DOM contention.
+- FeatureBoard now virtualizes large card sets against the visible scroll viewport with overscan, keeping offscreen cards out of the live DOM while preserving incremental updates and scroll-to-card behavior.
 - Portfolio Board plugin Phase 2: added drag-and-drop state changes with state-column drop highlighting, click suppression after drag, and inline success or failure feedback.
 - Portfolio Board plugin Phase 3: added a static timeline overview that spans the visible task date range and removed the need for horizontal scrolling in the overview.
 - Portfolio Board timeline overview now uses a two-row header with year labels and numeric month labels to improve readability and avoid overlapping month text.
@@ -53,6 +54,7 @@ Template - do not change :
 - Portfolio Board plugin now limits state columns and cards to the states currently selected in the Sidebar Task Filters.
 - Backend task reads now serve stale cached ADO data immediately on soft TTL expiry and refresh in the background (stale-while-revalidate), eliminating request-time waits on live ADO fetches.
 - Server responses now always have gzip compression available, with brotli still used when enabled and negotiated by the client.
+- FeatureCard ghost-title rendering now stabilizes from first render by deriving overflow from card width immediately and rendering ghost text inline, eliminating delayed ghost text appearance and opacity-restyle flicker while scrolling.
 
 ## [v4.1.5] - 2026-07-08
 ### Fixed

@@ -14,6 +14,7 @@ import {
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
+import { boardCoords } from '../services/BoardCoordinateService.js';
 import { getTimelineMonths } from './Timeline.lit.js';
 import { laneHeight, computePosition } from './board-utils.js';
 import { featureFlags } from '../config.js';
@@ -34,6 +35,8 @@ class FeatureBoard extends LitElement {
   static LARGE_RENDER_THRESHOLD = 250;
   static INITIAL_RENDER_CHUNK = 150;
   static RENDER_CHUNK_SIZE = 200;
+  static VIRTUALIZE_OVERSCAN_Y = 600;
+  static VIRTUALIZE_OVERSCAN_X = 240;
 
   static properties = {
     features: { type: Array },
@@ -52,6 +55,9 @@ class FeatureBoard extends LitElement {
     this._handleViewportResize = this._updateSwimlaneLabelStickyTop.bind(this);
     this._overlayOffset = 0;
     this._renderGeneration = 0;
+    this._fullRenderList = [];
+    this._viewportRenderScheduled = false;
+    this._viewportUnsubscribe = null;
   }
 
   static styles = featureBoardStyles;
@@ -70,6 +76,9 @@ class FeatureBoard extends LitElement {
       }
     };
     bus.on(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
+    this._viewportUnsubscribe = boardCoords.subscribe(() => {
+      this._scheduleViewportRender();
+    });
   }
 
   _updateSwimlaneLabelStickyTop() {
@@ -79,6 +88,7 @@ class FeatureBoard extends LitElement {
         Math.round(scrollContainer.clientHeight / 2)
       : 24;
     this.style.setProperty('--swimlane-label-sticky-top', `${stickyTop}px`);
+    this._scheduleViewportRender();
   }
 
   // Build and maintain connected feature sets (parent/child and relations)
@@ -258,6 +268,8 @@ class FeatureBoard extends LitElement {
     if (this._onOverlayOffsetChanged) {
       bus.off(BoardEvents.OVERLAY_OFFSET_CHANGED, this._onOverlayOffsetChanged);
     }
+    this._viewportUnsubscribe?.();
+    this._viewportUnsubscribe = null;
     this._boundHandlers.forEach((handler, event) => {
       bus.off(event, handler);
     });
@@ -877,6 +889,12 @@ class FeatureBoard extends LitElement {
   _applyRenderList(renderList) {
     this._renderGeneration += 1;
     const generation = this._renderGeneration;
+    this._fullRenderList = renderList;
+
+    if (this._shouldVirtualize(renderList)) {
+      this._updateVisibleRenderList();
+      return;
+    }
 
     if (renderList.length <= FeatureBoard.LARGE_RENDER_THRESHOLD) {
       this.features = renderList;
@@ -906,6 +924,83 @@ class FeatureBoard extends LitElement {
     requestAnimationFrame(pushNextChunk);
   }
 
+  _shouldVirtualize(renderList = this._fullRenderList) {
+    const scrollContainer = findInBoard('#scroll-container');
+    return !!scrollContainer && renderList.length > FeatureBoard.LARGE_RENDER_THRESHOLD;
+  }
+
+  _scheduleViewportRender() {
+    if (this._viewportRenderScheduled || !this._shouldVirtualize()) return;
+    this._viewportRenderScheduled = true;
+    requestAnimationFrame(() => {
+      this._viewportRenderScheduled = false;
+      this._updateVisibleRenderList();
+    });
+  }
+
+  _updateVisibleRenderList() {
+    if (!this._shouldVirtualize()) return;
+    const scrollContainer = findInBoard('#scroll-container');
+    if (!scrollContainer) return;
+
+    const viewport = {
+      left: boardCoords.scrollX,
+      right: boardCoords.scrollX + scrollContainer.clientWidth,
+      top: boardCoords.scrollY,
+      bottom: boardCoords.scrollY + scrollContainer.clientHeight,
+      overscanX: FeatureBoard.VIRTUALIZE_OVERSCAN_X,
+      overscanY: FeatureBoard.VIRTUALIZE_OVERSCAN_Y,
+    };
+    const next = this._computeVisibleRenderItems(this._fullRenderList, viewport);
+    if (this._sameRenderSlice(this.features, next)) return;
+    this.features = next;
+    this._cardMap.clear();
+    this.requestUpdate();
+  }
+
+  _computeVisibleRenderItems(renderList, viewport) {
+    if (!Array.isArray(renderList) || renderList.length === 0) return [];
+    const left = viewport.left - (viewport.overscanX ?? 0);
+    const right = viewport.right + (viewport.overscanX ?? 0);
+    const top = viewport.top - (viewport.overscanY ?? 0);
+    const bottom = viewport.bottom + (viewport.overscanY ?? 0);
+
+    return renderList.filter((item) => {
+      const itemLeft = Number(item.left ?? 0);
+      const itemWidth = Number(item.width ?? 0);
+      const itemRight = itemLeft + Math.max(itemWidth, 1);
+      const itemTop = Number(item.top ?? 0);
+      const itemHeight = item.isGroup ? 28 : laneHeight();
+      const itemBottom = itemTop + Math.max(itemHeight, 1);
+      return itemRight >= left && itemLeft <= right && itemBottom >= top && itemTop <= bottom;
+    });
+  }
+
+  _sameRenderSlice(prev, next) {
+    if (prev === next) return true;
+    if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) {
+      return false;
+    }
+    for (let index = 0; index < prev.length; index += 1) {
+      if (prev[index] !== next[index]) return false;
+    }
+    return true;
+  }
+
+  _updateCachedRenderItemById(id, feature, visuals = {}) {
+    const key = String(id);
+    let updated = false;
+    for (const item of this._fullRenderList) {
+      if (item.isGroup || String(item.feature?.id) !== key) continue;
+      item.feature = { ...feature };
+      if (visuals.left !== undefined) item.left = visuals.left;
+      if (visuals.width !== undefined) item.width = visuals.width;
+      if (visuals.project !== undefined) item.project = visuals.project;
+      updated = true;
+    }
+    return updated;
+  }
+
   async updateCardsById(ids = []) {
     // In packed mode any date change can shift a card into an occupied lane.
     // A full repack is required to keep the layout consistent.
@@ -921,7 +1016,7 @@ class FeatureBoard extends LitElement {
       if (!feature) continue;
 
       const existing = this._getCardNodeById(id);
-      if (!existing) {
+      if (!existing && !this._shouldVirtualize()) {
         this.renderFeatures();
         return;
       }
@@ -940,6 +1035,21 @@ class FeatureBoard extends LitElement {
           : geom.width
         : '';
       const project = state.projects.find((p) => p.id === feature.project);
+
+      this._updateCachedRenderItemById(id, feature, {
+        left: geom.left ?? 0,
+        width: geom.width ?? 0,
+        project,
+      });
+
+      if (!existing) {
+        if (this._shouldVirtualize()) {
+          this._scheduleViewportRender();
+          continue;
+        }
+        this.renderFeatures();
+        return;
+      }
 
       existing.feature = { ...feature };
       existing.selected = !!feature.selected;
@@ -988,7 +1098,22 @@ class FeatureBoard extends LitElement {
     const card = this._getCardNodeById(featureId);
     // Scroll is now owned by the parent #scroll-container (in TimelineBoard)
     const scrollContainer = findInBoard('#scroll-container');
-    if (!card || !scrollContainer) return;
+    if (!scrollContainer) return;
+
+    if (!card) {
+      const target = this._fullRenderList.find(
+        (item) => !item.isGroup && String(item.feature?.id) === String(featureId)
+      );
+      if (!target) return;
+      const targetHeight = laneHeight();
+      scrollContainer.scrollTo({
+        left: Math.max(0, Math.round(target.left + target.width / 2 - scrollContainer.clientWidth / 2)),
+        top: Math.max(0, Math.round(target.top + targetHeight / 2 - scrollContainer.clientHeight / 2)),
+        behavior: 'smooth',
+      });
+      this._scheduleViewportRender();
+      return;
+    }
 
     const cardCenterX = (card.offsetLeft || 0) + (card.clientWidth || 0) / 2;
     const cardCenterY = (card.offsetTop || 0) + (card.clientHeight || 0) / 2;

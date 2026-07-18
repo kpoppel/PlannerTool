@@ -12,7 +12,7 @@ import { featureFlags } from '../config.js';
 /**
  * FeatureCardLit - Lit-based feature card component.
  * Each card self-manages layout classes and ghost title visibility
- * via a ResizeObserver - no board-level measurement needed.
+ * via width-driven local checks - no board-level measurement needed.
  */
 export class FeatureCardLit extends LitElement {
   static properties = {
@@ -421,7 +421,6 @@ export class FeatureCardLit extends LitElement {
       white-space: nowrap;
       visibility: hidden;
       opacity: 0;
-      transition: opacity 150ms ease-in-out;
       max-width: none;
       box-sizing: border-box;
     }
@@ -470,10 +469,10 @@ export class FeatureCardLit extends LitElement {
     this._rootCard = null;
     this._titleEl = null;
     this._ghostEl = null;
-    this._width = 0; // cached from ResizeObserver — no DOM read needed
+    this._width = 0; // cached width used for overflow decisions
     this._lastTitle = null; // track title changes for overflow re-check
     this._connected = false; // whether this card is in current connected set
-    this._observerInitScheduled = false;
+    this._lastLayoutKey = null;
   }
 
   // ---- Static batched layout scheduler ----
@@ -528,39 +527,46 @@ export class FeatureCardLit extends LitElement {
             r.card._ghostEl = r.card.shadowRoot?.querySelector('.ghost-title');
           const g = r.card._ghostEl;
           if (g) {
-            const textNode = g.querySelector('.ghost-title-text');
-            if (textNode) {
-              try {
-                // In condensed mode show the full title on a single line (no mid-split)
-                const ghostHtml = r.card.condensed
-                  ? r.card._escapeHtml(r.card.feature?.title)
-                  : r.card._splitTitleAtMiddle(r.card.feature?.title);
-                textNode.innerHTML = ghostHtml;
-              } catch (e) {
-                textNode.textContent = r.card.feature?.title || '';
-              }
-            }
             // Use style.left (set by board) instead of offsetLeft to avoid forced reflow
             g.classList.toggle('right', (parseFloat(r.card.style.left) || 0) < 200);
-            g.style.borderColor = r.card.project?.color || 'rgba(0,0,0,0.25)';
           }
         }
+
+        r.card._lastLayoutKey = r.card._computeLayoutKey();
       }
     });
   }
 
+  _getCurrentWidth() {
+    const styled = parseFloat(this.style?.width || '');
+    if (Number.isFinite(styled) && styled > 0) return styled;
+    const host = this.clientWidth;
+    if (Number.isFinite(host) && host > 0) return host;
+    return 0;
+  }
+
+  _computeLayoutKey() {
+    return [
+      String(this.feature?.id ?? ''),
+      String(this.feature?.title ?? ''),
+      Math.round(this._width || 0),
+      this.condensed ? '1' : '0',
+      this.hideGhostTitle ? '1' : '0',
+    ].join('|');
+  }
+
   _requestLayout() {
-    // Skip if ResizeObserver hasn't delivered a real width yet.
-    // Prevents the first batch (triggered by updated()) from running
-    // with _width=0 and incorrectly showing ghosts on every card.
+    if (!this._width) this._width = this._getCurrentWidth();
+    // Prevent running layout before this card has a real width.
     if (this._width === 0) return;
+    const key = this._computeLayoutKey();
+    if (key === this._lastLayoutKey) return;
     FeatureCardLit._pendingCards.add(this);
     FeatureCardLit._scheduleBatch();
   }
 
   connectedCallback() {
     super.connectedCallback();
-    this._scheduleObserverInit();
     // Suppress clicks after drag ends
     this._unsubDragEnd = bus.on(DragEvents.END, (p) => {
       if (p && String(p.featureId) === String(this.feature?.id)) {
@@ -621,8 +627,14 @@ export class FeatureCardLit extends LitElement {
     if (inner) inner.classList.toggle('dirty', !!this.feature?.dirty);
     this.classList.toggle('dirty', !!this.feature?.dirty);
     this.setAttribute('data-feature-id', String(this.feature?.id));
-    // Only schedule a layout check when title text changes.
-    // Width changes are handled by ResizeObserver (no action needed here).
+
+    const widthNow = this._getCurrentWidth();
+    if (widthNow > 0 && widthNow !== this._width) {
+      this._width = widthNow;
+      this._requestLayout();
+    }
+
+    // Schedule layout when title changes; width changes are handled above.
     const title = this.feature?.title;
     if (title !== this._lastTitle) {
       this._lastTitle = title;
@@ -632,7 +644,6 @@ export class FeatureCardLit extends LitElement {
 
   disconnectedCallback() {
     FeatureCardLit._pendingCards.delete(this);
-    this._ro?.disconnect();
     this._unsubDragEnd?.();
     this.removeEventListener('mousedown', this._onMouseDown);
     if (this._boundOnFeatureSelected)
@@ -652,24 +663,6 @@ export class FeatureCardLit extends LitElement {
     super.disconnectedCallback();
   }
 
-  _scheduleObserverInit() {
-    if (this._observerInitScheduled || this._ro) return;
-    this._observerInitScheduled = true;
-    requestAnimationFrame(() => {
-      this._observerInitScheduled = false;
-      if (!this.isConnected || this._ro) return;
-      // Defer ResizeObserver setup until after first paint so large initial card
-      // batches do less work on the critical rendering path.
-      this._ro = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          this._width = entry.contentRect.width;
-        }
-        this._requestLayout();
-      });
-      this._ro.observe(this);
-    });
-  }
-
   /**
    * Apply lightweight visual updates without a full re-render.
    * Called by FeatureBoard.updateCardsById() for incremental updates.
@@ -682,6 +675,20 @@ export class FeatureCardLit extends LitElement {
     if (selected !== undefined) this.selected = selected;
     if (dirty !== undefined && this.feature) this.feature.dirty = dirty;
     if (project !== undefined) this.project = project;
+
+    if (left !== undefined) {
+      if (!this._ghostEl) this._ghostEl = this.shadowRoot?.querySelector('.ghost-title');
+      if (this._ghostEl)
+        this._ghostEl.classList.toggle('right', (parseFloat(this.style.left) || 0) < 200);
+    }
+    if (width !== undefined) {
+      const widthNow = this._getCurrentWidth();
+      if (widthNow > 0 && widthNow !== this._width) {
+        this._width = widthNow;
+      }
+      this._requestLayout();
+    }
+
     this.classList.toggle('dirty', !!dirty);
     this.requestUpdate();
   }
@@ -873,6 +880,19 @@ export class FeatureCardLit extends LitElement {
       .replace(/"/g, '&quot;');
   }
 
+  _renderGhostTitleText() {
+    const title = this.feature?.title || '';
+    if (!title) return '';
+    if (this.condensed) return title;
+
+    const words = String(title).split(/\s+/);
+    if (words.length < 4) return title;
+    const mid = Math.floor(words.length / 2);
+    const firstHalf = words.slice(0, mid).join(' ');
+    const secondHalf = words.slice(mid).join(' ');
+    return html`${firstHalf}<br />${secondHalf}`;
+  }
+
   render() {
     const isUnplanned =
       featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
@@ -927,8 +947,12 @@ export class FeatureCardLit extends LitElement {
         : ''}
         <div class="drag-handle" data-drag-handle part="drag-handle"></div>
       </div>
-      <div class="ghost-title" aria-hidden="true">
-        <span class="ghost-title-text"></span>
+      <div
+        class="ghost-title"
+        aria-hidden="true"
+        style="border-color: ${projectColor}"
+      >
+        <span class="ghost-title-text">${this._renderGhostTitleText()}</span>
         <div class="ghost-title-arrow"></div>
       </div>
     `;

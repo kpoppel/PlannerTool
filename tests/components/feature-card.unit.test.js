@@ -59,4 +59,21 @@ describe('FeatureCardLit basic behaviors', () => {
     await el.updateComplete;
     expect(dates.querySelector('.dates-live').textContent).to.equal('');
   });
+
+  it('renders ghost title text with initial card render', async () => {
+    const el = await fixture('<feature-card-lit></feature-card-lit>');
+    el.feature = {
+      id: 'f4',
+      title: 'This is a long feature title for ghost rendering',
+      start: '2025-01-01',
+      end: '2025-01-10',
+    };
+    el.style.width = '120px';
+    await el.updateComplete;
+
+    const ghostText =
+      el.shadowRoot.querySelector('.ghost-title .ghost-title-text')?.textContent || '';
+    const normalized = ghostText.replace(/\s+/g, '').trim();
+    expect(normalized).to.include('Thisisalongfeaturetitleforghostrendering');
+  });
 });
