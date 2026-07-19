@@ -81,6 +81,24 @@ class _MockBackendBase(BackendPort):
                 logger.warning("Mock: failed to enrich item %s: %s", raw_wi.get('id', '?'), exc)
         return results
 
+    def fetch_projects(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[Any]:
+        """Return all configured projects from the local config backend."""
+        if self._config is None:
+            return []
+        return self._config.fetch_projects()
+
+    def fetch_project_map(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[dict]:
+        """Return raw project entries from the local config backend."""
+        if self._config is None:
+            return []
+        return self._config.fetch_project_map()
+
     def invalidate_cache(self) -> Dict[str, Any]:
         return {'ok': True, 'invalidated': [], 'errors': []}
 

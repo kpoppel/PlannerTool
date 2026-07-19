@@ -126,6 +126,15 @@ describe('FeatureStateService', () => {
     expect(svc.isStateInCategory('Closed', 'Proposed')).toBe(false);
   });
 
+  it('returns true for case-insensitive state name match', () => {
+    svc.loadFromProjects([
+      { display_states: ['Closed'], state_categories: { Closed: 'Completed' } },
+    ]);
+    // feature.state may arrive as lowercase from the server
+    expect(svc.isStateInCategory('closed', 'Completed')).toBe(true);
+    expect(svc.isStateInCategory('CLOSED', 'Completed')).toBe(true);
+  });
+
   it('returns false for unknown state', () => {
     svc.loadFromProjects([]);
     expect(svc.isStateInCategory('Ghost', 'InProgress')).toBe(false);

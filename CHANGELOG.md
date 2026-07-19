@@ -20,8 +20,11 @@ Template - do not change :
 
 ### Changed
 - Backend logging: added DEBUG-level logging when the Azure-backed task cache schedules a background refresh.
+- Architecture: `ProjectRepository` is now fully backend-agnostic; enrichment (e.g. state_categories) is the responsibility of the backend implementation. `AzureDevOpsBackend.fetch_projects()` provides enrichment; other backends delegate to their config backends. This ensures clean separation of concerns: repositories delegate, backends enrich.
 
 ### Fixed
+- Fixed completed/closed feature cards not showing strikethrough title: `isStateInCategory` now performs case-insensitive state name lookup so cards with lowercase `state` values correctly receive the `completed` CSS class.
+- Fixed `state_categories` missing from `/api/projects` response on cold cache: `AzureDevOpsBackend.fetch_tasks` now warms the `AzureProjectMetadataService` cache as a side-effect of every live ADO connection, so state_categories are always available to `/api/projects` after the first task fetch for each Azure project.
 - Backup restore now always re-encrypts restored PATs, reloads runtime configuration after restore, and reports reload warnings in the admin UI.
 - Backup JSON no longer includes redundant `_meta.pat_format`; PAT values in backups are always plaintext by design for cross-instance restore compatibility. Keep your backups safe.
 

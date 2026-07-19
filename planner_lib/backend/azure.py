@@ -81,6 +81,7 @@ class AzureDevOpsBackend(BackendPort):
             local_backend=services.get('config_backend'),
             team_repository=services.get('team_repository'),
             capacity_service=services.get('capacity_service'),
+            metadata_service=services.get('metadata_service'),
         )
 
     def __init__(
@@ -90,6 +91,7 @@ class AzureDevOpsBackend(BackendPort):
         team_repository,
         capacity_service,
         local_backend=None,
+        metadata_service: Optional[Any] = None,
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
         self._organization_url = organization_url
@@ -100,6 +102,10 @@ class AzureDevOpsBackend(BackendPort):
         self._capacity_service = capacity_service
         self._storage = storage
         self._config = local_backend
+        # Optional: AzureProjectMetadataService — warmed as a side-effect of
+        # fetch_tasks so that /api/projects always sees state_categories even on
+        # a cold cache (e.g. after server restart).
+        self._metadata_service = metadata_service
         logger.info(
             "AzureDevOpsBackend: initialised (org_url=%r, team_repository=%s, capacity_service=%s)",
             organization_url,
@@ -304,6 +310,24 @@ class AzureDevOpsBackend(BackendPort):
                     task_types=task_types,
                     include_states=include_states,
                 )
+                # Warm the metadata cache as a side-effect of the live ADO
+                # connection that is already open.  Checked first so that the
+                # extra API call only happens on a cold cache; subsequent calls
+                # are instant (disk-cache hit).  Errors are non-fatal — task
+                # data is returned regardless.
+                if self._metadata_service and not self._metadata_service.get_cached(azure_project):
+                    try:
+                        metadata = client.get_area_path_used_metadata(azure_project, area_path)
+                        self._metadata_service.store(azure_project, metadata)
+                        logger.debug(
+                            "Metadata cache warmed for Azure project '%s' as side-effect of fetch_tasks",
+                            azure_project,
+                        )
+                    except Exception as meta_exc:
+                        logger.warning(
+                            "Failed to warm metadata cache for '%s': %s",
+                            azure_project, meta_exc,
+                        )
         except Exception as exc:
             raise classify_ado_exception(exc) from exc
 
@@ -499,6 +523,60 @@ class AzureDevOpsBackend(BackendPort):
                 except Exception as exc:
                     logger.warning("Failed to fetch iterations for root '%s': %s", root, exc)
             return iteration_map
+
+    # ------------------------------------------------------------------
+    # BackendPort: fetch_projects
+    # ------------------------------------------------------------------
+
+    def fetch_projects(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[Any]:
+        """Return all configured projects with state_categories enriched from metadata cache.
+
+        Delegates to the local config backend and enriches each project with
+        state_categories from the ADO metadata cache when available.
+        """
+        if self._config is None:
+            return []
+        
+        projects = self._config.fetch_projects()
+        if self._metadata_service is None:
+            return projects
+        
+        return [self._enrich_project(p) for p in projects]
+
+    def fetch_project_map(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[dict]:
+        """Return raw project entries including area_path and other backend fields.
+
+        Delegates to the local config backend.
+        """
+        if self._config is None:
+            return []
+        return self._config.fetch_project_map()
+
+    def _enrich_project(self, project: Any) -> Any:
+        """Attach state_categories from the ADO metadata cache to a project."""
+        display_states = project.get("display_states") or []
+        area_path = project.get("area_path") or ""
+        if not display_states or not area_path:
+            return project
+
+        sep = "\\" if "\\" in area_path else "/"
+        azure_project = area_path.split(sep)[0]
+        if not azure_project:
+            return project
+
+        cached = self._metadata_service.get_cached(azure_project)
+        if not cached:
+            return project
+
+        all_categories: dict = cached.get("state_categories") or {}
+        enriched_categories = {s: all_categories[s] for s in display_states if s in all_categories}
+        return {**project, "state_categories": enriched_categories}
 
     # ------------------------------------------------------------------
     # BackendPort: invalidate_cache

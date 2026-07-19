@@ -232,6 +232,9 @@ export class FeatureStateService {
    * @returns {boolean}
    */
   isStateInCategory(stateName, category) {
-    return this._categories.get(stateName) === category;
+    const cat =
+      this._categories.get(stateName) ??
+      this._categoriesLower.get(String(stateName || '').toLowerCase());
+    return cat === category;
   }
 }

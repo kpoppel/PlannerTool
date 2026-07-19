@@ -158,6 +158,7 @@ def _build_services(
             config_backend=container.get("config_backend"),
             team_repository=container.get("team_repository"),
             capacity_service=container.get("capacity_service"),
+            metadata_service=container.get("azure_project_metadata_service"),
         )
 
         if feature_flags.get('enable_cache', False):
@@ -196,12 +197,12 @@ def _build_services(
     )
     from planner_lib.backend.credential import AccountManagerCredentialProvider
 
-    # project_repository and team_repository are backed by config_backend so
-    # they benefit from the TTL cache like every other repository.
+    # project_repository uses the active backend (which handles enrichment).
+    # The backend's fetch_projects() is responsible for returning the correct
+    # data shape, including any enrichment (e.g. state_categories for ADO).
     container.register_factory("project_repository",
         lambda: ProjectRepository(
-            backend=container.get("config_backend"),
-            metadata_service=container.get("azure_project_metadata_service"),
+            backend=container.get("backend"),
         ))
     container.register_factory("team_repository",
         lambda: TeamRepository(local_backend=container.get("config_backend")))
