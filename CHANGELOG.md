@@ -27,6 +27,7 @@ Template - do not change :
 - Fixed `state_categories` missing from `/api/projects` response on cold cache: `AzureDevOpsBackend.fetch_tasks` now warms the `AzureProjectMetadataService` cache as a side-effect of every live ADO connection, so state_categories are always available to `/api/projects` after the first task fetch for each Azure project.
 - Backup restore now always re-encrypts restored PATs, reloads runtime configuration after restore, and reports reload warnings in the admin UI.
 - Backup JSON no longer includes redundant `_meta.pat_format`; PAT values in backups are always plaintext by design for cross-instance restore compatibility. Keep your backups safe.
+- FeatureBoard now renders virtualized cards with stable keyed identity, preventing selected/hover highlight artifacts from appearing on the wrong card while scrolling.
 
 ## [v4.2.0] - 2026-07-18
 

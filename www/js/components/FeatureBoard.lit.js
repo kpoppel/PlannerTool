@@ -1,4 +1,4 @@
-import { LitElement, html } from '../vendor/lit.js';
+import { LitElement, html, repeat } from '../vendor/lit.js';
 import {
   ProjectEvents,
   TeamEvents,
@@ -213,33 +213,40 @@ class FeatureBoard extends LitElement {
             </div>
           `
         : ''}
-      ${this.features.map((item) => {
-        const itemHeight = item.isGroup ? 28 : laneHeight();
-        if (item.isGroup) {
-          // Render as <feature-group> web component — it handles expand/collapse,
-          // right-click context, and its own visual styling.
-          return html`<feature-group
-            .group=${item.groupObj}
-            .start=${item.start}
-            .end=${item.end}
-            .featureCount=${item.featureCount}
-            .collapsed=${this._collapsedGroups.has(String(item.id))}
-            .depth=${item.depth ?? 0}
-            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
-            @group-toggle=${this._onGroupToggle}
-            @group-context-menu=${this._onGroupContextMenuBubble}
-          ></feature-group>`;
+      ${repeat(
+        this.features,
+        (item) =>
+          item.isGroup ?
+            `g:${String(item.id ?? `${item.left}:${item.top}`)}`
+          : `f:${String(item.feature?.id ?? `${item.left}:${item.top}`)}`,
+        (item) => {
+          const itemHeight = item.isGroup ? 28 : laneHeight();
+          if (item.isGroup) {
+            // Render as <feature-group> web component — it handles expand/collapse,
+            // right-click context, and its own visual styling.
+            return html`<feature-group
+              .group=${item.groupObj}
+              .start=${item.start}
+              .end=${item.end}
+              .featureCount=${item.featureCount}
+              .collapsed=${this._collapsedGroups.has(String(item.id))}
+              .depth=${item.depth ?? 0}
+              style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px;"
+              @group-toggle=${this._onGroupToggle}
+              @group-context-menu=${this._onGroupContextMenuBubble}
+            ></feature-group>`;
+          }
+          return html`<feature-card-lit
+            .feature=${item.feature}
+            .bus=${bus}
+            .teams=${item.teams}
+            .condensed=${item.condensed}
+            .project=${item.project}
+            .hideGhostTitle=${!!item.hideGhostTitle}
+            style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
+          ></feature-card-lit>`;
         }
-        return html`<feature-card-lit
-          .feature=${item.feature}
-          .bus=${bus}
-          .teams=${item.teams}
-          .condensed=${item.condensed}
-          .project=${item.project}
-          .hideGhostTitle=${!!item.hideGhostTitle}
-          style="position:absolute; left:${item.left}px; top:${item.top}px; width:${item.width}px; height:${itemHeight}px"
-        ></feature-card-lit>`;
-      })}
+      )}
     `;
   }
 
