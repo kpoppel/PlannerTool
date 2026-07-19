@@ -14,7 +14,7 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.2.1] - unreleased
+## [v4.2.1] - 2026-07-19
 
 ### Added
 
