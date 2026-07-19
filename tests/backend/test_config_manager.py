@@ -240,15 +240,14 @@ def test_get_backup_decrypts_pats_to_plaintext(monkeypatch):
     cm = ConfigManager(config_storage=_Store(), account_storage=acct)
     bk = cm.get_backup()
 
-    assert bk.get('_meta', {}).get('pat_format') == 'plaintext', \
-        "Backup must declare pat_format=plaintext in _meta"
+    assert '_meta' not in bk, 'Backup should not include redundant metadata for PAT format'
     user_record = bk['accounts']['users'].get('user@example.com', {})
     assert user_record.get('pat') == 'my-azure-pat-abc123', \
         "PAT in backup must be plaintext, not the Fernet ciphertext"
 
 
 def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
-    """restore_backup must encrypt plaintext PATs from a plaintext-format backup."""
+    """restore_backup must encrypt plaintext PATs from backup payloads."""
     monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
     from planner_lib.accounts.config import _try_decrypt_pat
     from planner_lib.admin.config_manager import ConfigManager
@@ -275,28 +274,29 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
     assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
 
 
-def test_restore_backup_old_format_passed_through(monkeypatch):
-    """Old encrypted backups (no _meta) must be stored as-is for backward compatibility."""
+def test_restore_backup_encrypts_plaintext_pats_without_metadata(monkeypatch):
+    """Restore must encrypt plaintext PATs even when backup metadata is missing."""
     monkeypatch.setenv('PLANNER_SECRET_KEY', 'testsecretkey_32_chars_000000000')
     from planner_lib.admin.config_manager import ConfigManager
+    from planner_lib.accounts.config import _try_decrypt_pat
 
     synced: dict = {}
 
     def sync(users, admins):
         synced['users'] = users
 
-    # Old-style backup: no _meta field, PAT value is an opaque string (e.g. encrypted blob)
-    fake_encrypted = 'some-old-encrypted-blob-value'
+    # Backup payload omits _meta but still carries plaintext PAT.
     cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
     data = {
         'accounts': {
-            'users': {'user@example.com': {'email': 'user@example.com', 'pat': fake_encrypted}},
+            'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
             'admins': {},
         },
     }
     cm.restore_backup(data, sync_accounts_fn=sync)
-    # Must be passed through unchanged
-    assert synced['users']['user@example.com']['pat'] == fake_encrypted
+    stored_pat = synced['users']['user@example.com']['pat']
+    assert stored_pat != 'plaintext-pat'
+    assert _try_decrypt_pat(stored_pat) == 'plaintext-pat'
 
 
 def test_get_backup_corrupt_pat_becomes_none(monkeypatch):

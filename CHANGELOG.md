@@ -14,6 +14,17 @@ Template - do not change :
 ### Fixed
 ---
 
+## [v4.2.1] - unreleased
+
+### Added
+
+### Changed
+- Backend logging: added DEBUG-level logging when the Azure-backed task cache schedules a background refresh.
+
+### Fixed
+- Backup restore now always re-encrypts restored PATs, reloads runtime configuration after restore, and reports reload warnings in the admin UI.
+- Backup JSON no longer includes redundant `_meta.pat_format`; PAT values in backups are always plaintext by design for cross-instance restore compatibility. Keep your backups safe.
+
 ## [v4.2.0] - 2026-07-18
 
 ### Added

@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 class _MockBackendBase(BackendPort):
     """Shared helpers for both mock backends."""
 
-    def __init__(self, storage, team_repository=None, capacity_service=None, local_backend=None):
+    def __init__(self, organization_url, storage, team_repository=None, capacity_service=None, local_backend=None):
+        self._organization_url = organization_url
         self._adapter = AzureAdapter()
         self._team_repository = team_repository
         self._capacity_service = capacity_service
@@ -82,6 +83,23 @@ class _MockBackendBase(BackendPort):
 
     def invalidate_cache(self) -> Dict[str, Any]:
         return {'ok': True, 'invalidated': [], 'errors': []}
+
+    def reload(self) -> None:
+        """Rebuild the backend in place from the current ADO config."""
+        try:
+            ado_cfg = self._config.fetch_ado_config() if self._config is not None else {}
+        except Exception:
+            ado_cfg = {}
+        from planner_lib.backend.registry import rebuild_backend_instance
+        rebuild_backend_instance(
+            self,
+            ado_cfg.get('feature_flags') or {},
+            org_url=ado_cfg.get('organization_url') or self._organization_url,
+            storage=self._storage,
+            config_backend=self._config,
+            team_repository=self._team_repository,
+            capacity_service=self._capacity_service,
+        )
 
 
 class _NullTeamRepository:
@@ -173,7 +191,7 @@ class MockFixtureBackend(_MockBackendBase):
         local_backend=None,
         persist_enabled: bool = False,
     ) -> None:
-        super().__init__(storage, team_repository, capacity_service, local_backend)
+        super().__init__(organization_url, storage, team_repository, capacity_service, local_backend)
         from planner_lib.azure.AzureMockClient import AzureMockClient
         logger.info(
             "MockFixtureBackend: initialised (fixture_dir=%r, persist_enabled=%s)",
@@ -448,7 +466,7 @@ class MockGeneratorBackend(_MockBackendBase):
         local_backend=None,
         persist_dir: Optional[str] = None,
     ) -> None:
-        super().__init__(storage, team_repository, capacity_service, local_backend)
+        super().__init__(organization_url, storage, team_repository, capacity_service, local_backend)
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
         logger.info(
             "MockGeneratorBackend: initialised (data_dir=%r, persist_dir=%r)",

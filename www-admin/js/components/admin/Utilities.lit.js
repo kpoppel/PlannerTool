@@ -104,6 +104,12 @@ export class AdminUtilities extends LitElement {
       border: 1px solid #93c5fd;
     }
 
+    .status.warning {
+      background: #fffbeb;
+      color: #92400e;
+      border: 1px solid #fbbf24;
+    }
+
     .spinner {
       display: inline-block;
       width: 14px;
@@ -360,8 +366,13 @@ export class AdminUtilities extends LitElement {
     try {
       const result = await adminProvider.restoreBackup(dataToRestore);
       if (result.ok) {
-        this.restoreStatus = 'Restore successful!';
-        this.restoreType = 'success';
+        if (result.warning) {
+          this.restoreStatus = result.warning;
+          this.restoreType = 'warning';
+        } else {
+          this.restoreStatus = 'Restore successful!';
+          this.restoreType = 'success';
+        }
       } else {
         this.restoreStatus = `Restore failed: ${result.error || 'Unknown error'}`;
         this.restoreType = 'error';

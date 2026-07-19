@@ -402,6 +402,12 @@ class CachingBackend:
         # the background when soft-expired. This removes request-time ADO waits.
         if self._inner_is_remote and have_cached:
             if self._try_mark_refresh_inflight(key):
+                logger.debug(
+                    'CachingBackend: scheduling Azure background refresh for %s (user_id=%s, cached_has_content=%s)',
+                    key,
+                    user_id or '-',
+                    cached_has_content,
+                )
                 self._refresh_tasks_in_background(
                     inner_method=inner_method,
                     name=name,
@@ -560,3 +566,9 @@ class CachingBackend:
             pass
         logger.info("CachingBackend: invalidated %d entries", len(invalidated))
         return {'ok': not errors, 'invalidated': invalidated, 'errors': errors}
+
+    def reload(self) -> None:
+        """Reload the wrapped backend in place and refresh wrapper state."""
+        if hasattr(self._inner, 'reload'):
+            self._inner.reload()
+        self._inner_is_remote = bool(getattr(self._inner, 'is_remote', False))

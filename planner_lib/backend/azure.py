@@ -92,6 +92,7 @@ class AzureDevOpsBackend(BackendPort):
         local_backend=None,
     ) -> None:
         from planner_lib.azure.AzureClient import AzureClient
+        self._organization_url = organization_url
         # _conn provides connect(pat) context manager and all operation classes
         self._conn = AzureClient(organization_url, storage=storage)
         self._adapter = AzureAdapter()
@@ -104,6 +105,23 @@ class AzureDevOpsBackend(BackendPort):
             organization_url,
             type(team_repository).__name__ if team_repository is not None else 'None',
             type(capacity_service).__name__ if capacity_service is not None else 'None',
+        )
+
+    def reload(self) -> None:
+        """Rebuild the backend in place from the current ADO config."""
+        try:
+            ado_cfg = self._config.fetch_ado_config() if self._config is not None else {}
+        except Exception:
+            ado_cfg = {}
+        from planner_lib.backend.registry import rebuild_backend_instance
+        rebuild_backend_instance(
+            self,
+            ado_cfg.get('feature_flags') or {},
+            org_url=ado_cfg.get('organization_url') or self._organization_url,
+            storage=self._storage,
+            config_backend=self._config,
+            team_repository=self._team_repository,
+            capacity_service=self._capacity_service,
         )
 
     # ------------------------------------------------------------------

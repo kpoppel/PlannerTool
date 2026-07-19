@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 import json
 import pytest
+from planner_lib.accounts.config import AccountPayload
 from planner_lib.admin import api as admin_api
 from fastapi import HTTPException
 
@@ -239,3 +240,63 @@ def test_admin_get_users_and_save_users():
     assert res2['ok']
     assert 'u2' in storage.data['accounts']
     assert 'admin2' in storage.data['accounts_admin']
+
+
+def test_admin_restore_backup_reloads_config_after_restore():
+    storage = FakeStorage()
+    called = {}
+
+    class RestoreAdminService:
+        def __init__(self, backing_storage):
+            self._config_storage = backing_storage
+
+        def restore_backup(self, data, current_user_email=None):
+            called['restore_args'] = (data, current_user_email)
+            self._config_storage.save(
+                'config',
+                'ado_config',
+                {
+                    'organization_url': 'https://example.visualstudio.com',
+                    'feature_flags': {'use_azure_mock_generator': True},
+                },
+            )
+            return {'ok': True, 'message': 'Restore completed successfully.'}
+
+        def reload_config(self, session_id=''):
+            called['reload_session_id'] = session_id
+            return {'ok': True}
+
+    class SessionMgrWithValues:
+        def exists(self, sid):
+            return True
+
+        def get_val(self, sid, key):
+            values = {'email': 'admin1@admin', 'pat': 'pat-token'}
+            return values.get(key)
+
+    admin_svc = RestoreAdminService(storage)
+    session_mgr = SessionMgrWithValues()
+    container = SimpleNamespace(
+        get=lambda name: {
+            'admin_service': admin_svc,
+            'session_manager': session_mgr,
+        }.get(name)
+    )
+
+    class Req:
+        def __init__(self, payload):
+            self._payload = payload
+            self.headers = {'X-Session-Id': 'restore-session'}
+            self.cookies = {}
+            self.app = SimpleNamespace(state=SimpleNamespace(container=container))
+
+        async def json(self):
+            return self._payload
+
+    req = Req({'config': {'ado_config': {'organization_url': 'old', 'feature_flags': {}}}})
+    res = asyncio.run(admin_api.admin_restore_backup.__wrapped__(req))
+
+    assert res.status_code == 200
+    assert called['restore_args'][1] == 'admin1@admin'
+    assert called['reload_session_id'] == 'restore-session'
+    assert storage.data['config']['ado_config']['feature_flags']['use_azure_mock_generator'] is True
