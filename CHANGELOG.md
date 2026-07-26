@@ -22,6 +22,7 @@ Template - do not change :
 - Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
 
 ### Fixed
+- Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance
 
 ## [v4.2.1] - 2026-07-19
 
