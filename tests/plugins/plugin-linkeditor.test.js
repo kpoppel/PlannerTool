@@ -5,13 +5,20 @@ import PluginLinkEditor from '../../www/js/plugins/PluginLinkEditor.js';
 describe('PluginLinkEditor lifecycle', () => {
   it('inits, activates, deactivates and destroys', async () => {
     const plugin = new PluginLinkEditor('link-editor', {});
+
+    // MountedPlugin.init only calls _ensureComponent (which is no-op when componentPath is empty)
+    // and _resolveHost. It does not need any mock element.
     await plugin.init();
     expect(plugin.initialized).to.be.true;
 
-    // Ensure component exists and attach to body so destroy can remove it
-    if (!plugin._component)
-      plugin._component = document.createElement('plugin-link-editor');
-    document.body.appendChild(plugin._component);
+    // Provide the app host so MountedPlugin can resolve _host without failing in JSDOM
+    const app = document.createElement('div');
+    app.id = 'app';
+    document.body.appendChild(app);
+    plugin._host = app;
+
+    // Mock component loaded and element creation to avoid Lit/JSDOM issues
+    plugin._componentLoaded = true;
 
     await plugin.activate();
     expect(plugin.active).to.be.true;
@@ -19,10 +26,7 @@ describe('PluginLinkEditor lifecycle', () => {
     await plugin.deactivate();
     expect(plugin.active).to.be.false;
 
-    // manual cleanup in case plugin didn't remove
-    if (plugin._component && plugin._component.parentNode)
-      plugin._component.parentNode.removeChild(plugin._component);
     await plugin.destroy();
-    expect(plugin._component).to.be.null;
+    expect(plugin._el).to.equal(null);
   });
 });

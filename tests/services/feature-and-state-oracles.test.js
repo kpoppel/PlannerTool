@@ -51,7 +51,7 @@ describe('Feature Service and State Oracles (consolidated)', () => {
       const baselineStore = {
         getFeatures: () => [{ id: 5, start: '2025-01-01', end: '2025-01-05' }],
         getFeatureById: () =>
-          new Map([{ 5: { id: 5, start: '2025-01-01', end: '2025-01-05' } }]),
+          new Map([[5, { id: 5, start: '2025-01-01', end: '2025-01-05' }]]),
       };
       const activeScenario = { overrides: {}, isChanged: false };
       const svc = new FeatureService(baselineStore, {
