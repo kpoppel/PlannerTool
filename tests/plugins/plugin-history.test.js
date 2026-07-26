@@ -1,12 +1,7 @@
 import { expect } from '@open-wc/testing';
 import { default as PluginHistory } from '../../www/js/plugins/PluginHistory.js';
-import { enable } from '../../www/js/config.js';
 
 describe('PluginHistory lifecycle', () => {
-  beforeEach(() => {
-    enable('USE_PLUGIN_SYSTEM');
-  });
-
   it('activates, deactivates and destroys correctly', async () => {
     const plugin = new PluginHistory('plugin-history', {});
     // mark component loaded to avoid dynamic import in test

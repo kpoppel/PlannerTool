@@ -3,7 +3,6 @@ import { stub } from 'sinon';
 import PluginCost from '../../www/js/plugins/PluginCost.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
-import { disable, enable } from '../../www/js/config.js';
 
 describe('PluginCost', () => {
   let emitStub;
@@ -14,8 +13,6 @@ describe('PluginCost', () => {
 
   afterEach(() => {
     emitStub.restore();
-    // Ensure plugin system flag restored
-    enable('USE_PLUGIN_SYSTEM');
   });
 
   it('activates, deactivates and destroys without loading component', async () => {
@@ -28,9 +25,6 @@ describe('PluginCost', () => {
     document.body.appendChild(timeline);
     // Ensure timeline has an explicit display so fullscreen toggling updates it
     timeline.style.display = 'block';
-
-    // Disable plugin system so init does not dynamically import heavy component
-    disable('USE_PLUGIN_SYSTEM');
 
     const p = new PluginCost('pcv2-test', { mountPoint: 'test-app' });
     // mark component as loaded to avoid init path in activate

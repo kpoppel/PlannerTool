@@ -19,6 +19,7 @@ Template - do not change :
 ### Changed
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.
 - Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)
+- Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
 
 ### Fixed
 

@@ -1,16 +1,10 @@
 import { expect } from '@open-wc/testing';
-import sinon from 'sinon';
-import { isEnabled, enable, disable } from '../../www/js/config.js';
 
 const PluginGraphPlugin =
   (await import('../../www/js/plugins/PluginGraph.js')).default ||
   (await import('../../www/js/plugins/PluginGraph.js')).PluginGraphPlugin;
 
 describe('PluginGraphPlugin lifecycle', () => {
-  beforeEach(() => {
-    enable('USE_PLUGIN_SYSTEM');
-  });
-
   it('initializes and activates/deactivates/destroys', async () => {
     const plugin = new PluginGraphPlugin('plugin-graph', { fullscreen: true });
     plugin._componentLoaded = true;

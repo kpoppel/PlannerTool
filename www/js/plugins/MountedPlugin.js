@@ -12,7 +12,6 @@
  * - `isFullscreen` / `mountSelector` / config options
  * - any plugin-specific activate/deactivate extras (state save, bus.emit, etc.)
  */
-import { isEnabled } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 
@@ -85,7 +84,6 @@ export class MountedPlugin {
   /* ── lifecycle (default impl; subclasses extend via `super`) ────────── */
 
   async init() {
-    if (!isEnabled('USE_PLUGIN_SYSTEM')) return;
     await this._ensureComponent();
     this._resolveHost();
     this.initialized = true;

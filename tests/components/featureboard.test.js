@@ -14,8 +14,6 @@ describe('FeatureBoard & DragSurface Tests', () => {
 
     const mod = await import('../../www/js/components/FeatureBoard.lit.js');
     const { updateCardsById } = mod;
-    const cfg = await import('../../www/js/config.js');
-    cfg.featureFlags.USE_LIT_COMPONENTS = true;
 
     // Provide a lightweight mock feature-card-lit if not present
     if (!customElements.get('feature-card-lit')) {

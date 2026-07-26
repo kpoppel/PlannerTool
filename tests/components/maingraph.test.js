@@ -1,6 +1,5 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import { stub } from 'sinon';
-import { isEnabled } from '../../www/js/config.js';
 
 describe('MainGraph Tests', () => {
   describe('maingraph-lit basic API and rendering', () => {
@@ -198,9 +197,7 @@ describe('MainGraph Tests', () => {
     });
   });
 
-  it('inserts maingraph-lit when feature flag enabled', async () => {
-    // ensure flag is enabled for the test
-    if (!isEnabled('USE_LIT_COMPONENTS')) return;
+  it('inserts maingraph-lit', async () => {
     const sec = document.createElement('div');
     sec.id = 'timelineSection';
     sec.style.width = '800px';

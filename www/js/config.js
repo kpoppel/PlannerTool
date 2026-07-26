@@ -9,13 +9,6 @@ export const featureFlags = {
   WARN_ON_STRING_EVENTS: true,
   LOG_EVENT_HISTORY: true,
 
-  // Plugin System
-  USE_PLUGIN_SYSTEM: true,
-
-  // Phase 8-9: Lit Components
-  USE_LIT_COMPONENTS: true,
-  //  USE_LIT_COMPONENTS: false,
-
   // Phase 10: Command Pattern (Undo/Redo)
   USE_COMMAND_PATTERN: false,
 

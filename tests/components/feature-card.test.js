@@ -7,7 +7,6 @@ import {
   laneHeight,
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
-import { featureFlags } from '../../www/js/config.js';
 import { state } from '../../www/js/services/State.js';
 
 describe('FeatureCard Consolidated Tests', () => {
@@ -66,15 +65,11 @@ describe('FeatureCard Consolidated Tests', () => {
     });
 
     it('laneHeight respects condensed flag and featureFlags branch', () => {
-      const original = featureFlags ? featureFlags.USE_LIT_COMPONENTS : undefined;
       try {
-        if (featureFlags) featureFlags.USE_LIT_COMPONENTS = false;
         state._viewService.setCondensedCards(true);
         const h = laneHeight();
         expect(typeof h).to.equal('number');
       } finally {
-        if (featureFlags && original !== undefined)
-          featureFlags.USE_LIT_COMPONENTS = original;
         state._viewService.setCondensedCards(false);
       }
     });

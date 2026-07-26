@@ -1,5 +1,4 @@
 import { expect, fixture, html } from '@open-wc/testing';
-import { featureFlags } from '../../www/js/config.js';
 import { state } from '../../www/js/services/State.js';
 
 // Define a lightweight mock for feature-card-lit so tests don't require Lit runtime.
@@ -22,11 +21,6 @@ if (!customElements.get('feature-card-lit')) {
 }
 
 describe('FeatureBoard incremental updates', () => {
-  before(() => {
-    // Ensure lit path is enabled for these tests
-    featureFlags.USE_LIT_COMPONENTS = true;
-  });
-
   it('updateCardsById patches existing lit cards', async () => {
     // Stub ResizeObserver to avoid loop errors in headless test runs
     if (!window.__origResizeObserver) {
