@@ -150,6 +150,10 @@ def test_save_config_persists_content():
 
 def test_save_config_creates_timestamped_backup_of_existing_value():
     svc, store = _make_service()
+    
+    # Enable feature flag to allow backups in this test
+    store.save('config', 'server_config', {'feature_flags': {'manage_backup_snapshots': True}})
+    
     store.save('config', 'projects', {'original': True})
 
     svc.save_config('projects', {'updated': True})
@@ -164,6 +168,26 @@ def test_save_config_creates_timestamped_backup_of_existing_value():
     assert backup == {'original': True}
 
     # Updated value is stored under the canonical key
+    assert store.load('config', 'projects') == {'updated': True}
+
+
+def test_save_config_no_backup_when_feature_flag_disabled():
+    """When feature flag is disabled (default), no ghost backups should be created."""
+    svc, store = _make_service()
+    
+    # Ensure feature flag is False or not set (default behavior)
+    store.save('config', 'server_config', {'feature_flags': {'manage_backup_snapshots': False}})
+    
+    store.save('config', 'projects', {'original': True})
+
+    svc.save_config('projects', {'updated': True})
+
+    # No backup should be created when flag is disabled
+    config_keys = store.list_keys('config')
+    backup_keys = [k for k in config_keys if k.startswith('projects_backup_')]
+    assert backup_keys == [], f"Expected no backups when flag is disabled, got: {backup_keys}"
+
+    # Updated value should still be stored correctly
     assert store.load('config', 'projects') == {'updated': True}
 
 
