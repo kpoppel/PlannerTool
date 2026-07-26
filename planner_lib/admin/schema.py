@@ -63,6 +63,12 @@ _SCHEMAS: dict[str, Any] = {
                         'description': 'Reserved for future use — enables fully offline operation without any backend connectivity',
                         'default': False,
                     },
+                    'manage_backup_snapshots': {
+                        'type': 'boolean',
+                        'title': 'Manage Backup Snapshots',
+                        'description': 'Enable the backup snapshot manager in the admin UI (list, prune, delete, restore individual config backups)',
+                        'default': False,
+                    },
                 },
                 'additionalProperties': True,
             },

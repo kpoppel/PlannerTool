@@ -522,6 +522,87 @@ async def admin_restore_backup(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Backup Snapshots (individual entries) — feature-flagged by manage_backup_snapshots
+# ---------------------------------------------------------------------------
+
+@router.get('/admin/v1/backup-snapshots')
+@require_admin_session
+async def admin_list_backup_snapshots(request: Request):
+    """List all timestamped backup snapshot keys in the 'config' namespace."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        snapshots = await asyncio.to_thread(admin_svc.list_backup_snapshots)
+        return JSONResponse(content={'snapshots': snapshots})
+    except Exception as e:
+        logger.exception('Failed to list backup snapshots: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/backup-snapshots/prune')
+@require_admin_session
+async def admin_prune_backup_snapshots(request: Request):
+    """Prune backup snapshots, keeping the last N entries per config key."""
+    try:
+        payload = await request.json()
+        keep_last = payload.get('keep_last', 5)
+        if not isinstance(keep_last, int) or keep_last < 0:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_keep_last'})
+        admin_svc = resolve_service(request, 'admin_service')
+        result = await asyncio.to_thread(admin_svc.prune_snapshots, keep_last=keep_last)
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={'error': str(e)})
+    except Exception as e:
+        logger.exception('Failed to prune backup snapshots: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.get('/admin/v1/backup-snapshots/{key}')
+@require_admin_session
+async def admin_get_backup_snapshot(request: Request, key: str):
+    """Return the raw content of a single backup snapshot entry."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        content = await asyncio.to_thread(admin_svc.get_snapshot_content, key)
+        return JSONResponse(content={'key': key, 'content': content})
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f'Snapshot not found: {key}')
+    except Exception as e:
+        logger.exception('Failed to load backup snapshot %s: %s', key, e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/backup-snapshots/{key}')
+@require_admin_session
+async def admin_restore_backup_snapshot(request: Request, key: str):
+    """Restore a config value from a backup snapshot entry."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        await asyncio.to_thread(admin_svc.restore_snapshot_entry, key)
+        return JSONResponse(content={'ok': True, 'restored_key': key})
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f'Snapshot not found: {key}')
+    except Exception as e:
+        logger.exception('Failed to restore backup snapshot %s: %s', key, e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.delete('/admin/v1/backup-snapshots/{key}')
+@require_admin_session
+async def admin_delete_backup_snapshot(request: Request, key: str):
+    """Delete a single backup snapshot entry."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        await asyncio.to_thread(admin_svc.delete_snapshot_entry, key)
+        return JSONResponse(content={'ok': True})
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f'Snapshot not found: {key}')
+    except Exception as e:
+        logger.exception('Failed to delete backup snapshot %s: %s', key, e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+# ---------------------------------------------------------------------------
 # Cost
 # ---------------------------------------------------------------------------
 

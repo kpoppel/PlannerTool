@@ -16,6 +16,9 @@ Template - do not change :
 
 ## [v4.3.0] - unreleased
 ### Added
+- added feature flag for snapshots of the server configuration and admin interface for the same. Default is disabled, but existing
+  servers will have these backups in the diskcache, so enable and clean up, then disable if they are not wanted.
+  
 ### Changed
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.
 - Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)

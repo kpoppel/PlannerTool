@@ -76,6 +76,27 @@ class AdminService:
         """Create a full backup snapshot.  Delegates to ConfigManager."""
         return self._config_manager.get_backup()
 
+    # Backup snapshot management (individual entries)
+    def list_backup_snapshots(self) -> list[dict]:
+        """List all timestamped backup keys in the 'config' namespace."""
+        return self._config_manager.list_backup_keys()
+
+    def get_snapshot_content(self, key: str) -> Any:
+        """Load the content of a single backup snapshot entry."""
+        return self._config_manager.get_snapshot(key)
+
+    def delete_snapshot_entry(self, key: str) -> None:
+        """Delete a single backup snapshot entry."""
+        self._config_manager.delete_snapshot(key)
+
+    def prune_snapshots(self, keep_last: int = 5) -> dict:
+        """Prune backups keeping the last *keep_last* entries per config key."""
+        return self._config_manager.prune_backups(keep_last=keep_last)
+
+    def restore_snapshot_entry(self, key: str) -> Any:
+        """Restore a config value from a backup snapshot (no new backup created)."""
+        return self._config_manager.restore_snapshot(key)
+
     def restore_backup(self, data, current_user_email=None) -> dict:
         """Restore config and data from a backup.  Delegates to ConfigManager."""
         return self._config_manager.restore_backup(

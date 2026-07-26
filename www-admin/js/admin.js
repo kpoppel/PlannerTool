@@ -9,6 +9,7 @@ import './components/admin/Cost.lit.js';
 import './components/admin/AreaMappingsNew.lit.js';
 import './components/admin/Iterations.lit.js';
 import './components/admin/Utilities.lit.js';
+import './components/admin/BackupSnapshots.lit.js';
 import { dataService } from '/static/js/services/dataService.js';
 
 async function mountAdminApp() {

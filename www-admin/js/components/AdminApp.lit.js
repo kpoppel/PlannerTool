@@ -3,11 +3,13 @@ import './admin/GlobalSettings.lit.js';
 // AzureDevOps module removed — backend config and TTLs are now in Data Sources
 import './admin/DataSources.lit.js';
 import './admin/Plugins.lit.js';
+import './admin/BackupSnapshots.lit.js';
 
 export class AdminApp extends LitElement {
   static properties = {
     activeSection: { type: String },
     sections: { type: Array },
+    manageBackupSnapshots: { type: Boolean },
   };
 
   static styles = css`
@@ -100,6 +102,30 @@ export class AdminApp extends LitElement {
       'Iterations',
       'Utilities',
     ];
+    this.manageBackupSnapshots = false;
+  }
+
+  async firstUpdated() {
+    // Check feature flag for backup snapshots visibility
+    try {
+      const res = await fetch('/admin/v1/system');
+      if (res.ok) {
+        const data = await res.json();
+        const flags = data?.content?.feature_flags || {};
+        this.manageBackupSnapshots = !!flags.manage_backup_snapshots;
+        if (this.manageBackupSnapshots && !this.sections.includes('Backup Snapshots')) {
+          // Insert after Utilities, before any future sections
+          const idx = this.sections.indexOf('Utilities');
+          if (idx !== -1) {
+            this.sections.splice(idx + 1, 0, 'Backup Snapshots');
+          } else {
+            this.sections.push('Backup Snapshots');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('AdminApp: failed to check feature flags', e);
+    }
   }
 
   _onSelect(section) {
@@ -158,6 +184,8 @@ export class AdminApp extends LitElement {
         return html`<admin-utilities></admin-utilities>`;
       case 'Plugins':
         return html`<admin-plugins></admin-plugins>`;
+      case 'Backup Snapshots':
+        return html`<admin-backup-snapshots></admin-backup-snapshots>`;
       default:
         return html`<div>Unknown section</div>`;
     }

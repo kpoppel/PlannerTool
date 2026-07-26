@@ -63,10 +63,35 @@ class ConfigManager:
     def save_config(self, key: str, content: Any) -> None:
         """Create a timestamped backup of *key* then persist *content*.
 
-        If the key does not yet exist no backup is created.
+        If the key does not yet exist no backup is created.  The backup step
+        is gated by the ``manage_backup_snapshots`` feature flag — when False
+        (default), only the canonical value is persisted and no ghost entries
+        accumulate in diskcache.
         """
-        self._backup_config(key)
+        if self._should_backup():
+            self._backup_config(key)
+
+        # Preserve existing feature_flags when saving server_config so that
+        # enabling manage_backup_snapshots persists across saves.
+        if key == 'server_config' and isinstance(content, dict):
+            try:
+                existing = self._storage.load('config', 'server_config') or {}
+                existing_flags = existing.get('feature_flags', {})
+                if existing_flags and not content.get('feature_flags'):
+                    content = {**content, 'feature_flags': existing_flags}
+            except Exception:
+                pass
+
         self._storage.save('config', key, content)
+
+    def _should_backup(self) -> bool:
+        """Return True when backup snapshots are enabled."""
+        try:
+            flags = self._storage.load('config', 'server_config') or {}
+            return bool(flags.get('feature_flags', {}).get('manage_backup_snapshots'))
+        except Exception:
+            # server_config not yet written — no backups needed
+            return False
 
     def save_config_raw(self, key: str, content: Any) -> None:
         """Persist *content* under *key* without creating a backup.
@@ -100,6 +125,91 @@ class ConfigManager:
                     logger.exception('Backend save also failed for backup %s', backup_key)
             else:
                 logger.exception('Cannot backup config key %s: %s', backup_key, e)
+
+    # ------------------------------------------------------------------
+    # Backup snapshot management (individual entries)
+    # ------------------------------------------------------------------
+
+    def list_backup_keys(self) -> list[dict]:
+        """List all timestamped backup keys in the 'config' namespace.
+
+        Returns a sorted list of dicts:
+            [{'key': str, 'timestamp_str': str, 'config_key': str}, ...]
+        where *config_key* is the canonical key (e.g. "projects") and
+        *timestamp_str* is the ISO-like suffix from the backup key name.
+        """
+        prefix = "config::"
+        backups: list[dict] = []
+        for raw_key in self._storage.list_keys('config'):
+            if isinstance(raw_key, bytes):
+                raw_key = raw_key.decode('utf-8')
+            # Match keys like "projects_backup_20260727T143022Z"
+            if '_backup_' not in raw_key:
+                continue
+            parts = raw_key.split('_backup_', 1)
+            config_key = parts[0]
+            ts_str = parts[1]
+            backups.append({
+                'key': f"{config_key}_backup_{ts_str}",
+                'timestamp_str': ts_str,
+                'config_key': config_key,
+            })
+        # Sort by config_key then timestamp descending (newest first)
+        backups.sort(key=lambda b: (b['config_key'], b['timestamp_str']), reverse=True)
+        return backups
+
+    def get_snapshot(self, key: str) -> Any:
+        """Load the content of a single backup snapshot entry.
+
+        Raises ``KeyError`` if the key does not exist.
+        """
+        return self._storage.load('config', key)
+
+    def delete_snapshot(self, key: str) -> None:
+        """Delete a single backup snapshot entry."""
+        self._storage.delete('config', key)
+
+    def prune_backups(self, keep_last: int = 5) -> dict:
+        """Prune backup snapshots, keeping the last *keep_last* entries per config key.
+
+        Returns ``{'deleted_count': int, 'kept_count': int}``.
+        """
+        backups_by_key: dict[str, list[dict]] = {}
+        for bk in self.list_backup_keys():
+            backups_by_key.setdefault(bk['config_key'], []).append(bk)
+
+        deleted_count = 0
+        kept_count = 0
+        for config_key, entries in backups_by_key.items():
+            # entries are sorted newest-first from list_backup_keys
+            if len(entries) <= keep_last:
+                kept_count += len(entries)
+                continue
+            to_delete = entries[keep_last:]
+            for entry in to_delete:
+                try:
+                    self._storage.delete('config', entry['key'])
+                    deleted_count += 1
+                except Exception:
+                    logger.exception('Failed to delete backup snapshot %s', entry['key'])
+            kept_count += keep_last
+
+        return {'deleted_count': deleted_count, 'kept_count': kept_count}
+
+    def restore_snapshot(self, key: str) -> Any:
+        """Restore a config value from a backup snapshot.
+
+        Copies the snapshot content to the canonical config key (without creating another backup).
+        Returns the restored content.
+        """
+        content = self.get_snapshot(key)
+        # Extract the original config key from the backup key name
+        parts = key.split('_backup_', 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid backup key format: {key}")
+        canonical_key = parts[0]
+        self._storage.save('config', canonical_key, content)
+        return content
 
     # ------------------------------------------------------------------
     # Backup / restore

@@ -70,17 +70,19 @@ def test_get_config_decodes_bytes():
 def test_save_config_creates_backup_then_saves():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
-    store.save('config', 'server_config', {'version': 1})
+    store.save('config', 'server_config', {'version': 1, 'feature_flags': {'manage_backup_snapshots': True}})
     cm = ConfigManager(storage=store)
     cm.save_config('server_config', {'version': 2})
 
-    # New value persisted
-    assert store.load('config', 'server_config') == {'version': 2}
+    # New value persisted (feature_flags preserved from prior server_config)
+    saved = store.load('config', 'server_config')
+    assert saved['version'] == 2
+    assert saved.get('feature_flags', {}).get('manage_backup_snapshots') is True
     # Backup key created — find it
     backup_keys = [k for k in store.list_keys('config') if 'backup' in k]
     assert len(backup_keys) == 1
     assert 'server_config' in backup_keys[0]
-    assert store.load('config', backup_keys[0]) == {'version': 1}
+    assert store.load('config', backup_keys[0]) == {'version': 1, 'feature_flags': {'manage_backup_snapshots': True}}
 
 
 def test_save_config_no_backup_when_key_absent():
@@ -90,6 +92,19 @@ def test_save_config_no_backup_when_key_absent():
     cm.save_config('new_key', {'x': 1})
     keys = store.list_keys('config')
     assert keys == ['new_key']  # no backup key created
+
+
+def test_save_config_no_backup_when_feature_flag_false():
+    """When manage_backup_snapshots is False, save_config must not create ghost backups."""
+    from planner_lib.admin.config_manager import ConfigManager
+    store = _Store()
+    store.save('config', 'server_config', {'feature_flags': {'manage_backup_snapshots': False}})
+    store.save('config', 'projects', {'old': True})
+    cm = ConfigManager(storage=store)
+    cm.save_config('projects', {'new': True})
+    assert store.load('config', 'projects') == {'new': True}
+    backup_keys = [k for k in store.list_keys('config') if 'backup' in k]
+    assert len(backup_keys) == 0
 
 
 def test_save_config_raw_no_backup():
@@ -339,6 +354,8 @@ def test_admin_service_delegates_save_config():
     """AdminService.save_config creates a backup via ConfigManager."""
     from planner_lib.admin.service import AdminService
     store = _Store()
+    # server_config with feature flag enabled so backups are created
+    store.save('config', 'server_config', {'feature_flags': {'manage_backup_snapshots': True}})
     store.save('config', 'cfg', {'old': True})
     svc = AdminService(
         storage=store,
