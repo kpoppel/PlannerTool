@@ -1,6 +1,12 @@
-"""Tests for migration 0021: internalize config YAML files into diskcache."""
+"""Tests for migration 0021: internalize config YAML files into diskcache.
+
+NOTE: Migrations have been deprecated in this release. These tests are skipped
+because the migration file (scripts/migrations/0021_internalize_config_to_diskcache.py)
+no longer exists on disk.
+"""
 import pytest
-from pathlib import Path
+
+pytestmark = pytest.mark.skip(reason="Migrations have been deprecated since this release")
 
 
 class _MemStore:

@@ -43,7 +43,13 @@ class FakeStorageRaiseOnLoad:
 
 def make_request(container, headers=None, cookies=None):
     app = SimpleNamespace(state=SimpleNamespace(container=container))
-    return SimpleNamespace(headers=headers or {}, cookies=cookies or {}, app=app, url=SimpleNamespace(path='/'))
+    return SimpleNamespace(
+        scope={'root_path': ''},
+        headers=headers or {},
+        cookies=cookies or {},
+        app=app,
+        url=SimpleNamespace(path='/'),
+    )
 
 
 def test_save_projects_backup_fallback(tmp_path, monkeypatch):

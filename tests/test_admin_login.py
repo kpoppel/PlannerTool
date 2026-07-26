@@ -10,7 +10,7 @@ def test_admin_login_flow_with_memory_storage(app):
 
     client = TestClient(app, raise_server_exceptions=False)
     container = app.state.container
-    account_storage = container.get('account_storage')
+    account_storage = container.get('storage')
 
     subject = 'test@example.com'
 
@@ -36,7 +36,7 @@ def test_admin_login_flow_with_memory_storage(app):
     # or the server returned an intermediate redirect that was not followed.
     assert r.status_code in (200, 302), f"Expected redirect or login page, got {r.status_code}"
     if r.status_code == 200:
-        assert 'Admin Login' in r.text or 'not_admin' in r.url
+        assert 'Admin Login' in r.text or 'not_admin' in str(r.url)
     else:
         assert 'not_admin' in r.headers.get('location', '')
 

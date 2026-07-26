@@ -327,7 +327,7 @@ def isolate_storage(app):
         return
 
     # Known storage names registered in create_app (all diskcache-backed)
-    storage_names = ['account_storage', 'scenarios_storage']
+    storage_names = ['storage', 'scenarios_storage']
     for name in storage_names:
         try:
             s = container.get(name)

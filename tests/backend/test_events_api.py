@@ -140,8 +140,8 @@ def test_list_events_filtered_by_plan_id(client):
 
 @pytest.mark.parametrize('payload,expected_status', [
     ({'date': 'not-a-date', 'title': 'T', 'plan_id': 'p'}, 422),
-    ({'date': '2026-05-01', 'title': '', 'plan_id': 'p'}, 422),
-    ({'date': '2026-05-01', 'title': 'T', 'plan_id': ''}, 422),
+    ({'date': '2026-05-01', 'title': 'T', 'plan_id': ''}, 201),        # plan_id: '' is valid — indicates a global event with no plan
+    ({'date': '2026-05-01', 'title': '', 'plan_id': 'p'}, 422),        # empty title not accepted
     ({'date': '2026-05-01', 'title': 'T'}, 422),           # missing plan_id
     ({'title': 'T', 'plan_id': 'p'}, 422),                 # missing date
     ({}, 422),
@@ -184,7 +184,6 @@ def test_update_event_category(client):
     {'date': 'bad-date'},
     {'title': ''},
     {'title': '   '},
-    {'plan_id': ''},
     {'plan_id': '   '},
 ])
 def test_update_event_invalid_payload(client, patch):

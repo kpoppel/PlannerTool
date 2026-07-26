@@ -39,7 +39,7 @@ def test_reload_config_endpoint_sets_ok(client):
     headers = {'X-Session-Id': sid}
     # Mark created account as admin: set 'admin' in the permissions field
     try:
-        acct_storage = client.app.state.container.get('account_storage')
+        acct_storage = client.app.state.container.get('storage')
         try:
             record = dict(acct_storage.load('accounts', acct['email']))
         except (KeyError, Exception):

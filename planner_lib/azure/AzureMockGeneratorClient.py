@@ -258,46 +258,59 @@ class GeneratorConfig:
 # ---------------------------------------------------------------------------
 
 
-def _load_projects_config(data_dir: str) -> List[dict]:
-    """Return the ``project_map`` list from *data_dir*/config/projects.yml."""
-    data = _load_yaml(Path(data_dir) / "config" / "projects.yml")
-    if not data:
-        return []
-    return data.get("project_map", [])
+def _load_projects_config(storage: Optional[StorageBackend]) -> List[dict]:
+    """Return the ``project_map`` list from storage namespace 'config' key 'projects'.
 
-
-def _load_teams_config(data_dir: str) -> Dict[str, str]:
-    """Return ``{team_name: short_name}`` from *data_dir*/config/teams.yml.
-
-    Teams with ``exclude: true`` are omitted.
+    Falls back to an empty list when no storage is provided or data is missing.
     """
-    data = _load_yaml(Path(data_dir) / "config" / "teams.yml")
-    if not data:
+    if storage is None:
+        return []
+    try:
+        cfg = storage.load("config", "projects") or {}
+        return cfg.get("project_map", [])
+    except KeyError:
+        return []
+
+
+def _load_teams_config(storage: Optional[StorageBackend]) -> Dict[str, str]:
+    """Return ``{team_name: short_name}`` from storage namespace 'config' key 'teams'.
+
+    Teams with ``exclude: true`` are omitted.  Falls back to empty dict when no
+    storage is provided or data is missing.
+    """
+    if storage is None:
         return {}
-    teams = data.get("teams", [])
-    return {
-        t["name"]: t.get("short_name", t["name"][:3].upper())
-        for t in teams if "name" in t and not t.get("exclude", False)
-    }
+    try:
+        cfg = storage.load("config", "teams") or {}
+        teams = cfg.get("teams", [])
+        return {
+            t["name"]: t.get("short_name", t["name"][:3].upper())
+            for t in teams if "name" in t and not t.get("exclude", False)
+        }
+    except KeyError:
+        return {}
 
 
 def _build_person_pool(
-    data_dir: str,
+    storage: Optional[StorageBackend],
     area_configs: List[dict],
     config: GeneratorConfig,
     base_url: str,
 ) -> List[dict]:
-    """Build the person pool from people.yml or generate synthetic entries."""
-    data = _load_yaml(Path(data_dir) / "config" / "people.yml")
+    """Build the person pool from storage or generate synthetic entries."""
     real_people: List[dict] = []
-    if data:
-        db_people = (data.get("database") or {}).get("people", [])
-        for p in db_people:
-            name = p.get("name", "")
-            if name:
-                uid = _det_uuid(f"person:{name}")
-                email = name.lower().replace(" ", ".") + "@example.com"
-                real_people.append(_person_dict(name, uid, email, base_url))
+    if storage is not None:
+        try:
+            cfg = storage.load("config", "people") or {}
+            db_people = (cfg.get("database") or {}).get("people", [])
+            for p in db_people:
+                name = p.get("name", "")
+                if name:
+                    uid = _det_uuid(f"person:{name}")
+                    email = name.lower().replace(" ", ".") + "@example.com"
+                    real_people.append(_person_dict(name, uid, email, base_url))
+        except KeyError:
+            pass
 
     if real_people:
         return real_people
@@ -844,6 +857,14 @@ class AzureDataset:
 
     Parameters
     ----------
+    storage:
+        Storage backend to read config from (namespace "config") and write
+        generated mock data back into.  When None, falls back to YAML files
+        under *data_dir* for configuration loading only.
+    data_dir:
+        Root directory containing the ``config/`` sub-directory with
+        ``projects.yml``, ``teams.yml``, and ``people.yml``.  Only used as a
+        fallback when *storage* is None.
     persist_dir:
         Optional path to a directory where all generated ``sdk_*.json``
         fixture files are written after ``build()``.  When set, mutations
@@ -855,11 +876,13 @@ class AzureDataset:
 
     def __init__(
         self,
-        data_dir: str,
+        storage: Optional[StorageBackend] = None,
+        data_dir: str = "data",
         config_dict: Optional[dict] = None,
         base_url: str = "https://dev.azure.com/anonymous-org",
         persist_dir: Optional[str] = None,
     ) -> None:
+        self.storage = storage
         self.data_dir = data_dir
         self.config = GeneratorConfig(config_dict)
         self.base_url = base_url
@@ -894,13 +917,12 @@ class AzureDataset:
         self._built = True
 
         rng = random.Random(self.config.seed)
-        area_configs = _load_projects_config(self.data_dir)
+        area_configs = _load_projects_config(self.storage)
 
         if not area_configs:
             logger.warning(
-                "AzureMockGeneratorClient: projects.yml not found in '%s'; "
+                "AzureMockGeneratorClient: no project_map in storage config; "
                 "using minimal fallback dataset",
-                self.data_dir,
             )
             area_configs = [
                 {
@@ -915,7 +937,7 @@ class AzureDataset:
 
         projects = sorted(set(_area_to_project(a["area_path"]) for a in area_configs))
         project_ids = {p: _det_uuid(f"project:{p}") for p in projects}
-        person_pool = _build_person_pool(self.data_dir, area_configs, self.config, self.base_url)
+        person_pool = _build_person_pool(self.storage, area_configs, self.config, self.base_url)
 
         # Iteration trees
         for proj in projects:
@@ -1027,6 +1049,111 @@ class AzureDataset:
 
         if self.persist_dir is not None:
             self._persist()
+
+    def populate_storage(self) -> None:
+        """Write all generated fixture data into the storage backend.
+
+        This method persists the dataset stores to the ``config`` namespace so
+        that downstream code (e.g. AzureCachingClient, backend adapters) can
+        read mock data exactly as if it came from a real ADO endpoint or local
+        YAML config files.
+
+        Must be called after ``build()`` and only when ``self.storage`` is set.
+        """
+        assert self.storage is not None, "populate_storage requires storage backend"
+
+        # projects config (project_map)
+        project_map = []
+        for area in _load_projects_config(self.storage):
+            project_map.append(area)
+        if not project_map:
+            # Build from generated data: one entry per distinct team/area
+            seen = set()
+            for wid, item in self.work_item_by_id.items():
+                ap = item["fields"].get("System.AreaPath", "")
+                proj = _area_to_project(ap)
+                key = f"{proj}\\{ap}"
+                if key not in seen:
+                    seen.add(key)
+                    project_map.append({
+                        "name": ap.split("\\")[-1] if "\\" in ap else ap,
+                        "area_path": ap,
+                        "type": "team",
+                        "task_types": ["Feature", "User Story"],
+                        "include_states": _STATE_NAMES,
+                        "display_states": _STATE_NAMES,
+                    })
+        self.storage.save("config", "projects", {"project_map": project_map})
+
+        # teams config
+        teams_data = {"teams": []}
+        for proj_key, team_list in self.teams.items():
+            for t in team_list:
+                teams_data["teams"].append({
+                    "name": t["name"],
+                    "short_name": t["name"][:3].upper(),
+                    "project_id": t.get("project_id", ""),
+                })
+        self.storage.save("config", "teams", teams_data)
+
+        # people config (synthetic pool used during generation)
+        people_data = {"database": {"people": []}}
+        for wid, item in self.work_item_by_id.items():
+            created_by = item["fields"].get("System.CreatedBy")
+            if isinstance(created_by, dict):
+                dn = created_by.get("displayName", "")
+                if dn and not any(p["name"] == dn for p in people_data["database"]["people"]):
+                    email = dn.lower().replace(" ", ".") + "@example.com"
+                    uid = _det_uuid(f"person:{dn}")
+                    people_data["database"]["people"].append({
+                        "name": dn,
+                        "email": email,
+                        "id": uid,
+                    })
+        self.storage.save("config", "people", people_data)
+
+        # global_settings (task_type_hierarchy and state_display_sequence)
+        gs = {
+            "task_type_hierarchy": _TYPE_HIERARCHY,
+            "state_display_sequence": _STATE_NAMES,
+        }
+        try:
+            existing_gs = self.storage.load("config", "global_settings") or {}
+            gs.update(existing_gs)
+        except KeyError:
+            pass
+        self.storage.save("config", "global_settings", gs)
+
+        # Work items stored per area under namespace "work_items"
+        areas_by_project: Dict[str, Dict[str, list]] = {}
+        for wid, item in self.work_item_by_id.items():
+            ap = item["fields"].get("System.AreaPath", "")
+            proj_key = _safe_key(_area_to_project(ap))
+            areas_by_project.setdefault(proj_key, {}).setdefault(ap, []).append(item)
+
+        for proj_key, area_map in areas_by_project.items():
+            for ap, items in area_map.items():
+                self.storage.save("config", f"work_items__{proj_key}__{_safe_key(ap)}", items)
+
+        # Revisions stored per work item under namespace "revisions"
+        for wid, revs in self.revisions.items():
+            self.storage.save("config", f"revisions__{wid}", revs)
+
+        # Plans stored per project under namespace "plans"
+        for proj_key, plans in self.plans.items():
+            self.storage.save("config", f"plans__{proj_key}", plans)
+
+        # Iterations stored per project under namespace "iterations"
+        for proj_key, tree in self.iterations.items():
+            self.storage.save("config", f"iterations__{proj_key}", tree)
+
+        logger.info(
+            "AzureMockGeneratorClient: populated storage with %d work items, "
+            "%d revision sets, %d plans",
+            len(self.work_item_by_id),
+            len(self.revisions),
+            sum(len(v) for v in self.plans.values()),
+        )
 
     # ------------------------------------------------------------------
     # Persistence (private)
@@ -1180,8 +1307,8 @@ class AzureDataset:
         by_project: Dict[str, List[dict]],
         all_team_ids: Dict[str, str],
     ) -> None:
-        # Load team names from teams.yml once (excluded entries already filtered out).
-        teams_yml = _load_teams_config(self.data_dir)
+        # Load team names from teams.yml (via storage or data_dir fallback)
+        teams_yml = _load_teams_config(self.storage)
         included_team_names = list(teams_yml.keys())
 
         for proj in projects:
@@ -1456,6 +1583,7 @@ class AzureMockGeneratorClient(AzureClient):
         base_url = f"https://dev.azure.com/{self.organization_url}"
         if self._dataset is None:
             self._dataset = AzureDataset(
+                storage=self.storage,
                 data_dir=self._data_dir,
                 config_dict=self._config_dict,
                 base_url=base_url,
@@ -1464,6 +1592,12 @@ class AzureMockGeneratorClient(AzureClient):
         # Build eagerly so that persist_dir files are written at connect time
         # and so the first request is not slowed by generation.
         self._dataset.build()
+
+        # Populate storage backend with generated mock data so downstream code
+        # (AzureCachingClient, backend adapters) can read it as if from ADO/YAML.
+        if self.storage is not None:
+            self._dataset.populate_storage()
+
         logger.info(
             "AzureMockGeneratorClient: using generated dataset "
             "(data_dir='%s', seed=%s, persist_dir=%r, no Azure connection made)",

@@ -13,7 +13,7 @@ def _make_admin_headers(client, email='plugins-admin@example.com'):
     sid = r_sess.json().get('sessionId')
     assert sid
 
-    account_storage = client.app.state.container.get('account_storage')
+    account_storage = client.app.state.container.get('storage')
     try:
         record = dict(account_storage.load('accounts', email))
     except Exception:

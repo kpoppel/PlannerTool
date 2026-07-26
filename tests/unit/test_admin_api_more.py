@@ -102,7 +102,7 @@ def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):
     sid = r2.json().get('sessionId')
     # Mark created account as admin: set 'admin' in the permissions field
     try:
-        acct_storage = client.app.state.container.get('account_storage')
+        acct_storage = client.app.state.container.get('storage')
         try:
             record = dict(acct_storage.load('accounts', 'b@test.com'))
         except (KeyError, Exception):

@@ -55,6 +55,7 @@ class FakeBackend(BackendPort):
         self._iterations: Dict[str, Dict[str, Any]] = {}
         self._people: list = []
         self._raise_on_write = raise_on_write
+        self._project_map: List[dict] = []
 
         # Interaction records
         self.fetch_tasks_calls: List[dict] = []
@@ -170,6 +171,35 @@ class FakeBackend(BackendPort):
 
     def set_people(self, people: list) -> None:
         self._people = list(people)
+
+    # ------------------------------------------------------------------
+    # ProjectConfigBackend implementation
+    # ------------------------------------------------------------------
+
+    def set_project_map(self, project_map: List[dict]) -> None:
+        """Register a project map for fetch_project_map()."""
+        self._project_map = list(project_map)
+
+    def fetch_project_map(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[dict]:
+        return list(self._project_map)
+
+    def fetch_projects(
+        self,
+        credential: Optional[BackendCredential] = None,
+    ) -> List[Any]:
+        from planner_lib.domain.projects import DomainProject
+        return [
+            DomainProject(
+                id=p.get('id', f"project-{p['name']}"),
+                name=p.get('name', ''),
+                area_path=p.get('area_path', ''),
+                teams=[],
+            )
+            for p in self._project_map
+        ]
 
 
 class SlowFakeBackend(FakeBackend):

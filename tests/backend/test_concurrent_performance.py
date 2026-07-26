@@ -86,6 +86,7 @@ def perf_app():
     # so task_repository (still unresolved) will pick it up on first call.
     slow = SlowFakeBackend(delay=DELAY)
     slow.set_tasks(_AREA, [dict(_TASK)])
+    slow.set_project_map([{'name': 'PerfTest', 'area_path': _AREA}])
     app.state.container.register_singleton('backend', slow)
 
     # Create a real session so @require_session passes.

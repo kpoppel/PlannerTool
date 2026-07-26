@@ -50,6 +50,50 @@ def _dummy_storage(tmp_path):
     return create_storage(data_dir=str(tmp_path))
 
 
+# Mock project_map that mimics what projects.yml would provide.
+# Used to populate the storage backend for tests.
+_MOCK_PROJECT_MAP = [
+    {
+        "name": "Architecture",
+        "area_path": "Platform_Development\\eSW\\Teams\\Architecture",
+        "type": "team",
+        "task_types": ["Epic", "Feature", "User Story"],
+        "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+        "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+    },
+    {
+        "name": "Platform",
+        "area_path": "Platform_Development\\eSW\\Teams\\Platform",
+        "type": "team",
+        "task_types": ["Feature", "User Story", "Bug"],
+        "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+        "display_states": ["New", "Defined", "Active", "Resolved", "Closed"],
+    },
+]
+
+
+def _populate_mock_config(storage):
+    """Populate the storage backend with mock config data.
+
+    This replaces what would normally come from projects.yml, teams.yml, people.yml.
+    """
+    storage.save("config", "projects", {"project_map": _MOCK_PROJECT_MAP})
+    storage.save("config", "teams", {
+        "teams": [
+            {"name": "Architecture", "short_name": "ARC"},
+            {"name": "Platform", "short_name": "PLT"},
+        ]
+    })
+    storage.save("config", "people", {
+        "database": {
+            "people": [
+                {"name": "Alice Smith", "email": "alice.smith@example.com"},
+                {"name": "Bob Jones", "email": "bob.jones@example.com"},
+            ]
+        }
+    })
+
+
 # ---------------------------------------------------------------------------
 # GeneratorConfig
 # ---------------------------------------------------------------------------
@@ -342,12 +386,16 @@ class TestRevisionGeneration:
 # ---------------------------------------------------------------------------
 
 class TestAzureDataset:
-    """These tests use the real projects.yml / teams.yml from data/config."""
+    """These tests use a storage backend populated with mock project config."""
 
-    DATA_DIR = "data"
+    def _make_dataset(self, tmp_path, config_dict=_MULTI_CONFIG_DICT):
+        from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
+        return AzureDataset(storage=storage, data_dir="data", config_dict=config_dict)
 
-    def test_build_populates_all_stores(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_build_populates_all_stores(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
 
         assert ds.teams, "teams should not be empty"
@@ -360,8 +408,8 @@ class TestAzureDataset:
         assert ds.backlog_configs, "backlog_configs should not be empty"
         assert ds.work_item_types, "work_item_types should not be empty"
 
-    def test_wiql_ids_all_in_work_item_store(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_wiql_ids_all_in_work_item_store(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         for area_key, id_list in ds.wiql_results.items():
             for entry in id_list:
@@ -371,15 +419,15 @@ class TestAzureDataset:
                     "not found in work_item_by_id"
                 )
 
-    def test_all_revisions_reference_existing_items(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_all_revisions_reference_existing_items(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         for wid, revs in ds.revisions.items():
             assert wid in ds.work_item_by_id, f"revision for unknown WI#{wid}"
             assert revs, f"empty revision list for WI#{wid}"
 
-    def test_system_parent_ids_exist(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_system_parent_ids_exist(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         for wid, item in ds.work_item_by_id.items():
             parent_id = item["fields"].get("System.Parent")
@@ -388,8 +436,8 @@ class TestAzureDataset:
                     f"WI#{wid} has System.Parent={parent_id} which does not exist"
                 )
 
-    def test_plan_ids_in_timelines(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_plan_ids_in_timelines(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         for proj_key, plan_list in ds.plans.items():
             for plan in plan_list:
@@ -398,25 +446,32 @@ class TestAzureDataset:
                 found = any(k.endswith(f"__{plan_id}") for k in ds.timelines)
                 assert found, f"Plan {plan_id!r} has no corresponding timeline"
 
-    def test_iteration_tree_per_project(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_iteration_tree_per_project(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         for proj_key in ds.teams:
             assert proj_key in ds.iterations, (
                 f"Project '{proj_key}' has no iteration tree"
             )
 
-    def test_build_is_idempotent(self):
-        ds = AzureDataset(self.DATA_DIR, config_dict=_MULTI_CONFIG_DICT)
+    def test_build_is_idempotent(self, tmp_path):
+        ds = self._make_dataset(tmp_path)
         ds.build()
         n_items = len(ds.work_item_by_id)
         ds.build()  # second call should be a no-op
         assert len(ds.work_item_by_id) == n_items
 
-    def test_reproducibility_across_instances(self):
+    def test_reproducibility_across_instances(self, tmp_path):
+        from planner_lib.storage import create_storage
         cfg = dict(_MULTI_CONFIG_DICT, seed=321)
-        ds1 = AzureDataset(self.DATA_DIR, config_dict=cfg)
-        ds2 = AzureDataset(self.DATA_DIR, config_dict=cfg)
+        storage1 = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage1)
+        ds1 = AzureDataset(storage=storage1, data_dir="data", config_dict=cfg)
+
+        storage2 = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage2)
+        ds2 = AzureDataset(storage=storage2, data_dir="data", config_dict=cfg)
+
         ds1.build()
         ds2.build()
         assert sorted(ds1.work_item_by_id) == sorted(ds2.work_item_by_id)
@@ -429,18 +484,17 @@ class TestAzureDataset:
 class TestAzureMockGeneratorClientIntegration:
     """End-to-end: instantiate the client and call the same methods the server uses."""
 
-    DATA_DIR = "data"
-
     @pytest.fixture()
     def client(self, tmp_path):
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
         from planner_lib.storage import create_storage
 
         storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         return AzureMockGeneratorClient(
             "anonymous-org",
             storage=storage,
-            data_dir=self.DATA_DIR,
+            data_dir="data",
             config_dict=_MULTI_CONFIG_DICT,
         )
 
@@ -507,12 +561,13 @@ class TestAzureMockGeneratorClientIntegration:
         from planner_lib.storage import create_storage
 
         storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         svc = AzureService(
             organization_url="anonymous-org",
             storage=storage,
             feature_flags={
                 "use_azure_mock_generator": True,
-                "data_dir": self.DATA_DIR,
+                "data_dir": "data",
                 "generator_config": _MULTI_CONFIG_DICT,
             },
         )
@@ -529,7 +584,6 @@ class TestAzureMockGeneratorPersistence:
     """Verify that persist_dir correctly writes sdk_*.json fixture files and
     that mutations via update_work_item are reflected on disk."""
 
-    DATA_DIR = "data"
     _CFG = dict(_MULTI_CONFIG_DICT, seed=77)
 
     def _make_client(self, storage, persist_dir: str):
@@ -537,7 +591,7 @@ class TestAzureMockGeneratorPersistence:
         return AzureMockGeneratorClient(
             "anonymous-org",
             storage=storage,
-            data_dir=self.DATA_DIR,
+            data_dir="data",
             config_dict=self._CFG,
             persist_dir=persist_dir,
         )
@@ -545,8 +599,10 @@ class TestAzureMockGeneratorPersistence:
     def test_persist_writes_manifest(self, tmp_path):
         import json as _json
         from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = str(tmp_path / "generated")
-        client = self._make_client(create_storage(backend='memory', serializer='json'), pdir)
+        client = self._make_client(storage, pdir)
         # Trigger build by connecting
         with client.connect("dummy-pat"):
             pass
@@ -558,8 +614,10 @@ class TestAzureMockGeneratorPersistence:
     def test_persist_writes_sdk_work_items_files(self, tmp_path):
         import json as _json
         from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = tmp_path / "generated"
-        client = self._make_client(create_storage(backend='memory', serializer='json'), str(pdir))
+        client = self._make_client(storage, str(pdir))
         with client.connect("dummy-pat"):
             pass
         wi_files = list(pdir.glob("sdk_work_items__*.json"))
@@ -573,8 +631,10 @@ class TestAzureMockGeneratorPersistence:
     def test_persist_writes_sdk_revisions_files(self, tmp_path):
         import json as _json
         from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = tmp_path / "generated"
-        client = self._make_client(create_storage(backend='memory', serializer='json'), str(pdir))
+        client = self._make_client(storage, str(pdir))
         with client.connect("dummy-pat"):
             pass
         rev_files = list(pdir.glob("sdk_revisions__*.json"))
@@ -586,8 +646,10 @@ class TestAzureMockGeneratorPersistence:
 
     def test_persist_writes_all_sdk_file_types(self, tmp_path):
         from planner_lib.storage import create_storage
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = tmp_path / "generated"
-        client = self._make_client(create_storage(backend='memory', serializer='json'), str(pdir))
+        client = self._make_client(storage, str(pdir))
         with client.connect("dummy-pat"):
             pass
         stems = {f.name.split("__")[0] for f in pdir.glob("sdk_*.json")}
@@ -604,12 +666,14 @@ class TestAzureMockGeneratorPersistence:
         import json as _json
         from planner_lib.storage import create_storage
         from planner_lib.azure.AzureMockGeneratorClient import AzureMockGeneratorClient
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = str(tmp_path / "via_cfg")
         cfg = dict(self._CFG, persist_dir=pdir)
         client = AzureMockGeneratorClient(
             "anonymous-org",
-            storage=create_storage(backend='memory', serializer='json'),
-            data_dir=self.DATA_DIR,
+            storage=storage,
+            data_dir="data",
             config_dict=cfg,
         )
         with client.connect("dummy-pat"):
@@ -623,6 +687,7 @@ class TestAzureMockGeneratorPersistence:
         from planner_lib.storage import create_storage
         pdir = tmp_path / "persist"
         storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         client = self._make_client(storage, str(pdir))
 
         # Connect and get a Feature work item
@@ -666,16 +731,20 @@ class TestAzureMockGeneratorPersistence:
         import json as _json
         from planner_lib.storage import create_storage
         from planner_lib.azure.AzureMockClient import AzureMockClient
+        storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         pdir = tmp_path / "generated"
         gen_client = self._make_client(
-            create_storage(backend='memory', serializer='json'), str(pdir)
+            storage, str(pdir)
         )
         with gen_client.connect("dummy-pat"):
             pass
         # Now load with AzureMockClient pointing at the persisted directory
+        mock_storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(mock_storage)
         mock_client = AzureMockClient(
             "anonymous-org",
-            storage=create_storage(backend='memory', serializer='json'),
+            storage=mock_storage,
             fixture_dir=str(pdir),
         )
         with mock_client.connect("dummy-pat") as c:
@@ -696,12 +765,13 @@ class TestAzureMockGeneratorPersistence:
         from planner_lib.storage import create_storage
         pdir = str(tmp_path / "fflags")
         storage = create_storage(backend='memory', serializer='json')
+        _populate_mock_config(storage)
         svc = AzureService(
             organization_url="anonymous-org",
             storage=storage,
             feature_flags={
                 "use_azure_mock_generator": True,
-                "data_dir": self.DATA_DIR,
+                "data_dir": "data",
                 "generator_config": self._CFG,
                 "generator_persist_dir": pdir,
             },
@@ -758,9 +828,11 @@ class TestGeneratorPersistEnabled:
 
     def _svc(self, storage, extra_flags: dict):
         from planner_lib.azure import AzureService
+        # Always populate mock config so the generator has data to work with
+        _populate_mock_config(storage)
         flags = {
             "use_azure_mock_generator": True,
-            "data_dir": self.DATA_DIR,
+            "data_dir": "data",
             "generator_config": self._CFG,
         }
         flags.update(extra_flags)
