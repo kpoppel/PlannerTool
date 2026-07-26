@@ -22,6 +22,8 @@ Template - do not change :
 - Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
 - Removed obsolete migrations (0001-00024)
 - Removed reliance on file-based server_config.yaml file.
+- Consolidated server storage setup to one. This was possible because the same diskcache is used for
+  all storage now.
 
 ### Fixed
 - Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance

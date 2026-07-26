@@ -38,15 +38,9 @@ class ConfigManager:
 
     def __init__(
         self,
-        config_storage: StorageBackend,
-        account_storage: StorageBackend,
-        views_storage: StorageBackend,
-        scenarios_storage: StorageBackend,
+        storage: StorageBackend,
     ) -> None:
-        self._config_storage = config_storage
-        self._account_storage = account_storage
-        self._views_storage = views_storage
-        self._scenarios_storage = scenarios_storage
+        self._storage = storage
 
     # ------------------------------------------------------------------
     # Read / write
@@ -59,7 +53,7 @@ class ConfigManager:
         Raw bytes values (from legacy file storage) are decoded to UTF-8 strings.
         """
         try:
-            data = self._config_storage.load('config', key)
+            data = self._storage.load('config', key)
             if isinstance(data, (bytes, bytearray)):
                 return data.decode('utf-8')
             return data
@@ -72,7 +66,7 @@ class ConfigManager:
         If the key does not yet exist no backup is created.
         """
         self._backup_config(key)
-        self._config_storage.save('config', key, content)
+        self._storage.save('config', key, content)
 
     def save_config_raw(self, key: str, content: Any) -> None:
         """Persist *content* under *key* without creating a backup.
@@ -81,7 +75,7 @@ class ConfigManager:
         an automated refresh) where the data is always derived and the
         canonical version is the latest computed result.
         """
-        self._config_storage.save('config', key, content)
+        self._storage.save('config', key, content)
 
     def _backup_config(self, key: str) -> None:
         """Create a timestamped backup of an existing config key.
@@ -89,16 +83,16 @@ class ConfigManager:
         Silently no-ops when the key does not exist.
         """
         try:
-            existing = self._config_storage.load('config', key)
+            existing = self._storage.load('config', key)
         except KeyError:
             return
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         backup_key = f"{key}_backup_{ts}"
         try:
-            self._config_storage.save('config', backup_key, existing)
+            self._storage.save('config', backup_key, existing)
         except Exception as e:
-            backend = getattr(self._config_storage, '_backend', None)
+            backend = getattr(self._storage, '_backend', None)
             if backend is not None:
                 try:
                     backend.save('config', backup_key, existing)
@@ -125,10 +119,10 @@ class ConfigManager:
             "scenarios": {},
         }
 
-        # Configuration files (all keys go to _config_storage)
+        # Configuration files (all keys go to storage under 'config' namespace)
         for key in self.CONFIG_KEYS:
             try:
-                backup_data["config"][key] = self._config_storage.load('config', key)
+                backup_data["config"][key] = self._storage.load('config', key)
             except KeyError:
                 backup_data["config"][key] = None
 
@@ -138,8 +132,8 @@ class ConfigManager:
         try:
             from planner_lib.accounts.config import _try_decrypt_pat
             users: dict = {}
-            for user_key in self._account_storage.list_keys('accounts'):
-                raw = self._account_storage.load('accounts', user_key)
+            for user_key in self._storage.list_keys('accounts'):
+                raw = self._storage.load('accounts', user_key)
                 if isinstance(raw, dict) and raw.get('pat'):
                     # Decrypt to plaintext; falls back to None on corrupt/missing ciphertext.
                     raw = dict(raw)
@@ -152,10 +146,9 @@ class ConfigManager:
 
         # Views
         try:
-            storage = self._views_storage or self._config_storage
-            for key in list(storage.list_keys('views') or []):
+            for key in list(self._storage.list_keys('views') or []):
                 try:
-                    backup_data["views"][key] = storage.load('views', key)
+                    backup_data["views"][key] = self._storage.load('views', key)
                 except Exception as e:
                     logger.error("Failed to backup view %s: %s", key, e)
         except Exception as e:
@@ -163,10 +156,9 @@ class ConfigManager:
 
         # Scenarios
         try:
-            storage = self._scenarios_storage or self._config_storage
-            for key in list(storage.list_keys('scenarios') or []):
+            for key in list(self._storage.list_keys('scenarios') or []):
                 try:
-                    backup_data["scenarios"][key] = storage.load('scenarios', key)
+                    backup_data["scenarios"][key] = self._storage.load('scenarios', key)
                 except Exception as e:
                     logger.error("Failed to backup scenario %s: %s", key, e)
         except Exception as e:
@@ -201,7 +193,7 @@ class ConfigManager:
         if "config" in data:
             for key, content in data["config"].items():
                 if content is not None:
-                    self._config_storage.save('config', key, content)
+                    self._storage.save('config', key, content)
 
         if "accounts" in data:
             users = data["accounts"].get("users", {})
@@ -236,13 +228,11 @@ class ConfigManager:
                 sync_accounts_fn(users, admins_set)
 
         if "views" in data:
-            storage = self._views_storage or self._config_storage
             for key, content in data["views"].items():
-                storage.save('views', key, content)
+                self._storage.save('views', key, content)
 
         if "scenarios" in data:
-            storage = self._scenarios_storage or self._config_storage
             for key, content in data["scenarios"].items():
-                storage.save('scenarios', key, content)
+                self._storage.save('scenarios', key, content)
 
         return {"ok": True, "message": "Restore completed successfully."}

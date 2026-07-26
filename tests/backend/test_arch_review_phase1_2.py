@@ -55,21 +55,18 @@ def _make_admin_service(config_data=None):
     """Return an AdminService backed by simple in-memory mocks."""
     from planner_lib.admin.service import AdminService
 
-    account_storage = MagicMock()
-    account_storage.exists.return_value = False
-    config_storage = MagicMock()
-    config_storage.load.side_effect = KeyError("not found")
-    config_storage.load.return_value = config_data or {}
+    storage = MagicMock()
+    storage.load.side_effect = KeyError("not found")
+    storage.load.return_value = config_data or {}
     # Make load raise KeyError for all calls (no server_config present)
-    config_storage.load.side_effect = KeyError("not found")
+    storage.load.side_effect = KeyError("not found")
 
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None
 
     return AdminService(
-        account_storage=account_storage,
-        config_storage=config_storage,
+        storage=storage,
         project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
@@ -93,15 +90,14 @@ def test_admin_reload_config_calls_reload_on_reloadable_services():
             self.reloaded = True
 
     people = FakeReloadable()
-    config_storage = MagicMock()
-    config_storage.load.side_effect = KeyError("not found")
+    storage = MagicMock()
+    storage.load.side_effect = KeyError("not found")
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None
 
     svc = AdminService(
-        account_storage=MagicMock(),
-        config_storage=config_storage,
+        storage=storage,
         project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
@@ -121,15 +117,14 @@ def test_admin_reload_config_calls_invalidate_on_invalidatable_cost():
             self.invalidated = True
 
     cost = FakeInvalidatable()
-    config_storage = MagicMock()
-    config_storage.load.side_effect = KeyError("not found")
+    storage = MagicMock()
+    storage.load.side_effect = KeyError("not found")
     azure_client = MagicMock()
     azure_client.organization_url = None
     azure_client.feature_flags = None
 
     svc = AdminService(
-        account_storage=MagicMock(),
-        config_storage=config_storage,
+        storage=storage,
         project_repository=None,
         account_manager=MagicMock(),
         azure_client=azure_client,
@@ -210,7 +205,7 @@ def test_session_manager_admin_fallback_uses_account_storage():
 
     mgr = FreshSM(
         account_manager=account_manager,
-        account_storage=account_storage,
+        storage=account_storage,
     )
     sid = mgr.create(email)
     assert sid, "Should have returned a session id"
@@ -232,7 +227,7 @@ def test_session_manager_raises_for_unknown_email_without_admin_marker():
 
     mgr = FreshSM(
         account_manager=account_manager,
-        account_storage=EmptyStorage(),
+        storage=EmptyStorage(),
     )
     with pytest.raises(KeyError):
         mgr.create("nobody@example.com")

@@ -34,21 +34,20 @@ class ReloadOrchestrator:
 
     def __init__(
         self,
-        config_storage: StorageBackend,
+        storage: StorageBackend,
         azure_client: Any,
         account_manager: Any,
         reloadable_services: list,
     ) -> None:
         """
         Args:
-            config_storage: diskcache-backed storage holding all config keys
-                except server_config.
+            storage: diskcache-backed storage holding all config keys.
             azure_client: The AzureService instance whose settings are refreshed.
             account_manager: AccountManager used to refresh session credentials.
             reloadable_services: List of service instances to reload/invalidate.
                 Each service is tested for Reloadable / Invalidatable protocols.
         """
-        self._config_storage = config_storage
+        self._storage = storage
         self._azure_client = azure_client
         self._account_manager = account_manager
         self._reloadable_services = reloadable_services
@@ -64,13 +63,13 @@ class ReloadOrchestrator:
 
         # Update azure_client runtime settings from ado_config (diskcache).
         try:
-            ado_cfg = self._config_storage.load('config', 'ado_config') or {}
+            ado_cfg = self._storage.load('config', 'ado_config') or {}
         except KeyError:
             ado_cfg = {}
         self._azure_client.organization_url = ado_cfg.get('organization_url') or ''
         # Merge generic feature_flags (server_config) + ADO-specific flags (ado_config).
         try:
-            server_cfg = self._config_storage.load('config', 'server_config') or {}
+            server_cfg = self._storage.load('config', 'server_config') or {}
         except KeyError:
             server_cfg = {}
         merged_flags = {**(server_cfg.get('feature_flags') or {}), **(ado_cfg.get('feature_flags') or {})}

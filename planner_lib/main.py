@@ -91,21 +91,19 @@ def _build_services(
 
     container = ServiceContainer()
 
-    # --- Storage (eager, no inter-service deps) ---
-    container.register_singleton("account_storage", storage_diskcache)
-    container.register_singleton("scenarios_storage", storage_diskcache)
-    container.register_singleton("views_storage", storage_diskcache)
+    # --- Storage (eager, no inter-service deps) — single instance for all namespaces ---
+    container.register_singleton("storage", storage_diskcache)
 
     # --- Optional memory cache ---
     # (removed — diskcache handles memory via OS page cache automatically)
 
     # --- Accounts / session ---
     container.register_factory("account_manager",
-        lambda: AccountManager(account_storage=storage_diskcache))
+        lambda: AccountManager(storage=storage_diskcache))
     container.register_factory("session_manager",
         lambda: SessionManager(
             account_manager=container.get("account_manager"),
-            account_storage=storage_diskcache,
+            storage=storage_diskcache,
         ))
 
     # --- Project domain ---
@@ -333,13 +331,10 @@ def _build_services(
     # --- Admin ---
     container.register_factory("admin_service",
         lambda: AdminService(
-            account_storage=storage_diskcache,
-            config_storage=storage_diskcache,
+            storage=storage_diskcache,
             project_repository=container.get("project_repository"),
             account_manager=container.get("account_manager"),
             azure_client=container.get("azure_client"),
-            views_storage=storage_diskcache,
-            scenarios_storage=storage_diskcache,
             reloadable_services=[
                 container.get("backend"),
                 container.get("cost_service"),
@@ -374,7 +369,7 @@ def _build_app(
     from planner_lib.middleware import SessionMiddleware, access_denied_response
 
     memory_cache = None  # removed: MemoryCacheManager was eliminated; diskcache handles memory via OS page cache
-    storage_diskcache = container.get("account_storage")  # same instance as cache backend
+    storage_diskcache = container.get("storage")  # single instance for all namespaces
     session_manager = container.get("session_manager")
 
     @asynccontextmanager

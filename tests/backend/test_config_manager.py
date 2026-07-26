@@ -48,13 +48,13 @@ def test_get_config_returns_value():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     store.save('config', 'server_config', {'org': 'test-org'})
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     assert cm.get_config('server_config') == {'org': 'test-org'}
 
 
 def test_get_config_returns_default_when_missing():
     from planner_lib.admin.config_manager import ConfigManager
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    cm = ConfigManager(storage=_Store())
     assert cm.get_config('nonexistent') is None
     assert cm.get_config('nonexistent', default={'x': 1}) == {'x': 1}
 
@@ -63,7 +63,7 @@ def test_get_config_decodes_bytes():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     store.save('config', 'raw_key', b'hello bytes')
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     assert cm.get_config('raw_key') == 'hello bytes'
 
 
@@ -71,7 +71,7 @@ def test_save_config_creates_backup_then_saves():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     store.save('config', 'server_config', {'version': 1})
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     cm.save_config('server_config', {'version': 2})
 
     # New value persisted
@@ -86,7 +86,7 @@ def test_save_config_creates_backup_then_saves():
 def test_save_config_no_backup_when_key_absent():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     cm.save_config('new_key', {'x': 1})
     keys = store.list_keys('config')
     assert keys == ['new_key']  # no backup key created
@@ -96,7 +96,7 @@ def test_save_config_raw_no_backup():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
     store.save('config', 'computed', {'a': 1})
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     cm.save_config_raw('computed', {'a': 2})
 
     assert store.load('config', 'computed') == {'a': 2}
@@ -118,7 +118,7 @@ def test_get_backup_includes_config_keys():
         'schema_version': 1,
         'plugins': [{'id': 'portfolio', 'enabled': True, 'activated': True, 'order': 0, 'custom_config': {}}],
     })
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     bk = cm.get_backup()
     assert bk['config']['projects'] == [{'id': 'p1'}]
     assert bk['config']['teams'] == [{'id': 't1'}]
@@ -151,7 +151,7 @@ def test_restore_backup_writes_global_settings():
     """Restore must write global_settings back to diskcache."""
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     data = {
         'config': {
             'global_settings': {
@@ -173,7 +173,7 @@ def test_get_backup_includes_accounts():
     acct = _Store()
     # Admin account: has 'admin' in permissions (no separate accounts_admin namespace)
     acct.save('accounts', 'a@b.com', {'email': 'a@b.com', 'permissions': ['admin']})
-    cm = ConfigManager(config_storage=_Store(), account_storage=acct)
+    cm = ConfigManager(storage=acct)
     bk = cm.get_backup()
     assert 'a@b.com' in bk['accounts']['users']
     # Permissions should be preserved in the backup record
@@ -185,7 +185,7 @@ def test_get_backup_includes_accounts():
 def test_restore_backup_writes_config():
     from planner_lib.admin.config_manager import ConfigManager
     store = _Store()
-    cm = ConfigManager(config_storage=store, account_storage=_Store())
+    cm = ConfigManager(storage=store)
     data = {'config': {'server_config': {'org': 'restored-org'}}}
     result = cm.restore_backup(data)
     assert result['ok'] is True
@@ -200,7 +200,7 @@ def test_restore_backup_calls_sync_accounts_fn():
         called['users'] = users
         called['admins'] = admins
 
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    cm = ConfigManager(storage=_Store())
     # New backup format: admin status in permissions field, no separate 'admins' dict
     data = {'accounts': {'users': {'u@x.com': {'email': 'u@x.com', 'permissions': ['admin']}}}}
     cm.restore_backup(data, sync_accounts_fn=sync)
@@ -210,7 +210,7 @@ def test_restore_backup_calls_sync_accounts_fn():
 
 def test_restore_backup_guards_current_admin():
     from planner_lib.admin.config_manager import ConfigManager
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    cm = ConfigManager(storage=_Store())
     data = {'accounts': {'users': {}, 'admins': {}}}
     with pytest.raises(ValueError, match="Cannot remove the current admin"):
         cm.restore_backup(
@@ -234,10 +234,10 @@ def test_get_backup_decrypts_pats_to_plaintext(monkeypatch):
 
     acct = _Store()
     # Save a user with a properly encrypted PAT via AccountManager
-    mgr = AccountManager(account_storage=acct)
+    mgr = AccountManager(storage=acct)
     mgr.save(AccountPayload(email='user@example.com', pat='my-azure-pat-abc123'))
 
-    cm = ConfigManager(config_storage=_Store(), account_storage=acct)
+    cm = ConfigManager(storage=acct)
     bk = cm.get_backup()
 
     assert '_meta' not in bk, 'Backup should not include redundant metadata for PAT format'
@@ -258,7 +258,7 @@ def test_restore_backup_reencrypts_plaintext_pats(monkeypatch):
         synced['users'] = users
         synced['admins'] = admins
 
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    cm = ConfigManager(storage=_Store())
     data = {
         '_meta': {'pat_format': 'plaintext'},
         'accounts': {
@@ -286,7 +286,7 @@ def test_restore_backup_encrypts_plaintext_pats_without_metadata(monkeypatch):
         synced['users'] = users
 
     # Backup payload omits _meta but still carries plaintext PAT.
-    cm = ConfigManager(config_storage=_Store(), account_storage=_Store())
+    cm = ConfigManager(storage=_Store())
     data = {
         'accounts': {
             'users': {'user@example.com': {'email': 'user@example.com', 'pat': 'plaintext-pat'}},
@@ -308,7 +308,7 @@ def test_get_backup_corrupt_pat_becomes_none(monkeypatch):
     # Inject a corrupt ciphertext directly into storage
     acct.save('accounts', 'bad@example.com', {'email': 'bad@example.com', 'pat': 'not-a-fernet-token'})
 
-    cm = ConfigManager(config_storage=_Store(), account_storage=acct)
+    cm = ConfigManager(storage=acct)
     bk = cm.get_backup()
 
     user_record = bk['accounts']['users'].get('bad@example.com', {})
@@ -327,8 +327,7 @@ def test_admin_service_delegates_get_config():
     store = _Store()
     store.save('config', 'k', {'v': 1})
     svc = AdminService(
-        account_storage=_Store(),
-        config_storage=store,
+        storage=store,
         project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),
@@ -342,8 +341,7 @@ def test_admin_service_delegates_save_config():
     store = _Store()
     store.save('config', 'cfg', {'old': True})
     svc = AdminService(
-        account_storage=_Store(),
-        config_storage=store,
+        storage=store,
         project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),
@@ -359,8 +357,7 @@ def test_admin_service_config_manager_is_instance():
     from planner_lib.admin.service import AdminService
     from planner_lib.admin.config_manager import ConfigManager
     svc = AdminService(
-        account_storage=_Store(),
-        config_storage=_Store(),
+        storage=_Store(),
         project_repository=MagicMock(),
         account_manager=MagicMock(),
         azure_client=MagicMock(),

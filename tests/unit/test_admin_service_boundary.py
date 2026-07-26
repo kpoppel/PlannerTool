@@ -76,8 +76,7 @@ class _FakeAccountManager:
 def _make_service(**kwargs):
     storage = _FakeStorage()
     defaults = dict(
-        account_storage=storage,
-        config_storage=storage,
+        storage=storage,
         project_repository=None,
         account_manager=_FakeAccountManager(storage),
         azure_client=None,

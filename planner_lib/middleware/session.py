@@ -42,13 +42,13 @@ class SessionManager:
     def __init__(
         self,
         account_manager: AccountManagerProtocol,
-        account_storage: Optional[StorageBackend] = None,
+        storage: Optional[StorageBackend] = None,
     ) -> None:
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._account_manager = account_manager
         # Used for admin-fallback: check accounts_admin namespace without an HTTP round-trip.
-        self._account_storage = account_storage
+        self._storage = storage
 
     def create(self, email: str) -> str:
         # Ensure the account exists before creating a session. We consider
@@ -61,9 +61,9 @@ class SessionManager:
             # but an admin marker exists under `accounts_admin`, allow session
             # creation for admin users (no PAT will be set). This keeps admin
             # bootstrap working where admin markers live separately.
-            if self._account_storage is not None:
+            if self._storage is not None:
                 try:
-                    if self._account_storage.exists('accounts_admin', email):
+                    if self._storage.exists('accounts_admin', email):
                         with self._lock:
                             for sid, ctx in list(self._store.items()):
                                 if ctx.get('email') == email:

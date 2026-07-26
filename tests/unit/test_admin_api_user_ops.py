@@ -97,7 +97,7 @@ def test_add_admin_copies_existing_account_and_removes_user_admin_marker():
     storage.save('accounts', 'admin_old', {'email': 'admin_old', 'permissions': ['admin']})
 
     admin_svc = SimpleNamespace(
-        _account_storage=storage,
+        _storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
         get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
                                                    if 'admin' in (v.get('permissions') or [])],
@@ -122,7 +122,7 @@ def test_remove_user_also_removes_account():
     storage.save('accounts', 'remove_me', {'email': 'remove_me', 'permissions': ['admin']})
 
     admin_svc = SimpleNamespace(
-        _account_storage=storage,
+        _storage=storage,
         get_all_users=lambda: list(storage.list_keys('accounts')),
         get_all_with_permission=lambda permission: [k for k, v in storage.data['accounts'].items()
                                                    if 'admin' in (v.get('permissions') or [])],

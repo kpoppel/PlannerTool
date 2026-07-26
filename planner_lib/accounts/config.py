@@ -111,8 +111,8 @@ class AccountManager:
     """Manages account configuration using a StorageBackend for persistence. All account management must pass
        through this class to ensure consistent handling of PAT encryption and validation."""
     DEFAULT_NS = 'accounts'
-    def __init__(self, account_storage: StorageBackend):
-        self._storage = account_storage
+    def __init__(self, storage: StorageBackend):
+        self._storage = storage
 
     def save(self, config: AccountPayload) -> dict:
         """Save an account configuration, validating input and handling PAT encryption."""

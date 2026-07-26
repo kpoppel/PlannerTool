@@ -34,7 +34,7 @@ class TestEmailValidation:
 
     def _make_manager(self, storage=None):
         from planner_lib.accounts.config import AccountManager
-        return AccountManager(account_storage=storage or self._make_storage())
+        return AccountManager(storage=storage or self._make_storage())
 
     # These must be accepted
     @pytest.mark.parametrize('email', [
@@ -91,7 +91,7 @@ class TestPatEncryption:
 
     def _make_manager(self, storage=None):
         from planner_lib.accounts.config import AccountManager
-        return AccountManager(account_storage=storage or self._make_storage())
+        return AccountManager(storage=storage or self._make_storage())
 
     def test_pat_not_stored_as_plaintext(self, monkeypatch):
         """PAT must not appear verbatim in saved storage payload."""
@@ -237,7 +237,7 @@ class TestPatValidation:
 
     def _make_manager(self, storage=None):
         from planner_lib.accounts.config import AccountManager
-        return AccountManager(account_storage=storage or self._make_storage())
+        return AccountManager(storage=storage or self._make_storage())
 
     @pytest.mark.parametrize('bad_pat', [
         'token with spaces',

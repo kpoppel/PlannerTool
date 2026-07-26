@@ -52,7 +52,7 @@ def test_save_projects_backup_fallback(tmp_path, monkeypatch):
     storage = FakeStorageFailSave()
     # save_config must let RuntimeError propagate so admin_save_projects raises HTTPException
     admin_svc = SimpleNamespace(
-        _config_storage=storage,
+        _storage=storage,
         get_config=lambda key, default=None: default,
         save_config=lambda key, content: storage.save('config', key, content),
     )
@@ -79,7 +79,7 @@ def test_get_projects_raises_on_storage_error():
     # get_config lets non-KeyError exceptions propagate; admin_get_projects outer try/except
     # converts them to HTTPException(500)
     admin_svc = SimpleNamespace(
-        _config_storage=storage,
+        _storage=storage,
         get_config=lambda key, default=None: storage.load('config', key),
     )
     container = SimpleNamespace(get=lambda name: {'admin_service': admin_svc}.get(name))
@@ -111,7 +111,7 @@ def test_get_users_handles_list_errors():
             pass
 
     admin_svc = SimpleNamespace(
-        _account_storage=storage,
+        _storage=storage,
         get_all_users=lambda: [],
         get_all_admins=lambda: [],
     )
@@ -173,7 +173,7 @@ def test_admin_save_projects_success_and_backup(tmp_path, monkeypatch):
         storage.save('config', key, content)
 
     admin_svc = SimpleNamespace(
-        _config_storage=storage,
+        _storage=storage,
         get_config=lambda key, default=None: storage.load('config', key) if key in storage.data.get('config', {}) else default,
         save_config=_save_config,
     )
@@ -246,7 +246,7 @@ def test_admin_save_users_delete_keyerror_handled():
         def sync_accounts_full(self, users, admins):
             _sync_full(users, admins)
 
-    admin_svc = SimpleNamespace(_account_storage=storage)
+    admin_svc = SimpleNamespace(_storage=storage)
     acct_mgr = FakeAccountManager()
     acct_mgr._storage = storage
     session_mgr = SessMgr({'email': 'admin@admin'})

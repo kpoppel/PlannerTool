@@ -31,28 +31,22 @@ class AdminService:
 
     def __init__(
         self,
-        account_storage: StorageBackend,  # <-- TODO: Should not be needed
-        config_storage: StorageBackend,
+        storage: StorageBackend,  # single diskcache instance for all namespaces
         project_repository: Any,
         account_manager: Any,
         azure_client: Any,
-        views_storage: StorageBackend,
-        scenarios_storage: StorageBackend,
         reloadable_services: Optional[list] = None,
     ) -> None:
         self._project_service = project_repository  # internal alias kept for brevity
         # Composed config manager: owns all config CRUD + backup/restore.
         self._config_manager = ConfigManager(
-            config_storage=config_storage,
-            account_storage=account_storage,   # <-- TODO: Should not be needed
-            views_storage=views_storage,
-            scenarios_storage=scenarios_storage,
+            storage=storage,
         )
         # Composed account manager: owns all account / admin-marker CRUD.
         self._account_manager = account_manager # To replace accountadminservice
         # Composed reload orchestrator: owns hot-reload coordination.
         self._reload_orchestrator = ReloadOrchestrator(
-            config_storage=config_storage,
+            storage=storage,
             azure_client=azure_client,
             account_manager=account_manager,
             reloadable_services=reloadable_services or [],
