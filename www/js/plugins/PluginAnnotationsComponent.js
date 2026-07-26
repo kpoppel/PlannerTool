@@ -38,13 +38,8 @@ export class PluginAnnotationsComponent extends LitElement {
   static styles = css`
     :host {
       display: none;
-      /* When this component is appended into feature-board we want it
-         to be positioned relative to the board so child overlays are
-         clipped by the board. Use absolute positioning instead of fixed. */
-      position: absolute;
-      /* Must exceed timeline-lit z-index (130) so the fixed toolbar renders
-         above the sticky timeline header. */
-      z-index: 140;
+      position: fixed;
+      z-index: 200;
       pointer-events: none;
     }
 

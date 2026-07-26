@@ -1,22 +1,32 @@
 /**
- * PluginDependencies.js
- * Lifecycle wrapper for the Dependencies SVG overlay plugin.
- *
- * This plugin auto-activates at startup (activated: true in modules.config.json)
- * to replace the former initDependencyRenderer() call in app.js.
- * The overlay content is toggled by ViewEvents.DEPENDENCIES from the sidebar.
+ * PluginDependencies - Lifecycle wrapper for the Dependencies SVG overlay plugin.
+ * Migrated to MountedPlugin pattern — replaces manual element creation/mounting.
+ * This plugin auto-activates at startup (activated: true in modules.config.json).
  */
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
+import { MountedPlugin } from './MountedPlugin.js';
 import { state } from '../services/State.js';
 
-class PluginDependencies {
-  constructor(id = 'plugin-dependencies', config = {}) {
-    this.id = id;
-    this.config = config;
-    this._el = null;
-    this._componentLoaded = false;
-    this.active = false;
+export class PluginDependencies extends MountedPlugin {
+  static get defaultId() { return 'plugin-dependencies'; }
+
+  constructor(id = PluginDependencies.defaultId, config = {}) {
+    super(id, config);
+  }
+
+  get componentTag() { return 'plugin-dependencies'; }
+  get componentPath() { return './PluginDependenciesComponent.js'; }
+  get mountSelector() { return '_body'; }
+
+  async activate() {
+    await super.activate();
+    state.setShowDependencies(true, true);
+    if (this._el?.open) this._el.open();
+  }
+
+  async deactivate() {
+    state.setShowDependencies(false, true);
+    if (this._el?.close) this._el.close();
+    await super.deactivate();
   }
 
   getMetadata() {
@@ -28,45 +38,6 @@ class PluginDependencies {
       section: 'overlay',
       autoActivate: true,
     };
-  }
-
-  async init() {
-    if (!this._componentLoaded) {
-      await import('./PluginDependenciesComponent.js');
-      this._componentLoaded = true;
-    }
-  }
-
-  async activate() {
-    if (!this._componentLoaded) await this.init();
-
-    if (!this._el) {
-      this._el = document.createElement('plugin-dependencies');
-      document.body.appendChild(this._el);
-    }
-
-    // Sync state flag silently to avoid circular event before overlay is ready
-    state.setShowDependencies(true, true);
-    if (this._el?.open) this._el.open();
-    this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
-  }
-
-  async deactivate() {
-    state.setShowDependencies(false, true);
-    if (this._el?.close) this._el.close();
-    this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
-  }
-
-  async destroy() {
-    this._el?.remove();
-    this._el = null;
-    this.active = false;
-  }
-
-  toggle() {
-    return this.active ? this.deactivate() : this.activate();
   }
 }
 

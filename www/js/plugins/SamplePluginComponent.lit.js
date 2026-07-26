@@ -7,6 +7,7 @@
  * - Lit element lifecycle and styling
  */
 import { LitElement, html, css } from '../vendor/lit.js';
+import { pluginManager } from '../core/PluginManager.js';
 
 export class SamplePluginComponent extends LitElement {
   static properties = {
@@ -18,9 +19,7 @@ export class SamplePluginComponent extends LitElement {
     :host {
       display: none;
       position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 1000;
+      z-index: 200;
     }
 
     :host([visible]) {
@@ -28,6 +27,9 @@ export class SamplePluginComponent extends LitElement {
     }
 
     .panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
       background: white;
       border: 2px solid #6366f1;
       border-radius: 8px;
@@ -108,21 +110,21 @@ export class SamplePluginComponent extends LitElement {
       position: absolute;
       top: 8px;
       right: 8px;
-      background: none;
-      border: none;
-      font-size: 20px;
-      cursor: pointer;
-      color: #9ca3af;
-      padding: 0;
       width: 24px;
       height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: #999;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      margin: 0;
     }
 
     .close-btn:hover {
-      color: #374151;
+      color: #333;
+      background: #f0f0f0;
     }
   `;
 
@@ -145,7 +147,9 @@ export class SamplePluginComponent extends LitElement {
   }
 
   _onClose() {
-    this.close();
+    // Trigger the plugin entry file's deactivate to fully clean up (hide element, unset state, etc.)
+    const plugin = pluginManager.get('sample-plugin');
+    if (plugin) plugin.deactivate();
   }
 
   render() {

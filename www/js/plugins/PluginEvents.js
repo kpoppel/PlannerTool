@@ -1,17 +1,28 @@
 /**
- * PluginEvents - Lifecycle wrapper for plan events SVG overlay
+ * PluginEvents - Lifecycle wrapper for plan events SVG overlay.
+ * Migrated to MountedPlugin pattern — replaces manual element creation/mounting.
  */
-import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
+import { MountedPlugin } from './MountedPlugin.js';
 
-class PluginEventsPlugin {
-  constructor(id = 'plugin-events', config = {}) {
-    this.id = id;
-    this.config = config;
-    this._el = null;
-    this._componentLoaded = false;
-    this.active = false;
+export class PluginEvents extends MountedPlugin {
+  static get defaultId() { return 'plugin-events'; }
+
+  constructor(id = PluginEvents.defaultId, config = {}) {
+    super(id, config);
+  }
+
+  get componentTag() { return 'plugin-events'; }
+  get componentPath() { return './PluginEventsComponent.js'; }
+  get mountSelector() { return '_body'; }
+
+  async activate() {
+    await super.activate();
+    if (this._el?.open) this._el.open();
+  }
+
+  async deactivate() {
+    if (this._el?.close) this._el.close();
+    await super.deactivate();
   }
 
   getMetadata() {
@@ -24,47 +35,6 @@ class PluginEventsPlugin {
       autoActivate: false,
     };
   }
-
-  async init() {
-    if (!isEnabled('USE_PLUGIN_SYSTEM')) return;
-    if (!this._componentLoaded) {
-      await import('./PluginEventsComponent.js');
-      this._componentLoaded = true;
-    }
-  }
-
-  async activate() {
-    if (!this._componentLoaded) await this.init();
-
-    if (!this._el) {
-      this._el = document.createElement('plugin-events');
-      document.body.appendChild(this._el);
-    }
-
-    if (this._el?.open) this._el.open();
-    this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
-  }
-
-  async deactivate() {
-    if (this._el?.close) this._el.close();
-    this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
-  }
-
-  async destroy() {
-    this._el?.remove();
-    this._el = null;
-    this.active = false;
-  }
-
-  toggle() {
-    return this.active ? this.deactivate() : this.activate();
-  }
-
-  async refresh() {
-    if (this._el?.refresh) await this._el.refresh();
-  }
 }
 
-export default PluginEventsPlugin;
+export default PluginEvents;

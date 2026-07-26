@@ -14,9 +14,15 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.2.1] - 2026-07-19
-
+## [v4.3.0] - unreleased
 ### Added
+### Changed
+- Migrated all plugins to use the same base class. No more 3 generations of plugin development.
+- Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)
+
+### Fixed
+
+## [v4.2.1] - 2026-07-19
 
 ### Changed
 - Backend logging: added DEBUG-level logging when the Azure-backed task cache schedules a background refresh.

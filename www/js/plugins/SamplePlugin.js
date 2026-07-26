@@ -1,7 +1,6 @@
 /**
- * SamplePlugin
- * Minimal example plugin demonstrating lifecycle, event subscription, and custom config.
- * Used as documentation/example of the plugin API and custom configuration pattern.
+ * SamplePlugin - Minimal example plugin demonstrating lifecycle, event subscription, and custom config.
+ * Migrated to MountedPlugin pattern — replaces manual element creation/mounting.
  * 
  * Custom config schema demonstration:
  * - Exposes admin config editor for sample settings
@@ -12,126 +11,127 @@
  * - Displays current custom configuration when activated
  * - Shows enableLogging, sampleSetting, and threshold values
  * - Provides visual feedback that custom_config is being consumed
+ * 
+ * === Plugin Developer Guide ===
+ * 
+ * A MountedPlugin subclass has four required pieces:
+ * 1. `componentTag` — the custom element name (e.g., 'my-plugin')
+ * 2. `componentPath` — ES module path for dynamic import
+ * 3. `mountSelector` — where to append the element ('_body' for floating UI, 'app' for board area)
+ * 4. Optional: override `activate()` / `deactivate()` for extras (event subscriptions, state sync, etc.)
+ * 
+ * The MountedPlugin base class handles:
+ * - Lazy component import via dynamic import()
+ * - Element creation and DOM mounting with standard fallback resolution
+ * - Show/hide via display property toggling
+ * - Lifecycle events emitted to the EventBus
+ * 
+ * For floating panels (most common): use mountSelector = '_body'
+ * The element gets appended to document.body, independent of board layout.
+ * 
+ * For board-mounted plugins: use mountSelector = 'app' (or a specific selector)
+ * The element is inserted into the flex container alongside timeline-board.
+ * Only use this if you need the element sized relative to the board.
+ * 
+ * Shadow DOM mounting: override `_ensureElement()` with custom logic.
  */
-import { Plugin } from '../core/Plugin.js';
+import { MountedPlugin } from './MountedPlugin.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
 
-export class SamplePlugin extends Plugin {
-  constructor(id, config = {}) {
+export class SamplePlugin extends MountedPlugin {
+  // Static default ID — used by pluginManager to register and retrieve this plugin
+  static get defaultId() { return 'sample-plugin'; }
+
+  constructor(id = SamplePlugin.defaultId, config = {}) {
     super(id, config);
-    this._boundOnFeatureSelect = this._onFeatureSelect.bind(this);
-    // Runtime config fields (from backend custom_config)
+    // Store custom config for runtime access (e.g., logging prefix)
     this._customConfig = config.custom_config || {};
-    this._componentLoaded = false;
-    this._componentEl = null;
+    // Pre-bind event handlers so bus.off() works reliably by reference
+    this._boundOnFeatureSelect = this._onFeatureSelect.bind(this);
   }
 
-  async init() {
-    // Lazy load the component
-    if (!this._componentLoaded) {
-      try {
-        await import('./SamplePluginComponent.lit.js');
-        this._componentLoaded = true;
-      } catch (err) {
-        console.error('SamplePlugin: failed to load component', err);
-      }
-    }
-    // Prepare plugin state
-    this.initialized = true;
-    this._logMessage(`init ${this.id}`, 'init');
-  }
+  // ── Required: tell MountedPlugin what component to load and where to mount it ──
 
-  /**
-   * Activate plugin: subscribe to events and show UI component.
-   * @returns {Promise<void>}
-   */
+  /** Custom element tag name — must match customElements.define() in the component file */
+  get componentTag() { return 'sample-plugin-component'; }
+
+  /** ES module path for dynamic import. MountedPlugin loads this lazily on first activate(). */
+  get componentPath() { return './SamplePluginComponent.lit.js'; }
+
+  /** Where to mount: '_body' → document.body (floating panel); 'app' → #app (board area) */
+  get mountSelector() { return '_body'; }
+
+  // ── Lifecycle overrides ──
+
   async activate() {
-    if (!this._componentLoaded) await this.init();
+    // super.activate() handles: component import, element creation, DOM mount, show
+    await super.activate();
     
-    // Subscribe to a representative event to demonstrate plugin behavior
+    // Extra: subscribe to bus events (pre-bound handler for reliable cleanup)
     bus.on(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
     
-    // Create and mount the UI component
-    if (!this._componentEl) {
-      this._componentEl = document.createElement('sample-plugin-component');
-      this._componentEl.customConfig = this._customConfig;
-      document.body.appendChild(this._componentEl);
-    }
-    if (this._componentEl.open) this._componentEl.open();
+    // Extra: pass custom config to the component element
+    if (this._el?.customConfig) this._el.customConfig = this._customConfig;
     
-    this.active = true;
-    this._logMessage(`activate ${this.id}`, 'activate');
+    // Extra: call open() on the component to show its content
+    if (this._el?.open) this._el.open();
   }
 
   async deactivate() {
+    // Always clean up event subscriptions — use the same bound reference from constructor
     bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
     
-    // Hide the component
-    if (this._componentEl && this._componentEl.close) {
-      this._componentEl.close();
-    }
+    // Close the component's content (hides panel, resets state)
+    if (this._el?.close) this._el.close();
     
-    this.active = false;
-    this._logMessage(`deactivate ${this.id}`, 'deactivate');
+    // super.deactivate() handles: hide element, emit DEACTIVATED event
+    await super.deactivate();
   }
 
-  async destroy() {
-    // Ensure listeners cleaned up
-    bus.off(FeatureEvents.SELECTED, this._boundOnFeatureSelect);
-    
-    // Remove component from DOM
-    if (this._componentEl) {
-      this._componentEl.remove();
-      this._componentEl = null;
-    }
-    
-    this.initialized = false;
-    this._logMessage(`destroy ${this.id}`, 'destroy');
+  // ── Required: plugin metadata for registration and toolbar display ──
+  // Every plugin must implement getMetadata() with id, name, description, icon.
+
+  getMetadata() {
+    return {
+      id: this.id,
+      name: 'Sample Plugin',
+      description: 'Example plugin demonstrating lifecycle and custom config',
+      icon: 'help',
+      section: 'tools',  // toolbar section where this appears (e.g., 'tools', 'overlay')
+      autoActivate: false,  // set true to auto-activate on app load
+    };
   }
+
+  // ── Custom logic — demonstrates consuming admin-configured values at runtime ──
 
   /**
-   * Log a message using configured logging level and prefix.
-   * Demonstrates runtime consumption of custom_config.
-   * 
-   * @private
-   * @param {string} message - message to log
-   * @param {string} level - log level (init, activate, feature-select, etc.)
+   * Log using plugin's configured prefix and enableLogging setting.
+   * Shows how custom_config flows from admin panel → constructor → runtime behavior.
    */
   _logMessage(message, level = 'info') {
     const enableLogging = this._customConfig.enableLogging ?? false;
     const prefix = this._customConfig.sampleSetting ?? 'Sample';
-    
     if (enableLogging) {
       console.log(`[${prefix}] (${level}): ${message}`);
     }
   }
 
   /**
-   * Handle feature select event.
-   * Demonstrates visible behavior based on admin-configured custom_config.
-   * 
-   * @private
-   * @param {object} payload - event payload with feature details
+   * Event handler for FeatureEvents.SELECTED.
+   * Demonstrates subscribing to bus events in activate() and cleaning up in deactivate().
+   * Always store the bound reference in the constructor so bus.off() works by identity.
    */
   _onFeatureSelect(payload) {
     const threshold = this._customConfig.threshold ?? 50;
-    const enableLogging = this._customConfig.enableLogging ?? false;
-    
-    // Example behavior: log if enabled
     this._logMessage(
       `feature selected: ${payload?.featureId || 'unknown'} (threshold: ${threshold})`,
       'feature-select'
     );
   }
 
-  /**
-   * Provide custom configuration schema for admin UI.
-   * This method is optional; plugins without schema work unchanged.
-   * 
-   * @static
-   * @returns {Promise<Object>} JSON schema for admin form
-   */
+  // ── Optional: admin config schema for the Plugin Manager → plugin entry file.
+  // Static methods on the class. The PluginManager reads these to build admin forms.
   static async getAdminConfigSchema() {
     return {
       type: 'object',
@@ -165,13 +165,6 @@ export class SamplePlugin extends Plugin {
     };
   }
 
-  /**
-   * Provide default custom configuration.
-   * These defaults are used when a plugin is first registered with no persisted config.
-   * 
-   * @static
-   * @returns {Promise<Object>} Default configuration object
-   */
   static async getDefaultAdminConfig() {
     return {
       sampleSetting: 'Sample',

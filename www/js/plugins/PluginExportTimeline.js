@@ -1,21 +1,49 @@
 /**
  * PluginExportTimeline
  * Lifecycle wrapper that mounts a small component providing timeline export
- * functionality. Follows existing plugin patterns used by other plugins.
+ * functionality. Uses MountedPlugin base for standard lifecycle; overrides
+ * _ensureElement() to handle shadow-DOM forceMount behavior.
  */
-import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
+import { MountedPlugin } from './MountedPlugin.js';
 
-class PluginExportTimeline {
-  constructor(id = 'plugin-export-timeline', config = {}) {
-    this.id = id;
-    this.config = config;
-    this._el = null;
-    this._host = null;
-    this._componentLoaded = false;
-    this.initialized = false;
-    this.active = false;
+export class PluginExportTimeline extends MountedPlugin {
+  static get defaultId() { return 'plugin-export-timeline'; }
+
+  constructor(id = PluginExportTimeline.defaultId, config = {}) {
+    super(id, config);
+  }
+
+  get componentTag() { return 'plugin-export-timeline'; }
+  get componentPath() { return './PluginExportTimelineComponent.js'; }
+
+  /* ── custom element creation (shadow-DOM mount support) ─────────────── */
+
+  async _ensureElement() {
+    if (this._el) return;
+    this._resolveHost();
+    this._el = document.createElement(this.componentTag);
+    this._el.classList.add('main');
+    this._el.style.display = 'none';
+    // Handle shadow-DOM mount when forceMountInBoard is set
+    const mountToBoard = !!this.config.forceMountInBoard;
+    if (mountToBoard) {
+      const hostRoot =
+        this._host && (this._host.shadowRoot || this._host.renderRoot) ?
+          this._host.shadowRoot || this._host.renderRoot
+        : this._host;
+      try {
+        hostRoot.appendChild(this._el);
+      } catch (e) {
+        document.body.appendChild(this._el);
+      }
+    } else {
+      this._host.appendChild(this._el);
+    }
+  }
+
+  async activate() {
+    await super.activate();
+    if (this._el?.open) this._el.open(this.config.mode);
   }
 
   getMetadata() {
@@ -27,76 +55,6 @@ class PluginExportTimeline {
       section: 'tools',
       autoActivate: false,
     };
-  }
-
-  async init() {
-    if (!isEnabled('USE_PLUGIN_SYSTEM')) return;
-    if (!this._componentLoaded) {
-      await import('./PluginExportTimelineComponent.js');
-      this._componentLoaded = true;
-    }
-    const selector = this.config.mountPoint || 'main';
-    this._host = document.querySelector(selector) || document.body;
-    this.initialized = true;
-  }
-
-  async activate() {
-    if (!this._componentLoaded) await this.init();
-    if (!this._host) {
-      const selector = this.config.mountPoint || 'main';
-      this._host = document.querySelector(selector) || document.body;
-    }
-    // If element was previously created but removed from DOM, re-append it.
-    if (!this._el) {
-      this._el = document.createElement('plugin-export-timeline');
-    }
-    // TODO: Crazy stuff. Just mount to the board shadow DOM
-    if (this._el && !this._el.parentNode) {
-      const appRoot =
-        document.querySelector('.app-container') ||
-        document.getElementById('app') ||
-        document.body;
-      const mountToBoard = !!this.config.forceMountInBoard;
-      if (mountToBoard) {
-        try {
-          const hostRoot =
-            this._host && (this._host.shadowRoot || this._host.renderRoot) ?
-              this._host.shadowRoot || this._host.renderRoot
-            : this._host;
-          hostRoot.appendChild(this._el);
-        } catch (e) {
-          try {
-            appRoot.appendChild(this._el);
-          } catch (err) {
-            document.body.appendChild(this._el);
-          }
-        }
-      } else {
-        appRoot.appendChild(this._el);
-      }
-    }
-    if (this._el && typeof this._el.open === 'function') {
-      this._el.open(this.config.mode);
-    }
-    this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
-  }
-
-  async deactivate() {
-    if (this._el && typeof this._el.close === 'function') this._el.close();
-    this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
-  }
-
-  async destroy() {
-    if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
-    this._el = null;
-    this.initialized = false;
-    this.active = false;
-  }
-
-  toggle() {
-    this.active ? this.deactivate() : this.activate();
   }
 }
 

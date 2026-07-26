@@ -1,17 +1,28 @@
 /**
- * PluginHistory - Lifecycle wrapper for task history overlay
+ * PluginHistory - Task history plugin using MountedPlugin lifecycle.
+ * Uses MountedPlugin for lazy import, element creation, and mounting.
  */
-import { isEnabled } from '../config.js';
-import { bus } from '../core/EventBus.js';
-import { PluginEvents } from '../core/EventRegistry.js';
+import { MountedPlugin } from './MountedPlugin.js';
 
-class PluginHistory {
-  constructor(id = 'plugin-history', config = {}) {
-    this.id = id;
-    this.config = config;
-    this._el = null;
-    this._componentLoaded = false;
-    this.active = false;
+export class PluginHistory extends MountedPlugin {
+  static get defaultId() { return 'plugin-history'; }
+
+  constructor(id = PluginHistory.defaultId, config = {}) {
+    super(id, config);
+  }
+
+  get componentTag() { return 'plugin-history'; }
+  get componentPath() { return './PluginHistoryComponent.js'; }
+  get mountSelector() { return '_body'; } // sentinel → MountedPlugin resolves to document.body
+
+  async activate() {
+    await super.activate();
+    if (this._el?.open) this._el.open();
+  }
+
+  async deactivate() {
+    if (this._el?.close) this._el.close();
+    await super.deactivate();
   }
 
   getMetadata() {
@@ -23,47 +34,6 @@ class PluginHistory {
       section: 'tools',
       autoActivate: false,
     };
-  }
-
-  async init() {
-    if (!isEnabled('USE_PLUGIN_SYSTEM')) return;
-    if (!this._componentLoaded) {
-      await import('./PluginHistoryComponent.js');
-      this._componentLoaded = true;
-    }
-  }
-
-  async activate() {
-    if (!this._componentLoaded) await this.init();
-
-    if (!this._el) {
-      this._el = document.createElement('plugin-history');
-      document.body.appendChild(this._el);
-    }
-
-    if (this._el?.open) this._el.open();
-    this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
-  }
-
-  async deactivate() {
-    if (this._el?.close) this._el.close();
-    this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
-  }
-
-  async destroy() {
-    this._el?.remove();
-    this._el = null;
-    this.active = false;
-  }
-
-  toggle() {
-    return this.active ? this.deactivate() : this.activate();
-  }
-
-  async refresh() {
-    if (this._el?.refresh) await this._el.refresh();
   }
 }
 
