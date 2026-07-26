@@ -22,11 +22,11 @@ def _make_app(tmp_path: Path) -> TestClient:
     cfg_dir = tmp_path / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Minimal server config — no azure org, no feature flags
-    (cfg_dir / "server_config.yml").write_text(
-        yaml.safe_dump({"azure_devops_organization": "", "feature_flags": {}}),
-        encoding="utf-8",
-    )
+    # Write default server_config to diskcache so the server finds it on startup
+    from diskcache import Cache
+    cache = Cache(directory=str(tmp_path))
+    cache.set("config::server_config", {"azure_devops_organization": "", "feature_flags": {}})
+    cache.close()
 
     app = create_app(Config(data_dir=str(tmp_path)))
     return TestClient(app, raise_server_exceptions=True)

@@ -468,9 +468,9 @@ def create_app(config: Config) -> FastAPI:
       _build_services  — compose all services into a ServiceContainer
       _build_app       — create the FastAPI app, attach middleware and routes
     """
-    logger = configure_logging()
-
     storage_diskcache = _build_storages(config)
+
+    logger = configure_logging(storage_diskcache)
 
     # Ensure default server_config exists in diskcache if not already present
     try:

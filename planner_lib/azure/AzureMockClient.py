@@ -14,7 +14,7 @@ This means:
     under test.
   - No changes to any calling code are required.
 
-Enable in server_config.yml:
+Enable in diskcache `server_config`:
     feature_flags:
         use_azure_mock: true
         azure_mock_data_dir: data/azure_mock   # optional, this is the default

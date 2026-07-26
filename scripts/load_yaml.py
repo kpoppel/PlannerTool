@@ -1,9 +1,10 @@
-# load_yaml.py
+# load_yaml.py — legacy helper for standalone YAML files (not server_config)
 import yaml
 from pprint import pprint
 from pathlib import Path
 
-CONFIG_PATH = Path("data/config/server_config.yml")  # or absolute path
+CONFIG_PATH = Path("data/config/server_config.yml")  # legacy: use diskcache for server config
+
 
 def load_yaml(path: Path):
     try:

@@ -5,7 +5,7 @@ file and serves it as-is.  No credentials are required for reads.
 Write operations raise NotImplementedError — the static backend is
 intentionally read-only.
 
-Configuration (in server_config.yml feature_flags):
+Configuration (in diskcache `server_config` feature_flags):
     use_static_backend: true
     static_data_path: data/static_tasks.yml   # default
 

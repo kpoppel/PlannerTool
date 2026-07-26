@@ -249,7 +249,7 @@ class AdoConfigBackend(Protocol):
 
     The ADO config (``organization_url`` + ADO-specific feature flags) lives
     in the ``config::ado_config`` diskcache key — separate from
-    ``server_config.yml`` which holds generic server settings only.
+    ``server_config`` which holds generic server settings only.
 
     This protocol lets the admin layer treat ADO configuration like any other
     config domain, and enables future backends (Jira, etc.) to register their
