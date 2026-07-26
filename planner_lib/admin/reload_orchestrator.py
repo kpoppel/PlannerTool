@@ -5,14 +5,13 @@ AdminService to accept references to every service in the application.
 Extracting it here keeps AdminService focused on its core role (config CRUD,
 account management) and makes the reload logic independently testable.
 
-Storage split
--------------
-``config_storage`` (diskcache) holds all config keys except ``server_config``.
-``server_config_storage`` (YAML) holds ``server_config`` and ``ado_config`` is
-read from ``config_storage`` to refresh the AzureService org URL and ADO flags.
+Storage
+-------
+All config keys (including server_config) are stored in the diskcache-backed
+``_config_storage``.
 """
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from planner_lib.storage.base import StorageBackend
 from planner_lib.services.interfaces import Reloadable, Invalidatable
@@ -39,7 +38,6 @@ class ReloadOrchestrator:
         azure_client: Any,
         account_manager: Any,
         reloadable_services: list,
-        server_config_storage: Optional[StorageBackend] = None,
     ) -> None:
         """
         Args:
@@ -49,11 +47,8 @@ class ReloadOrchestrator:
             account_manager: AccountManager used to refresh session credentials.
             reloadable_services: List of service instances to reload/invalidate.
                 Each service is tested for Reloadable / Invalidatable protocols.
-            server_config_storage: Optional YAML-backed storage for server_config.
-                Falls back to config_storage when not provided.
         """
         self._config_storage = config_storage
-        self._server_config_storage = server_config_storage or config_storage
         self._azure_client = azure_client
         self._account_manager = account_manager
         self._reloadable_services = reloadable_services
@@ -75,7 +70,7 @@ class ReloadOrchestrator:
         self._azure_client.organization_url = ado_cfg.get('organization_url') or ''
         # Merge generic feature_flags (server_config) + ADO-specific flags (ado_config).
         try:
-            server_cfg = self._server_config_storage.load('config', 'server_config') or {}
+            server_cfg = self._config_storage.load('config', 'server_config') or {}
         except KeyError:
             server_cfg = {}
         merged_flags = {**(server_cfg.get('feature_flags') or {}), **(ado_cfg.get('feature_flags') or {})}

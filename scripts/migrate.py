@@ -48,12 +48,12 @@ OBSOLETE_MIGRATIONS = {
     '0016.add-memory-cache-config': '3.5.0',      # Memory cache config added
     '0017.encrypt-pats': '3.5.0',                 # PAT encryption added
     '0018.permissions-field': '3.5.0',            # Permissions field added
-    # 0020.rename-enable-azure-cache-to-enable-cache is intentionally absent:
-    # it must run on all existing v3.5.x installations.  Add it here (with
-    # min_version '3.6.0') only after 3.6.0 has shipped so that fresh installs
-    # of 3.6.0+ skip it automatically.
-    # 0023.clean-ado-config-and-server-config is intentionally absent:
-    # it must run on all existing installations that were not yet cleaned up.
+    '0019.display-mode-field': '4.2.1',           # Display mode migrated long ago
+    '0020.rename-enable-azure-cache-to-enable-cache': '4.2.1',  # Flag renamed long ago
+    '0021.internalize-config-to-diskcache': '4.2.1',  # Config fully internalized
+    '0022.migrate-people-to-diskcache': '4.2.1',  # People fully migrated
+    '0023.clean-ado-config-and-server-config': '4.2.1',  # ADO config cleaned up
+    '0024.groups-members-and-pending-changes': '4.2.1',  # Groups model updated
 }
 
 

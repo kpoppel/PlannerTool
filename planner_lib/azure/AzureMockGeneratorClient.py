@@ -212,6 +212,7 @@ def _load_yaml(path: Path) -> Any:
         return None
     try:
         with open(path, encoding="utf-8") as fh:
+            # TODO: safe_load does not exist.
             return _yaml.safe_load(fh)
     except Exception as exc:
         logger.warning("Generator: could not read %s: %s", path, exc)

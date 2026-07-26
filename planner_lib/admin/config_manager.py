@@ -6,10 +6,8 @@ operations to it; callers that hold an AdminService reference are unaffected.
 
 Storage routing
 ---------------
-``server_config`` is stored in the YAML-backed ``_server_config_storage`` so
-it remains human-editable at startup.  All other config keys (projects, teams,
-cost_config, iterations, area_plan_map, global_settings, ado_config, …) are
-stored in the diskcache-backed ``_config_storage``.
+All config keys (including server_config) are stored in the diskcache-backed
+``_config_storage``.
 """
 from __future__ import annotations
 
@@ -30,46 +28,25 @@ class ConfigManager:
     - Save config *without* backup (for derived/computed keys)
     - Get a full backup snapshot of all known config keys
     - Restore config and data from a backup snapshot
-
-    ``views_storage`` and ``scenarios_storage`` are optional; they allow the
-    backup/restore paths to use a different backend from the main config
-    storage (e.g. diskcache for runtime data vs file-backed YAML for config).
     """
 
     # Keys written during a full backup.
-    # server_config is routed to _server_config_storage (YAML);
-    # all other keys go to _config_storage (diskcache).
     CONFIG_KEYS = [
         "projects", "teams", "people", "cost_config",
         "area_plan_map", "iterations", "global_settings", "ado_config", "plugin_runtime_config", "server_config",
     ]
 
-    # Key that lives in YAML storage rather than diskcache.
-    _SERVER_CONFIG_KEY = "server_config"
-
-    # TODO: The backup/restore should not use the account storage directly but use the AccountManager
-    # so that account data is properly handled no matter which fields are in the accounts.
     def __init__(
         self,
         config_storage: StorageBackend,
         account_storage: StorageBackend,
-        server_config_storage: Optional[StorageBackend] = None,
-        views_storage: Optional[StorageBackend] = None,
-        scenarios_storage: Optional[StorageBackend] = None,
+        views_storage: StorageBackend,
+        scenarios_storage: StorageBackend,
     ) -> None:
         self._config_storage = config_storage
-        # Separate YAML-backed storage for server_config so it stays
-        # human-editable at startup.  Falls back to _config_storage when absent.
-        self._server_config_storage = server_config_storage or config_storage
         self._account_storage = account_storage
         self._views_storage = views_storage
         self._scenarios_storage = scenarios_storage
-
-    def _storage_for(self, key: str) -> StorageBackend:
-        """Return the correct storage backend for *key*."""
-        if key == self._SERVER_CONFIG_KEY:
-            return self._server_config_storage
-        return self._config_storage
 
     # ------------------------------------------------------------------
     # Read / write
@@ -81,9 +58,8 @@ class ConfigManager:
         Returns *default* (``None``) when the key does not exist.
         Raw bytes values (from legacy file storage) are decoded to UTF-8 strings.
         """
-        storage = self._storage_for(key)
         try:
-            data = storage.load('config', key)
+            data = self._config_storage.load('config', key)
             if isinstance(data, (bytes, bytearray)):
                 return data.decode('utf-8')
             return data
@@ -96,7 +72,7 @@ class ConfigManager:
         If the key does not yet exist no backup is created.
         """
         self._backup_config(key)
-        self._storage_for(key).save('config', key, content)
+        self._config_storage.save('config', key, content)
 
     def save_config_raw(self, key: str, content: Any) -> None:
         """Persist *content* under *key* without creating a backup.
@@ -105,25 +81,24 @@ class ConfigManager:
         an automated refresh) where the data is always derived and the
         canonical version is the latest computed result.
         """
-        self._storage_for(key).save('config', key, content)
+        self._config_storage.save('config', key, content)
 
     def _backup_config(self, key: str) -> None:
         """Create a timestamped backup of an existing config key.
 
         Silently no-ops when the key does not exist.
         """
-        storage = self._storage_for(key)
         try:
-            existing = storage.load('config', key)
+            existing = self._config_storage.load('config', key)
         except KeyError:
             return
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         backup_key = f"{key}_backup_{ts}"
         try:
-            storage.save('config', backup_key, existing)
+            self._config_storage.save('config', backup_key, existing)
         except Exception as e:
-            backend = getattr(storage, '_backend', None)
+            backend = getattr(self._config_storage, '_backend', None)
             if backend is not None:
                 try:
                     backend.save('config', backup_key, existing)
@@ -150,10 +125,10 @@ class ConfigManager:
             "scenarios": {},
         }
 
-        # Configuration files (each key routed to the correct storage)
+        # Configuration files (all keys go to _config_storage)
         for key in self.CONFIG_KEYS:
             try:
-                backup_data["config"][key] = self._storage_for(key).load('config', key)
+                backup_data["config"][key] = self._config_storage.load('config', key)
             except KeyError:
                 backup_data["config"][key] = None
 
@@ -226,7 +201,7 @@ class ConfigManager:
         if "config" in data:
             for key, content in data["config"].items():
                 if content is not None:
-                    self._storage_for(key).save('config', key, content)
+                    self._config_storage.save('config', key, content)
 
         if "accounts" in data:
             users = data["accounts"].get("users", {})

@@ -23,7 +23,6 @@ def _make_app_with_brotli_flag(enabled: bool):
         # Keep config fallback off so the feature flag is the controlling input.
         return create_app(Config(
             storage_backend='memory',
-            config_storage_backend='memory',
             enable_brotli=False,
         ))
     finally:

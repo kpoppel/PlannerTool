@@ -1,6 +1,6 @@
 """TeamRepository: single authoritative source for configured team data.
 
-Delegates all YAML reading to LocalConfigBackend (via the ``local_backend``
+Delegates all reads to LocalConfigBackend (via the ``local_backend``
 DI key) so that team data benefits from the TTL cache.  Adds utility methods
 (name_to_id, id_to_short_name) that search the cached domain list.
 """

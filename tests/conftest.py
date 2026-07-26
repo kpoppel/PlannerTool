@@ -326,8 +326,8 @@ def isolate_storage(app):
         yield
         return
 
-    # Known storage names registered in create_app
-    storage_names = ['server_config_storage', 'account_storage', 'scenarios_storage']
+    # Known storage names registered in create_app (all diskcache-backed)
+    storage_names = ['account_storage', 'scenarios_storage']
     for name in storage_names:
         try:
             s = container.get(name)
@@ -338,17 +338,6 @@ def isolate_storage(app):
             # If underlying backend is the in-memory implementation, clear its store
             if hasattr(be, '_store') and isinstance(getattr(be, '_store'), dict):
                 be._store.clear()
-                # Re-add essential configs after clearing
-                if name == 'server_config_storage':
-                    try:
-                        be.save('config', 'server_config', {})
-                        be.save('config', 'people', {
-                            'schema_version': 1,
-                            'database_file': '',
-                            'database': {'people': []}
-                        })
-                    except Exception:
-                        pass
         except Exception:
             # Fallback: attempt to remove known namespaces if supported
             try:

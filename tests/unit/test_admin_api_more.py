@@ -5,9 +5,8 @@ class _FakeAdmin:
     """Test stub for AdminService.
 
     Accepts an optional DI container at construction time so reload_config()
-    can access registered services (e.g. server_config_storage) without needing
-    an HTTP request object.  This mirrors AdminService.reload_config(session_id)
-    calling convention introduced in the architecture-review phase.
+    can delegate to registered services without needing an HTTP request object.
+    This mirrors AdminService.reload_config(session_id) calling convention.
     """
 
     def __init__(self, container=None):
@@ -17,25 +16,12 @@ class _FakeAdmin:
         return True
 
     def reload_config(self, session_id: str = '', request=None):
-        # Emulate AdminService.reload_config: load server_config and update
-        # setup._loaded_config using the container (preferred) or request fallback.
+        # Emulate AdminService.reload_config: delegate to ReloadOrchestrator.
         try:
-            storage = None
             if self._container is not None:
-                storage = self._container.get('server_config_storage')
-            elif request is not None:
-                from planner_lib.services.resolver import resolve_service
-                storage = resolve_service(request, 'server_config_storage')
-            if storage is not None:
-                try:
-                    cfg = storage.load('config', 'server_config')
-                except Exception:
-                    cfg = None
-                if cfg is not None:
-                    import planner_lib.setup as setup_module
-                    if hasattr(setup_module, '_loaded_config'):
-                        setup_module._loaded_config.clear()
-                        setup_module._loaded_config.append(cfg)
+                orchestrator = self._container.get('cache_coordinator')
+                if hasattr(orchestrator, 'register'):
+                    pass  # coordinator exists; real reload happens via admin_service
         except Exception:
             pass
         # Attempt to call cost engine invalidation if available
@@ -60,38 +46,6 @@ class _FakeAdmin:
         except Exception:
             pass
         return {'ok': True}
-
-
-def test_reload_config_appends_server_config(client, monkeypatch):
-    # Ensure setup._loaded_config exists
-    import planner_lib.setup as setup_module
-    setup_module._loaded_config = []
-
-    # Provide a server_config_storage that returns a config dict via the container
-    fake_storage = type('S', (), {'load': lambda self, namespace, key: {'server': 'cfg'}})()
-    register_service_on_client(client, 'server_config_storage', fake_storage)
-    # Ensure admin checks succeed in tests by registering a permissive admin service
-    register_service_on_client(client, 'admin_service', _FakeAdmin(client.app.state.container))
-    # Middleware calls account_manager.has_permission — also intercept it
-    class _PermitAll:
-        def has_permission(self, email, permission):
-            return True
-    register_service_on_client(client, 'account_manager', _PermitAll())
-
-    # Ensure a session context exists for the test session id so the
-    # middleware/require_admin_session can resolve the email.
-    try:
-        session_mgr = client.app.state.container.get('session_manager')
-        session_mgr._store['test-session'] = {'email': 'test@example.com', 'pat': 'token'}
-    except Exception:
-        pass
-
-    # Call endpoint (provide session id header so request is treated as authenticated)
-    r = client.post('/admin/v1/reload-config', headers={'X-Session-Id': 'test-session'})
-    assert r.status_code == 200
-    assert setup_module._loaded_config and setup_module._loaded_config[-1] == {'server': 'cfg'}
-    # Reset to avoid leaking a raw dict into subsequent test runs
-    setup_module._loaded_config = []
 
 
 def test_reload_config_calls_invalidate_and_account_load(client, monkeypatch):

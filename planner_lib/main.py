@@ -39,10 +39,8 @@ def _read_version() -> str:
 @dataclass
 class Config:
     data_dir: str = "data"
-    config_storage_backend: str = "file"
-    storage_backend: str = "diskcache" #"file"
+    storage_backend: str = "diskcache"  #"file"
     raw_serializer: str = "raw"
-    yaml_serializer: str = "yaml"
     enable_brotli: bool = False
     # Directory to serve the SPA from. "www" for dev, "dist" for production builds.
     static_dir: str = "www"
@@ -52,30 +50,22 @@ class Config:
 # Private helpers — each responsible for one phase of app construction
 # ---------------------------------------------------------------------------
 
-def _build_storages(config: Config) -> Tuple[StorageBackend, StorageBackend]:
-    """Construct and return (storage_diskcache, storage_yaml).
+def _build_storages(config: Config) -> StorageBackend:
+    """Construct and return the diskcache-backed storage.
 
-    All persistent runtime data lives in the diskcache backend; human-editable
-    configuration lives in the YAML backend.
+    All persistent runtime data AND configuration live in the diskcache backend.
     """
     storage_diskcache = cast(StorageBackend, create_storage(
         backend=config.storage_backend,
         serializer=config.raw_serializer,
         data_dir=config.data_dir + "/cache",
     ))
-    # Config still uses YAML for human editability
-    storage_yaml = cast(StorageBackend, create_storage(
-        backend=config.config_storage_backend,
-        serializer=config.yaml_serializer,
-        data_dir=config.data_dir,
-    ))
-    return storage_diskcache, storage_yaml
+    return storage_diskcache
 
 
 def _build_services(
     config: Config,
     storage_diskcache: StorageBackend,
-    storage_yaml: StorageBackend,
     server_cfg: Dict[str, Any],
     feature_flags: Dict[str, Any],
     logger,
@@ -102,7 +92,6 @@ def _build_services(
     container = ServiceContainer()
 
     # --- Storage (eager, no inter-service deps) ---
-    container.register_singleton("server_config_storage", storage_yaml)
     container.register_singleton("account_storage", storage_diskcache)
     container.register_singleton("scenarios_storage", storage_diskcache)
     container.register_singleton("views_storage", storage_diskcache)
@@ -129,8 +118,6 @@ def _build_services(
     # --- ConfigBackend (diskcache-backed, peer of UserDataBackend) ---
     def _make_config_backend():
         from planner_lib.backend.config import ConfigBackend
-        # All config domains (including people after migration 0022) live in
-        # diskcache — no YAML fallback required.
         return ConfigBackend(storage=storage_diskcache)
 
     container.register_factory("config_backend", _make_config_backend)
@@ -348,7 +335,6 @@ def _build_services(
         lambda: AdminService(
             account_storage=storage_diskcache,
             config_storage=storage_diskcache,
-            server_config_storage=storage_yaml,
             project_repository=container.get("project_repository"),
             account_manager=container.get("account_manager"),
             azure_client=container.get("azure_client"),
@@ -489,18 +475,30 @@ def create_app(config: Config) -> FastAPI:
     """
     logger = configure_logging()
 
-    storage_diskcache, storage_yaml = _build_storages(config)
+    storage_diskcache = _build_storages(config)
 
-    from planner_lib.bootstrap import bootstrap_server
-    server_cfg = bootstrap_server(storage_yaml, logger)
+    # Ensure default server_config exists in diskcache if not already present
+    try:
+        storage_diskcache.load('config', 'server_config')
+    except KeyError:
+        logger.info("server_config missing; creating default server_config")
+        default_cfg = {
+            'schema_version': 2,
+            'azure_devops_organization': None,
+            'log_level': 'INFO',
+            'feature_flags': {},
+        }
+        storage_diskcache.save('config', 'server_config', default_cfg)
+
+    server_cfg = storage_diskcache.load('config', 'server_config') or {}
     feature_flags = server_cfg.get('feature_flags', {})
 
-    container = _build_services(config, storage_diskcache, storage_yaml, server_cfg, feature_flags, logger)
+    container = _build_services(config, storage_diskcache, server_cfg, feature_flags, logger)
 
     active_flags = [k for k, v in feature_flags.items() if v is True]
     logger.info(
-        "Startup: data_dir='%s', storage=%s/%s, static_dir='%s'",
-        config.data_dir, config.config_storage_backend, config.storage_backend, config.static_dir,
+        "Startup: data_dir='%s', storage=%s, static_dir='%s'",
+        config.data_dir, config.storage_backend, config.static_dir,
     )
     logger.info(
         "Startup: active feature_flags = %s",

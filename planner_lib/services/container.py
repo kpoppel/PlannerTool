@@ -33,7 +33,6 @@ class ServiceKeys:
     PROJECT_REPOSITORY = "project_repository"
     SCENARIO_REPOSITORY = "scenario_repository"
     SCENARIOS_STORAGE = "scenarios_storage"
-    SERVER_CONFIG_STORAGE = "server_config_storage"
     SESSION_MANAGER = "session_manager"
     TASK_REPOSITORY = "task_repository"
     TEAM_REPOSITORY = "team_repository"

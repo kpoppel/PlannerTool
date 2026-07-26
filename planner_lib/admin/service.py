@@ -36,9 +36,8 @@ class AdminService:
         project_repository: Any,
         account_manager: Any,
         azure_client: Any,
-        server_config_storage: Optional[StorageBackend] = None,
-        views_storage: Optional[StorageBackend] = None,
-        scenarios_storage: Optional[StorageBackend] = None,
+        views_storage: StorageBackend,
+        scenarios_storage: StorageBackend,
         reloadable_services: Optional[list] = None,
     ) -> None:
         self._project_service = project_repository  # internal alias kept for brevity
@@ -46,7 +45,6 @@ class AdminService:
         self._config_manager = ConfigManager(
             config_storage=config_storage,
             account_storage=account_storage,   # <-- TODO: Should not be needed
-            server_config_storage=server_config_storage,
             views_storage=views_storage,
             scenarios_storage=scenarios_storage,
         )
@@ -55,7 +53,6 @@ class AdminService:
         # Composed reload orchestrator: owns hot-reload coordination.
         self._reload_orchestrator = ReloadOrchestrator(
             config_storage=config_storage,
-            server_config_storage=server_config_storage,
             azure_client=azure_client,
             account_manager=account_manager,
             reloadable_services=reloadable_services or [],
