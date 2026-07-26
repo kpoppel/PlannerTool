@@ -28,8 +28,8 @@ the proxy; callers never need to know whether a cache is present.
 **ConfigBackend is diskcache-backed** — after migrations 0021 and 0022, `ConfigBackend`
 reads and writes all config keys (projects, teams, people, cost_config, iterations,
 area_plan_map, global_settings, ado_config) directly to diskcache.  It is a
-peer of `UserDataBackend` — not wrapped in `CachingBackend`.  `server_config.yml`
-(generic server settings) remains human-editable YAML.
+peer of `UserDataBackend` — not wrapped in `CachingBackend`.  `server_config`
+(generic server settings) is stored as the `config::server_config` diskcache key.
 
 **UserDataBackend is never cached** — user mutations (scenarios, views) are
 written directly to `diskcache`.  Wrapping in `CachingBackend` would cause reads
@@ -130,7 +130,7 @@ To add a new data domain:
 │    (people, projects, teams, cost_config, iterations,    │ │ the store.     │
 │     area_plan_map, global_settings, ado_config)          │ │                │
 │    people migrated to diskcache by migration 0022        │ └────────────────┘
-│  server_config.yml stays YAML (human-editable)           │
+│  server_config stored in diskcache (config::server_config) │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -190,7 +190,7 @@ CachingBackend.write_task(id, updates, credential)
 | ADO work items | `write_task(id, updates, cred)` → delegates to inner backend → patches the task in every cached `fetch_tasks__*` list in-place, preserving the existing TTL | diskcache is immediately consistent; no re-fetch from ADO. TTL-driven expiry and explicit `/cache/refresh` are the only paths that re-fetch from ADO. |
 | Config (projects, teams, cost_config, …) | Admin API writes directly to diskcache via `ConfigBackend.save_config()` | Immediately consistent — diskcache IS the authoritative store. `ReloadOrchestrator.reload()` rebuilds the AzureService client from the updated `ado_config`. |
 | ADO config (org URL, backend flags) | Admin `POST /admin/v1/ado` → writes `ado_config` to diskcache → `ReloadOrchestrator` reads it back and rebuilds `AzureService` | Immediately consistent. Next request uses the updated org URL and flags. |
-| Server config | Admin `POST /admin/v1/system` → writes `server_config.yml` (YAML) → `ReloadOrchestrator.reload()` | YAML is the authoritative store for generic server settings. |
+| Server config | Admin `POST /admin/v1/system` → writes `config::server_config` to diskcache → `ReloadOrchestrator.reload()` | Diskcache is the authoritative store for generic server settings.
 | User data (scenarios, views) | `save_scenario` / `save_view` → writes directly to diskcache | No separate cache layer: diskcache IS the authoritative store — reads are always consistent |
 
 ### TTLs
@@ -214,7 +214,7 @@ serve stale data or waste cache misses unnecessarily.
 | `fetch_iterations_config` | None | Config data — explicit invalidation only |
 | `fetch_area_plan_map` | None | Config data — explicit invalidation only |
 
-All ADO TTLs are configurable via `cache.ttls` in `server_config.yml`
+All ADO TTLs are configurable via `cache.ttls` in diskcache `config::server_config`
 (values in minutes; `0` = no expiry).
 
 diskcache handles the in-memory tier automatically via SQLite's memory-mapped

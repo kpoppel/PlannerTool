@@ -203,10 +203,10 @@ Here's a typical request flow for fetching tasks:
 3. Test round-tripping (serialize → deserialize → equality).
 
 **Configuration & Feature Flags**
-- Configuration is stored in `data/config/server_config.yml` and loaded by ProjectService, TeamService, and other services.
+- Configuration is stored in diskcache (key `config::server_config`) and loaded by ProjectService, TeamService, and other services.
 - Feature flags are keys in the server config under `feature_flags` section.
 - At runtime, services check flags via config lookups or via the `setup.py::has_feature_flag()` helper.
-- To add a flag: update server config, check flag in service code, gate the behavior.
+- To add a flag: update diskcache `server_config`, check flag in service code, gate the behavior.
 
 **Known Limitations & Future Improvements**
 

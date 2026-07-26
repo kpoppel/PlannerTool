@@ -51,7 +51,7 @@ If you are also using the SuccessFactors chrome addon and server backend, this t
 ## Configuring `database.yaml` location
 
 You can override where the server loads the `database.yaml` file by adding
-one of the following keys to `data/config/server_config.yml`:
+one of the following keys to your diskcache `server_config`:
 
 - `database_path`: path to the YAML file (absolute or relative to `data/config`)
 
@@ -71,7 +71,7 @@ database_path: ../shared-configs/database.yaml
 
 If neither key is present the server will fall back to `data/config/database.yaml`.
 
-The server will run a setup first time. If you need to run the setup again, either delete the `data/config/server_config.yml` file or run `python3 planner.py --setup`.
+The server will run a setup first time. If you need to run the setup again, either delete the diskcache data or run `python3 planner.py --setup`.
 
 # Testing
 
