@@ -20,6 +20,8 @@ Template - do not change :
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.
 - Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)
 - Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
+- Removed obsolete migrations (0001-00024)
+- Removed reliance on file-based server_config.yaml file.
 
 ### Fixed
 - Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance
