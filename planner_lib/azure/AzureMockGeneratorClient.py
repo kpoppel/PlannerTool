@@ -31,7 +31,7 @@ The generator is a drop-in replacement for ``AzureMockClient``::
           Epic:      [40, 20, 20, 12, 8]
           default:   [35, 20, 25, 12, 8]
         items_per_area:          # per-area overrides (key = area_path)
-          "Platform_Development\\\\eSW\\\\Teams\\\\Architecture": 30
+          "MyProject\\\\TeamA\\\\Teams\\\\Architecture": 30
 
 It can also be used standalone::
 
@@ -41,7 +41,7 @@ It can also be used standalone::
     storage = create_storage(data_dir='data')
     client = AzureMockGeneratorClient('my-org', storage=storage, data_dir='data')
     with client.connect('dummy-pat') as c:
-        teams = c.get_all_teams('Platform_Development')
+        teams = c.get_all_teams('MyProject')
 """
 from __future__ import annotations
 
@@ -344,7 +344,7 @@ def _build_iteration_tree(
     Structure::
 
         <project root>
-          └── eSW
+          └── TeamA
                 └── Platform
                       ├── 2024.Q3  (PI, has start/finish)
                       │     ├── 2024_S1
@@ -417,20 +417,20 @@ def _build_iteration_tree(
             s_name = f"{cur.year}_S{sprint_num}"
             s_end = cur + timedelta(weeks=sprint_weeks) - timedelta(days=1)
             sprint_nodes.append(
-                _make_node(s_name, ["eSW", "Platform", pi_name, s_name], cur, s_end, [])
+                _make_node(s_name, ["TeamA", "Platform", pi_name, s_name], cur, s_end, [])
             )
             cur += timedelta(weeks=sprint_weeks)
 
         pi_end = cur - timedelta(days=1)
         pi_nodes.append(
-            _make_node(pi_name, ["eSW", "Platform", pi_name], pi_start, pi_end, sprint_nodes)
+            _make_node(pi_name, ["TeamA", "Platform", pi_name], pi_start, pi_end, sprint_nodes)
         )
 
     platform_end = cur - timedelta(days=1)
     platform_node = _make_node(
-        "Platform", ["eSW", "Platform"], start_dt, platform_end, pi_nodes
+        "Platform", ["TeamA", "Platform"], start_dt, platform_end, pi_nodes
     )
-    esw_node = _make_node("eSW", ["eSW"], start_dt, platform_end, [platform_node])
+    esw_node = _make_node("TeamA", ["TeamA"], start_dt, platform_end, [platform_node])
 
     return {
         "url": f"{base_url}/{project_id}/_apis/wit/classificationNodes/Iterations",
@@ -451,7 +451,7 @@ def _collect_sprint_paths(tree: dict) -> List[str]:
     if not children:
         # Leaf node — convert classification-node path to work-item iteration path
         node_path: str = tree.get("path") or ""
-        # \\Project\\Iteration\\eSW\\Platform\\PI\\Sprint → Project\\eSW\\Platform\\PI\\Sprint
+        # \\Project\\Iteration\\TeamA\\Platform\\PI\\Sprint → Project\\TeamA\\Platform\\PI\\Sprint
         if node_path.startswith("\\"):
             parts = node_path[1:].split("\\")
             # parts[0]=project, parts[1]='Iteration', parts[2:]=rest

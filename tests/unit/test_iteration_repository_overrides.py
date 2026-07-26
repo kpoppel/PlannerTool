@@ -19,8 +19,8 @@ class _FakeBackend:
 class _FakeProjectRepo:
     def get_project_map(self):
         return [
-            {"id": "project-dalton", "name": "Dalton", "area_path": "Platform_Development\\Dalton"},
-            {"id": "project-tesla", "name": "Tesla", "area_path": "Platform_Development\\Tesla"},
+            {"id": "project-dalton", "name": "Dalton", "area_path": "MyProject\\Dalton"},
+            {"id": "project-tesla", "name": "Tesla", "area_path": "MyProject\\Tesla"},
         ]
 
 
@@ -32,11 +32,11 @@ class _FakeCredProvider:
 class _FakeIterationConfig:
     def fetch_iterations_config(self):
         return {
-            "azure_project": "Platform_Development",
+            "azure_project": "MyProject",
             "default_roots": ["Platform"],
             "project_overrides": {
                 "Dalton": {
-                    "azure_project": "eSW",
+                    "azure_project": "TeamA",
                     "roots": ["Dalton"],
                 }
             },
@@ -55,25 +55,25 @@ def test_list_iterations_uses_per_configured_project_override_source_and_roots()
     result = repo.list_iterations()
 
     assert sorted(result.keys()) == ["project-dalton", "project-tesla"]
-    assert result["project-dalton"]["sourceProject"] == "eSW"
+    assert result["project-dalton"]["sourceProject"] == "TeamA"
     assert result["project-dalton"]["roots"] == ["Dalton"]
     assert len(result["project-dalton"]["iterations"]) == 1
-    assert result["project-tesla"]["sourceProject"] == "Platform_Development"
+    assert result["project-tesla"]["sourceProject"] == "MyProject"
     assert result["project-tesla"]["roots"] == ["Platform"]
     assert backend.calls == [
-        ("eSW", ["Dalton"], None),
-        ("Platform_Development", ["Platform"], None),
+        ("TeamA", ["Dalton"], None),
+        ("MyProject", ["Platform"], None),
     ]
 
 
 class _LegacyKeyedIterationConfig:
     def fetch_iterations_config(self):
         return {
-            "azure_project": "Platform_Development",
+            "azure_project": "MyProject",
             "default_roots": ["Platform"],
             "project_overrides": {
-                "Platform_Development": {
-                    "azure_project": "eSW",
+                "MyProject": {
+                    "azure_project": "TeamA",
                     "roots": ["LegacyShouldNotApply"],
                 }
             },
@@ -92,8 +92,8 @@ def test_list_iterations_does_not_apply_azure_project_keyed_override_anymore():
     repo.list_iterations()
 
     assert backend.calls == [
-        ("Platform_Development", ["Platform"], None),
+        ("MyProject", ["Platform"], None),
     ]
     result = repo.list_iterations(project_id="project-dalton")
     assert result
-    assert result["project-dalton"]["sourceProject"] == "Platform_Development"
+    assert result["project-dalton"]["sourceProject"] == "MyProject"

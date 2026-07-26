@@ -508,7 +508,7 @@ class AzureDevOpsBackend(BackendPort):
             iteration_map: Dict[str, Any] = {}
             for raw_root in (root_paths or [None]):
                 # Construct the full ADO path: "<project>\Iteration\<sub-path>".
-                # raw_root is a plain sub-path from iterations.yml (e.g. "eSW\Platform").
+                # raw_root is a plain sub-path from iterations.yml (e.g. "TeamA\Platform").
                 root = f"{project}\\Iteration\\{raw_root}" if raw_root else None
                 try:
                     for it in client.get_iterations(project, root_path=root):

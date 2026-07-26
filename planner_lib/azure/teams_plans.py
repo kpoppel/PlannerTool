@@ -273,7 +273,7 @@ class TeamPlanOperations:
         
         Args:
             project: Project name or ID
-            root_path: Optional root iteration path to filter by (e.g., "Project\\Iteration\\eSW")
+            root_path: Optional root iteration path to filter by (e.g., "MyProject\\Iteration\\TeamA")
             depth: Depth to fetch classification nodes (default 10)
             
         Returns:
@@ -290,7 +290,7 @@ class TeamPlanOperations:
         try:
             if root_path:
                 # Strip project prefix and "Iteration\" if present in root_path
-                # E.g., "Platform_Development\Iteration\eSW" -> "eSW"
+                # E.g., "MyProject\Iteration\TeamA" -> "TeamA"
                 path_parts = root_path.replace('/', '\\').split('\\')
                 if path_parts[0] == project:
                     path_parts = path_parts[1:]

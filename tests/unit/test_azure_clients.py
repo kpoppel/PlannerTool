@@ -402,8 +402,8 @@ def test_classify_ado_exception_maps_auth_and_outage():
 
 FIXTURE_DIR = "data/azure_mock"
 # A fixture area that exists in the real fixture files.
-_FIXTURE_AREA = "Platform_Development\\eSW_D13"
-_FIXTURE_AREA_KEY = "Platform_Development__eSW_D13"
+_FIXTURE_AREA = "MyProject\\TeamA_P21"
+_FIXTURE_AREA_KEY = "MyProject__TeamA_P21"
 
 
 def _copy_fixtures_to(tmp_path):
@@ -515,5 +515,5 @@ class TestAzureMockClientPersistence:
             persist_enabled=True,
         )
         with client.connect("") as c:
-            teams = c.get_all_teams("Platform_Development")
+            teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)

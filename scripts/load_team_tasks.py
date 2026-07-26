@@ -6,8 +6,8 @@ using planner_lib.azure.AzureClient.
 Usage:
   - Set env `AZURE_DEVOPS_PAT` and optionally `AZURE_DEVOPS_PROJECT` to avoid prompts
   - Run from repository root:
-      python scripts/load_team_tasks.py --organization WSAudiology --project Platform_Development
-    python scripts/load_team_tasks.py --organization WSAudiology --project Platform_Development --area-path "Platform_Development\\eSW\\Teams\\Architecture"
+      python scripts/load_team_tasks.py --organization MyCompany --project MyProject
+      python scripts/load_team_tasks.py --organization MyCompany --project MyProject --area-path "MyProject\\TeamA\\Teams\\SubTeamA"
 """
 from __future__ import annotations
 import argparse

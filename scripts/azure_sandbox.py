@@ -20,8 +20,9 @@ from msrest.authentication import BasicAuthentication
 
 # --- Configure these constants for your environment ---
 PAT = os.environ.get("AZURE_DEVOPS_PAT", "YOURPAT")
-ORGANIZATION_URL = os.environ.get("AZURE_DEVOPS_ORG_URL", "https://dev.azure.com/WSAudiology")
-PROJECT_NAME = os.environ.get("AZURE_DEVOPS_PROJECT", "eSW")
+ORGANIZATION_URL = os.environ.get("AZURE_DEVOPS_ORG_URL", "https://dev.azure.com/MyCompany")
+PROJECT_NAME = os.environ.get("AZURE_DEVOPS_PROJECT", "TeamA")
+PROJECT_AREA_PATH = os.environ.get("AZURE_DEVOPS_AREA_PATH", "MyProject\\TeamA\\Teams\\SubTeamA")
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("azure_sandbox")
@@ -122,21 +123,21 @@ def test_thing(conn: Connection):
     # Item 516154 has 6 links to children
     # Fetch both and see their relations
     wit_client = conn.clients.get_work_item_tracking_client()
-    # Fetch all work items in the "eSW/Architects" area path
+    # Fetch all work items in the area path
     wiql_query = """
     SELECT [System.Id]
     FROM WorkItems
-    WHERE [System.TeamProject] = 'Platform_Development'
+    WHERE [System.TeamProject] = '{PROJECT_NAME}'
     AND [System.WorkItemType] IN ('Epic','Feature')
     AND [System.State] <> 'Closed'
-    AND [System.AreaPath] = 'Platform_Development\eSW\Teams\Architecture'
+    AND [System.AreaPath] = '{PROJECT_AREA_PATH}'.replace('\\', '\\\\')
     ORDER BY [Microsoft.VSTS.Common.StackRank] ASC
     """
 #    ORDER BY [System.Id] ASC
     # """SELECT [System.Id], [System.WorkItemType], [System.Title], [System.State], [System.AreaPath], [System.IterationPath], [System.Tags]
     #   FROM WorkItems
-    #   WHERE [System.TeamProject] = 'Platform_Development'
-    #   AND [System.AreaPath] UNDER 'Platform_Development\eSW\Teams\Architecture'
+    #   WHERE [System.TeamProject] = '{PROJECT_NAME}'
+    #   AND [System.AreaPath] UNDER '{PROJECT_AREA_PATH}'.replace('\\', '\\\\')
     #   AND [System.WorkItemType] IN ('Epic','Feature')
     #   AND [Microsoft.VSTS.Common.StackRank] <> ''
     #   AND [System.State] <> 'Closed'
@@ -147,7 +148,7 @@ def test_thing(conn: Connection):
     result = wit_client.query_by_wiql(wiql=wiql_obj)
     task_ids = [getattr(wi, "id", None) for wi in (getattr(result, "work_items", []) or [])]
     task_ids = [int(t) for t in task_ids if t is not None]
-    print(f"Task IDs in 'eSW/Architects': {task_ids}")
+    print(f"Task IDs in '{PROJECT_AREA_PATH}': {task_ids}")
 
     # 682664 as start, end dates
     # 516412 has relations

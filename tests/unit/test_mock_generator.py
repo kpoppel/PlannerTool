@@ -22,7 +22,7 @@ from planner_lib.azure.AzureMockGeneratorClient import (
 
 _AREA_CONFIG = {
     "name": "Architecture",
-    "area_path": "Platform_Development\\eSW\\Teams\\Architecture",
+    "area_path": "MyProject\\TeamA\\Teams\\Architecture",
     "type": "team",
     "task_types": ["Epic", "Feature", "User Story"],
     "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
@@ -55,7 +55,7 @@ def _dummy_storage(tmp_path):
 _MOCK_PROJECT_MAP = [
     {
         "name": "Architecture",
-        "area_path": "Platform_Development\\eSW\\Teams\\Architecture",
+        "area_path": "MyProject\\TeamA\\Teams\\Architecture",
         "type": "team",
         "task_types": ["Epic", "Feature", "User Story"],
         "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
@@ -63,7 +63,7 @@ _MOCK_PROJECT_MAP = [
     },
     {
         "name": "Platform",
-        "area_path": "Platform_Development\\eSW\\Teams\\Platform",
+        "area_path": "MyProject\\TeamA\\Teams\\Platform",
         "type": "team",
         "task_types": ["Feature", "User Story", "Bug"],
         "include_states": ["New", "Defined", "Active", "Resolved", "Closed"],
@@ -122,7 +122,7 @@ class TestGeneratorConfig:
         assert isinstance(cfg.seed, int)
 
     def test_items_per_area_override(self):
-        area = "Platform_Development\\TestArea"
+        area = "MyProject\\TestArea"
         cfg = GeneratorConfig({"items_per_area": {area: 50}})
         assert cfg.items_per_area[area] == 50
 
@@ -136,9 +136,9 @@ class TestIterationTree:
         cfg = GeneratorConfig({"n_pis": 3, "sprints_per_pi": 4})
         tree = _build_iteration_tree("Proj", cfg, "http://localhost", "proj-uuid")
         assert tree["name"] == "Proj"
-        eSW = tree["children"][0]
-        assert eSW["name"] == "eSW"
-        platform = eSW["children"][0]
+        team_a = tree["children"][0]
+        assert team_a["name"] == "TeamA"
+        platform = team_a["children"][0]
         assert platform["name"] == "Platform"
         # 3 PI children
         assert len(platform["children"]) == 3
@@ -155,12 +155,12 @@ class TestIterationTree:
 
     def test_sprint_paths_are_valid_iteration_paths(self):
         cfg = GeneratorConfig({"n_pis": 2, "sprints_per_pi": 2})
-        tree = _build_iteration_tree("Platform_Development", cfg, "http://localhost", "uuid")
+        tree = _build_iteration_tree("MyProject", cfg, "http://localhost", "uuid")
         paths = _collect_sprint_paths(tree)
         for p in paths:
-            assert p.startswith("Platform_Development\\eSW\\Platform\\"), p
+            assert p.startswith("MyProject\\TeamA\\Platform\\"), p
             parts = p.split("\\")
-            # Project \ eSW \ Platform \ Year.QN \ Year_SN  → 5 parts
+            # Project \ TeamA \ Platform \ Year.QN \ Year_SN  → 5 parts
             assert len(parts) == 5, f"unexpected depth: {p!r}"
 
     def test_sprint_dates_are_consecutive(self):
@@ -199,9 +199,9 @@ class TestWorkItemGeneration:
         cfg = GeneratorConfig(cfg_dict or {"default_items_per_area": 12, "seed": 7})
         rng = random.Random(cfg.seed)
         sprint_paths = [
-            "Platform_Development\\eSW\\Platform\\2025.Q1\\2025_S1",
-            "Platform_Development\\eSW\\Platform\\2025.Q1\\2025_S2",
-            "Platform_Development\\eSW\\Platform\\2025.Q2\\2025_S3",
+            "MyProject\\TeamA\\Platform\\2025.Q1\\2025_S1",
+            "MyProject\\TeamA\\Platform\\2025.Q1\\2025_S2",
+            "MyProject\\TeamA\\Platform\\2025.Q2\\2025_S3",
         ]
         id_counter = iter(range(100_001, 200_000))
         return _generate_area_items(
@@ -244,9 +244,9 @@ class TestWorkItemGeneration:
     def test_iteration_path_from_provided_pool(self):
         items = self._build_items()
         valid_paths = {
-            "Platform_Development\\eSW\\Platform\\2025.Q1\\2025_S1",
-            "Platform_Development\\eSW\\Platform\\2025.Q1\\2025_S2",
-            "Platform_Development\\eSW\\Platform\\2025.Q2\\2025_S3",
+            "MyProject\\TeamA\\Platform\\2025.Q1\\2025_S1",
+            "MyProject\\TeamA\\Platform\\2025.Q1\\2025_S2",
+            "MyProject\\TeamA\\Platform\\2025.Q2\\2025_S3",
         }
         for item in items:
             assert item["fields"]["System.IterationPath"] in valid_paths
@@ -333,7 +333,7 @@ class TestRevisionGeneration:
             area_config=_AREA_CONFIG,
             rng=rng,
             person_pool=[{"displayName": "P", "id": "x", "uniqueName": "p@e", "url": "", "descriptor": "d"}],
-            sprint_paths=["Platform_Development\\eSW\\Platform\\2025.Q1\\2025_S1"],
+            sprint_paths=["MyProject\\TeamA\\Platform\\2025.Q1\\2025_S1"],
             project_id="uuid",
             id_counter=lambda: next(id_ctr),
             base_url="http://localhost",
@@ -501,7 +501,7 @@ class TestAzureMockGeneratorClientIntegration:
     def test_get_all_teams(self, client):
         with client.connect("dummy-pat") as c:
             # Use the first project from projects.yml
-            teams = c.get_all_teams("Platform_Development")
+            teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)
         assert len(teams) > 0
         # Each team entry should have expected keys
@@ -513,7 +513,7 @@ class TestAzureMockGeneratorClientIntegration:
         with client.connect("dummy-pat") as c:
             # AzureCachingClient.get_work_items(area_path, task_types, include_states)
             items = c.get_work_items(
-                "Platform_Development\\eSW\\Teams\\Architecture",
+                "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
                 include_states=["New", "Active", "Defined", "Resolved", "Closed"],
             )
@@ -522,17 +522,17 @@ class TestAzureMockGeneratorClientIntegration:
 
     def test_get_all_plans(self, client):
         with client.connect("dummy-pat") as c:
-            plans = c.get_all_plans("Platform_Development")
+            plans = c.get_all_plans("MyProject")
         assert isinstance(plans, list)
 
     def test_get_iterations(self, client):
         with client.connect("dummy-pat") as c:
-            iters = c.get_iterations("Platform_Development")
+            iters = c.get_iterations("MyProject")
         assert iters is not None
 
     def test_get_work_item_metadata(self, client):
         with client.connect("dummy-pat") as c:
-            meta = c.get_work_item_metadata("Platform_Development")
+            meta = c.get_work_item_metadata("MyProject")
         assert isinstance(meta, dict)
 
     def test_get_history_returns_revisions(self, client):
@@ -543,7 +543,7 @@ class TestAzureMockGeneratorClientIntegration:
         """
         with client.connect("dummy-pat") as c:
             items = c.get_work_items(
-                "Platform_Development\\eSW\\Teams\\Architecture",
+                "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
                 include_states=["New", "Active", "Defined", "Resolved", "Closed"],
             )
@@ -572,7 +572,7 @@ class TestAzureMockGeneratorClientIntegration:
             },
         )
         with svc.connect("dummy-pat") as c:
-            teams = c.get_all_teams("Platform_Development")
+            teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)
 
 
@@ -693,7 +693,7 @@ class TestAzureMockGeneratorPersistence:
         # Connect and get a Feature work item
         with client.connect("dummy-pat") as c:
             items = c.get_work_items(
-                "Platform_Development\\eSW\\Teams\\Architecture",
+                "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
                 include_states=["New", "Active", "Defined", "Resolved", "Closed"],
             )
@@ -749,7 +749,7 @@ class TestAzureMockGeneratorPersistence:
         )
         with mock_client.connect("dummy-pat") as c:
             work_items = c.get_work_items(
-                "Platform_Development\\eSW\\Teams\\Architecture",
+                "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
                 include_states=["New", "Active", "Defined", "Resolved", "Closed"],
             )
@@ -895,7 +895,7 @@ class TestGeneratorPersistEnabled:
             {"generator_persist_enabled": True, "generator_persist_dir": pdir},
         )
         with svc.connect("") as c:
-            plans = c.get_all_plans("Platform_Development")
+            plans = c.get_all_plans("MyProject")
             assert len(plans) > 0
         manifest_path = tmp_path / "auto_persist" / "_manifest.json"
         assert manifest_path.exists(), "Manifest should be written when persist_enabled=True"
@@ -914,7 +914,7 @@ class TestGeneratorPersistEnabled:
         # Fetch a work item
         with svc.connect("") as c:
             items = c.get_work_items(
-                "Platform_Development\\eSW\\Teams\\Architecture",
+                "MyProject\\TeamA\\Teams\\Architecture",
                 task_types=["Feature"],
                 include_states=["New", "Active", "Defined", "Resolved", "Closed"],
             )
@@ -947,5 +947,5 @@ class TestGeneratorPersistEnabled:
         )
         # Should not raise ValueError("PAT must be a non-empty string")
         with svc.connect("") as c:
-            teams = c.get_all_teams("Platform_Development")
+            teams = c.get_all_teams("MyProject")
         assert isinstance(teams, list)

@@ -559,7 +559,7 @@ function generateHistory(projectId, per_page = 500) {
       if (changes.length === 0) {
         changes.push({
           field: 'iteration',
-          value: (t.iterationPath || 'Platform_Development').replace('\\', '\\'),
+          value: (t.iterationPath || 'MyProject').replace('\\', '\\'),
           changed_at: randomPastDate(400),
           changed_by: HISTORY_USERS[Math.floor(Math.random() * HISTORY_USERS.length)],
         });

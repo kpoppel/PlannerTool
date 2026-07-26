@@ -2,7 +2,7 @@
  * Module-level in-memory cache for Azure DevOps project metadata.
  *
  * Keyed by Azure project name (the first path segment of an area_path,
- * e.g. "Platform_Development" from "Platform_Development\Team1").
+ * e.g. "MyProject" from "MyProject\TeamA").
  *
  * Data is populated from server responses (prefetch on tab load, or on-demand
  * when the admin selects an Azure project in the browse panel) and is reused
