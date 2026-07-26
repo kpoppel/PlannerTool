@@ -312,10 +312,31 @@ export class SchemaForm extends LitElement {
   }
 
   /**
-   * Get the current form data
+   * Get the current form data, recursively merging schema defaults for any keys never touched by the user.
    */
   getData() {
-    return this.data;
+    if (!this.schema?.properties) return structuredClone(this.data);
+
+    const mergeDefaults = (schemaProps, sourceData) => {
+      const merged = { ...structuredClone(sourceData) };
+      for (const [key, propSchema] of Object.entries(schemaProps)) {
+        if (!(key in merged)) {
+          // No value — use schema default if present
+          if ('default' in propSchema) {
+            merged[key] = structuredClone(propSchema.default);
+          } else if (propSchema.type === 'object' && propSchema.properties) {
+            // Nested object without a value: create empty, then recurse
+            merged[key] = mergeDefaults(propSchema.properties, {});
+          }
+        } else if (propSchema.type === 'object' && propSchema.properties && typeof merged[key] === 'object') {
+          // Key exists but may be missing nested defaults — recurse into it
+          merged[key] = mergeDefaults(propSchema.properties, merged[key]);
+        }
+      }
+      return merged;
+    };
+
+    return mergeDefaults(this.schema.properties, this.data);
   }
 
   /**

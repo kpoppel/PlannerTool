@@ -27,6 +27,7 @@ Template - do not change :
 
 ### Fixed
 - Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance
+- Admin UI did not save default values to configuration, even though the UI was setting them. (feature flags in particular)
 
 ## [v4.2.1] - 2026-07-19
 
