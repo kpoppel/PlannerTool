@@ -24,68 +24,22 @@
   `pip install -r requirements.txt`
   `pip install -r requirements-dev.txt`
 
-### Development (unbundled)
+Follow the instructions in `docs/DEPLOYMENT.md` for running the application for development or production.
 
-The server can be run unbundled, which is great for development. The browser cache needs to
-be cleared after all updates of the Javascript code, so disable browser cache in the browser
-development mode.
+# First time use
 
-Run the server:
-
-```bash
-uvicorn planner:make_app --factory --reload --port 8000 2>&1 |tee logfile.log
-```
-
-**Tip:** you can leave out the pipe to the logfile if you don not want a file log.
-**Tip:** Leave out --port and --reload and the tee to logfile if you don't need this.
-
-Use the application by browsing to `http://localhost:8000`
-
-### Production (bundled)
-
-The server can be run bundled too. This ensures the browser cache is invalidated because filenames
-change with updated content. The price is the extra step building the bundle.
-
-Run the server:
-
-```bash
-# If the Lit bundle needs to updated (should not be the case)
-npm run build:vendor
-
-# Build first
-npm run build
-
-# Run production server
-uvicorn planner:make_dist_app --factory --port 8000 --reload 2>&1 |tee logfile.log
-```
-
-**Tip:** you can leave out the pipe to the logfile if you don not want a file log.
-**Tip:** Leave out --port and --reload and the tee to logfile if you don't need this.
-
-Use the application by browsing to `http://localhost:8000`
-
-# Getting started - deployment
-
-**Tip:**
-
-- Shortcut setting up the first account:
+The application will load into first-time user setup if it is a fresh installation.
+If you don't want to go through the first time user setup UI, do it from the CLI directly:
   ```
   curl -i -X POST http://localhost:8001/admin/v1/setup -H "Content-Type: application/json" -d '{"email":"user@example.com","pat":"SOME_PAT"}'
   ```
 
-Checkout the `docs/DEPLOYMENT.md` file.
+Otherwise just follow the UI setup.
 
-# First time use
-
-Look at the example configuration files in `docs/example-*`. You can use these for a terminal only setup process.
-You can also use the user interface for this:
-
-1. Point your browser to the IP address http://<your server IP>/ (add :8000 if you are not using nginx proxy)
+1. Point your browser to the IP address http://<your server IP>/ (add :8000 or :5173 if using one of the development deployment methods)
 2. Complete the user onboarding and add your email and PAT in the configuration page.
-3. Navigate to the http://<your server IP>/admin page. You will get a 404 error. This is expected.
-4. On the server you will see `data/accounts/` and `data/accounts_admin/` . Copy your user account to the `accounts_admin/` directory.
-5. Now you can access the admin interface.
-6. From here add projects teams and users if you want. Self-signup was one of the design goals of this project to keep maintenance low.
+3. Now you can access the admin interface.
+4. From here add projects teams and users if you want. Self-signup was one of the design goals of this project to keep maintenance low.
    You can promote and delete users as well.
 
 Then go break something. Nothing is written back to Azure unless a user decides to explicitly do so.

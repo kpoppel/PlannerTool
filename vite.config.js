@@ -147,30 +147,19 @@ export default defineConfig({
       },
     },
   },
-  // Serve the runtime www tree at /static and the admin site at /admin/static
-  configureServer(server) {
-    const serveWww = sirv(resolve(__dirname, 'www'), {
-      dev: true,
-      single: false,
-    });
-    const serveAdmin = sirv(resolve(__dirname, 'www-admin'), {
-      dev: true,
-      single: false,
-    });
-    server.middlewares.use((req, res, next) => {
-      try {
-        if (req.url.startsWith('/admin/static/')) {
-          req.url = req.url.replace(/^\/admin\/static/, '');
-          return serveAdmin(req, res, next);
-        }
-        if (req.url.startsWith('/static/')) {
-          req.url = req.url.replace(/^\/static/, '');
-          return serveWww(req, res, next);
-        }
-      } catch (e) {
-        // fall through
-      }
-      next();
-    });
+  // Dev server with API proxying to Python backend and static file serving for www/www-admin
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/admin/v1': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+      },
+    },
   },
 });
