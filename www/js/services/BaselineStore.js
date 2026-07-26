@@ -39,7 +39,7 @@ export class BaselineStore {
    * @returns {Array}
    */
   getProjects() {
-    return JSON.parse(JSON.stringify(this._projects));
+    return structuredClone(this._projects);
   }
 
   /**
@@ -63,7 +63,7 @@ export class BaselineStore {
    * @returns {Array}
    */
   getTeams() {
-    return JSON.parse(JSON.stringify(this._teams));
+    return structuredClone(this._teams);
   }
 
   /**
@@ -89,7 +89,7 @@ export class BaselineStore {
    * @returns {Array}
    */
   getFeatures() {
-    return JSON.parse(JSON.stringify(this._features));
+    return structuredClone(this._features);
   }
 
   /**

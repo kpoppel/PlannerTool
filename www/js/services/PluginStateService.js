@@ -34,7 +34,7 @@ export class PluginStateService {
   }
 
   _clone(obj) {
-    return obj == null ? null : JSON.parse(JSON.stringify(obj));
+    return obj == null ? null : structuredClone(obj);
   }
 
   get(pluginId) {
