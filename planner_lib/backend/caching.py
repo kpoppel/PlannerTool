@@ -2,39 +2,44 @@
 
 Any ``fetch_*`` method present on the inner backend is intercepted by
 ``__getattribute__`` and routed through the injected StorageBackend
-(backed by diskcache) with a per-method TTL.  The same protocol appears
-on both sides — callers never need to know whether a cache is present.
+(backed by diskcache) with a per-method soft-freshness window.  The same
+protocol appears on both sides — callers never need to know whether a cache
+is present.
 
 Design
 ------
 * ``CachingBackend`` does NOT import CacheManager, MemoryCacheManager, or any
-  warmup service.  diskcache natively provides:
-    - per-key TTL via the ``expire`` argument to ``Cache.set``
-    - in-memory OS page cache via SQLite WAL + mmap (``sqlite_mmap_size``)
-    - thread- and process-safe concurrency
+  warmup service.  diskcache provides in-memory OS page caching (SQLite WAL +
+  mmap) and thread-/process-safe concurrency; the freshness window itself is
+  tracked by this class rather than diskcache's own ``expire`` argument (see
+  "Stale-on-failure" below for why).
 * Cache key: ``<method_name>__<SHA-256[:20]>`` of (method, positional-args,
-    non-credential keyword-args). Task cache entries are intentionally shared
+    non-credential keyword-args). Cache entries are intentionally shared
     across users so everyone can reuse the same baseline snapshot.
-* Stale-on-failure for task reads (single copy, no shadow snapshot): the
-    ``fetch_tasks`` entry is persisted *without* a hard diskcache TTL so it is
-    never silently deleted.  Freshness is tracked separately by a tiny
-    ``taskmeta__*`` sidecar holding only a ``fresh_until`` timestamp.  On read,
-    a fresh entry is served directly; once soft-expired a live refresh is
-    attempted.  For the **remote (ADO) backend only**, if that refresh raises
-    (e.g., expired PAT or an ADO outage) or returns no data while content
-    already exists, the existing entry is kept and served and a warning is
-    queued — the cache is never purged on an error/empty response.  Local,
-    static, and mock backends never hit transient outages, so they pass the
-    refresh result through unchanged.
+* Stale-on-failure (single copy, no shadow snapshot): every cached ``fetch_*``
+    entry is persisted *without* a hard diskcache TTL so it is never silently
+    deleted — a hard ``expire=`` would let diskcache physically drop the row
+    at the exact moment the remote backend happens to be unreachable, turning
+    a transient outage into a hard failure instead of served stale data.
+    Freshness is tracked separately by a tiny ``taskmeta__*`` sidecar (shared
+    key-hash scheme, one per cached method+args) holding only a
+    ``fresh_until`` timestamp.  On read, a fresh entry is served directly;
+    once soft-expired a live refresh is attempted.  For the **remote (ADO)
+    backend only**, if that refresh raises (e.g., expired PAT or an ADO
+    outage) or returns no data while content already exists, the existing
+    entry is kept and served and a warning is queued — the cache is never
+    purged on an error/empty response.  Local, static, and mock backends never
+    hit transient outages, so they pass the refresh result through unchanged.
 * ``write_task``: delegate to inner backend first (ADO / mock persistence),
   then patch every cached ``fetch_tasks__*`` list in-place so diskcache is
-  immediately consistent.  The patch preserves the existing TTL.  TTL expiry
-  and explicit ``/cache/refresh`` are the only paths that ever re-fetch from ADO.
+  immediately consistent.  The patch preserves the existing freshness window.
+  TTL expiry and explicit ``/cache/refresh`` are the only paths that ever
+  re-fetch from ADO.
 * ``invalidate_cache``: delete every key in the namespace.
 * Adding a new ``fetch_*`` method to any backend is cached automatically —
   no changes here required.
 * ``fetch_projects`` / ``fetch_project_map`` are overridden below to call
-  straight through to the inner backend, bypassing the diskcache TTL layer
+  straight through to the inner backend, bypassing the caching layer
   entirely: project config already lives in diskcache via ``ConfigBackend``,
   and ADO enrichment (state_categories) reads a separate, already-cached
   metadata service, so there is no remote (ADO) API call for this layer to
@@ -154,30 +159,28 @@ class CachingBackend:
     # Cache key helper
     # ------------------------------------------------------------------
 
-    def _make_key(self, method: str, args: tuple, kwargs: dict) -> str:
+    def _digest(self, method: str, args: tuple, kwargs: dict) -> str:
         filtered = {k: v for k, v in kwargs.items() if k != 'credential'}
         payload = {
             'm': method,
             'a': list(args),
             'k': dict(sorted(filtered.items())),
         }
-        digest = hashlib.sha256(
+        return hashlib.sha256(
             json.dumps(payload, sort_keys=True, default=str).encode()
         ).hexdigest()[:20]
-        return f"{method}__{digest}"
+
+    def _make_key(self, method: str, args: tuple, kwargs: dict) -> str:
+        return f"{method}__{self._digest(method, args, kwargs)}"
 
     def _meta_key(self, method: str, args: tuple, kwargs: dict) -> str:
         """Sidecar key holding only the freshness timestamp for a cached entry.
 
-        Uses a distinct ``taskmeta__`` prefix so it never collides with the
-        ``fetch_tasks__*`` data keys scanned elsewhere (cache load/metrics).
+        Uses a distinct ``taskmeta__`` prefix (shared by every cached ``fetch_*``
+        method, not just tasks) so it never collides with the ``<method>__*``
+        data keys scanned elsewhere (cache load/metrics).
         """
-        filtered = {k: v for k, v in kwargs.items() if k != 'credential'}
-        payload = {'m': method, 'a': list(args), 'k': dict(sorted(filtered.items()))}
-        digest = hashlib.sha256(
-            json.dumps(payload, sort_keys=True, default=str).encode()
-        ).hexdigest()[:20]
-        return f"taskmeta__{digest}"
+        return f"taskmeta__{self._digest(method, args, kwargs)}"
 
     def _read_fresh_until(self, meta_key: str) -> Any:
         """Return the stored ``fresh_until`` value, or ``_MISSING`` when absent.
@@ -216,6 +219,13 @@ class CachingBackend:
 
     # ------------------------------------------------------------------
     # Generic proxy: auto-caches any fetch_* not overridden on this class.
+    #
+    # Every cached fetch_* method — not just fetch_tasks — goes through the
+    # soft-freshness sidecar (_fetch_with_freshness): the data entry is never
+    # given a hard diskcache expiry, so a TTL lapse can never physically
+    # delete already-fetched content. A hard `expire=` would let diskcache
+    # silently drop the row at the exact moment ADO happens to be unreachable,
+    # turning a transient outage into a hard failure for the caller.
     # ------------------------------------------------------------------
 
     def __getattribute__(self, name: str):
@@ -228,51 +238,19 @@ class CachingBackend:
                 )
             inner_method = getattr(inner, name)
             if callable(inner_method):
-                storage = object.__getattribute__(self, '_storage')
-                ttl_config = object.__getattribute__(self, '_ttl_config')
                 make_key = object.__getattribute__(self, '_make_key')
+                fetch_with_freshness = object.__getattribute__(self, '_fetch_with_freshness')
 
                 def _cached_wrapper(*args, **kwargs):
                     key = make_key(name, args, kwargs)
-                    if name == 'fetch_tasks':
-                        # Single-copy soft-freshness path: persist without a hard
-                        # TTL and keep serving existing content on a failed or
-                        # empty refresh (see _fetch_tasks_cached).
-                        return self._fetch_tasks_cached(inner_method, name, key, args, kwargs)
-                    try:
-                        value = storage.load(_NAMESPACE, key)
-                        # Log time-to-expiry so operators can see staleness at a glance.
-                        if logger.isEnabledFor(logging.DEBUG):
-                            get_expire = getattr(storage, 'get_expire_time', None)
-                            if get_expire is not None:
-                                abs_exp = get_expire(_NAMESPACE, key)
-                                if abs_exp is not None:
-                                    remaining = max(0.0, abs_exp - time.time())
-                                    logger.debug(
-                                        'CachingBackend: cache HIT %s (expires in %.0fs)',
-                                        key, remaining,
-                                    )
-                                else:
-                                    logger.debug('CachingBackend: cache HIT %s (no expiry)', key)
-                        return value
-                    except KeyError:
-                        pass
-                    result = inner_method(*args, **kwargs)
-                    ttl = ttl_config.ttl_for(name)
-                    ttl_seconds = ttl.total_seconds() if ttl is not None else None
-                    storage.save(_NAMESPACE, key, result, ttl_seconds=ttl_seconds)
-                    logger.debug(
-                        'CachingBackend: cache MISS %s — fetched and stored (ttl=%s)',
-                        key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
-                    )
-                    return result
+                    return fetch_with_freshness(inner_method, name, key, args, kwargs)
 
                 return _cached_wrapper
 
         return super().__getattribute__(name)
 
     # ------------------------------------------------------------------
-    # Task read path: single cached copy with soft-freshness + stale-on-failure
+    # Cached read path: single copy with soft-freshness + stale-on-failure
     # ------------------------------------------------------------------
 
     def _try_mark_refresh_inflight(self, key: str) -> bool:
@@ -287,7 +265,59 @@ class CachingBackend:
         with self._refresh_lock:
             self._refresh_inflight.discard(key)
 
-    def _refresh_tasks_in_background(
+    def _record_stale_warning(self, exc: BackendError, *, key: str, user_id: Optional[str]) -> None:
+        """Queue a user-facing warning for a failed refresh, keeping stale data.
+
+        Shared by the synchronous and background refresh paths so the
+        auth-vs-outage classification lives in exactly one place.
+        """
+        if isinstance(exc, BackendAuthError):
+            code, message = 'tasks_stale_invalid_pat', (
+                'Your Azure DevOps PAT is invalid or expired. '
+                'Showing cached data that may be out of date.'
+            )
+        else:
+            code, message = 'tasks_stale_api_outage', (
+                'Azure DevOps is currently unreachable. '
+                'Showing cached data that may be out of date.'
+            )
+        self._record_warning(code=code, message=message, user_id=user_id)
+        logger.warning(
+            'CachingBackend: refresh of %s failed (%s); keeping existing cached content',
+            key, exc,
+        )
+
+    def _record_stale_no_data_warning(self, *, key: str, user_id: Optional[str]) -> None:
+        self._record_warning(
+            code='tasks_stale_no_data',
+            message=(
+                'Azure DevOps returned no data (possible outage). '
+                'Showing previously cached data that may be out of date.'
+            ),
+            user_id=user_id,
+        )
+        logger.warning(
+            'CachingBackend: refresh of %s returned no data; keeping existing cached content',
+            key,
+        )
+
+    def _store_fresh(self, name: str, key: str, meta_key: str, result: Any, now: float) -> None:
+        """Persist a freshly-fetched result without a hard diskcache TTL.
+
+        Freshness is governed entirely by the ``fresh_until`` sidecar so a
+        soft-expired entry can still be served on a failed subsequent refresh.
+        """
+        ttl = self._ttl_config.ttl_for(name)
+        ttl_seconds = ttl.total_seconds() if ttl is not None else None
+        self._storage.save(_NAMESPACE, key, result, ttl_seconds=None)
+        fresh_until = (now + ttl_seconds) if ttl_seconds is not None else None
+        self._storage.save(_NAMESPACE, meta_key, {'fresh_until': fresh_until}, ttl_seconds=None)
+        logger.debug(
+            'CachingBackend: stored %s (fresh_for=%s)',
+            key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
+        )
+
+    def _refresh_in_background(
         self,
         *,
         inner_method,
@@ -299,7 +329,7 @@ class CachingBackend:
         cached_has_content: bool,
         user_id: Optional[str],
     ) -> None:
-        """Refresh a stale task cache entry asynchronously.
+        """Refresh a stale cache entry asynchronously, for any cached fetch_* method.
 
         This keeps request latency low: stale cached data is served immediately,
         then the refreshed snapshot is switched in when ready.
@@ -311,57 +341,14 @@ class CachingBackend:
                     result = inner_method(*args, **kwargs)
                 except BackendError as exc:
                     if cached_has_content:
-                        if isinstance(exc, BackendAuthError):
-                            self._record_warning(
-                                code='tasks_stale_invalid_pat',
-                                message=(
-                                    'Your Azure DevOps PAT is invalid or expired. '
-                                    'Showing cached task data that may be out of date.'
-                                ),
-                                user_id=user_id,
-                            )
-                        else:
-                            self._record_warning(
-                                code='tasks_stale_api_outage',
-                                message=(
-                                    'Azure DevOps is currently unreachable. '
-                                    'Showing cached task data that may be out of date.'
-                                ),
-                                user_id=user_id,
-                            )
-                        logger.warning(
-                            'CachingBackend: background refresh of %s failed (%s); keeping existing cached content',
-                            key, exc,
-                        )
+                        self._record_stale_warning(exc, key=key, user_id=user_id)
                     return
 
                 if not result and cached_has_content:
-                    self._record_warning(
-                        code='tasks_stale_no_data',
-                        message=(
-                            'Azure DevOps returned no task data (possible outage). '
-                            'Showing previously cached data that may be out of date.'
-                        ),
-                        user_id=user_id,
-                    )
-                    logger.warning(
-                        'CachingBackend: background refresh of %s returned no data; keeping existing cached content',
-                        key,
-                    )
+                    self._record_stale_no_data_warning(key=key, user_id=user_id)
                     return
 
-                ttl = self._ttl_config.ttl_for(name)
-                ttl_seconds = ttl.total_seconds() if ttl is not None else None
-                now = time.time()
-
-                # Persist the refreshed snapshot and extend soft freshness.
-                self._storage.save(_NAMESPACE, key, result, ttl_seconds=None)
-                fresh_until = (now + ttl_seconds) if ttl_seconds is not None else None
-                self._storage.save(_NAMESPACE, meta_key, {'fresh_until': fresh_until}, ttl_seconds=None)
-                logger.debug(
-                    'CachingBackend: background refresh complete %s (fresh_for=%s)',
-                    key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
-                )
+                self._store_fresh(name, key, meta_key, result, time.time())
             except Exception as exc:
                 logger.warning('CachingBackend: unexpected background refresh error for %s: %s', key, exc)
             finally:
@@ -370,17 +357,17 @@ class CachingBackend:
         t = threading.Thread(target=_run, name=f'cache-refresh-{key[:24]}', daemon=True)
         t.start()
 
-    def _fetch_tasks_cached(self, inner_method, name: str, key: str, args: tuple, kwargs: dict):
-        """Cache-first task read that never purges content on error/empty refresh.
+    def _fetch_with_freshness(self, inner_method, name: str, key: str, args: tuple, kwargs: dict):
+        """Cache-first read that never purges content on error/empty refresh.
 
-        The data entry (``fetch_tasks__*``) is stored without a hard diskcache
-        TTL so it persists; a small ``taskmeta__*`` sidecar records the
-        ``fresh_until`` timestamp.  When soft-expired we attempt a live refresh:
-        on success we replace the data and extend freshness.  For the **remote
-        (ADO) backend only**, an auth error, any other exception, or an empty
-        response while content already exists keeps and serves the existing
-        content and queues a user-facing warning.  Local/static/mock backends
-        never hit transient outages, so their refresh result is used as-is.
+        The data entry is stored without a hard diskcache TTL so it persists;
+        a small ``taskmeta__*`` sidecar records the ``fresh_until`` timestamp.
+        When soft-expired we attempt a live refresh: on success we replace the
+        data and extend freshness.  For the **remote (ADO) backend only**, an
+        auth error, any other exception, or an empty response while content
+        already exists keeps and serves the existing content and queues a
+        user-facing warning.  Local/static/mock backends never hit transient
+        outages, so their refresh result is used as-is.
         """
         storage = self._storage
         meta_key = self._meta_key(name, args, kwargs)
@@ -392,7 +379,6 @@ class CachingBackend:
         except KeyError:
             cached_value = None
             have_cached = False
-        fresh_until = _MISSING
 
         if have_cached:
             fresh_until = self._read_fresh_until(meta_key)
@@ -409,12 +395,10 @@ class CachingBackend:
         if self._inner_is_remote and have_cached:
             if self._try_mark_refresh_inflight(key):
                 logger.debug(
-                    'CachingBackend: scheduling Azure background refresh for %s (user_id=%s, cached_has_content=%s)',
-                    key,
-                    user_id or '-',
-                    cached_has_content,
+                    'CachingBackend: scheduling background refresh for %s (user_id=%s, cached_has_content=%s)',
+                    key, user_id or '-', cached_has_content,
                 )
-                self._refresh_tasks_in_background(
+                self._refresh_in_background(
                     inner_method=inner_method,
                     name=name,
                     key=key,
@@ -435,28 +419,7 @@ class CachingBackend:
             # drop already-cached content.  Only the live ADO backend raises
             # BackendError, so this branch never fires for local backends.
             if self._inner_is_remote and have_cached and cached_has_content:
-                if isinstance(exc, BackendAuthError):
-                    self._record_warning(
-                        code='tasks_stale_invalid_pat',
-                        message=(
-                            'Your Azure DevOps PAT is invalid or expired. '
-                            'Showing cached task data that may be out of date.'
-                        ),
-                        user_id=user_id,
-                    )
-                else:
-                    self._record_warning(
-                        code='tasks_stale_api_outage',
-                        message=(
-                            'Azure DevOps is currently unreachable. '
-                            'Showing cached task data that may be out of date.'
-                        ),
-                        user_id=user_id,
-                    )
-                logger.warning(
-                    'CachingBackend: refresh of %s failed (%s); keeping existing cached content',
-                    key, exc,
-                )
+                self._record_stale_warning(exc, key=key, user_id=user_id)
                 return cached_value
             raise
 
@@ -464,31 +427,10 @@ class CachingBackend:
             # Backend returned no data but we already have content.  A live ADO
             # outage often surfaces as an empty result, so keep the existing
             # content rather than overwriting a populated cache with nothing.
-            self._record_warning(
-                code='tasks_stale_no_data',
-                message=(
-                    'Azure DevOps returned no task data (possible outage). '
-                    'Showing previously cached data that may be out of date.'
-                ),
-                user_id=user_id,
-            )
-            logger.warning(
-                'CachingBackend: refresh of %s returned no data; keeping existing cached content',
-                key,
-            )
+            self._record_stale_no_data_warning(key=key, user_id=user_id)
             return cached_value
 
-        ttl = self._ttl_config.ttl_for(name)
-        ttl_seconds = ttl.total_seconds() if ttl is not None else None
-        # Persist the data without a hard TTL; freshness is governed by the
-        # sidecar so a soft-expired entry can still be served on a failed refresh.
-        storage.save(_NAMESPACE, key, result, ttl_seconds=None)
-        fresh_until = (now + ttl_seconds) if ttl_seconds is not None else None
-        storage.save(_NAMESPACE, meta_key, {'fresh_until': fresh_until}, ttl_seconds=None)
-        logger.debug(
-            'CachingBackend: cache MISS %s — fetched and stored (fresh_for=%s)',
-            key, f'{ttl_seconds:.0f}s' if ttl_seconds is not None else 'none',
-        )
+        self._store_fresh(name, key, meta_key, result, now)
         return result
 
     # ------------------------------------------------------------------

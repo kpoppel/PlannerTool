@@ -1,7 +1,8 @@
 """Tests for CachingBackend TTL coordination with diskcache.
 
 Verifies that CachingBackend:
-- Passes the correct ttl_seconds to storage.save() for each method
+- Persists each method's data without a hard TTL and records the configured
+  TTL as a `fresh_until` timestamp in the sidecar instead
 - Serves from cache on a second call (no inner call)
 - Evicts fetch_tasks__* entries on write_task success
 - Re-fetches from inner after invalidate_cache()
@@ -72,7 +73,12 @@ def test_fetch_tasks_saved_with_correct_ttl():
 
 
 def test_fetch_history_saved_with_correct_ttl():
-    """storage.save() must receive ttl_seconds matching CacheTTLConfig.fetch_history."""
+    """fetch_history persists data without a hard TTL; freshness window lives in the sidecar.
+
+    Every cached fetch_* method (not just fetch_tasks) uses the soft-freshness
+    sidecar, so a TTL lapse never lets diskcache physically delete the row.
+    """
+    import time
     storage = _TrackingSave()
     inner = MagicMock()
     inner.fetch_history.return_value = []
@@ -80,11 +86,17 @@ def test_fetch_history_saved_with_correct_ttl():
     ttl = _ttl_config()
     ttl.fetch_history = timedelta(hours=6)
     backend = CachingBackend(inner=inner, storage=storage, ttl_config=ttl)
+    before = time.time()
     backend.fetch_history(42)
 
     hist_keys = [k for k in storage.saved_ttls if k.startswith('fetch_history__')]
     assert hist_keys
-    assert storage.saved_ttls[hist_keys[0]] == pytest.approx(6 * 3600)
+    assert storage.saved_ttls[hist_keys[0]] is None
+
+    meta_keys = [k for k in storage.list_keys('backend_domain') if k.startswith('taskmeta__')]
+    assert meta_keys
+    fresh_until = storage.load('backend_domain', meta_keys[0])['fresh_until']
+    assert fresh_until == pytest.approx(before + 6 * 3600, abs=5)
 
 
 def test_second_call_is_cache_hit():

@@ -51,9 +51,14 @@ class Config:
 # ---------------------------------------------------------------------------
 
 def _build_storages(config: Config) -> StorageBackend:
-    """Construct and return the diskcache-backed storage.
+    """Construct and return the diskcache-backed storage for authoritative data.
 
-    All persistent runtime data AND configuration live in the diskcache backend.
+    Configuration, accounts, sessions, and user data (scenarios/views) all live
+    here permanently — none of it is ever time-expired.  The volatile, TTL'd
+    remote-backend cache (ADO tasks/history/teams/plans/markers/iterations) is
+    built separately (see ``remote_cache_storage`` in ``_build_services``) so
+    that a true cache directory can be deleted/rebuilt without risking loss of
+    authoritative data.
     """
     storage_diskcache = cast(StorageBackend, create_storage(
         backend=config.storage_backend,
@@ -93,6 +98,20 @@ def _build_services(
 
     # --- Storage (eager, no inter-service deps) — single instance for all namespaces ---
     container.register_singleton("storage", storage_diskcache)
+
+    # --- Remote-backend cache storage (lazy, separate diskcache directory) ---
+    # Isolated from `storage` so the volatile, TTL-governed ADO/static/mock
+    # fetch_* cache lives in its own disposable diskcache file — deleting it
+    # can never take config/accounts/sessions/user data down with it. Built
+    # lazily so it's never opened when `enable_cache` is off.
+    def _make_remote_cache_storage():
+        return create_storage(
+            backend=config.storage_backend,
+            serializer=config.raw_serializer,
+            data_dir=config.data_dir + "/remote_cache",
+        )
+
+    container.register_factory("remote_cache_storage", _make_remote_cache_storage)
 
     # --- Optional memory cache ---
     # (removed — diskcache handles memory via OS page cache automatically)
@@ -151,7 +170,11 @@ def _build_services(
             ttl_config = CacheTTLConfig.from_config(
                 server_cfg.get('cache', {}).get('ttls', {})
             )
-            return CachingBackend(inner=inner, storage=storage_diskcache, ttl_config=ttl_config)
+            return CachingBackend(
+                inner=inner,
+                storage=container.get("remote_cache_storage"),
+                ttl_config=ttl_config,
+            )
 
         return inner
 

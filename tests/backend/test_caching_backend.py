@@ -219,6 +219,57 @@ def test_remote_backend_error_propagates_when_no_cache(storage):
         caching.fetch_tasks(AREA, credential={'token': 'valid', 'user_id': 'u@example.com'})
 
 
+def test_non_task_method_survives_outage_after_soft_expiry(storage):
+    """Regression: fetch_history (and any other cached fetch_*) must not hard-fail
+    once its TTL lapses while the remote backend is unreachable.
+
+    Before generalizing the soft-freshness sidecar beyond fetch_tasks, methods
+    like fetch_history/fetch_teams/fetch_plans/fetch_markers/fetch_iterations
+    were persisted with a real diskcache `expire=`, so diskcache would delete
+    the row outright at TTL and the next read would propagate whatever error
+    the remote backend raised — instead of serving the still-useful stale data.
+    """
+    import time
+    import threading
+    from planner_lib.backend.caching import CachingBackend
+    from planner_lib.backend.errors import BackendUnavailableError
+
+    class _OutageBackend:
+        is_remote = True
+
+        def __init__(self):
+            self.calls = 0
+            self.refresh_attempted = threading.Event()
+
+        def fetch_history(self, work_item_id, credential=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return [{'rev': 1}]
+            self.refresh_attempted.set()
+            raise BackendUnavailableError('connection timed out')
+
+        def invalidate_cache(self):
+            return {'ok': True, 'invalidated': [], 'errors': []}
+
+    inner = _OutageBackend()
+    caching = CachingBackend(inner=inner, storage=storage)
+
+    warm = caching.fetch_history(42, credential=CRED)
+    assert warm == [{'rev': 1}]
+
+    meta_key = caching._meta_key('fetch_history', (42,), {})
+    storage.save('backend_domain', meta_key, {'fresh_until': time.time() - 1})
+
+    again = caching.fetch_history(42, credential=CRED)
+    assert again == [{'rev': 1}]  # stale data kept, not an exception
+    assert inner.refresh_attempted.wait(timeout=1.0)
+    assert inner.calls == 2
+
+    warnings = caching.consume_warnings(user_id=CRED['user_id'])
+    assert warnings
+    assert warnings[-1]['code'] == 'tasks_stale_api_outage'
+
+
 def test_empty_refresh_keeps_existing_task_content(storage):
     """A refresh that returns no data must not overwrite populated cache content."""
     import time

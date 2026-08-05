@@ -20,10 +20,15 @@ implement the protocols for the domains they own — no empty stubs required.
 protocol(s) it needs.  No repository holds a reference to a concrete backend
 class.
 
-**CachingBackend is a transparent TTL proxy** — it wraps any backend, intercepts
-every `fetch_*` method via `__getattribute__`, and routes reads through
-`diskcache` with a per-method TTL.  The same protocol appears on both sides of
-the proxy; callers never need to know whether a cache is present.
+**CachingBackend is a transparent soft-freshness proxy** — it wraps any backend,
+intercepts every `fetch_*` method via `__getattribute__`, and routes reads through
+its own dedicated diskcache instance.  Every cached entry is persisted *without*
+a hard diskcache TTL; a small `taskmeta__*` sidecar tracks a per-key `fresh_until`
+timestamp instead, so a lapsed TTL never lets diskcache physically delete the
+row.  For the live ADO backend, a failed or empty refresh past `fresh_until`
+keeps serving the existing entry and queues a warning rather than propagating
+the error.  The same protocol appears on both sides of the proxy; callers never
+need to know whether a cache is present.
 
 **ConfigBackend is diskcache-backed** — after migrations 0021 and 0022, `ConfigBackend`
 reads and writes all config keys (projects, teams, people, cost_config, iterations,
@@ -102,19 +107,29 @@ To add a new data domain:
                                                                          │
                                                      domain types from any backend
 ┌────────────────────────────────────────────────────▼─────────────────────┐
-│  diskcache (one shared SQLite instance)                                  │
+│  Two diskcache instances (deliberately separate SQLite files)            │
 │  planner_lib/storage/diskcache_backend.py                                │
 │                                                                          │
-│  All domain objects land here regardless of their origin (ADO,           │
-│  YAML config, or user mutations).  Hot data is served directly from      │
-│  SQLite's OS-page cache without extra in-process structures.             │
+│  "storage" (data/cache) — authoritative, never time-expired: config,     │
+│  accounts, sessions, user data (scenarios/views).  Safe to treat as      │
+│  permanent; nothing here is safe to delete as "just a cache".            │
 │                                                                          │
-│  CachingBackend(inner, storage=diskcache) wraps any read-only source:    │
-│  – On fetch_* miss: call inner, store result in diskcache, return.       │
-│  – On fetch_* hit:  return from diskcache without touching inner.        │
+│  "remote_cache_storage" (data/remote_cache) — CachingBackend's own       │
+│  instance, holding only the volatile fetch_* cache for the active        │
+│  ADO/static/mock backend.  A true, disposable cache: deleting this       │
+│  directory only forces re-fetches, never any data loss.                  │
+│                                                                          │
+│  CachingBackend(inner, storage=remote_cache_storage) wraps any read-only │
+│  source:                                                                │
+│  – On fetch_* miss: call inner, store result (no hard TTL) plus a        │
+│                     taskmeta__* sidecar recording fresh_until, return.   │
+│  – On fetch_* hit (fresh): return from diskcache without touching inner. │
+│  – On fetch_* hit (soft-expired): refresh live; on remote failure/empty  │
+│                     result, keep serving the existing entry and queue a  │
+│                     warning instead of deleting it or raising.           │
 │  – On write_task:   delegate to inner, patch task in every cached list   │
-│                     (diskcache is immediately consistent, TTL unchanged).│
-│  – On invalidate:   delete all keys in the namespace.                    │
+│                     (diskcache is immediately consistent).               │
+│  – On invalidate:   delete all keys in the remote_cache_storage.         │
 └──────┬───────────────────────────────────────────────────────────┬───────┘
        │ cache miss / explicit write                               │ user data
 ┌──────▼───────────────────────────────────────────────────┐ ┌─────▼──────────┐
@@ -157,22 +172,27 @@ Priority order (first flag wins):
 
 ## CachingBackend and write semantics
 
-`planner_lib/backend/caching.py` — transparent diskcache proxy for any backend.
+`planner_lib/backend/caching.py` — transparent soft-freshness proxy for any backend.
 
-The same `CachingBackend` pattern is used for both the remote data backend and
-the config backend.  Both instances write into the same shared diskcache
-SQLite file using `fetch_<method>__<key-hash>` composite keys.  From the
-perspective of consumers (repositories, services), there is no difference between
-data that originated in ADO, a YAML config file, or a static fixture — all
-domain objects come back as the same Python types from the same store.
+In production `CachingBackend` wraps only the active remote/static/mock data
+backend (the `backend` DI key), using its own dedicated `remote_cache_storage`
+diskcache instance — `ConfigBackend` reads/writes `storage` directly and is not
+wrapped.  Cache keys use `<method>__<key-hash>` composite keys.
 
 ```
 CachingBackend.__getattribute__(fetch_*)
        │
-       ├── cache HIT  → return domain objects from diskcache
+       ├── cache HIT (fresh)        → return domain objects from diskcache
+       │
+       ├── cache HIT (soft-expired) → serve stale data immediately; refresh
+       │                              live (in the background for the remote
+       │                              ADO backend).  A failed/empty refresh
+       │                              keeps the existing entry + queues a
+       │                              warning instead of deleting it.
        │
        └── cache MISS → call inner.fetch_*()
-                            → store result in diskcache with expire=ttl_seconds
+                            → store result with no hard TTL
+                            → record fresh_until in a taskmeta__* sidecar
                             → return result
 
 CachingBackend.write_task(id, updates, credential)
@@ -180,7 +200,6 @@ CachingBackend.write_task(id, updates, credential)
        ├── delegate to inner backend (persistence)
        └── patch task in every cached fetch_tasks__* list in-place
                → diskcache immediately consistent
-               → remaining TTL preserved (no TTL clock reset)
 ```
 
 ### Write semantics
@@ -193,14 +212,17 @@ CachingBackend.write_task(id, updates, credential)
 | Server config | Admin `POST /admin/v1/system` → writes `config::server_config` to diskcache → `ReloadOrchestrator.reload()` | Diskcache is the authoritative store for generic server settings.
 | User data (scenarios, views) | `save_scenario` / `save_view` → writes directly to diskcache | No separate cache layer: diskcache IS the authoritative store — reads are always consistent |
 
-### TTLs
+### TTLs are soft-freshness windows, not hard diskcache expiry
 
-TTLs control how long a diskcache entry lives before the next read automatically
-triggers a re-fetch.  Config data uses **no time-based TTL** (`None`) because it
-only changes when an admin explicitly writes it — time-based expiry would either
-serve stale data or waste cache misses unnecessarily.
+Each TTL controls how long a cached entry is served without attempting a live
+refresh — it is **not** passed to diskcache's `expire=` argument.  The data key
+is always persisted with no hard TTL; a `taskmeta__*` sidecar records the
+absolute `fresh_until` timestamp instead.  This is deliberate: a hard `expire=`
+would let diskcache physically delete the row the moment the TTL lapses, so if
+the remote backend happened to be unreachable at that exact moment the next
+read would hard-fail instead of serving the still-useful stale data.
 
-| Method | Default TTL | Rationale |
+| Method | Default freshness window | Rationale |
 |--------|-------------|-----------|
 | `fetch_tasks` | 30 min | ADO state changes frequently |
 | `fetch_history` | 24 h | History is append-only; rarely stale |
@@ -208,14 +230,9 @@ serve stale data or waste cache misses unnecessarily.
 | `fetch_plans` | 4 h | Plan markers |
 | `fetch_markers` | 2 h | Sprint markers |
 | `fetch_iterations` | 8 h | Sprint definitions |
-| `fetch_people` | None | Config data — explicit invalidation only |
-| `fetch_projects` | None | Config data — explicit invalidation only |
-| `fetch_config_teams` | None | Config data — explicit invalidation only |
-| `fetch_iterations_config` | None | Config data — explicit invalidation only |
-| `fetch_area_plan_map` | None | Config data — explicit invalidation only |
 
-All ADO TTLs are configurable via `cache.ttls` in diskcache `config::server_config`
-(values in minutes; `0` = no expiry).
+All of the above are configurable via `cache.ttls` in `config::server_config`
+(values in minutes; `0` = no expiry, i.e. cache forever until `invalidate_cache()`).
 
 diskcache handles the in-memory tier automatically via SQLite's memory-mapped
 pages (`sqlite_mmap_size`, default 64 MB) and WAL journal mode.  No separate
@@ -237,8 +254,10 @@ isinstance(CachingBackend(ConfigBackend(…)), BackendPort)        # False
 | DI key | Protocol | Backend class | Notes |
 |--------|----------|---------------|-------|
 | `backend` | `BackendPort` | Selected by `BackendRegistry` | Wrapped in `CachingBackend` when `enable_cache: true` |
-| `config_backend` | `PeopleBackend` + config protocols + `AdoConfigBackend` | `ConfigBackend` | Reads/writes diskcache directly — **not** wrapped in `CachingBackend` |
-| `user_data_backend` | `ScenarioBackend` + `ViewBackend` | `UserDataBackend` | Reads/writes diskcache directly — **never** cached |
+| `config_backend` | `PeopleBackend` + config protocols + `AdoConfigBackend` | `ConfigBackend` | Reads/writes `storage` directly — **not** wrapped in `CachingBackend` |
+| `user_data_backend` | `ScenarioBackend` + `ViewBackend` | `UserDataBackend` | Reads/writes `storage` directly — **never** cached |
+| `storage` | `StorageBackend` | `DiskCacheStorage` (`data/cache`) | Authoritative, never time-expired: config, accounts, sessions, user data |
+| `remote_cache_storage` | `StorageBackend` | `DiskCacheStorage` (`data/remote_cache`) | Lazily built; only instantiated when `enable_cache: true`. A disposable cache for `CachingBackend` — safe to delete without any data loss |
 
 DI wiring lives in `planner_lib/main.py` `_build_services()`.
 

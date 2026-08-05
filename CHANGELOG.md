@@ -19,6 +19,8 @@ Template - do not change :
 - added feature flag for snapshots of the server configuration and admin interface for the same. Default is disabled, but existing
   servers will have these backups in the diskcache, so enable and clean up, then disable if they are not wanted.
 - Iteration-sets added: admin iterations now supports sets of iterations from different ADO projects. Delete/unassociate APIs, project schema includes iteration association field, and runtime iteration resolution honors project-level iteration UUID links.
+- Migration `0026_migrate_ttl_cache.py`: moves any leftover `backend_domain` cache entries from `data/cache`
+  into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
   
 ### Changed
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.
@@ -28,10 +30,21 @@ Template - do not change :
 - Removed reliance on file-based server_config.yaml file.
 - Consolidated server storage setup to one. This was possible because the same diskcache is used for
   all storage now.
+- `CachingBackend`'s volatile, TTL-governed remote-backend cache (ADO tasks/history/teams/plans/markers/iterations)
+  now lives in its own dedicated diskcache directory (`data/remote_cache`), separate from the authoritative
+  `data/cache` store used for config, accounts, sessions, and user data. Deleting the cache directory can no
+  longer take config/accounts/sessions/user data down with it.
+- `CachingBackend` generalized the soft-freshness sidecar (previously `fetch_tasks`-only) to every cached
+  `fetch_*` method: `fetch_history`/`fetch_teams`/`fetch_plans`/`fetch_markers`/`fetch_iterations` are no longer
+  persisted with a hard diskcache TTL, so a TTL lapse can no longer cause diskcache to silently delete the
+  entry right when the remote backend happens to be unreachable.
 
 ### Fixed
 - Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance
 - Admin UI did not save default values to configuration, even though the UI was setting them. (feature flags in particular)
+- Fixed: a TTL lapse on `fetch_history`/`fetch_teams`/`fetch_plans`/`fetch_markers`/`fetch_iterations` could
+  previously cause a hard failure (instead of serving stale data) if the remote ADO backend was unreachable at
+  that exact moment — these methods now share the same stale-on-failure resilience as `fetch_tasks`.
 
 ## [v4.2.1] - 2026-07-19
 
