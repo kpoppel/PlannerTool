@@ -42,7 +42,7 @@ def test_admin_get_iterations_defaults_to_iteration_sets():
     assert result == {'content': {'iteration_sets': []}}
 
 
-def test_admin_get_iterations_normalizes_legacy_shape():
+def test_admin_get_iterations_ignores_legacy_shape():
     admin_svc = _FakeAdminService(
         cfg={
             'iterations': {
@@ -56,12 +56,7 @@ def test_admin_get_iterations_normalizes_legacy_shape():
 
     result = asyncio.run(admin_api.admin_get_iterations.__wrapped__(req))
 
-    assert 'iteration_sets' in result['content']
-    assert len(result['content']['iteration_sets']) == 1
-    one = result['content']['iteration_sets'][0]
-    assert one['id'] == 'legacy-default'
-    assert one['source_project'] == 'MyProject'
-    assert one['root_path'] == 'Platform'
+    assert result == {'content': {'iteration_sets': []}}
 
 
 def test_admin_save_iterations_validates_required_fields():

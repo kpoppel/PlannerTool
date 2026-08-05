@@ -499,11 +499,6 @@ export class ProviderREST {
     }
   }
 
-  async getIterations(project) {
-    // Deprecated pathway retained for compatibility; grouped project payload is no longer returned.
-    return project ? [] : {};
-  }
-
   async getIterationSets() {
     const payload = await this.getIterationsConfig();
     return payload.iterationSetsById || {};

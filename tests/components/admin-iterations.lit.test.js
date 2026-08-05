@@ -155,18 +155,4 @@ describe('admin-iterations', () => {
     expect(comp.config.iteration_sets).to.have.length(0);
     expect(comp.statusType).to.equal('success');
   });
-
-  it('marks legacyDetected when old config shape is loaded', async () => {
-    adminProvider.getIterations = vi.fn().mockResolvedValue({
-      azure_project: 'LegacyProj',
-      default_roots: ['Platform'],
-      project_overrides: {},
-    });
-
-    await comp.loadConfig();
-
-    expect(comp.legacyDetected).to.equal(true);
-    expect(comp.config.iteration_sets).to.have.length(1);
-    expect(comp.config.iteration_sets[0].id).to.equal('legacy-default');
-  });
 });

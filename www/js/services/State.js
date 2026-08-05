@@ -1081,22 +1081,10 @@ class State {
         return this.scenarios.find((s) => s.id === this.activeScenarioId);
       };
 
-      // Allow swapping in an experimental queued implementation via feature flag
-      if (featureFlags && featureFlags.USE_QUEUED_FEATURE_SERVICE) {
-        // Dynamic import preserves module semantics and avoids circular import issues
-        // Note: dynamic import returns a promise; use then() to synchronously assign when available.
-        import('./QueuedFeatureService.js').then((mod) => {
-          this._featureService = new mod.QueuedFeatureService(
-            this._baselineStore,
-            getActiveScenarioFn
-          );
-        });
-      } else {
-        this._featureService = new FeatureService(
-          this._baselineStore,
-          getActiveScenarioFn
-        );
-      }
+      this._featureService = new FeatureService(
+        this._baselineStore,
+        getActiveScenarioFn
+      );
       // Provide fallback to baselineFeatures if BaselineStore returns empty
       this._featureService._getBaselineFallback = () => this.baselineFeatures;
       this._featureService.setChildrenByParent(this.childrenByParent);

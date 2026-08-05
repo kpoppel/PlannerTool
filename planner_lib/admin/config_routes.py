@@ -152,31 +152,9 @@ async def admin_save_global_settings(request: Request):
 
 
 def _normalize_iterations_content(raw: object) -> dict:
-    """Normalize persisted iterations config to ``{'iteration_sets': [...]}``.
-
-    Accepts legacy config shape as read-only fallback:
-    ``{'default_roots': [...], 'project_overrides': {...}, 'azure_project': '...'}``.
-    """
+    """Normalize persisted iterations config to ``{'iteration_sets': [...]}``."""
     if isinstance(raw, dict) and isinstance(raw.get('iteration_sets'), list):
         return {'iteration_sets': raw.get('iteration_sets') or []}
-
-    if isinstance(raw, dict):
-        legacy_roots = raw.get('default_roots') if isinstance(raw.get('default_roots'), list) else []
-        legacy_project = str(raw.get('azure_project') or '').strip()
-        if legacy_roots or legacy_project:
-            root_path = str(legacy_roots[0] or '').strip() if legacy_roots else ''
-            return {
-                'iteration_sets': [
-                    {
-                        'id': 'legacy-default',
-                        'name': 'Legacy Iterations',
-                        'source_project': legacy_project,
-                        'root_path': root_path,
-                        'values': [],
-                        'cached_at': None,
-                    }
-                ]
-            }
 
     return {'iteration_sets': []}
 

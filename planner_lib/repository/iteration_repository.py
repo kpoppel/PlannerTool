@@ -161,61 +161,28 @@ class IterationRepository:
         Matching rule:
         - project.iteration_uuid must point at a set id.
         - no implicit default when association is missing.
-
-        Legacy config fallback remains supported:
-            {"azure_project", "default_roots", "project_overrides"}
         """
         iteration_sets = iterations_config.get('iteration_sets')
-        if isinstance(iteration_sets, list):
-            assoc_id = str(project.get('iteration_uuid') or '').strip()
-            if not assoc_id:
-                return '', [], [], None
+        if not isinstance(iteration_sets, list):
+            return '', [], [], None
 
-            for s in iteration_sets:
-                if not isinstance(s, dict):
-                    continue
-                if str(s.get('id') or '').strip() != assoc_id:
-                    continue
-                source_project = str(s.get('source_project') or '').strip()
-                if not source_project:
-                    return '', [], [], assoc_id
-                root_path = str(s.get('root_path') or '').strip()
-                values = s.get('values') if isinstance(s.get('values'), list) else []
-                return source_project, [root_path] if root_path else [], values, assoc_id
+        assoc_id = str(project.get('iteration_uuid') or '').strip()
+        if not assoc_id:
+            return '', [], [], None
 
-            return '', [], [], assoc_id or None
+        for s in iteration_sets:
+            if not isinstance(s, dict):
+                continue
+            if str(s.get('id') or '').strip() != assoc_id:
+                continue
+            source_project = str(s.get('source_project') or '').strip()
+            if not source_project:
+                return '', [], [], assoc_id
+            root_path = str(s.get('root_path') or '').strip()
+            values = s.get('values') if isinstance(s.get('values'), list) else []
+            return source_project, [root_path] if root_path else [], values, assoc_id
 
-        # Legacy fallback path
-        configured_name = str(project.get('name') or '').strip()
-        area_path = str(project.get('area_path') or '')
-        area_project = (
-            area_path.split('\\')[0]
-            if '\\' in area_path
-            else area_path.split('/')[0]
-            if '/' in area_path
-            else area_path
-        )
-        default_project = str(iterations_config.get('azure_project') or area_project).strip()
-
-        project_overrides = iterations_config.get('project_overrides', {})
-        if not isinstance(project_overrides, dict):
-            project_overrides = {}
-
-        default_roots = iterations_config.get('default_roots', [])
-        override_entry = None
-        if configured_name and configured_name in project_overrides:
-            override_entry = project_overrides.get(configured_name)
-
-        source_project = default_project
-        raw_roots = default_roots
-
-        if isinstance(override_entry, dict):
-            source_project = str(override_entry.get('azure_project') or default_project).strip()
-            candidate_roots = override_entry.get('roots')
-            raw_roots = candidate_roots if isinstance(candidate_roots, list) else default_roots
-
-        clean_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
-        return source_project, clean_roots, [], None
+        return '', [], [], assoc_id or None
 
     @classmethod
     def _normalize_cached_values(cls, values: List[dict]) -> List[DomainIteration]:

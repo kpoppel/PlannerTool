@@ -294,7 +294,6 @@ export class AdminIterations extends LitElement {
     statusMsg: { type: String },
     statusType: { type: String },
     useRawMode: { type: Boolean },
-    legacyDetected: { type: Boolean },
   };
 
   constructor() {
@@ -311,7 +310,6 @@ export class AdminIterations extends LitElement {
     this.statusMsg = '';
     this.statusType = '';
     this.useRawMode = false;
-    this.legacyDetected = false;
   }
 
   get filteredIterations() {
@@ -324,13 +322,8 @@ export class AdminIterations extends LitElement {
   normalizeConfig(rawConfig) {
     const base = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
 
-    // Old shape detector for migration notice.
-    this.legacyDetected =
-      Array.isArray(base.default_roots) ||
-      (base.project_overrides && typeof base.project_overrides === 'object');
-
     const rawSets = Array.isArray(base.iteration_sets) ? base.iteration_sets : [];
-    let normalizedSets = rawSets
+    const normalizedSets = rawSets
       .filter((s) => s && typeof s === 'object')
       .map((s) => ({
         id: String(s.id || '').trim(),
@@ -341,21 +334,6 @@ export class AdminIterations extends LitElement {
         cached_at: s.cached_at || null,
       }))
       .filter((s) => s.id && s.source_project);
-
-    if (normalizedSets.length === 0 && this.legacyDetected) {
-      const legacyProject = String(base.azure_project || '').trim();
-      const legacyRoots = Array.isArray(base.default_roots) ? base.default_roots : [];
-      normalizedSets = [
-        {
-          id: 'legacy-default',
-          name: 'Legacy Iterations',
-          source_project: legacyProject,
-          root_path: legacyRoots[0] ? String(legacyRoots[0]).trim() : '',
-          values: [],
-          cached_at: null,
-        },
-      ];
-    }
 
     return {
       iteration_sets: normalizedSets,
@@ -710,15 +688,6 @@ export class AdminIterations extends LitElement {
               `
             : html`
                 <div class="config-editor">
-                  ${this.legacyDetected
-                    ? html`
-                        <div class="notice">
-                          Legacy iterations config detected and normalized in-memory to
-                          iteration sets. Save to persist the new schema.
-                        </div>
-                      `
-                    : ''}
-
                   <div class="config-section">
                     <label>Configured Iteration Sets</label>
                     ${this.config.iteration_sets.length === 0

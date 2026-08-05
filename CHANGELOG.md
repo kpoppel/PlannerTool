@@ -26,6 +26,7 @@ Template - do not change :
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.
 - Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)
 - Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
+- Removed the dead queued FeatureService implementation and legacy iterations fallback paths; runtime iteration resolution now relies only on project iteration-set associations.
 - Removed obsolete migrations (0001-00024)
 - Removed reliance on file-based server_config.yaml file.
 - Consolidated server storage setup to one. This was possible because the same diskcache is used for

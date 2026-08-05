@@ -79,10 +79,6 @@ class DataService {
   async getProjects() {
     return this.providers['rest'].getProjects();
   }
-  async getIterations(project) {
-    return this.providers['rest'].getIterations(project);
-  }
-
   async getIterationsConfig() {
     return this.providers['rest'].getIterationsConfig();
   }
