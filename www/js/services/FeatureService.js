@@ -89,6 +89,26 @@ export class FeatureService {
     this._projectTeamService = projectTeamService;
   }
 
+  _sanitizeOverrideForEffectiveView(featureId, override) {
+    if (!override || typeof override !== 'object') return undefined;
+
+    const allowed = new Set(['start', 'end', 'capacity', 'state', 'iterationPath', 'tags']);
+    const out = {};
+    const dropped = [];
+    for (const [k, v] of Object.entries(override)) {
+      if (allowed.has(k)) out[k] = v;
+      else dropped.push(k);
+    }
+
+    if (dropped.length > 0) {
+      console.warn('[FeatureService] Ignoring unsupported scenario override fields', {
+        featureId,
+        dropped,
+      });
+    }
+    return out;
+  }
+
   /**
    * Get effective features with scenario overrides applied
    */
@@ -109,7 +129,8 @@ export class FeatureService {
 
     // Merge baseline features with scenario overrides
     return baselineFeatures.map((base) => {
-      const ov = activeScenario.overrides ? activeScenario.overrides[base.id] : undefined;
+      const rawOv = activeScenario.overrides ? activeScenario.overrides[base.id] : undefined;
+      const ov = this._sanitizeOverrideForEffectiveView(base.id, rawOv);
       const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
       const derived = this._recomputeDerived(base, ov);
       effective.changedFields = derived.changedFields;
@@ -137,7 +158,8 @@ export class FeatureService {
     const activeScenario = this._getActiveScenario();
     if (!activeScenario) return { ...base };
 
-    const ov = activeScenario.overrides ? activeScenario.overrides[id] : undefined;
+    const rawOv = activeScenario.overrides ? activeScenario.overrides[id] : undefined;
+    const ov = this._sanitizeOverrideForEffectiveView(id, rawOv);
     const effective = ov ? { ...base, ...ov, scenarioOverride: true } : { ...base };
     const derived = this._recomputeDerived(base, ov);
     effective.changedFields = derived.changedFields;

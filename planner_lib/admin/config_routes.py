@@ -91,6 +91,7 @@ async def admin_save_projects(request: Request):
 
         admin_svc = resolve_service(request, 'admin_service')
         admin_svc.save_config('projects', content)
+
         return {'ok': True}
     except HTTPException:
         raise
@@ -149,13 +150,81 @@ async def admin_save_global_settings(request: Request):
 # Iterations
 # ---------------------------------------------------------------------------
 
+
+def _normalize_iterations_content(raw: object) -> dict:
+    """Normalize persisted iterations config to ``{'iteration_sets': [...]}``.
+
+    Accepts legacy config shape as read-only fallback:
+    ``{'default_roots': [...], 'project_overrides': {...}, 'azure_project': '...'}``.
+    """
+    if isinstance(raw, dict) and isinstance(raw.get('iteration_sets'), list):
+        return {'iteration_sets': raw.get('iteration_sets') or []}
+
+    if isinstance(raw, dict):
+        legacy_roots = raw.get('default_roots') if isinstance(raw.get('default_roots'), list) else []
+        legacy_project = str(raw.get('azure_project') or '').strip()
+        if legacy_roots or legacy_project:
+            root_path = str(legacy_roots[0] or '').strip() if legacy_roots else ''
+            return {
+                'iteration_sets': [
+                    {
+                        'id': 'legacy-default',
+                        'name': 'Legacy Iterations',
+                        'source_project': legacy_project,
+                        'root_path': root_path,
+                        'values': [],
+                        'cached_at': None,
+                    }
+                ]
+            }
+
+    return {'iteration_sets': []}
+
+
+def _validate_iteration_set_payload(content: object) -> dict:
+    """Validate payload shape for iteration-set config writes."""
+    if not isinstance(content, dict):
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Content must be an object'})
+
+    sets = content.get('iteration_sets')
+    if not isinstance(sets, list):
+        raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'iteration_sets must be a list'})
+
+    ids: set[str] = set()
+    normalized_sets = []
+    for idx, item in enumerate(sets):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}] must be an object'})
+        sid = str(item.get('id') or '').strip()
+        source_project = str(item.get('source_project') or '').strip()
+        if not sid:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}].id is required'})
+        if sid in ids:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'duplicate iteration set id: {sid}'})
+        ids.add(sid)
+        if not source_project:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': f'iteration_sets[{idx}].source_project is required'})
+
+        values = item.get('values') if isinstance(item.get('values'), list) else []
+        normalized_sets.append({
+            'id': sid,
+            'name': str(item.get('name') or sid),
+            'source_project': source_project,
+            'root_path': str(item.get('root_path') or '').strip() or None,
+            'values': values,
+            'cached_at': item.get('cached_at'),
+        })
+
+    return {'iteration_sets': normalized_sets}
+
 @router.get('/admin/v1/iterations')
 @require_admin_session
 async def admin_get_iterations(request: Request):
     """Return the iterations configuration as JSON."""
     try:
         admin_svc = resolve_service(request, 'admin_service')
-        return {'content': admin_svc.get_config('iterations', default={'default_roots': [], 'project_overrides': {}})}
+        cfg = admin_svc.get_config('iterations', default={'iteration_sets': []})
+        return {'content': _normalize_iterations_content(cfg)}
     except Exception as e:
         logger.exception('Failed to load iterations config: %s', e)
         raise HTTPException(status_code=500, detail='Internal server error')
@@ -167,16 +236,99 @@ async def admin_save_iterations(request: Request):
     """Save edited iterations configuration; creates a timestamped backup first."""
     try:
         payload = await request.json()
-        content = payload.get('content', '')
-        if content is None or content == '':
-            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Empty content'})
+        content = payload.get('content', None)
+        if content is None:
+            raise HTTPException(status_code=400, detail={'error': 'invalid_payload', 'message': 'Missing content'})
+
+        normalized_content = _validate_iteration_set_payload(content)
         admin_svc = resolve_service(request, 'admin_service')
-        admin_svc.save_config('iterations', content)
+        admin_svc.save_config('iterations', normalized_content)
         return {'ok': True}
     except HTTPException:
         raise
     except Exception as e:
         logger.exception('Failed to save iterations config: %s', e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.delete('/admin/v1/iterations/{set_id}')
+@require_admin_session
+async def admin_delete_iteration_set(request: Request, set_id: str):
+    """Delete one iteration set by id, blocked when still referenced by projects."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        cfg = _normalize_iterations_content(admin_svc.get_config('iterations', default={'iteration_sets': []}))
+        sets = cfg.get('iteration_sets') or []
+
+        found = False
+        next_sets = []
+        for it in sets:
+            if str(it.get('id')) == set_id:
+                found = True
+                continue
+            next_sets.append(it)
+        if not found:
+            raise HTTPException(status_code=404, detail={'error': 'not_found', 'message': 'Iteration set not found'})
+
+        projects_cfg = admin_svc.get_config('projects', default={'project_map': []}) or {}
+        project_map = projects_cfg.get('project_map') if isinstance(projects_cfg, dict) else []
+        if not isinstance(project_map, list):
+            project_map = []
+
+        referenced = []
+        for p in project_map:
+            if not isinstance(p, dict):
+                continue
+            if str(p.get('iteration_uuid') or '') == set_id:
+                referenced.append({'id': p.get('id'), 'name': p.get('name')})
+
+        if referenced:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'error': 'referenced_by_projects',
+                    'message': 'Iteration set is currently associated to one or more projects',
+                    'projects': referenced,
+                },
+            )
+
+        admin_svc.save_config('iterations', {'iteration_sets': next_sets})
+        return {'ok': True, 'deleted': set_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to delete iteration set %s: %s', set_id, e)
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post('/admin/v1/iterations/{set_id}/unassociate-all')
+@require_admin_session
+async def admin_unassociate_all_iterations(request: Request, set_id: str):
+    """Clear all project associations to ``set_id`` by nulling ``iteration_uuid``."""
+    try:
+        admin_svc = resolve_service(request, 'admin_service')
+        projects_cfg = admin_svc.get_config('projects', default={'project_map': []}) or {}
+        if not isinstance(projects_cfg, dict):
+            projects_cfg = {'project_map': []}
+        project_map = projects_cfg.get('project_map')
+        if not isinstance(project_map, list):
+            project_map = []
+
+        updated = 0
+        for p in project_map:
+            if not isinstance(p, dict):
+                continue
+            if str(p.get('iteration_uuid') or '') == set_id:
+                p['iteration_uuid'] = None
+                updated += 1
+
+        projects_cfg['project_map'] = project_map
+        admin_svc.save_config('projects', projects_cfg)
+        return {'ok': True, 'unassociated': updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to unassociate projects from iteration set %s: %s', set_id, e)
         raise HTTPException(status_code=500, detail='Internal server error')
 
 

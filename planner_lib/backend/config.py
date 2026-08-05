@@ -134,6 +134,7 @@ class ConfigBackend(
                 task_types=p.get("task_types") or [],
                 task_type_hierarchy=global_hierarchy,
                 state_display_sequence=global_state_sequence,
+                iteration_uuid=(str(p.get("iteration_uuid")).strip() if p.get("iteration_uuid") else None),
             )
             for p in project_map
         ]

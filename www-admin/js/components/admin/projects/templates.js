@@ -158,6 +158,11 @@ export const renderRowTemplate = (ctx, project, index) => {
         </td>
         <td>${renderStatesDisplayTemplate(ctx, project)}</td>
         <td>
+          ${project.iteration_uuid
+            ? html`<span class="chip">${ctx.iterationSetLabel(project.iteration_uuid)}</span>`
+            : html`<span class="small">—</span>`}
+        </td>
+        <td>
           <div class="actions">
             <button class="action-btn" @click=${() => ctx.editProject(index)}>Edit</button>
             <button class="action-btn" @click=${() => ctx.deleteProject(index)}>🗑</button>
@@ -232,6 +237,16 @@ export const renderRowTemplate = (ctx, project, index) => {
         `}
       </td>
       <td>${renderStatesEditTemplate(ctx, project, index)}</td>
+      <td>
+        <select class="inline-select"
+          .value=${project.iteration_uuid || ''}
+          @change=${(e) => ctx.updateProjectIteration(index, e.target.value)}>
+          <option value="">— None —</option>
+          ${(ctx._iterationSets || []).map((it) => html`
+            <option value="${it.id}">${it.name}</option>
+          `)}
+        </select>
+      </td>
       <td>
         <div class="actions" style="flex-direction:column;align-items:flex-start">
           <button class="action-btn" style="background:#10b981;color:#fff;margin-bottom:4px"
@@ -318,13 +333,14 @@ export const renderMainTemplate = (ctx) => {
                       <th>Area Path</th>
                       <th style="width:180px">Work Item Types</th>
                       <th>States (F: Fetch · D: Display)</th>
+                      <th style="width:180px">Iterations</th>
                       <th style="width:100px">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${filteredProjects.length === 0 ? html`
                       <tr>
-                        <td colspan="6"
+                        <td colspan="7"
                           style="text-align:center;padding:40px;color:#6b7280">
                           ${ctx._searchFilter
                             ? `No projects match "${ctx._searchFilter}"`

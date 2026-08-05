@@ -86,7 +86,7 @@ def test_fetch_projects_reads_from_storage():
     storage = _MemStore()
     storage.save('config', 'projects', {
         'project_map': [
-            {'name': 'Alpha', 'area_path': 'Org\\Alpha', 'task_types': ['Feature']}
+            {'name': 'Alpha', 'area_path': 'Org\\Alpha', 'task_types': ['Feature'], 'iteration_uuid': 'set-alpha'}
         ]
     })
     storage.save('config', 'global_settings', {
@@ -98,6 +98,7 @@ def test_fetch_projects_reads_from_storage():
     assert len(projects) == 1
     assert projects[0]['name'] == 'Alpha'
     assert projects[0]['state_display_sequence'] == ['New', 'Active', 'Closed']
+    assert projects[0]['iteration_uuid'] == 'set-alpha'
 
 
 def test_fetch_config_teams_reads_from_storage():

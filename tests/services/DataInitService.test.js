@@ -130,7 +130,10 @@ describe('DataInitService helpers', () => {
       getProjects: async () => projects,
       getTeams: async () => teams,
       getFeatures: async () => features,
-      getIterations: async () => [],
+      getIterationsConfig: async () => ({
+        iterationsByProject: {},
+        iterationSetsById: {},
+      }),
       loadAllScenarios: async () => [],
     };
 
@@ -229,7 +232,10 @@ describe('DataInitService helpers', () => {
       getProjects: async () => projects,
       getTeams: async () => teams,
       getFeatures: async () => features,
-      getIterations: async () => [],
+      getIterationsConfig: async () => ({
+        iterationsByProject: {},
+        iterationSetsById: {},
+      }),
       loadAllScenarios: async () => [],
     };
 
@@ -259,5 +265,94 @@ describe('DataInitService helpers', () => {
     expect(Object.isFrozen(result.baselineFeatures)).to.be.true;
 
     expect(bus.emitted.length).to.be.at.least(2);
+  });
+
+  it('stores producer-provided iteration sets by id unchanged', async () => {
+    const projects = [{ id: 'project-a' }];
+    const teams = [{ id: 'team-a' }];
+    const features = [{ id: 'f1', state: 'Open' }];
+    const iterationSetsById = {
+      'set-a': {
+        id: 'set-a',
+        name: 'Project A Iterations',
+        sourceProject: 'ADO',
+        rootPath: 'Root',
+        iterations: [{ path: 'ADO\\Root\\Sprint 1', name: 'Sprint 1' }],
+      },
+    };
+
+    const bus = { emit() {} };
+    const baselineStore = {
+      loadBaseline(obj) {
+        this._projects = obj.projects;
+        this._teams = obj.teams;
+        this._features = obj.features;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      getFeatures() {
+        return this._features;
+      },
+      setFeatures(f) {
+        this._features = f;
+      },
+    };
+    const projectTeamService = {
+      initFromBaseline(p, t) {
+        this._projects = p;
+        this._teams = t;
+      },
+      getProjects() {
+        return this._projects;
+      },
+      getTeams() {
+        return this._teams;
+      },
+      computeFeatureOrgLoad() {
+        return 1;
+      },
+    };
+    const stateFilterService = {
+      setAvailableStates() {},
+      availableFeatureStates: [],
+    };
+    const featureStateService = {
+      loadFromProjects() {},
+      getAvailableStates() {
+        return [];
+      },
+    };
+    const colorService = {
+      initColors() {
+        return Promise.resolve();
+      },
+    };
+    const dataService = {
+      getProjects: async () => projects,
+      getTeams: async () => teams,
+      getFeatures: async () => features,
+      getIterationsConfig: async () => ({
+        iterationsByProject: {},
+        iterationSetsById,
+      }),
+      loadAllScenarios: async () => [],
+    };
+
+    svc = new DataInitService(
+      bus,
+      dataService,
+      baselineStore,
+      projectTeamService,
+      stateFilterService,
+      featureStateService,
+      colorService
+    );
+
+    await svc.initState();
+    expect(svc.iterationSetsById).to.equal(iterationSetsById);
   });
 });

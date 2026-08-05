@@ -140,21 +140,23 @@ async def api_config_iterations(request: Request):
     if pat_required and not credential:
         raise HTTPException(status_code=401, detail={'error': 'missing_pat', 'message': 'Personal Access Token required'})
 
-    project_filter = request.query_params.get('project')
     iteration_repo = resolve_service(request, 'iteration_repository')
     try:
-        iterations = await asyncio.to_thread(
-            iteration_repo.list_iterations,
-            project_id=project_filter or None,
-            user_id=email or None,
-        )
+        iteration_sets = {}
+        if hasattr(iteration_repo, 'list_iteration_sets'):
+            iteration_sets = await asyncio.to_thread(
+                iteration_repo.list_iteration_sets,
+                user_id=email or None,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail={'error': 'missing_config', 'message': str(e)})
     except Exception as e:
         logger.exception('Failed to fetch iterations: %s', e)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    return {'iterationsByProject': iterations}
+    return {
+        'iterationSetsById': iteration_sets,
+    }
 
 
 @router.post('/cache/invalidate')

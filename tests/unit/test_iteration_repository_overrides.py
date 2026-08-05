@@ -97,3 +97,152 @@ def test_list_iterations_does_not_apply_azure_project_keyed_override_anymore():
     result = repo.list_iterations(project_id="project-dalton")
     assert result
     assert result["project-dalton"]["sourceProject"] == "MyProject"
+
+
+class _SetBasedProjectRepo:
+    def get_project_map(self):
+        return [
+            {
+                "id": "project-a",
+                "name": "A",
+                "area_path": "MyProject\\A",
+                "iteration_uuid": "set-a",
+            },
+            {
+                "id": "project-b",
+                "name": "B",
+                "area_path": "MyProject\\B",
+                "iteration_uuid": None,
+            },
+        ]
+
+
+class _SetBasedIterationConfig:
+    def fetch_iterations_config(self):
+        return {
+            "iteration_sets": [
+                {
+                    "id": "set-a",
+                    "name": "Set A",
+                    "source_project": "TeamA",
+                    "root_path": "RootA",
+                    "values": [],
+                    "cached_at": None,
+                }
+            ]
+        }
+
+
+def test_list_iterations_uses_project_iteration_uuid_when_iteration_sets_present():
+    backend = _FakeBackend()
+    repo = IterationRepository(
+        backend=backend,
+        project_repository=_SetBasedProjectRepo(),
+        credential_provider=_FakeCredProvider(),
+        iteration_config=_SetBasedIterationConfig(),
+    )
+
+    result = repo.list_iterations()
+
+    assert sorted(result.keys()) == ["project-a"]
+    assert result["project-a"]["iterationSetId"] == "set-a"
+    assert result["project-a"]["sourceProject"] == "TeamA"
+    assert result["project-a"]["roots"] == ["RootA"]
+    assert backend.calls == [("TeamA", ["RootA"], None)]
+
+
+def test_list_iterations_with_iteration_sets_has_no_implicit_default():
+    backend = _FakeBackend()
+    repo = IterationRepository(
+        backend=backend,
+        project_repository=_SetBasedProjectRepo(),
+        credential_provider=_FakeCredProvider(),
+        iteration_config=_SetBasedIterationConfig(),
+    )
+
+    result = repo.list_iterations(project_id="project-b")
+
+    assert result == {}
+    assert backend.calls == []
+
+
+class _SetWithValuesIterationConfig:
+    def fetch_iterations_config(self):
+        return {
+            "iteration_sets": [
+                {
+                    "id": "set-a",
+                    "name": "Set A",
+                    "source_project": "TeamA",
+                    "root_path": "RootA",
+                    "values": [
+                        {
+                            "path": "TeamA\\RootA\\Sprint 2",
+                            "name": "Sprint 2",
+                            "startDate": "2026-02-01",
+                            "finishDate": "2026-02-14",
+                        }
+                    ],
+                    "cached_at": "2026-02-15T00:00:00Z",
+                }
+            ]
+        }
+
+
+def test_list_iterations_prefers_cached_set_values_when_present():
+    backend = _FakeBackend()
+    repo = IterationRepository(
+        backend=backend,
+        project_repository=_SetBasedProjectRepo(),
+        credential_provider=_FakeCredProvider(),
+        iteration_config=_SetWithValuesIterationConfig(),
+    )
+
+    result = repo.list_iterations(project_id="project-a")
+
+    assert sorted(result.keys()) == ["project-a"]
+    assert result["project-a"]["iterationSetId"] == "set-a"
+    assert result["project-a"]["sourceProject"] == "TeamA"
+    assert result["project-a"]["roots"] == ["RootA"]
+    assert len(result["project-a"]["iterations"]) == 1
+    assert result["project-a"]["iterations"][0]["path"] == "TeamA\\RootA\\Sprint 2"
+    assert backend.calls == []
+
+
+class _FailingBackend:
+    def fetch_iterations(self, project, root_paths=None, credential=None):
+        raise RuntimeError("backend unavailable")
+
+
+def test_list_iterations_keeps_association_when_live_fetch_fails():
+    repo = IterationRepository(
+        backend=_FailingBackend(),
+        project_repository=_SetBasedProjectRepo(),
+        credential_provider=_FakeCredProvider(),
+        iteration_config=_SetBasedIterationConfig(),
+    )
+
+    result = repo.list_iterations(project_id="project-a")
+
+    assert sorted(result.keys()) == ["project-a"]
+    assert result["project-a"]["sourceProject"] == "TeamA"
+    assert result["project-a"]["roots"] == ["RootA"]
+    assert result["project-a"]["iterations"] == []
+
+
+def test_list_iteration_sets_returns_set_id_keyed_payload():
+    backend = _FakeBackend()
+    repo = IterationRepository(
+        backend=backend,
+        project_repository=_SetBasedProjectRepo(),
+        credential_provider=_FakeCredProvider(),
+        iteration_config=_SetWithValuesIterationConfig(),
+    )
+
+    result = repo.list_iteration_sets()
+
+    assert sorted(result.keys()) == ["set-a"]
+    assert result["set-a"]["id"] == "set-a"
+    assert result["set-a"]["sourceProject"] == "TeamA"
+    assert result["set-a"]["rootPath"] == "RootA"
+    assert len(result["set-a"]["iterations"]) == 1

@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
-import { UIEvents, FeatureEvents } from '../core/EventRegistry.js';
+import { UIEvents, FeatureEvents, ProjectEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
 import { getIconTemplate } from '../services/IconService.js';
 
@@ -848,12 +848,16 @@ export class DetailsPanelLit extends LitElement {
     super();
     this.feature = null;
     this.open = false;
+    this.iterations = [];
     this.editingCapacityTeam = null; // Track which team pill is being edited
     this.showAddTeamPopover = false; // Track if add team popover is visible
     this.editingState = false;
     this._stateEditValue = null;
     this._newTagText = '';
     this._onShow = this._onShow.bind(this);
+    this._onFeatureUpdatedBound = this._onFeatureUpdated.bind(this);
+    this._onCapacityUpdatedBound = this._onCapacityUpdated.bind(this);
+    this._onProjectsChangedBound = this._onProjectsChanged.bind(this);
   }
 
   // Note: use component's shadow DOM (default) so component styles apply correctly
@@ -878,8 +882,9 @@ export class DetailsPanelLit extends LitElement {
     super.connectedCallback();
     bus.on(UIEvents.DETAILS_SHOW, this._onShow);
     bus.on(FeatureEvents.SELECTED, this._onShow);
-    bus.on(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
-    bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdated.bind(this));
+    bus.on(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
+    bus.on(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
+    bus.on(ProjectEvents.CHANGED, this._onProjectsChangedBound);
     //TODO: Should the side panel receive update if it is shown and the feature is changed?
     //TODO: Should standardise what is sent on events (full feature vs id only)
 
@@ -952,22 +957,32 @@ export class DetailsPanelLit extends LitElement {
     // Refresh feature data if the currently displayed feature was updated
     if (!this.open || !this.feature) return;
 
-    const ids = payload?.ids || [];
-    if (ids.includes(this.feature.id)) {
+    const ids = payload?.ids;
+    const isGlobalRefresh = !Array.isArray(ids);
+    if (isGlobalRefresh || ids.includes(this.feature.id)) {
       // Get fresh feature data from state
       const updated = state.getEffectiveFeatureById(this.feature.id);
       if (updated) {
         this.feature = updated;
+        this._loadIterationsForFeature();
         this.requestUpdate();
       }
     }
   }
 
+  _onProjectsChanged() {
+    // Iteration groups are keyed by configured project id and can change after
+    // baseline/admin refreshes; when panel is open, reload options for current feature.
+    if (!this.open || !this.feature) return;
+    this._loadIterationsForFeature();
+  }
+
   disconnectedCallback() {
     bus.off(UIEvents.DETAILS_SHOW, this._onShow);
     bus.off(FeatureEvents.SELECTED, this._onShow);
-    bus.off(FeatureEvents.UPDATED, this._onFeatureUpdated.bind(this));
-    bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdated.bind(this));
+    bus.off(FeatureEvents.UPDATED, this._onFeatureUpdatedBound);
+    bus.off(FeatureEvents.CAPACITY_UPDATED, this._onCapacityUpdatedBound);
+    bus.off(ProjectEvents.CHANGED, this._onProjectsChangedBound);
     document.body.removeEventListener('mousedown', this._onBodyMouseDown);
     document.body.removeEventListener('click', this._onBodyClick);
     super.disconnectedCallback();
@@ -1333,7 +1348,7 @@ export class DetailsPanelLit extends LitElement {
         return;
       }
 
-      const projectId = f.project ? String(f.project) : null;
+      const projectId = f.project ? String(f.project).trim() : '';
       this.iterations = state.getIterationsForProject(projectId);
       // Lit's property-binding diff skips re-setting `.value` on the <select>
       // when `selectedPath` hasn't changed between renders (same card reopened).
@@ -1959,7 +1974,7 @@ export class DetailsPanelLit extends LitElement {
                           ${this._formatIterationLabel(it)}
                         </option>`
                     )
-                  : html`<option disabled>Loading…</option>`}
+                  : html`<option disabled>No iterations available</option>`}
                 </select>
               </div>
 

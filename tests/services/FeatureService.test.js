@@ -107,6 +107,50 @@ describe('FeatureService public methods', () => {
     expect(eff.changedFields).to.include('tags');
   });
 
+  it('ignores unsupported override fields that would change project identity', () => {
+    // Baseline has canonical project id.
+    baselineStore = {
+      getFeatures: () => [
+        {
+          id: 'f3',
+          title: 'F3',
+          type: 'feature',
+          project: 'project-a',
+          start: '2025-01-01',
+          end: '2025-01-10',
+        },
+      ],
+      getFeatureById: () => new Map([
+        ['f3', {
+          id: 'f3',
+          title: 'F3',
+          type: 'feature',
+          project: 'project-a',
+          start: '2025-01-01',
+          end: '2025-01-10',
+        }],
+      ]),
+    };
+
+    activeScenario = {
+      overrides: {
+        f3: {
+          project: 'Project A',
+          sourceProject: 'SW',
+          start: '2025-01-02',
+        },
+      },
+      isChanged: false,
+    };
+
+    fs = new FeatureService(baselineStore, () => activeScenario);
+
+    const eff = fs.getEffectiveFeatureById('f3');
+    expect(eff.project).to.equal('project-a');
+    expect(eff.start).to.equal('2025-01-02');
+    expect(eff.changedFields).to.include('start');
+  });
+
   it('revertFeature removes override and emits', () => {
     activeScenario.overrides['f2'] = { start: 'x', end: 'y' };
     const ok = fs.revertFeature('f2');

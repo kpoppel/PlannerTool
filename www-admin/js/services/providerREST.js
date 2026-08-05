@@ -479,6 +479,45 @@ export class AdminProviderREST {
     }
   }
 
+  async deleteIterationSet(id) {
+    try {
+      const res = await this._fetch(`/admin/v1/iterations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: this._headers(),
+      });
+      if (!res.ok) {
+        let detail = null;
+        try {
+          detail = await res.json();
+        } catch {
+          detail = null;
+        }
+        return { ok: false, status: res.status, detail };
+      }
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:deleteIterationSet', err);
+      return { ok: false, error: String(err) };
+    }
+  }
+
+  async unassociateAllIterations(id) {
+    try {
+      const res = await this._fetch(`/admin/v1/iterations/${encodeURIComponent(id)}/unassociate-all`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: this._headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+      return await res.json();
+    } catch (err) {
+      console.error('AdminProviderREST:unassociateAllIterations', err);
+      return { ok: false, error: String(err) };
+    }
+  }
+
   // --- Azure browse helpers (require PAT in session) ---
 
   async browseAzureProjects(orgUrl) {

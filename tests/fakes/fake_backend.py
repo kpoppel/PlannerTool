@@ -62,6 +62,8 @@ class FakeBackend(BackendPort):
         self.write_task_calls: List[dict] = []
         self.fetch_history_calls: List[dict] = []
         self.invalidate_cache_calls: int = 0
+        self.fetch_projects_calls: int = 0
+        self.fetch_project_map_calls: int = 0
 
     # ------------------------------------------------------------------
     # Setup helpers (for test authors)
@@ -184,12 +186,14 @@ class FakeBackend(BackendPort):
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[dict]:
+        self.fetch_project_map_calls += 1
         return list(self._project_map)
 
     def fetch_projects(
         self,
         credential: Optional[BackendCredential] = None,
     ) -> List[Any]:
+        self.fetch_projects_calls += 1
         from planner_lib.domain.projects import DomainProject
         return [
             DomainProject(

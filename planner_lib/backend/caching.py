@@ -33,6 +33,12 @@ Design
 * ``invalidate_cache``: delete every key in the namespace.
 * Adding a new ``fetch_*`` method to any backend is cached automatically —
   no changes here required.
+* ``fetch_projects`` / ``fetch_project_map`` are overridden below to call
+  straight through to the inner backend, bypassing the diskcache TTL layer
+  entirely: project config already lives in diskcache via ``ConfigBackend``,
+  and ADO enrichment (state_categories) reads a separate, already-cached
+  metadata service, so there is no remote (ADO) API call for this layer to
+  save by also caching the result.
 """
 from __future__ import annotations
 
@@ -81,11 +87,11 @@ class CacheTTLConfig:
     fetch_iterations: Optional[timedelta] = dataclasses.field(default_factory=lambda: timedelta(hours=8))
     # Config backend methods — None = no time-based expiry, invalidate on admin write
     fetch_people: Optional[timedelta] = None
-    fetch_projects: Optional[timedelta] = None
-    fetch_project_map: Optional[timedelta] = None
     fetch_config_teams: Optional[timedelta] = None
     fetch_iterations_config: Optional[timedelta] = None
     fetch_area_plan_map: Optional[timedelta] = None
+    # NOTE: fetch_projects / fetch_project_map have no TTL entry — CachingBackend
+    # overrides those methods directly and never routes them through diskcache.
 
     def ttl_for(self, method_name: str) -> Optional[timedelta]:
         return getattr(self, method_name, self.default)
@@ -546,6 +552,23 @@ class CachingBackend:
                     self._storage.save(_NAMESPACE, key, new_tasks, ttl_seconds=remaining)
         except Exception as exc:
             logger.warning("CachingBackend: _patch_task_in_cache error: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Project config: bypass the diskcache TTL layer entirely.
+    #
+    # Defining these here (rather than relying on the generic __getattribute__
+    # proxy) means they're excluded from caching for free — the proxy only
+    # wraps fetch_* methods not already present on this class.
+    # ------------------------------------------------------------------
+
+    def fetch_projects(self, *args, **kwargs):
+        """Delegate straight to the inner backend; already diskcache-backed."""
+        return self._inner.fetch_projects(*args, **kwargs)
+
+    def fetch_project_map(self, *args, **kwargs):
+        """Delegate straight to the inner backend; already diskcache-backed."""
+        return self._inner.fetch_project_map(*args, **kwargs)
+
 
     def invalidate_cache(self) -> Dict[str, Any]:
         """Delete every cache entry in the backend_domain namespace."""

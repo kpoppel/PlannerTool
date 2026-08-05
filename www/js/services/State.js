@@ -430,13 +430,24 @@ class State {
   get childrenByParent() {
     return this._dataInitService.getChildrenByParentMap();
   }
-  get iterations() {
-    return this._dataInitService.iterationsByProject || {};
+  get iterationSetsById() {
+    return this._dataInitService.iterationSetsById || {};
   }
   getIterationsForProject(projectId) {
-    if (!projectId) return [];
-    const group = this.iterations[String(projectId)];
-    return Array.isArray(group?.iterations) ? group.iterations : [];
+    const setsById = this.iterationSetsById || {};
+    const idKey = projectId == null ? '' : String(projectId).trim();
+
+    if (!idKey) return [];
+    // Canonical path: task.project (project id) -> project.iteration_uuid -> set iterations.
+    const project = (this.projects || []).find((p) => String(p?.id || '').trim() === idKey);
+    const iterationSetId = String(project?.iteration_uuid || '').trim();
+    if (!iterationSetId) return [];
+
+    const linkedSet = setsById[iterationSetId];
+    if (Array.isArray(linkedSet?.iterations)) {
+      return linkedSet.iterations;
+    }
+    return [];
   }
 
   // Available task types derived from baseline features

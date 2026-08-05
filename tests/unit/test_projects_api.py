@@ -51,8 +51,21 @@ def _make_task_repository():
                 project_key: {
                     'projectId': project_key,
                     'projectName': 'Proj',
+                    'iterationSetId': None,
                     'sourceProject': 'ADO',
                     'roots': ['Root'],
+                    'iterations': [],
+                }
+            }
+
+        def list_iteration_sets(self, user_id=None):
+            return {
+                'set-1': {
+                    'id': 'set-1',
+                    'name': 'Set 1',
+                    'sourceProject': 'ADO',
+                    'rootPath': 'Root',
+                    'cachedAt': None,
                     'iterations': [],
                 }
             }
@@ -116,11 +129,19 @@ def test_teams_missing_service(client):
 
 
 def test_projects_happy_path(client):
-    svc = _make_project_service([{'id': 'p1', 'name': 'Proj1'}])
+    svc = _make_project_service([{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': None}])
     register_service_on_client(client, 'project_repository', svc)
     r = client.get('/api/projects', headers={'X-Session-Id': 'test-session'})
     assert r.status_code == 200
-    assert r.json() == [{'id': 'p1', 'name': 'Proj1'}]
+    assert r.json() == [{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': None}]
+
+
+def test_projects_returns_iteration_uuid_from_repository(client):
+    svc = _make_project_service([{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': 'set-abc'}])
+    register_service_on_client(client, 'project_repository', svc)
+    r = client.get('/api/projects', headers={'X-Session-Id': 'test-session'})
+    assert r.status_code == 200
+    assert r.json() == [{'id': 'p1', 'name': 'Proj1', 'iteration_uuid': 'set-abc'}]
 
 
 def test_tasks_list_and_project_param(client):
@@ -228,7 +249,7 @@ def test_tasks_missing_service_returns_500(client):
     assert r.status_code == 500
 
 
-def test_iterations_project_param_is_forwarded(client):
+def test_iterations_returns_set_id_keyed_payload(client):
     task_repo = _make_task_repository()
 
     class AzureClientStub:
@@ -242,23 +263,21 @@ def test_iterations_project_param_is_forwarded(client):
 
     assert r.status_code == 200
     assert r.json() == {
-        'iterationsByProject': {
-            'project-dalton': {
-                'projectId': 'project-dalton',
-                'projectName': 'Proj',
+        'iterationSetsById': {
+            'set-1': {
+                'id': 'set-1',
+                'name': 'Set 1',
                 'sourceProject': 'ADO',
-                'roots': ['Root'],
+                'rootPath': 'Root',
+                'cachedAt': None,
                 'iterations': [],
             }
-        }
+        },
     }
-    assert task_repo.last_iteration_args == {
-        'project_id': 'project-dalton',
-        'user_id': 'test@example.com',
-    }
+    assert task_repo.last_iteration_args is None
 
 
-def test_iterations_without_filter_returns_grouped_payload(client):
+def test_iterations_without_filter_returns_set_id_keyed_payload(client):
     task_repo = _make_task_repository()
 
     class AzureClientStub:
@@ -272,14 +291,15 @@ def test_iterations_without_filter_returns_grouped_payload(client):
 
     assert r.status_code == 200
     assert r.json() == {
-        'iterationsByProject': {
-            'project-a': {
-                'projectId': 'project-a',
-                'projectName': 'Proj',
+        'iterationSetsById': {
+            'set-1': {
+                'id': 'set-1',
+                'name': 'Set 1',
                 'sourceProject': 'ADO',
-                'roots': ['Root'],
+                'rootPath': 'Root',
+                'cachedAt': None,
                 'iterations': [],
             }
-        }
+        },
     }
 

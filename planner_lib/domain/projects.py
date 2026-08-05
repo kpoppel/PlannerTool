@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional
-from typing_extensions import TypedDict, Literal
+from typing_extensions import TypedDict, Literal, NotRequired
 
 # Azure DevOps state-category strings as used in the ADO metadata API.
 StateCategory = Literal["Proposed", "InProgress", "Completed", "Resolved", "Removed"]
@@ -19,3 +19,4 @@ class DomainProject(TypedDict):
     state_display_sequence: List[str]           # global state ordering list
     display_states: List[str]
     state_categories: Dict[str, StateCategory]  # state name → ADO category
+    iteration_uuid: NotRequired[Optional[str]]  # associated iteration set id

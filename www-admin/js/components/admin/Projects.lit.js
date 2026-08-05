@@ -37,6 +37,7 @@ export class AdminProjects extends BaseConfigComponent {
     _editMetadata: { type: Object, state: true },
     _editMetadataLoading: { type: Boolean, state: true },
     _editMetadataError: { type: String, state: true },
+    _iterationSets: { type: Array, state: true },
   };
 
   static styles = [
@@ -62,11 +63,30 @@ export class AdminProjects extends BaseConfigComponent {
     this._editMetadata = null;
     this._editMetadataLoading = false;
     this._editMetadataError = '';
+    this._iterationSets = [];
   }
 
   get configType() { return 'projects'; }
   get title() { return 'Projects Configuration'; }
   get defaultContent() { return { project_map: [] }; }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._loadIterationSets();
+  }
+
+  async _loadIterationSets() {
+    try {
+      const cfg = await adminProvider.getIterations();
+      const sets = Array.isArray(cfg?.iteration_sets) ? cfg.iteration_sets : [];
+      this._iterationSets = sets
+        .filter((s) => s && typeof s === 'object' && s.id)
+        .map((s) => ({ id: String(s.id), name: String(s.name || s.id) }));
+    } catch (err) {
+      console.warn('AdminProjects: failed loading iteration sets', err);
+      this._iterationSets = [];
+    }
+  }
 
   updated(changedProperties) {
     super.updated(changedProperties);
@@ -314,6 +334,22 @@ export class AdminProjects extends BaseConfigComponent {
   updateProjectField(index, field, value) {
     this.localProjects[index] = { ...this.localProjects[index], [field]: value };
     this.requestUpdate();
+  }
+
+  updateProjectIteration(index, value) {
+    this.localProjects[index] = {
+      ...this.localProjects[index],
+      iteration_uuid: value || null,
+    };
+    this.content = { ...this.content, project_map: [...this.localProjects] };
+    this.requestUpdate();
+  }
+
+  iterationSetLabel(id) {
+    if (!id) return '';
+    const found = (this._iterationSets || []).find((it) => String(it.id) === String(id));
+    if (!found) return String(id);
+    return found.name || String(id);
   }
 
   addChip(index, field, value) {

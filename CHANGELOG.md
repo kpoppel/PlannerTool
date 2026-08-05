@@ -14,10 +14,11 @@ Template - do not change :
 ### Fixed
 ---
 
-## [v4.3.0] - unreleased
+## [v5.0.0] - unreleased
 ### Added
 - added feature flag for snapshots of the server configuration and admin interface for the same. Default is disabled, but existing
   servers will have these backups in the diskcache, so enable and clean up, then disable if they are not wanted.
+- Iteration-sets added: admin iterations now supports sets of iterations from different ADO projects. Delete/unassociate APIs, project schema includes iteration association field, and runtime iteration resolution honors project-level iteration UUID links.
   
 ### Changed
 - Migrated all plugins to use the same base class. No more 3 generations of plugin development.

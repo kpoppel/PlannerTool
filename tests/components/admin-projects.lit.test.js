@@ -35,6 +35,17 @@ describe('admin-projects', () => {
     expect(comp.localProjects[0].display_states).to.not.include('NewState');
   });
 
+  it('resolves iteration set name by id for display', async () => {
+    comp._iterationSets = [
+      { id: 'set-1', name: 'Core Iterations' },
+      { id: 'set-2', name: 'Platform Iterations' },
+    ];
+
+    expect(comp.iterationSetLabel('set-2')).to.equal('Platform Iterations');
+    expect(comp.iterationSetLabel('unknown')).to.equal('unknown');
+    expect(comp.iterationSetLabel('')).to.equal('');
+  });
+
   describe('area-path metadata integration', () => {
     const METADATA = {
       types: ['Epic', 'Feature', 'User Story'],

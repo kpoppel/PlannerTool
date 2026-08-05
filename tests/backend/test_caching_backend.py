@@ -513,3 +513,25 @@ def test_fetch_iterations_delegated_to_inner(caching, inner):
     inner.set_iterations('ProjectX', {'S1': {'startDate': '2026-01-01'}})
     result = caching.fetch_iterations('ProjectX')
     assert 'S1' in result
+
+
+# ---------------------------------------------------------------------------
+# fetch_projects / fetch_project_map bypass the TTL cache entirely.
+#
+# Project config already lives in diskcache via ConfigBackend (or, for the
+# ADO backend, is enriched per-call from the separate metadata-service cache),
+# so it is always fresh. The TTL layer exists to reduce load on the remote
+# ADO API; wrapping already-cached config data in a second, indefinitely-TTL
+# cache only adds staleness risk with no benefit.
+# ---------------------------------------------------------------------------
+
+def test_fetch_projects_always_calls_inner_not_cached(caching, inner):
+    caching.fetch_projects()
+    caching.fetch_projects()
+    assert inner.fetch_projects_calls == 2
+
+
+def test_fetch_project_map_always_calls_inner_not_cached(caching, inner):
+    caching.fetch_project_map()
+    caching.fetch_project_map()
+    assert inner.fetch_project_map_calls == 2

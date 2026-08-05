@@ -13,10 +13,21 @@ class DomainIteration(TypedDict):
     finishDate: Optional[str]   # ISO date YYYY-MM-DD or None
 
 
+class DomainIterationSet(TypedDict):
+    """A configured iteration set stored under ``config/iterations``."""
+    id: str
+    name: str
+    source_project: str
+    values: List[DomainIteration]
+    cached_at: Optional[str]
+    root_path: Optional[str]
+
+
 class DomainIterationGroup(TypedDict):
     """Effective iteration set for one configured project."""
     projectId: str
     projectName: str
+    iterationSetId: Optional[str]
     sourceProject: str
     roots: List[str]
     iterations: List[DomainIteration]

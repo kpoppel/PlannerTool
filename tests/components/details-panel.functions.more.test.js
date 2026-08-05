@@ -2,6 +2,8 @@ import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
 import { state } from '../../www/js/services/State.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('DetailsPanel additional function coverage', () => {
   beforeEach(async () => {
@@ -205,6 +207,43 @@ describe('DetailsPanel additional function coverage', () => {
     getIterationsStub.restore();
     datesStub.restore();
     fieldStub.restore();
+  });
+
+  it('reloads iterations when projects change while panel is open', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    el.open = true;
+    el.feature = { id: 'f-proj-refresh', project: 'project-a' };
+    await el.updateComplete;
+
+    const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
+    bus.emit(ProjectEvents.CHANGED, [{ id: 'project-a', name: 'Project A' }]);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(reloadStub.called).to.be.true;
+    reloadStub.restore();
+  });
+
+  it('reloads displayed feature and iterations on global FeatureEvents.UPDATED', async () => {
+    const el = await fixture(html`<details-panel></details-panel>`);
+    const displayed = { id: 'f-global-refresh', project: 'project-a' };
+    const refreshed = { id: 'f-global-refresh', project: 'project-a', state: 'Done' };
+
+    el.open = true;
+    el.feature = displayed;
+    await el.updateComplete;
+
+    const getStub = sinon.stub(state, 'getEffectiveFeatureById').returns(refreshed);
+    const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
+
+    bus.emit(FeatureEvents.UPDATED);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(getStub.calledOnceWithExactly('f-global-refresh')).to.be.true;
+    expect(el.feature).to.equal(refreshed);
+    expect(reloadStub.called).to.be.true;
+
+    getStub.restore();
+    reloadStub.restore();
   });
 
   it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {

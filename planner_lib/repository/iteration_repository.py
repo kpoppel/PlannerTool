@@ -69,36 +69,78 @@ class IterationRepository:
             if project_id and pid != project_id:
                 continue
 
-            source_project, raw_roots = self._resolve_iteration_source(project, iterations_config)
+            source_project, raw_roots, cached_values, iteration_set_id = self._resolve_iteration_source(project, iterations_config)
             if not source_project:
                 continue
 
-            combo = (source_project, tuple(raw_roots))
-            try:
-                if combo not in fetched_combos:
-                    iters_map: Dict[str, Any] = self._backend.fetch_iterations(
+            if cached_values:
+                effective_iterations = self._normalize_cached_values(cached_values)
+            else:
+                combo = (source_project, tuple(raw_roots))
+                try:
+                    if combo not in fetched_combos:
+                        iters_map: Dict[str, Any] = self._backend.fetch_iterations(
+                            source_project,
+                            root_paths=raw_roots or None,
+                            credential=credential,
+                        )
+                        fetched_combos[combo] = self._normalize_iterations(iters_map)
+                    effective_iterations = list(fetched_combos[combo])
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to fetch iterations for configured project '%s' "
+                        "(source_project='%s', roots=%s): %s",
+                        project.get('name') or '?',
                         source_project,
-                        root_paths=raw_roots or None,
-                        credential=credential,
+                        raw_roots,
+                        exc,
                     )
-                    fetched_combos[combo] = self._normalize_iterations(iters_map)
+                    # Keep the configured association visible even when live fetch fails.
+                    effective_iterations = []
 
-                out[str(pid)] = DomainIterationGroup(
-                    projectId=str(pid),
-                    projectName=str(project.get('name') or ''),
-                    sourceProject=source_project,
-                    roots=list(raw_roots),
-                    iterations=list(fetched_combos[combo]),
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to fetch iterations for configured project '%s' "
-                    "(source_project='%s', roots=%s): %s",
-                    project.get('name') or '?',
-                    source_project,
-                    raw_roots,
-                    exc,
-                )
+            out[str(pid)] = DomainIterationGroup(
+                projectId=str(pid),
+                projectName=str(project.get('name') or ''),
+                iterationSetId=iteration_set_id,
+                sourceProject=source_project,
+                roots=list(raw_roots),
+                iterations=effective_iterations,
+            )
+
+        return out
+
+    def list_iteration_sets(
+        self,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, dict]:
+        """Return configured iteration sets keyed by set id.
+
+        This is the direct payload for plan→iteration_set associations and
+        allows clients to resolve iterations by `project.iteration_uuid`.
+        """
+        _ = self._get_optional_credential(user_id)
+        iterations_config = self._iteration_config.fetch_iterations_config() or {}
+        raw_sets = iterations_config.get('iteration_sets')
+        if not isinstance(raw_sets, list):
+            return {}
+
+        out: Dict[str, dict] = {}
+        for item in raw_sets:
+            if not isinstance(item, dict):
+                continue
+            set_id = str(item.get('id') or '').strip()
+            if not set_id:
+                continue
+
+            values = item.get('values') if isinstance(item.get('values'), list) else []
+            out[set_id] = {
+                'id': set_id,
+                'name': str(item.get('name') or set_id),
+                'sourceProject': str(item.get('source_project') or '').strip(),
+                'rootPath': str(item.get('root_path') or '').strip() or None,
+                'cachedAt': item.get('cached_at'),
+                'iterations': self._normalize_cached_values(values),
+            }
 
         return out
 
@@ -107,8 +149,43 @@ class IterationRepository:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_iteration_source(project: dict, iterations_config: dict) -> tuple[str, List[str]]:
-        """Resolve source ADO project and iteration roots for one configured project."""
+    def _resolve_iteration_source(
+        project: dict,
+        iterations_config: dict,
+    ) -> tuple[str, List[str], List[dict], Optional[str]]:
+        """Resolve source ADO project and iteration roots for one configured project.
+
+        Preferred config format:
+            {"iteration_sets": [{"id", "source_project", "root_path?", ...}]}
+
+        Matching rule:
+        - project.iteration_uuid must point at a set id.
+        - no implicit default when association is missing.
+
+        Legacy config fallback remains supported:
+            {"azure_project", "default_roots", "project_overrides"}
+        """
+        iteration_sets = iterations_config.get('iteration_sets')
+        if isinstance(iteration_sets, list):
+            assoc_id = str(project.get('iteration_uuid') or '').strip()
+            if not assoc_id:
+                return '', [], [], None
+
+            for s in iteration_sets:
+                if not isinstance(s, dict):
+                    continue
+                if str(s.get('id') or '').strip() != assoc_id:
+                    continue
+                source_project = str(s.get('source_project') or '').strip()
+                if not source_project:
+                    return '', [], [], assoc_id
+                root_path = str(s.get('root_path') or '').strip()
+                values = s.get('values') if isinstance(s.get('values'), list) else []
+                return source_project, [root_path] if root_path else [], values, assoc_id
+
+            return '', [], [], assoc_id or None
+
+        # Legacy fallback path
         configured_name = str(project.get('name') or '').strip()
         area_path = str(project.get('area_path') or '')
         area_project = (
@@ -138,7 +215,20 @@ class IterationRepository:
             raw_roots = candidate_roots if isinstance(candidate_roots, list) else default_roots
 
         clean_roots = [str(r) for r in (raw_roots or []) if str(r).strip()]
-        return source_project, clean_roots
+        return source_project, clean_roots, [], None
+
+    @classmethod
+    def _normalize_cached_values(cls, values: List[dict]) -> List[DomainIteration]:
+        """Normalize values embedded in iteration_set payloads."""
+        by_path: Dict[str, Dict[str, Any]] = {}
+        for item in values or []:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get('path') or '').strip()
+            if not path or path in by_path:
+                continue
+            by_path[path] = item
+        return cls._normalize_iterations(by_path)
 
     @staticmethod
     def _normalize_iterations(iters_map: Dict[str, Any]) -> List[DomainIteration]:

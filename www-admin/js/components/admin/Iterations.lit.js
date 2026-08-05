@@ -2,12 +2,7 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
 /**
- * AdminIterations - Manage iteration root paths configuration
- *
- * This component allows admins to:
- * - Browse available iterations for a project
- * - Configure default iteration root paths
- * - Set project-specific overrides
+ * AdminIterations - Manage iteration sets configuration.
  */
 export class AdminIterations extends LitElement {
   static styles = css`
@@ -53,16 +48,24 @@ export class AdminIterations extends LitElement {
 
     .browser-controls {
       display: flex;
+      flex-wrap: wrap;
+      align-items: center;
       gap: 8px;
       margin-bottom: 12px;
     }
 
-    .browser-controls input {
-      flex: 1;
+    .browser-controls input,
+    .browser-controls select {
+      flex: 1 1 220px;
+      min-width: 180px;
       padding: 6px 10px;
       border: 1px solid #d1d5db;
       border-radius: 4px;
       font-size: 0.9rem;
+    }
+
+    .browser-controls input {
+      flex: 2 1 320px;
     }
 
     .browser-controls button {
@@ -102,11 +105,101 @@ export class AdminIterations extends LitElement {
     .iteration-item .path {
       font-family: monospace;
       font-weight: 500;
+      word-break: break-word;
     }
 
     .iteration-item .dates {
       font-size: 0.8rem;
       color: #6b7280;
+    }
+
+    .iteration-item.selected {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .browser-actions {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .selection-summary {
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+
+    .set-row {
+      border: 1px solid #e6e6e6;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: #f9fafb;
+    }
+
+    .set-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .set-grid input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      background: #fff;
+    }
+
+    .set-meta {
+      font-size: 0.82rem;
+      color: #4b5563;
+      margin-top: 6px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .set-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .set-actions button {
+      border: 1px solid #e6e6e6;
+      background: #fff;
+      padding: 5px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .btn-muted {
+      background: #f9fafb;
+      border-color: #e5e7eb;
+    }
+
+    .notice {
+      margin: 8px 0 12px 0;
+      padding: 8px 10px;
+      border: 1px solid #fcd34d;
+      background: #fffbeb;
+      border-radius: 6px;
+      color: #92400e;
+      font-size: 0.86rem;
     }
 
     .config-editor {
@@ -123,90 +216,6 @@ export class AdminIterations extends LitElement {
       font-weight: 500;
       margin-bottom: 4px;
       font-size: 0.9rem;
-    }
-
-    .roots-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 8px;
-    }
-
-    .root-item {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding: 6px 8px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 4px;
-    }
-
-    .root-item input {
-      flex: 1;
-      padding: 4px 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      font-family: monospace;
-    }
-
-    .root-item button {
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #f3f4f6;
-      cursor: pointer;
-      font-size: 0.8rem;
-    }
-
-    .root-item button:hover {
-      background: #e5e7eb;
-    }
-
-    .add-root {
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: 1px solid #3b82f6;
-      background: #eff6ff;
-      color: #3b82f6;
-      cursor: pointer;
-      font-size: 0.85rem;
-      margin-bottom: 8px;
-    }
-
-    .add-root:hover {
-      background: #dbeafe;
-    }
-
-    .project-overrides {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 2px solid #e5e7eb;
-    }
-
-    .override-item {
-      margin-bottom: 12px;
-      padding: 12px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 4px;
-    }
-
-    .override-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .override-header input {
-      flex: 1;
-      padding: 4px 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      font-weight: 500;
     }
 
     .actions {
@@ -278,61 +287,85 @@ export class AdminIterations extends LitElement {
     config: { type: Object },
     browsedIterations: { type: Array },
     browseProject: { type: String },
-    browseRoot: { type: String },
+    browseProjects: { type: Array },
+    filterText: { type: String },
+    selectedPaths: { type: Object },
     loading: { type: Boolean },
     statusMsg: { type: String },
     statusType: { type: String },
     useRawMode: { type: Boolean },
-    configuredProjects: { type: Array },
+    legacyDetected: { type: Boolean },
   };
 
   constructor() {
     super();
     this.config = {
-      azure_project: '',
-      default_roots: [],
-      project_overrides: {},
+      iteration_sets: [],
     };
     this.browsedIterations = [];
     this.browseProject = '';
-    this.browseRoot = '';
+    this.browseProjects = [];
+    this.filterText = '';
+    this.selectedPaths = new Set();
     this.loading = false;
     this.statusMsg = '';
     this.statusType = '';
     this.useRawMode = false;
-    this.configuredProjects = [];
+    this.legacyDetected = false;
+  }
+
+  get filteredIterations() {
+    const list = Array.isArray(this.browsedIterations) ? this.browsedIterations : [];
+    const q = String(this.filterText || '').trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((it) => this.stripIterationPrefix(it?.path || '').toLowerCase().includes(q));
   }
 
   normalizeConfig(rawConfig) {
     const base = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
-    const rawOverrides =
-      base.project_overrides && typeof base.project_overrides === 'object' ?
-        base.project_overrides
-      : {};
 
-    const normalizedOverrides = {};
-    Object.entries(rawOverrides).forEach(([projectName, overrideValue]) => {
-      if (overrideValue && typeof overrideValue === 'object') {
-        const roots = Array.isArray(overrideValue.roots) ? overrideValue.roots : [];
+    // Old shape detector for migration notice.
+    this.legacyDetected =
+      Array.isArray(base.default_roots) ||
+      (base.project_overrides && typeof base.project_overrides === 'object');
 
-        normalizedOverrides[projectName] = {
-          azure_project: overrideValue.azure_project || '',
-          roots: [...roots],
-        };
-      }
-    });
+    const rawSets = Array.isArray(base.iteration_sets) ? base.iteration_sets : [];
+    let normalizedSets = rawSets
+      .filter((s) => s && typeof s === 'object')
+      .map((s) => ({
+        id: String(s.id || '').trim(),
+        name: String(s.name || s.id || '').trim(),
+        source_project: String(s.source_project || '').trim(),
+        root_path: s.root_path ? String(s.root_path).trim() : '',
+        values: Array.isArray(s.values) ? s.values : [],
+        cached_at: s.cached_at || null,
+      }))
+      .filter((s) => s.id && s.source_project);
+
+    if (normalizedSets.length === 0 && this.legacyDetected) {
+      const legacyProject = String(base.azure_project || '').trim();
+      const legacyRoots = Array.isArray(base.default_roots) ? base.default_roots : [];
+      normalizedSets = [
+        {
+          id: 'legacy-default',
+          name: 'Legacy Iterations',
+          source_project: legacyProject,
+          root_path: legacyRoots[0] ? String(legacyRoots[0]).trim() : '',
+          values: [],
+          cached_at: null,
+        },
+      ];
+    }
 
     return {
-      azure_project: base.azure_project || '',
-      default_roots: Array.isArray(base.default_roots) ? base.default_roots : [],
-      project_overrides: normalizedOverrides,
+      iteration_sets: normalizedSets,
     };
   }
 
   connectedCallback() {
     super.connectedCallback();
     this.loadConfig();
-    this.loadProjects();
+    this.loadBrowseProjects();
   }
 
   async loadConfig() {
@@ -340,10 +373,6 @@ export class AdminIterations extends LitElement {
     try {
       const data = await adminProvider.getIterations();
       this.config = this.normalizeConfig(data);
-      // Pre-fill browseProject from config if available
-      if (this.config.azure_project && !this.browseProject) {
-        this.browseProject = this.config.azure_project;
-      }
       this.statusMsg = '';
     } catch (e) {
       this.statusMsg = 'Error loading iterations config';
@@ -353,39 +382,40 @@ export class AdminIterations extends LitElement {
     }
   }
 
-  async loadProjects() {
+  async loadBrowseProjects() {
     try {
-      const data = await adminProvider.getProjects();
-      if (data && data.project_map) {
-        // Extract unique project names from configured projects
-        const names = new Set();
-        data.project_map.forEach((p) => {
-          if (p.name) names.add(p.name);
-        });
-        this.configuredProjects = Array.from(names).sort();
+      const adoCfg = await adminProvider.getAdo();
+      const org = (adoCfg && adoCfg.organization_url) || '';
+      const result = await adminProvider.browseAzureProjects(org);
+      this.browseProjects = Array.isArray(result?.projects) ? result.projects : [];
+      if (!this.browseProject && this.browseProjects.length > 0) {
+        this.browseProject = this.browseProjects[0];
+      }
+      if (this.browseProject) {
+        await this.browseIterations();
       }
     } catch (e) {
-      console.error('Failed to load projects:', e);
-      this.configuredProjects = [];
+      console.error('Failed to load Azure projects:', e);
+      this.browseProjects = [];
     }
   }
 
   async browseIterations() {
+    if (!this.browseProject) {
+      this.browsedIterations = [];
+      this.selectedPaths = new Set();
+      return;
+    }
+
     this.statusMsg = 'Browsing...';
     this.statusType = '';
     try {
-      // Construct full path with Iteration\ prefix for the API
-      let fullRootPath = null;
-      if (this.browseRoot && this.browseRoot.trim()) {
-        fullRootPath = `${this.browseProject}\\Iteration\\${this.browseRoot}`;
-      }
-
       const result = await adminProvider.browseIterations({
         project: this.browseProject,
-        root_path: fullRootPath,
         depth: 10,
       });
-      this.browsedIterations = result.iterations || [];
+      this.browsedIterations = Array.isArray(result.iterations) ? result.iterations : [];
+      this.selectedPaths = new Set();
       this.statusMsg = `Found ${this.browsedIterations.length} iterations`;
       this.statusType = 'success';
       setTimeout(() => {
@@ -398,110 +428,142 @@ export class AdminIterations extends LitElement {
     }
   }
 
-  // Strip project\Iteration\ prefix from path for display
+  // Strip project\Iteration\ prefix from path for display.
   stripIterationPrefix(path) {
     if (!path) return path;
-    const match = path.match(/^(.+?)\\Iteration\\(.+)$/);
-    return match ? match[2] : path;
-  }
+     const normalized = String(path).replace(/\//g, '\\');
+    const parts = normalized.split('\\').filter(Boolean);
+    if (parts.length === 0) return normalized;
 
-  addDefaultRoot() {
-    this.config.default_roots = [...this.config.default_roots, ''];
-    this.requestUpdate();
-  }
-
-  removeDefaultRoot(index) {
-    this.config.default_roots = this.config.default_roots.filter((_, i) => i !== index);
-    this.requestUpdate();
-  }
-
-  updateDefaultRoot(index, value) {
-    this.config.default_roots[index] = value;
-    this.requestUpdate();
-  }
-
-  addProjectOverride() {
-    // Use first available configured project as default
-    const defaultProject =
-      this.configuredProjects.length > 0 ? this.configuredProjects[0] : '';
-    if (defaultProject) {
-      this.config.project_overrides[defaultProject] = {
-        azure_project: '',
-        roots: [],
-      };
-      this.requestUpdate();
-    } else {
-      alert('No configured projects found. Please configure projects first.');
+    let idx = 0;
+    if (this.browseProject && parts[0].toLowerCase() === String(this.browseProject).toLowerCase()) {
+      idx = 1;
     }
+    if (parts[idx] && /^iterations?$/i.test(parts[idx])) {
+      idx += 1;
+    }
+    const stripped = parts.slice(idx).join('\\');
+    return stripped || normalized;
   }
 
-  changeProjectOverrideName(oldName, newName) {
-    if (oldName === newName) return;
-    if (this.config.project_overrides[newName]) {
-      alert('Project override already exists for: ' + newName);
+  _newSetId() {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+    return `set_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  toggleSelectPath(path) {
+    const next = new Set(this.selectedPaths || []);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    this.selectedPaths = next;
+  }
+
+  _selectedIterationValues() {
+    const roots = Array.from(this.selectedPaths || []);
+    if (roots.length === 0) return [];
+
+    const byPath = new Map();
+    for (const it of this.browsedIterations || []) {
+      const path = String(it?.path || '');
+      if (!path) continue;
+      const include = roots.some((root) => path === root || path.startsWith(`${root}\\`));
+      if (include && !byPath.has(path)) byPath.set(path, it);
+    }
+    return Array.from(byPath.values());
+  }
+
+  saveAsNewIterationSet() {
+    if (!this.browseProject) {
+      this.statusMsg = 'Select an Azure project first';
+      this.statusType = 'error';
       return;
     }
-    this.config.project_overrides[newName] = this.config.project_overrides[oldName];
-    delete this.config.project_overrides[oldName];
-    this.requestUpdate();
+    if ((this.selectedPaths || new Set()).size === 0) {
+      this.statusMsg = 'Select one or more iteration paths from the list first';
+      this.statusType = 'error';
+      return;
+    }
+
+    const values = this._selectedIterationValues();
+    if (values.length === 0) {
+      this.statusMsg = 'No iteration values matched your selection';
+      this.statusType = 'error';
+      return;
+    }
+
+    const selectedRoots = Array.from(this.selectedPaths || []);
+    const rootLabels = selectedRoots.map((p) => this.stripIterationPrefix(p));
+    const leaf = rootLabels[0]?.split('\\').pop() || 'Iterations';
+    const next = {
+      id: this._newSetId(),
+      name: rootLabels.length === 1 ? `Iterations (${leaf})` : `Iterations (${rootLabels.length} roots)`,
+      source_project: this.browseProject,
+      root_path: rootLabels.length === 1 ? rootLabels[0] : null,
+      values,
+      cached_at: new Date().toISOString(),
+    };
+
+    this.config = {
+      ...this.config,
+      iteration_sets: [...(this.config.iteration_sets || []), next],
+    };
+    this.statusMsg = `Added set ${next.name} with ${values.length} iterations`;
+    this.statusType = 'success';
+    this.selectedPaths = new Set();
   }
 
-  removeProjectOverride(projectName) {
-    delete this.config.project_overrides[projectName];
-    this.requestUpdate();
+  updateSetField(index, key, value) {
+    const next = [...(this.config.iteration_sets || [])];
+    next[index] = { ...next[index], [key]: value };
+    this.config = { ...this.config, iteration_sets: next };
   }
 
-  addOverrideRoot(projectName) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: [
-        ...current.roots,
-        '',
-      ],
-    };
-    this.requestUpdate();
-  }
+  async deleteSet(index) {
+    const set = (this.config.iteration_sets || [])[index];
+    if (!set) return;
+    const ok = confirm(`Delete iteration set "${set.name || set.id}"?`);
+    if (!ok) return;
 
-  removeOverrideRoot(projectName, index) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: current.roots.filter((_, i) => i !== index),
-    };
-    this.requestUpdate();
-  }
+    const result = await adminProvider.deleteIterationSet(set.id);
+    if (result?.ok) {
+      const next = [...(this.config.iteration_sets || [])];
+      next.splice(index, 1);
+      this.config = { ...this.config, iteration_sets: next };
+      this.statusMsg = 'Iteration set deleted';
+      this.statusType = 'success';
+      return;
+    }
 
-  updateOverrideRoot(projectName, index, value) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    const nextRoots = [...current.roots];
-    nextRoots[index] = value;
-    this.config.project_overrides[projectName] = {
-      ...current,
-      roots: nextRoots,
-    };
-    this.requestUpdate();
-  }
+    if (result?.status === 409 && result?.detail?.error === 'referenced_by_projects') {
+      const names = (result.detail.projects || []).map((p) => p.name || p.id).filter(Boolean);
+      const msg = names.length > 0
+        ? `This set is associated to: ${names.join(', ')}.\n\nUnassociate all and delete?`
+        : 'This set is associated to one or more projects. Unassociate all and delete?';
+      const proceed = confirm(msg);
+      if (!proceed) return;
 
-  updateOverrideAzureProject(projectName, value) {
-    const current = this.config.project_overrides[projectName] || {
-      azure_project: '',
-      roots: [],
-    };
-    this.config.project_overrides[projectName] = {
-      ...current,
-      azure_project: value,
-    };
-    this.requestUpdate();
+      const unassoc = await adminProvider.unassociateAllIterations(set.id);
+      if (!unassoc?.ok) {
+        this.statusMsg = 'Failed to unassociate projects';
+        this.statusType = 'error';
+        return;
+      }
+
+      const retry = await adminProvider.deleteIterationSet(set.id);
+      if (retry?.ok) {
+        const next = [...(this.config.iteration_sets || [])];
+        next.splice(index, 1);
+        this.config = { ...this.config, iteration_sets: next };
+        this.statusMsg = 'Unassociated projects and deleted set';
+        this.statusType = 'success';
+        return;
+      }
+    }
+
+    this.statusMsg = result?.error || 'Error deleting set';
+    this.statusType = 'error';
   }
 
   async saveConfig() {
@@ -553,37 +615,49 @@ export class AdminIterations extends LitElement {
             <h3>Browse Iterations</h3>
             <div class="browser">
               <div class="browser-controls">
-                <input
-                  type="text"
-                  placeholder="Azure Project name"
+                <select
                   .value="${this.browseProject}"
-                  @input="${(e) => {
+                  @change="${async (e) => {
                     this.browseProject = e.target.value;
+                    await this.browseIterations();
                   }}"
-                />
+                >
+                  <option value="">Select Azure project</option>
+                  ${this.browseProjects.map((proj) => html`<option value="${proj}">${proj}</option>`)}
+                </select>
                 <input
                   type="text"
-                  placeholder="Root path (optional)"
-                  .value="${this.browseRoot}"
+                  placeholder="Filter iteration paths"
+                  .value="${this.filterText}"
                   @input="${(e) => {
-                    this.browseRoot = e.target.value;
+                    this.filterText = e.target.value;
                   }}"
                 />
-                <button @click="${this.browseIterations}">Browse</button>
               </div>
 
               <div class="iterations-list">
-                ${this.browsedIterations.length === 0 ?
+                ${this.filteredIterations.length === 0 ?
                   html`
                     <div style="text-align: center; color: #6b7280; padding: 20px;">
-                      Enter project name and click Browse
+                      ${this.browseProject
+                        ? (this.filterText ? `No matches for "${this.filterText}"` : 'No iterations found')
+                        : 'Select an Azure project'}
                     </div>
                   `
-                : this.browsedIterations.map(
+                : this.filteredIterations.map(
                     (it) => html`
-                      <div class="iteration-item">
+                      <div
+                        class="iteration-item ${this.selectedPaths.has(it.path) ? 'selected' : ''}"
+                      >
                         <div>
-                          <div class="path">${this.stripIterationPrefix(it.path)}</div>
+                          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input
+                              type="checkbox"
+                              .checked="${this.selectedPaths.has(it.path)}"
+                              @change="${() => this.toggleSelectPath(it.path || '')}"
+                            />
+                            <span class="path">${this.stripIterationPrefix(it.path)}</span>
+                          </label>
                           ${it.startDate || it.finishDate ?
                             html`
                               <div class="dates">
@@ -596,6 +670,15 @@ export class AdminIterations extends LitElement {
                       </div>
                     `
                   )}
+              </div>
+
+              <div class="browser-actions">
+                <div class="selection-summary">
+                  ${(this.selectedPaths || new Set()).size} selected path(s)
+                </div>
+                <button class="btn-muted" @click="${this.saveAsNewIterationSet}">
+                  Make Set from Selection
+                </button>
               </div>
             </div>
           </div>
@@ -627,131 +710,58 @@ export class AdminIterations extends LitElement {
               `
             : html`
                 <div class="config-editor">
-                  <div class="config-section">
-                    <label>Azure Project Name</label>
-                    <div class="root-item">
-                      <input
-                        type="text"
-                        .value="${this.config.azure_project || ''}"
-                        @input="${(e) => {
-                          this.config.azure_project = e.target.value;
-                          this.requestUpdate();
-                        }}"
-                        placeholder="e.g., my_azure_project"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="config-section">
-                    <label>Default Iteration Roots (without 'Iteration\\' prefix)</label>
-                    <div class="roots-list">
-                      ${this.config.default_roots.map(
-                        (root, index) => html`
-                          <div class="root-item">
-                            <input
-                              type="text"
-                              .value="${root}"
-                              @input="${(e) =>
-                                this.updateDefaultRoot(index, e.target.value)}"
-                              placeholder="e.g., my_team or my_path\\my_team"
-                            />
-                            <button @click="${() => this.removeDefaultRoot(index)}">
-                              Remove
-                            </button>
-                          </div>
-                        `
-                      )}
-                    </div>
-                    <button class="add-root" @click="${this.addDefaultRoot}">
-                      + Add Default Root
-                    </button>
-                  </div>
-
-                  <div class="project-overrides">
-                    <label>Project Overrides</label>
-                    <div class="status" style="margin: 6px 0 10px 0; color: #4b5563; font-size: 0.85rem;">
-                      Each configured project can override both the source ADO project and the
-                      iteration roots; roots are relative to Project\\Iteration.
-                    </div>
-                    ${Object.entries(this.config.project_overrides).map(
-                      ([projectName, override]) => html`
-                        <div class="override-item">
-                          <div class="override-header">
-                            <select
-                              .value="${projectName}"
-                              @change="${(e) =>
-                                this.changeProjectOverrideName(
-                                  projectName,
-                                  e.target.value
-                                )}"
-                              style="margin-right: 8px; flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.85rem;"
-                            >
-                              ${this.configuredProjects.map(
-                                (proj) => html`
-                                  <option
-                                    value="${proj}"
-                                    ?selected="${proj === projectName}"
-                                  >
-                                    ${proj}
-                                  </option>
-                                `
-                              )}
-                            </select>
-                            <button
-                              @click="${() => this.removeProjectOverride(projectName)}"
-                            >
-                              Remove Project
-                            </button>
-                          </div>
-                          <div class="root-item" style="margin-bottom: 8px;">
-                            <input
-                              type="text"
-                              .value="${override.azure_project || ''}"
-                              @input="${(e) =>
-                                this.updateOverrideAzureProject(
-                                  projectName,
-                                  e.target.value
-                                )}"
-                              placeholder="ADO project override (optional, defaults to global)"
-                            />
-                          </div>
-                          <div class="roots-list">
-                            ${(override.roots || []).map(
-                              (root, index) => html`
-                                <div class="root-item">
-                                  <input
-                                    type="text"
-                                    .value="${root}"
-                                    @input="${(e) =>
-                                      this.updateOverrideRoot(
-                                        projectName,
-                                        index,
-                                        e.target.value
-                                      )}"
-                                    placeholder="e.g., Team1 or Backend\\Team1"
-                                  />
-                                  <button
-                                    @click="${() =>
-                                      this.removeOverrideRoot(projectName, index)}"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              `
-                            )}
-                            <button
-                              class="add-root"
-                              @click="${() => this.addOverrideRoot(projectName)}"
-                            >
-                              + Add Root
-                            </button>
-                          </div>
+                  ${this.legacyDetected
+                    ? html`
+                        <div class="notice">
+                          Legacy iterations config detected and normalized in-memory to
+                          iteration sets. Save to persist the new schema.
                         </div>
                       `
-                    )}
-                    <button class="add-root" @click="${this.addProjectOverride}">
-                      + Add Project Override
-                    </button>
+                    : ''}
+
+                  <div class="config-section">
+                    <label>Configured Iteration Sets</label>
+                    ${this.config.iteration_sets.length === 0
+                      ? html`<div class="notice" style="border-color:#e5e7eb;background:#f9fafb;color:#4b5563;">No iteration sets yet. Browse and save one from the left panel.</div>`
+                      : this.config.iteration_sets.map(
+                          (set, idx) => html`
+                            <div class="set-row">
+                              <div class="set-grid">
+                                <input
+                                  type="text"
+                                  .value="${set.name || ''}"
+                                  @input="${(e) => this.updateSetField(idx, 'name', e.target.value)}"
+                                  placeholder="Set name"
+                                />
+                                <input
+                                  type="text"
+                                  .value="${set.source_project || ''}"
+                                  @input="${(e) => this.updateSetField(idx, 'source_project', e.target.value)}"
+                                  placeholder="Source Azure project"
+                                />
+                                <input
+                                  type="text"
+                                  .value="${set.root_path || ''}"
+                                  @input="${(e) => this.updateSetField(idx, 'root_path', e.target.value)}"
+                                  placeholder="Root path (optional)"
+                                />
+                                <input
+                                  type="text"
+                                  .value="${set.id || ''}"
+                                  @input="${(e) => this.updateSetField(idx, 'id', e.target.value)}"
+                                  placeholder="Set ID"
+                                />
+                              </div>
+                              <div class="set-meta">
+                                <span>values: ${Array.isArray(set.values) ? set.values.length : 0}</span>
+                                <span>cached: ${set.cached_at || 'n/a'}</span>
+                              </div>
+                              <div class="set-actions">
+                                <button class="btn-danger" @click="${() => this.deleteSet(idx)}">Delete</button>
+                              </div>
+                            </div>
+                          `
+                        )}
                   </div>
 
                   <div class="actions">

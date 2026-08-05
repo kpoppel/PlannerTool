@@ -135,6 +135,11 @@ _SCHEMAS: dict[str, Any] = {
                             'items': {'type': 'string'},
                             'default': ['new', 'active', 'defined', 'resolved', 'closed'],
                         },
+                        'iteration_uuid': {
+                            'type': ['string', 'null'],
+                            'title': 'Iteration Set',
+                            'description': 'Optional iteration set ID from iterations configuration.',
+                        },
                     },
                     'required': ['name', 'area_path'],
                 },

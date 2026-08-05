@@ -480,22 +480,33 @@ export class ProviderREST {
     }
   }
 
-  async getIterations(project) {
+  async getIterationsConfig() {
     try {
-      const url =
-        project ?
-          `/api/iterations?project=${encodeURIComponent(project)}`
-        : '/api/iterations';
-      const res = await this._fetch(url, { headers: this._headers() });
-      if (res && res.sessionExpired) return project ? [] : {};
-      if (!res.ok) return project ? [] : {};
+      const res = await this._fetch('/api/iterations', { headers: this._headers() });
+      if (res && res.sessionExpired) {
+        return { iterationSetsById: {} };
+      }
+      if (!res.ok) {
+        return { iterationSetsById: {} };
+      }
       const data = await res.json();
-      const byProject = data.iterationsByProject || {};
-      return project ? (byProject[project]?.iterations || []) : byProject;
+      return {
+        iterationSetsById: data.iterationSetsById || {},
+      };
     } catch (err) {
-      console.error('providerREST:getIterations', err);
-      return project ? [] : {};
+      console.error('providerREST:getIterationsConfig', err);
+      return { iterationSetsById: {} };
     }
+  }
+
+  async getIterations(project) {
+    // Deprecated pathway retained for compatibility; grouped project payload is no longer returned.
+    return project ? [] : {};
+  }
+
+  async getIterationSets() {
+    const payload = await this.getIterationsConfig();
+    return payload.iterationSetsById || {};
   }
 
   // Fetch cost data (GET) or request a recalculation with payload (POST)
