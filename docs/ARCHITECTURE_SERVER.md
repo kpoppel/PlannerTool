@@ -48,7 +48,7 @@ Purpose: a concise overview of the backend server architecture and module respon
 
 **Entry Points**
 
-- **`planner.py`** (root): simple factory entry point. Provides `make_app()` for server runners and `if __name__ == "__main__"` for local testing.
+- **`planner.py`** (root): simple factory entry point. Provides `make_app()` which serves the Vite-built `dist/` bundle. Pass `--root-path` to uvicorn for sub-path deployments.
 - **`planner_lib/main.py`** (core): `create_app(config: Config) -> FastAPI` performs all composition. All business logic is driven from here.
 
 **Key Design Patterns**

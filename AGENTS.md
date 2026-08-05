@@ -26,7 +26,7 @@ Notes & examples for selecting tests
 2. Repo layout pointers
 
 - Backend: Python server at `planner.py` / `planner-dev.py` and Python requirements in `requirements.txt`.
-- Frontend: `www/js/` and `www-admin/js/` and modern bundling via `vite.config.js`, `rollup.config.mjs`.
+- Frontend: `www/js/` and `www/admin/js/` and modern bundling via `vite.config.js`, `rollup.config.mjs`.
 - Tests: `tests/` (unit), `tests/e2e/` (end-to-end / browser). Vitest config: `vitest.config.js`.
 
 3. Code style guidelines (apply these consistently)

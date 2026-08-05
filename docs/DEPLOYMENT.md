@@ -1,14 +1,12 @@
 # How to deploy the application for production or development
 
-The application can be deployed in different ways:
+The application has two deployment methods:
 
-1. Using docker (single container, or Caddy proxied multi-instance)
-2. Using vite (for development)
-3. Using uvicon (for development)
-4. Using LXC (on Proxmox)
+1. **Vite dev server** (`run_dev.sh`) — the standard development workflow
+2. **Docker** (single container, or Caddy-proxied multi-instance) — production
 
-Whatever you do, using Docker is likely the most convenient for production,
-using uvicorn directly or vite is probably most useful for development.
+Whatever you do, using Docker is the most convenient for production.
+The Vite dev server is the recommended way to run the app during development.
 
 In any situaion you need to have a secret encryption key.
 
@@ -162,33 +160,31 @@ With this workflow, the production server only needs Docker installed. It does n
    - The same key must be used consistently or encrypted PATs cannot be decrypted
    - For production deployments, consider using Docker secrets or a secrets management service
 
-# Deploy using vite (for development)
+# Deploy using Vite dev server (recommended for development)
 
-The application can be run from the command line directly using vite for fast HTML/CSS/JS delivery:
+The `run_dev.sh` script starts both the Vite dev server (port 5173) and the
+uvicorn backend (port 8001) together:
 
-   ```
+   ```bash
    ./scripts/run_dev.sh
    ```
 
-This runs two processes, `uvicon` to serve the server, and `vite` to serve the application in dev-mode.
+The Vite server proxies API calls to the backend and provides hot-module reload.
 
 Use the application by browsing to `http://localhost:5173`
 
-# Deploy using uvicorn (for development)
+# Deploy using uvicorn alone
 
-The application can be run from the command line directly
+For backend-only work or quick local testing of the production build, build the
+frontend first (uvicorn serves `dist/`):
 
-`PLANNER_SECRET_KEY=`cat .encryption_key`  uvicorn planner:make_app --port 8000 --factory --reload 2>&1 |tee logfile.log`
-
-If you want to run the Vite build version (same as the docker container):
-```
+```bash
 # Only if the Lit bundle needs to be updated:
 npm run build:vendor
 
 # Build and run:
 npm run build
-PLANNER_SECRET_KEY=`cat .encryption_key`  uvicorn planner:make_dist_app --port 8000 --factory --reload 2>&1 |tee logfile.log
-
+PLANNER_SECRET_KEY=`cat .encryption_key`  uvicorn planner:make_app --port 8000 --factory --reload 2>&1 |tee logfile.log
 ```
 
 Use the application by browsing to `http://localhost:8000`

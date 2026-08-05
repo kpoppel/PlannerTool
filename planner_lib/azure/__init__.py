@@ -9,10 +9,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 from planner_lib.storage.base import StorageBackend
-from .interfaces import AzureServiceProtocol
 
 
-class AzureService(AzureServiceProtocol):
+class AzureService:
     """Azure service configured at app composition time.
 
     One ``AzureClient`` instance is created in ``__init__`` and reused across
@@ -28,7 +27,7 @@ class AzureService(AzureServiceProtocol):
     azure layer no longer maintains a separate disk cache.
     """
 
-    def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict = None):
+    def __init__(self, organization_url: str, storage: StorageBackend, feature_flags: dict | None = None):
         self.organization_url = organization_url
         self.storage = storage
         self.feature_flags = feature_flags or {}

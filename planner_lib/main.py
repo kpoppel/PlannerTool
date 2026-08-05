@@ -42,8 +42,8 @@ class Config:
     storage_backend: str = "diskcache"  #"file"
     raw_serializer: str = "raw"
     enable_brotli: bool = False
-    # Directory to serve the SPA from. "www" for dev, "dist" for production builds.
-    static_dir: str = "www"
+    # Directory to serve the SPA from. Always "dist" (Vite build output).
+    static_dir: str = "dist"
 
 
 # ---------------------------------------------------------------------------
@@ -424,13 +424,21 @@ def _build_app(
     logger.info("GZip compression middleware is enabled")
 
     static_dir = config.static_dir
+    app.state.static_dir = config.static_dir
 
     @app.get("/", response_class=HTMLResponse)
     async def root(request: Request):
         if not request.url.path.endswith('/'):
             return RedirectResponse(url=str(request.url.replace(path=request.url.path + '/')))
+        # root_path is set by uvicorn --root-path (e.g. /esw for sub-path deployments).
+        # Injecting <base> as real HTML lets the browser preload scanner resolve asset
+        # URLs correctly, without relying on JavaScript.
+        root_path = request.scope.get('root_path', '').rstrip('/')
+        base_href = f'{root_path}/static/'
         with open(f"{static_dir}/index.html", "r", encoding="utf-8") as f:
-            return f.read()
+            html = f.read()
+        html = html.replace('<head>', f'<head>\n    <base href="{base_href}">', 1)
+        return html
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 

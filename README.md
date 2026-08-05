@@ -24,7 +24,8 @@
   `pip install -r requirements.txt`
   `pip install -r requirements-dev.txt`
 
-Follow the instructions in `docs/DEPLOYMENT.md` for running the application for development or production.
+Follow the instructions in `docs/DEPLOYMENT.md` for running the application.
+The standard development workflow is `./scripts/run_dev.sh` (Vite dev server + uvicorn backend).
 
 # First time use
 

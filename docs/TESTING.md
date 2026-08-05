@@ -22,8 +22,9 @@ Run interactive UI/debug mode
 
 ## JavaScript UI tests
 
-Start the server:
+Start the backend (build first if `dist/` doesn't exist):
 
+    npm run build
     uvicorn planner:make_app --factory --reload 2>&1 |tee logfile.log
 
 Run tests:

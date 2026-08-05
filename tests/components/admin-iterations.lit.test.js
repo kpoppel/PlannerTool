@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { adminProvider } from '../../www-admin/js/services/providerREST.js';
-import '../../www-admin/js/components/admin/Iterations.lit.js';
+import { adminProvider } from '../../www/admin/js/services/providerREST.js';
+import '../../www/admin/js/components/admin/Iterations.lit.js';
 
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));

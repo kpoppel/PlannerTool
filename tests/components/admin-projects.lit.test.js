@@ -1,8 +1,8 @@
 import { expect, vi, beforeEach, afterEach, describe, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server.js';
-import '../../www-admin/js/components/admin/Projects.lit.js';
-import { setMetadata } from '../../www-admin/js/services/azureMetadataCache.js';
+import '../../www/admin/js/components/admin/Projects.lit.js';
+import { setMetadata } from '../../www/admin/js/services/azureMetadataCache.js';
 
 describe('admin-projects', () => {
   let comp;

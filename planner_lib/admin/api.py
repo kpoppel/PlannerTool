@@ -12,8 +12,8 @@ from planner_lib.admin.setup_routes import (
     router as _setup_router,
     admin_setup_status,
     admin_setup,
-    admin_static,
     admin_root,
+    admin_login,
     admin_check,
     api_admin_reload_config,
 )

@@ -105,7 +105,7 @@ export default defineConfig({
       { find: 'www', replacement: resolve(__dirname, 'www') },
       { find: 'www/js', replacement: resolve(__dirname, 'www/js') },
       { find: '/static', replacement: resolve(__dirname, 'www') },
-      { find: '/admin/static', replacement: resolve(__dirname, 'www-admin') },
+      { find: '/admin/static', replacement: resolve(__dirname, 'www/admin') },
       // Regex to map absolute /static/js/<path> imports to the local www/js/<path>
       {
         find: /^\/static\/js\/(.*)/,
@@ -113,7 +113,7 @@ export default defineConfig({
       },
       {
         find: /^\/admin\/static\/js\/(.*)/,
-        replacement: resolve(__dirname, 'www-admin/js') + '/$1',
+        replacement: resolve(__dirname, 'www/admin/js') + '/$1',
       },
       // Specific vendor alias as fallback
       {
@@ -140,6 +140,11 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist'),
     assetsDir: 'assets',
     rollupOptions: {
+      input: {
+        index: resolve(__dirname, 'www/index.html'),
+        'admin/index': resolve(__dirname, 'www/admin/index.html'),
+        'admin/login': resolve(__dirname, 'www/admin/login.html'),
+      },
       output: {
         entryFileNames: 'assets/[name].[hash].js',
         chunkFileNames: 'assets/chunks/[name].[hash].js',
@@ -147,7 +152,7 @@ export default defineConfig({
       },
     },
   },
-  // Dev server with API proxying to Python backend and static file serving for www/www-admin
+  // Dev server with API proxying to Python backend; Vite serves www/ including www/admin/ pages
   server: {
     host: '0.0.0.0',
     port: 5173,

@@ -108,7 +108,7 @@ export class AdminApp extends LitElement {
   async firstUpdated() {
     // Check feature flag for backup snapshots visibility
     try {
-      const res = await fetch('/admin/v1/system');
+      const res = await fetch((window.APP_BASE_URL || '') + '/admin/v1/system');
       if (res.ok) {
         const data = await res.json();
         const flags = data?.content?.feature_flags || {};

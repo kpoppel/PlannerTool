@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 
 def make_request(container, headers=None, cookies=None):
-    app = SimpleNamespace(state=SimpleNamespace(container=container))
+    app = SimpleNamespace(state=SimpleNamespace(container=container, static_dir='dist'))
     return SimpleNamespace(
         scope={'root_path': ''},
         headers=headers or {},
@@ -88,30 +88,16 @@ class SessMgr:
         return self._ctx
 
 
-def ensure_www_admin_files(tmp_path):
-    base = tmp_path / 'www-admin'
-    base.mkdir(exist_ok=True)
-    (base / 'index.html').write_text('<html><body>INDEX</body></html>', encoding='utf-8')
-    (base / 'login.html').write_text('<html><body>LOGIN</body></html>', encoding='utf-8')
+def ensure_admin_files(tmp_path):
+    base = tmp_path / 'dist' / 'admin'
+    base.mkdir(parents=True, exist_ok=True)
+    (base / 'index.html').write_text('<html><head></head><body>INDEX</body></html>', encoding='utf-8')
+    (base / 'login.html').write_text('<html><head></head><body>LOGIN</body></html>', encoding='utf-8')
     return base
 
 
-def test_admin_static_and_traversal(tmp_path, monkeypatch):
-    base = ensure_www_admin_files(tmp_path)
-    # Monkeypatch cwd so Path('www-admin') resolves to tmp_path/www-admin
-    monkeypatch.chdir(tmp_path)
-
-    # valid index
-    resp = asyncio.run(admin_api.admin_static(None, ''))
-    assert resp is not None
-
-    # traversal attack
-    with pytest.raises(HTTPException):
-        asyncio.run(admin_api.admin_static(None, '../etc/passwd'))
-
-
 def test_admin_root_serving_and_session_paths(tmp_path, monkeypatch):
-    base = ensure_www_admin_files(tmp_path)
+    base = ensure_admin_files(tmp_path)
     monkeypatch.chdir(tmp_path)
 
     storage = FakeStorage()

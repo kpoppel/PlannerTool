@@ -68,7 +68,7 @@ export class AdminBackupSnapshots extends LitElement {
     this._loading = true;
     this._error = null;
     try {
-      const res = await fetch('/admin/v1/backup-snapshots');
+      const res = await fetch((window.APP_BASE_URL || '') + '/admin/v1/backup-snapshots');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       this._snapshots = data.snapshots || [];
@@ -81,7 +81,7 @@ export class AdminBackupSnapshots extends LitElement {
 
   async handleView(key) {
     try {
-      const res = await fetch(`/admin/v1/backup-snapshots/${encodeURIComponent(key)}`);
+      const res = await fetch((window.APP_BASE_URL || '') + `/admin/v1/backup-snapshots/${encodeURIComponent(key)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       this._viewing = JSON.stringify(data.content, null, 2);
@@ -93,7 +93,7 @@ export class AdminBackupSnapshots extends LitElement {
   async handleDelete(key) {
     if (!confirm(`Delete backup "${key}"?`)) return;
     try {
-      const res = await fetch(`/admin/v1/backup-snapshots/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      const res = await fetch((window.APP_BASE_URL || '') + `/admin/v1/backup-snapshots/${encodeURIComponent(key)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this._actionMsg = `Deleted "${key}"`;
       await this.loadSnapshots();
@@ -107,7 +107,7 @@ export class AdminBackupSnapshots extends LitElement {
   async handleRestore(key) {
     if (!confirm(`Restore config from backup "${key}"? This will overwrite the current value.`)) return;
     try {
-      const res = await fetch(`/admin/v1/backup-snapshots/${encodeURIComponent(key)}`, { method: 'POST' });
+      const res = await fetch((window.APP_BASE_URL || '') + `/admin/v1/backup-snapshots/${encodeURIComponent(key)}`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this._actionMsg = `Restored from "${key}"`;
       await this.loadSnapshots();
@@ -121,7 +121,7 @@ export class AdminBackupSnapshots extends LitElement {
   async handlePrune() {
     if (!confirm(`Prune backups, keeping last ${this._pruneN} per config key?`)) return;
     try {
-      const res = await fetch('/admin/v1/backup-snapshots/prune', {
+      const res = await fetch((window.APP_BASE_URL || '') + '/admin/v1/backup-snapshots/prune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keep_last: this._pruneN }),

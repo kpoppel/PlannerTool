@@ -42,7 +42,7 @@ class FakeStorageRaiseOnLoad:
 
 
 def make_request(container, headers=None, cookies=None):
-    app = SimpleNamespace(state=SimpleNamespace(container=container))
+    app = SimpleNamespace(state=SimpleNamespace(container=container, static_dir='dist'))
     return SimpleNamespace(
         scope={'root_path': ''},
         headers=headers or {},
@@ -53,7 +53,6 @@ def make_request(container, headers=None, cookies=None):
 
 
 def test_save_projects_backup_fallback(tmp_path, monkeypatch):
-    # ensure working directory has no www-admin interference
     monkeypatch.chdir(tmp_path)
     storage = FakeStorageFailSave()
     # save_config must let RuntimeError propagate so admin_save_projects raises HTTPException
@@ -127,16 +126,9 @@ def test_get_users_handles_list_errors():
     assert res['users'] == [] and res['admins'] == []
 
 
-def test_admin_static_not_found(tmp_path, monkeypatch):
-    # empty dir -> index missing -> 404
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(HTTPException):
-        asyncio.run(admin_api.admin_static(None, ''))
-
-
 def test_admin_root_files_missing_raises_404(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # no session id in headers or cookies and no files present
+    # no dist/admin/ present and no session id in headers or cookies
     req = make_request(SimpleNamespace(get=lambda name: None))
     with pytest.raises(HTTPException) as ei:
         asyncio.run(admin_api.admin_root(req))
@@ -275,9 +267,6 @@ def test_admin_save_users_delete_keyerror_handled():
 
 def test_admin_root_session_admin_service_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # create index file so file-read path exists
-    (Path(tmp_path) / 'www-admin').mkdir()
-    (Path(tmp_path) / 'www-admin' / 'index.html').write_text('INDEX')
     # session_mgr exists and returns email, but admin_service missing
     session_mgr = SessMgr({'email': 'someone@admin'})
     container = SimpleNamespace(get=lambda name: {'session_manager': session_mgr}.get(name))

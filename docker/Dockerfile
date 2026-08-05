@@ -20,7 +20,7 @@ COPY www ./www
 COPY src ./src
 COPY rollup.config.mjs vite.config.js ./
 
-# Build vendor bundle and production frontend
+# Build vendor bundle and production frontend (admin pages are entry points within www/admin/)
 RUN npm run build:vendor
 RUN npm run build
 
@@ -74,16 +74,14 @@ COPY ./*.py ./
 COPY VERSION ./
 COPY docs ./docs
 COPY planner_lib ./planner_lib
-COPY www-admin ./www-admin
 COPY scripts/migrate.py ./scripts/migrate.py
 COPY scripts/migrations ./scripts/migrations
 
+# Copy built frontend assets from nodebuilder — only dist/ is needed at runtime
+COPY --from=nodebuilder /build/dist ./dist
+
 # Set ownership of the app directory. The entrypoint will handle the volume mount.
 RUN chown -R planner:planner /app
-
-# Copy built frontend assets from nodebuilder
-COPY --from=nodebuilder /build/www ./www
-COPY --from=nodebuilder /build/dist ./dist
 
 # Make data directory a mount point
 VOLUME ["/app/data"]
@@ -98,4 +96,4 @@ EXPOSE $PORT
 ENTRYPOINT ["entrypoint.sh"]
 
 # Run the production app using uvicorn factory via the entrypoint.
-CMD ["sh", "-c", "exec uvicorn planner:make_dist_app --factory --host $HOST --port $PORT --root-path \"${ROOT_PATH}\""]
+CMD ["sh", "-c", "exec uvicorn planner:make_app --factory --host $HOST --port $PORT --root-path \"${ROOT_PATH}\""]

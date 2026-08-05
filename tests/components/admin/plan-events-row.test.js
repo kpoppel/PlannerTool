@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { adminProvider } from '../../../www-admin/js/services/providerREST.js';
+import { adminProvider } from '../../../www/admin/js/services/providerREST.js';
 import {
   onWikiOrgUrlInput,
   onWikiOrgUrlCommit,
-} from '../../../www-admin/js/components/admin/datasources/plan-events-row.js';
+} from '../../../www/admin/js/components/admin/datasources/plan-events-row.js';
 
 function makeComp() {
   return {

@@ -16,38 +16,56 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
-- added feature flag for snapshots of the server configuration and admin interface for the same. Default is disabled, but existing
-  servers will have these backups in the diskcache, so enable and clean up, then disable if they are not wanted.
-- Iteration-sets added: admin iterations now supports sets of iterations from different ADO projects. Delete/unassociate APIs, project schema includes iteration association field, and runtime iteration resolution honors project-level iteration UUID links.
-- Migration `0026_migrate_ttl_cache.py`: moves any leftover `backend_domain` cache entries from `data/cache`
+- Server configuration snapshots: the admin interface can capture a versioned backup of the full server
+  configuration. Disabled by default; existing installations may already have snapshots in storage —
+  enable, review and clean up, then disable if not needed.
+- Iteration-sets: a configured project can now be associated with iterations from multiple ADO projects,
+  enabling cross-project planning where teams span organisational ADO boundaries. Associations are managed
+  from the admin iterations page and are respected at runtime when resolving iteration data.
+- Migration `0026_migrate_ttl_cache.py`: moves any leftover remote-backend cache entries from `data/cache`
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
-  
+
 ### Changed
-- Migrated all plugins to use the same base class. No more 3 generations of plugin development.
-- Two Plugin baseclasses added for mounted (toolbox-style) plugins, and full screen plugins (like the CostPlugin)
-- Removed USE_LIT_COMPONENT and USE_PLUGIN_SYSTEM feature flags.
-- Removed the dead queued FeatureService implementation and legacy iterations fallback paths; runtime iteration resolution now relies only on project iteration-set associations.
-- Removed obsolete migrations (0001-00024)
-- Removed reliance on file-based server_config.yaml file.
-- Consolidated server storage setup to one. This was possible because the same diskcache is used for
-  all storage now.
-- `CachingBackend`'s volatile, TTL-governed remote-backend cache (ADO tasks/history/teams/plans/markers/iterations)
-  now lives in its own dedicated diskcache directory (`data/remote_cache`), separate from the authoritative
-  `data/cache` store used for config, accounts, sessions, and user data. Deleting the cache directory can no
-  longer take config/accounts/sessions/user data down with it.
-- `CachingBackend` generalized the soft-freshness sidecar (previously `fetch_tasks`-only) to every cached
-  `fetch_*` method: `fetch_history`/`fetch_teams`/`fetch_plans`/`fetch_markers`/`fetch_iterations` are no longer
-  persisted with a hard diskcache TTL, so a TTL lapse can no longer cause diskcache to silently delete the
-  entry right when the remote backend happens to be unreachable.
+- Plugin development unified: all plugins now share a common base class, eliminating three generations of
+  incompatible plugin APIs. New plugins require significantly less boilerplate.
+- Plugins are now categorised as either toolbox-mounted or full-screen; each category has a purpose-built
+  base class that handles the corresponding lifecycle automatically.
+- Removed two obsolete feature flags that guarded transitions now complete; the Lit component system and
+  plugin system are unconditionally active.
+- Removed legacy iteration fallback logic; iteration resolution is now fully driven by project
+  iteration-set associations, making behaviour explicit and eliminating a hidden code path.
+- Removed completed migrations from the codebase; they have been applied on all supported installations
+  and no longer need to ship with the server.
+- Server configuration is now fully stored in diskcache; the `server_config.yaml` file is no longer read
+  or required at runtime.
+- Consolidated to a single storage instance for all server data. Previously separate storage setups for
+  different domains have been unified now that a single diskcache covers all namespaces.
+- The remote-backend cache (ADO task data, history, teams, plans, markers, iterations) now lives in a
+  dedicated `data/remote_cache` directory, isolated from authoritative server data. The cache directory
+  can be safely deleted to force a full ADO refresh without any risk to configuration, accounts,
+  sessions, or user scenarios.
+- All cached backend data domains now use a soft-freshness sidecar rather than a hard storage TTL. This
+  prevents a cache expiry from silently deleting data at the exact moment the ADO backend is unreachable
+  — stale data is served instead of an error.
+- Admin UI source merged into the main Vite build: a single `npm run build` now produces both the main
+  app and admin assets, sharing vendor chunks and requiring no separate build step or static file mount.
+- Removed the separate production-mode app factory; the single `make_app()` entry point now serves the
+  built frontend by default, eliminating a source of configuration drift between development and production.
+- Static assets are served at their natural paths so the browser's preload scanner can resolve them
+  without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
-- Removed last use of JSON convert after JSON stringify and use structuredClone() instead for better performance
-- Admin UI did not save default values to configuration, even though the UI was setting them. (feature flags in particular)
-- Fixed: a TTL lapse on `fetch_history`/`fetch_teams`/`fetch_plans`/`fetch_markers`/`fetch_iterations` could
-  previously cause a hard failure (instead of serving stale data) if the remote ADO backend was unreachable at
-  that exact moment — these methods now share the same stale-on-failure resilience as `fetch_tasks`.
-- Fixed plugin component loading in production/Docker bundles by resolving mounted plugin modules through a static Vite module map, ensuring hashed chunk filenames are used at runtime.
-- Fixed frontend build failure in Docker by correcting stale `PluginCostV2Component` imports to existing shared cost calculator/view modules.
+- Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`
+  is faster and avoids unnecessary serialisation overhead.
+- Admin UI now persists default field values (including feature flags) when saving configuration;
+  previously, fields that were never explicitly changed were silently omitted from the saved payload.
+- Stale cached data is now served when the ADO backend is unreachable at the moment of cache expiry for
+  history, teams, plans, markers, and iterations — matching the resilience already present for tasks.
+  Previously, a TTL lapse during an outage caused a hard failure for these domains.
+- Plugins now load correctly in production Docker bundles where Vite produces content-hashed asset
+  filenames; previously, mounted plugins failed silently at runtime because hashed chunk names were not
+  resolvable.
+- Fixed a stale import in the cost plugin that prevented the Docker frontend build from completing.
 
 ## [v4.2.1] - 2026-07-19
 

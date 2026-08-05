@@ -1,7 +1,7 @@
 import { expect, vi, beforeEach, afterEach, describe, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server.js';
-import '../../www-admin/js/components/admin/Plugins.lit.js';
+import '../../www/admin/js/components/admin/Plugins.lit.js';
 
 // Minimal modules.config.json fixture (includes one entry missing id to test validation)
 const MODULES_META = {
@@ -397,7 +397,7 @@ describe('adminProvider plugins-config methods', () => {
   let adminProvider;
 
   beforeEach(async () => {
-    const mod = await import('../../www-admin/js/services/providerREST.js');
+    const mod = await import('../../www/admin/js/services/providerREST.js');
     adminProvider = mod.adminProvider;
   });
 
@@ -454,4 +454,4 @@ describe('adminProvider plugins-config methods', () => {
 });
 
 // Import for the spy test
-import { adminProvider } from '../../www-admin/js/services/providerREST.js';
+import { adminProvider } from '../../www/admin/js/services/providerREST.js';
