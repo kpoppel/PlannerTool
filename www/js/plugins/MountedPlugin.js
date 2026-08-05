@@ -15,6 +15,45 @@
 import { bus } from '../core/EventBus.js';
 import { PluginEvents } from '../core/EventRegistry.js';
 
+/**
+ * Static module loader map for plugin components.
+ *
+ * Why explicit entries instead of import.meta.glob:
+ * - Uvicorn dev deployment serves native ES modules directly where `import.meta.glob`
+ *   is not available (it is Vite-only syntax).
+ * - Literal dynamic imports remain compatible with both native browser ESM and
+ *   Vite production builds (Vite rewrites the chunk URLs during build).
+ */
+const pluginComponentLoaders = {
+  './PluginAnnotationsComponent.js': () => import('./PluginAnnotationsComponent.js'),
+  './PluginCostComponent.js': () => import('./PluginCostComponent.js'),
+  './PluginCostV1Component.js': () => import('./PluginCostV1Component.js'),
+  './PluginDependenciesComponent.js': () => import('./PluginDependenciesComponent.js'),
+  './PluginEventsComponent.js': () => import('./PluginEventsComponent.js'),
+  './PluginExportTimelineComponent.js': () => import('./PluginExportTimelineComponent.js'),
+  './PluginGraphComponent.js': () => import('./PluginGraphComponent.js'),
+  './PluginHistoryComponent.js': () => import('./PluginHistoryComponent.js'),
+  './PluginLinkEditorComponent.js': () => import('./PluginLinkEditorComponent.js'),
+  './PluginMarkersComponent.js': () => import('./PluginMarkersComponent.js'),
+  './PluginPlanHealthComponent.js': () => import('./PluginPlanHealthComponent.js'),
+  './PluginPortfolioComponent.lit.js': () => import('./PluginPortfolioComponent.lit.js'),
+  './PluginXYBoardComponent.lit.js': () => import('./PluginXYBoardComponent.lit.js'),
+  './SamplePluginComponent.lit.js': () => import('./SamplePluginComponent.lit.js'),
+};
+
+/**
+ * Resolve a plugin component module loader from a static module map.
+ * This keeps dynamic plugin component loading compatible with Vite hashed chunks.
+ *
+ * @param {string} componentPath
+ * @param {Record<string, () => Promise<unknown>>} [moduleMap]
+ * @returns {(() => Promise<unknown>)|null}
+ */
+export function resolvePluginComponentLoader(componentPath, moduleMap = pluginComponentLoaders) {
+  if (!componentPath) return null;
+  return moduleMap[componentPath] || null;
+}
+
 export class MountedPlugin {
   constructor(id, config = {}) {
     this.id = id;
@@ -63,7 +102,11 @@ export class MountedPlugin {
 
   async _ensureComponent() {
     if (!this._componentLoaded && this.componentPath) {
-      await import(this.componentPath);
+      const loadComponent = resolvePluginComponentLoader(this.componentPath);
+      if (!loadComponent) {
+        throw new Error(`MountedPlugin could not resolve component module: ${this.componentPath}`);
+      }
+      await loadComponent();
       this._componentLoaded = true;
     }
   }

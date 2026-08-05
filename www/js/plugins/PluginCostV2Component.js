@@ -13,12 +13,12 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
-import { buildMonths, monthKey, monthLabel } from './PluginCostV2Calculator.js';
+import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
 
-import { renderProjectView } from './PluginCostV2ProjectView.js';
-import { renderTaskView } from './PluginCostV2TaskView.js';
-import { renderTeamView } from './PluginCostV2TeamView.js';
-import { renderTeamMembersView } from './PluginCostV2TeamMembersView.js';
+import { renderProjectView } from './PluginCostProjectView.js';
+import { renderTaskView } from './PluginCostTaskView.js';
+import { renderTeamView } from './PluginCostTeamView.js';
+import { renderTeamMembersView } from './PluginCostTeamMembersView.js';
 import { bus } from '../core/EventBus.js';
 import {
   FeatureEvents,

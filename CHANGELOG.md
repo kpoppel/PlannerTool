@@ -46,6 +46,8 @@ Template - do not change :
 - Fixed: a TTL lapse on `fetch_history`/`fetch_teams`/`fetch_plans`/`fetch_markers`/`fetch_iterations` could
   previously cause a hard failure (instead of serving stale data) if the remote ADO backend was unreachable at
   that exact moment — these methods now share the same stale-on-failure resilience as `fetch_tasks`.
+- Fixed plugin component loading in production/Docker bundles by resolving mounted plugin modules through a static Vite module map, ensuring hashed chunk filenames are used at runtime.
+- Fixed frontend build failure in Docker by correcting stale `PluginCostV2Component` imports to existing shared cost calculator/view modules.
 
 ## [v4.2.1] - 2026-07-19
 
