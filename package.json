@@ -44,6 +44,7 @@
     "vitest-browser-lit": "^1.0.0"
   },
   "dependencies": {
-    "lit": "^3.3.1"
+    "lit": "^3.3.1",
+    "zustand": "^5.0.14"
   }
 }

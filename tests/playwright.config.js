@@ -4,6 +4,9 @@ import { dirname, resolve } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const repoRootPath = resolve(__dirname, '..');
+const isolatedDataDirPath = resolve(__dirname, 'e2e', '.tmp-data');
+const e2eBaseUrl = 'http://127.0.0.1:8010';
 
 // Resolve paths relative to this config file so moving files into /tests works
 const testDirPath = resolve(__dirname, 'e2e');
@@ -20,8 +23,8 @@ export default {
   retries: 0,
   reporter: 'list',
   use: {
-    // Point tests to production server on port 8000. Do not start/stop servers from tests.
-    baseURL: 'http://localhost:8000',
+    // Run against an isolated Playwright-owned server instance.
+    baseURL: e2eBaseUrl,
     headless: true,
     viewport: { width: 1280, height: 800 },
     actionTimeout: 5000,
@@ -33,9 +36,14 @@ export default {
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
   webServer: {
-    command: 'python3 -m uvicorn planner:app --reload --port 8000',
-    url: 'http://localhost:8000',
+    command:
+      `cd ${repoRootPath} && mkdir -p ${isolatedDataDirPath} && python3 -m uvicorn tests.e2e.playwright_test_app:make_app --factory --port 8010`,
+    env: {
+      PLANNER_SECRET_KEY: 'playwright-e2e-secret-key',
+    },
+    url: e2eBaseUrl,
     timeout: 120000,
-    reuseExistingServer: true,
+    // Must be false so tests never attach to a user's existing server/data.
+    reuseExistingServer: false,
   },
 };

@@ -452,10 +452,9 @@ test('FeatureBoard handles various parent-child constellations without crashing'
     });
   });
 
-  // Go to the app root (adjust if app mounts at a different page)
-  await page.goto('http://localhost:8000/');
-  await page.pause();
-  // Wait a short time for the app to initialize and request the tasks
+  // Go to app root using Playwright baseURL from config.
+  await page.goto('/');
+  // Wait briefly for initial data requests to fire.
   await page.waitForTimeout(1000);
 
   expect(tasksRequested).toBeTruthy();

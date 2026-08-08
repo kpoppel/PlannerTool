@@ -22,10 +22,9 @@ Run interactive UI/debug mode
 
 ## JavaScript UI tests
 
-Start the backend (build first if `dist/` doesn't exist):
+Build frontend assets first if `dist/` doesn't exist:
 
     npm run build
-    uvicorn planner:make_app --factory --reload 2>&1 |tee logfile.log
 
 Run tests:
     npx playwright test --config=tests/playwright.config.js --project=firefox
@@ -39,6 +38,11 @@ or
 
 For browser / end-to-end tests use Playwright separately, e.g.:
     npx playwright test --config=playwright.smoke.config.js --project=chromium
+
+Notes:
+- `tests/playwright.config.js` starts an isolated uvicorn server on `127.0.0.1:8010`.
+- The Playwright web server sets a dedicated `PLANNER_SECRET_KEY` for account PAT encryption in tests.
+- E2E storage is isolated under `tests/e2e/.tmp-data` so test runs do not modify the repository `data/` directory.
 
 # Run a session from CLI
 export SESSION_ID=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"user@example.com"}' localhost:8000/api/session | jq -r .sessionId)

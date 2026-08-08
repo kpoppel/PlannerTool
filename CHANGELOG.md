@@ -17,6 +17,7 @@ Template - do not change :
 ## [v5.0.0] - unreleased
 ### Added
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
+- Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.
 - Server configuration snapshots: the admin interface can capture a versioned backup of the full server
   configuration. Disabled by default; existing installations may already have snapshots in storage —
   enable, review and clean up, then disable if not needed.
@@ -58,6 +59,8 @@ Template - do not change :
 ### Fixed
 - Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`
   is faster and avoids unnecessary serialisation overhead.
+- Playwright e2e runs now start an isolated server with a test-only `PLANNER_SECRET_KEY`, bootstrap required admin/mock config via REST, and use dedicated `tests/e2e/.tmp-data` storage, preventing accidental writes to the repository `data/` directory.
+- Playwright setup now runs in explicit baseline-only mode to avoid hidden inactive-scenario dependencies, search-tool e2e verifies typed input plus activation behavior, and timeline panning coverage is split between user interaction and programmatic scroll behavior for clearer failure signals.
 - Admin UI now persists default field values (including feature flags) when saving configuration;
   previously, fields that were never explicitly changed were silently omitted from the saved payload.
 - Stale cached data is now served when the ADO backend is unreachable at the moment of cache expiry for

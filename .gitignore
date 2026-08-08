@@ -45,6 +45,7 @@ instances.yml
 # Test output
 test-results/
 tests/e2e/storageState.json
+tests/e2e/.tmp-data/
 coverage/
 .pytest_cache/
 *.cover
