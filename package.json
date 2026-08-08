@@ -12,7 +12,8 @@
     "build:vendor": "rollup -c",
     "format": "prettier --write .",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "audit:frontend": "node scripts/frontend-audit.mjs"
   },
   "author": "",
   "license": "GPL-3.0-only",
@@ -29,6 +30,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-lit": "^2.2.1",
     "eslint-plugin-lit-a11y": "^5.1.1",
+    "eslint-plugin-local": "file:eslint-rules",
     "eslint-plugin-vitest": "^0.5.4",
     "jsdom": "^21.0.0",
     "msw": "^2.12.14",

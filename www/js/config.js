@@ -41,6 +41,9 @@ export const featureFlags = {
   //   which can hide overallocation caused by unselected plans.
   GRAPH_ONLY_SELECTED_PLANS: false,
 
+  // Migration gate: read by application/imports.js starting Phase 1; has no effect yet.
+  USE_STATE_STORE: false,
+
   // Runtime override support (for testing)
   // Usage: window.__featureFlags = { FEATURE_FLAG_NAME: true };
   ...(typeof window !== 'undefined' && window.__featureFlags ?

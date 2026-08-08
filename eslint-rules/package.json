@@ -1,0 +1,6 @@
+{
+  "name": "eslint-plugin-local",
+  "version": "1.0.0",
+  "description": "Local ESLint rules for PlannerTool architecture guardrails",
+  "main": "index.js"
+}

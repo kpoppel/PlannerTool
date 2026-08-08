@@ -10,16 +10,21 @@
     "sourceType": "module"
   },
   "extends": ["prettier", "eslint:recommended", "plugin:lit/recommended"],
-  "plugins": ["lit"],
+  "plugins": ["lit", "local"],
   "rules": {
     "no-var": "error",
     "prefer-const": "warn",
-    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }]
+    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }],
+    "local/no-runtime-state-violations": "warn"
   },
   "overrides": [
     {
-      "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"]
+      "files": ["tests/**/*.js", "tests/**/*.mjs", "*.test.js"],
+      "env": { "node": true },
+      "rules": {
+        "no-undef": "off"
+      }
     }
   ],
-  "ignorePatterns": ["dist/", "www/js/vendor/", "docs/", "tests/"]
+  "ignorePatterns": ["dist/", "www/js/vendor/", "docs/"]
 }
