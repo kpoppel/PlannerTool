@@ -81,6 +81,12 @@ function buildFlagsForType(type, existingFlags = {}) {
   return next;
 }
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 export class DataSources extends LitElement {
   static styles = [
     backendSelectStyles,
@@ -314,12 +320,22 @@ export class DataSources extends LitElement {
   async _load() {
     this._loading = true;
     try {
-      const [evtCfg, adoCfg, sysCfg, grpCfg] = await Promise.all([
+      const [evtCfgResult, adoCfgResult, sysCfgResult, grpCfgResult] = await Promise.all([
         adminProvider.getEventsConfig(),
         adminProvider.getAdo(),
         adminProvider.getSystem(),
         adminProvider.getGroupsConfig(),
       ]);
+
+      if (!evtCfgResult?.ok) throw new Error(resultErrorMessage(evtCfgResult, 'Failed to load events config'));
+      if (!adoCfgResult?.ok) throw new Error(resultErrorMessage(adoCfgResult, 'Failed to load ADO config'));
+      if (!sysCfgResult?.ok) throw new Error(resultErrorMessage(sysCfgResult, 'Failed to load system config'));
+      if (!grpCfgResult?.ok) throw new Error(resultErrorMessage(grpCfgResult, 'Failed to load groups config'));
+
+      const evtCfg = evtCfgResult.data;
+      const adoCfg = adoCfgResult.data;
+      const sysCfg = sysCfgResult.data;
+      const grpCfg = grpCfgResult.data;
 
       // ---- Groups -------------------------------------------------------
       if (grpCfg) {
@@ -453,10 +469,18 @@ export class DataSources extends LitElement {
           page_path: this._wikiPagePath.trim() || '/PlannerTool/Events',
         };
       }
-      await adminProvider.saveEventsConfig(evtCfg);
+      const eventsSaveResult = await adminProvider.saveEventsConfig(evtCfg);
+      if (!eventsSaveResult?.ok) {
+        throw new Error(resultErrorMessage(eventsSaveResult, 'Failed to save events config'));
+      }
 
       // 1b. Save Groups config
-      await adminProvider.saveGroupsConfig({ groups_backend: this._groupsBackend });
+      const groupsSaveResult = await adminProvider.saveGroupsConfig({
+        groups_backend: this._groupsBackend,
+      });
+      if (!groupsSaveResult?.ok) {
+        throw new Error(resultErrorMessage(groupsSaveResult, 'Failed to save groups config'));
+      }
 
       // 2. Save ADO config — backend selection + org URL + all sub-configs.
       // Sub-config values are always persisted (not just for the active backend)
@@ -484,7 +508,10 @@ export class DataSources extends LitElement {
         organization_url: this._orgUrl.trim(),
         feature_flags: newFlags,
       };
-      await adminProvider.saveAdo(adoPayload);
+      const adoSaveResult = await adminProvider.saveAdo(adoPayload);
+      if (!adoSaveResult?.ok) {
+        throw new Error(resultErrorMessage(adoSaveResult, 'Failed to save ADO config'));
+      }
 
       // 3. Save TTLs into server_config.cache.ttls
       const ttlsToSave = {};
@@ -498,7 +525,10 @@ export class DataSources extends LitElement {
           ttls: ttlsToSave,
         },
       };
-      await adminProvider.saveSystem(sysPayload);
+      const systemSaveResult = await adminProvider.saveSystem(sysPayload);
+      if (!systemSaveResult?.ok) {
+        throw new Error(resultErrorMessage(systemSaveResult, 'Failed to save system config'));
+      }
 
       // Update saved baselines so the restart banner reflects the new state
       this._savedAdoBackendType = this._adoBackendType;
@@ -510,7 +540,7 @@ export class DataSources extends LitElement {
       this._statusType = 'success';
 
     } catch (e) {
-      this._statusMsg  = `Error saving: ${e}`;
+      this._statusMsg  = `Error saving: ${e?.message || e}`;
       this._statusType = 'error';
     }
   }

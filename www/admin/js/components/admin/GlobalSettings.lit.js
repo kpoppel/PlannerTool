@@ -364,17 +364,21 @@ export class AdminGlobalSettings extends LitElement {
   async _load() {
     this._loading = true;
     this._statusMsg = '';
-    const [data, schema, projectsCfg] = await Promise.all([
+    const [dataResult, schemaResult, projectsResult] = await Promise.all([
       adminProvider.getGlobalSettings(),
       adminProvider.getSchema('projects'),
       adminProvider.getProjects(),
     ]);
     this._loading = false;
+    const data = dataResult?.ok ? dataResult.data : null;
+    const schema = schemaResult?.ok ? schemaResult.data : null;
+    const projectsCfg = projectsResult?.ok ? projectsResult.data : null;
+
     if (data) {
       this._hierarchy = JSON.parse(JSON.stringify(data.task_type_hierarchy || []));
       this._stateSequence = JSON.parse(JSON.stringify(data.state_display_sequence || []));
     } else {
-      this._statusMsg = 'Failed to load global settings.';
+      this._statusMsg = dataResult?.error?.message || 'Failed to load global settings.';
       this._statusType = 'error';
     }
     // Extract the canonical full list of task types from the projects schema enum.
@@ -409,7 +413,7 @@ export class AdminGlobalSettings extends LitElement {
       this._statusMsg = 'Saved.';
       this._statusType = 'ok';
     } else {
-      this._statusMsg = result?.error || 'Save failed.';
+      this._statusMsg = result?.error?.message || result?.error || 'Save failed.';
       this._statusType = 'error';
     }
   }

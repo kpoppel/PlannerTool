@@ -1,6 +1,12 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 /**
  * AdminIterations - Manage iteration sets configuration.
  */
@@ -349,8 +355,11 @@ export class AdminIterations extends LitElement {
   async loadConfig() {
     this.loading = true;
     try {
-      const data = await adminProvider.getIterations();
-      this.config = this.normalizeConfig(data);
+      const result = await adminProvider.getIterations();
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to load iterations config'));
+      }
+      this.config = this.normalizeConfig(result.data);
       this.statusMsg = '';
     } catch (e) {
       this.statusMsg = 'Error loading iterations config';
@@ -362,10 +371,16 @@ export class AdminIterations extends LitElement {
 
   async loadBrowseProjects() {
     try {
-      const adoCfg = await adminProvider.getAdo();
-      const org = (adoCfg && adoCfg.organization_url) || '';
+      const adoResult = await adminProvider.getAdo();
+      if (!adoResult?.ok) {
+        throw new Error(resultErrorMessage(adoResult, 'Failed to load ADO configuration'));
+      }
+      const org = (adoResult.data && adoResult.data.organization_url) || '';
       const result = await adminProvider.browseAzureProjects(org);
-      this.browseProjects = Array.isArray(result?.projects) ? result.projects : [];
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to browse Azure projects'));
+      }
+      this.browseProjects = Array.isArray(result?.data?.projects) ? result.data.projects : [];
       if (!this.browseProject && this.browseProjects.length > 0) {
         this.browseProject = this.browseProjects[0];
       }
@@ -392,7 +407,10 @@ export class AdminIterations extends LitElement {
         project: this.browseProject,
         depth: 10,
       });
-      this.browsedIterations = Array.isArray(result.iterations) ? result.iterations : [];
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to browse iterations'));
+      }
+      this.browsedIterations = Array.isArray(result?.data?.iterations) ? result.data.iterations : [];
       this.selectedPaths = new Set();
       this.statusMsg = `Found ${this.browsedIterations.length} iterations`;
       this.statusType = 'success';
@@ -514,8 +532,10 @@ export class AdminIterations extends LitElement {
       return;
     }
 
-    if (result?.status === 409 && result?.detail?.error === 'referenced_by_projects') {
-      const names = (result.detail.projects || []).map((p) => p.name || p.id).filter(Boolean);
+    const status = result?.error?.status;
+    const detail = result?.error?.detail;
+    if (status === 409 && detail?.error === 'referenced_by_projects') {
+      const names = (detail.projects || []).map((p) => p.name || p.id).filter(Boolean);
       const msg = names.length > 0
         ? `This set is associated to: ${names.join(', ')}.\n\nUnassociate all and delete?`
         : 'This set is associated to one or more projects. Unassociate all and delete?';
@@ -540,7 +560,7 @@ export class AdminIterations extends LitElement {
       }
     }
 
-    this.statusMsg = result?.error || 'Error deleting set';
+    this.statusMsg = result?.error?.message || result?.error || 'Error deleting set';
     this.statusType = 'error';
   }
 
@@ -563,7 +583,12 @@ export class AdminIterations extends LitElement {
         }
       }
 
-      await adminProvider.saveIterations(this.config);
+      const result = await adminProvider.saveIterations(this.config);
+      if (!result?.ok) {
+        this.statusMsg = result?.error?.message || result?.error || 'Error saving';
+        this.statusType = 'error';
+        return;
+      }
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
       setTimeout(() => {

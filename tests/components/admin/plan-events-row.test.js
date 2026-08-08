@@ -3,6 +3,9 @@ import { adminProvider } from '../../../www/admin/js/services/providerREST.js';
 import {
   onWikiOrgUrlInput,
   onWikiOrgUrlCommit,
+  fetchProjects,
+  fetchWikis,
+  fetchWikiPages,
 } from '../../../www/admin/js/components/admin/datasources/plan-events-row.js';
 
 function makeComp() {
@@ -22,15 +25,20 @@ function makeComp() {
 
 describe('plan-events-row org input helper', () => {
   const originalBrowseAzureProjects = adminProvider.browseAzureProjects;
+  const originalBrowseWikis = adminProvider.browseWikis;
+  const originalBrowseWikiPages = adminProvider.browseWikiPages;
 
   beforeEach(() => {
     adminProvider.browseAzureProjects = vi.fn().mockResolvedValue({
-      projects: ['ProjA', 'ProjB'],
+      ok: true,
+      data: { projects: ['ProjA', 'ProjB'] },
     });
   });
 
   afterEach(() => {
     adminProvider.browseAzureProjects = originalBrowseAzureProjects;
+    adminProvider.browseWikis = originalBrowseWikis;
+    adminProvider.browseWikiPages = originalBrowseWikiPages;
   });
 
   it('reloads projects only on commit and resets dependent fields', async () => {
@@ -72,5 +80,37 @@ describe('plan-events-row org input helper', () => {
     await Promise.resolve();
 
     expect(adminProvider.browseAzureProjects).not.toHaveBeenCalled();
+  });
+
+  it('fetchProjects handles Result error objects without throwing', async () => {
+    const comp = makeComp();
+    comp._wikiOrgUrl = 'MyOrg';
+    adminProvider.browseAzureProjects = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { message: 'PAT missing' },
+    });
+
+    await fetchProjects(comp);
+
+    expect(comp._projectsError).to.include('Personal Access Token is required');
+    expect(comp._projectsLoading).toBe(false);
+  });
+
+  it('fetchWikis and fetchWikiPages use error.message from Result failures', async () => {
+    const comp = makeComp();
+    adminProvider.browseWikis = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { message: 'wiki backend unavailable' },
+    });
+    adminProvider.browseWikiPages = vi.fn().mockResolvedValue({
+      ok: false,
+      error: { message: 'pages backend unavailable' },
+    });
+
+    await fetchWikis(comp, 'ProjectA');
+    expect(comp._wikisError).to.include('wiki backend unavailable');
+
+    await fetchWikiPages(comp, 'ProjectA', 'WikiA');
+    expect(comp._wikiPagesError).to.include('pages backend unavailable');
   });
 });

@@ -5,9 +5,10 @@ describe('ProviderREST feature/team/project endpoints', () => {
   it('getFeatures(project) returns enriched feature array', async () => {
     const pr = new ProviderREST();
     const feats = await pr.getFeatures('project-a');
-    expect(Array.isArray(feats)).to.equal(true);
-    expect(feats.length).to.be.at.least(1);
-    const f = feats[0];
+    expect(feats.ok).to.equal(true);
+    expect(Array.isArray(feats.data)).to.equal(true);
+    expect(feats.data.length).to.be.at.least(1);
+    const f = feats.data[0];
     expect(f).to.have.property('parentId');
     expect(f).to.have.property('original');
     expect(f).to.have.property('changedFields');
@@ -18,9 +19,10 @@ describe('ProviderREST feature/team/project endpoints', () => {
   it('getTeams() returns teams with selected flag', async () => {
     const pr = new ProviderREST();
     const teams = await pr.getTeams();
-    expect(Array.isArray(teams)).to.equal(true);
-    expect(teams.length).to.be.at.least(1);
-    const t = teams[0];
+    expect(teams.ok).to.equal(true);
+    expect(Array.isArray(teams.data)).to.equal(true);
+    expect(teams.data.length).to.be.at.least(1);
+    const t = teams.data[0];
     expect(t).to.have.property('id');
     expect(t).to.have.property('name');
     expect(t).to.have.property('selected');
@@ -30,9 +32,10 @@ describe('ProviderREST feature/team/project endpoints', () => {
   it('getProjects() returns projects with selected flag', async () => {
     const pr = new ProviderREST();
     const projects = await pr.getProjects();
-    expect(Array.isArray(projects)).to.equal(true);
-    expect(projects.length).to.be.at.least(1);
-    const p = projects[0];
+    expect(projects.ok).to.equal(true);
+    expect(Array.isArray(projects.data)).to.equal(true);
+    expect(projects.data.length).to.be.at.least(1);
+    const p = projects.data[0];
     expect(p).to.have.property('id');
     expect(p).to.have.property('name');
     expect(p).to.have.property('selected');
@@ -45,8 +48,9 @@ describe('ProviderREST feature/team/project endpoints', () => {
       { id: '100', capacity: [{ team: 'team-t1', capacity: 50 }] },
     ]);
     expect(res).to.have.property('ok', true);
-    expect(Array.isArray(res.updated)).to.equal(true);
-    expect(res.updated).to.include('100');
+    expect(res.data).to.have.property('ok', true);
+    expect(Array.isArray(res.data.updated)).to.equal(true);
+    expect(res.data.updated).to.include('100');
   });
 
   it('updateTasksWithCapacity applies updates and returns updated ids', async () => {
@@ -61,8 +65,9 @@ describe('ProviderREST feature/team/project endpoints', () => {
     ];
     const res = await pr.updateTasksWithCapacity(updates);
     expect(res).to.have.property('ok', true);
-    expect(Array.isArray(res.updated)).to.equal(true);
-    expect(res.updated).to.include('101');
+    expect(res.data).to.have.property('ok', true);
+    expect(Array.isArray(res.data.updated)).to.equal(true);
+    expect(res.data.updated).to.include('101');
   });
 
   it('updateWorkItemCapacity updates a single work item capacity', async () => {
@@ -70,8 +75,9 @@ describe('ProviderREST feature/team/project endpoints', () => {
     const capacity = [{ team: 'team-t2', capacity: 200 }];
     const res = await pr.updateWorkItemCapacity('110', capacity);
     expect(res).to.have.property('ok', true);
-    expect(res).to.have.property('id', '110');
-    expect(Array.isArray(res.capacity)).to.equal(true);
-    expect(res.capacity[0].capacity).to.equal(200);
+    expect(res.data).to.have.property('ok', true);
+    expect(res.data).to.have.property('id', '110');
+    expect(Array.isArray(res.data.capacity)).to.equal(true);
+    expect(res.data.capacity[0].capacity).to.equal(200);
   });
 });

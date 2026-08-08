@@ -136,15 +136,29 @@ export class BaseConfigComponent extends LitElement {
     this.loadConfig();
   }
 
+  _errorMessage(result, fallback) {
+    if (result && result.error && typeof result.error.message === 'string') {
+      return result.error.message;
+    }
+    if (result && typeof result.error === 'string') {
+      return result.error;
+    }
+    return fallback;
+  }
+
   async loadConfig() {
     this.loading = true;
     try {
-      const [schemaData, contentData] = await Promise.all([
+      const [schemaResult, contentData] = await Promise.all([
         adminProvider.getSchema(this.configType),
         this.fetchContent(),
       ]);
 
-      this.schema = schemaData;
+      if (!schemaResult?.ok) {
+        throw new Error(this._errorMessage(schemaResult, 'schema_load_failed'));
+      }
+
+      this.schema = schemaResult.data;
       this.content = this.parseContent(contentData);
       this.statusMsg = '';
     } catch (e) {
@@ -157,7 +171,11 @@ export class BaseConfigComponent extends LitElement {
 
   async fetchContent() {
     const methodName = `get${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
-    return adminProvider[methodName]();
+    const result = await adminProvider[methodName]();
+    if (!result?.ok) {
+      throw new Error(this._errorMessage(result, `${methodName}_failed`));
+    }
+    return result.data;
   }
 
   parseContent(data) {
@@ -189,7 +207,10 @@ export class BaseConfigComponent extends LitElement {
 
     try {
       const methodName = `save${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
-      await adminProvider[methodName](this.content);
+      const result = await adminProvider[methodName](this.content);
+      if (!result?.ok) {
+        throw new Error(this._errorMessage(result, `${methodName}_failed`));
+      }
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
       setTimeout(() => {

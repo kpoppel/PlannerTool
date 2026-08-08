@@ -540,16 +540,23 @@ export class AdminPlugins extends LitElement {
     this._statusType = '';
     this.requestUpdate();
 
-    const [metaResponse, runtimeConfig, schemas] = await Promise.all([
+    const [metaResponse, runtimeResult, schemas] = await Promise.all([
       this._fetchMetadata(),
       adminProvider.getPluginsConfig(),
       this._discoverPluginSchemas(),
     ]);
 
+    const runtimeConfig = runtimeResult?.ok ? runtimeResult.data : null;
+
     this._metadata = metaResponse;
     this._rows = this._mergeConfig(metaResponse, runtimeConfig);
     this._schemas = schemas;
     this._validationErrors = this._detectValidationErrors(metaResponse);
+    if (!runtimeResult?.ok) {
+      const msg = runtimeResult?.error?.message || 'Failed to load runtime plugin config';
+      this._statusMsg = msg;
+      this._statusType = 'warning';
+    }
     this._loading = false;
     this.requestUpdate();
   }
@@ -837,7 +844,8 @@ export class AdminPlugins extends LitElement {
       this._statusMsg = 'Saved successfully.';
       this._statusType = 'ok';
     } else {
-      this._statusMsg = `Save failed: ${(result && result.error) || 'unknown error'}`;
+      const msg = result?.error?.message || result?.error || 'unknown error';
+      this._statusMsg = `Save failed: ${msg}`;
       this._statusType = 'error';
     }
     this.requestUpdate();

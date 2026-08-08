@@ -9,7 +9,8 @@ describe('ProviderREST /api/health tests', () => {
   it('getHealth returns health status', async () => {
     const pr = new ProviderREST();
     const out = await pr.checkHealth();
-    expect(out).to.have.property('status');
-    expect(out.status).to.equal('ok');
+    expect(out.ok).to.equal(true);
+    expect(out.data).to.have.property('status');
+    expect(out.data.status).to.equal('ok');
   });
 });

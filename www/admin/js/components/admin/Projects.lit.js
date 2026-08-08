@@ -16,6 +16,13 @@ import {
   renderMainTemplate,
 } from './projects/templates.js';
 
+function unwrapResult(result, fallback) {
+  if (result && typeof result === 'object' && Object.prototype.hasOwnProperty.call(result, 'ok')) {
+    return result.ok ? result.data : fallback;
+  }
+  return result ?? fallback;
+}
+
 export class AdminProjects extends BaseConfigComponent {
   static properties = {
     ...BaseConfigComponent.properties,
@@ -77,7 +84,7 @@ export class AdminProjects extends BaseConfigComponent {
 
   async _loadIterationSets() {
     try {
-      const cfg = await adminProvider.getIterations();
+      const cfg = unwrapResult(await adminProvider.getIterations(), null);
       const sets = Array.isArray(cfg?.iteration_sets) ? cfg.iteration_sets : [];
       this._iterationSets = sets
         .filter((s) => s && typeof s === 'object' && s.id)
@@ -126,7 +133,7 @@ export class AdminProjects extends BaseConfigComponent {
     if (areaPaths.length === 0) return;
     this._prefetchLoading = true;
     try {
-      const result = await adminProvider.prefetchProjectsMetadata(areaPaths);
+      const result = unwrapResult(await adminProvider.prefetchProjectsMetadata(areaPaths), null);
       if (result.results) {
         for (const [, data] of Object.entries(result.results)) {
           const { azure_project, ...metadata } = data;
@@ -160,7 +167,10 @@ export class AdminProjects extends BaseConfigComponent {
 
     this._editMetadataLoading = true;
     this._editMetadataError = '';
-    const metadata = await adminProvider.getAreaPathMetadata(azureProject, areaPath);
+    const metadata = unwrapResult(
+      await adminProvider.getAreaPathMetadata(azureProject, areaPath),
+      { error: 'request_failed' }
+    );
     this._editMetadataLoading = false;
     if (metadata.error) {
       this._editMetadataError = `Could not load metadata: ${metadata.error}`;
@@ -181,9 +191,12 @@ export class AdminProjects extends BaseConfigComponent {
     this._azureAreaPaths = [];
     this._selectedAzureProject = '';
     // Resolve organization URL from saved ADO config and pass it explicitly
-    const adoCfg = await adminProvider.getAdo();
+    const adoCfg = unwrapResult(await adminProvider.getAdo(), {});
     const org = (adoCfg && adoCfg.organization_url) || '';
-    const result = await adminProvider.browseAzureProjects(org);
+    const result = unwrapResult(
+      await adminProvider.browseAzureProjects(org),
+      { error: 'request_failed', projects: [] }
+    );
     this._azureBrowseLoading = false;
     if (result.error) {
       this._azureBrowseError = result.error;
@@ -207,15 +220,17 @@ export class AdminProjects extends BaseConfigComponent {
       // Project-level metadata carries all types + state_categories for coloring
       adminProvider.getWorkItemMetadata(project),
     ]);
+    const paths = unwrapResult(pathsResult, { error: 'request_failed', area_paths: [] });
+    const meta = unwrapResult(metaResult, { error: 'request_failed' });
     this._azureBrowseLoading = false;
-    if (pathsResult.error) {
-      this._azureBrowseError = pathsResult.error;
+    if (paths.error) {
+      this._azureBrowseError = paths.error;
     } else {
-      this._azureAreaPaths = pathsResult.area_paths || [];
+      this._azureAreaPaths = paths.area_paths || [];
     }
     // Cache project metadata regardless of area path result
-    if (!metaResult.error) {
-      setMetadata(project, metaResult);
+    if (!meta.error) {
+      setMetadata(project, meta);
     }
   }
 
@@ -238,7 +253,10 @@ export class AdminProjects extends BaseConfigComponent {
       this._azureBrowseLoading = true;
       // Fetch project-level metadata if not already cached
       if (!metadata && azureProject) {
-        const pm = await adminProvider.getWorkItemMetadata(azureProject);
+        const pm = unwrapResult(
+          await adminProvider.getWorkItemMetadata(azureProject),
+          { error: 'request_failed' }
+        );
         if (!pm.error) {
           setMetadata(azureProject, pm);
           metadata = pm;
@@ -246,7 +264,10 @@ export class AdminProjects extends BaseConfigComponent {
       }
       // Fetch area-path specific metadata (types/states)
       if (azureProject) {
-        const am = await adminProvider.getAreaPathMetadata(azureProject, areaPath);
+        const am = unwrapResult(
+          await adminProvider.getAreaPathMetadata(azureProject, areaPath),
+          { error: 'request_failed' }
+        );
         if (!am.error) {
           // prefer area-path metadata for types/states when available
           metadata = { ...(metadata || {}), ...(am || {}) };

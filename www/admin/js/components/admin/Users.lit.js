@@ -1,6 +1,12 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 export class AdminUsers extends LitElement {
   static styles = css`
     :host {
@@ -285,10 +291,11 @@ export class AdminUsers extends LitElement {
     this.error = '';
     this.statusMsg = '';
     try {
-      const data = await adminProvider.getUsers();
-      if (!data) {
-        throw new Error('Failed to load users');
+      const result = await adminProvider.getUsers();
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to load users'));
       }
+      const data = result.data || {};
       this.users = Array.isArray(data.users) ? data.users.slice().sort() : [];
       this.admins = Array.isArray(data.admins) ? data.admins.slice().sort() : [];
       this.current = data.current || null;
@@ -309,7 +316,7 @@ export class AdminUsers extends LitElement {
       const body = { users: this.users, admins: this.admins };
       const resp = await adminProvider.saveUsers(body);
       if (!resp || !resp.ok) {
-        throw new Error('Save failed');
+        throw new Error(resultErrorMessage(resp, 'Save failed'));
       }
 
       this.statusMsg = 'Saved successfully';
@@ -327,8 +334,9 @@ export class AdminUsers extends LitElement {
       await this.load();
     } catch (e) {
       console.error(e);
-      this.error = String(e);
-      this.statusMsg = 'Save failed';
+      const message = e?.message || String(e) || 'Save failed';
+      this.error = message;
+      this.statusMsg = message;
       this.statusType = 'error';
     }
   }

@@ -58,14 +58,17 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       bus.on(DataEvents.SCENARIOS_DATA, (p) => events.push({ type: 'data', p }));
 
       const list = await provider.listScenarios();
-      expect(Array.isArray(list)).to.equal(true);
-      expect(list.length).to.equal(2);
+      expect(list.ok).to.equal(true);
+      expect(Array.isArray(list.data)).to.equal(true);
+      expect(list.data.length).to.equal(2);
 
       const loaded = await provider.getScenario('s1');
-      expect(loaded.id).to.equal('s1');
+      expect(loaded.ok).to.equal(true);
+      expect(loaded.data.id).to.equal('s1');
 
       const loadedAll = await provider.loadAllScenarios();
-      expect(Array.isArray(loadedAll)).to.equal(true);
+      expect(loadedAll.ok).to.equal(true);
+      expect(Array.isArray(loadedAll.data)).to.equal(true);
       expect(events.some((e) => e.type === 'changed')).to.equal(true);
       expect(events.some((e) => e.type === 'data')).to.equal(true);
     });
@@ -83,7 +86,8 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
         return { ok: false };
       };
       const features = await provider.getFeatures();
-      expect(features[0].parentId).to.equal('e1');
+      expect(features.ok).to.equal(true);
+      expect(features.data[0].parentId).to.equal('e1');
     });
 
     it('getTeams and getProjects return arrays with selected true', async () => {
@@ -98,8 +102,10 @@ describe('Providers, FilterManager and CapacityCalculator (consolidated)', () =>
       };
       const teams = await provider.getTeams();
       const projects = await provider.getProjects();
-      expect(teams[0].selected).to.equal(true);
-      expect(projects[0].selected).to.equal(true);
+      expect(teams.ok).to.equal(true);
+      expect(projects.ok).to.equal(true);
+      expect(teams.data[0].selected).to.equal(true);
+      expect(projects.data[0].selected).to.equal(true);
     });
   });
 

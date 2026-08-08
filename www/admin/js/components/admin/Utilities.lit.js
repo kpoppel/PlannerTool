@@ -191,6 +191,16 @@ export class AdminUtilities extends LitElement {
     this.restoreData = null;
   }
 
+  _errorMessage(result, fallback = 'Request failed') {
+    if (result && result.error && typeof result.error.message === 'string') {
+      return result.error.message;
+    }
+    if (result && typeof result.error === 'string') {
+      return result.error;
+    }
+    return fallback;
+  }
+
   async handleReloadConfig() {
     if (
       !confirm(
@@ -207,7 +217,7 @@ export class AdminUtilities extends LitElement {
         this.reloadStatus = 'Configuration reloaded successfully';
         this.reloadType = 'success';
       } else {
-        this.reloadStatus = result && result.error ? result.error : 'Reload failed';
+        this.reloadStatus = this._errorMessage(result, 'Reload failed');
         this.reloadType = 'error';
       }
     } catch (e) {
@@ -227,10 +237,11 @@ export class AdminUtilities extends LitElement {
       const result = await adminProvider.cleanupCache();
 
       if (result.ok) {
-        this.cleanupStatus = `Successfully cleaned up ${result.orphaned_cleaned || 0} orphaned cache entries`;
+        const orphaned = result.data?.orphaned_cleaned || 0;
+        this.cleanupStatus = `Successfully cleaned up ${orphaned} orphaned cache entries`;
         this.cleanupType = 'success';
       } else {
-        this.cleanupStatus = result.error || 'Cache cleanup failed';
+        this.cleanupStatus = this._errorMessage(result, 'Cache cleanup failed');
         this.cleanupType = 'error';
       }
     } catch (e) {
@@ -258,12 +269,12 @@ export class AdminUtilities extends LitElement {
       const result = await adminProvider.invalidateCache();
 
       if (result.ok) {
-        const cleared = result.cleared || 0;
-        const orphaned = result.orphaned_cleaned || 0;
+        const cleared = result.data?.cleared || 0;
+        const orphaned = result.data?.orphaned_cleaned || 0;
         this.invalidateStatus = `Successfully cleared ${cleared} cache entries and ${orphaned} orphaned entries`;
         this.invalidateType = 'success';
       } else {
-        this.invalidateStatus = result.error || 'Cache invalidation failed';
+        this.invalidateStatus = this._errorMessage(result, 'Cache invalidation failed');
         this.invalidateType = 'error';
       }
     } catch (e) {
@@ -280,9 +291,9 @@ export class AdminUtilities extends LitElement {
     this.backupType = 'info';
 
     try {
-      const backupData = await adminProvider.getBackup();
-      if (backupData) {
-        const blob = new Blob([JSON.stringify(backupData, null, 2)], {
+      const backupResult = await adminProvider.getBackup();
+      if (backupResult?.ok) {
+        const blob = new Blob([JSON.stringify(backupResult.data, null, 2)], {
           type: 'application/json',
         });
         const url = URL.createObjectURL(blob);
@@ -296,7 +307,7 @@ export class AdminUtilities extends LitElement {
         this.backupStatus = 'Backup successful!';
         this.backupType = 'success';
       } else {
-        this.backupStatus = 'Backup failed. See console for details.';
+        this.backupStatus = this._errorMessage(backupResult, 'Backup failed. See console for details.');
         this.backupType = 'error';
       }
     } catch (e) {
@@ -366,15 +377,16 @@ export class AdminUtilities extends LitElement {
     try {
       const result = await adminProvider.restoreBackup(dataToRestore);
       if (result.ok) {
-        if (result.warning) {
-          this.restoreStatus = result.warning;
+        const warning = result.data?.warning;
+        if (warning) {
+          this.restoreStatus = warning;
           this.restoreType = 'warning';
         } else {
           this.restoreStatus = 'Restore successful!';
           this.restoreType = 'success';
         }
       } else {
-        this.restoreStatus = `Restore failed: ${result.error || 'Unknown error'}`;
+        this.restoreStatus = `Restore failed: ${this._errorMessage(result, 'Unknown error')}`;
         this.restoreType = 'error';
       }
     } catch (e) {

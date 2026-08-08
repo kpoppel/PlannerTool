@@ -2,6 +2,12 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 export class AdminCost extends LitElement {
   static properties = {
     activeTab: { type: String },
@@ -408,9 +414,15 @@ export class AdminCost extends LitElement {
         adminProvider.getSchema(this.configType),
         adminProvider.getCost(),
       ]);
+      if (!schemaData?.ok) {
+        throw new Error(resultErrorMessage(schemaData, 'Failed to load schema'));
+      }
+      if (!contentData?.ok) {
+        throw new Error(resultErrorMessage(contentData, 'Failed to load cost config'));
+      }
 
-      this.schema = schemaData;
-      this.content = this.parseContent(contentData);
+      this.schema = schemaData.data;
+      this.content = this.parseContent(contentData.data);
       this.statusMsg = '';
     } catch (e) {
       this.statusMsg = `Error loading cost configuration`;
@@ -439,9 +451,9 @@ export class AdminCost extends LitElement {
   async loadInspectData() {
     this.inspectLoading = true;
     try {
-      const data = await adminProvider.getCostInspect();
-      if (!data) throw new Error('Failed to load inspection data');
-      this.inspectData = data;
+      const result = await adminProvider.getCostInspect();
+      if (!result?.ok) throw new Error(resultErrorMessage(result, 'Failed to load inspection data'));
+      this.inspectData = result.data;
       this.statusMsg = 'Inspection data loaded successfully';
       this.statusType = 'success';
     } catch (e) {
@@ -466,11 +478,17 @@ export class AdminCost extends LitElement {
     this.statusMsg = '';
     try {
       const formData = this.shadowRoot.querySelector('schema-form')?.getData();
-      await adminProvider.saveCost(formData || this.content);
+      const saveResult = await adminProvider.saveCost(formData || this.content);
+      if (!saveResult?.ok) {
+        throw new Error(resultErrorMessage(saveResult, 'Failed to save cost configuration'));
+      }
       // Trigger server-side reload so in-memory services pick up new config,
       // then refresh local view state to reflect persisted values.
       try {
-        await adminProvider.reloadConfig();
+        const reloadResult = await adminProvider.reloadConfig();
+        if (!reloadResult?.ok) {
+          throw new Error(resultErrorMessage(reloadResult, 'reload_config_failed'));
+        }
       } catch (e) {
         /* best-effort */
       }
@@ -512,7 +530,12 @@ export class AdminCost extends LitElement {
               <button class="primary" @click=${this.handleSave}>Save Changes</button>
               <button
                 @click=${async () => {
-                  await adminProvider.reloadConfig();
+                  const result = await adminProvider.reloadConfig();
+                  if (!result?.ok) {
+                    this.statusMsg = resultErrorMessage(result, 'Failed to reload config');
+                    this.statusType = 'error';
+                    return;
+                  }
                   this.loadConfig();
                 }}
               >

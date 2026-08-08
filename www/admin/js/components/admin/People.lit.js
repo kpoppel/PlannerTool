@@ -2,6 +2,12 @@ import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { BaseConfigComponent } from './BaseConfigComponent.lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 export class AdminPeople extends LitElement {
   static properties = {
     activeTab: { type: String },
@@ -406,14 +412,21 @@ export class AdminPeople extends LitElement {
     this.loading = true;
     try {
       // Load schema via centralized admin provider
-      const schema = await adminProvider.getSchema(this.configType);
-      if (schema) {
-        this.schema = schema;
+      const schemaResult = await adminProvider.getSchema(this.configType);
+      if (!schemaResult?.ok) {
+        throw new Error(resultErrorMessage(schemaResult, 'Failed to load schema'));
+      }
+      if (schemaResult.data) {
+        this.schema = schemaResult.data;
       }
 
       // Load content
       const methodName = `get${this.configType.charAt(0).toUpperCase() + this.configType.slice(1)}`;
-      const content = await adminProvider[methodName]();
+      const contentResult = await adminProvider[methodName]();
+      if (!contentResult?.ok) {
+        throw new Error(resultErrorMessage(contentResult, 'Failed to load content'));
+      }
+      const content = contentResult.data;
       // If server returned no content, use default from schema when available
       if (content) {
         this.content = content;
@@ -440,10 +453,11 @@ export class AdminPeople extends LitElement {
     this.inspectLoading = true;
     this.statusMsg = '';
     try {
-      this.inspectData = await adminProvider.getPeopleInspect();
-      if (!this.inspectData) {
-        throw new Error('No data returned from server');
+      const result = await adminProvider.getPeopleInspect();
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'No data returned from server'));
       }
+      this.inspectData = result.data;
       this.statusMsg = 'Inspection data loaded successfully';
       this.statusType = 'success';
     } catch (e) {
@@ -468,7 +482,10 @@ export class AdminPeople extends LitElement {
     this.statusMsg = '';
     try {
       const formData = this.shadowRoot.querySelector('schema-form')?.getData();
-      await adminProvider.savePeople(formData || this.content);
+      const result = await adminProvider.savePeople(formData || this.content);
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to save people configuration'));
+      }
       this.statusMsg = 'Saved successfully';
       this.statusType = 'success';
       // Reload inspect data if on that tab

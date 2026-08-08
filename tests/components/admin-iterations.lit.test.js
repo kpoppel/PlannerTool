@@ -137,10 +137,13 @@ describe('admin-iterations', () => {
       .fn()
       .mockResolvedValueOnce({
         ok: false,
-        status: 409,
-        detail: {
-          error: 'referenced_by_projects',
-          projects: [{ name: 'ProjX' }],
+        error: {
+          message: 'HTTP 409',
+          status: 409,
+          detail: {
+            error: 'referenced_by_projects',
+            projects: [{ name: 'ProjX' }],
+          },
         },
       })
       .mockResolvedValueOnce({ ok: true });

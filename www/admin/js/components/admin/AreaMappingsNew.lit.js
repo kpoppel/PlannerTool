@@ -1,6 +1,12 @@
 import { LitElement, html, css } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 export class AreaMappingsNew extends LitElement {
   static properties = {
     mappings: { type: Object },
@@ -438,12 +444,18 @@ export class AreaMappingsNew extends LitElement {
     this.loading = true;
     this.error = null;
     try {
-      const [mappings, projects] = await Promise.all([
+      const [mappingsResult, projectsResult] = await Promise.all([
         adminProvider.getAreaMappings(),
         adminProvider.getProjects(),
       ]);
-      this.mappings = mappings;
-      this.projects = projects?.project_map || [];
+      if (!mappingsResult?.ok) {
+        throw new Error(resultErrorMessage(mappingsResult, 'Failed to load area mappings'));
+      }
+      if (!projectsResult?.ok) {
+        throw new Error(resultErrorMessage(projectsResult, 'Failed to load projects'));
+      }
+      this.mappings = mappingsResult.data;
+      this.projects = projectsResult.data?.project_map || [];
     } catch (err) {
       this.error = `Failed to load area mappings: ${err.message}`;
     } finally {
@@ -456,7 +468,10 @@ export class AreaMappingsNew extends LitElement {
     this.error = null;
     this.success = null;
     try {
-      await adminProvider.refreshAllAreaMappings();
+      const result = await adminProvider.refreshAllAreaMappings();
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to refresh mappings'));
+      }
       this.success = 'Successfully refreshed all area mappings';
       await this.loadData();
       setTimeout(() => {
@@ -480,7 +495,10 @@ export class AreaMappingsNew extends LitElement {
   async saveRawJson() {
     try {
       const parsed = JSON.parse(this.rawJsonContent);
-      await adminProvider.saveAreaMappings(parsed);
+      const result = await adminProvider.saveAreaMappings(parsed);
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to save mappings'));
+      }
       this.success = 'Mappings saved successfully';
       this.showRawJson = false;
       await this.loadData();
@@ -496,7 +514,10 @@ export class AreaMappingsNew extends LitElement {
     this.error = null;
     this.success = null;
     try {
-      await adminProvider.refreshAreaMapping(areaPath);
+      const result = await adminProvider.refreshAreaMapping(areaPath);
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, `Failed to refresh ${areaPath}`));
+      }
       this.success = `Refreshed ${areaPath}`;
       await this.loadData();
       setTimeout(() => {
@@ -511,7 +532,10 @@ export class AreaMappingsNew extends LitElement {
     this.error = null;
     const newEnabled = !currentEnabled;
     try {
-      await adminProvider.togglePlanEnabled(projectId, areaPath, planId, newEnabled);
+      const result = await adminProvider.togglePlanEnabled(projectId, areaPath, planId, newEnabled);
+      if (!result?.ok) {
+        throw new Error(resultErrorMessage(result, 'Failed to toggle plan'));
+      }
       // Update local state immediately for responsive UI
       if (this.mappings?.[projectId]?.areas?.[areaPath]?.plans?.[planId]) {
         this.mappings[projectId].areas[areaPath].plans[planId].enabled = newEnabled;

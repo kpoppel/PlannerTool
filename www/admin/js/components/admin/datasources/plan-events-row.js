@@ -25,6 +25,12 @@
 import { html } from '/static/js/vendor/lit.js';
 import { adminProvider } from '../../../services/providerREST.js';
 
+function resultErrorMessage(result, fallback = 'Request failed') {
+  if (result?.error?.message) return result.error.message;
+  if (typeof result?.error === 'string') return result.error;
+  return fallback;
+}
+
 // ------------------------------------------------------------------
 // Browse helpers
 // ------------------------------------------------------------------
@@ -38,12 +44,13 @@ export async function fetchProjects(comp) {
   comp._projectsError   = '';
   try {
     const res = await adminProvider.browseAzureProjects(comp._wikiOrgUrl);
-    if (res.error) {
-      comp._projectsError = res.error.includes('PAT')
+    if (!res?.ok) {
+      const errorMessage = resultErrorMessage(res);
+      comp._projectsError = errorMessage.includes('PAT')
         ? 'A Personal Access Token is required. Set it in your account settings.'
-        : `Could not load projects: ${res.error}`;
+        : `Could not load projects: ${errorMessage}`;
     } else {
-      comp._projects = res.projects || [];
+      comp._projects = res.data?.projects || [];
     }
   } catch (e) {
     comp._projectsError = String(e);
@@ -113,10 +120,10 @@ export async function fetchWikis(comp, project) {
   comp._wikiPages    = [];
   try {
     const res = await adminProvider.browseWikis(project, comp._wikiOrgUrl);
-    if (res.error) {
-      comp._wikisError = `Could not load wikis: ${res.error}`;
+    if (!res?.ok) {
+      comp._wikisError = `Could not load wikis: ${resultErrorMessage(res)}`;
     } else {
-      comp._wikis = res.wikis || [];
+      comp._wikis = res.data?.wikis || [];
       // Auto-select if only one wiki, or re-select a previously saved one
       if (comp._wikis.length === 1 && !comp._wikiId)
         comp._wikiId = comp._wikis[0].name;
@@ -141,10 +148,10 @@ export async function fetchWikiPages(comp, project, wikiId) {
   comp._wikiPagesError   = '';
   try {
     const res = await adminProvider.browseWikiPages(project, wikiId, comp._wikiOrgUrl);
-    if (res.error) {
-      comp._wikiPagesError = `Could not load pages: ${res.error}`;
+    if (!res?.ok) {
+      comp._wikiPagesError = `Could not load pages: ${resultErrorMessage(res)}`;
     } else {
-      comp._wikiPages = res.pages || [];
+      comp._wikiPages = res.data?.pages || [];
     }
   } catch (e) {
     comp._wikiPagesError = String(e);

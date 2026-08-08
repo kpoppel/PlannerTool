@@ -56,7 +56,7 @@ describe('ProviderREST /api/session tests', () => {
     expect(threw).to.equal(true);
   });
 
-  it('returns sessionExpired when reacquire fails', async () => {
+  it('returns 401 response when reacquire fails', async () => {
     // Arrange: make endpoint respond 401 invalid_session and make session POST fail
     server.use(
       http.get('/api/failing_reacquire', () =>
@@ -69,8 +69,8 @@ describe('ProviderREST /api/session tests', () => {
 
     const pr = new ProviderREST();
     const res = await pr._fetch('/api/failing_reacquire', {});
-    expect(res).to.have.property('sessionExpired');
-    expect(res.sessionExpired).to.equal(true);
+    expect(res.ok).to.equal(false);
+    expect(res.status).to.equal(401);
     // provider should not have a session id in this case
     expect(pr.sessionId).to.equal(null);
   });

@@ -512,15 +512,17 @@ The plugin tree has two inconsistent implementation patterns:
 
 ```mermaid
 flowchart LR
-    SVC[Domain services] --> DS["dataService.js (259 LOC)<br/>Result-wrapped facade"]
-    DS --> REST["providerREST.js (1,024 LOC)<br/>largest file in services/"]
-    REST -->|fetch + X-Session-Id header| API[Backend REST API]
+  SVC[Domain services] --> DS["dataService.js (259 LOC)<br/>compatibility facade"]
+  DS --> REST["providerREST.js<br/>Result-returning endpoint layer"]
+  REST --> BASE["RestProviderBase.js<br/>shared fetch/session/retry plumbing"]
+  BASE -->|fetch + X-Session-Id header| API[Backend REST API]
     DS --> PREF["preferencesStorage.js<br/>localStorage adapter"]
 ```
 
-- `dataService.js` wraps every call in `_invoke()`, normalizing outcomes via `result.js`'s `ok()`/`fail()`/`asResult()`/`dataOr()` helpers — no caching at this layer.
-- `providerREST.js` owns HTTP concerns end-to-end: session acquisition (`POST /api/session`), a single in-flight re-acquisition promise to avoid a thundering herd on 401, exponential-backoff network retry (2 attempts), and endpoint coverage for tasks, teams, projects, iterations, cost, scenarios, views, groups, events/event-categories, markers, history, plugin config/schemas, and cache invalidation.
-- Session expiry (401 + `invalid_session`/`missing_session_id`) triggers `SessionEvents.EXPIRED` / `REACQUIRED`, surfaced by `app.js` as spinner messages instructing the user to retry.
+- `result.js` now provides the shared Result contract helpers (`ok`, `fail`, `asResult`, `dataOr`) used by both REST providers and compatibility callers.
+- `dataService.js` is a compatibility facade: public methods keep legacy unwrapped return shapes, log a warning when provider failures force fallback values, and expose raw provider Result envelopes via `callRestResult(...)` for callers that need structured error details.
+- `providerREST.js` and `www/admin/js/services/providerREST.js` both execute through `RestProviderBase` (`_fetch` + `_fetchJson`) for URL resolution, default headers, retry/session hooks, JSON parsing, and error normalization into `{ ok: false, error: { message, ... } }`.
+- Session recovery is handled in the shared base fetch path through provider-supplied hooks; failed recovery/network exhaustion emits `SessionEvents.EXPIRED`, while successful recovery retries the original request transparently.
 
 ## 10. Presentation layer (`components/`)
 
@@ -583,7 +585,7 @@ Event pattern: components exchange only ids/hints via `EventBus` (`FeatureEvents
 
 ## 12. Admin panel (`www/admin/js/`, ~11,600 LOC)
 
-The admin panel remains a **fully independent Lit application** — zero cross-imports with `www/js/` found in the codebase. It shares only the vendored `lit.js` (loaded from the common `/static/js/` path) and, separately, maintains its own `providerREST.js`. Formerly `www-admin/js/` at the repo root; now nested under `www/admin/js/`.
+The admin panel remains a separate Lit application in UI structure and routing, but it is no longer fully isolated at the data-access layer. It now shares the REST foundation from `www/js/services/` (`RestProviderBase.js` and `result.js`) while retaining its own admin endpoint surface in `www/admin/js/services/providerREST.js`. Formerly `www-admin/js/` at the repo root; now nested under `www/admin/js/`.
 
 ```mermaid
 flowchart TD
@@ -593,13 +595,14 @@ flowchart TD
     APP --> SECTIONS[Sections: System, Users, Projects, Teams,<br/>People, Cost, AreaMappings, Iterations,<br/>GlobalSettings, DataSources, Plugins, Utilities]
     SECTIONS --> BASE["BaseConfigComponent.lit.js<br/>shared schema-form/raw-JSON toggle + save/reload"]
     BASE --> FORM["SchemaForm.lit.js<br/>recursive JSON-Schema -- HTML form renderer"]
-    SECTIONS --> AREST["services/providerREST.js<br/>admin-scoped REST client, no retry/EventBus"]
-    AREST -->|same-origin cookie| API[Backend /admin/v1/* endpoints]
+    SECTIONS --> AREST["services/providerREST.js<br/>AdminProviderREST endpoint surface"]
+    AREST --> BASE["www/js/services/RestProviderBase.js<br/>shared fetch + Result primitives"]
+    BASE -->|same-origin cookie| API[Backend /admin/v1/* endpoints]
 ```
 
 Notable admin-only components (under `www/admin/js/components/admin/`): `DataSources.lit.js`, `Plugins.lit.js` (manages plugin enabled/activated/order + schema-driven `custom_config` forms), `Iterations.lit.js`, `AreaMappingsNew.lit.js`, `GlobalSettings.lit.js`.
 
-**Deliberate duplication vs. `www/js`**: the admin app has its own `providerREST.js` (no session-retry/backoff logic, since it relies on same-origin cookies and has no offline concerns) and no `EventBus`/`PluginManager` at all — it only reuses `pluginSchemaRegistry.js` for discovering plugin config schemas. This app is out of scope for the `State.js`/`StateStore` migration entirely; it never imported `State.js`.
+**Current separation vs. `www/js`**: endpoint surfaces and UI state remain admin-specific (no `EventBus`/`PluginManager`, no `State.js` usage), but the transport/error contract plumbing is shared. `AdminProviderREST` uses the shared base with admin-appropriate behavior (no retry/session reacquisition), reducing duplicated fetch/error infrastructure while keeping admin's same-origin cookie model and section-level component state.
 
 ## 13. Feature flags (`config.js`)
 

@@ -61,8 +61,9 @@ describe('ProviderREST test checking the MSW implementation with MSW custom scop
     const pr = new ProviderREST();
     const out = await pr.getFeatures();
     //console.log('DEBUG getFeatures out =>', out);
-    expect(Array.isArray(out)).to.equal(true);
-    expect(out[0].id).to.equal('T-000');
+    expect(out.ok).to.equal(true);
+    expect(Array.isArray(out.data)).to.equal(true);
+    expect(out.data[0].id).to.equal('T-000');
   });
 });
 
@@ -82,7 +83,8 @@ describe('ProviderREST test checking the MSW implementation with MSW custom full
     const pr = new ProviderREST();
     const out = await pr.getFeatures();
     //console.log('DEBUG getFeatures out =>', out);
-    expect(Array.isArray(out)).to.equal(true);
-    expect(out[0].id).to.equal('T-001');
+    expect(out.ok).to.equal(true);
+    expect(Array.isArray(out.data)).to.equal(true);
+    expect(out.data[0].id).to.equal('T-001');
   });
 });

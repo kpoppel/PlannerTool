@@ -6,6 +6,7 @@ describe('ProviderREST cache endpoint', () => {
     const pr = new ProviderREST();
     const res = await pr.invalidateCache();
     expect(res).to.have.property('ok', true);
-    expect(res).to.have.property('invalidated', true);
+    expect(res.data).to.have.property('ok', true);
+    expect(res.data).to.have.property('invalidated', true);
   });
 });

@@ -28,6 +28,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Changed
+- Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.
+- Phase 2 follow-up completed: removed admin constructor-time Result wrappers, moved app/admin endpoint execution onto the shared `RestProviderBase` JSON/result path, and normalized failure envelopes to `{ ok: false, error: { message, ... } }` across both providers.
 - Plugin development unified: all plugins now share a common base class, eliminating three generations of
   incompatible plugin APIs. New plugins require significantly less boilerplate.
 - Plugins are now categorised as either toolbox-mounted or full-screen; each category has a purpose-built
@@ -57,6 +59,8 @@ Template - do not change :
   without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
+- Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.
+- Admin follow-up hardening for Phase 2 Result envelopes: utilities backup/restore and cache status flows now consume `result.data` and `error.message` correctly, plan-events datasource handles object-shaped errors safely, and admin global/plugins/iterations/base-config paths now use normalized Result unwrapping; added targeted component tests for these failure/success boundaries.
 - Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`
   is faster and avoids unnecessary serialisation overhead.
 - Playwright e2e runs now start an isolated server with a test-only `PLANNER_SECRET_KEY`, bootstrap required admin/mock config via REST, and use dedicated `tests/e2e/.tmp-data` storage, preventing accidental writes to the repository `data/` directory.

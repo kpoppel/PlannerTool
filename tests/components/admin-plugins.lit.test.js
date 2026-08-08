@@ -332,6 +332,7 @@ describe('admin-plugins', () => {
       await comp.updateComplete;
 
       expect(comp._statusType).to.equal('error');
+      expect(comp._statusMsg).to.include('HTTP 500');
     });
 
     it('save includes custom_config in payload', async () => {
@@ -412,18 +413,21 @@ describe('adminProvider plugins-config methods', () => {
       )
     );
     const result = await adminProvider.getPluginsConfig();
-    expect(result).to.be.an('object');
-    expect(result.schema_version).to.equal(1);
-    expect(result.plugins).to.be.an('array');
-    expect(result.plugins[0].id).to.equal('plugin-alpha');
+    expect(result.ok).to.equal(true);
+    expect(result.data).to.be.an('object');
+    expect(result.data.schema_version).to.equal(1);
+    expect(result.data.plugins).to.be.an('array');
+    expect(result.data.plugins[0].id).to.equal('plugin-alpha');
   });
 
-  it('getPluginsConfig returns null on network failure', async () => {
+  it('getPluginsConfig returns Result failure on HTTP error', async () => {
     server.use(
       http.get('/admin/v1/plugins-config', () => HttpResponse.json({}, { status: 500 }))
     );
     const result = await adminProvider.getPluginsConfig();
-    expect(result).to.equal(null);
+    expect(result.ok).to.equal(false);
+    expect(result.error).to.be.an('object');
+    expect(result.error.message).to.include('HTTP 500');
   });
 
   it('savePluginsConfig posts content and returns ok', async () => {
@@ -449,7 +453,8 @@ describe('adminProvider plugins-config methods', () => {
     );
     const result = await adminProvider.savePluginsConfig([]);
     expect(result.ok).to.equal(false);
-    expect(result.error).to.include('400');
+    expect(result.error).to.be.an('object');
+    expect(result.error.message).to.include('HTTP 400');
   });
 });
 

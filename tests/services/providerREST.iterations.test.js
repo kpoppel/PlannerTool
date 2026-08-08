@@ -6,6 +6,7 @@ describe('ProviderREST /api/iterations tests', () => {
     const pr = new ProviderREST();
     const payload = await pr.getIterationsConfig();
     expect(payload).to.be.an('object');
-    expect(payload).to.have.property('iterationSetsById');
+    expect(payload.ok).to.equal(true);
+    expect(payload.data).to.have.property('iterationSetsById');
   });
 });
