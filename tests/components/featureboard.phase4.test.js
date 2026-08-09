@@ -9,6 +9,10 @@ const mockState = vi.hoisted(() => ({
 }));
 
 const mockSel = vi.hoisted(() => ({
+  feature: {
+    getEffectiveFeatures: () => [],
+    getEffectiveFeatureById: () => null,
+  },
   selection: {
     getSelectedProjectIds: () => [],
     getSelectedTeamIds: () => [],
@@ -27,6 +31,9 @@ const mockSel = vi.hoisted(() => ({
     isTypeVisible: () => true,
     getShowUnplannedWork: () => true,
     getShowUnassignedCards: () => true,
+  },
+  group: {
+    getEffectiveGroups: () => [],
   },
 }));
 
@@ -49,6 +56,8 @@ import '../../www/js/components/FeatureBoard.lit.js';
 
 describe('FeatureBoard Phase 4 selector seam', () => {
   beforeEach(() => {
+    mockSel.feature.getEffectiveFeatures = () => [];
+    mockSel.feature.getEffectiveFeatureById = () => null;
     mockState.projects = [{ id: 'p1', selected: true, type: 'project' }];
     mockState.teams = [{ id: 't1', selected: true }];
     mockState.taskFilterService = {

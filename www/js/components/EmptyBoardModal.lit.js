@@ -187,7 +187,8 @@ export class EmptyBoardModal extends LitElement {
   _hasVisibleFeatures() {
     try {
       // Use state's expanded feature ids to determine the base visible set (respects expansion options)
-      const sourceFeatures = state.getEffectiveFeatures() || [];
+      const sourceFeatures =
+        sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
       if (!sourceFeatures.length) return false;
 
       const expandedIds = sel.view.getExpandedFeatureIds();

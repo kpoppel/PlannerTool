@@ -5,7 +5,7 @@
  * toggling are delegated to FullscreenPlugin → MountedPlugin base classes.
  */
 import { FullscreenPlugin } from './FullscreenPlugin.js';
-import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 
 export class PluginCost extends FullscreenPlugin {
   static get defaultId() { return 'plugin-cost'; }
@@ -23,7 +23,7 @@ export class PluginCost extends FullscreenPlugin {
     // Persist pluginId on element
     if (this._el) this._el.pluginId = this.id;
     // Restore persisted date range before opening
-    const ps = state.pluginStateService.get(this.id) || {};
+    const ps = cmd.pluginState.get(this.id) || {};
     if (ps.startDate) this._el.startDate = ps.startDate;
     if (ps.endDate) this._el.endDate = ps.endDate;
     if (typeof this._el.open === 'function') this._el.open();
@@ -32,7 +32,7 @@ export class PluginCost extends FullscreenPlugin {
   async deactivate() {
     // Persist the currently-selected date range before closing
     const s = { startDate: this._el?.startDate, endDate: this._el?.endDate };
-    state.pluginStateService.set(this.id, s, { saveToView: true });
+    cmd.pluginState.set(this.id, s, { saveToView: true });
     await super.deactivate();
   }
 

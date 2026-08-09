@@ -10,6 +10,7 @@ import {
   TimelineEvents,
 } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -557,7 +558,8 @@ export class PluginPlanHealthComponent extends LitElement {
     const issues = [];
 
     try {
-      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const allFeatures =
+        sel.feature?.getEffectiveFeatures ? sel.feature.getEffectiveFeatures() : state.getEffectiveFeatures?.() || [];
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
       const projects = state.projects || [];
@@ -655,7 +657,8 @@ export class PluginPlanHealthComponent extends LitElement {
       const hierarchy = state.taskTypeHierarchy;
       if (!hierarchy || hierarchy.length === 0) return issues; // no hierarchy configured
 
-      const allFeatures = state.getEffectiveFeatures ? state.getEffectiveFeatures() : [];
+      const allFeatures =
+        sel.feature?.getEffectiveFeatures ? sel.feature.getEffectiveFeatures() : state.getEffectiveFeatures?.() || [];
       const featureMap = new Map(allFeatures.map((f) => [String(f.id), f]));
 
       const projects = state.projects || [];
@@ -1020,7 +1023,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const board = findInBoard('feature-board');
 
       // Get full feature data from state (includes all properties like status)
-      const allFeatures = state.getEffectiveFeatures() || [];
+      const allFeatures = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
 
       // Get IDs of visible features from board
       let visibleIds = new Set();
@@ -1152,7 +1155,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const issueIdStr = String(issue.featureId);
 
       // Find and select the feature
-      const features = state.getEffectiveFeatures() || [];
+      const features = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
       const feature = features.find((f) => String(f.id) === issueIdStr);
 
       if (feature) {

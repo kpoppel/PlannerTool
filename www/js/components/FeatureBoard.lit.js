@@ -26,7 +26,6 @@ import {
   assignFeatureToSwimlane,
   SWIMLANE_BAND_GAP_PX,
 } from '../services/SwimlaneService.js';
-import { groupService } from '../services/GroupService.js';
 import { featureBoardStyles } from './FeatureBoard.styles.js';
 import { buildGroupBandItems, packIntoRows } from './groupBandLayout.js';
 import './FeatureGroup.lit.js';
@@ -94,7 +93,7 @@ class FeatureBoard extends LitElement {
 
   // Build and maintain connected feature sets (parent/child and relations)
   _computeConnectedSet(startFeature) {
-    let features = state.getEffectiveFeatures();
+    let features = sel.feature.getEffectiveFeatures();
     if (!features) features = [];
     const idKey = (v) => String(v);
     const byId = new Map(features.map((f) => [idKey(f.id), f]));
@@ -535,7 +534,7 @@ class FeatureBoard extends LitElement {
    */
   async renderFeatures() {
     this._updateSwimlaneLabelStickyTop();
-    const rawFeatures = state.getEffectiveFeatures();
+    const rawFeatures = sel.feature.getEffectiveFeatures();
     // Deduplicate by feature ID — getEffectiveFeatures() can return the same ID
     // twice when a scenario overlay collides with a baseline entry, which would
     // produce duplicate cards in the render list.
@@ -696,7 +695,7 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? groupService.getEffectiveGroups(String(swimlane.id), state.getActiveScenario())
+          ? (sel.group?.getEffectiveGroups?.(String(swimlane.id)) || [])
           : [];
 
         if (planGroups.length > 0) {
@@ -793,8 +792,9 @@ class FeatureBoard extends LitElement {
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
       const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
-      const activeScenario = state.getActiveScenario();
-      const allGroups = selectedPlanIds.flatMap((id) => groupService.getEffectiveGroups(id, activeScenario));
+      const allGroups = selectedPlanIds.flatMap(
+        (id) => sel.group?.getEffectiveGroups?.(id) || []
+      );
       renderList = [];
 
       if (allGroups.length > 0) {
@@ -1012,7 +1012,7 @@ class FeatureBoard extends LitElement {
     const months = getTimelineMonths();
 
     for (const id of ids) {
-      const feature = state.getEffectiveFeatureById(id);
+      const feature = sel.feature.getEffectiveFeatureById(id);
       if (!feature) continue;
 
       const existing = this._getCardNodeById(id);

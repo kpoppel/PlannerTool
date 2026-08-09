@@ -1049,11 +1049,7 @@ export class SidebarLit extends LitElement {
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnelNow = () => {
       try {
-        const feats =
-          (state.featureService &&
-            state.featureService.getEffectiveFeatures &&
-            state.featureService.getEffectiveFeatures()) ||
-          [];
+        const feats = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
         const selectedProjectIds = sel.selection.getSelectedProjectIds();
 
         // Selected tasks: features whose project is selected

@@ -1,6 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 
 export class ScenarioDeleteModal extends LitElement {
@@ -36,7 +36,7 @@ export class ScenarioDeleteModal extends LitElement {
         delBtn.disabled = true;
         if (cancelBtn) cancelBtn.disabled = true;
         try {
-          state.deleteScenario(this.id);
+          cmd.scenario.deleteScenario(this.id);
           await dataService.deleteScenario(this.id).catch(() => {});
           this.remove();
         } catch (err) {

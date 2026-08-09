@@ -1,6 +1,7 @@
 import { bus } from '../core/EventBus.js';
 import { DragEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { cmd, sel } from '../application/imports.js';
 import { formatDate, parseDate, addDays } from './util.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { featureFlags } from '../config.js';
@@ -14,11 +15,13 @@ const getMonthWidth = () => TIMELINE_CONFIG.monthWidth;
  * regardless of current plan filters.
  */
 function getAllFeatures() {
-  // Use FeatureService to get effective features (baseline + scenario overrides)
-  if (
-    state.featureService &&
-    typeof state.featureService.getEffectiveFeatures === 'function'
-  ) {
+  // Prefer the selector seam so this logic is phase-cutover ready.
+  if (sel?.feature && typeof sel.feature.getEffectiveFeatures === 'function') {
+    return sel.feature.getEffectiveFeatures() || [];
+  }
+
+  // Use FeatureService fallback for environments that don't wire selectors.
+  if (state.featureService && typeof state.featureService.getEffectiveFeatures === 'function') {
     return state.featureService.getEffectiveFeatures() || [];
   }
   // Fallback to state.features if FeatureService isn't available
@@ -65,7 +68,7 @@ export function startDragMove(
   e,
   feature,
   card,
-  updateDatesCb = state.updateFeatureDates.bind(state),
+  updateDatesCb = cmd.feature.updateFeatureDates.bind(cmd.feature),
   featuresSource = state.features
 ) {
   const months = getTimelineMonths();
@@ -173,7 +176,7 @@ export function startResize(
   feature,
   card,
   datesEl,
-  updateDatesCb = state.updateFeatureDates.bind(state),
+  updateDatesCb = cmd.feature.updateFeatureDates.bind(cmd.feature),
   featuresSource = state.features
 ) {
   const monthWidth = getMonthWidth();

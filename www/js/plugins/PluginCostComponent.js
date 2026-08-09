@@ -507,7 +507,7 @@ export class PluginCostComponent extends LitElement {
       endDate: this.endDate,
     };
 
-    state.pluginStateService.update(this._getPluginId(), snapshot, { saveToView: true });
+    cmd.pluginState.update(this._getPluginId(), snapshot, { saveToView: true });
   }
 
   _getPluginId() {
@@ -596,7 +596,7 @@ export class PluginCostComponent extends LitElement {
     this._unsubscribes.push(bus.on(ScenarioEvents.UPDATED, () => this._scheduleReload()));
     this._unsubscribes.push(bus.on(FilterEvents.CHANGED, () => this._scheduleReload()));
     this._unsubscribes.push(
-      state.pluginStateService.subscribe(this._getPluginId(), (pluginState) => {
+      cmd.pluginState.subscribe(this._getPluginId(), (pluginState) => {
         this._applyPluginState(pluginState);
       })
     );
@@ -659,8 +659,8 @@ export class PluginCostComponent extends LitElement {
 
       // Get effective features from state
       const effectiveFeatures =
-        state && typeof state.getEffectiveFeatures === 'function' ?
-          state.getEffectiveFeatures()
+        sel.feature && typeof sel.feature.getEffectiveFeatures === 'function' ?
+          sel.feature.getEffectiveFeatures()
         : [];
 
       if (effectiveFeatures.length === 0) {
@@ -752,7 +752,7 @@ export class PluginCostComponent extends LitElement {
         const expandedIds = sel.view.getExpandedFeatureIds() || new Set();
         if (expandedIds.size > 0) {
           const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
-          const allEffective = state.getEffectiveFeatures() || [];
+          const allEffective = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
           const byId = new Map(allEffective.map((f) => [String(f.id), f]));
           for (const id of expandedIds) {
             const sid = String(id);

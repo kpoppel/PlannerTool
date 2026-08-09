@@ -201,7 +201,11 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats = state.getEffectiveFeatures?.() ?? state.features ?? [];
+  const feats =
+    sel.feature?.getEffectiveFeatures?.() ??
+    state.getEffectiveFeatures?.() ??
+    state.features ??
+    [];
   if (!feats?.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
@@ -420,7 +424,11 @@ async function renderTimelineHeader(payload) {
   // we can skip recomputing months and avoid a header re-render.
   if (monthsCache?.length && payload?.ids?.length) {
     try {
-      const feats = state.getEffectiveFeatures?.() ?? state.features ?? [];
+      const feats =
+        sel.feature?.getEffectiveFeatures?.() ??
+        state.getEffectiveFeatures?.() ??
+        state.features ??
+        [];
       const firstMonthStart = monthsCache[0].getTime();
       const lastMonth = monthsCache[monthsCache.length - 1];
       const afterLastMonth = new Date(

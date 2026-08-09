@@ -22,8 +22,7 @@
  */
 
 import { LitElement, html } from '../vendor/lit.js';
-import { bus } from '../core/EventBus.js';
-import { groupService } from '../services/GroupService.js';
+import { cmd, sel } from '../application/imports.js';
 import { state } from '../services/State.js';
 import { groupContextMenuStyles } from './GroupContextMenu.styles.js';
 import './Modal.lit.js';
@@ -136,7 +135,7 @@ class GroupContextMenu extends LitElement {
     // Create the group in the active scenario — it lives in scenario.scenarioGroups
     // until the user publishes via the save dialog, at which point it is promoted
     // to the baseline group store.
-    state.createGroupInScenario(
+    cmd.group.createGroupInScenario(
       planId,
       name,
       this._color || null,
@@ -173,7 +172,7 @@ class GroupContextMenu extends LitElement {
       fields.parent_id = newParent;
     }
     // Use the new scenario-aware update — works for both scenario-local and baseline groups.
-    state.updateGroupInScenario(group.id, fields);
+    cmd.group.updateGroupInScenario(group.id, fields);
     this._close();
   }
 
@@ -181,8 +180,7 @@ class GroupContextMenu extends LitElement {
     const group = this._config?.group;
     if (!group) return;
     // Detect sub-groups so we can warn the user.
-    const activeScenario = state.getActiveScenario();
-    const planGroups = groupService.getEffectiveGroups(group.plan_id || '', activeScenario);
+    const planGroups = sel.group.getEffectiveGroups(group.plan_id || '');
     const subGroups = planGroups.filter((g) => String(g.parent_id) === String(group.id));
     const subMsg = subGroups.length > 0
       ? `\nThis will also delete ${subGroups.length} sub-group(s).`
@@ -191,7 +189,7 @@ class GroupContextMenu extends LitElement {
     this._close();
     // Use the new scenario-aware delete — handles both scenario-local and baseline groups.
     // The cascade to sub-groups is handled inside deleteGroupInScenario.
-    state.deleteGroupInScenario(group.id);
+    cmd.group.deleteGroupInScenario(group.id);
   }
 
   // ---------------------------------------------------------------------------
@@ -202,19 +200,16 @@ class GroupContextMenu extends LitElement {
     const feature = this._config?.feature;
     if (!feature) return;
     this._close();
-    const activeScenario = state.getActiveScenario();
     // Remove from current group first so the card doesn't appear in both groups.
-    const planGroups = groupService.getEffectiveGroups(feature.project, activeScenario);
+    const planGroups = sel.group.getEffectiveGroups(feature.project);
     for (const g of planGroups) {
       if (String(g.id) === String(groupId)) continue; // skip the target
-      const effectiveMembers =
-        activeScenario?.groupOverrides?.[g.id]?.members ?? (g.members || []);
-      if (effectiveMembers.includes(String(feature.id))) {
-        groupService.removeMemberFromGroup(g.id, feature.id, state);
+      if ((g.members || []).includes(String(feature.id))) {
+        cmd.group.removeMemberFromGroup(g.id, feature.id);
         break;
       }
     }
-    groupService.addMemberToGroup(groupId, feature.id, state);
+    cmd.group.addMemberToGroup(groupId, feature.id);
   }
 
   _removeFromGroup() {
@@ -222,13 +217,10 @@ class GroupContextMenu extends LitElement {
     if (!feature) return;
     this._close();
     // Use getEffectiveGroups so scenario-local groups are included in the search.
-    const activeScenario = state.getActiveScenario();
-    const planGroups = groupService.getEffectiveGroups(feature.project, activeScenario);
+    const planGroups = sel.group.getEffectiveGroups(feature.project);
     for (const g of planGroups) {
-      const effectiveMembers =
-        activeScenario?.groupOverrides?.[g.id]?.members ?? (g.members || []);
-      if (effectiveMembers.includes(String(feature.id))) {
-        groupService.removeMemberFromGroup(g.id, feature.id, state);
+      if ((g.members || []).includes(String(feature.id))) {
+        cmd.group.removeMemberFromGroup(g.id, feature.id);
         break;
       }
     }
@@ -346,8 +338,7 @@ class GroupContextMenu extends LitElement {
       // Build list of eligible parents: all groups in this plan except the
       // group itself and any of its descendants (to avoid cycles).
       const planId = group.plan_id || '';
-      const activeScenario = state.getActiveScenario();
-      const planGroups = groupService.getEffectiveGroups(planId, activeScenario);
+      const planGroups = sel.group.getEffectiveGroups(planId);
       // Collect descendant IDs so we can exclude them from the parent selector.
       const descendants = new Set([String(group.id)]);
       let changed = true;
@@ -420,8 +411,7 @@ class GroupContextMenu extends LitElement {
     if (!feature) return html``;
 
     // Use getEffectiveGroups so scenario-local groups (scenarioGroups) are included.
-    const activeScenario = state.getActiveScenario();
-    const planGroups = groupService.getEffectiveGroups(feature.project, activeScenario);
+    const planGroups = sel.group.getEffectiveGroups(feature.project);
 
     // Determine if this feature is already in a group by checking group.members
     const currentGroup = planGroups.find(

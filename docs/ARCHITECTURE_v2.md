@@ -1,6 +1,6 @@
 # PlannerTool Web Architecture (v2 draft — target design)
 
-> **Status: PROPOSED, Phase 0 complete (2026-08-08).** Tooling (audit script, guard rule, inert `USE_STATE_STORE` flag) is in place; confirmed-dead `PluginCostV2` files deleted; stack assessment (`backup/architecture_v5/STACK_ASSESSMENT.md`) written and validated — verdict: GO. No architectural change has landed yet. `www/js/services/State.js` (1,561 LOC) is still the live, singleton-imported "god file" for all runtime state, and none of `application/`, `store.js`, `commands/`, `selectors/`, or `core/StoreController.js` exist in the repository yet. Everywhere this document describes the Zustand `store`, `cmd.*`, `sel.*`, `StoreController`, or a dissolved service, it is describing the **target** end state of a migration that has not started, not current behavior. This revision also changes the state-management choice from a fully hand-rolled store to a thin layer on top of [Zustand](https://github.com/pmndrs/zustand) (see Section 1's decision note and Section 4.9's Lit binding) — the mutation/selection/event-payload rules from the previous revision are unchanged, only the underlying implementation. Section 0 below summarizes the concrete problems in the current code that motivate this design; treat every code sample and mermaid diagram in Sections 3–12 as target, not fact, unless explicitly marked "current".
+> **Status: TARGET architecture with phased migration in progress (through Phase 5, 2026-08-09).** `application/` scaffolding, `core/StoreController.js`, and command/selector seam groups are now implemented and widely consumed in `www/js/components/` and `www/js/plugins/` for Selection/Filter/View plus Scenario/Feature/Group/Plugin-state/View-restore concerns. Runtime still defaults to legacy adapters (`USE_STATE_STORE=false`), so `www/js/services/State.js` remains the active runtime owner until Phase 6/7 cutover and decommissioning. Sections in this document may describe either target end-state or landed interim state; per-phase notes in Sections 4, 10, and 11 call out current migration status where behavior is now mixed.
 
 ## 0. Why change: current pain points (verified against the code, 2026-08-06)
 
@@ -184,10 +184,10 @@ command → store.setState(partial, false, 'namespace.action')
 | Filter | `setSelectedTaskTypes`, `setSelectedFeatureStates`, `setExpansionState`, `setTaskFilter` | Phase 4 landed: legacy + store-backed command group implemented in `www/js/application/commands/filterCommands.js`; replacement path for `FilterManager.js` + `StateFilterService.js` is now in place |
 | View | `setDisplayMode`, `setCondensedCards`, `setTimelineScale`, `setCapacityViewMode`, `setFeatureSortMode` | Phase 4 landed: legacy + store-backed command group implemented in `www/js/application/commands/viewCommands.js`; no service dependency, direct state mutation |
 | Group | `createGroupInScenario`, `updateGroupInScenario`, `deleteGroupInScenario`, `applyGroupMemberDelta` | Effective-group merge logic stays in `GroupService.js` (pure) |
-| Plugin state | `setPluginState`, `clearPluginState` | Dissolves `PluginStateService.js` class; reduces to schema registration (~15 LOC) |
-| View restore | `applyViewSelectionRestore`, `applyViewOptionsRestore`, `applyViewPluginStateRestore` | Moves `_views[]`, `_activeViewId` into `StateStore.view`; keeps `ViewManagementService` as orchestrator (zero state) |
-| Feature mutation | `updateFeatureDates`, `updateFeatureField`, `setScenarioOverride`, `revertFeature`, `updateFeatureRelations` | Emits bus events for capacity recompute downstream |
-| Scenario lifecycle | `activateScenario`, `cloneScenario`, `renameScenario`, `deleteScenario`, `saveScenario` | Dissolves `ScenarioManager.js` |
+| Plugin state | `setPluginState`, `clearPluginState` | **Phase 5 landed:** `pluginStateCommands.js` is wired and plugin consumers now call `cmd.pluginState`; service slimming is deferred until store cutover/decommission phases |
+| View restore | `applyViewSelectionRestore`, `applyViewOptionsRestore`, `applyViewPluginStateRestore` | **Phase 5 landed seam:** `viewRestoreCommands.js` is wired and view menu/modals route through `cmd.viewRestore`; full state ownership move into `StateStore.view` remains a later-phase cutover task |
+| Feature mutation | `updateFeatureDates`, `updateFeatureField`, `setScenarioOverride`, `revertFeature`, `updateFeatureRelations` | **Phase 5 landed:** feature mutation/read consumers migrated to `cmd.feature` / `sel.feature` seams (including `DetailsPanel` after decomposition) |
+| Scenario lifecycle | `activateScenario`, `cloneScenario`, `renameScenario`, `deleteScenario`, `saveScenario` | **Phase 5 landed seam:** scenario UI consumers route through `cmd.scenario`; `ScenarioManager.js` removal happens in decommission phase |
 | Data hydration | `hydrateBaseline`, `hydrateScenarioData`, `performAutosaveTick` | Dissolves `BaselineStore.js`; baseline projects/teams/features are written straight into `StateStore.baseline` — no separate stateful store. Spike required first: validate batching → command pattern works before wider rollout |
 
 ### 4.4 Selectors (`selectors/*.js`)
@@ -546,7 +546,7 @@ Lifecycle discipline is consistent: every component subscribes to `EventBus` eve
 
 | Component | LOC | Tag | Notes |
 |---|---|---|---|
-| `DetailsPanel.lit.js` | 2,096 | `<details-panel>` | **Largest file in `www/js`.** Header, scheduling, capacity allocation, tags, relations/links all in one file |
+| `DetailsPanel.lit.js` | 1,867 | `<details-panel>` | Phase 5 split extracted rendering sections into `components/details-panel/` helpers (`Header`, `Scheduling`, `Capacity`, `Tags`, `Relations`) while preserving host behavior |
 | `Sidebar.lit.js` | 2,096 | `<app-sidebar>` | Projects/teams/scenarios/views lists, data-funnel metrics, expansion controls, task filters, taskboard options |
 | `FeatureCard.lit.js` | 931 | `<feature-card-lit>` | Card visual states, ghost title, drag/resize handlers |
 | `FeatureBoard.lit.js` (+ `.init.js` 156, `.styles.js` 188) | 894 | `<feature-board>` | Split into render/init/styles files; swimlane + group-band layout |
@@ -571,8 +571,8 @@ Event pattern: components exchange only ids/hints via `EventBus` (`FeatureEvents
 | `providerREST.js` | 1,024 | HTTP/session (Section 9) — unchanged |
 | `FeatureService.js` | ~600 | Pure override-merge logic only; expansion moved to selectors |
 | `CapacityCalculator.js` | ~450 | Stateless pure calculation; `_lastResultCache` removed |
-| `GroupService.js` | ~300 | Effective-group merge (pure functions); command helpers |
-| `ViewManagementService.js` | ~100 | Orchestrator only (zero state); captures/restores view schema against `StateStore.view` |
+| `GroupService.js` | ~300 (target) / 348 (current) | Phase 5 removed runtime `getEffectiveGroups` dependency via `sel.group`; remaining service methods are transitional until cutover/decommission cleanup |
+| `ViewManagementService.js` | ~100 (target) / 651 (current) | View menu/modals now use `cmd.viewRestore` seam; full orchestrator-only shrink remains tied to store-default cutover |
 | `ConfigService.js` | ~184 | Autosave timer config; no mutation state |
 | `ColorService.js` | ~227 | Deterministic hash color assignment |
 | `FeatureVisibilityService.js` | ~367 | Pure feature-visibility filter predicate |
@@ -584,7 +584,7 @@ Event pattern: components exchange only ids/hints via `EventBus` (`FeatureEvents
 | `ProjectTeamService.js` | ~100 | Org-load computation helpers; selection mutation moved to commands |
 | `StateFilterService.js` | **deleted** | Pure functions migrated to selectors |
 | `ScenarioGroupService.js` | **deleted** | Mutation logic dissolved into groupCommands |
-| `PluginStateService.js` | ~15 | Schema registration only; mutation dissolved into pluginStateCommands |
+| `PluginStateService.js` | ~15 (target) / 155 (current) | Plugin UI now uses `cmd.pluginState`; service-level slimming to schema-registration-only is deferred until legacy path retirement |
 | `FilterManager.js` | **deleted** | Logic dissolved into filterCommands |
 | `ScenarioManager.js` | **deleted** | Mutation logic dissolved into scenarioCommands |
 | Other helpers | varies | Result helpers, preferences storage, coordinate transforms |

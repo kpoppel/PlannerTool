@@ -1,6 +1,7 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 
 export class ViewSaveModal extends LitElement {
   static properties = {
@@ -50,7 +51,7 @@ export class ViewSaveModal extends LitElement {
     this._saving = true;
     this._status = '';
     try {
-      await state.viewManagementService.saveCurrentView(val);
+      await cmd.viewRestore.saveCurrentView(val);
       this.dispatchEvent(
         new CustomEvent('modal-close', { bubbles: true, composed: true })
       );
@@ -101,8 +102,8 @@ export class ViewSaveModal extends LitElement {
     }
 
     // Get view options
-    if (state._viewService) {
-      const vo = state._viewService.captureCurrentView();
+    {
+      const vo = cmd.viewRestore.captureCurrentView();
       this.previewData.viewOptions = {
         timelineScale: vo.timelineScale || 'months',
         condensedCards: vo.displayMode || (vo.condensedCards ? 'compact' : 'normal'),

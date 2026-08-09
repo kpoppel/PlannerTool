@@ -6,15 +6,12 @@ const mockState = vi.hoisted(() => ({
   availableTaskTypes: ['feature'],
   taskFilterService: { featurePassesFilters: () => true },
   compareFeatureStates: (a, b) => a.localeCompare(b),
-  getEffectiveFeatures: () => [
-    {
-      id: 'f1',
-      project: 'p1',
-      state: 'Doing',
-      type: 'feature',
-      capacity: [{ team: 't1', capacity: 8 }],
-    },
-  ],
+}));
+
+const mockCmd = vi.hoisted(() => ({
+  feature: {
+    updateFeatureField: vi.fn(),
+  },
 }));
 
 const mockSel = vi.hoisted(() => ({
@@ -25,6 +22,17 @@ const mockSel = vi.hoisted(() => ({
   filter: {
     getSelectedFeatureStateNames: () => ['Doing'],
     getAvailableFeatureStates: () => ['Doing'],
+  },
+  feature: {
+    getEffectiveFeatures: () => [
+      {
+        id: 'f1',
+        project: 'p1',
+        state: 'Doing',
+        type: 'feature',
+        capacity: [{ team: 't1', capacity: 8 }],
+      },
+    ],
   },
   view: {
     isTypeVisible: () => true,
@@ -42,7 +50,7 @@ vi.mock('../../www/js/services/State.js', () => ({
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: {},
+  cmd: mockCmd,
   sel: mockSel,
 }));
 

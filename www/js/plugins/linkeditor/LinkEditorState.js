@@ -137,9 +137,12 @@ class LinkEditorState {
    */
   _applyRelationChange(action, fromId, targetId) {
     // Import state management here to avoid circular dependencies
-    import('../../services/State.js').then(({ state }) => {
+    Promise.all([
+      import('../../services/State.js'),
+      import('../../application/imports.js'),
+    ]).then(([{ state }, { sel }]) => {
       try {
-        const scenario = state.scenarioManager?.getActiveScenario();
+        const scenario = sel.scenario.getActiveScenario();
         if (!scenario) {
           console.warn('[LinkEditorState] No active scenario');
           return;
@@ -220,9 +223,12 @@ class LinkEditorState {
    * @param {string} relationType - relation type
    */
   removeRelation(fromId, targetId, relationType) {
-    import('../../services/State.js').then(({ state }) => {
+    Promise.all([
+      import('../../services/State.js'),
+      import('../../application/imports.js'),
+    ]).then(([{ state }, { sel }]) => {
       try {
-        const scenario = state.scenarioManager?.getActiveScenario();
+        const scenario = sel.scenario.getActiveScenario();
         if (!scenario) return;
 
         const baselineFeature = state.baselineStore?.getFeatureById()?.get(fromId);

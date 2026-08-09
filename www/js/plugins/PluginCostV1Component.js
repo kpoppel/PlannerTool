@@ -609,8 +609,8 @@ export class PluginCostV1Component extends LitElement {
       // Unsaved or transient scenario: POST effective features so server can calculate
       // Build features list from state.getEffectiveFeatures() which already merges overrides
       const eff =
-        state && typeof state.getEffectiveFeatures === 'function' ?
-          state.getEffectiveFeatures()
+        sel.feature && typeof sel.feature.getEffectiveFeatures === 'function' ?
+          sel.feature.getEffectiveFeatures()
         : null;
       const featuresPayload = (eff || []).map((f) => {
         // Capacity must be a list of {team, capacity} objects, not a float
@@ -695,7 +695,7 @@ export class PluginCostV1Component extends LitElement {
     const epicMap = new Map();
     for (const f of project.features || []) {
       const eff =
-        state.getEffectiveFeatureById ? state.getEffectiveFeatureById(f.id) : null;
+        sel.feature?.getEffectiveFeatureById ? sel.feature.getEffectiveFeatureById(f.id) : null;
       const parent =
         eff && (eff.parentId || eff.parentId === 0) ?
           eff.parentId
@@ -1085,8 +1085,8 @@ export class PluginCostV1Component extends LitElement {
                             const standalone = [];
                             for (const f of visibleFeatures) {
                               const eff =
-                                state.getEffectiveFeatureById ?
-                                  state.getEffectiveFeatureById(f.id)
+                                sel.feature?.getEffectiveFeatureById ?
+                                  sel.feature.getEffectiveFeatureById(f.id)
                                 : null;
                               const parent =
                                 eff && (eff.parentId || eff.parentId === 0) ?
@@ -1120,8 +1120,8 @@ export class PluginCostV1Component extends LitElement {
                                 const epicChildren = epicMap.get(f.id) || [];
                                 const epicBase = f;
                                 const epicEff =
-                                  state.getEffectiveFeatureById ?
-                                    state.getEffectiveFeatureById(epicBase.id)
+                                  sel.feature?.getEffectiveFeatureById ?
+                                    sel.feature.getEffectiveFeatureById(epicBase.id)
                                   : null;
                                 const epicStateName =
                                   epicEff && epicEff.state ?
@@ -1199,8 +1199,8 @@ export class PluginCostV1Component extends LitElement {
                                     const fb = child.base;
                                     const effState =
                                       child.eff && child.eff.state ? child.eff.state
-                                      : state.getEffectiveFeatureById ?
-                                        (state.getEffectiveFeatureById(fb.id) || {}).state
+                                      : sel.feature?.getEffectiveFeatureById ?
+                                        (sel.feature.getEffectiveFeatureById(fb.id) || {}).state
                                       : null;
                                     const stateName = effState || fb.state || '';
                                     // Use ColorService directly
@@ -1214,7 +1214,7 @@ export class PluginCostV1Component extends LitElement {
                                           style="${this.featureBgStyle(base)}"
                                           @click=${(ev) => {
                                             ev.stopPropagation();
-                                            const feat = state.getEffectiveFeatureById(
+                                            const feat = sel.feature?.getEffectiveFeatureById?.(
                                               fb.id
                                             );
                                             bus.emit(UIEvents.DETAILS_SHOW, feat);
@@ -1272,8 +1272,8 @@ export class PluginCostV1Component extends LitElement {
                               const fb = s.base;
                               const effState =
                                 s.eff && s.eff.state ? s.eff.state
-                                : state.getEffectiveFeatureById ?
-                                  (state.getEffectiveFeatureById(fb.id) || {}).state
+                                : sel.feature?.getEffectiveFeatureById ?
+                                  (sel.feature.getEffectiveFeatureById(fb.id) || {}).state
                                 : null;
                               const stateName = effState || fb.state || '';
                               // Use ColorService directly
@@ -1287,7 +1287,7 @@ export class PluginCostV1Component extends LitElement {
                                     style="${this.featureBgStyle(base)}"
                                     @click=${(ev) => {
                                       ev.stopPropagation();
-                                      const feat = state.getEffectiveFeatureById(fb.id);
+                                      const feat = sel.feature?.getEffectiveFeatureById?.(fb.id);
                                       bus.emit(UIEvents.DETAILS_SHOW, feat);
                                     }}
                                   >

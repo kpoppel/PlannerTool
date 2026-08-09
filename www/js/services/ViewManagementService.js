@@ -367,7 +367,11 @@ export class ViewManagementService {
       // Restore plugin state included in the saved view (if any)
       try {
           const pluginState = response.viewOptions?.pluginState || {};
-          await this._state.pluginStateService.restoreFromView(pluginState);
+          if (typeof this._state.restorePluginStateFromView === 'function') {
+            await this._state.restorePluginStateFromView(pluginState);
+          } else {
+            await this._state.pluginStateService?.restoreFromView?.(pluginState);
+          }
       } catch (e) {
         console.warn('[ViewManagementService] Failed to restore plugin state from view', e);
       }
@@ -635,8 +639,13 @@ export class ViewManagementService {
 
     // Capture plugin state for views if available
     try {
-      if (this._state && this._state.pluginStateService) {
-        const pluginMap = this._state.pluginStateService.captureForView();
+      if (this._state) {
+        let pluginMap = {};
+        if (typeof this._state.capturePluginStateForView === 'function') {
+          pluginMap = this._state.capturePluginStateForView();
+        } else {
+          pluginMap = this._state.pluginStateService?.captureForView?.() || {};
+        }
         if (pluginMap && Object.keys(pluginMap).length > 0) {
           snapshot.viewOptions = snapshot.viewOptions || {};
           snapshot.viewOptions.pluginState = pluginMap;

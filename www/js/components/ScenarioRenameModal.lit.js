@@ -1,7 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { dataService } from '../services/dataService.js';
-import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 
 export class ScenarioRenameModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -40,7 +40,7 @@ export class ScenarioRenameModal extends LitElement {
         try {
           // Update local state first so sidebar and other UI update immediately
           try {
-            state.renameScenario(this.id, val);
+            cmd.scenario.renameScenario(this.id, val);
           } catch (e) {
             /* ignore local state update errors */
           }

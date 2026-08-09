@@ -9,7 +9,7 @@
  * card to appear in every matching cell.
  *
  * Toolbar selectors (task types, X field, Y field, card details) are
- * fully plugin-controlled and persisted via state.pluginStateService.
+ * fully plugin-controlled and persisted via cmd.pluginState.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
@@ -18,6 +18,7 @@ import {
   ScenarioEvents, ViewManagementEvents, UIEvents,
 } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 import { computeGrid } from './xyBoardUtils.js';
 import '../components/XYCard.lit.js';
 
@@ -33,7 +34,7 @@ const AVAILABLE_FIELDS = [
   { value: 'areaPath', label: 'Area Path' },
 ];
 
-/** localStorage / pluginStateService key */
+/** plugin-state persistence key */
 const STATE_KEY = 'plugin-xy-board';
 
 export class PluginXYBoardComponent extends LitElement {
@@ -343,7 +344,7 @@ export class PluginXYBoardComponent extends LitElement {
   _refresh() {
     let features = [];
     try {
-      features = state.getEffectiveFeatures() || [];
+      features = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
     } catch (_) {
       // state not yet ready — will be called again on AppEvents.READY
       return;
@@ -421,7 +422,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _saveState() {
     try {
-      state.pluginStateService.set(STATE_KEY, {
+      cmd.pluginState.set(STATE_KEY, {
         xField: this.xField,
         yField: this.yField,
         selectedTypes: this.selectedTypes,
@@ -434,7 +435,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _loadState() {
     try {
-      const saved = state.pluginStateService.get(STATE_KEY);
+      const saved = cmd.pluginState.get(STATE_KEY);
       if (!saved) return;
       if (saved.xField) this.xField = saved.xField;
       if (saved.yField) this.yField = saved.yField;

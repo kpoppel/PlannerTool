@@ -1,6 +1,7 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
 import { groupService } from '../services/GroupService.js';
+import { cmd, sel } from '../application/imports.js';
 
 /** Field names supported in feature-override rows, in display order. */
 const FIELDS = ['start', 'end', 'capacity', 'state', 'iterationPath', 'tags'];
@@ -253,7 +254,8 @@ export class AzureDevopsModal extends LitElement {
   _resolveGroupName(id, groupOps) {
     if (!id) return '—';
     const sid = String(id);
-    const fromCache = groupService.getGroupById(sid)?.name;
+    const fromCache =
+      sel.group?.getGroupById?.(sid)?.name || groupService.getGroupById(sid)?.name;
     if (fromCache) return fromCache;
     const fromPending = (groupOps || [])
       .find((op) => op.group?.id && String(op.group.id) === sid)?.group?.name;
@@ -308,15 +310,15 @@ export class AzureDevopsModal extends LitElement {
    * @param {string} id  Feature / task id
    */
   _onRevertFeature(id) {
-    if (!this.state) return;
+    if (!id) return;
     // Remove any selected keys for this feature so the selection stays consistent.
     const next = new Set(this._selected);
     for (const key of next) {
       if (key.startsWith(`${id}:`)) next.delete(key);
     }
     this._selected = next;
-    // Revert the override in the active scenario (mutates the shared object in place).
-    this.state.revertFeature(id);
+    // Revert the override via feature command seam.
+    cmd.feature.revertFeature(id);
     // Force re-render so the now-absent override no longer shows a row.
     this.requestUpdate();
   }
@@ -573,7 +575,11 @@ export class AzureDevopsModal extends LitElement {
             (groupOps || []).flatMap((op, i) => {
               if (!isStructuralOp(op)) return [];
               const resolvedGroup = op.group
-                ?? (op.groupId ? groupService.getGroupById(String(op.groupId)) : null);
+                ??
+                  (op.groupId ?
+                    (sel.group?.getGroupById?.(String(op.groupId)) ||
+                      groupService.getGroupById(String(op.groupId)))
+                  : null);
               const planId = resolvedGroup?.plan_id || op.planId;
               const planName = planId
                 ? (this.state?.projects?.find((p) => String(p.id) === String(planId))?.name ?? planId)

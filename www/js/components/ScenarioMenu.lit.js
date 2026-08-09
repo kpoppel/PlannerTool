@@ -2,6 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { ScenarioEvents, DataEvents } from '../core/EventRegistry.js';
 
@@ -154,7 +155,7 @@ export class ScenarioMenuLit extends LitElement {
     this._onScenariosList = (payload) => {
       // Use full scenarios from state to get overrides data
       try {
-        const full = state.scenarios || [];
+        const full = sel.scenario.getScenarios() || [];
         this.scenarios = Array.isArray(full) ? [...full] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
@@ -171,7 +172,7 @@ export class ScenarioMenuLit extends LitElement {
     };
 
     this._onScenariosUpdated = () => {
-      const scenarios = state.getScenarios?.() || [];
+      const scenarios = sel.scenario.getScenarios() || [];
       this.scenarios = scenarios ? [...scenarios] : [];
       this.requestUpdate();
     };
@@ -198,7 +199,7 @@ export class ScenarioMenuLit extends LitElement {
   _onScenarioClick(e, scenario) {
     e.stopPropagation();
     // Activate the scenario
-    state.activateScenario(scenario.id);
+    cmd.scenario.activateScenario(scenario.id);
   }
 
   async _onSaveScenario(e, scenario) {
@@ -217,7 +218,7 @@ export class ScenarioMenuLit extends LitElement {
       const now = new Date();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
-      const scenarios = state.getScenarios?.() || [];
+      const scenarios = sel.scenario.getScenarios() || [];
       const maxN = Math.max(
         0,
         ...scenarios
@@ -279,7 +280,7 @@ export class ScenarioMenuLit extends LitElement {
       const now = new Date();
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
-      const scenarios = state.getScenarios?.() || [];
+      const scenarios = sel.scenario.getScenarios() || [];
       const maxN = Math.max(
         0,
         ...scenarios
@@ -306,7 +307,7 @@ export class ScenarioMenuLit extends LitElement {
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
-      const pendingGroupChanges = state.getPendingGroupChanges();
+      const pendingGroupChanges = sel.group.getPendingGroupChanges();
       const hasFeatureChanges = Object.keys(overrides).length > 0;
       const hasGroupChanges = pendingGroupChanges.length > 0;
 
@@ -350,7 +351,7 @@ export class ScenarioMenuLit extends LitElement {
           const created = await dataService.createGroup(payload);
           if (created) {
             const realId = String(created.id);
-            state.confirmGroupCreate(op.group.id, realId);
+            cmd.group.confirmGroupCreate(op.group.id, realId);
             // Remove this group from scenarioGroups (now baseline).
             if (activeScen?.scenarioGroups) {
               activeScen.scenarioGroups = activeScen.scenarioGroups.filter(
@@ -378,7 +379,8 @@ export class ScenarioMenuLit extends LitElement {
 
           // Apply any committed member deltas to compute the new full members list.
           if (op.memberDeltas?.length) {
-            const baseGroup = groupService.getGroupById(op.groupId);
+            const baseGroup =
+              sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
             const baseMembers = new Set((baseGroup?.members || []).map(String));
             for (const { taskId, op: delta } of op.memberDeltas) {
               if (delta === 'add') baseMembers.add(String(taskId));
@@ -405,7 +407,7 @@ export class ScenarioMenuLit extends LitElement {
             }
           }
 
-          const g = groupService.getGroupById(op.groupId);
+          const g = sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
           await dataService.deleteGroup(op.groupId);
@@ -413,7 +415,7 @@ export class ScenarioMenuLit extends LitElement {
           if (activeScen?.groupOverrides?.[op.groupId]) {
             delete activeScen.groupOverrides[op.groupId];
           }
-          const g = groupService.getGroupById(op.groupId);
+          const g = sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         }
       }
@@ -478,7 +480,7 @@ export class ScenarioMenuLit extends LitElement {
                 @click=${(e) => this._onScenarioClick(e, s)}
               >
                 <span class="scenario-name" title="${s.name}">${s.name}</span>
-                ${state.isScenarioUnsaved?.(s) ?
+                ${sel.scenario.isScenarioUnsaved(s) ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
                 ${s.readonly ?
@@ -508,7 +510,7 @@ export class ScenarioMenuLit extends LitElement {
                         (
                           (s.overrides && Object.keys(s.overrides).length > 0) ||
                           s.overridesCount > 0 ||
-                          state.getPendingGroupChanges?.().length > 0
+                          sel.group.getPendingGroupChanges?.().length > 0
                         ) ?
                         html`
                           <button

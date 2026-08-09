@@ -2,8 +2,13 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents, ProjectEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
+import { renderDetailsPanelHeader } from './details-panel/DetailsPanelHeader.lit.js';
+import { renderDetailsPanelScheduling } from './details-panel/DetailsPanelScheduling.lit.js';
+import { renderDetailsPanelCapacity } from './details-panel/DetailsPanelCapacity.lit.js';
+import { renderDetailsPanelTags } from './details-panel/DetailsPanelTags.lit.js';
+import { renderDetailsPanelRelations } from './details-panel/DetailsPanelRelations.lit.js';
 
 /**
  * Azure DevOps state category → CSS background-color mapping.
@@ -962,7 +967,7 @@ export class DetailsPanelLit extends LitElement {
     const isGlobalRefresh = !Array.isArray(ids);
     if (isGlobalRefresh || ids.includes(this.feature.id)) {
       // Get fresh feature data from state
-      const updated = state.getEffectiveFeatureById(this.feature.id);
+      const updated = sel.feature.getEffectiveFeatureById(this.feature.id);
       if (updated) {
         this.feature = updated;
         this._loadIterationsForFeature();
@@ -1031,7 +1036,7 @@ export class DetailsPanelLit extends LitElement {
     const existingNorm = new Set(current.map((tag) => tag.toLowerCase()));
     if (!existingNorm.has(newTag.toLowerCase())) {
       current.push(newTag);
-      state.updateFeatureField(this.feature.id, 'tags', this._tagsToString(current));
+      cmd.feature.updateFeatureField(this.feature.id, 'tags', this._tagsToString(current));
     }
     this._newTagText = '';
     this.requestUpdate();
@@ -1043,7 +1048,7 @@ export class DetailsPanelLit extends LitElement {
     const remaining = this._parseTags(this.feature.tags).filter(
       (tag) => tag.toLowerCase() !== removeNorm
     );
-    state.updateFeatureField(
+    cmd.feature.updateFeatureField(
       this.feature.id,
       'tags',
       remaining.length ? this._tagsToString(remaining) : null
@@ -1070,7 +1075,7 @@ export class DetailsPanelLit extends LitElement {
     let minStartMs = null;
     let maxEndMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = sel.feature.getEffectiveFeatureById(cid);
       if (!eff) continue;
       const s = eff.start;
       const e = eff.end;
@@ -1090,7 +1095,7 @@ export class DetailsPanelLit extends LitElement {
     const newEnd = toIsoDate(maxEndMs);
 
     // Use state.updateFeatureDates to update both start and end together
-    state.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
+    cmd.feature.updateFeatureDates([{ id: f.id, start: newStart, end: newEnd }]);
   }
 
   /**
@@ -1109,7 +1114,7 @@ export class DetailsPanelLit extends LitElement {
     if (!childIds || !childIds.length) return;
     let minStartMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = sel.feature.getEffectiveFeatureById(cid);
       if (!eff || !eff.start) continue;
       const ms = Date.parse(eff.start);
       if (!isNaN(ms) && (minStartMs === null || ms < minStartMs)) minStartMs = ms;
@@ -1117,7 +1122,7 @@ export class DetailsPanelLit extends LitElement {
     if (minStartMs === null) return;
     const newStart = new Date(minStartMs).toISOString().slice(0, 10);
     const currentEnd = f.end || null;
-    state.updateFeatureDates([{ id: f.id, start: newStart, end: currentEnd }]);
+    cmd.feature.updateFeatureDates([{ id: f.id, start: newStart, end: currentEnd }]);
   }
 
   /**
@@ -1136,7 +1141,7 @@ export class DetailsPanelLit extends LitElement {
     if (!childIds || !childIds.length) return;
     let maxEndMs = null;
     for (const cid of childIds) {
-      const eff = state.getEffectiveFeatureById(cid);
+      const eff = sel.feature.getEffectiveFeatureById(cid);
       if (!eff || !eff.end) continue;
       const ms = Date.parse(eff.end);
       if (!isNaN(ms) && (maxEndMs === null || ms > maxEndMs)) maxEndMs = ms;
@@ -1144,7 +1149,7 @@ export class DetailsPanelLit extends LitElement {
     if (maxEndMs === null) return;
     const newEnd = new Date(maxEndMs).toISOString().slice(0, 10);
     const currentStart = f.start || null;
-    state.updateFeatureDates([{ id: f.id, start: currentStart, end: newEnd }]);
+    cmd.feature.updateFeatureDates([{ id: f.id, start: currentStart, end: newEnd }]);
   }
 
   /**
@@ -1213,7 +1218,7 @@ export class DetailsPanelLit extends LitElement {
         c.team === teamId ? { ...c, capacity: clampedCapacity } : { ...c }
       );
       // Store as override in the scenario
-      state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+      cmd.feature.updateFeatureField(this.feature.id, 'capacity', newCapacity);
     }
 
     this.editingCapacityTeam = null;
@@ -1226,7 +1231,7 @@ export class DetailsPanelLit extends LitElement {
       // Create a new capacity array without the deleted team
       const newCapacity = this.feature.capacity.filter((c) => c.team !== teamId);
       // Store as override in the scenario
-      state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+      cmd.feature.updateFeatureField(this.feature.id, 'capacity', newCapacity);
       this.requestUpdate();
     }
   }
@@ -1258,7 +1263,7 @@ export class DetailsPanelLit extends LitElement {
           { team: teamId, capacity: clampedCapacity },
         ];
         // Store as override in the scenario
-        state.updateFeatureField(this.feature.id, 'capacity', newCapacity);
+        cmd.feature.updateFeatureField(this.feature.id, 'capacity', newCapacity);
       }
     }
 
@@ -1314,7 +1319,7 @@ export class DetailsPanelLit extends LitElement {
     }
     const val = this._stateEditValue;
     if (val && val !== this.feature.state) {
-      state.updateFeatureField(this.feature.id, 'state', val);
+      cmd.feature.updateFeatureField(this.feature.id, 'state', val);
     }
     this.editingState = false;
     this._stateEditValue = null;
@@ -1324,7 +1329,7 @@ export class DetailsPanelLit extends LitElement {
   _onStateChipSelect(s) {
     if (!this.feature) return;
     if (s && s !== this.feature.state) {
-      state.updateFeatureField(this.feature.id, 'state', s);
+      cmd.feature.updateFeatureField(this.feature.id, 'state', s);
     }
     this.editingState = false;
     this._stateEditValue = null;
@@ -1391,7 +1396,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     const end = this.feature.end || null;
     try {
-      state.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
+      cmd.feature.updateFeatureDates([{ id: this.feature.id, start: val, end }]);
     } catch (err) {
       console.warn('Failed to update start date', err);
     }
@@ -1402,7 +1407,7 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     const start = this.feature.start || null;
     try {
-      state.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
+      cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end: val }]);
     } catch (err) {
       console.warn('Failed to update end date', err);
     }
@@ -1415,9 +1420,9 @@ export class DetailsPanelLit extends LitElement {
       // cleared because keeping a sprint label without any dates would be
       // contradictory ("iteration as quick-fill preset" paradigm).
       if (this.feature.iterationPath) {
-        state.updateFeatureField(this.feature.id, 'iterationPath', null);
+        cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', null);
       }
-      state.updateFeatureDates([{ id: this.feature.id, start: null, end: null }]);
+      cmd.feature.updateFeatureDates([{ id: this.feature.id, start: null, end: null }]);
     } catch (err) {
       console.warn('Failed to clear dates', err);
     }
@@ -1435,10 +1440,10 @@ export class DetailsPanelLit extends LitElement {
     if (!this.feature) return;
     try {
       // Persist the iterationPath field first so it is included in the override
-      state.updateFeatureField(this.feature.id, 'iterationPath', sel);
+      cmd.feature.updateFeatureField(this.feature.id, 'iterationPath', sel);
       // Then update dates (preserves iterationPath already stored in override)
       if (start && end) {
-        state.updateFeatureDates([{ id: this.feature.id, start, end }]);
+        cmd.feature.updateFeatureDates([{ id: this.feature.id, start, end }]);
       }
     } catch (err) {
       console.warn('Failed to update iteration', err);
@@ -1466,6 +1471,7 @@ export class DetailsPanelLit extends LitElement {
     const stateColors = state._colorService.getFeatureStateColors(
       sel.filter.getAvailableFeatureStates()
     );
+    const availableFeatureStates = sel.filter.getAvailableFeatureStates() || [];
     const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;
@@ -1649,7 +1655,7 @@ export class DetailsPanelLit extends LitElement {
             title="Revert changes"
             @click=${(ev) => {
               ev.stopPropagation();
-              state.revertFeature(feature.id);
+              cmd.feature.revertFeature(feature.id);
             }}
           >
             ↺
@@ -1808,285 +1814,49 @@ export class DetailsPanelLit extends LitElement {
 
     return html`
       <div class="panel">
-        <div class="details-header">
-          <button
-            class="details-close"
-            @click=${() => this.hide()}
-            aria-label="Close details"
-          >
-            ✕
-          </button>
-          <div class="details-label">
-            <span class="title-icon"
-              >${getIconTemplate(feature.type)}</span
-            >
-            <span>${feature.title}</span>
-          </div>
-          <div class="details-label">
-            ID:
-            <a class="details-link" href="${feature.url || '#'}" target="_blank"
-              >⤴ ${feature.id}</a
-            >
-          </div>
-          <div class="details-label">
-            Status:
-            ${this.editingState ?
-              html`
-                <div class="state-edit-row">
-                  <div class="state-current-wrapper ${stateCls}">
-                    ${stateColor ?
-                      html`<button
-                        class="state-chip"
-                        style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:default;"
-                      >
-                        ${feature.state}
-                      </button>`
-                    : html`<button class="state-chip" style="cursor:default;">
-                        ${feature.state}
-                      </button>`}
-                    ${originalStateSpan}
-                  </div>
-                  <div
-                    class="state-choices-box ${stateCls}"
-                    @blur=${(e) => this._onStateBlur(e)}
-                    tabindex="-1"
-                  >
-                    <div class="state-choices">
-                      ${(sel.filter.getAvailableFeatureStates() || []).map((s) => {
-                        const sc = stateColors && stateColors[s] ? stateColors[s] : null;
-                        const isSelected = s === (this._stateEditValue || feature.state);
-                        const selClass = isSelected ? 'selected' : '';
-                        return html`<button
-                          class="state-chip ${selClass}"
-                          style="background:${sc ? sc.background : '#efefef'}; color:${(
-                            sc
-                          ) ?
-                            sc.text
-                          : '#222'}; border:${isSelected ?
-                            '2px solid rgba(0,0,0,0.14)'
-                          : '1px solid rgba(0,0,0,0.08)'}; cursor:pointer;"
-                          @click=${() => this._onStateChipSelect(s)}
-                        >
-                          ${s}
-                        </button>`;
-                      })}
-                    </div>
-                  </div>
-                </div>
-              `
-            : html`
-                <span
-                  class="${stateCls}"
-                  style="display:inline-flex;gap:8px;align-items:center;"
-                >
-                  ${stateColor ?
-                    html`<button
-                      class="state-chip"
-                      style="background:${stateColor.background}; color:${stateColor.text}; border:none; cursor:pointer;"
-                      @click=${(e) => this._onStateClick(e)}
-                    >
-                      ${feature.state}
-                    </button>`
-                  : html`<button
-                      class="state-chip"
-                      @click=${(e) => this._onStateClick(e)}
-                      style="border:none;cursor:pointer;"
-                    >
-                      ${feature.state}
-                    </button>`}
-                  ${originalStateSpan}
-                </span>
-              `}
-          </div>
-          <div class="details-label">
-            Plan: <span class="details-value">${planName || '—'}</span>
-          </div>
-        </div>
+        ${renderDetailsPanelHeader({
+          feature,
+          planName,
+          stateCls,
+          stateColor,
+          originalStateSpan,
+          stateColors,
+          availableFeatureStates,
+          editingState: this.editingState,
+          stateEditValue: this._stateEditValue,
+          onClose: () => this.hide(),
+          onStateClick: (e) => this._onStateClick(e),
+          onStateBlur: (e) => this._onStateBlur(e),
+          onStateChipSelect: (value) => this._onStateChipSelect(value),
+          getIconTemplate,
+        })}
         <div class="details-content">
           ${this._renderField('Assignee', 'assignee', feature.assignee)}
-          ${(() => {
-            // Scheduling section: Iteration (quick-fill) on top, compact date row + toolbar below
-            const orig = feature.original || {};
-            const startOrig = orig.start;
-            const endOrig = orig.end;
-            const startChanged = startOrig !== undefined && feature.start !== startOrig;
-            const endChanged = endOrig !== undefined && feature.end !== endOrig;
-            const hasAnyDate = !!(feature.start || feature.end);
-            const hasChildren =
-              feature &&
-              feature.type &&
-              state.childrenByParent &&
-              state.childrenByParent.has(feature.id);
+          ${renderDetailsPanelScheduling({
+            host: this,
+            feature,
+            iterations: this.iterations,
+            state,
+            orig: feature.original || {},
+          })}
 
-            // Selected iteration is always the ADO iterationPath field
-            const selectedPath = feature.iterationPath || '';
-            // Look up the iteration record for the stored ADO path (fuzzy: endsWith for prefix mismatches)
-            const selectedIter = selectedPath ?
-              (this.iterations || []).find(
-                (it) =>
-                  it.path === selectedPath ||
-                  (it.path && it.path.endsWith(selectedPath)) ||
-                  selectedPath.endsWith(it.path)
-              )
-            : null;
-            // Dates override: iteration is set, dates exist, and dates differ from iter's bounds
-            const datesOverride = !!(selectedIter && hasAnyDate && (
-              !selectedIter.startDate ||
-              !selectedIter.finishDate ||
-              selectedIter.startDate.slice(0, 10) !== feature.start ||
-              selectedIter.finishDate.slice(0, 10) !== feature.end
-            ));
-            // Dirty: iterationPath was changed from its original (base/ADO) value
-            const iterationDirty = orig.iterationPath !== undefined &&
-              feature.iterationPath !== orig.iterationPath;
+          ${renderDetailsPanelCapacity({
+            capacityBars,
+            addTeamButton,
+            totalAllocationBox,
+          })}
 
-            // Tooltip text for changed inputs
-            const startTitle = startChanged ? `was ${startOrig}` : 'Start date';
-            const endTitle = endChanged ? `was ${endOrig}` : 'End date';
-
-            const typeLabel =
-              feature.type ?
-                feature.type.charAt(0).toUpperCase() + feature.type.slice(1)
-              : 'Item';
-
-            return html`
-              <div class="details-label" style="margin-top:8px;">Scheduling</div>
-
-              <!-- Iteration: quick-fill preset, always editable -->
-              <!-- .value binding ensures the select resets when a different card is opened -->
-              <div style="margin-top:4px;">
-                <select
-                  class="iteration-select${iterationDirty ? ' iteration-dirty' : ''}${datesOverride ? ' dates-override' : ''}"
-                  .value=${selectedPath}
-                  @change=${(e) => this._onIterationChange(e)}
-                  title=${iterationDirty && datesOverride ?
-                    `Changed from '${orig.iterationPath || '—'}' — dates also differ from this iteration's bounds`
-                  : iterationDirty ?
-                    `Changed from '${orig.iterationPath || '—'}'`
-                  : datesOverride ?
-                    'Dates have been overridden — they differ from this iteration\'s bounds'
-                  : 'Pick a sprint to fill the dates below'}
-                >
-                  <option value="">—</option>
-                  ${this.iterations && this.iterations.length ?
-                    this.iterations.map(
-                      (it) =>
-                        html`<option value="${it.path}">
-                          ${this._formatIterationLabel(it)}
-                        </option>`
-                    )
-                  : html`<option disabled>No iterations available</option>`}
-                </select>
-              </div>
-
-              <!-- Inline date row: [start] → [end] -->
-              <div class="date-row" style="margin-top:6px;">
-                <input
-                  type="date"
-                  class="date-input${startChanged ? ' details-changed' : ''}"
-                  .value=${feature.start || ''}
-                  title=${startTitle}
-                  @change=${(e) => this._onStartDateChange(e)}
-                />
-                <span class="date-sep">→</span>
-                <input
-                  type="date"
-                  class="date-input${endChanged ? ' details-changed' : ''}"
-                  .value=${feature.end || ''}
-                  title=${endTitle}
-                  @change=${(e) => this._onEndDateChange(e)}
-                />
-              </div>
-
-              <!-- Action toolbar: snap-start, shrink-both, snap-end | clear -->
-              ${hasChildren || hasAnyDate ?
-                html`<div class="date-toolbar">
-                  ${hasChildren ?
-                    html`
-                      <button
-                        class="date-tool-btn"
-                        @click=${(e) => this._snapStartDate(e)}
-                        title="Snap start to earliest child"
-                        aria-label="Snap start to earliest child"
-                      >⇤</button>
-                      <button
-                        class="date-tool-btn"
-                        data-test="shrinkwrap-chip"
-                        @click=${(e) => this._shrinkwrapEpic(e)}
-                        title="Shrink ${typeLabel} to span of children"
-                        aria-label="Shrink ${typeLabel} to children"
-                      ><svg width="18" height="14" viewBox="0 0 20 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                          <rect x="0.5" y="0.5" width="3" height="15" fill="currentColor"/>
-                          <rect x="16.5" y="0.5" width="3" height="15" fill="currentColor"/>
-                          <polygon points="6.5,4 10,8 6.5,12" fill="currentColor"/>
-                          <polygon points="13.5,4 10,8 13.5,12" fill="currentColor"/>
-                          <rect x="9" y="7.2" width="2" height="1.6" fill="currentColor"/>
-                        </svg></button>
-                      <button
-                        class="date-tool-btn"
-                        @click=${(e) => this._snapEndDate(e)}
-                        title="Snap end to latest child"
-                        aria-label="Snap end to latest child"
-                      >⇥</button>
-                      ${hasAnyDate ? html`<span class="date-tool-sep"></span>` : ''}
-                    `
-                  : ''}
-                  ${hasAnyDate ?
-                    html`<button
-                      class="clear-dates-btn"
-                      @click=${() => this._clearDates()}
-                      title="Remove dates — task becomes unplanned"
-                    >✕ Clear dates</button>`
-                  : ''}
-                </div>`
-              : ''}
-            `;
-          })()}
-
-          <div class="capacity-section">
-            <div class="details-label">Allocated Capacity:</div>
-            <div class="capacity-bars">${capacityBars}</div>
-            ${addTeamButton} ${totalAllocationBox}
-          </div>
-
-          <div class="tags-section">
-            <div class="details-label">Tags</div>
-            <div class="${tagsCls}">
-              <div class="tags-row">
-                ${parsedTags.length ?
-                  parsedTags.map((tag) => html`
-                    <span class="tag-chip">
-                      <span>${tag}</span>
-                      <button
-                        type="button"
-                        title="Remove tag ${tag}"
-                        @click=${() => this._removeTag(tag)}
-                      >✕</button>
-                    </span>
-                  `)
-                : html`<span>—</span>`}
-                ${tagsOriginalSpan}
-              </div>
-              <div class="tag-editor-row">
-                <input
-                  type="text"
-                  class="tag-input"
-                  .value=${this._newTagText}
-                  placeholder="Add tag"
-                  @input=${(e) => this._onTagInput(e)}
-                  @keydown=${(e) => this._onTagInputKeydown(e)}
-                />
-                <button type="button" class="tag-add-btn" @click=${() => this._addTag()}>
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
+          ${renderDetailsPanelTags({
+            host: this,
+            parsedTags,
+            tagsCls,
+            tagsOriginalSpan,
+            newTagText: this._newTagText,
+          })}
 
           <div class="details-label">Description</div>
           <div class="details-value" .innerHTML=${cleanDescription || '—'}></div>
-          <div class="details-label">Links:</div>
-          <div class="details-value">${relationsTemplate}</div>
+          ${renderDetailsPanelRelations({ relationsTemplate })}
           ${changedBanner}
         </div>
       </div>

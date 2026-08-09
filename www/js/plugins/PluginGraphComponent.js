@@ -296,7 +296,7 @@ export class PluginGraph extends LitElement {
   }
 
   _computeDailyTotals(mode, sDate, eDate) {
-    const effective = state.getEffectiveFeatures();
+    const effective = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
     const teams = state.teams || [];
     const allProjects = state.projects || [];
     const selectedTeams = sel.selection.getSelectedTeamIds();

@@ -1101,6 +1101,14 @@ class State {
     return this._viewService.captureCurrentView();
   }
 
+  capturePluginStateForView() {
+    return this._pluginStateService?.captureForView?.() || {};
+  }
+
+  async restorePluginStateFromView(pluginStateMap) {
+    return this._pluginStateService?.restoreFromView?.(pluginStateMap || {});
+  }
+
   emitScenarioList() {
     this._scenarioEventService.emitScenarioList();
   }

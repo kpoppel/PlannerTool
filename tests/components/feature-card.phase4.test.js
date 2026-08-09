@@ -2,13 +2,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
 const mockSel = vi.hoisted(() => ({
+  feature: {
+    getEffectiveFeatureById: () => null,
+    getEffectiveFeatures: () => [],
+  },
   view: {
     getHighlightFeatureRelationMode: () => false,
   },
 }));
 
+const mockCmd = vi.hoisted(() => ({
+  feature: {
+    updateFeatureDates: vi.fn(),
+    revertFeature: vi.fn(),
+  },
+}));
+
 const mockState = vi.hoisted(() => ({
-  getEffectiveFeatureById: () => null,
   featureStateService: {
     isStateInCategory: () => false,
   },
@@ -18,7 +28,7 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: {},
+  cmd: mockCmd,
   sel: mockSel,
 }));
 
@@ -31,7 +41,7 @@ import { FeatureCardLit } from '../../www/js/components/FeatureCard.lit.js';
 describe('FeatureCard Phase 4 selector seam', () => {
   beforeEach(() => {
     mockSel.view.getHighlightFeatureRelationMode = () => false;
-    mockState.getEffectiveFeatureById = () => null;
+    mockSel.feature.getEffectiveFeatureById = () => null;
   });
 
   it('emits selected event without connected-set request when highlight mode is off', () => {
@@ -51,7 +61,7 @@ describe('FeatureCard Phase 4 selector seam', () => {
   it('uses sel.view highlight mode to request connected set before selected event', () => {
     const feature = { id: 'f2' };
     mockSel.view.getHighlightFeatureRelationMode = () => true;
-    mockState.getEffectiveFeatureById = () => feature;
+    mockSel.feature.getEffectiveFeatureById = () => feature;
 
     const card = new FeatureCardLit();
     card.feature = feature;

@@ -18,6 +18,11 @@ const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = v
   mockOpenAzureDevopsModal: vi.fn(),
 }));
 
+const { mockPendingGroupChanges, mockConfirmGroupCreate } = vi.hoisted(() => ({
+  mockPendingGroupChanges: vi.fn(() => []),
+  mockConfirmGroupCreate: vi.fn(),
+}));
+
 vi.mock('../../www/js/services/State.js', () => ({
   state: {
     getScenarios: () => [],
@@ -65,6 +70,26 @@ vi.mock('../../www/js/core/EventBus.js', () => ({
 vi.mock('../../www/js/core/EventRegistry.js', () => ({
   ScenarioEvents: { UPDATED: 'scenario:updated', ACTIVATED: 'scenario:activated' },
   DataEvents: { SCENARIOS_CHANGED: 'data:scenarios_changed' },
+}));
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  cmd: {
+    scenario: {
+      activateScenario: vi.fn(),
+    },
+    group: {
+      confirmGroupCreate: mockConfirmGroupCreate,
+    },
+  },
+  sel: {
+    scenario: {
+      getScenarios: vi.fn(() => []),
+      isScenarioUnsaved: vi.fn((s) => Boolean(s?.isChanged)),
+    },
+    group: {
+      getPendingGroupChanges: mockPendingGroupChanges,
+    },
+  },
 }));
 
 // Minimal Lit stub so the component class can be imported without a real browser

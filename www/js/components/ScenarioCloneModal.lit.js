@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 
 export class ScenarioCloneModal extends LitElement {
   static properties = { id: { type: String }, name: { type: String } };
@@ -37,8 +37,8 @@ export class ScenarioCloneModal extends LitElement {
         const val = input.value.trim();
         this._disableButtons(true);
         try {
-          const newScen = state.cloneScenario(this.id, val);
-          if (newScen) state.activateScenario(newScen.id);
+          const newScen = cmd.scenario.cloneScenario(this.id, val);
+          if (newScen) cmd.scenario.activateScenario(newScen.id);
           this.remove();
         } catch (err) {
           if (status) status.textContent = 'Clone failed.';

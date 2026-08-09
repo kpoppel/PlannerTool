@@ -112,7 +112,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
       if (id) cardById.set(String(id), c);
     }
 
-    const features = state.getEffectiveFeatures?.() ?? [];
+    const features = sel.feature?.getEffectiveFeatures?.() ?? state.getEffectiveFeatures?.() ?? [];
     const laneHeight = sel.view.getCondensedCards() ? 28 : 100;
 
     /**

@@ -671,7 +671,7 @@ export class TimelineExportRenderer {
     }
 
     // Get all features with relations
-    const allFeatures = state.getEffectiveFeatures?.() || [];
+    const allFeatures = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
     const drawn = new Set();
 
     for (const f of allFeatures) {

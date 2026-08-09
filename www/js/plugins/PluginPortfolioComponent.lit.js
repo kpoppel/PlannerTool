@@ -13,7 +13,7 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { state } from '../services/State.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
   TIMELINE_HEADER_HEIGHT,
@@ -164,7 +164,7 @@ export class PluginPortfolioComponent extends LitElement {
   _refresh() {
     let features = [];
     try {
-      features = state.getEffectiveFeatures() || [];
+      features = sel.feature.getEffectiveFeatures() || [];
     } catch (_) {
       return;
     }
@@ -522,7 +522,7 @@ export class PluginPortfolioComponent extends LitElement {
     }
 
     try {
-      const updated = state.updateFeatureField(featureId, 'state', nextState);
+      const updated = cmd.feature.updateFeatureField(featureId, 'state', nextState);
       if (updated) {
         this._showStatus(`Moved ${featureId} to ${nextState}`);
       }
