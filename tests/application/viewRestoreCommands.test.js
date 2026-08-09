@@ -107,6 +107,64 @@ describe('application/commands/viewRestoreCommands', () => {
     });
   });
 
+  it('prefers legacy viewManagementService for loadAndApplyView and syncs store', async () => {
+    const legacyState = {
+      projects: [{ id: 'p1', selected: true }, { id: 'p2', selected: false }],
+      teams: [{ id: 't1', selected: true }],
+      scenarios: [{ id: 's1', name: 'Scenario 1' }],
+      activeScenarioId: 's1',
+      availableTaskTypes: ['epic', 'feature'],
+      selectedFeatureStateFilter: new Set(['Doing']),
+      expansionState: {
+        expandParentChild: true,
+        expandRelations: false,
+        expandTeamAllocated: true,
+      },
+      taskFilterService: {
+        getFilters: () => ({ schedule: { planned: true, unplanned: false } }),
+      },
+      _viewService: {
+        isTypeVisible: (typeName) => typeName !== 'epic',
+      },
+      captureCurrentView: () => ({ timelineScale: 'weeks', displayMode: 'compact' }),
+      getSidebarDisabledElements: () => ({ states: ['Done'] }),
+      viewManagementService: {
+        loadAndApplyView: vi.fn(async () => 'v-legacy'),
+        getViews: () => [{ id: 'default', name: 'Default View' }, { id: 'v-legacy', name: 'Legacy' }],
+        getActiveViewId: () => 'v-legacy',
+      },
+    };
+
+    const dataService = {
+      listViews: vi.fn(async () => []),
+      getView: vi.fn(async () => null),
+      saveView: vi.fn(async () => ({})),
+      renameView: vi.fn(async () => {}),
+      deleteView: vi.fn(async () => {}),
+    };
+
+    const cmd = createViewRestoreCommands(store, dataService, legacyState);
+    await cmd.loadAndApplyView('v-legacy');
+
+    const snapshot = store.getState();
+    expect(legacyState.viewManagementService.loadAndApplyView).toHaveBeenCalledWith('v-legacy');
+    expect(snapshot.selection.projectIds).toEqual(['p1']);
+    expect(snapshot.selection.teamIds).toEqual(['t1']);
+    expect(snapshot.selection.featureStateNames).toEqual(['Doing']);
+    expect(snapshot.selection.taskTypeNames).toEqual(['feature']);
+    expect(snapshot.scenarios.activeId).toBe('s1');
+    expect(snapshot.view.activeId).toBe('v-legacy');
+    expect(snapshot.view.saved.map((v) => v.id)).toEqual(['default', 'v-legacy']);
+    expect(snapshot.view.options.timelineScale).toBe('weeks');
+    expect(snapshot.view.options.displayMode).toBe('compact');
+    expect(snapshot.view.options.hiddenTypes).toEqual(['epic']);
+    expect(snapshot.view.expansion).toEqual({
+      parentChild: true,
+      relations: false,
+      teamAllocated: true,
+    });
+  });
+
   it('restoreLastView restores last active view payload and falls back to default', async () => {
     const localStorageMock = {
       _value: 'v9',

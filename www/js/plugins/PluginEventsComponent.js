@@ -23,7 +23,7 @@ import {
   BoardEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -707,7 +707,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
-      const plans = state.projects || [];
+      const plans = sel.selection.getProjects() || [];
       return html`
         <div class="edit-row">
           <input
@@ -843,7 +843,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   }
 
   render() {
-    const selectedPlans = (state.projects || []).filter((p) => p.selected);
+    const selectedPlans = sel.selection.getSelectedProjects() || [];
     return html`
       <div class="floating-toolbar">
         <button class="close-btn" @click=${this._handleClose} title="Close">✕</button>
@@ -902,7 +902,9 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     this._svgEl.style.width = `${boardRect.width}px`;
     this._svgEl.style.height = `${boardRect.height}px`;
 
-    const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
+    const selectedProjects = (sel.selection.getSelectedProjects() || []).map((project) =>
+      String(project.id)
+    );
     const hasSelected = selectedProjects.length > 0;
     const hasGlobal = this.events.some((ev) => !ev.plan_id && !this._hiddenCategories[ev.category]);
     if (!hasSelected && !hasGlobal) {
@@ -911,7 +913,9 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     }
 
     const filteredEvents = this.events.filter(
-      (ev) => (!ev.plan_id || selectedProjects.includes(ev.plan_id)) && !this._hiddenCategories[ev.category]
+      (ev) =>
+        (!ev.plan_id || selectedProjects.includes(String(ev.plan_id))) &&
+        !this._hiddenCategories[ev.category]
     );
 
     const positioned = filteredEvents
@@ -998,7 +1002,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
    * @param {boolean} markersActive Whether the markers overlay is also visible
    */
   _createEventTag(xStart, xEnd, ev, boardHeight, scrollY, row, markersActive) {
-    const plan = (state.projects || []).find((p) => p.id === ev.plan_id);
+    const plan = sel.selection.getProjects().find((project) => String(project.id) === String(ev.plan_id));
     const color = plan?.color || '#1565c0';
 
     const tagPadding = 6;

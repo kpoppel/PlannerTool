@@ -7,10 +7,11 @@
  * not render the same feature card twice.
  */
 import { fixture, html, expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import * as boardUtils from '../../www/js/components/board-utils.js';
 import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureBoard._packIntoRows', () => {
   let el;
@@ -101,16 +102,42 @@ describe('FeatureBoard._packIntoRows', () => {
 
 describe('FeatureBoard renderFeatures — no duplicate cards', () => {
   let board;
-  let origGetEffectiveFeatures;
-  let origDisplayMode;
   let origComputePosition;
+  let displayMode;
+  let effectiveFeatures;
+  let projects;
 
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
     board = document.createElement('feature-board');
     document.body.appendChild(board);
-    origGetEffectiveFeatures = state.getEffectiveFeatures?.bind(state);
-    origDisplayMode = state._viewService._displayMode;
+    displayMode = 'normal';
+    effectiveFeatures = [];
+    projects = [{ id: 'p1', name: 'Plan A', color: '#aa0000', selected: true }];
+
+    sinon.stub(sel.feature, 'getEffectiveFeatures').callsFake(() => effectiveFeatures);
+    sinon.stub(sel.selection, 'getProjects').callsFake(() => projects);
+    sinon.stub(sel.selection, 'getTeams').returns([]);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').callsFake(() =>
+      projects.filter((p) => p.selected).map((p) => p.id)
+    );
+    sinon.stub(sel.selection, 'getSelectedTeamIds').returns([]);
+    sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
+    sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
+    sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
+    sinon.stub(sel.view, 'getExpansionState').returns({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
+    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
+    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
+    sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
+    sinon.stub(sel.view, 'isTypeVisible').returns(true);
+    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
+    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
+    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
+
     // Stub computePosition so tests don't depend on a real timeline being mounted.
     // Returns a deterministic fixed position for any feature that has dates.
     origComputePosition = boardUtils.computePosition;
@@ -123,21 +150,11 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
       },
     });
 
-    // Ensure project p1 is selected and passes filters
-    state._projectTeamService.initFromBaseline([{ id: 'p1', selected: true }], []);
-    state.setProjectSelected('p1', true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
-    // Allow 'Active' state through the filter (case-insensitive in _featurePassesFilters)
-    state._stateFilterService._selectedFeatureStateFilter = new Set(['Active']);
   });
 
   afterEach(() => {
     board.remove();
-    // Restore state
-    state.getEffectiveFeatures = origGetEffectiveFeatures;
-    state._viewService._displayMode = origDisplayMode;
+    sinon.restore();
     Object.defineProperty(boardUtils, 'computePosition', {
       configurable: true,
       writable: true,
@@ -162,9 +179,9 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
   it('packed mode: duplicate IDs in source features produce only one card per ID', async () => {
     const f = makeFeature('dup-1', 'Anti-Corruption');
     // Simulate getEffectiveFeatures returning the same feature twice (e.g. scenario overlay collision)
-    state.getEffectiveFeatures = () => [f, { ...f }]; // same ID, two objects
+    effectiveFeatures = [f, { ...f }]; // same ID, two objects
 
-    state._viewService._displayMode = 'packed';
+    displayMode = 'packed';
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -180,9 +197,9 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     const f1 = makeFeature('f1', 'Alpha');
     const f2 = makeFeature('f2', 'Beta');
     // f1 appears a second time (simulates duplicate from data source)
-    state.getEffectiveFeatures = () => [f1, f2, { ...f1 }];
+    effectiveFeatures = [f1, f2, { ...f1 }];
 
-    state._viewService._displayMode = 'packed';
+    displayMode = 'packed';
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -195,9 +212,9 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
 
   it('normal mode: duplicate IDs in source features produce only one card per ID', async () => {
     const f = makeFeature('dup-2', 'Anti-Corruption');
-    state.getEffectiveFeatures = () => [f, { ...f }];
+    effectiveFeatures = [f, { ...f }];
 
-    state._viewService._displayMode = 'normal';
+    displayMode = 'normal';
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -210,9 +227,9 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
 
   it('compact mode: duplicate IDs in source features produce only one card per ID', async () => {
     const f = makeFeature('dup-3', 'Anti-Corruption');
-    state.getEffectiveFeatures = () => [f, { ...f }];
+    effectiveFeatures = [f, { ...f }];
 
-    state._viewService._displayMode = 'compact';
+    displayMode = 'compact';
     await board.renderFeatures();
 
     const ids = (board.features || []).map((item) => item.feature?.id);
@@ -233,16 +250,11 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     });
     timelineBoard.appendChild(scrollContainer);
 
-    state._projectTeamService.initFromBaseline(
-      [
-        { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
-        { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
-      ],
-      []
-    );
-    state.setProjectSelected('p1', true);
-    state.setProjectSelected('p2', true);
-    state.getEffectiveFeatures = () => [makeFeature('f1'), { ...makeFeature('f2'), project: 'p2' }];
+    projects = [
+      { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
+      { id: 'p2', name: 'Plan B', color: '#00aa00', selected: true },
+    ];
+    effectiveFeatures = [makeFeature('f1'), { ...makeFeature('f2'), project: 'p2' }];
 
     try {
       await board.renderFeatures();
@@ -265,17 +277,39 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
 // ---- updateCardsById in packed mode triggers full rerender ----
 describe('FeatureBoard updateCardsById — packed mode triggers full rerender', () => {
   let board;
-  let origDisplayMode;
   let origComputePosition;
-  let origGetEffectiveFeatures;
+  let displayMode;
+  let effectiveFeatures;
 
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
     board = document.createElement('feature-board');
     document.body.appendChild(board);
-
-    origDisplayMode = state._viewService._displayMode;
-    origGetEffectiveFeatures = state.getEffectiveFeatures?.bind(state);
+    displayMode = 'normal';
+    effectiveFeatures = [];
+    sinon.stub(sel.feature, 'getEffectiveFeatures').callsFake(() => effectiveFeatures);
+    sinon.stub(sel.feature, 'getEffectiveFeatureById').callsFake((id) =>
+      effectiveFeatures.find((f) => String(f.id) === String(id)) || null
+    );
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
+    sinon.stub(sel.selection, 'getTeams').returns([]);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
+    sinon.stub(sel.selection, 'getSelectedTeamIds').returns([]);
+    sinon.stub(sel.view, 'getPackedMode').callsFake(() => displayMode === 'packed');
+    sinon.stub(sel.view, 'getCondensedCards').callsFake(() => displayMode !== 'normal');
+    sinon.stub(sel.view, 'getFeatureSortMode').returns('rank');
+    sinon.stub(sel.view, 'getExpansionState').returns({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
+    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
+    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
+    sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
+    sinon.stub(sel.view, 'isTypeVisible').returns(true);
+    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
+    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
+    sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
 
     origComputePosition = boardUtils.computePosition;
     Object.defineProperty(boardUtils, 'computePosition', {
@@ -286,19 +320,11 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
         return { left: 100, width: 200 };
       },
     });
-
-    state._projectTeamService.initFromBaseline([{ id: 'p1', selected: true }], []);
-    state.setProjectSelected('p1', true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowUnallocatedCards(true);
-    state._stateFilterService._selectedFeatureStateFilter = new Set(['Active']);
   });
 
   afterEach(() => {
     board.remove();
-    state.getEffectiveFeatures = origGetEffectiveFeatures;
-    state._viewService._displayMode = origDisplayMode;
+    sinon.restore();
     Object.defineProperty(boardUtils, 'computePosition', {
       configurable: true,
       writable: true,
@@ -322,9 +348,9 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   it('packed mode: updateCardsById triggers a full renderFeatures repack', async () => {
     const f1 = makeFeature('repack-1');
     const f2 = makeFeature('repack-2');
-    state.getEffectiveFeatures = () => [f1, f2];
+    effectiveFeatures = [f1, f2];
 
-    state._viewService._displayMode = 'packed';
+    displayMode = 'packed';
 
     let renderFeaturesCallCount = 0;
     const origRenderFeatures = board.renderFeatures.bind(board);
@@ -342,7 +368,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   });
 
   it('normal mode: updateCardsById does NOT call renderFeatures', async () => {
-    state._viewService._displayMode = 'normal';
+    displayMode = 'normal';
 
     let renderFeaturesCallCount = 0;
     board.renderFeatures = async () => {
@@ -359,7 +385,7 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   });
 
   it('compact mode: updateCardsById does NOT call renderFeatures', async () => {
-    state._viewService._displayMode = 'compact';
+    displayMode = 'compact';
 
     let renderFeaturesCallCount = 0;
     board.renderFeatures = async () => {

@@ -1,50 +1,43 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/plugins/PluginPortfolioComponent.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('plugin-portfolio-board drag and drop', () => {
-  let stateStubs = [];
-  let originalViewService;
-  let originalTaskFilterService;
-  let originalColorService;
+  let seamStubs = [];
+  let getEffectiveFeaturesStub;
 
   beforeEach(() => {
-    originalViewService = state._viewService;
-    originalTaskFilterService = state._taskFilterService;
-    originalColorService = state._colorService;
-
-    stateStubs.push(
-      sinon.stub(state, 'projects').get(() => [{ id: 'p1', name: 'Project One', selected: true }])
-    );
-    stateStubs.push(
-      sinon.stub(state, 'teams').get(() => [
-        { id: 't1', name: 'Team One', selected: true, color: '#2563eb' },
-      ])
-    );
-    stateStubs.push(sinon.stub(state, 'availableFeatureStates').get(() => ['New', 'Doing']));
-    stateStubs.push(sinon.stub(state, 'availableTaskTypes').get(() => ['Feature']));
-    stateStubs.push(
-      sinon.stub(state, 'selectedFeatureStateFilter').get(() => new Set(['New', 'Doing']))
-    );
-    stateStubs.push(sinon.stub(state, 'expansionState').get(() => ({}) ));
-
-    state._taskFilterService = { featurePassesFilters: () => true };
-    state._viewService = { isTypeVisible: () => true };
-    state._colorService = { getProjectColor: () => '#0f766e' };
-    stateStubs.push(sinon.stub(state, 'getFeatureStateColors').returns({
+    seamStubs.push(sinon.stub(sel.selection, 'getProjects').returns([
+      { id: 'p1', name: 'Project One', selected: true, color: '#0f766e' },
+    ]));
+    seamStubs.push(sinon.stub(sel.selection, 'getTeams').returns([
+      { id: 't1', name: 'Team One', selected: true, color: '#2563eb' },
+    ]));
+    seamStubs.push(sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']));
+    seamStubs.push(sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']));
+    seamStubs.push(sinon.stub(sel.filter, 'getAvailableFeatureStates').returns(['New', 'Doing']));
+    seamStubs.push(sinon.stub(sel.filter, 'getSelectedFeatureStateNames').returns(['New', 'Doing']));
+    seamStubs.push(sinon.stub(sel.filter, 'featurePassesFilters').returns(true));
+    seamStubs.push(sinon.stub(sel.filter, 'getFeatureStateColors').returns({
       New: { background: '#64748b', text: '#ffffff' },
       Doing: { background: '#16a34a', text: '#ffffff' },
     }));
+    seamStubs.push(sinon.stub(sel.filter, 'compareFeatureStates').callsFake((a, b) => String(a).localeCompare(String(b))));
+    seamStubs.push(sinon.stub(sel.feature, 'getAvailableTaskTypes').returns(['Feature']));
+    getEffectiveFeaturesStub = sinon.stub(sel.feature, 'getEffectiveFeatures').returns([]);
+    seamStubs.push(getEffectiveFeaturesStub);
+    seamStubs.push(sinon.stub(sel.view, 'isTypeVisible').returns(true));
+    seamStubs.push(sinon.stub(sel.view, 'getExpansionState').returns({}));
+    seamStubs.push(sinon.stub(sel.view, 'getExpandedFeatureIds').returns(new Set()));
+    seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenarioId').returns('baseline'));
+    seamStubs.push(sinon.stub(sel.scenario, 'getActiveScenario').returns({ id: 'baseline', overrides: {} }));
   });
 
   afterEach(() => {
     sinon.restore();
-    for (const stub of stateStubs) stub.restore();
-    stateStubs = [];
-    state._viewService = originalViewService;
-    state._taskFilterService = originalTaskFilterService;
-    state._colorService = originalColorService;
+    for (const stub of seamStubs) stub.restore();
+    seamStubs = [];
   });
 
   it('updates feature state on drop and shows success feedback', async () => {
@@ -56,9 +49,9 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns([feature]));
-    const updateStub = sinon.stub(state, 'updateFeatureField').returns(true);
-    stateStubs.push(updateStub);
+    getEffectiveFeaturesStub.returns([feature]);
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
+    seamStubs.push(updateStub);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     el._handleDragStart(
@@ -86,9 +79,9 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns([feature]));
-    const updateStub = sinon.stub(state, 'updateFeatureField').returns(false);
-    stateStubs.push(updateStub);
+    getEffectiveFeaturesStub.returns([feature]);
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(false);
+    seamStubs.push(updateStub);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     el._handleDragStart(
@@ -116,9 +109,9 @@ describe('plugin-portfolio-board drag and drop', () => {
       project: 'p1',
       capacity: [{ team: 't1', capacity: 50 }],
     };
-    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns([feature]));
-    const updateStub = sinon.stub(state, 'updateFeatureField').returns(true);
-    stateStubs.push(updateStub);
+    getEffectiveFeaturesStub.returns([feature]);
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
+    seamStubs.push(updateStub);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     el._handleCardPointerDown({ clientX: 10, clientY: 10 }, feature);
@@ -145,9 +138,9 @@ describe('plugin-portfolio-board drag and drop', () => {
         { team: 't2', capacity: 30 },
       ],
     };
-    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns([feature]));
-    const updateStub = sinon.stub(state, 'updateFeatureField').returns(true);
-    stateStubs.push(updateStub);
+    getEffectiveFeaturesStub.returns([feature]);
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureField').returns(true);
+    seamStubs.push(updateStub);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     el._handleDragStart(
@@ -197,7 +190,7 @@ describe('plugin-portfolio-board drag and drop', () => {
         capacity: [{ team: 't1', capacity: 50 }],
       },
     ];
-    stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns(features));
+    getEffectiveFeaturesStub.returns(features);
 
     const el = await fixture(html`<plugin-portfolio-board></plugin-portfolio-board>`);
     const layout = el._timelineLayout;

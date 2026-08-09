@@ -8,6 +8,7 @@ import { TimelineEvents } from '../core/EventRegistry.js';
 // Helper to locate elements inside timeline-board's render root when TimelineBoard
 // uses shadow DOM.
 export function findInBoard(selector) {
+  if (typeof document === 'undefined') return null;
   const boardEl = document.querySelector('timeline-board');
   if (!boardEl) return null;
   const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;

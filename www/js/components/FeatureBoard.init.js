@@ -25,7 +25,7 @@ import {
   GroupEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { groupService } from '../services/GroupService.js';
 import { findInBoard } from './board-utils.js';
 
@@ -54,7 +54,8 @@ export async function initBoard() {
 
   const handleScenarioActivation = ({ scenarioId }) => {
     if (!board) return;
-    const activeScenario = state.scenarios.find((s) => s.id === scenarioId);
+    const activeScenario =
+      sel.scenario.getScenarios().find((s) => s.id === scenarioId) || null;
     // Apply scenario-mode class on #board-area (the background container) so
     // the correct stripe colour is shown.
     const boardArea = findInBoard('#board-area');
@@ -86,7 +87,7 @@ export async function initBoard() {
   // to the server.  When a plan is deselected its cache entry is evicted so
   // the next selection always triggers a fresh fetch.
   const loadGroupsForSelectedPlans = () => {
-    const selected = state.projects.filter((p) => p.selected);
+    const selected = sel.selection.getSelectedProjects();
     for (const plan of selected) {
       if (!groupService.hasPlanLoaded(plan.id)) {
         groupService.loadGroups(plan.id).catch((err) =>
@@ -98,8 +99,9 @@ export async function initBoard() {
   // Evict the cache for plans that become de-selected so the next time the plan
   // is selected its groups are fetched fresh from the server.
   const evictDeselectedPlans = () => {
-    const selectedIds = new Set(state.projects.filter((p) => p.selected).map((p) => String(p.id)));
-    for (const plan of state.projects) {
+    const plans = sel.selection.getProjects();
+    const selectedIds = new Set(sel.selection.getSelectedProjectIds().map((id) => String(id)));
+    for (const plan of plans) {
       if (!selectedIds.has(String(plan.id)) && groupService.hasPlanLoaded(plan.id)) {
         groupService.evictPlan(plan.id);
       }

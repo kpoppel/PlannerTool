@@ -195,6 +195,48 @@ describe('MainGraph Tests', () => {
       expect(calls.stroke).to.be.at.least(1);
       el.remove();
     });
+
+    it('renders team lines when selected ids are strings and team ids are numeric', async () => {
+      const el = document.createElement('maingraph-lit');
+      document.body.appendChild(el);
+      await el.updateComplete;
+
+      const calls = { stroke: 0 };
+      const mockCtx = {
+        clearRect() {},
+        fillRect() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        stroke() {
+          calls.stroke++;
+        },
+        save() {},
+        restore() {},
+        setLineDash() {},
+      };
+      el._canvasRef = { width: 600, height: 120, getContext: () => mockCtx };
+
+      const months = [new Date(2022, 0, 1), new Date(2022, 1, 1)];
+      const snapshot = {
+        months,
+        teams: [{ id: 101, color: '#111' }],
+        projects: [{ id: 201, color: '#222' }],
+        capacityDates: months.map((m) => m.toISOString().slice(0, 10)),
+        teamDailyCapacity: [],
+        teamDailyCapacityMap: { 0: { 101: 50 }, 1: { 101: 60 } },
+        projectDailyCapacity: [],
+        projectDailyCapacityMap: null,
+        totalOrgDailyPerTeamAvg: [],
+        capacityViewMode: 'team',
+        selectedTeamIds: new Set(['101']),
+        selectedProjectIds: new Set(['201']),
+      };
+
+      el._fullRender(mockCtx, snapshot);
+      expect(calls.stroke).to.be.at.least(1);
+      el.remove();
+    });
   });
 
   it('inserts maingraph-lit', async () => {

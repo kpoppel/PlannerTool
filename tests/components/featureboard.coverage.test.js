@@ -1,10 +1,15 @@
 import { fixture, html, expect } from '@open-wc/testing';
+import sinon from 'sinon';
 import '../../www/js/components/FeatureBoard.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureBoard helper coverage', () => {
   beforeEach(async () => {
     await customElements.whenDefined('feature-board');
+  });
+
+  afterEach(() => {
+    sinon.restore();
   });
 
   it('_sortByRank sorts features by originalRank', async () => {
@@ -57,17 +62,20 @@ describe('FeatureBoard helper coverage', () => {
 
   it('_featurePassesFilters returns true for a basic visible feature', async () => {
     const el = await fixture(html`<feature-board></feature-board>`);
-    // Monkeypatch state services to create a minimal visible environment
-    state._projectTeamService.getProjects = () => [{ id: 'p1', selected: true }];
-    state._projectTeamService.getTeams = () => [{ id: 't1', selected: true }];
-    // Ensure view service flags
-    state._viewService.setTypeVisibility('epic', true);
-    state._viewService.setTypeVisibility('feature', true);
-    state._viewService.setShowUnallocatedCards(true);
-    state._viewService.setShowUnplannedWork(true);
-    state._viewService.setShowOnlyProjectHierarchy(false);
-    // State filter service selected states
-    state._stateFilterService.setSelectedStates(['New']);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
+    sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']);
+    sinon.stub(sel.view, 'getExpansionState').returns({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
+    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
+    sinon.stub(sel.view, 'isTypeVisible').returns(true);
+    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
+    sinon.stub(sel.view, 'getShowUnassignedCards').returns(true);
+    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['New']));
+    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
 
     const feature = {
       id: 'f1',

@@ -2,7 +2,6 @@
 // Lit 3.3.1 web component for timeline header
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
@@ -201,11 +200,7 @@ customElements.define('timeline-lit', Timeline);
 // ------- Timeline adapter API (replaces legacy ../timeline.js) -------
 
 function computeRange() {
-  const feats =
-    sel.feature?.getEffectiveFeatures?.() ??
-    state.getEffectiveFeatures?.() ??
-    state.features ??
-    [];
+  const feats = sel.feature?.getEffectiveFeatures?.() || [];
   if (!feats?.length) {
     const today = new Date();
     return { min: today, max: addMonths(today, 6) };
@@ -424,11 +419,7 @@ async function renderTimelineHeader(payload) {
   // we can skip recomputing months and avoid a header re-render.
   if (monthsCache?.length && payload?.ids?.length) {
     try {
-      const feats =
-        sel.feature?.getEffectiveFeatures?.() ??
-        state.getEffectiveFeatures?.() ??
-        state.features ??
-        [];
+      const feats = sel.feature?.getEffectiveFeatures?.() || [];
       const firstMonthStart = monthsCache[0].getTime();
       const lastMonth = monthsCache[monthsCache.length - 1];
       const afterLastMonth = new Date(
@@ -518,7 +509,7 @@ async function renderTimelineHeader(payload) {
     bus.emit(TimelineEvents.MONTHS, monthsCache);
   }
 
-  // Initial scroll so current month is at left edge
+  // Initial scroll so current month is centered in viewport
   if (!didInitialScroll) {
     const today = new Date();
     const idx = monthsCache.findIndex(
@@ -528,7 +519,10 @@ async function renderTimelineHeader(payload) {
       const section = findInBoard('#scroll-container');
       if (section) {
         requestAnimationFrame(() => {
-          section.scrollLeft = idx * TIMELINE_CONFIG.monthWidth;
+          const targetScrollPos = idx * TIMELINE_CONFIG.monthWidth;
+          const centeredScrollPos =
+            targetScrollPos - section.clientWidth / 2 + TIMELINE_CONFIG.monthWidth / 2;
+          section.scrollLeft = Math.max(0, centeredScrollPos);
           didInitialScroll = true;
         });
       }

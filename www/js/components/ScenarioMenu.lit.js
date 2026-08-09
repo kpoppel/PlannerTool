@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 import { cmd, sel } from '../application/imports.js';
@@ -205,7 +204,7 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveScenario(e, scenario) {
     e.stopPropagation();
     try {
-      await state.saveScenario(scenario.id);
+      await cmd.scenario.saveScenario(scenario.id);
       console.log('[ScenarioMenu] Saved scenario:', scenario.name);
     } catch (err) {
       console.error('[ScenarioMenu] Failed to save scenario:', err);
@@ -260,11 +259,34 @@ export class ScenarioMenuLit extends LitElement {
     try {
       // User explicitly requested a refresh — invalidate the server cache first
       // so stale data is not served, then reload.
-      await state.invalidateAndRefreshBaseline();
+      await cmd.scenario.invalidateAndRefreshBaseline();
       console.log('[ScenarioMenu] Refreshed baseline');
     } catch (err) {
       console.error('[ScenarioMenu] Failed to refresh baseline:', err);
     }
+  }
+
+  _buildAzureModalStateAdapter() {
+    const baselineFeatures = sel.feature.getBaselineFeatures?.() || [];
+    const teams = sel.selection.getTeams?.() || [];
+    const projects = sel.selection.getProjects?.() || [];
+    const featuresById = new Map(
+      (sel.feature.getEffectiveFeatures?.() || []).map((feature) => [String(feature.id), feature])
+    );
+    for (const feature of baselineFeatures) {
+      const key = String(feature?.id);
+      if (!featuresById.has(key)) featuresById.set(key, feature);
+    }
+
+    return {
+      baselineFeatures,
+      teams,
+      projects,
+      getFeatureTitleById: (id) => {
+        const feature = featuresById.get(String(id));
+        return feature?.title || feature?.name || String(id);
+      },
+    };
   }
 
   async _onCopyScenario(e) {
@@ -303,7 +325,7 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveToAzure(e, scenario) {
     e.stopPropagation();
     try {
-      const fullScenarios = state.getScenarios?.() || state.scenarios || [];
+      const fullScenarios = sel.scenario.getScenarios() || [];
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
@@ -317,7 +339,11 @@ export class ScenarioMenuLit extends LitElement {
       }
 
       const { openAzureDevopsModal } = await import('./modalHelpers.js');
-      const result = await openAzureDevopsModal({ overrides, pendingGroupChanges, state });
+      const result = await openAzureDevopsModal({
+        overrides,
+        pendingGroupChanges,
+        state: this._buildAzureModalStateAdapter(),
+      });
       if (!result) return; // user cancelled
 
       const { features = [], groupChanges = [] } = result;
@@ -335,7 +361,7 @@ export class ScenarioMenuLit extends LitElement {
           const committedMembers = new Set((op.group.members || []).map(String));
           // All members originally in the scenario group, including any that were
           // deselected in the modal and therefore not in committedMembers.
-          const activeScen = state.getActiveScenario();
+          const activeScen = sel.scenario?.getActiveScenario?.();
           const originalMembers = (
             (activeScen?.scenarioGroups || []).find((g) => String(g.id) === String(op.group.id))
               ?.members || []
@@ -374,7 +400,7 @@ export class ScenarioMenuLit extends LitElement {
             if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
           }
         } else if (op.type === 'update' && op.groupId) {
-          const activeScen = state.getActiveScenario();
+          const activeScen = sel.scenario?.getActiveScenario?.();
           const updatePayload = { ...(op.fields || {}) };
 
           // Apply any committed member deltas to compute the new full members list.
@@ -411,7 +437,7 @@ export class ScenarioMenuLit extends LitElement {
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
           await dataService.deleteGroup(op.groupId);
-          const activeScen = state.getActiveScenario();
+          const activeScen = sel.scenario?.getActiveScenario?.();
           if (activeScen?.groupOverrides?.[op.groupId]) {
             delete activeScen.groupOverrides[op.groupId];
           }
@@ -440,17 +466,17 @@ export class ScenarioMenuLit extends LitElement {
       }
 
       // 3. Save the scenario to disk whenever anything was committed so the
-      //    stored overrides and pendingGroupChanges reflect the new state.
+      //    stored overrides and pendingGroupChanges reflect the new data.
       //    This prevents stale temp IDs, already-deleted groups, and already-
       //    committed overrides from reappearing after a page reload.
       if (features.length > 0 || groupChanges.length > 0) {
-        await state.saveScenario(scenario.id);
+        await cmd.scenario.saveScenario(scenario.id);
       }
 
-      // 4. Refresh baseline so the board reflects the now-persisted state.
+      // 4. Refresh baseline so the board reflects the now-persisted data.
       if (features.length > 0 || groupChanges.length > 0) {
         try {
-          await state.refreshBaseline();
+          await cmd.scenario.refreshBaseline();
           console.log('[ScenarioMenu] Baseline refreshed after save');
         } catch (refreshErr) {
           console.warn('[ScenarioMenu] Baseline refresh failed:', refreshErr);

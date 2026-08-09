@@ -12,7 +12,7 @@
  *   buildGroupBandItems(orderedFeatures, planGroups, topOffset, months, condensed, packed, collapsedGroups, planId)
  */
 import { computePosition, laneHeight } from './board-utils.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 
 /**
  * Greedy interval-packing: place each bar in the first sub-row where it does
@@ -129,6 +129,9 @@ export function buildGroupBandItems(
     });
 
   let rowTop = topOffset;
+  const teams = sel.selection.getTeams() || [];
+  const projects = sel.selection.getProjects() || [];
+  const projectById = new Map(projects.map((project) => [String(project?.id), project]));
 
   /** Push feature card render items for a list of features (flat or packed). */
   const addFeatureRows = (features) => {
@@ -150,10 +153,10 @@ export function buildGroupBandItems(
             left: bar.left,
             width: bar.width,
             top,
-            teams: state.teams,
+            teams,
             condensed: true,
             hideGhostTitle: true,
-            project: state.projects.find((p) => p.id === bar.feature.project),
+            project: projectById.get(String(bar.feature.project)) || null,
           });
         }
       });
@@ -166,10 +169,10 @@ export function buildGroupBandItems(
           left: fpos.left ?? 0,
           width: fpos.width ?? 0,
           top: rowTop,
-          teams: state.teams,
+          teams,
           condensed,
           hideGhostTitle: false,
-          project: state.projects.find((p) => p.id === feature.project),
+          project: projectById.get(String(feature.project)) || null,
         });
         rowTop += laneHeight();
       }

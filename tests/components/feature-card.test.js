@@ -8,6 +8,7 @@ import {
   _test_resetCache,
 } from '../../www/js/components/board-utils.js';
 import { state } from '../../www/js/services/State.js';
+import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureCard Consolidated Tests', () => {
   before(async () => {
@@ -295,11 +296,9 @@ describe('FeatureCard Consolidated Tests', () => {
         capacity: [],
         orgLoad: '0%',
       };
-      // ensure dataInitService exposes a children map the way the component expects
-      if (!state._dataInitService) state._dataInitService = {};
-      if (!state._dataInitService.childrenByParent)
-        state._dataInitService.childrenByParent = new Map();
-      state._dataInitService.childrenByParent.set(parentFeature.id, [{ id: 'CHILD1' }]);
+      const mapStub = stub(sel.feature, 'getChildrenByParentMap').returns(
+        new Map([[parentFeature.id, [{ id: 'CHILD1' }]]])
+      );
 
       const el = await fixture(
         html`<feature-card-lit
@@ -314,8 +313,7 @@ describe('FeatureCard Consolidated Tests', () => {
       expect(teamRow.classList.contains('dimmed')).to.be.true;
       const info = el.shadowRoot.querySelector('.dim-info');
       expect(info).to.exist;
-      // cleanup
-      state._dataInitService.childrenByParent.delete(parentFeature.id);
+      mapStub.restore();
     });
 
     it('when highlightRelationMode is enabled emits request then selected when not connected', async () => {
@@ -328,8 +326,7 @@ describe('FeatureCard Consolidated Tests', () => {
         project: 'P1',
         capacity: [],
       };
-      // enable highlight mode
-      state.setHighlightFeatureRelationMode(true);
+      const modeStub = stub(sel.view, 'getHighlightFeatureRelationMode').returns(true);
       const el = await fixture(
         html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`
       );
@@ -342,8 +339,7 @@ describe('FeatureCard Consolidated Tests', () => {
         FeatureEvents.REQUEST_CONNECTED_SET
       );
       expect(mockBus.emit.secondCall.args[0]).to.equal(FeatureEvents.SELECTED);
-      // cleanup
-      state.setHighlightFeatureRelationMode(false);
+      modeStub.restore();
     });
 
     it('when connected and highlightRelationMode enabled emits selected-in-connected only', async () => {
@@ -356,7 +352,7 @@ describe('FeatureCard Consolidated Tests', () => {
         project: 'P1',
         capacity: [],
       };
-      state.setHighlightFeatureRelationMode(true);
+      const modeStub = stub(sel.view, 'getHighlightFeatureRelationMode').returns(true);
       const el = await fixture(
         html`<feature-card-lit .feature=${feature} .bus=${mockBus}></feature-card-lit>`
       );
@@ -369,7 +365,7 @@ describe('FeatureCard Consolidated Tests', () => {
       expect(mockBus.emit.firstCall.args[0]).to.equal(
         FeatureEvents.SELECTED_IN_CONNECTED_SET
       );
-      state.setHighlightFeatureRelationMode(false);
+      modeStub.restore();
     });
   });
 });

@@ -23,7 +23,6 @@
 
 import { LitElement, html } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
-import { state } from '../services/State.js';
 import { groupContextMenuStyles } from './GroupContextMenu.styles.js';
 import './Modal.lit.js';
 
@@ -251,7 +250,7 @@ class GroupContextMenu extends LitElement {
   }
 
   _renderBoardMenu() {
-    const selectedPlans = state.projects.filter((p) => p.selected);
+    const selectedPlans = sel.selection.getSelectedProjects();
     // Multiple plans selected — can't determine which plan to create group in
     if (selectedPlans.length !== 1) {
       return html`

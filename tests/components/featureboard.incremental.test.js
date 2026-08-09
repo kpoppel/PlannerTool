@@ -1,5 +1,6 @@
 import { expect, fixture, html } from '@open-wc/testing';
-import { state } from '../../www/js/services/State.js';
+import sinon from 'sinon';
+import { sel } from '../../www/js/application/imports.js';
 
 // Define a lightweight mock for feature-card-lit so tests don't require Lit runtime.
 if (!customElements.get('feature-card-lit')) {
@@ -21,6 +22,10 @@ if (!customElements.get('feature-card-lit')) {
 }
 
 describe('FeatureBoard incremental updates', () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
   it('updateCardsById patches existing lit cards', async () => {
     // Stub ResizeObserver to avoid loop errors in headless test runs
     if (!window.__origResizeObserver) {
@@ -85,11 +90,10 @@ describe('FeatureBoard incremental updates', () => {
     board.appendChild(card2);
     if (board && board._cardMap) board._cardMap.set('F2', card2);
 
-    // Ensure state will return our source features when updateCardsById queries for them
-    state._featureService = {
-      getEffectiveFeatureById: (id) => features.find((f) => f.id === id),
-      getEffectiveFeatures: () => features,
-    };
+    sinon
+      .stub(sel.feature, 'getEffectiveFeatureById')
+      .callsFake((id) => features.find((f) => f.id === id) || null);
+    sinon.stub(sel.selection, 'getProjects').returns([]);
 
     // Now change features and call update; provide precomputed layout values used by tests
     features[0].start = '2025-01-02';

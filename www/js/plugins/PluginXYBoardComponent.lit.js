@@ -17,8 +17,7 @@ import {
   FeatureEvents, AppEvents, ProjectEvents,
   ScenarioEvents, ViewManagementEvents, UIEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
-import { cmd } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { computeGrid } from './xyBoardUtils.js';
 import '../components/XYCard.lit.js';
 
@@ -337,14 +336,14 @@ export class PluginXYBoardComponent extends LitElement {
   // ---- Data ----
 
   _onProjectsChanged(_projects) {
-    // Plan menu selection changed — recompute grid using latest state.projects
+    // Plan menu selection changed — recompute grid using latest selector state.
     this._refresh();
   }
 
   _refresh() {
     let features = [];
     try {
-      features = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+      features = sel.feature?.getEffectiveFeatures?.() || [];
     } catch (_) {
       // state not yet ready — will be called again on AppEvents.READY
       return;
@@ -353,7 +352,7 @@ export class PluginXYBoardComponent extends LitElement {
     // Derive available task types — union of baseline cache and effective features
     // so all types are visible in the select even if filtered
     const typeSet = new Set([
-      ...(state.availableTaskTypes || []),
+      ...(sel.feature.getAvailableTaskTypesOrdered() || []),
       ...features.map((f) => f.type || f.workItemType).filter(Boolean),
     ]);
     this._availableTypes = Array.from(typeSet).sort();
@@ -377,21 +376,21 @@ export class PluginXYBoardComponent extends LitElement {
 
     // Apply plan-menu project filter.
     // Features use `f.project` (string) to reference their parent project.
-    // When state.projects is empty (not yet loaded) show everything.
+    // When projects are empty (not yet loaded) show everything.
     // When all projects are deselected show nothing (empty board).
-    const allProjects = state.projects || [];
+    const allProjects = sel.selection.getProjects() || [];
     let afterProjectFilter;
     if (allProjects.length === 0) {
       // Projects not yet loaded — do not filter
       afterProjectFilter = features;
     } else {
       const selectedProjectIds = new Set(
-        allProjects.filter((p) => p.selected).map((p) => p.id)
+        allProjects.filter((p) => p.selected).map((p) => String(p.id))
       );
       afterProjectFilter =
         selectedProjectIds.size === 0
           ? [] // no plans selected — empty board (mirrors timeline board behaviour)
-          : features.filter((f) => selectedProjectIds.has(f.project));
+          : features.filter((f) => selectedProjectIds.has(String(f.project)));
     }
 
     // Apply plugin-local task type filter
@@ -400,10 +399,7 @@ export class PluginXYBoardComponent extends LitElement {
         ? afterProjectFilter.filter((f) => this.selectedTypes.includes(f.type || f.workItemType))
         : afterProjectFilter;
 
-    const stateComparator =
-      typeof state.compareFeatureStates === 'function'
-        ? (a, b) => state.compareFeatureStates(a, b)
-        : null;
+    const stateComparator = (a, b) => sel.filter.compareFeatureStates(a, b);
     const { xVals, yVals, grid } = computeGrid(filtered, this.xField, this.yField, {
       xSort: this.xField === 'state' ? stateComparator : null,
       ySort: this.yField === 'state' ? stateComparator : null,
@@ -491,7 +487,8 @@ export class PluginXYBoardComponent extends LitElement {
 
   _projectColor(feature) {
     try {
-      return state._colorService?.getProjectColor?.(feature.projectId) || null;
+      const projectId = feature?.projectId ?? feature?.project;
+      return sel.selection.getProjectById(projectId)?.color || null;
     } catch (_) {
       return null;
     }

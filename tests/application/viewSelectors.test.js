@@ -94,4 +94,24 @@ describe('application/selectors/viewSelectors', () => {
     expect(selectors.getShowUnassignedCards()).toBe(false);
     expect(selectors.getDisplayMode()).toBe('normal');
   });
+
+  it('store branch falls back to legacy saved/active view when store slice is empty', () => {
+    const store = {
+      getState: () => ({
+        view: {
+          saved: [],
+          activeId: null,
+          options: {},
+        },
+      }),
+    };
+    const legacyState = {
+      savedViews: [{ id: 'legacy-v1', name: 'Legacy View' }],
+      activeViewId: 'legacy-v1',
+    };
+
+    const selectors = createViewSelectors(store, legacyState);
+    expect(selectors.getSavedViews()).toEqual([{ id: 'legacy-v1', name: 'Legacy View' }]);
+    expect(selectors.getActiveViewId()).toBe('legacy-v1');
+  });
 });

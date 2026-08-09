@@ -1,6 +1,12 @@
 import { fixture, html, expect } from '@open-wc/testing';
+import sinon from 'sinon';
+import { sel } from '../../www/js/application/imports.js';
 
 describe('FeatureBoard & DragSurface Tests', () => {
+  afterEach(() => {
+    sinon.restore();
+  });
+
   it('updateCardsById patches existing lit cards', async () => {
     // Stub ResizeObserver for the duration of this test to avoid loop errors
     if (!window.__origResizeObserver) {
@@ -67,12 +73,10 @@ describe('FeatureBoard & DragSurface Tests', () => {
         capacity: [],
       },
     ];
-    // ensure state feature lookup works for updateCardsById
-    const { state } = await import('../../www/js/services/State.js');
-    state._featureService = {
-      getEffectiveFeatureById: (id) => features.find((f) => f.id === id),
-      getEffectiveFeatures: () => features,
-    };
+    sinon
+      .stub(sel.feature, 'getEffectiveFeatureById')
+      .callsFake((id) => features.find((f) => f.id === id) || null);
+    sinon.stub(sel.selection, 'getProjects').returns([]);
     const card1 = document.createElement('feature-card-lit');
     card1.feature = features[0];
     card1.style.left = '10px';

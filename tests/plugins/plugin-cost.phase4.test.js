@@ -4,6 +4,7 @@ const mockCmd = vi.hoisted(() => ({
   filter: {
     clearSidebarDisabledElements: vi.fn(),
     setAllStatesSelected: vi.fn(),
+    setTaskFilter: vi.fn(),
     setSelectedTaskTypes: vi.fn(),
     setSidebarDisabledElements: vi.fn(),
   },
@@ -16,16 +17,15 @@ const mockSel = vi.hoisted(() => ({
   filter: {
     getAvailableFeatureStates: () => ['New', 'Doing'],
   },
+  feature: {
+    getAvailableTaskTypes: () => ['feature', 'epic'],
+  },
   view: {
     getExpandedFeatureIds: () => new Set(),
   },
 }));
 
 const mockState = vi.hoisted(() => ({
-  availableTaskTypes: ['feature', 'epic'],
-  taskFilterService: {
-    setFilter: vi.fn(),
-  },
   pluginStateService: {
     update: vi.fn(),
     subscribe: vi.fn(() => () => {}),
@@ -49,10 +49,10 @@ describe('PluginCostComponent Phase 4 command/selector seam', () => {
   beforeEach(() => {
     mockCmd.filter.clearSidebarDisabledElements.mockReset();
     mockCmd.filter.setAllStatesSelected.mockReset();
+    mockCmd.filter.setTaskFilter.mockReset();
     mockCmd.filter.setSelectedTaskTypes.mockReset();
     mockCmd.filter.setSidebarDisabledElements.mockReset();
     mockCmd.view.setExpansionState.mockReset();
-    mockState.taskFilterService.setFilter.mockReset();
   });
 
   it('routes sidebar disable flow through cmd.filter/cmd.view', () => {

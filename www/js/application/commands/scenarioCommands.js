@@ -83,10 +83,69 @@ export function createLegacyScenarioCommands(state) {
     markActiveScenarioChanged() {
       return state._markActiveScenarioChanged();
     },
+
+    saveScenario(id) {
+      return state.saveScenario(id);
+    },
+
+    refreshBaseline() {
+      return state.refreshBaseline();
+    },
+
+    invalidateAndRefreshBaseline() {
+      return state.invalidateAndRefreshBaseline();
+    },
   };
 }
 
 export function createScenarioCommands(store, bus, legacyState = null) {
+  function canAssignProperty(target, prop) {
+    if (!target || typeof target !== 'object') return false;
+    let current = target;
+    while (current) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, prop);
+      if (descriptor) {
+        if (typeof descriptor.set === 'function') return true;
+        return descriptor.writable === true;
+      }
+      current = Object.getPrototypeOf(current);
+    }
+    return true;
+  }
+
+  function tryAssignProperty(target, prop, value) {
+    if (!canAssignProperty(target, prop)) return false;
+    try {
+      target[prop] = value;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function syncLegacyScenarioState(nextScenarios, nextActiveId) {
+    if (!legacyState) return;
+
+    const clonedScenarios = Array.isArray(nextScenarios) ? structuredClone(nextScenarios) : [];
+    const activeId = nextActiveId ?? 'baseline';
+
+    const wroteScenarios = tryAssignProperty(legacyState, 'scenarios', clonedScenarios);
+    if (!wroteScenarios && legacyState?._scenarioEventService) {
+      const existingReadonly = (legacyState._scenarioEventService.getScenarios?.() || []).filter(
+        (scenario) => scenario && scenario.readonly
+      );
+      legacyState._scenarioEventService._scenarios = [
+        ...existingReadonly,
+        ...structuredClone(clonedScenarios),
+      ];
+    }
+
+    const wroteActiveId = tryAssignProperty(legacyState, 'activeScenarioId', activeId);
+    if (!wroteActiveId && legacyState?._scenarioEventService?.setActiveScenarioId) {
+      legacyState._scenarioEventService.setActiveScenarioId(activeId);
+    }
+  }
+
   function buildCapacityPayload() {
     const snapshot = store.getState()?.capacity || {};
     return {
@@ -184,6 +243,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         scenarioId: scenario.id,
         change: { type: 'clone', from: sourceId },
       });
+      syncLegacyScenarioState(nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
       emitScenarioList(bus, nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
 
       return scenario;
@@ -207,6 +267,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
       );
 
       const scenarios = toScenarioItems(store.getState());
+      syncLegacyScenarioState(scenarios, id);
       bus?.emit?.(ScenarioEvents.ACTIVATED, { scenarioId: id });
       recomputeAndEmitCapacity();
       bus?.emit?.(FeatureEvents.UPDATED);
@@ -244,6 +305,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.renameScenario'
       );
 
+      syncLegacyScenarioState(nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: id,
         change: { type: 'rename', name: uniqueName },
@@ -276,6 +338,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.deleteScenario'
       );
 
+      syncLegacyScenarioState(nextScenarios, nextActiveId);
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: id,
         change: { type: 'delete' },
@@ -315,12 +378,28 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.markActiveScenarioChanged'
       );
 
+      syncLegacyScenarioState(nextScenarios, activeId);
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: activeId,
         change: { type: 'markedChanged' },
       });
       emitScenarioList(bus, nextScenarios, activeId);
       return true;
+    },
+
+    async saveScenario(id) {
+      if (typeof legacyState?.saveScenario !== 'function') return null;
+      return legacyState.saveScenario(id);
+    },
+
+    async refreshBaseline() {
+      if (typeof legacyState?.refreshBaseline !== 'function') return null;
+      return legacyState.refreshBaseline();
+    },
+
+    async invalidateAndRefreshBaseline() {
+      if (typeof legacyState?.invalidateAndRefreshBaseline !== 'function') return null;
+      return legacyState.invalidateAndRefreshBaseline();
     },
   };
 }

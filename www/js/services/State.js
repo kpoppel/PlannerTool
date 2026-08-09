@@ -305,9 +305,11 @@ class State {
 
   // ---- Helpers for plugins / external callers ----
   // Set which task types are selected in the Sidebar. Accepts an array of type names.
-  setSelectedTaskTypes(types) {
+  setSelectedTaskTypes(types, options = {}) {
     const arr = Array.isArray(types) ? Array.from(types) : [];
-    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: arr });
+    if (!options.suppressEvents) {
+      bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: arr });
+    }
   }
 
   // Set selected feature states via StateFilterService (re-emit events from the service)

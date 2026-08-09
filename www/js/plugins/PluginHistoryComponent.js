@@ -9,7 +9,7 @@ import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.j
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, ViewEvents } from '../core/EventRegistry.js';
 import { findInBoard } from '../components/board-utils.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { dataService } from '../services/dataService.js';
 
@@ -67,7 +67,7 @@ export class PluginHistoryComponent extends LitElement {
 
       if (visibleProjectIds.size === 0) return;
 
-      const selectedProjects = (state.projects || []).filter((p) => p.selected);
+      const selectedProjects = sel.selection.getSelectedProjects();
       const toFetch = selectedProjects.filter(
         (p) => visibleProjectIds.has(String(p.id)) && !this._loadedProjects.has(p.id)
       );
@@ -392,7 +392,7 @@ export class PluginHistoryComponent extends LitElement {
 
   render() {
     const taskCount = this.historyData?.length || 0;
-    const selectedProjects = (state.projects || []).filter((p) => p.selected);
+    const selectedProjects = sel.selection.getSelectedProjects();
     const projectCount = selectedProjects.length;
 
     return this.visible ?
@@ -480,7 +480,7 @@ export class PluginHistoryComponent extends LitElement {
     this.loading = true;
     try {
       // Get all selected projects
-      const selectedProjects = (state.projects || []).filter((p) => p.selected);
+      const selectedProjects = sel.selection.getSelectedProjects();
 
       if (selectedProjects.length === 0) {
         console.warn('[PluginHistory] No project selected');

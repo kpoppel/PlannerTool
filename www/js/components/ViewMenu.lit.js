@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { cmd } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { ViewManagementEvents } from '../core/EventRegistry.js';

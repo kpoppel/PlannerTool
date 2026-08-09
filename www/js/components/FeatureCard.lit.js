@@ -4,7 +4,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
 import { cmd, sel } from '../application/imports.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
@@ -811,8 +810,7 @@ export class FeatureCardLit extends LitElement {
     if (this.condensed) return '';
     const hasChildren = (() => {
       try {
-        const map =
-          state._dataInitService?.getChildrenByParentMap?.() || state.childrenByParent;
+        const map = sel.feature.getChildrenByParentMap();
         const arr = map?.get?.(this.feature.id);
         return Array.isArray(arr) && arr.length > 0;
       } catch (e) {
@@ -898,10 +896,7 @@ export class FeatureCardLit extends LitElement {
     const isUnplanned =
       featureFlags.SHOW_UNPLANNED_WORK && (!this.feature.start || !this.feature.end);
     const projectColor = this.project?.color || '#ccc';
-    const isCompleted = state.featureStateService.isStateInCategory(
-      this.feature.state,
-      'Completed'
-    );
+    const isCompleted = sel.filter.getFeatureStateCategory(this.feature.state) === 'Completed';
 
     const cardClasses = {
       'feature-card': true,

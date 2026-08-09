@@ -1,5 +1,5 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
   ProjectEvents,
@@ -260,14 +260,15 @@ export class TopMenuBarLit extends LitElement {
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
     };
     this._onScenariosList = (payload) => {
-      this.scenarios = payload?.scenarios || [];
-      this.activeScenarioId = payload?.activeScenarioId || null;
+      this.scenarios = sel.scenario.getScenarios() || payload?.scenarios || [];
+      this.activeScenarioId = payload?.activeScenarioId || sel.scenario.getActiveScenarioId();
     };
     this._onScenarioActivated = (payload) => {
-      this.activeScenarioId = payload?.scenarioId || null;
+      this.activeScenarioId = payload?.scenarioId || sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
-      this.scenarios = state.getScenarios?.() || [];
+      this.scenarios = sel.scenario.getScenarios() || [];
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onViewsList = (payload) => {
       this.views = payload?.views || [];
@@ -291,18 +292,19 @@ export class TopMenuBarLit extends LitElement {
     // emitted before this element was connected. This ensures the component
     // has current data immediately instead of waiting for subsequent events.
     try {
-      this._onProjectsChanged(state.projects);
-      this._onTeamsChanged(state.teams);
+      this._onProjectsChanged(sel.selection.getProjects());
+      this._onTeamsChanged(sel.selection.getTeams());
       this._onScenariosList({
-        scenarios: state.scenarios,
-        activeScenarioId: state.activeScenarioId,
+        scenarios: sel.scenario.getScenarios(),
+        activeScenarioId: sel.scenario.getActiveScenarioId(),
       });
+      const savedViews = sel.view.getSavedViews();
+      const activeViewId = sel.view.getActiveViewId();
       this._onViewsList({
-        views: state.savedViews,
-        activeId: state.activeViewId,
+        views: savedViews,
+        activeId: activeViewId,
       });
-      // Also get current view data
-      const currentView = state.getActiveView?.();
+      const currentView = savedViews.find((view) => view?.id === activeViewId) || null;
       if (currentView) {
         this.activeViewData = currentView;
       }
@@ -363,13 +365,6 @@ export class TopMenuBarLit extends LitElement {
     // Try to find scenario name from scenarios list
     const scenario = this.scenarios?.find((s) => s.id === this.activeScenarioId);
     if (scenario) return scenario.name || scenario.id;
-
-    // Fallback: try state if available
-    if (state.activeScenarioId === this.activeScenarioId) {
-      const scenarios = state.getScenarios?.() || [];
-      const stateScenario = scenarios.find((s) => s.id === this.activeScenarioId);
-      if (stateScenario) return stateScenario.name || stateScenario.id;
-    }
 
     // If still no name, return the ID
     return this.activeScenarioId;

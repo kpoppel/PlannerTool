@@ -35,6 +35,74 @@ function deriveEffectiveProjectIdsFromStore(state) {
   return Array.from(derived);
 }
 
+function normalizeIdList(ids) {
+  const normalized = [];
+  for (const id of ids || []) {
+    if (id === null || id === undefined) continue;
+    normalized.push(String(id));
+  }
+  return normalized;
+}
+
+function getPreferredSourceItems(legacyItems, baselineItems) {
+  if (Array.isArray(legacyItems) && legacyItems.length > 0) {
+    return legacyItems;
+  }
+  return Array.isArray(baselineItems) ? baselineItems : [];
+}
+
+function deriveFallbackSelectedIds(items) {
+  const list = Array.isArray(items) ? items : [];
+  const hasExplicitFlags = list.some((item) => typeof item?.selected === 'boolean');
+  const selectedIds = [];
+
+  if (hasExplicitFlags) {
+    for (const item of list) {
+      if (!item?.selected) continue;
+      if (item?.id === null || item?.id === undefined) continue;
+      selectedIds.push(String(item.id));
+    }
+  } else {
+    for (const item of list) {
+      if (item?.id === null || item?.id === undefined) continue;
+      selectedIds.push(String(item.id));
+    }
+  }
+
+  if (selectedIds.length > 0) {
+    return selectedIds;
+  }
+
+  return list
+    .filter((item) => item?.id !== null && item?.id !== undefined)
+    .map((item) => String(item.id));
+}
+
+function deriveItemsWithSelection(sourceItems, storeIds) {
+  const list = Array.isArray(sourceItems) ? sourceItems : [];
+  const normalizedStoreIds = normalizeIdList(storeIds);
+  const selectedIds =
+    normalizedStoreIds.length > 0 ?
+      normalizedStoreIds
+    : deriveFallbackSelectedIds(list);
+  const selectedSet = new Set(selectedIds);
+
+  return list.map((item) => ({
+    ...item,
+    selected: selectedSet.has(String(item?.id)),
+  }));
+}
+
+function deriveProjectsFromStore(state, legacyState = null) {
+  const projects = getPreferredSourceItems(legacyState?.projects, state?.baseline?.projects);
+  return deriveItemsWithSelection(projects, state?.selection?.projectIds || []);
+}
+
+function deriveTeamsFromStore(state, legacyState = null) {
+  const teams = getPreferredSourceItems(legacyState?.teams, state?.baseline?.teams);
+  return deriveItemsWithSelection(teams, state?.selection?.teamIds || []);
+}
+
 export function createLegacySelectionSelectors(state) {
   return {
     getEffectiveSelectedProjectIds() {
@@ -53,21 +121,94 @@ export function createLegacySelectionSelectors(state) {
       const teams = Array.isArray(state.teams) ? state.teams : [];
       return teams.filter((t) => t.selected).map((t) => t.id);
     },
+
+    getProjects() {
+      return Array.isArray(state.projects) ? state.projects : [];
+    },
+
+    getTeams() {
+      return Array.isArray(state.teams) ? state.teams : [];
+    },
+
+    getSelectedProjects() {
+      return this.getProjects().filter((project) => Boolean(project?.selected));
+    },
+
+    getSelectedTeams() {
+      return this.getTeams().filter((team) => Boolean(team?.selected));
+    },
+
+    getProjectById(id) {
+      const key = String(id);
+      return this.getProjects().find((project) => String(project?.id) === key) || null;
+    },
+
+    getTeamById(id) {
+      const key = String(id);
+      return this.getTeams().find((team) => String(team?.id) === key) || null;
+    },
   };
 }
 
-export function createSelectionSelectors(store) {
+export function createSelectionSelectors(store, legacyState = null) {
   return {
     getEffectiveSelectedProjectIds() {
-      return deriveEffectiveProjectIdsFromStore(store.getState());
+      const state = store.getState();
+      const selectedIds = this.getSelectedProjectIds();
+      const effective = deriveEffectiveProjectIdsFromStore({
+        ...state,
+        selection: {
+          ...(state?.selection || {}),
+          projectIds: selectedIds,
+        },
+      });
+      return effective;
     },
 
     getSelectedProjectIds() {
-      return Array.from(store.getState()?.selection?.projectIds || []);
+      const selected = normalizeIdList(store.getState()?.selection?.projectIds || []);
+      if (selected.length > 0) {
+        return selected;
+      }
+      return this.getProjects()
+        .filter((project) => Boolean(project?.selected))
+        .map((project) => String(project.id));
     },
 
     getSelectedTeamIds() {
-      return Array.from(store.getState()?.selection?.teamIds || []);
+      const selected = normalizeIdList(store.getState()?.selection?.teamIds || []);
+      if (selected.length > 0) {
+        return selected;
+      }
+      return this.getTeams()
+        .filter((team) => Boolean(team?.selected))
+        .map((team) => String(team.id));
+    },
+
+    getProjects() {
+      return deriveProjectsFromStore(store.getState(), legacyState);
+    },
+
+    getTeams() {
+      return deriveTeamsFromStore(store.getState(), legacyState);
+    },
+
+    getSelectedProjects() {
+      return this.getProjects().filter((project) => Boolean(project?.selected));
+    },
+
+    getSelectedTeams() {
+      return this.getTeams().filter((team) => Boolean(team?.selected));
+    },
+
+    getProjectById(id) {
+      const key = String(id);
+      return this.getProjects().find((project) => String(project?.id) === key) || null;
+    },
+
+    getTeamById(id) {
+      const key = String(id);
+      return this.getTeams().find((team) => String(team?.id) === key) || null;
     },
   };
 }

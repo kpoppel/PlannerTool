@@ -276,4 +276,92 @@ describe('application/commands/dataCommands', () => {
     expect(result.ok).toBe(true);
     expect(store.getState().scenarios.activeId).toBe(null);
   });
+
+  it('bootstrapFromLegacyState defaults to non-empty project/team selections and derives state filter', async () => {
+    const dataService = makeDataServiceMock();
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+    const legacyState = {
+      initState: vi.fn(async () => {}),
+      baselineProjects: [{ id: 'bp1' }, { id: 'bp2' }],
+      baselineTeams: [{ id: 'bt1' }],
+      baselineFeatures: [
+        { id: 'f1', state: 'Open' },
+        { id: 'f2', state: 'Closed' },
+        { id: 'f3', state: 'Open' },
+      ],
+      iterationSetsById: {},
+      scenarios: [],
+      activeScenarioId: 'baseline',
+      projects: [{ id: 'p1' }, { id: 'p2' }],
+      teams: [{ id: 't1' }, { id: 't2' }],
+      selectedFeatureStateFilter: [],
+      availableTaskTypes: [],
+      _viewService: {
+        isTypeVisible: () => true,
+      },
+      taskFilterService: {
+        getFilters: () => ({
+          schedule: null,
+          allocation: null,
+          hierarchy: null,
+          relations: null,
+        }),
+      },
+      expansionState: {},
+      getSidebarDisabledElements: () => ({}),
+    };
+
+    const result = await commands.bootstrapFromLegacyState(legacyState);
+
+    expect(result.ok).toBe(true);
+    expect(legacyState.initState).toHaveBeenCalledTimes(1);
+    expect(store.getState().selection.projectIds).toEqual(['p1', 'p2']);
+    expect(store.getState().selection.teamIds).toEqual(['t1', 't2']);
+    expect(store.getState().selection.featureStateNames).toEqual(['Open', 'Closed']);
+  });
+
+  it('bootstrapFromLegacyState honors explicit selected booleans for projects and teams', async () => {
+    const dataService = makeDataServiceMock();
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+    const legacyState = {
+      baselineProjects: [{ id: 'bp1' }],
+      baselineTeams: [{ id: 'bt1' }],
+      baselineFeatures: [{ id: 'f1', state: 'Doing' }],
+      iterationSetsById: {},
+      scenarios: [],
+      activeScenarioId: 'baseline',
+      projects: [
+        { id: 'p1', selected: false },
+        { id: 'p2', selected: true },
+      ],
+      teams: [
+        { id: 't1', selected: false },
+        { id: 't2', selected: true },
+      ],
+      selectedFeatureStateFilter: ['Doing'],
+      availableTaskTypes: [],
+      _viewService: {
+        isTypeVisible: () => true,
+      },
+      taskFilterService: {
+        getFilters: () => ({
+          schedule: null,
+          allocation: null,
+          hierarchy: null,
+          relations: null,
+        }),
+      },
+      expansionState: {},
+      getSidebarDisabledElements: () => ({}),
+    };
+
+    const result = await commands.bootstrapFromLegacyState(legacyState);
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().selection.projectIds).toEqual(['p2']);
+    expect(store.getState().selection.teamIds).toEqual(['t2']);
+    expect(store.getState().selection.featureStateNames).toEqual(['Doing']);
+  });
 });

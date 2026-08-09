@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state, PALETTE } from '../services/State.js';
 import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
@@ -996,12 +995,10 @@ export class SidebarLit extends LitElement {
       this._scheduleDataFunnelRecompute();
     };
     this._onScenariosList = (payload) => {
-      // Use the authoritative scenario objects from `state.scenarios` so
-      // the UI has access to `overrides` and `isChanged` flags. The
-      // ScenarioEvents.LIST payload contains reduced metadata for lists,
-      // which would strip overrides and unsaved markers.
+      // Use selector seam for authoritative scenario objects so this stays
+      // consistent when store-mode commands are active.
       try {
-        const full = state.scenarios || [];
+        const full = sel.scenario.getScenarios() || [];
         this.scenarios = Array.isArray(full) ? [...full] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
@@ -1011,16 +1008,16 @@ export class SidebarLit extends LitElement {
       // Prefer explicit activeScenarioId from payload if present, otherwise use state
       if (payload && payload.activeScenarioId)
         this.activeScenarioId = payload.activeScenarioId;
-      else this.activeScenarioId = state.activeScenarioId;
+      else this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenarioActivated = (payload) => {
       this.activeScenarioId =
-        payload && payload.scenarioId ? payload.scenarioId : state.activeScenarioId;
+        payload && payload.scenarioId ? payload.scenarioId : sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
-      const sc = state.scenarios || [];
+      const sc = sel.scenario.getScenarios() || [];
       this.scenarios = [...sc];
-      this.activeScenarioId = state.activeScenarioId;
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onViewsList = (payload) => {
       console.log('[Sidebar] Received views list event:', payload);
@@ -1049,7 +1046,7 @@ export class SidebarLit extends LitElement {
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnelNow = () => {
       try {
-        const feats = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+        const feats = sel.feature?.getEffectiveFeatures?.() || [];
         const selectedProjectIds = sel.selection.getSelectedProjectIds();
 
         // Selected tasks: features whose project is selected
@@ -1061,17 +1058,12 @@ export class SidebarLit extends LitElement {
         // Expanded tasks: apply expansion filters
         const selectedTeamIds = sel.selection.getSelectedTeamIds();
         const expansionResult =
-          state.featureService && state.featureService.computeExpandedFeatureSet ?
-            state.featureService.computeExpandedFeatureSet(selectedFeatureIds, {
-              expandParentChild: this.expandParentChild,
-              expandRelations: this.expandRelations,
-              expandTeamAllocated: this.expandTeamAllocated,
-              selectedTeamIds: selectedTeamIds,
-            })
-          : {
-              expandedIds: selectedFeatureIds,
-              counts: { parentChild: 0, relations: 0, teamAllocated: 0 },
-            };
+          sel.feature.computeExpandedFeatureSet(selectedFeatureIds, {
+            expandParentChild: this.expandParentChild,
+            expandRelations: this.expandRelations,
+            expandTeamAllocated: this.expandTeamAllocated,
+            selectedTeamIds,
+          });
 
         const expandedFeatureIds = expansionResult.expandedIds;
         this.expandedTasksCount = expandedFeatureIds.size - this.selectedTasksCount;
@@ -1097,11 +1089,7 @@ export class SidebarLit extends LitElement {
         }
 
         // Apply task filters
-        if (state.taskFilterService) {
-          displayedFeatures = displayedFeatures.filter((f) =>
-            state.taskFilterService.featurePassesFilters(f)
-          );
-        }
+        displayedFeatures = displayedFeatures.filter((f) => sel.filter.featurePassesFilters(f));
 
         this.displayedTasksCount = displayedFeatures.length;
       } catch (e) {
@@ -1171,13 +1159,11 @@ export class SidebarLit extends LitElement {
     this._onDisplayModeChanged = ({ mode, oldMode } = {}) => {
       if (mode === 'packed' && oldMode !== 'packed') {
         // Snapshot the current unplanned state before disabling it.
-        const filters = state.taskFilterService?.getFilters() || {};
+        const filters = sel.filter.getTaskFilters() || {};
         this._packedModeUnplannedSnapshot = filters.schedule?.unplanned ?? true;
         // Uncheck unplanned: packed mode cannot display unplanned tasks.
-        if (state.taskFilterService) {
-          state.taskFilterService.setFilter('schedule', 'unplanned', false);
-          this.taskFilters = state.taskFilterService.getFilters();
-        }
+        cmd.filter.setTaskFilter('schedule', 'unplanned', false);
+        this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
         // Disable the control so the user cannot re-enable it while in packed mode.
         const existing = this._disabledSidebar || {};
         const existingSchedule = (existing.taskFilters?.schedule || []).slice();
@@ -1188,14 +1174,10 @@ export class SidebarLit extends LitElement {
         };
         this.requestUpdate();
       } else if (oldMode === 'packed' && mode !== 'packed') {
-        // Restore the snapshotted unplanned state.
-        if (this._packedModeUnplannedSnapshot !== undefined && state.taskFilterService) {
-          state.taskFilterService.setFilter(
-            'schedule',
-            'unplanned',
-            this._packedModeUnplannedSnapshot
-          );
-          this.taskFilters = state.taskFilterService.getFilters();
+        // Restore the snapshotted unplanned filter value.
+        if (this._packedModeUnplannedSnapshot !== undefined) {
+          cmd.filter.setTaskFilter('schedule', 'unplanned', this._packedModeUnplannedSnapshot);
+          this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
         }
         this._packedModeUnplannedSnapshot = undefined;
         // Re-enable the schedule.unplanned control.
@@ -1244,21 +1226,18 @@ export class SidebarLit extends LitElement {
     // renders current projects/teams immediately instead of waiting for
     // subsequent change events.
     try {
-      this._onProjectsChanged(state.projects);
-      this._onTeamsChanged(state.teams);
+      this._onProjectsChanged(sel.selection.getProjects());
+      this._onTeamsChanged(sel.selection.getTeams());
       this._onScenariosList({
-        scenarios: state.scenarios,
-        activeScenarioId: state.activeScenarioId,
+        scenarios: sel.scenario.getScenarios(),
+        activeScenarioId: sel.scenario.getActiveScenarioId(),
       });
-      console.log('[Sidebar] Initializing views from state:', state.savedViews);
+      console.log('[Sidebar] Initializing views from selectors:', sel.view.getSavedViews());
       this._onViewsList({
-        views: state.savedViews,
-        activeViewId: state.activeViewId,
+        views: sel.view.getSavedViews(),
+        activeViewId: sel.view.getActiveViewId(),
       });
-      // Initialize task filters from service
-      if (state.taskFilterService) {
-        this.taskFilters = state.taskFilterService.getFilters();
-      }
+      this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
       // Initialize state & task type filters
       this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
       this._scheduleTaskTypesRecompute();
@@ -1404,8 +1383,8 @@ export class SidebarLit extends LitElement {
   }
 
   _toggleTaskFilter(dimension, option) {
-    state.taskFilterService.toggleFilter(dimension, option);
-    this.taskFilters = state.taskFilterService.getFilters();
+    cmd.filter.toggleTaskFilter(dimension, option);
+    this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     // Auto-save removed - use View feature instead
     this.requestUpdate();
@@ -1414,22 +1393,14 @@ export class SidebarLit extends LitElement {
   // Compute available task types from baseline/features (no hardcoded fallback)
   _computeAvailableTaskTypes() {
     try {
-      const baseline = state.baselineFeatures || [];
+      const baseline = sel.feature.getBaselineFeatures() || [];
       const types = new Set();
       baseline.forEach((f) => {
         const t = f.type || f.workItemType || f.work_item_type || null;
         if (t) types.add(String(t));
       });
-      // Order by hierarchy level when a hierarchy is configured; fall back to sort.
-      const unordered = Array.from(types);
-      this.availableTaskTypes = state.taskTypeHierarchy && state.taskTypeHierarchy.length
-        ? [...unordered].sort((a, b) => {
-            const la = state.getTypeLevel(a);
-            const lb = state.getTypeLevel(b);
-            if (la !== lb) return la - lb;
-            return a.localeCompare(b);
-          })
-        : unordered.sort();
+      const ordered = sel.feature.getAvailableTaskTypesOrdered?.() || [];
+      this.availableTaskTypes = ordered.length > 0 ? ordered : Array.from(types).sort();
       // Default selection only on first initialization AND only when types are available.
       // Guard: if connectedCallback fires before data loads (availableTaskTypes=[]), do NOT
       // set _taskTypesInitialized=true yet — allow the next call (after data loads) to init.
@@ -1455,7 +1426,7 @@ export class SidebarLit extends LitElement {
     this._taskTypesInitialized = true;
   }
 
-  // Returns true if a control has been disabled via state.setSidebarDisabledElements
+  // Returns true if a control has been disabled via the filter command seam.
   _isControlDisabled(kind, key, opt) {
     if (!this._disabledSidebar) return false;
     if (kind === 'taskFilter') {
@@ -1479,16 +1450,10 @@ export class SidebarLit extends LitElement {
 
   // Programmatic API: set a task filter option checked/unchecked
   setTaskFilterChecked(dimension, option, checked) {
-    if (
-      state &&
-      state.taskFilterService &&
-      typeof state.taskFilterService.setFilter === 'function'
-    ) {
-      state.taskFilterService.setFilter(dimension, option, !!checked);
-      this.taskFilters = state.taskFilterService.getFilters();
-      this._recomputeDataFunnel && this._recomputeDataFunnel();
-      this.requestUpdate();
-    }
+    cmd.filter.setTaskFilter(dimension, option, !!checked);
+    this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    this.requestUpdate();
   }
 
   // Programmatic API: set a task type checked/unchecked
@@ -1610,7 +1575,7 @@ export class SidebarLit extends LitElement {
   _renderTaskFilters() {
     // Render dynamic 'Task Filters' box with States and Types
     const states = this.availableFeatureStates || [];
-    const ordered = state.availableTaskTypesOrdered;
+    const ordered = sel.feature.getAvailableTaskTypesOrdered?.() || [];
     const types = (ordered && ordered.length > 0) ? ordered : (this.availableTaskTypes || []);
     return html`${states.length === 0 && types.length === 0 ?
       html`<div class="section-description">
@@ -1622,15 +1587,12 @@ export class SidebarLit extends LitElement {
         <div class="filter-dimension-title">State</div>
         <div class="filter-options">
           ${(() => {
-            const colors =
-              state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+            const colors = sel.filter.getFeatureStateColors?.() || {};
             return states.map((s) => {
               const meta = colors && colors[s] ? colors[s] : null;
               const bg =
                 meta ? meta.background
-                : state.getFeatureStateColor ? state.getFeatureStateColor(s)
                 : '#999';
-              const text = meta ? meta.text : '#fff';
               const isActive = sel.filter.getSelectedFeatureStateSet().has(s);
               const isDisabled = this._isControlDisabled('state', s);
               return html` <div

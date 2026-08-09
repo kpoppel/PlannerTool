@@ -79,18 +79,6 @@
       "dependencies": []
     },
     {
-      "id": "plugin-cost-v1",
-      "name": "Cost Analysis (v1)",
-      "version": "1.0.0",
-      "description": "Cost analysis plugin",
-      "enabled": false,
-      "activated": false,
-      "exclusive": true,
-      "fullscreen": true,
-      "mountPoint": "app",
-      "dependencies": []
-    },
-    {
       "id": "plugin-cost",
       "name": "Cost Analysis",
       "version": "2.0.0",

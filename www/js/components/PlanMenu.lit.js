@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state, PALETTE } from '../services/State.js';
-import { cmd } from '../application/imports.js';
+import { PALETTE } from '../services/ColorService.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
@@ -230,7 +230,7 @@ export class PlanMenuLit extends LitElement {
 
   _renderProjectsList(projects, taskTypes) {
     return html`${projects.map((project) => {
-      const counts = state.allCountsForProject(project.id);
+      const counts = sel.feature.getCountsForProject(project.id);
 
       return html`
         <li class="sidebar-list-item">
@@ -266,7 +266,7 @@ export class PlanMenuLit extends LitElement {
     const projects = this.projects;
     const delivery = projects.filter((p) => (p.type || 'project') === 'project');
     const teamBacklogs = projects.filter((p) => (p.type || 'project') !== 'project');
-    const taskTypes = state.availableTaskTypesOrdered;
+    const taskTypes = sel.feature.getAvailableTaskTypesOrdered?.() || [];
 
     return html`
       <div class="menu-popover">

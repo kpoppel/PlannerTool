@@ -23,19 +23,6 @@ const { mockPendingGroupChanges, mockConfirmGroupCreate } = vi.hoisted(() => ({
   mockConfirmGroupCreate: vi.fn(),
 }));
 
-vi.mock('../../www/js/services/State.js', () => ({
-  state: {
-    getScenarios: () => [],
-    scenarios: [],
-    refreshBaseline: mockRefreshBaseline,
-    getPendingGroupChanges: vi.fn(() => []),
-    clearPendingGroupChanges: vi.fn(),
-    confirmGroupCreate: vi.fn(),
-    saveScenario: vi.fn().mockResolvedValue(undefined),
-    activeScenarioId: null,
-  },
-}));
-
 vi.mock('../../www/js/services/dataService.js', () => ({
   dataService: {
     publishBaseline: mockPublishBaseline,
@@ -76,12 +63,23 @@ vi.mock('../../www/js/application/imports.js', () => ({
   cmd: {
     scenario: {
       activateScenario: vi.fn(),
+      saveScenario: vi.fn().mockResolvedValue(undefined),
+      refreshBaseline: mockRefreshBaseline,
+      invalidateAndRefreshBaseline: vi.fn(),
     },
     group: {
       confirmGroupCreate: mockConfirmGroupCreate,
     },
   },
   sel: {
+    selection: {
+      getProjects: vi.fn(() => []),
+      getTeams: vi.fn(() => []),
+    },
+    feature: {
+      getBaselineFeatures: vi.fn(() => []),
+      getEffectiveFeatures: vi.fn(() => []),
+    },
     scenario: {
       getScenarios: vi.fn(() => []),
       isScenarioUnsaved: vi.fn((s) => Boolean(s?.isChanged)),

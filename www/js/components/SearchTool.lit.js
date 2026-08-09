@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { findInBoard } from './board-utils.js';
 export class SearchTool extends LitElement {
@@ -199,7 +198,7 @@ export class SearchTool extends LitElement {
       return;
     }
 
-    const all = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+    const all = sel.feature?.getEffectiveFeatures?.() || [];
     const qLower = q.toLowerCase();
 
     const idMatches = [];

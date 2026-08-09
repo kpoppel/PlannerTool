@@ -50,4 +50,30 @@ describe('application/selectors/scenarioSelectors', () => {
     expect(selectors.isScenarioUnsaved({ isChanged: true })).toBe(true);
     expect(selectors.isActiveScenarioUnsaved()).toBe(true);
   });
+
+  it('store selectors fall back to legacy scenarios when store has none', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      {
+        ...createInitialAppState(),
+        scenarios: {
+          activeId: 'baseline',
+          items: [],
+        },
+      },
+      true,
+      'test.resetStoreEmptyScenarios'
+    );
+
+    const legacyState = {
+      scenarios: [{ id: 'legacy-s1', name: 'Legacy Scenario', isChanged: true }],
+      activeScenarioId: 'legacy-s1',
+    };
+
+    const selectors = createScenarioSelectors(store, legacyState);
+    expect(selectors.getScenarios()).toEqual(legacyState.scenarios);
+    expect(selectors.getActiveScenarioId()).toBe('legacy-s1');
+    expect(selectors.getActiveScenario()).toEqual(legacyState.scenarios[0]);
+    expect(selectors.isActiveScenarioUnsaved()).toBe(true);
+  });
 });

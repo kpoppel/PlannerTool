@@ -27,7 +27,6 @@ import { PluginEvents } from '../core/EventRegistry.js';
 const pluginComponentLoaders = {
   './PluginAnnotationsComponent.js': () => import('./PluginAnnotationsComponent.js'),
   './PluginCostComponent.js': () => import('./PluginCostComponent.js'),
-  './PluginCostV1Component.js': () => import('./PluginCostV1Component.js'),
   './PluginDependenciesComponent.js': () => import('./PluginDependenciesComponent.js'),
   './PluginEventsComponent.js': () => import('./PluginEventsComponent.js'),
   './PluginExportTimelineComponent.js': () => import('./PluginExportTimelineComponent.js'),

@@ -1,7 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
 
 describe('DetailsPanel helper coverage', () => {
   beforeEach(async () => {
@@ -24,7 +24,7 @@ describe('DetailsPanel helper coverage', () => {
     expect(el._stripIterationPrefix(null)).to.equal(null);
   });
 
-  it('_saveCapacityEdit calls state.updateFeatureField and clears editing', async () => {
+  it('_saveCapacityEdit calls cmd.feature.updateFeatureField and clears editing', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = {
       id: 'f1',
@@ -32,7 +32,7 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._saveCapacityEdit('t1', '50');
     expect(stub.calledOnce).to.be.true;
     const args = stub.getCall(0).args;
@@ -42,7 +42,7 @@ describe('DetailsPanel helper coverage', () => {
     expect(el.editingCapacityTeam).to.equal(null);
   });
 
-  it('_handleAddTeamSubmit adds new team via state.updateFeatureField', async () => {
+  it('_handleAddTeamSubmit adds new team via cmd.feature.updateFeatureField', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = {
       id: 'f2',
@@ -50,7 +50,7 @@ describe('DetailsPanel helper coverage', () => {
       original: {},
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     const form = document.createElement('form');
     const select = document.createElement('select');
     select.innerHTML = '<option value="t2">T2</option>';
@@ -70,14 +70,13 @@ describe('DetailsPanel helper coverage', () => {
   });
 
   it('capacity input value updates when switching features', async () => {
-    // Stub state.teams getter to return test data
-    const teamsStub = sinon.stub(state._projectTeamService, 'getTeams').returns([
+    const getTeamsStub = sinon.stub(sel.selection, 'getTeams').returns([
       { id: 't1', name: 'Team Alpha', color: '#ff0000' },
       { id: 't2', name: 'Team Beta', color: '#00ff00' },
     ]);
-    const projectsStub = sinon
-      .stub(state, 'projects')
-      .get(() => [{ id: 'p1', name: 'Project 1' }]);
+    const getProjectsStub = sinon.stub(sel.selection, 'getProjects').returns([
+      { id: 'p1', name: 'Project 1' },
+    ]);
 
     const el = await fixture(html`<details-panel></details-panel>`);
 
@@ -120,7 +119,7 @@ describe('DetailsPanel helper coverage', () => {
     expect(input2.value).to.equal('70');
 
     // Restore stubs
-    teamsStub.restore();
-    projectsStub.restore();
+    getTeamsStub.restore();
+    getProjectsStub.restore();
   });
 });

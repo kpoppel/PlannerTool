@@ -41,6 +41,7 @@ import {
   createLegacyFeatureSelectors,
   createFeatureSelectors,
 } from './selectors/featureSelectors.js';
+import { createLegacyCapacitySelectors, createCapacitySelectors } from './selectors/capacitySelectors.js';
 import {
   createLegacyScenarioSelectors,
   createScenarioSelectors,
@@ -51,10 +52,10 @@ import { groupService } from '../services/GroupService.js';
 
 const stateStoreCommands = {
   ui: createUiCommands(store, bus),
-  data: createDataCommands(store, bus, dataService),
-  selection: createSelectionCommands(store, bus),
-  filter: createFilterCommands(store, bus),
-  view: createViewCommands(store, bus),
+  data: createDataCommands(store, bus, dataService, state),
+  selection: createSelectionCommands(store, bus, state),
+  filter: createFilterCommands(store, bus, state),
+  view: createViewCommands(store, bus, state),
   viewRestore: createViewRestoreCommands(store, dataService, state),
   feature: createFeatureCommands(store, bus, state),
   scenario: createScenarioCommands(store, bus, state),
@@ -63,12 +64,13 @@ const stateStoreCommands = {
 };
 const stateStoreSelectors = {
   ui: uiSelectors,
-  selection: createSelectionSelectors(store),
-  filter: createFilterSelectors(store),
-  view: createViewSelectors(store),
-  feature: createFeatureSelectors(store),
-  scenario: createScenarioSelectors(store),
+  selection: createSelectionSelectors(store, state),
+  filter: createFilterSelectors(store, state),
+  view: createViewSelectors(store, state),
+  feature: createFeatureSelectors(store, state),
+  scenario: createScenarioSelectors(store, state),
   group: createGroupSelectors(store),
+  capacity: createCapacitySelectors(store, state),
 };
 
 // Keep the OFF branch explicit: state-store data commands are not exposed
@@ -92,6 +94,7 @@ const legacySelectors = {
   feature: createLegacyFeatureSelectors(state),
   scenario: createLegacyScenarioSelectors(state),
   group: createLegacyGroupSelectors(state, groupService),
+  capacity: createLegacyCapacitySelectors(state),
 };
 
 export const isStateStoreEnabled = featureFlags.USE_STATE_STORE === true;

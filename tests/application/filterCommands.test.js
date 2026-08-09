@@ -32,7 +32,7 @@ describe('application/commands/filterCommands', () => {
     commands.setSidebarDisabledElements({ states: ['Doing'] });
     commands.clearSidebarDisabledElements();
 
-    expect(state.setSelectedTaskTypes).toHaveBeenCalledWith(['feature']);
+    expect(state.setSelectedTaskTypes).toHaveBeenCalledWith(['feature'], undefined);
     expect(state.setSelectedStates).toHaveBeenCalledWith(['New'], undefined);
     expect(state.setAllStatesSelected).toHaveBeenCalledWith(true, undefined);
     expect(state.toggleStateSelected).toHaveBeenCalledWith('New', undefined);
@@ -43,7 +43,8 @@ describe('application/commands/filterCommands', () => {
 
   it('store branch updates selection filter slices and supports suppressEvents', () => {
     const bus = { emit: vi.fn() };
-    const commands = createFilterCommands(store, bus);
+    const legacyState = { setSelectedTaskTypes: vi.fn() };
+    const commands = createFilterCommands(store, bus, legacyState);
 
     commands.setSelectedTaskTypes(['feature'], { suppressEvents: true });
     commands.setSelectedStates(['Doing'], { suppressEvents: true });
@@ -53,6 +54,9 @@ describe('application/commands/filterCommands', () => {
     expect(selection.taskTypeNames).toEqual(['feature']);
     expect(selection.featureStateNames).toEqual(['Doing']);
     expect(selection.sidebarDisabled).toEqual({ states: ['Doing'] });
+    expect(legacyState.setSelectedTaskTypes).toHaveBeenCalledWith(['feature'], {
+      suppressEvents: true,
+    });
     expect(bus.emit).not.toHaveBeenCalled();
   });
 

@@ -6,6 +6,9 @@ const mockSel = vi.hoisted(() => ({
     getEffectiveFeatureById: () => null,
     getEffectiveFeatures: () => [],
   },
+  filter: {
+    getFeatureStateCategory: () => null,
+  },
   view: {
     getHighlightFeatureRelationMode: () => false,
   },

@@ -1,19 +1,44 @@
 import { expect } from '@open-wc/testing';
 import { render } from '../../www/js/vendor/lit.js';
-import { state } from '../../www/js/services/State.js';
+import { vi } from 'vitest';
 import { renderTaskView } from '../../www/js/plugins/PluginCostTaskView.js';
 import { renderTeamView } from '../../www/js/plugins/PluginCostTeamView.js';
 import { renderTeamMembersView } from '../../www/js/plugins/PluginCostTeamMembersView.js';
 
+const mockSelectionState = {
+  projects: [],
+  teams: [],
+};
+
+const mockFeatureState = {
+  childrenByParent: new Map(),
+};
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  cmd: {},
+  sel: {
+    selection: {
+      getSelectedProjects: () => mockSelectionState.projects,
+      getSelectedTeams: () => mockSelectionState.teams,
+    },
+    feature: {
+      getChildrenByParentMap: () => mockFeatureState.childrenByParent,
+    },
+    filter: {
+      getTaskFilters: () => ({ schedule: { unplanned: true } }),
+    },
+  },
+}));
+
 describe('PluginCost low-coverage branches', () => {
   afterEach(() => {
-    // restore project/team lists
-    state._projectTeamService.projects = [];
-    state._projectTeamService.teams = [];
+    mockSelectionState.projects = [];
+    mockSelectionState.teams = [];
+    mockFeatureState.childrenByParent = new Map();
   });
 
   it('renderTaskView shows task table for selected project with metrics', () => {
-    state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
+    mockSelectionState.projects = [{ id: 'p1', name: 'P1', selected: true }];
 
     const comp = {
       months: [new Date('2026-01-01')],
@@ -53,7 +78,7 @@ describe('PluginCost low-coverage branches', () => {
   });
 
   it('renderTeamView shows team table and totals when team selected', () => {
-    state._projectTeamService.teams = [{ id: 'team-1', name: 'Alpha', selected: true }];
+    mockSelectionState.teams = [{ id: 'team-1', name: 'Alpha', selected: true }];
     // provide a project with a feature that has server-side team buckets
     const comp = {
       months: [new Date('2026-01-01')],

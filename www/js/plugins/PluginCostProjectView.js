@@ -1,5 +1,5 @@
 import { html } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import {
   monthLabel,
   monthKey,
@@ -58,7 +58,7 @@ export function renderProjectView(component) {
     `;
   }
 
-  const selectedProjects = (state.projects || []).filter((p) => p.selected);
+  const selectedProjects = sel.selection.getSelectedProjects();
   if (selectedProjects.length === 0) {
     return html`
       <div class="empty-state">
@@ -97,7 +97,7 @@ function renderProjectTable(component, project, monthKeys) {
   );
   const expandedFeatures = expandDataset(
     projectData.features,
-    state.childrenByParent || new Map(),
+    sel.feature.getChildrenByParentMap?.() || new Map(),
     allFeatures
   );
 
@@ -187,9 +187,9 @@ function buildTeamMonthAllocations(component, features, monthKeys) {
   // Build hierarchy to know which features are roots (no parent in dataset).
   // Only root effective allocations are summed so ancestors and descendants
   // are never double-counted.
-  const { roots, childrenMap } = buildTaskTree(
-    features,
-    state.childrenByParent || new Map()
+    const { roots, childrenMap } = buildTaskTree(
+      features,
+      sel.feature.getChildrenByParentMap?.() || new Map()
   );
 
   // Per-team, per-feature rollup (respects the "children are authoritative for
@@ -680,9 +680,9 @@ function renderFeatureList(component, features, monthKeys) {
 
   // Build hierarchy so parents always precede their children.
   const featureMap = new Map(features.map((f) => [String(f.id), f]));
-  const { roots, childrenMap } = buildTaskTree(
-    features,
-    state.childrenByParent || new Map()
+    const { roots, childrenMap } = buildTaskTree(
+      features,
+      sel.feature.getChildrenByParentMap?.() || new Map()
   );
   const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
 

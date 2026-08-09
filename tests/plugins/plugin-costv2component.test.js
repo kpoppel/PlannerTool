@@ -1,18 +1,12 @@
 import { expect, fixture, html } from '@open-wc/testing';
 import sinon from 'sinon';
 import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
-import { state } from '../../www/js/services/State.js';
+import { cmd } from '../../www/js/application/imports.js';
 
 describe('PluginCostComponent', () => {
   let el;
-  let originalPluginStateService;
   beforeEach(async () => {
-    originalPluginStateService = state._pluginStateService;
     el = await fixture(html`<plugin-cost></plugin-cost>`);
-  });
-
-  afterEach(() => {
-    state._pluginStateService = originalPluginStateService;
   });
 
   it('renders toolbar and default view', () => {
@@ -77,9 +71,8 @@ describe('PluginCostComponent', () => {
   });
 
   it('persists date range into pluginStateService while still open', () => {
-    const updateStub = sinon.stub();
+    const updateStub = sinon.stub(cmd.pluginState, 'update');
     const loadDataStub = sinon.stub(el, 'loadData');
-    state._pluginStateService = { update: updateStub };
 
     el.startDate = '2026-03-01';
     el.endDate = '2026-04-30';
@@ -92,6 +85,7 @@ describe('PluginCostComponent', () => {
       endDate: '2026-04-30',
     });
     expect(updateStub.firstCall.args[2]).to.deep.equal({ saveToView: true });
+    updateStub.restore();
     loadDataStub.restore();
   });
 
@@ -100,13 +94,13 @@ describe('PluginCostComponent', () => {
     const unsubscribe = sinon.stub();
 
     el.remove();
-    state._pluginStateService = {
-      subscribe: (pluginId, cb) => {
+    const subscribeStub = sinon
+      .stub(cmd.pluginState, 'subscribe')
+      .callsFake((pluginId, cb) => {
         expect(pluginId).to.equal('plugin-cost');
         subscriber = cb;
         return unsubscribe;
-      },
-    };
+      });
 
     el = await fixture(html`<plugin-cost></plugin-cost>`);
     const loadDataStub = sinon.stub(el, 'loadData');
@@ -120,6 +114,7 @@ describe('PluginCostComponent', () => {
     expect(el.startDate).to.equal('2026-06-01');
     expect(el.endDate).to.equal('2026-08-31');
     expect(loadDataStub.calledOnce).to.be.true;
+    subscribeStub.restore();
     loadDataStub.restore();
   });
 

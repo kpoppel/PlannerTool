@@ -9,7 +9,13 @@ const mockState = vi.hoisted(() => ({
 }));
 
 const mockSel = vi.hoisted(() => ({
+  feature: {
+    getEffectiveFeatures: () => [],
+    getAvailableTaskTypes: () => ['epic', 'feature'],
+    getBaselineFeatures: () => [{ id: 'f-base' }],
+  },
   selection: {
+    getTeams: () => [],
     getSelectedProjectIds: () => [],
     getSelectedTeamIds: () => [],
   },
@@ -49,15 +55,21 @@ describe('EmptyBoardModal Phase 4 selector seam', () => {
     mockState.baselineFeatures = [{ id: 'f-base' }];
     mockState.getEffectiveFeatures = () => [];
     mockState.taskFilterService = null;
+    mockSel.feature.getEffectiveFeatures = () => [];
+    mockSel.feature.getAvailableTaskTypes = () => ['epic', 'feature'];
+    mockSel.feature.getBaselineFeatures = () => [{ id: 'f-base' }];
 
     mockSel.selection.getSelectedProjectIds = () => [];
     mockSel.selection.getSelectedTeamIds = () => [];
+    mockSel.selection.getTeams = () => [];
     mockSel.filter.getSelectedFeatureStateSet = () => new Set();
     mockSel.view.isTypeVisible = () => true;
     mockSel.view.getShowUnplannedWork = () => true;
     mockSel.view.getExpansionState = () => ({ expandTeamAllocated: false });
     mockSel.view.getShowOnlyProjectHierarchy = () => false;
     mockSel.view.getExpandedFeatureIds = () => new Set();
+    mockSel.filter.getTaskFilters = () => null;
+    mockSel.filter.featurePassesFilters = () => true;
   });
 
   it('reports selector-driven reasons when no projects or states are selected', () => {
@@ -72,7 +84,7 @@ describe('EmptyBoardModal Phase 4 selector seam', () => {
   });
 
   it('detects visible features via selector seam without direct in-scope state calls', () => {
-    mockState.getEffectiveFeatures = () => [
+    mockSel.feature.getEffectiveFeatures = () => [
       { id: 'f1', state: 'Active', type: 'feature', start: '2025-01-01', end: '2025-01-02' },
     ];
     mockSel.view.getExpandedFeatureIds = () => new Set(['f1']);

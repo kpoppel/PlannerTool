@@ -74,7 +74,7 @@ export function createLegacyViewCommands(state) {
   };
 }
 
-export function createViewCommands(store, bus) {
+export function createViewCommands(store, bus, legacyState) {
   function setViewOptions(updater, actionName) {
     store.setState(
       (state) => ({
@@ -91,6 +91,7 @@ export function createViewCommands(store, bus) {
 
   return {
     setExpansionState(options, runtimeOptions = {}) {
+      legacyState?.setExpansionState?.(options, runtimeOptions);
       store.setState(
         (state) => ({
           ...state,
@@ -108,6 +109,7 @@ export function createViewCommands(store, bus) {
     },
 
     setTimelineScale(scale, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setTimelineScale?.(scale);
       setViewOptions(
         (options) => ({
           ...options,
@@ -121,10 +123,13 @@ export function createViewCommands(store, bus) {
     },
 
     setCondensedCards(condensed, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setCondensedCards?.(Boolean(condensed));
       setViewOptions(
         (options) => ({
           ...options,
           condensedCards: Boolean(condensed),
+            displayMode: condensed ? 'compact' : 'normal',
+            packedMode: false,
         }),
         'view.setCondensedCards'
       );
@@ -134,6 +139,7 @@ export function createViewCommands(store, bus) {
     },
 
     setFeatureSortMode(mode, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setFeatureSortMode?.(mode);
       setViewOptions(
         (options) => ({
           ...options,
@@ -147,6 +153,7 @@ export function createViewCommands(store, bus) {
     },
 
     setCapacityViewMode(mode, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setCapacityViewMode?.(mode);
       setViewOptions(
         (options) => ({
           ...options,
@@ -160,12 +167,15 @@ export function createViewCommands(store, bus) {
     },
 
     setDisplayMode(mode, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setDisplayMode?.(mode);
       const packedMode = mode === 'packed';
+        const condensedCards = mode !== 'normal';
       setViewOptions(
         (options) => ({
           ...options,
           displayMode: mode,
           packedMode,
+            condensedCards,
         }),
         'view.setDisplayMode'
       );
@@ -175,6 +185,7 @@ export function createViewCommands(store, bus) {
     },
 
     setShowDependencies(showDependencies, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setShowDependencies?.(Boolean(showDependencies));
       const value = Boolean(showDependencies);
       setViewOptions(
         (options) => ({
@@ -189,6 +200,11 @@ export function createViewCommands(store, bus) {
     },
 
     setTypeVisibility(typeName, visible, runtimeOptions = {}) {
+      getLegacyViewService(legacyState)?.setTypeVisibility?.(
+        typeName,
+        Boolean(visible),
+        Boolean(runtimeOptions?.suppressEvents)
+      );
       const key = String(typeName);
       const shouldShow = Boolean(visible);
       setViewOptions(

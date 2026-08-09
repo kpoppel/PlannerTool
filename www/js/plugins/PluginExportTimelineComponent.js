@@ -1,5 +1,4 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
@@ -568,19 +567,19 @@ export class PluginExportTimeline extends LitElement {
   }
 
   _collectTimelineData() {
-    // Collect a sensible snapshot from global state used by timeline components
+    // Collect a seam-sourced snapshot from selector state used by timeline components.
     const out = {
       generatedAt: new Date().toISOString(),
-      projects: state.projects || [],
-      teams: state.teams || [],
-      capacityDates: state.capacityDates || [],
-      projectDailyCapacity: state.projectDailyCapacity || [],
-      teamDailyCapacity: state.teamDailyCapacity || [],
-      features: state.features || [],
+      projects: sel.selection?.getProjects?.() || [],
+      teams: sel.selection?.getTeams?.() || [],
+      capacityDates: sel.capacity?.getCapacityDates?.() || [],
+      projectDailyCapacity: sel.capacity?.getProjectDailyCapacity?.() || [],
+      teamDailyCapacity: sel.capacity?.getTeamDailyCapacity?.() || [],
+      features: sel.feature?.getEffectiveFeatures?.() || [],
       view: {
-        capacityMode: sel.view.getCapacityViewMode(),
-        hiddenTypes: Array.from(sel.view.getHiddenTypes()),
-        showDependencies: sel.view.getShowDependencies(),
+        capacityMode: sel.view?.getCapacityViewMode?.(),
+        hiddenTypes: Array.from(sel.view?.getHiddenTypes?.() || []),
+        showDependencies: sel.view?.getShowDependencies?.(),
       },
     };
     return out;

@@ -6,7 +6,7 @@
  */
 import { expect } from '@open-wc/testing';
 import sinon from 'sinon';
-import { state } from '../../www/js/services/State.js';
+import { sel } from '../../www/js/application/imports.js';
 
 // Import the element class (does not mount it)
 import { PluginPlanHealthComponent } from '../../www/js/plugins/PluginPlanHealthComponent.js';
@@ -74,12 +74,12 @@ let comp;
 let stateStubs = [];
 
 function stubState(features, projects) {
-  stateStubs.push(sinon.stub(state, 'getEffectiveFeatures').returns(features));
-  stateStubs.push(sinon.stub(state, 'projects').get(() => projects));
-  stateStubs.push(sinon.stub(state, 'taskTypeHierarchy').get(() => HIERARCHY));
-  stateStubs.push(sinon.stub(state, 'getTypeLevel').callsFake(typeLevelFromHierarchy));
+  stateStubs.push(sinon.stub(sel.feature, 'getEffectiveFeatures').returns(features));
+  stateStubs.push(sinon.stub(sel.selection, 'getProjects').returns(projects));
+  stateStubs.push(sinon.stub(sel.feature, 'getTaskTypeHierarchy').returns(HIERARCHY));
+  stateStubs.push(sinon.stub(sel.feature, 'getTypeLevel').callsFake(typeLevelFromHierarchy));
   stateStubs.push(
-    sinon.stub(state, 'getTypeDisplayName').callsFake(displayNameFromHierarchy)
+    sinon.stub(sel.feature, 'getTypeDisplayName').callsFake(displayNameFromHierarchy)
   );
 }
 
@@ -413,8 +413,8 @@ describe('PluginPlanHealthComponent._checkHierarchyViolations', () => {
     // Override taskTypeHierarchy stub to return empty
     stubState([parentEpic, childEpic], projects);
     // Replace the hierarchy stub with empty
-    stateStubs[stateStubs.length - 3].restore(); // taskTypeHierarchy is 3rd from end
-    stateStubs.push(sinon.stub(state, 'taskTypeHierarchy').get(() => []));
+    stateStubs[2].restore();
+    stateStubs[2] = sinon.stub(sel.feature, 'getTaskTypeHierarchy').returns([]);
 
     const visibleIds = new Set(['e1', 'e2']);
     const issues = comp._checkHierarchyViolations([parentEpic, childEpic], visibleIds);

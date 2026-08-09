@@ -2,7 +2,6 @@
 // Lit 3.3.1 web component for main organizational load graph
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
@@ -100,14 +99,14 @@ export class MainGraphLit extends LitElement {
       const selectedProjectIds = sel.selection.getEffectiveSelectedProjectIds();
       return {
         months,
-        teams: state.teams || [],
-        projects: state.projects || [],
-        capacityDates: state.capacityDates || [],
-        teamDailyCapacity: state.teamDailyCapacity || [],
-        teamDailyCapacityMap: state.teamDailyCapacityMap || null,
-        projectDailyCapacity: state.projectDailyCapacity || [],
-        projectDailyCapacityMap: state.projectDailyCapacityMap || null,
-        totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg || [],
+        teams: sel.selection.getTeams() || [],
+        projects: sel.selection.getProjects() || [],
+        capacityDates: sel.capacity.getCapacityDates() || [],
+        teamDailyCapacity: sel.capacity.getTeamDailyCapacity() || [],
+        teamDailyCapacityMap: sel.capacity.getTeamDailyCapacityMap() || null,
+        projectDailyCapacity: sel.capacity.getProjectDailyCapacity() || [],
+        projectDailyCapacityMap: sel.capacity.getProjectDailyCapacityMap() || null,
+        totalOrgDailyPerTeamAvg: sel.capacity.getTotalOrgDailyPerTeamAvg() || [],
         capacityViewMode: sel.view.getCapacityViewMode(),
         selectedTeamIds: sel.selection.getSelectedTeamIds(),
         selectedProjectIds,
@@ -291,6 +290,13 @@ export class MainGraphLit extends LitElement {
       selectedProjectIds,
     } = stateSnapshot;
 
+    const selectedTeamIdSet = new Set(
+      Array.from(selectedTeamIds || []).map((id) => String(id))
+    );
+    const selectedProjectIdSet = new Set(
+      Array.from(selectedProjectIds || []).map((id) => String(id))
+    );
+
     const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth;
 
     function daysInMonth(d) {
@@ -328,8 +334,15 @@ export class MainGraphLit extends LitElement {
     let viewportOffsetPx = 0; // Offset from the start of visibleStartIdx to the viewport left edge
 
     {
-      const scrollLeft = boardCoords.scrollX;
-      const width = scrollContainer ? scrollContainer.clientWidth : (this._canvasRef?.width || 800);
+      const scrollLeft =
+        scrollContainer && Number.isFinite(scrollContainer.scrollLeft) ?
+          scrollContainer.scrollLeft
+        : boardCoords.scrollX;
+      const viewportWidth =
+        scrollContainer && scrollContainer.clientWidth > 0 ?
+          scrollContainer.clientWidth
+        : 0;
+      const width = viewportWidth || this._canvasRef?.width || 800;
 
       // Calculate which dates are visible in the viewport
       const startMonthIdx = Math.floor(scrollLeft / MONTH_WIDTH);
@@ -423,7 +436,7 @@ export class MainGraphLit extends LitElement {
     // already excluded from project/org totals, so it must not dilute the
     // average either). Computed here because this raw project map
     // (projectDailyCapacityMap) is not pre-normalized by CapacityCalculator.
-    const nTeams = (selectedTeamIds && selectedTeamIds.size) || 1;
+    const nTeams = selectedTeamIdSet.size || 1;
 
     // Early exit only if the selection relevant to the current view mode is empty.
     // Team mode cares about selectedTeamIds; project mode cares about selectedProjectIds.
@@ -434,16 +447,14 @@ export class MainGraphLit extends LitElement {
       _earlyExitUsingTeam &&
       teams &&
       teams.length > 0 &&
-      selectedTeamIds &&
-      selectedTeamIds.size === 0
+      selectedTeamIdSet.size === 0
     )
       return;
     if (
       !_earlyExitUsingTeam &&
       projects &&
       projects.length > 0 &&
-      selectedProjectIds &&
-      selectedProjectIds.size === 0
+      selectedProjectIdSet.size === 0
     )
       return;
 
@@ -474,16 +485,18 @@ export class MainGraphLit extends LitElement {
       if (dayTeamMap) {
         for (const team of teams) {
           const v = dayTeamMap[team.id] || 0;
-          teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
-          if (selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
+          const teamKey = String(team.id);
+          teamBucket[team.id] = selectedTeamIdSet.has(teamKey) ? v : 0;
+          if (selectedTeamIdSet.has(teamKey) && v > maxTeamVal) maxTeamVal = v;
         }
       } else {
         const tTuple = teamDailyCapacity[idx] || [];
         for (let i = 0; i < teams.length; i++) {
           const team = teams[i];
           const v = tTuple[i] || 0;
-          teamBucket[team.id] = selectedTeamIds.has(team.id) ? v : 0;
-          if (selectedTeamIds.has(team.id) && v > maxTeamVal) maxTeamVal = v;
+          const teamKey = String(team.id);
+          teamBucket[team.id] = selectedTeamIdSet.has(teamKey) ? v : 0;
+          if (selectedTeamIdSet.has(teamKey) && v > maxTeamVal) maxTeamVal = v;
         }
       }
       teamDayMap.set(d, teamBucket);
@@ -498,7 +511,7 @@ export class MainGraphLit extends LitElement {
           const isProjectType =
             (project && project.type ? String(project.type) : 'project') === 'project';
           // Only display type='project' projects, but we've read all data
-          if (isProjectType && selectedProjectIds.has(project.id)) {
+          if (isProjectType && selectedProjectIdSet.has(String(project.id))) {
             projectBucket[project.id] = v / Math.max(1, nTeams);
           }
         }
@@ -515,7 +528,7 @@ export class MainGraphLit extends LitElement {
           const isProjectType =
             (project && project.type ? String(project.type) : 'project') === 'project';
           // Only display type='project' projects, but we've read all data
-          if (isProjectType && selectedProjectIds.has(project.id)) {
+          if (isProjectType && selectedProjectIdSet.has(String(project.id))) {
             projectBucket[project.id] = v;
           }
         }
@@ -533,7 +546,7 @@ export class MainGraphLit extends LitElement {
       let totalPerTeam = 0;
       if (dayProjectMap) {
         for (const proj of projects) {
-          if (!selectedProjectIds.has(proj.id)) continue;
+          if (!selectedProjectIdSet.has(String(proj.id))) continue;
           const isProjectType =
             (proj && proj.type ? String(proj.type) : 'project') === 'project';
           if (!isProjectType) continue;
@@ -546,7 +559,7 @@ export class MainGraphLit extends LitElement {
       } else {
         for (let i = 0; i < projects.length; i++) {
           const proj = projects[i];
-          if (!selectedProjectIds.has(proj.id)) continue;
+          if (!selectedProjectIdSet.has(String(proj.id))) continue;
           const isProjectType =
             (proj && proj.type ? String(proj.type) : 'project') === 'project';
           if (!isProjectType) continue;

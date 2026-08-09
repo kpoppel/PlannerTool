@@ -6,7 +6,7 @@ import {
   buildPortfolioTimelineSvgMarkup,
   formatTimelineMonthLabel,
 } from './portfolioTimeline.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 
 const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
 
@@ -16,7 +16,7 @@ const TIMELINE_FADED_CATEGORIES = new Set(['completed', 'removed']);
  * @returns {string}
  */
 function getTimelineBarCategory(feature) {
-  const category = state.featureStateService?.getCategoryForState?.(feature?.state);
+  const category = sel.filter.getFeatureStateCategory(feature?.state);
   return String(category || '').toLowerCase();
 }
 

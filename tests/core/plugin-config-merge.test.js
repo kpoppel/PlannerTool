@@ -1,4 +1,4 @@
-import { expect, describe, it } from 'vitest';
+import { expect, describe, it, vi } from 'vitest';
 import { mergePluginConfig } from '../../www/js/core/pluginConfigMerge.js';
 
 const META = {
@@ -114,6 +114,23 @@ describe('mergePluginConfig', () => {
     const ids = result.modules.map((m) => m.id);
     expect(ids).not.to.include('plugin-unknown');
     expect(ids).to.include('plugin-alpha');
+  });
+
+  it('suppresses warning for deprecated runtime ids that are intentionally retired', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const runtime = [
+      { id: 'plugin-cost-v1', enabled: true, activated: false },
+      { id: 'plugin-alpha', enabled: true, activated: false },
+    ];
+
+    const result = mergePluginConfig(META, runtime);
+    const ids = result.modules.map((m) => m.id);
+
+    expect(ids).not.to.include('plugin-cost-v1');
+    expect(ids).to.include('plugin-alpha');
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 
   it('passes through custom_config from runtime when present', () => {

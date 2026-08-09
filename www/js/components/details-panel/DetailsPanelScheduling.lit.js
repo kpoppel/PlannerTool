@@ -1,6 +1,6 @@
 import { html } from '../../vendor/lit.js';
 
-export function renderDetailsPanelScheduling({ host, feature, iterations, state, orig }) {
+export function renderDetailsPanelScheduling({ host, feature, iterations, childrenByParent, orig }) {
   const startOrig = orig.start;
   const endOrig = orig.end;
   const startChanged = startOrig !== undefined && feature.start !== startOrig;
@@ -9,8 +9,8 @@ export function renderDetailsPanelScheduling({ host, feature, iterations, state,
   const hasChildren =
     feature &&
     feature.type &&
-    state.childrenByParent &&
-    state.childrenByParent.has(feature.id);
+    childrenByParent &&
+    (childrenByParent.has(String(feature.id)) || childrenByParent.has(feature.id));
 
   const selectedPath = feature.iterationPath || '';
   const selectedIter = selectedPath ?

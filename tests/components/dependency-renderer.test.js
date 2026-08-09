@@ -10,6 +10,10 @@ const mockView = vi.hoisted(() => ({
   condensedCards: false,
 }));
 
+const mockFeatures = vi.hoisted(() => ({
+  list: [],
+}));
+
 vi.mock('../../www/js/application/imports.js', () => ({
   cmd: {},
   sel: {
@@ -17,11 +21,13 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getShowDependencies: () => mockView.showDependencies,
       getCondensedCards: () => mockView.condensedCards,
     },
+    feature: {
+      getEffectiveFeatures: () => mockFeatures.list,
+    },
   },
 }));
 
 import { PluginDependenciesComponent } from '../../www/js/plugins/PluginDependenciesComponent.js';
-import { state } from '../../www/js/services/State.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents } from '../../www/js/core/EventRegistry.js';
 
@@ -48,6 +54,7 @@ describe('PluginDependenciesComponent', () => {
   beforeEach(() => {
     mockView.showDependencies = false;
     mockView.condensedCards = false;
+    mockFeatures.list = [];
 
     window.ResizeObserver = class {
       observe() {}
@@ -84,7 +91,7 @@ describe('PluginDependenciesComponent', () => {
 
   it('draws a Bezier path between two feature cards', async () => {
     // Uses cards 1 and 2 from the global setup (left:10,top:10 and left:160,top:10)
-    state.getEffectiveFeatures = () => [
+    mockFeatures.list = [
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
@@ -104,7 +111,7 @@ describe('PluginDependenciesComponent', () => {
   });
 
   it('renders predecessor, successor and related paths with correct styles', async () => {
-    state.getEffectiveFeatures = () => [
+    mockFeatures.list = [
       { id: 1, relations: [2, { id: 3, type: 'Successor' }] },
       { id: 2, relations: [{ id: 3, type: 'Related' }] },
       { id: 3, relations: [] },
@@ -130,7 +137,7 @@ describe('PluginDependenciesComponent', () => {
   });
 
   it('clears the SVG when showDependencies is toggled off', async () => {
-    state.getEffectiveFeatures = () => [
+    mockFeatures.list = [
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];

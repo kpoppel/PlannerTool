@@ -1,7 +1,6 @@
 import { LitElement, html } from '../vendor/lit.js';
 import './Modal.lit.js';
-import { state } from '../services/State.js';
-import { cmd } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 
 export class ViewSaveModal extends LitElement {
   static properties = {
@@ -87,19 +86,12 @@ export class ViewSaveModal extends LitElement {
       },
     };
 
-    // Get selected projects
-    if (state.projects) {
-      this.previewData.selectedProjects = state.projects
-        .filter((p) => p.selected)
-        .map((p) => p.name || p.id);
-    }
-
-    // Get selected teams
-    if (state.teams) {
-      this.previewData.selectedTeams = state.teams
-        .filter((t) => t.selected)
-        .map((t) => t.name || t.id);
-    }
+    this.previewData.selectedProjects = (sel.selection.getSelectedProjects() || []).map(
+      (project) => project.name || project.id
+    );
+    this.previewData.selectedTeams = (sel.selection.getSelectedTeams() || []).map(
+      (team) => team.name || team.id
+    );
 
     // Get view options
     {

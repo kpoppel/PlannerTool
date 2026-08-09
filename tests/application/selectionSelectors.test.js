@@ -89,4 +89,67 @@ describe('application/selectors/selectionSelectors', () => {
     const selectors = createSelectionSelectors(store);
     expect(selectors.getEffectiveSelectedProjectIds()).toEqual(['p1']);
   });
+
+  it('state-store selectors preserve legacy object fields while applying store selection ids', () => {
+    const store = {
+      getState: () => ({
+        selection: {
+          projectIds: ['p2'],
+          teamIds: ['t1'],
+        },
+        baseline: {
+          projects: [{ id: 'p1', color: '#111111' }],
+          teams: [{ id: 't1', color: '#222222' }],
+        },
+      }),
+    };
+    const legacyState = {
+      projects: [
+        { id: 'p1', name: 'Alpha', color: '#00AA00', selected: true },
+        { id: 'p2', name: 'Beta', color: '#AA0000', selected: false },
+      ],
+      teams: [
+        { id: 't1', name: 'Core', color: '#0044CC', selected: false },
+        { id: 't2', name: 'API', color: '#AA00AA', selected: true },
+      ],
+    };
+
+    const selectors = createSelectionSelectors(store, legacyState);
+    expect(selectors.getProjects()).toEqual([
+      { id: 'p1', name: 'Alpha', color: '#00AA00', selected: false },
+      { id: 'p2', name: 'Beta', color: '#AA0000', selected: true },
+    ]);
+    expect(selectors.getTeams()).toEqual([
+      { id: 't1', name: 'Core', color: '#0044CC', selected: true },
+      { id: 't2', name: 'API', color: '#AA00AA', selected: false },
+    ]);
+  });
+
+  it('state-store selectors fall back to legacy selected flags or default-all when ids are empty', () => {
+    const store = {
+      getState: () => ({
+        selection: {
+          projectIds: [],
+          teamIds: [],
+        },
+        baseline: {
+          projects: [{ id: 'bp1' }],
+          teams: [{ id: 'bt1' }],
+        },
+      }),
+    };
+    const legacyState = {
+      projects: [
+        { id: 'p1', selected: true },
+        { id: 'p2', selected: false },
+      ],
+      teams: [{ id: 't1' }, { id: 't2' }],
+    };
+
+    const selectors = createSelectionSelectors(store, legacyState);
+    expect(selectors.getSelectedProjectIds()).toEqual(['p1']);
+    expect(selectors.getSelectedTeamIds()).toEqual(['t1', 't2']);
+    expect(selectors.getSelectedProjects().map((project) => project.id)).toEqual(['p1']);
+    expect(selectors.getSelectedTeams().map((team) => team.id)).toEqual(['t1', 't2']);
+  });
 });

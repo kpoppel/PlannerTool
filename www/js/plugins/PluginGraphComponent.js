@@ -10,7 +10,6 @@
  * - Date math uniformly uses UTC-localized days to avoid timezone surprises.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
@@ -221,7 +220,7 @@ export class PluginGraph extends LitElement {
     // TODO: should use getViewService
     this.mode = sel.view.getCapacityViewMode();
 
-    // Always set date range from the current state.
+    // Always set date range from the current timeline selection.
     const months = getTimelineMonths();
     const d0 = months[0];
     const last = months[months.length - 1];
@@ -296,9 +295,9 @@ export class PluginGraph extends LitElement {
   }
 
   _computeDailyTotals(mode, sDate, eDate) {
-    const effective = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
-    const teams = state.teams || [];
-    const allProjects = state.projects || [];
+    const effective = sel.feature?.getEffectiveFeatures?.() || [];
+    const teams = sel.selection.getTeams() || [];
+    const allProjects = sel.selection.getProjects() || [];
     const selectedTeams = sel.selection.getSelectedTeamIds();
     const selectedProjects = sel.selection.getSelectedProjectIds();
     const selectedStates = sel.filter.getSelectedFeatureStateNames();
@@ -311,9 +310,9 @@ export class PluginGraph extends LitElement {
     if (stateSetSelected.size === 0) return { days: 0, totals: [] };
 
     const days = this._daysBetween(sDate, eDate);
-    const stateDates = state.capacityDates || [];
-    const teamDaily = state.teamDailyCapacity || [];
-    const projectDaily = state.projectDailyCapacity || [];
+    const stateDates = sel.capacity.getCapacityDates() || [];
+    const teamDaily = sel.capacity.getTeamDailyCapacity() || [];
+    const projectDaily = sel.capacity.getProjectDailyCapacity() || [];
     if (stateDates && stateDates.length && teamDaily && projectDaily) {
       const dateIndexMap = new Map(stateDates.map((ds, i) => [ds, i]));
       const totals = new Array(days)
@@ -364,7 +363,7 @@ export class PluginGraph extends LitElement {
     const projectDayMap = new Map();
     // Only teams the user has selected count towards the org-load denominator,
     // consistent with CapacityCalculator/MainGraph. The fast path above
-    // already benefits automatically since state.projectDailyCapacity is
+    // already benefits automatically since project daily capacity values are
     // pre-normalized by CapacityCalculator using the same selected-team count.
     const numTeamsGlobal = teamSetSelected.size === 0 ? 1 : teamSetSelected.size;
     function addRawTeam(dayIdx, teamId, raw) {
@@ -576,7 +575,7 @@ export class PluginGraph extends LitElement {
         rect.setAttribute('y', String(y));
         rect.setAttribute('width', String(w));
         rect.setAttribute('height', String(hSeg));
-        const proj = (state.projects || []).find((p) => p.id === pid);
+        const proj = sel.selection.getProjectById(pid);
         // Use a subtle pastel brown for unfunded, otherwise use project color
         const color =
           pid === '__unfunded__' ? '#C49E78'
@@ -594,7 +593,7 @@ export class PluginGraph extends LitElement {
   }
 
   _renderTeamLines(data, width, height, parent, maxY = 100) {
-    const teams = state.teams || [];
+    const teams = sel.selection.getTeams() || [];
     const { days, totals } = data;
     const self = this;
     teams.slice(0, Math.min(teams.length, teams.length)).forEach((t, idx) => {
@@ -636,7 +635,7 @@ export class PluginGraph extends LitElement {
         if (entries.length) {
           html += '<div style="display:flex; flex-direction:column; gap:4px;">';
           entries.slice(0, 10).forEach((e) => {
-            const p = (state.projects || []).find((x) => x.id === e.id);
+            const p = sel.selection.getProjectById(e.id);
             const isUnfunded = e.id === '__unfunded__';
             const color =
               isUnfunded ? '#C49E78'
@@ -657,7 +656,7 @@ export class PluginGraph extends LitElement {
         if (entries.length) {
           html += '<div style="display:flex; flex-direction:column; gap:4px;">';
           entries.slice(0, 10).forEach((e) => {
-            const t = (state.teams || []).find((x) => x.id === e.id);
+            const t = sel.selection.getTeamById(e.id);
             const color = t ? t.color : '#888';
             const name = t ? t.name : e.id;
             html += `<div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#eee;"><span style="width:10px;height:10px;background:${color};display:inline-block;border-radius:2px;flex:0 0 10px;"></span><span style="flex:1; color:#ddd;">${name}</span><span style="margin-left:8px; color:#fff; font-weight:700;">${Math.round(e.v)}%</span></div>`;

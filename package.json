@@ -7,6 +7,8 @@
   "scripts": {
     "test": "NODE_OPTIONS='--no-deprecation' NODE_ENV=production vitest --run",
     "test:coverage": "vitest run --coverage",
+    "test:state-store": "NODE_OPTIONS='--no-deprecation' NODE_ENV=production vitest --run --config vitest.state-store.config.js",
+    "test:coverage:state-store": "vitest run --coverage --config vitest.state-store.config.js",
     "test:ui": "vitest --ui --browser.enabled=true",
     "build": "vite build",
     "build:vendor": "rollup -c",

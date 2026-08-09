@@ -9,7 +9,7 @@ import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.j
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents, ProjectEvents, TeamEvents, BoardEvents } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { pluginManager } from '../core/PluginManager.js';
 
 export class PluginMarkersComponent extends OverlaySvgPlugin {
@@ -208,12 +208,8 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     // Calculate filtered count for display
     let displayCount = totalUniqueCount;
     if (this.visible && this.markers.length > 0) {
-      const selectedProjects = (state.projects || [])
-        .filter((p) => p.selected)
-        .map((p) => p.id);
-      const selectedTeams = (state.teams || [])
-        .filter((t) => t.selected)
-        .map((t) => t.id);
+      const selectedProjects = sel.selection.getSelectedProjectIds();
+      const selectedTeams = sel.selection.getSelectedTeamIds();
 
       const hasProjectSelection = selectedProjects.length > 0;
       const hasTeamSelection = selectedTeams.length > 0;
@@ -432,10 +428,8 @@ export class PluginMarkersComponent extends OverlaySvgPlugin {
     this._svgEl.style.height = `${boardRect.height}px`;
 
     // Filter markers by selected projects and teams
-    const selectedProjects = (state.projects || [])
-      .filter((p) => p.selected)
-      .map((p) => p.id);
-    const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
+    const selectedProjects = sel.selection.getSelectedProjectIds();
+    const selectedTeams = sel.selection.getSelectedTeamIds();
 
     const filteredMarkers = this.markers.filter((markerEntry) => {
       // When no project is selected, show nothing

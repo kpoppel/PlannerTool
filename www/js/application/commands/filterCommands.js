@@ -1,7 +1,7 @@
 export function createLegacyFilterCommands(state) {
   return {
-    setSelectedTaskTypes(types) {
-      return state.setSelectedTaskTypes(types);
+    setSelectedTaskTypes(types, options) {
+      return state.setSelectedTaskTypes(types, options);
     },
 
     setSelectedStates(states, options) {
@@ -27,6 +27,14 @@ export function createLegacyFilterCommands(state) {
     clearSidebarDisabledElements() {
       return state.clearSidebarDisabledElements();
     },
+
+    setTaskFilter(dimension, option, selected) {
+      return state.taskFilterService?.setFilter?.(dimension, option, Boolean(selected));
+    },
+
+    toggleTaskFilter(dimension, option) {
+      return state.taskFilterService?.toggleFilter?.(dimension, option);
+    },
   };
 }
 
@@ -44,10 +52,11 @@ function deriveAvailableStatesFromFeatures(features) {
   return out;
 }
 
-export function createFilterCommands(store, bus) {
+export function createFilterCommands(store, bus, legacyState) {
   return {
     setSelectedTaskTypes(types, options = {}) {
       const taskTypeNames = Array.isArray(types) ? Array.from(types) : [];
+      legacyState?.setSelectedTaskTypes?.(taskTypeNames, options);
       store.setState(
         (state) => ({
           ...state,
@@ -66,6 +75,7 @@ export function createFilterCommands(store, bus) {
 
     setSelectedStates(states, options = {}) {
       const featureStateNames = Array.isArray(states) ? Array.from(states) : [];
+      legacyState?.setSelectedStates?.(featureStateNames, options);
       store.setState(
         (state) => ({
           ...state,
@@ -83,6 +93,7 @@ export function createFilterCommands(store, bus) {
     },
 
     setAllStatesSelected(selected, options = {}) {
+      legacyState?.setAllStatesSelected?.(Boolean(selected), options);
       if (!selected) {
         store.setState(
           (state) => ({
@@ -121,6 +132,7 @@ export function createFilterCommands(store, bus) {
 
     toggleStateSelected(stateName, options = {}) {
       const key = String(stateName);
+      legacyState?.toggleStateSelected?.(key, options);
       store.setState(
         (state) => {
           const current = new Set(state.selection?.featureStateNames || []);
@@ -144,6 +156,7 @@ export function createFilterCommands(store, bus) {
 
     setStateFilter(stateName, options = {}) {
       const key = String(stateName);
+      legacyState?.setStateFilter?.(key, options);
       store.setState(
         (state) => ({
           ...state,
@@ -161,6 +174,7 @@ export function createFilterCommands(store, bus) {
     },
 
     setSidebarDisabledElements(map, options = {}) {
+      legacyState?.setSidebarDisabledElements?.(map || {});
       store.setState(
         (state) => ({
           ...state,
@@ -178,6 +192,7 @@ export function createFilterCommands(store, bus) {
     },
 
     clearSidebarDisabledElements(options = {}) {
+      legacyState?.clearSidebarDisabledElements?.();
       store.setState(
         (state) => ({
           ...state,
@@ -192,6 +207,41 @@ export function createFilterCommands(store, bus) {
       if (!options?.suppressEvents) {
         bus?.emit?.('filter:sidebar-disabled-cleared', {});
       }
+    },
+
+    setTaskFilter(dimension, option, selected, options = {}) {
+      const nextSelected = Boolean(selected);
+      legacyState?.taskFilterService?.setFilter?.(dimension, option, nextSelected);
+      store.setState(
+        (state) => {
+          const currentFilters = state.selection?.taskFilters || {};
+          const currentDimension = currentFilters?.[dimension] || {};
+          return {
+            ...state,
+            selection: {
+              ...state.selection,
+              taskFilters: {
+                ...currentFilters,
+                [dimension]: {
+                  ...currentDimension,
+                  [option]: nextSelected,
+                },
+              },
+            },
+          };
+        },
+        false,
+        'filter.setTaskFilter'
+      );
+      if (!options?.suppressEvents) {
+        bus?.emit?.('filter:task-filter-changed', { dimension, option, selected: nextSelected });
+      }
+    },
+
+    toggleTaskFilter(dimension, option, options = {}) {
+      const current = legacyState?.taskFilterService?.getFilters?.()?.[dimension]?.[option];
+      const nextSelected = !Boolean(current);
+      this.setTaskFilter(dimension, option, nextSelected, options);
     },
   };
 }

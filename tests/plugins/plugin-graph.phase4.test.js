@@ -1,29 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockState = vi.hoisted(() => ({
-  teams: [{ id: 't1', selected: true }],
-  projects: [{ id: 'p1', selected: true, type: 'project' }],
-  capacityDates: ['2025-01-01'],
-  teamDailyCapacity: [[12]],
-  projectDailyCapacity: [[24]],
-  getEffectiveFeatures: () => [],
-}));
-
 const mockSel = vi.hoisted(() => ({
   view: {
     getCapacityViewMode: () => 'team',
   },
+  feature: {
+    getEffectiveFeatures: () => [],
+  },
   selection: {
+    getTeams: () => [{ id: 't1', selected: true }],
+    getProjects: () => [{ id: 'p1', selected: true, type: 'project' }],
     getSelectedTeamIds: () => ['t1'],
     getSelectedProjectIds: () => ['p1'],
+  },
+  capacity: {
+    getCapacityDates: () => ['2025-01-01'],
+    getTeamDailyCapacity: () => [[12]],
+    getProjectDailyCapacity: () => [[24]],
   },
   filter: {
     getSelectedFeatureStateNames: () => [],
   },
-}));
-
-vi.mock('../../www/js/services/State.js', () => ({
-  state: mockState,
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({

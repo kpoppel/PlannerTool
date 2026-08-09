@@ -1,6 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state, PALETTE } from '../services/State.js';
-import { cmd } from '../application/imports.js';
+import { PALETTE } from '../services/ColorService.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
   TeamEvents,
@@ -229,7 +229,7 @@ export class TeamMenuLit extends LitElement {
 
   render() {
     const teams = this.teams;
-    const taskTypes = state.availableTaskTypesOrdered;
+    const taskTypes = sel.feature.getAvailableTaskTypesOrdered?.() || [];
 
     return html`
       <div class="menu-popover">
@@ -248,7 +248,7 @@ export class TeamMenuLit extends LitElement {
 
         <ul class="sidebar-list">
           ${teams.map((team) => {
-            const counts = state.allCountsForTeam(team.id);
+            const counts = sel.feature.getCountsForTeam(team.id);
 
             return html`
               <li class="sidebar-list-item">

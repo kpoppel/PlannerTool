@@ -104,4 +104,30 @@ describe('application/commands/viewCommands', () => {
     });
     expect(bus.emit).toHaveBeenCalled();
   });
+
+  it('store branch maps displayMode to condensedCards and packedMode', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createViewCommands(store, bus);
+
+    commands.setDisplayMode('compact');
+    expect(store.getState().view.options).toMatchObject({
+      displayMode: 'compact',
+      condensedCards: true,
+      packedMode: false,
+    });
+
+    commands.setDisplayMode('packed');
+    expect(store.getState().view.options).toMatchObject({
+      displayMode: 'packed',
+      condensedCards: true,
+      packedMode: true,
+    });
+
+    commands.setDisplayMode('normal');
+    expect(store.getState().view.options).toMatchObject({
+      displayMode: 'normal',
+      condensedCards: false,
+      packedMode: false,
+    });
+  });
 });

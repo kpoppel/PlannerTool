@@ -10,7 +10,6 @@
  * - User annotations
  */
 
-import { state } from '../../services/State.js';
 import { sel } from '../../application/imports.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight } from '../../components/board-utils.js';
@@ -671,7 +670,7 @@ export class TimelineExportRenderer {
     }
 
     // Get all features with relations
-    const allFeatures = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+    const allFeatures = sel.feature?.getEffectiveFeatures?.() || [];
     const drawn = new Set();
 
     for (const f of allFeatures) {

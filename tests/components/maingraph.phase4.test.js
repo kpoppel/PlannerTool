@@ -5,6 +5,16 @@ const mockSel = vi.hoisted(() => ({
   selection: {
     getEffectiveSelectedProjectIds: vi.fn(() => ['p1']),
     getSelectedTeamIds: vi.fn(() => ['t1']),
+    getTeams: vi.fn(() => [{ id: 't1', selected: true }]),
+    getProjects: vi.fn(() => [{ id: 'p1', selected: true }]),
+  },
+  capacity: {
+    getCapacityDates: vi.fn(() => []),
+    getTeamDailyCapacity: vi.fn(() => []),
+    getTeamDailyCapacityMap: vi.fn(() => null),
+    getProjectDailyCapacity: vi.fn(() => []),
+    getProjectDailyCapacityMap: vi.fn(() => null),
+    getTotalOrgDailyPerTeamAvg: vi.fn(() => []),
   },
   filter: {
     getSelectedFeatureStateSet: vi.fn(() => new Set(['Active'])),
@@ -12,17 +22,6 @@ const mockSel = vi.hoisted(() => ({
   view: {
     getCapacityViewMode: vi.fn(() => 'team'),
   },
-}));
-
-const mockState = vi.hoisted(() => ({
-  teams: [{ id: 't1', selected: true }],
-  projects: [{ id: 'p1', selected: true }],
-  capacityDates: [],
-  teamDailyCapacity: [],
-  teamDailyCapacityMap: null,
-  projectDailyCapacity: [],
-  projectDailyCapacityMap: null,
-  totalOrgDailyPerTeamAvg: [],
 }));
 
 const mockBus = vi.hoisted(() => ({
@@ -39,10 +38,6 @@ const mockBoardCoords = vi.hoisted(() => ({
 vi.mock('../../www/js/application/imports.js', () => ({
   cmd: {},
   sel: mockSel,
-}));
-
-vi.mock('../../www/js/services/State.js', () => ({
-  state: mockState,
 }));
 
 vi.mock('../../www/js/core/EventBus.js', () => ({

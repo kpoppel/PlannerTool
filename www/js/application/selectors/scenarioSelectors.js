@@ -37,20 +37,24 @@ export function createLegacyScenarioSelectors(state) {
   };
 }
 
-export function createScenarioSelectors(store) {
+export function createScenarioSelectors(store, legacyState = null) {
   return {
     getScenarios() {
-      return getScenarioItems(store.getState());
+      const items = getScenarioItems(store.getState());
+      if (items.length > 0) return items;
+      return Array.isArray(legacyState?.scenarios) ? legacyState.scenarios : items;
     },
 
     getActiveScenarioId() {
-      return getScenarioActiveId(store.getState());
+      const activeId = getScenarioActiveId(store.getState());
+      if (activeId && activeId !== 'baseline') return activeId;
+      return legacyState?.activeScenarioId || activeId;
     },
 
     getActiveScenario() {
-      const state = store.getState();
-      const activeId = getScenarioActiveId(state);
-      return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
+      const scenarios = this.getScenarios();
+      const activeId = this.getActiveScenarioId();
+      return scenarios.find((scenario) => scenario.id === activeId) || null;
     },
 
     isScenarioUnsaved(scenario) {

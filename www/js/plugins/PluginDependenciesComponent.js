@@ -12,7 +12,6 @@
 
 import { html } from '../vendor/lit.js';
 import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
@@ -112,7 +111,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
       if (id) cardById.set(String(id), c);
     }
 
-    const features = sel.feature?.getEffectiveFeatures?.() ?? state.getEffectiveFeatures?.() ?? [];
+    const features = sel.feature?.getEffectiveFeatures?.() || [];
     const laneHeight = sel.view.getCondensedCards() ? 28 : 100;
 
     /**

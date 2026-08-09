@@ -8,7 +8,6 @@ import {
   ViewEvents,
   TimelineEvents,
 } from '../core/EventRegistry.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { featureFlags } from '../config.js';
 
@@ -109,7 +108,7 @@ export class EmptyBoardModal extends LitElement {
 
     // View options — check if all task types are hidden
     {
-      const availableTypes = (state.availableTaskTypes || ['epic', 'feature']);
+      const availableTypes = sel.feature.getAvailableTaskTypes() || ['epic', 'feature'];
       const allHidden = availableTypes.every((t) => !sel.view.isTypeVisible(t));
       if (allHidden) {
         reasons.push('All task types are hidden in view options.');
@@ -128,7 +127,8 @@ export class EmptyBoardModal extends LitElement {
 
     // Team selection + capacity filtering
     const selectedTeamIds = sel.selection.getSelectedTeamIds();
-    if (state.teams && state.teams.length && !selectedTeamIds.length) {
+    const teams = sel.selection.getTeams() || [];
+    if (teams.length && !selectedTeamIds.length) {
       reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
     }
 
@@ -146,13 +146,7 @@ export class EmptyBoardModal extends LitElement {
 
     // Dimensional task filters (schedule, allocation, hierarchy, relations)
     try {
-      const taskFilters =
-        (
-          state.taskFilterService &&
-          typeof state.taskFilterService.getFilters === 'function'
-        ) ?
-          state.taskFilterService.getFilters()
-        : null;
+      const taskFilters = sel.filter.getTaskFilters();
       if (taskFilters) {
         Object.keys(taskFilters).forEach((dim) => {
           const opts = taskFilters[dim];
@@ -187,8 +181,7 @@ export class EmptyBoardModal extends LitElement {
   _hasVisibleFeatures() {
     try {
       // Use state's expanded feature ids to determine the base visible set (respects expansion options)
-      const sourceFeatures =
-        sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+      const sourceFeatures = sel.feature?.getEffectiveFeatures?.() || [];
       if (!sourceFeatures.length) return false;
 
       const expandedIds = sel.view.getExpandedFeatureIds();
@@ -201,10 +194,8 @@ export class EmptyBoardModal extends LitElement {
       );
 
       // Task/dimensional filters
-      const taskFilterSvc = state.taskFilterService;
-
       for (const feature of sourceFeatures) {
-        if (!expandedIds.has(feature.id)) continue;
+        if (!expandedIds.has(String(feature.id))) continue;
 
         // state filter (case-insensitive using configured state names)
         if (stateFilter.size === 0) continue;
@@ -222,9 +213,7 @@ export class EmptyBoardModal extends LitElement {
 
         // Task/dimensional filters: if service exists, use it to validate feature
         try {
-          if (taskFilterSvc && typeof taskFilterSvc.featurePassesFilters === 'function') {
-            if (!taskFilterSvc.featurePassesFilters(feature)) continue;
-          }
+          if (!sel.filter.featurePassesFilters(feature)) continue;
         } catch (e) {
           /* ignore filter errors */
         }
@@ -241,8 +230,7 @@ export class EmptyBoardModal extends LitElement {
   _recomputeAndMaybeClose() {
     // If no baseline features have been loaded yet (likely missing credentials),
     // do not show the empty-board modal — wait until data finishes loading.
-    const baselineLoaded =
-      Array.isArray(state.baselineFeatures) && state.baselineFeatures.length > 0;
+    const baselineLoaded = (sel.feature.getBaselineFeatures() || []).length > 0;
     if (!baselineLoaded) {
       if (this.open) {
         this.open = false;

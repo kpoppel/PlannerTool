@@ -122,6 +122,43 @@ describe('application/commands/scenarioCommands', () => {
     );
   });
 
+  it('activateScenario handles legacy getter-only scenarios property without throwing', () => {
+    const bus = { emit: vi.fn() };
+    let capturedActiveId = null;
+    const legacyState = {
+      recomputeCapacityMetrics: vi.fn(),
+      _scenarioEventService: {
+        getScenarios: () => [{ id: 'baseline', readonly: true }],
+        setActiveScenarioId: vi.fn((id) => {
+          capturedActiveId = id;
+        }),
+      },
+    };
+    Object.defineProperty(legacyState, 'scenarios', {
+      get() {
+        return [{ id: 'baseline', readonly: true }];
+      },
+      configurable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(legacyState, 'activeScenarioId', {
+      get() {
+        return capturedActiveId;
+      },
+      set(id) {
+        capturedActiveId = id;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    const commands = createScenarioCommands(store, bus, legacyState);
+
+    expect(() => commands.activateScenario('s2')).not.toThrow();
+    expect(store.getState().scenarios.activeId).toBe('s2');
+    expect(capturedActiveId).toBe('s2');
+  });
+
   it('renameScenario enforces unique names and marks changed', () => {
     const bus = { emit: vi.fn() };
     const commands = createScenarioCommands(store, bus);

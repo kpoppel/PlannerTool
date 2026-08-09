@@ -11,7 +11,6 @@
  * and cost/hours toggle controls.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
 import { cmd, sel } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
@@ -537,18 +536,18 @@ export class PluginCostComponent extends LitElement {
   // Apply the sidebar disabled configuration
   _applySidebarDisabled() {
     // Ensure unplanned is unchecked, and all other task filters are checked
-    state.taskFilterService.setFilter('schedule', 'unplanned', false);
+    cmd.filter.setTaskFilter('schedule', 'unplanned', false);
     // Schedule: ensure planned is true
-    state.taskFilterService.setFilter('schedule', 'planned', true);
+    cmd.filter.setTaskFilter('schedule', 'planned', true);
     // Allocation
-    state.taskFilterService.setFilter('allocation', 'allocated', true);
-    state.taskFilterService.setFilter('allocation', 'unallocated', true);
+    cmd.filter.setTaskFilter('allocation', 'allocated', true);
+    cmd.filter.setTaskFilter('allocation', 'unallocated', true);
     // Hierarchy
-    state.taskFilterService.setFilter('hierarchy', 'hasParent', true);
-    state.taskFilterService.setFilter('hierarchy', 'noParent', true);
+    cmd.filter.setTaskFilter('hierarchy', 'hasParent', true);
+    cmd.filter.setTaskFilter('hierarchy', 'noParent', true);
     // Relations
-    state.taskFilterService.setFilter('relations', 'hasLinks', true);
-    state.taskFilterService.setFilter('relations', 'noLinks', true);
+    cmd.filter.setTaskFilter('relations', 'hasLinks', true);
+    cmd.filter.setTaskFilter('relations', 'noLinks', true);
 
     // Force all states selected via public State API
     cmd.filter.setAllStatesSelected(true);
@@ -558,8 +557,8 @@ export class PluginCostComponent extends LitElement {
     // does not reliably expose the loaded task types at runtime.
     // Read available task types from State service (preferred) or fall back
     // to any saved view options. Do NOT query other components' internals.
-    console.log(state.availableTaskTypes);
-    cmd.filter.setSelectedTaskTypes(state.availableTaskTypes);
+    const availableTaskTypes = sel.feature.getAvailableTaskTypes?.() || [];
+    cmd.filter.setSelectedTaskTypes(availableTaskTypes);
 
     // Now disable buttons
     const disabled = {
@@ -660,7 +659,7 @@ export class PluginCostComponent extends LitElement {
       // Get effective features from state
       const effectiveFeatures =
         sel.feature && typeof sel.feature.getEffectiveFeatures === 'function' ?
-          sel.feature.getEffectiveFeatures()
+          sel.feature?.getEffectiveFeatures?.()
         : [];
 
       if (effectiveFeatures.length === 0) {
@@ -690,10 +689,10 @@ export class PluginCostComponent extends LitElement {
         selectedTypes = null;
       }
 
-      // Helper: determine if a feature has children according to state.childrenByParent
+      // Helper: determine if a feature has children according to selector hierarchy map.
       const hasChildren = (fid) => {
         try {
-          const map = state.childrenByParent || new Map();
+          const map = sel.feature.getChildrenByParentMap?.() || new Map();
           const list = map.get(Number(fid)) || map.get(String(fid)) || [];
           return Array.isArray(list) && list.length > 0;
         } catch (e) {
@@ -713,13 +712,13 @@ export class PluginCostComponent extends LitElement {
         return true;
       });
 
-      // Apply task filters (planned/unplanned, allocation, etc.) from TaskFilterService
-      const tfs = state.taskFilterService;
+      // Apply task filters (planned/unplanned, allocation, etc.) from seam selectors.
+      const taskFilter = sel.filter;
       // If the schedule.unplanned option is turned off, proactively
       // filter out features that are truly unplanned. Some backends
       // set placeholder dates (today) for unplanned items which would
       // otherwise appear as "planned"; treat those as unplanned too.
-      const taskFilters = tfs.getFilters();
+      const taskFilters = taskFilter.getTaskFilters?.() || { schedule: {} };
       if (taskFilters.schedule.unplanned === false) {
         const today = new Date().toISOString().slice(0, 10);
         filteredFeatures = filteredFeatures.filter((f) => {
@@ -739,7 +738,7 @@ export class PluginCostComponent extends LitElement {
           return true;
         });
 
-        const ff = filteredFeatures.filter((f) => tfs.featurePassesFilters(f));
+        const ff = filteredFeatures.filter((f) => taskFilter.featurePassesFilters(f));
         filteredFeatures.length = 0;
         Array.prototype.push.apply(filteredFeatures, ff);
       }
@@ -752,7 +751,7 @@ export class PluginCostComponent extends LitElement {
         const expandedIds = sel.view.getExpandedFeatureIds() || new Set();
         if (expandedIds.size > 0) {
           const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
-          const allEffective = sel.feature?.getEffectiveFeatures?.() || state.getEffectiveFeatures?.() || [];
+          const allEffective = sel.feature?.getEffectiveFeatures?.() || [];
           const byId = new Map(allEffective.map((f) => [String(f.id), f]));
           for (const id of expandedIds) {
             const sid = String(id);
@@ -825,9 +824,7 @@ export class PluginCostComponent extends LitElement {
 
       // Start with project sections expanded for all selected projects
       try {
-        const selectedProjects = (state.projects || [])
-          .filter((p) => p.selected)
-          .map((p) => p.id);
+        const selectedProjects = sel.selection.getSelectedProjectIds();
         this.expandedProjects = new Set(selectedProjects);
       } catch (e) {
         this.expandedProjects = new Set();

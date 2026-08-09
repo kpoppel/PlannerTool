@@ -7,7 +7,7 @@ import {
   calculateBudgetDeviation,
   hasSignificantDeviation,
 } from './PluginCostCalculator.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { renderCountingBanner, renderClipBanner } from './PluginCostShared.js';
 
@@ -21,7 +21,7 @@ export function renderTaskView(component) {
     `;
   }
 
-  const selectedProjects = (state.projects || []).filter((p) => p.selected);
+  const selectedProjects = sel.selection.getSelectedProjects();
   if (selectedProjects.length === 0) {
     return html`
       <div class="empty-state">
@@ -111,7 +111,7 @@ function renderTasksInProjectTable(component, features) {
   const featureMap = new Map(features.map((f) => [String(f.id), f]));
   const { roots, childrenMap } = buildTaskTree(
     features,
-    state.childrenByParent || new Map()
+    sel.feature.getChildrenByParentMap?.() || new Map()
   );
   const orderedFeatures = flattenTree(roots, childrenMap, featureMap, 0, []);
 

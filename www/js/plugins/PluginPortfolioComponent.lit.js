@@ -12,7 +12,6 @@ import {
   ViewManagementEvents,
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
-import { state } from '../services/State.js';
 import { cmd, sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
@@ -176,8 +175,8 @@ export class PluginPortfolioComponent extends LitElement {
     }
     const deduped = Array.from(uniqueById.values());
 
-    const projects = state.projects || [];
-    const teams = state.teams || [];
+    const projects = sel.selection.getProjects() || [];
+    const teams = sel.selection.getTeams() || [];
     const selectedProjectIds = sel.selection.getSelectedProjectIds();
     const selectedProjects = new Set(selectedProjectIds.map((id) => String(id)));
     const selectedTeamIdsArr = sel.selection.getSelectedTeamIds();
@@ -195,8 +194,8 @@ export class PluginPortfolioComponent extends LitElement {
       : Array.from(
           new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
         ).sort((a, b) => {
-          if (typeof state.compareFeatureStates === 'function') {
-            return state.compareFeatureStates(a, b);
+          if (typeof sel.filter.compareFeatureStates === 'function') {
+            return sel.filter.compareFeatureStates(a, b);
           }
           return a.localeCompare(b);
         });
@@ -209,8 +208,8 @@ export class PluginPortfolioComponent extends LitElement {
     const stateMap = new Map(this._columnStates.map((s) => [normalizeState(s), s]));
 
     const availableTypes =
-      (state.availableTaskTypes || []).length > 0 ?
-        [...state.availableTaskTypes]
+      (sel.feature.getAvailableTaskTypes() || []).length > 0 ?
+        [...sel.feature.getAvailableTaskTypes()]
       : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
 
     const sidebarVisibleTypes = new Set(
@@ -224,8 +223,6 @@ export class PluginPortfolioComponent extends LitElement {
       !!expansion.expandTeamAllocated;
 
     const expandedIds = hasExpansion ? sel.view.getExpandedFeatureIds() : null;
-    const taskFilterService = state.taskFilterService;
-
     const rows = selectedTeams.map((team) => {
       const cells = {};
       for (const stateName of this._columnStates) {
@@ -253,7 +250,7 @@ export class PluginPortfolioComponent extends LitElement {
       const featureType = getFeatureType(feature);
       if (!sidebarVisibleTypes.has(featureType)) return false;
 
-      if (taskFilterService && !taskFilterService.featurePassesFilters(feature)) return false;
+      if (!sel.filter.featurePassesFilters(feature)) return false;
 
       if (hasAnyCapacity(feature)) {
         const hasSelectedTeamAllocation =
@@ -318,11 +315,8 @@ export class PluginPortfolioComponent extends LitElement {
 
   _updateScenarioInfo() {
     try {
-      this._activeScenarioId = state.activeScenarioId || 'baseline';
-
-      const activeScenario = (state.scenarios || []).find(
-        (s) => s.id === this._activeScenarioId
-      );
+      this._activeScenarioId = sel.scenario.getActiveScenarioId() || 'baseline';
+      const activeScenario = sel.scenario.getActiveScenario();
       this._pendingChangesCount =
         activeScenario?.overrides ? Object.keys(activeScenario.overrides).length : 0;
     } catch (_) {
@@ -336,7 +330,7 @@ export class PluginPortfolioComponent extends LitElement {
   _projectColorForFeature(feature) {
     try {
       const pid = String(feature?.projectId || feature?.project || '');
-      return state._colorService?.getProjectColor?.(pid) || '#9aa8bf';
+      return this._projectById[pid]?.color || '#9aa8bf';
     } catch (_) {
       return '#9aa8bf';
     }
@@ -365,9 +359,9 @@ export class PluginPortfolioComponent extends LitElement {
   }
 
   _getStateColorInfo(stateName) {
-    const stateColors = state.getFeatureStateColors ? state.getFeatureStateColors() : {};
+    const stateColors = sel.filter.getFeatureStateColors() || {};
     const configured = stateColors?.[stateName] || null;
-    const background = configured?.background || state.getFeatureStateColor?.(stateName) || '#94a3b8';
+    const background = configured?.background || '#94a3b8';
     const text = configured?.text || '#ffffff';
     return { background, text };
   }

@@ -20,7 +20,7 @@
  */
 
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
 import { BoardEvents, UIEvents, TimelineEvents } from '../core/EventRegistry.js';
@@ -52,8 +52,6 @@ class TimelineBoard extends LitElement {
         boardCoords.init(scrollContainer, boardArea);
         bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
       }
-
-      if (state && state._initCompleted) await state._initCompleted;
 
       await import('./MainGraph.lit.js');
       const mod_t = await import('./Timeline.lit.js');
@@ -117,7 +115,7 @@ class TimelineBoard extends LitElement {
       // correct way to detect that an inner handler already claimed this event.
       if (e.defaultPrevented) return;
       e.preventDefault();
-      const selectedPlans = state.projects.filter((p) => p.selected);
+      const selectedPlans = sel.selection.getSelectedProjects();
       const planId = selectedPlans.length === 1 ? selectedPlans[0].id : null;
       GroupContextMenu.show({ type: 'board', planId, clientX: e.clientX, clientY: e.clientY });
     };

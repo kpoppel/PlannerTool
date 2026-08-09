@@ -61,4 +61,35 @@ describe('application/selectors/featureSelectors', () => {
       expect.objectContaining({ id: 'f2', state: 'Done', end: '2026-02-12' })
     );
   });
+
+  it('store selector applies baseline overrides when baseline is active', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      {
+        ...seedStore(),
+        scenarios: {
+          activeId: 'baseline',
+          items: [
+            {
+              id: 'baseline',
+              name: 'Baseline',
+              readonly: true,
+              overrides: {
+                f1: { start: '2026-03-01', end: '2026-03-10' },
+              },
+            },
+          ],
+        },
+      },
+      true,
+      'test.resetStore.baselineActiveOverrides'
+    );
+
+    const selectors = createFeatureSelectors(store);
+    const f1 = selectors.getEffectiveFeatureById('f1');
+
+    expect(f1).toEqual(
+      expect.objectContaining({ id: 'f1', start: '2026-03-01', end: '2026-03-10' })
+    );
+  });
 });

@@ -16,14 +16,19 @@ const mockCmd = vi.hoisted(() => ({
 
 const mockSel = vi.hoisted(() => ({
   selection: {
+    getProjects: () => mockState.projects,
+    getTeams: () => mockState.teams,
     getSelectedProjectIds: () => ['p1'],
     getSelectedTeamIds: () => ['t1'],
   },
   filter: {
     getSelectedFeatureStateNames: () => ['Doing'],
     getAvailableFeatureStates: () => ['Doing'],
+    featurePassesFilters: () => true,
+    compareFeatureStates: (a, b) => a.localeCompare(b),
   },
   feature: {
+    getAvailableTaskTypes: () => ['feature'],
     getEffectiveFeatures: () => [
       {
         id: 'f1',

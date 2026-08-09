@@ -1,7 +1,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import '../../www/js/components/DetailsPanel.lit.js';
-import { state } from '../../www/js/services/State.js';
+import { cmd, sel } from '../../www/js/application/imports.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { FeatureEvents, ProjectEvents } from '../../www/js/core/EventRegistry.js';
 
@@ -22,23 +22,20 @@ describe('DetailsPanel additional function coverage', () => {
     expect(el.feature).to.equal(f);
   });
 
-  it('_shrinkwrapEpic computes bounds and calls state.updateFeatureDates', async () => {
+  it('_shrinkwrapEpic computes bounds and calls cmd.feature.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     // Prepare epic + children
     el.feature = { id: 'e1', type: 'epic' };
     await el.updateComplete;
 
-    const childrenMap = new Map();
-    childrenMap.set('e1', ['c1', 'c2']);
-    // childrenByParent is a getter on state; stub the getter to return our map
-    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
+    const childrenMap = new Map([['e1', ['c1', 'c2']]]);
+    const childrenStub = sinon.stub(sel.feature, 'getChildrenByParentMap').returns(childrenMap);
 
-    // stub effective features
-    const stubGet = sinon.stub(state, 'getEffectiveFeatureById');
+    const stubGet = sinon.stub(sel.feature, 'getEffectiveFeatureById');
     stubGet.withArgs('c1').returns({ id: 'c1', start: '2025-01-05', end: '2025-01-10' });
     stubGet.withArgs('c2').returns({ id: 'c2', start: '2025-01-01', end: '2025-01-12' });
 
-    const stubUpdate = sinon.stub(state, 'updateFeatureDates');
+    const stubUpdate = sinon.stub(cmd.feature, 'updateFeatureDates');
     await el._shrinkwrapEpic({ stopPropagation: () => {} });
     expect(stubUpdate.calledOnce).to.be.true;
     const arg = stubUpdate.getCall(0).args[0][0];
@@ -75,7 +72,7 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f1', capacity: [{ team: 't1', capacity: 10 }] };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
 
     // Enter key
     const enterEv = { key: 'Enter', target: { value: '42' } };
@@ -96,7 +93,7 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f2', capacity: [{ team: 't1', capacity: 20 }] };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._saveCapacityEdit('t1', '300');
     expect(stub.calledOnce).to.be.true;
     const newCap = stub.getCall(0).args[2] || stub.getCall(0).args[1];
@@ -116,7 +113,7 @@ describe('DetailsPanel additional function coverage', () => {
       ],
     };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._handleDeleteCapacity('t2', { stopPropagation: () => {} });
     expect(stub.calledOnce).to.be.true;
     const args = stub.getCall(0).args;
@@ -133,11 +130,11 @@ describe('DetailsPanel additional function coverage', () => {
     expect(el.showAddTeamPopover).to.equal(false);
   });
 
-  it('_onStateClick and _saveStateEdit call state.updateFeatureField', async () => {
+  it('_onStateClick and _saveStateEdit call cmd.feature.updateFeatureField', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f4', state: 'New' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._onStateClick({ stopPropagation: () => {} });
     el._stateEditValue = 'In Progress';
     el._saveStateEdit();
@@ -148,13 +145,13 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
-  it('_addTag adds a new tag via state.updateFeatureField', async () => {
+  it('_addTag adds a new tag via cmd.feature.updateFeatureField', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f-tags-1', tags: 'one; two' };
     el._newTagText = 'three';
     await el.updateComplete;
 
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._addTag();
 
     expect(stub.calledOnce).to.be.true;
@@ -168,7 +165,7 @@ describe('DetailsPanel additional function coverage', () => {
     el.feature = { id: 'f-tags-2', tags: 'solo' };
     await el.updateComplete;
 
-    const stub = sinon.stub(state, 'updateFeatureField');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureField');
     el._removeTag('solo');
 
     expect(stub.calledOnce).to.be.true;
@@ -176,11 +173,10 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
-  it('_onIterationChange updates dates via state.updateFeatureDates', async () => {
+  it('_onIterationChange updates dates via cmd.feature.updateFeatureDates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f10' };
-    // Provide iterations via state.getIterationsForProject (current implementation).
-    const getIterationsStub = sinon.stub(state, 'getIterationsForProject').returns([
+    const getIterationsStub = sinon.stub(sel.feature, 'getIterationsForProject').returns([
       {
         path: 'Proj\\Iteration\\It1',
         startDate: '2025-02-01',
@@ -190,8 +186,8 @@ describe('DetailsPanel additional function coverage', () => {
     // trigger the load that runs in updated lifecycle
     await el._loadIterationsForFeature();
 
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
+    const datesStub = sinon.stub(cmd.feature, 'updateFeatureDates');
+    const fieldStub = sinon.stub(cmd.feature, 'updateFeatureField');
     // simulate selection change - component accepts full path or suffix
     // select elements may pass either full path or suffix; use suffix to match endsWith
     const ev = { target: { value: 'It1' } };
@@ -232,7 +228,7 @@ describe('DetailsPanel additional function coverage', () => {
     el.feature = displayed;
     await el.updateComplete;
 
-    const getStub = sinon.stub(state, 'getEffectiveFeatureById').returns(refreshed);
+    const getStub = sinon.stub(sel.feature, 'getEffectiveFeatureById').returns(refreshed);
     const reloadStub = sinon.stub(el, '_loadIterationsForFeature').resolves();
 
     bus.emit(FeatureEvents.UPDATED);
@@ -246,11 +242,11 @@ describe('DetailsPanel additional function coverage', () => {
     reloadStub.restore();
   });
 
-  it('_onStartDateChange calls state.updateFeatureDates with new start', async () => {
+  it('_onStartDateChange calls cmd.feature.updateFeatureDates with new start', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f20', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._onStartDateChange({ target: { value: '2025-01-15' } });
 
@@ -262,11 +258,11 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
-  it('_onEndDateChange calls state.updateFeatureDates with new end', async () => {
+  it('_onEndDateChange calls cmd.feature.updateFeatureDates with new end', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f21', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._onEndDateChange({ target: { value: '2025-03-01' } });
 
@@ -282,7 +278,7 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f22', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._onStartDateChange({ target: { value: '' } });
 
@@ -292,11 +288,11 @@ describe('DetailsPanel additional function coverage', () => {
     stub.restore();
   });
 
-  it('_clearDates calls state.updateFeatureDates with null dates', async () => {
+  it('_clearDates calls cmd.feature.updateFeatureDates with null dates', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f23', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._clearDates();
 
@@ -312,8 +308,8 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f24', start: '2025-01-01', end: '2025-02-01', iterationPath: 'Team\\Sprint 3' };
     await el.updateComplete;
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
+    const fieldStub = sinon.stub(cmd.feature, 'updateFeatureField');
+    const datesStub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._clearDates();
 
@@ -330,8 +326,8 @@ describe('DetailsPanel additional function coverage', () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     el.feature = { id: 'f25', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
-    const fieldStub = sinon.stub(state, 'updateFeatureField');
-    const datesStub = sinon.stub(state, 'updateFeatureDates');
+    const fieldStub = sinon.stub(cmd.feature, 'updateFeatureField');
+    const datesStub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._clearDates();
 
@@ -343,7 +339,7 @@ describe('DetailsPanel additional function coverage', () => {
 
   it('_clearDates does nothing when no feature is set', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
-    const stub = sinon.stub(state, 'updateFeatureDates');
+    const stub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._clearDates();
 
@@ -357,11 +353,11 @@ describe('DetailsPanel additional function coverage', () => {
     await el.updateComplete;
 
     const childrenMap = new Map([['ep1', ['c1', 'c2']]]);
-    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
-    const getStub = sinon.stub(state, 'getEffectiveFeatureById');
+    const childrenStub = sinon.stub(sel.feature, 'getChildrenByParentMap').returns(childrenMap);
+    const getStub = sinon.stub(sel.feature, 'getEffectiveFeatureById');
     getStub.withArgs('c1').returns({ id: 'c1', start: '2025-02-01', end: '2025-02-15' });
     getStub.withArgs('c2').returns({ id: 'c2', start: '2025-01-10', end: '2025-02-20' });
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._snapStartDate({ stopPropagation: () => {} });
 
@@ -382,11 +378,11 @@ describe('DetailsPanel additional function coverage', () => {
     await el.updateComplete;
 
     const childrenMap = new Map([['ep2', ['c3', 'c4']]]);
-    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => childrenMap);
-    const getStub = sinon.stub(state, 'getEffectiveFeatureById');
+    const childrenStub = sinon.stub(sel.feature, 'getChildrenByParentMap').returns(childrenMap);
+    const getStub = sinon.stub(sel.feature, 'getEffectiveFeatureById');
     getStub.withArgs('c3').returns({ id: 'c3', start: '2025-01-05', end: '2025-02-10' });
     getStub.withArgs('c4').returns({ id: 'c4', start: '2025-01-08', end: '2025-03-15' });
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._snapEndDate({ stopPropagation: () => {} });
 
@@ -406,8 +402,8 @@ describe('DetailsPanel additional function coverage', () => {
     el.feature = { id: 'f30', start: '2025-01-01', end: '2025-02-01' };
     await el.updateComplete;
 
-    const childrenStub = sinon.stub(state, 'childrenByParent').get(() => new Map());
-    const updateStub = sinon.stub(state, 'updateFeatureDates');
+    const childrenStub = sinon.stub(sel.feature, 'getChildrenByParentMap').returns(new Map());
+    const updateStub = sinon.stub(cmd.feature, 'updateFeatureDates');
 
     el._snapStartDate({ stopPropagation: () => {} });
 

@@ -224,4 +224,124 @@ describe('application/commands/featureCommands', () => {
     const scenario = store.getState().scenarios.items[0];
     expect(scenario.overrides.f1).toBeUndefined();
   });
+
+  it('syncs legacy getter-only scenarios on field updates for recompute parity', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      {
+        ...buildState(),
+        baseline: {
+          ...buildState().baseline,
+          features: [
+            {
+              id: 2,
+              title: 'Beta',
+              type: 'feature',
+              project: 'p1',
+              start: '2026-01-12',
+              end: '2026-01-24',
+              state: 'Todo',
+              capacity: [{ team: 't1', capacity: 10 }],
+            },
+          ],
+        },
+        scenarios: {
+          activeId: 's1',
+          items: [
+            {
+              id: 's1',
+              name: 'Scenario 1',
+              overrides: {},
+              isChanged: false,
+            },
+          ],
+        },
+      },
+      true,
+      'test.resetStore.numericFeatureId'
+    );
+
+    const legacyState = {
+      baselineFeatures: [{ id: 2, project: 'p1', start: '2026-01-12', end: '2026-01-24' }],
+      recomputeCapacityMetrics: vi.fn(),
+      _scenarioEventService: {
+        getScenarios: () => [{ id: 'baseline', readonly: true }],
+        setActiveScenarioId: vi.fn(),
+      },
+    };
+
+    Object.defineProperty(legacyState, 'scenarios', {
+      get() {
+        return legacyState._scenarioEventService.getScenarios();
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, legacyState);
+    commands.updateFeatureField(2, 'capacity', [{ team: 't1', capacity: 75 }]);
+
+    const synced = legacyState._scenarioEventService._scenarios.find((scenario) => scenario.id === 's1');
+    expect(synced?.overrides?.['2']?.capacity).toEqual([{ team: 't1', capacity: 75 }]);
+    expect(legacyState.recomputeCapacityMetrics).toHaveBeenCalledWith([2]);
+  });
+
+  it('fallback date updates sync readonly legacy scenario overrides into store', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      {
+        ...createInitialAppState(),
+        baseline: {
+          ...createInitialAppState().baseline,
+          features: [
+            {
+              id: 'f1',
+              title: 'Alpha',
+              type: 'feature',
+              project: 'p1',
+              start: '2026-01-10',
+              end: '2026-01-20',
+              state: 'Doing',
+            },
+          ],
+        },
+        scenarios: {
+          activeId: 'baseline',
+          items: [
+            { id: 'baseline', name: 'Baseline', readonly: true, overrides: {}, isChanged: false },
+          ],
+        },
+      },
+      true,
+      'test.resetStore.readonlyBaselineFallback'
+    );
+
+    const legacyState = {
+      recomputeCapacityMetrics: vi.fn(),
+      _scenarioEventService: {
+        _scenarios: [{ id: 'baseline', name: 'Baseline', readonly: true, overrides: {} }],
+        getScenarios() {
+          return this._scenarios;
+        },
+        getActiveScenarioId() {
+          return 'baseline';
+        },
+      },
+      updateFeatureDates: vi.fn((updates) => {
+        const op = updates[0];
+        const baseline = legacyState._scenarioEventService._scenarios[0];
+        baseline.overrides = {
+          ...(baseline.overrides || {}),
+          [String(op.id)]: { start: op.start, end: op.end },
+        };
+      }),
+    };
+
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, legacyState);
+    commands.updateFeatureDates([{ id: 'f1', start: '2026-02-01', end: '2026-02-10' }]);
+
+    const baselineScenario = store.getState().scenarios.items.find((s) => s.id === 'baseline');
+    expect(legacyState.updateFeatureDates).toHaveBeenCalledOnce();
+    expect(baselineScenario?.overrides?.f1).toEqual({ start: '2026-02-01', end: '2026-02-10' });
+  });
 });

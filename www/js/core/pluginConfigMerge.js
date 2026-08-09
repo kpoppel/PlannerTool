@@ -34,6 +34,7 @@
  */
 export function mergePluginConfig(modulesConfig, runtimeConfig) {
   const metaModules = (modulesConfig && modulesConfig.modules) || [];
+  const deprecatedRuntimeIds = new Set(['plugin-cost-v1']);
 
   // Index metadata by id for fast lookup (skip entries without id)
   const metaById = new Map();
@@ -60,6 +61,9 @@ export function mergePluginConfig(modulesConfig, runtimeConfig) {
     if (!r.id) continue;
     const meta = metaById.get(r.id);
     if (!meta) {
+      if (deprecatedRuntimeIds.has(r.id)) {
+        continue;
+      }
       // id in runtime but no matching metadata entry — skip with warning
       console.warn(`[pluginConfigMerge] Runtime config references unknown plugin id "${r.id}" — skipped`);
       continue;

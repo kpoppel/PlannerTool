@@ -14,11 +14,14 @@ const mockSel = vi.hoisted(() => ({
     getEffectiveFeatureById: () => null,
   },
   selection: {
+    getProjects: () => [],
+    getTeams: () => [],
     getSelectedProjectIds: () => [],
     getSelectedTeamIds: () => [],
   },
   filter: {
     getSelectedFeatureStateSet: () => new Set(),
+    featurePassesFilters: () => true,
   },
   view: {
     getExpansionState: () => ({
@@ -66,7 +69,10 @@ describe('FeatureBoard Phase 4 selector seam', () => {
 
     mockSel.selection.getSelectedProjectIds = () => ['p1'];
     mockSel.selection.getSelectedTeamIds = () => ['t1'];
+    mockSel.selection.getProjects = () => mockState.projects;
+    mockSel.selection.getTeams = () => mockState.teams;
     mockSel.filter.getSelectedFeatureStateSet = () => new Set(['Active']);
+    mockSel.filter.featurePassesFilters = () => true;
     mockSel.view.getExpansionState = () => ({
       expandParentChild: false,
       expandRelations: false,

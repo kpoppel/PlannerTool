@@ -3,7 +3,7 @@
  * Rendered inside PlanMenu for a specific plan.
  */
 import { LitElement, html, css } from '../vendor/lit.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 import { bus } from '../core/EventBus.js';
 import { PlanEventEvents } from '../core/EventRegistry.js';
@@ -307,7 +307,7 @@ export class EventsPanel extends LitElement {
 
   _renderEventRow(ev) {
     if (this._editId === ev.id) {
-      const plans = (state.projects || []);
+      const plans = sel.selection.getProjects() || [];
       return html`
         <div class="edit-row">
           <input

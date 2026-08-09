@@ -13,7 +13,6 @@ import {
   BoardEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
 import { sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { getTimelineMonths } from './Timeline.lit.js';
@@ -392,6 +391,7 @@ class FeatureBoard extends LitElement {
   }
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
+    const projects = sel.selection.getProjects() || [];
     // Check if feature is in expanded set (when expansion filters are active)
     const expansionState = sel.view.getExpansionState() || {};
     const hasExpansion =
@@ -403,15 +403,15 @@ class FeatureBoard extends LitElement {
       const expandedIds = sel.view.getExpandedFeatureIds();
       // If expansion is active, only show features in expanded set
       // Don't require project selection - expansion can pull in features from other projects
-      if (!expandedIds.has(feature.id)) return false;
+      if (!expandedIds.has(String(feature.id))) return false;
     } else {
       // No expansion active - use standard project filter
-      const project = state.projects.find((p) => p.id === feature.project && p.selected);
+      const project = projects.find((p) => p.id === feature.project && p.selected);
       if (!project) return false;
     }
 
     if (sel.view.getShowOnlyProjectHierarchy()) {
-      const projectTypePlans = state.projects.filter((p) => {
+      const projectTypePlans = projects.filter((p) => {
         const planType = p.type ? String(p.type) : 'project';
         return p.selected && planType === 'project';
       });
@@ -442,10 +442,7 @@ class FeatureBoard extends LitElement {
     if (!stateFilterLower.has(featureStateLower)) return false;
 
     // Apply task filters (schedule, allocation, hierarchy, relations)
-    if (
-      state.taskFilterService &&
-      !state.taskFilterService.featurePassesFilters(feature)
-    ) {
+    if (!sel.filter.featurePassesFilters(feature)) {
       return false;
     }
 
@@ -470,7 +467,7 @@ class FeatureBoard extends LitElement {
     if (childrenMap.has(feature.id)) {
       const children = childrenMap.get(feature.id) || [];
       const anyChildVisible = children.some((child) => {
-        const childProject = state.projects.find(
+        const childProject = projects.find(
           (p) => p.id === child.project && p.selected
         );
         if (!childProject) return false;
@@ -555,8 +552,8 @@ class FeatureBoard extends LitElement {
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
-    const selectedProjects = state.projects;
-    const selectedTeams = state.teams;
+    const selectedProjects = sel.selection.getProjects() || [];
+    const selectedTeams = sel.selection.getTeams() || [];
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       selectedTeams,
@@ -728,10 +725,10 @@ class FeatureBoard extends LitElement {
                 left: bar.left,
                 width: bar.width,
                 top,
-                teams: state.teams,
+                teams: selectedTeams,
                 condensed: true,
                 hideGhostTitle: true,
-                project: state.projects.find((p) => p.id === bar.feature.project),
+                project: selectedProjects.find((p) => p.id === bar.feature.project),
               });
             }
           });
@@ -750,10 +747,10 @@ class FeatureBoard extends LitElement {
               left: pos.left ?? 0,
               width: pos.width ?? 0,
               top: swimlaneTop + laneIndex * laneHeight(),
-              teams: state.teams,
+              teams: selectedTeams,
               condensed: sel.view.getCondensedCards(),
               hideGhostTitle: false,
-              project: state.projects.find((p) => p.id === feature.project),
+              project: selectedProjects.find((p) => p.id === feature.project),
             });
             laneIndex++;
           }
@@ -832,10 +829,10 @@ class FeatureBoard extends LitElement {
               left: bar.left,
               width: bar.width,
               top,
-              teams: state.teams,
+              teams: selectedTeams,
               condensed: true, // packed always uses compact card height
               hideGhostTitle: true, // ghost titles would overlap packed neighbours
-              project: state.projects.find((p) => p.id === bar.feature.project),
+              project: selectedProjects.find((p) => p.id === bar.feature.project),
             });
           }
         });
@@ -851,10 +848,10 @@ class FeatureBoard extends LitElement {
               left: pos.left ?? 0,
               width: pos.width ?? 0,
               top: this._overlayOffset + laneIndex * laneHeight(),
-            teams: state.teams,
+            teams: selectedTeams,
             condensed: sel.view.getCondensedCards(),
             hideGhostTitle: false,
-            project: state.projects.find((p) => p.id === feature.project),
+            project: selectedProjects.find((p) => p.id === feature.project),
           });
           laneIndex++;
         }
@@ -1034,7 +1031,8 @@ class FeatureBoard extends LitElement {
             `${geom.width}px`
           : geom.width
         : '';
-      const project = state.projects.find((p) => p.id === feature.project);
+      const projects = sel.selection.getProjects() || [];
+      const project = projects.find((p) => p.id === feature.project);
 
       this._updateCachedRenderItemById(id, feature, {
         left: geom.left ?? 0,

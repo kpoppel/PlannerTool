@@ -1,5 +1,4 @@
 import { bus } from './core/EventBus.js';
-import { state } from './services/State.js';
 import { featureFlags } from './config.js';
 import { pluginManager } from './core/PluginManager.js';
 import { AppEvents, SessionEvents } from './core/EventRegistry.js';
@@ -61,7 +60,14 @@ async function init() {
     //Populate the app state from backend
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
-    await state.initState();
+    const { cmd, isStateStoreEnabled } = await import('./application/imports.js');
+    if (isStateStoreEnabled) {
+      await cmd.data.bootstrapFromLegacyState();
+    } else {
+      // TODO(phase-7-state-removal): remove legacy init fallback after flag retirement.
+      const legacyModule = await import('./services/State.js');
+      await legacyModule['state'].initState();
+    }
 
     // Load Plugin system
     // Load modules config via fetch to avoid JSON module import and
