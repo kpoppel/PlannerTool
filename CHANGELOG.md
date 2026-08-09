@@ -18,6 +18,7 @@ Template - do not change :
 ### Added
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
 - Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.
+- Phase 3 completed: finalized strict-Result hydration commands (`hydrateBaseline`, `hydrateScenarioData`) and command coverage, added blocking legacy-parity integration coverage (`tests/application/hydrateBaseline.shadowParity.integration.test.js`), retired the temporary shadow harness (`SHADOW_HYDRATE_STORE`, `application/legacyBridge.js`, app shadow wiring), and confirmed regressions green (`npm test`, `npm run test:coverage`, `pytest`, Playwright smoke).
 - Server configuration snapshots: the admin interface can capture a versioned backup of the full server
   configuration. Disabled by default; existing installations may already have snapshots in storage —
   enable, review and clean up, then disable if not needed.
@@ -59,6 +60,7 @@ Template - do not change :
   without waiting for JavaScript, improving load time especially on first visit.
 
 ### Fixed
+- Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
 - Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.
 - Admin follow-up hardening for Phase 2 Result envelopes: utilities backup/restore and cache status flows now consume `result.data` and `error.message` correctly, plan-events datasource handles object-shaped errors safely, and admin global/plugins/iterations/base-config paths now use normalized Result unwrapping; added targeted component tests for these failure/success boundaries.
 - Eliminated a redundant JSON parse/stringify round-trip when cloning internal state; `structuredClone`

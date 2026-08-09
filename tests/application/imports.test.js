@@ -10,6 +10,7 @@ describe('application/imports', () => {
     const mod = await import('../../www/js/application/imports.js?phase1_off=1');
     expect(mod.isStateStoreEnabled).toBe(false);
     expect(typeof mod.cmd.ui.setDebugFlag).toBe('function');
+    expect(mod.cmd.data).toBeUndefined();
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
   });
 
@@ -20,6 +21,8 @@ describe('application/imports', () => {
 
     expect(mod.isStateStoreEnabled).toBe(true);
     expect(typeof mod.cmd.ui.setDebugFlag).toBe('function');
+    expect(typeof mod.cmd.data.hydrateBaseline).toBe('function');
+    expect(typeof mod.cmd.data.hydrateScenarioData).toBe('function');
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
   });
 });
