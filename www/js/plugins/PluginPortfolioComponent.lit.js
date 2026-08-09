@@ -13,6 +13,7 @@ import {
 } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 import {
   TIMELINE_HEADER_HEIGHT,
@@ -177,23 +178,20 @@ export class PluginPortfolioComponent extends LitElement {
 
     const projects = state.projects || [];
     const teams = state.teams || [];
-    const selectedProjects = new Set(
-      projects.filter((p) => p?.selected).map((p) => String(p.id))
-    );
-    const selectedTeams = teams.filter((t) => t?.selected);
+    const selectedProjectIds = sel.selection.getSelectedProjectIds();
+    const selectedProjects = new Set(selectedProjectIds.map((id) => String(id)));
+    const selectedTeamIdsArr = sel.selection.getSelectedTeamIds();
+    const selectedTeams = teams.filter((t) => selectedTeamIdsArr.includes(t?.id));
     const selectedTeamIds = new Set(selectedTeams.map((t) => String(t.id)));
 
     this._projectById = Object.fromEntries(projects.map((p) => [String(p.id), p]));
 
-    const sidebarStateFilterRaw =
-      state.selectedFeatureStateFilter instanceof Set ?
-        Array.from(state.selectedFeatureStateFilter)
-      : state.selectedFeatureStateFilter || [];
+    const sidebarStateFilterRaw = sel.filter.getSelectedFeatureStateNames();
     const sidebarStateFilter = new Set(sidebarStateFilterRaw.map((s) => normalizeState(s)));
 
     const allAvailableStates =
-      (state.availableFeatureStates || []).length > 0 ?
-        [...state.availableFeatureStates]
+      (sel.filter.getAvailableFeatureStates() || []).length > 0 ?
+        [...sel.filter.getAvailableFeatureStates()]
       : Array.from(
           new Set(deduped.map((f) => String(f.state || '').trim()).filter(Boolean))
         ).sort((a, b) => {
@@ -216,16 +214,16 @@ export class PluginPortfolioComponent extends LitElement {
       : Array.from(new Set(deduped.map((f) => getFeatureType(f)).filter(Boolean))).sort();
 
     const sidebarVisibleTypes = new Set(
-      availableTypes.filter((t) => state._viewService?.isTypeVisible?.(t) !== false)
+      availableTypes.filter((t) => sel.view.isTypeVisible(t) !== false)
     );
 
-    const expansion = state.expansionState || {};
+    const expansion = sel.view.getExpansionState() || {};
     const hasExpansion =
       !!expansion.expandParentChild ||
       !!expansion.expandRelations ||
       !!expansion.expandTeamAllocated;
 
-    const expandedIds = hasExpansion ? state.getExpandedFeatureIds() : null;
+    const expandedIds = hasExpansion ? sel.view.getExpandedFeatureIds() : null;
     const taskFilterService = state.taskFilterService;
 
     const rows = selectedTeams.map((team) => {

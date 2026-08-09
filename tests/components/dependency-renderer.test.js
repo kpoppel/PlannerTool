@@ -3,6 +3,23 @@
  * (formerly DependencyRenderer.lit.js — now a proper plugin)
  */
 import { expect } from '@open-wc/testing';
+import { vi } from 'vitest';
+
+const mockView = vi.hoisted(() => ({
+  showDependencies: false,
+  condensedCards: false,
+}));
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  cmd: {},
+  sel: {
+    view: {
+      getShowDependencies: () => mockView.showDependencies,
+      getCondensedCards: () => mockView.condensedCards,
+    },
+  },
+}));
+
 import { PluginDependenciesComponent } from '../../www/js/plugins/PluginDependenciesComponent.js';
 import { state } from '../../www/js/services/State.js';
 import { bus } from '../../www/js/core/EventBus.js';
@@ -29,6 +46,9 @@ describe('PluginDependenciesComponent', () => {
   let boardArea;
 
   beforeEach(() => {
+    mockView.showDependencies = false;
+    mockView.condensedCards = false;
+
     window.ResizeObserver = class {
       observe() {}
       unobserve() {}
@@ -68,7 +88,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    mockView.showDependencies = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -89,7 +109,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 2, relations: [{ id: 3, type: 'Related' }] },
       { id: 3, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    mockView.showDependencies = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -114,7 +134,7 @@ describe('PluginDependenciesComponent', () => {
       { id: 1, relations: [2] },
       { id: 2, relations: [] },
     ];
-    state._viewService.setShowDependencies(true);
+    mockView.showDependencies = true;
 
     component = document.createElement('plugin-dependencies');
     document.body.appendChild(component);
@@ -123,7 +143,7 @@ describe('PluginDependenciesComponent', () => {
     component.open();
     await new Promise((r) => setTimeout(r, 50));
 
-    state._viewService.setShowDependencies(false);
+    mockView.showDependencies = false;
     component._handleDepsToggle();
     await new Promise((r) => setTimeout(r, 50));
 

@@ -1,6 +1,6 @@
 import { getTimelineMonths, TIMELINE_CONFIG } from './Timeline.lit.js';
 import { parseDate } from './util.js';
-import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { featureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
 import { TimelineEvents } from '../core/EventRegistry.js';
@@ -64,7 +64,7 @@ const findMonthIndexFor = (msVal) => {
   return -1;
 };
 
-export const laneHeight = () => (state._viewService.condensedCards ? 28 : 64);
+export const laneHeight = () => (sel.view.getCondensedCards() ? 28 : 64);
 
 export const computePosition = (feature, monthsArg) => {
   const months = monthsArg || getTimelineMonths();

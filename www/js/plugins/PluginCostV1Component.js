@@ -34,6 +34,7 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 import { UIFeatureFlags } from '../config.js';
 import { bus } from '../core/EventBus.js';
@@ -751,7 +752,7 @@ export class PluginCostV1Component extends LitElement {
     // Use ColorService directly
     const stateColors =
       state._colorService ?
-        state._colorService.getFeatureStateColors(state.availableFeatureStates)
+        state._colorService.getFeatureStateColors(sel.filter.getAvailableFeatureStates())
       : {};
 
     // Filter projects based on selected plan type tab
@@ -962,7 +963,7 @@ export class PluginCostV1Component extends LitElement {
           ${(() => {
             // Use ColorService directly
             const stateColors = state._colorService.getFeatureStateColors(
-              state.availableFeatureStates
+              sel.filter.getAvailableFeatureStates()
             );
             const keys = Object.keys(stateColors);
             return keys.map((s) => {

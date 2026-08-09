@@ -12,6 +12,7 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { cmd, sel } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 import { buildMonths, monthKey, monthLabel } from './PluginCostCalculator.js';
 
@@ -492,8 +493,8 @@ export class PluginCostComponent extends LitElement {
     }
 
     // Restore sidebar controls and expansion defaults when plugin UI closes.
-    state.clearSidebarDisabledElements();
-    state.setExpansionState({
+    cmd.filter.clearSidebarDisabledElements();
+    cmd.view.setExpansionState({
       expandParentChild: false,
       expandRelations: false,
       expandTeamAllocated: false,
@@ -550,7 +551,7 @@ export class PluginCostComponent extends LitElement {
     state.taskFilterService.setFilter('relations', 'noLinks', true);
 
     // Force all states selected via public State API
-    state.setAllStatesSelected(true);
+    cmd.filter.setAllStatesSelected(true);
 
     // Ensure all task types are checked via public State API
     // Prefer the sidebar's known available task types. The ViewManagementService
@@ -558,7 +559,7 @@ export class PluginCostComponent extends LitElement {
     // Read available task types from State service (preferred) or fall back
     // to any saved view options. Do NOT query other components' internals.
     console.log(state.availableTaskTypes);
-    state.setSelectedTaskTypes(state.availableTaskTypes);
+    cmd.filter.setSelectedTaskTypes(state.availableTaskTypes);
 
     // Now disable buttons
     const disabled = {
@@ -569,17 +570,14 @@ export class PluginCostComponent extends LitElement {
         relations: ['hasLinks', 'noLinks'],
       },
       taskTypes: [],
-      states:
-        Array.isArray(state.availableFeatureStates) ?
-          Array.from(state.availableFeatureStates)
-        : [],
+      states: Array.from(sel.filter.getAvailableFeatureStates() || []),
       expansion: ['parentChild', 'relations', 'teamAllocated'],
     };
-    state.setSidebarDisabledElements(disabled);
+    cmd.filter.setSidebarDisabledElements(disabled);
     // Ensure Parent/Child expansion is enabled while plugin is active so
     // children from selected plans are included in calculations and the
     // Sidebar shows Parent/Child Links as checked.
-    state.setExpansionState({
+    cmd.view.setExpansionState({
       expandParentChild: true,
       expandRelations: true,
       expandTeamAllocated: true,
@@ -618,9 +616,9 @@ export class PluginCostComponent extends LitElement {
       this._reloadTimer = null;
     }
 
-    state.clearSidebarDisabledElements();
+    cmd.filter.clearSidebarDisabledElements();
     // restore expansion defaults when plugin unloads
-    state.setExpansionState({
+    cmd.view.setExpansionState({
       expandParentChild: false,
       expandRelations: false,
       expandTeamAllocated: false,
@@ -750,8 +748,8 @@ export class PluginCostComponent extends LitElement {
       // Include any features from the expanded feature id set so the server
       // will compute costs for those child/related features even if they
       // are not part of the original filtered set.
-      if (typeof state.getExpandedFeatureIds === 'function') {
-        const expandedIds = state.getExpandedFeatureIds() || new Set();
+      {
+        const expandedIds = sel.view.getExpandedFeatureIds() || new Set();
         if (expandedIds.size > 0) {
           const present = new Set((filteredFeatures || []).map((f) => String(f && f.id)));
           const allEffective = state.getEffectiveFeatures() || [];

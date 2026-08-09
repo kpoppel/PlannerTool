@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { ProjectEvents, ViewManagementEvents } from '../core/EventRegistry.js';
 import { ColorPopoverLit } from './ColorPopover.lit.js';
@@ -203,7 +204,7 @@ export class PlanMenuLit extends LitElement {
   _toggleProject(pid) {
     const current = (this.projects || []).find((p) => p.id === pid);
     const newVal = !(current && current.selected);
-    state.setProjectSelected(pid, newVal);
+    cmd.selection.setProjectSelected(pid, newVal);
   }
 
   _handleProjectToggle() {
@@ -212,7 +213,7 @@ export class PlanMenuLit extends LitElement {
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
     projects.forEach((p) => (selections[p.id] = anyUnchecked));
-    state.setProjectsSelectedBulk(selections);
+    cmd.selection.setProjectsSelectedBulk(selections);
   }
 
   _anyUncheckedProjects() {

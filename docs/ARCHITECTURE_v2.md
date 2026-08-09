@@ -180,9 +180,9 @@ command → store.setState(partial, false, 'namespace.action')
 
 | Group | Examples | Notes |
 |---|---|---|
-| Selection | `setProjectSelected`, `setTeamSelected`, `setSidebarDisabled` | No service dependency; direct state mutation |
-| Filter | `setSelectedTaskTypes`, `setSelectedFeatureStates`, `setExpansionState`, `setTaskFilter` | Dissolves `FilterManager.js` + `StateFilterService.js` classes |
-| View | `setDisplayMode`, `setCondensedCards`, `setTimelineScale`, `setCapacityViewMode`, `setFeatureSortMode` | No service dependency; direct state mutation |
+| Selection | `setProjectSelected`, `setTeamSelected`, `setSidebarDisabled` | Phase 4 landed: legacy + store-backed command group implemented in `www/js/application/commands/selectionCommands.js`; no service dependency, direct state mutation |
+| Filter | `setSelectedTaskTypes`, `setSelectedFeatureStates`, `setExpansionState`, `setTaskFilter` | Phase 4 landed: legacy + store-backed command group implemented in `www/js/application/commands/filterCommands.js`; replacement path for `FilterManager.js` + `StateFilterService.js` is now in place |
+| View | `setDisplayMode`, `setCondensedCards`, `setTimelineScale`, `setCapacityViewMode`, `setFeatureSortMode` | Phase 4 landed: legacy + store-backed command group implemented in `www/js/application/commands/viewCommands.js`; no service dependency, direct state mutation |
 | Group | `createGroupInScenario`, `updateGroupInScenario`, `deleteGroupInScenario`, `applyGroupMemberDelta` | Effective-group merge logic stays in `GroupService.js` (pure) |
 | Plugin state | `setPluginState`, `clearPluginState` | Dissolves `PluginStateService.js` class; reduces to schema registration (~15 LOC) |
 | View restore | `applyViewSelectionRestore`, `applyViewOptionsRestore`, `applyViewPluginStateRestore` | Moves `_views[]`, `_activeViewId` into `StateStore.view`; keeps `ViewManagementService` as orchestrator (zero state) |
@@ -526,13 +526,19 @@ flowchart LR
 
 ## 10. Presentation layer (`components/`)
 
-All 43 files share one import pattern — a single line, not constructor injection:
+Target end-state import pattern (incremental adoption in progress):
 
 ```js
 import { cmd, sel } from '../application/imports.js';
 // sel.features.list(), sel.selection.getProjects(), sel.scenarios.active()
 // await cmd.feature.updateDates(updates), await cmd.selection.setProjectSelected(id, true)
 ```
+
+Phase 4 progress (2026-08-09): Selection/Filter/View consumers were migrated to the `cmd`/`sel`
+seam for the planned component/plugin set (`TeamMenu`, `PlanMenu`, `Timeline`, `board-utils`,
+`EmptyBoardModal`, `FeatureCard`, `MainGraph`, `FeatureBoard`, `Sidebar`, and the scoped plugin
+set including Dependencies/Graph/Portfolio/Cost/Export Timeline). Remaining direct `state` imports
+outside these concerns are expected until subsequent phases complete.
 
 Lifecycle discipline is consistent: every component subscribes to `EventBus` events in `connectedCallback()` and unsubscribes in `disconnectedCallback()`. There is no shared Lit base class beyond `Modal.lit.js` (used by all 10+ modal dialogs to avoid duplicated open/close/backdrop boilerplate).
 

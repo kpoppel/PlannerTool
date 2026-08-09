@@ -3,6 +3,7 @@
 
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {
@@ -96,10 +97,7 @@ export class MainGraphLit extends LitElement {
       const months = getTimelineMonths() || [];
       // Use expansion-aware project IDs so the graph is consistent with the
       // feature cards shown on the board (e.g. when expand-by-allocation is on).
-      const selectedProjectIds =
-        state.getEffectiveSelectedProjectIds ?
-          state.getEffectiveSelectedProjectIds()
-        : (state.projects || []).filter((p) => p.selected).map((p) => p.id);
+      const selectedProjectIds = sel.selection.getEffectiveSelectedProjectIds();
       return {
         months,
         teams: state.teams || [],
@@ -110,9 +108,10 @@ export class MainGraphLit extends LitElement {
         projectDailyCapacity: state.projectDailyCapacity || [],
         projectDailyCapacityMap: state.projectDailyCapacityMap || null,
         totalOrgDailyPerTeamAvg: state.totalOrgDailyPerTeamAvg || [],
-        capacityViewMode: state._viewService.capacityViewMode || 'team',
-        selectedTeamIds: (state.teams || []).filter((t) => t.selected).map((t) => t.id),
+        capacityViewMode: sel.view.getCapacityViewMode(),
+        selectedTeamIds: sel.selection.getSelectedTeamIds(),
         selectedProjectIds,
+        selectedFeatureStateFilter: sel.filter.getSelectedFeatureStateSet(),
       };
     };
 

@@ -3,6 +3,7 @@
 
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { parseDate, addMonths, dateRangeInclusiveMonths } from './util.js';
@@ -347,8 +348,8 @@ export async function initTimeline() {
         );
       });
     });
-    // Ensure any restored timeline scale from ViewService is applied now
-    const savedScale = state && state._viewService && state._viewService.timelineScale;
+    // Ensure any restored timeline scale is applied now.
+    const savedScale = sel.view.getTimelineScale();
     if (savedScale) {
       _currentTimelineScale = savedScale;
       if (savedScale === 'threeMonths') {

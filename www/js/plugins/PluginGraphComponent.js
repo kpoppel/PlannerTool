@@ -11,6 +11,7 @@
  */
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import { findInBoard } from '../components/board-utils.js';
@@ -140,7 +141,7 @@ export class PluginGraph extends LitElement {
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());
     bus.on(CapacityEvents.UPDATED, () => this._scheduleRender());
     // TODO: Should use getViewService...
-    this.mode = state._viewService.capacityViewMode;
+    this.mode = sel.view.getCapacityViewMode();
   }
 
   _ensureTooltip() {
@@ -218,7 +219,7 @@ export class PluginGraph extends LitElement {
 
     // Set graph mode to match current view mode
     // TODO: should use getViewService
-    this.mode = state._viewService.capacityViewMode;
+    this.mode = sel.view.getCapacityViewMode();
 
     // Always set date range from the current state.
     const months = getTimelineMonths();
@@ -298,13 +299,9 @@ export class PluginGraph extends LitElement {
     const effective = state.getEffectiveFeatures();
     const teams = state.teams || [];
     const allProjects = state.projects || [];
-    const selectedTeams = teams.filter((t) => t.selected).map((t) => t.id);
-    const selectedProjects = allProjects.filter((p) => p.selected).map((p) => p.id);
-    const selectedStates =
-      state.selectedFeatureStateFilter instanceof Set ?
-        Array.from(state.selectedFeatureStateFilter)
-      : state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter]
-      : [];
+    const selectedTeams = sel.selection.getSelectedTeamIds();
+    const selectedProjects = sel.selection.getSelectedProjectIds();
+    const selectedStates = sel.filter.getSelectedFeatureStateNames();
     const projectSetSelected = new Set(selectedProjects);
     const teamSetSelected = new Set(selectedTeams);
     const stateSetSelected = new Set(selectedStates);

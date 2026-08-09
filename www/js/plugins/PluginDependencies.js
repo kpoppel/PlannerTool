@@ -4,7 +4,7 @@
  * This plugin auto-activates at startup (activated: true in modules.config.json).
  */
 import { MountedPlugin } from './MountedPlugin.js';
-import { state } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 
 export class PluginDependencies extends MountedPlugin {
   static get defaultId() { return 'plugin-dependencies'; }
@@ -19,12 +19,12 @@ export class PluginDependencies extends MountedPlugin {
 
   async activate() {
     await super.activate();
-    state.setShowDependencies(true, true);
+    cmd.view.setShowDependencies(true, { suppressEvents: true });
     if (this._el?.open) this._el.open();
   }
 
   async deactivate() {
-    state.setShowDependencies(false, true);
+    cmd.view.setShowDependencies(false, { suppressEvents: true });
     if (this._el?.close) this._el.close();
     await super.deactivate();
   }

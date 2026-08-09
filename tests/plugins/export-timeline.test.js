@@ -45,12 +45,22 @@ vi.mock('../../www/js/plugins/annotations/index.js', () => {
 vi.mock('../../www/js/services/State.js', () => {
   return {
     state: {
-      showDependencies: true,
-      _viewService: { condensedCards: false },
       getEffectiveFeatures: () => [
         { id: '1', relations: [{ id: '2', type: 'Predecessor' }] },
         { id: '2', relations: [] },
       ],
+    },
+  };
+});
+
+vi.mock('../../www/js/application/imports.js', () => {
+  return {
+    cmd: {},
+    sel: {
+      view: {
+        getShowDependencies: () => true,
+        getCondensedCards: () => false,
+      },
     },
   };
 });

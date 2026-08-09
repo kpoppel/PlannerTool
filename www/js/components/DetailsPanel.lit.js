@@ -2,6 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { bus } from '../core/EventBus.js';
 import { UIEvents, FeatureEvents, ProjectEvents } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { getIconTemplate } from '../services/IconService.js';
 
 /**
@@ -1463,7 +1464,7 @@ export class DetailsPanelLit extends LitElement {
     // Build a state color chip using state service helper
     // Use ColorService directly
     const stateColors = state._colorService.getFeatureStateColors(
-      state.availableFeatureStates
+      sel.filter.getAvailableFeatureStates()
     );
     const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
@@ -1851,7 +1852,7 @@ export class DetailsPanelLit extends LitElement {
                     tabindex="-1"
                   >
                     <div class="state-choices">
-                      ${(state.availableFeatureStates || []).map((s) => {
+                      ${(sel.filter.getAvailableFeatureStates() || []).map((s) => {
                         const sc = stateColors && stateColors[s] ? stateColors[s] : null;
                         const isSelected = s === (this._stateEditValue || feature.state);
                         const selClass = isSelected ? 'selected' : '';

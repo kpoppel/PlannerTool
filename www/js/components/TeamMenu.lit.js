@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
+import { cmd } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
   TeamEvents,
@@ -202,7 +203,7 @@ export class TeamMenuLit extends LitElement {
   _toggleTeam(tid) {
     const current = (this.teams || []).find((t) => t.id === tid);
     const newVal = !(current && current.selected);
-    state.setTeamSelected(tid, newVal);
+    cmd.selection.setTeamSelected(tid, newVal);
   }
 
   _handleTeamToggle() {
@@ -211,7 +212,7 @@ export class TeamMenuLit extends LitElement {
     // Use bulk update to avoid O(n) capacity recalculations
     const selections = {};
     teams.forEach((t) => (selections[t.id] = anyUnchecked));
-    state.setTeamsSelectedBulk(selections);
+    cmd.selection.setTeamsSelectedBulk(selections);
   }
 
   _anyUncheckedTeams() {

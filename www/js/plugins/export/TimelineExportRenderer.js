@@ -11,6 +11,7 @@
  */
 
 import { state } from '../../services/State.js';
+import { sel } from '../../application/imports.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../../components/Timeline.lit.js';
 import { laneHeight } from '../../components/board-utils.js';
 import { findInBoard } from '../../components/board-utils.js';
@@ -648,7 +649,7 @@ export class TimelineExportRenderer {
     // If the caller explicitly requests dependencies disabled, skip rendering
     if (includeDependencies === false) return;
     // If caller did not specify, fall back to the global view setting
-    if (includeDependencies === undefined && !state.showDependencies) return;
+    if (includeDependencies === undefined && !sel.view.getShowDependencies()) return;
 
     const featureBoard = findInBoard('feature-board');
     if (!featureBoard) return;

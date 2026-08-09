@@ -11,7 +11,14 @@ describe('application/imports', () => {
     expect(mod.isStateStoreEnabled).toBe(false);
     expect(typeof mod.cmd.ui.setDebugFlag).toBe('function');
     expect(mod.cmd.data).toBeUndefined();
+    expect(typeof mod.cmd.selection.setProjectSelected).toBe('function');
+    expect(typeof mod.cmd.selection.setTeamSelected).toBe('function');
+    expect(typeof mod.cmd.filter.setSelectedTaskTypes).toBe('function');
+    expect(typeof mod.cmd.view.setExpansionState).toBe('function');
+    expect(typeof mod.cmd.view.setShowDependencies).toBe('function');
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
+    expect(typeof mod.sel.selection.getEffectiveSelectedProjectIds).toBe('function');
+    expect(typeof mod.sel.filter.getSelectedFeatureStateSet).toBe('function');
   });
 
   it('turns on the state-store branch when runtime override is true', async () => {
@@ -23,6 +30,13 @@ describe('application/imports', () => {
     expect(typeof mod.cmd.ui.setDebugFlag).toBe('function');
     expect(typeof mod.cmd.data.hydrateBaseline).toBe('function');
     expect(typeof mod.cmd.data.hydrateScenarioData).toBe('function');
+    expect(typeof mod.cmd.selection.setProjectsSelectedBulk).toBe('function');
+    expect(typeof mod.cmd.selection.setTeamsSelectedBulk).toBe('function');
+    expect(typeof mod.cmd.filter.toggleStateSelected).toBe('function');
+    expect(typeof mod.cmd.view.setExpansionState).toBe('function');
+    expect(typeof mod.cmd.view.setShowDependencies).toBe('function');
     expect(typeof mod.sel.ui.debugFlag).toBe('function');
+    expect(typeof mod.sel.selection.getSelectedProjectIds).toBe('function');
+    expect(typeof mod.sel.filter.getAvailableFeatureStates).toBe('function');
   });
 });

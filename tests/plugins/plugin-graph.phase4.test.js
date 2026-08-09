@@ -1,0 +1,70 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const mockState = vi.hoisted(() => ({
+  teams: [{ id: 't1', selected: true }],
+  projects: [{ id: 'p1', selected: true, type: 'project' }],
+  capacityDates: ['2025-01-01'],
+  teamDailyCapacity: [[12]],
+  projectDailyCapacity: [[24]],
+  getEffectiveFeatures: () => [],
+}));
+
+const mockSel = vi.hoisted(() => ({
+  view: {
+    getCapacityViewMode: () => 'team',
+  },
+  selection: {
+    getSelectedTeamIds: () => ['t1'],
+    getSelectedProjectIds: () => ['p1'],
+  },
+  filter: {
+    getSelectedFeatureStateNames: () => [],
+  },
+}));
+
+vi.mock('../../www/js/services/State.js', () => ({
+  state: mockState,
+}));
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  cmd: {},
+  sel: mockSel,
+}));
+
+vi.mock('../../www/js/components/Timeline.lit.js', () => ({
+  getTimelineMonths: () => [new Date('2025-01-01')],
+  TIMELINE_CONFIG: { monthWidth: 120 },
+}));
+
+import { PluginGraph } from '../../www/js/plugins/PluginGraphComponent.js';
+
+describe('PluginGraph Phase 4 selector seam', () => {
+  beforeEach(() => {
+    mockSel.filter.getSelectedFeatureStateNames = () => [];
+  });
+
+  it('uses selector-driven selected states guard in daily totals computation', () => {
+    const graph = new PluginGraph();
+    const out = graph._computeDailyTotals(
+      'team',
+      new Date('2025-01-01'),
+      new Date('2025-01-01')
+    );
+
+    expect(out.days).toBe(0);
+    expect(out.totals).toEqual([]);
+  });
+
+  it('returns non-empty totals when selector-provided states are present', () => {
+    mockSel.filter.getSelectedFeatureStateNames = () => ['Active'];
+
+    const graph = new PluginGraph();
+    const out = graph._computeDailyTotals(
+      'team',
+      new Date('2025-01-01'),
+      new Date('2025-01-01')
+    );
+
+    expect(out.days).toBeGreaterThan(0);
+  });
+});

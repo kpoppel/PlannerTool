@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state, PALETTE } from '../services/State.js';
+import { cmd, sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
   ProjectEvents,
@@ -954,7 +955,7 @@ export class SidebarLit extends LitElement {
       relations: { hasLinks: true, noLinks: true },
     };
     // Dynamic state & type filters (populated from baseline/features)
-    this.availableFeatureStates = state.availableFeatureStates || [];
+    this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
     this.availableTaskTypes = [];
     this.selectedTaskTypes = new Set();
     this._taskTypesInitialized = false;
@@ -1053,9 +1054,7 @@ export class SidebarLit extends LitElement {
             state.featureService.getEffectiveFeatures &&
             state.featureService.getEffectiveFeatures()) ||
           [];
-        const selectedProjectIds = (this.projects || [])
-          .filter((p) => p && p.selected)
-          .map((p) => p.id);
+        const selectedProjectIds = sel.selection.getSelectedProjectIds();
 
         // Selected tasks: features whose project is selected
         const selectedFeatureIds = new Set(
@@ -1064,9 +1063,7 @@ export class SidebarLit extends LitElement {
         this.selectedTasksCount = selectedFeatureIds.size;
 
         // Expanded tasks: apply expansion filters
-        const selectedTeamIds = (this.teams || [])
-          .filter((t) => t && t.selected)
-          .map((t) => t.id);
+        const selectedTeamIds = sel.selection.getSelectedTeamIds();
         const expansionResult =
           state.featureService && state.featureService.computeExpandedFeatureSet ?
             state.featureService.computeExpandedFeatureSet(selectedFeatureIds, {
@@ -1087,7 +1084,7 @@ export class SidebarLit extends LitElement {
         this.expandTeamAllocatedCount = expansionResult.counts.teamAllocated;
 
         // Displayed tasks: apply state filter and view filters to expanded set
-        const stateFilter = state.selectedFeatureStateFilter || new Set();
+        const stateFilter = sel.filter.getSelectedFeatureStateSet();
         // Build a lowercase version of the selected state set for case-insensitive checks
         const stateFilterLower =
           stateFilter && typeof stateFilter.size !== 'undefined' ?
@@ -1128,7 +1125,7 @@ export class SidebarLit extends LitElement {
     // Keep local copies of dynamic state/type lists in sync
     this._onAvailableStatesChanged = (states) => {
       this.availableFeatureStates =
-        Array.isArray(states) ? [...states] : state.availableFeatureStates || [];
+        Array.isArray(states) ? [...states] : sel.filter.getAvailableFeatureStates();
       this.requestUpdate();
     };
     bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
@@ -1157,11 +1154,16 @@ export class SidebarLit extends LitElement {
         this.selectedTaskTypes = new Set(arr);
         // Sync to ViewService so the board filter matches (external callers or
         // plugin-driven selectedTaskTypes must also be reflected in _hiddenTypes).
-        if (state && state._viewService) {
-          for (const t of (this.availableTaskTypes || [])) {
-            state._viewService.setTypeVisibility(t, this.selectedTaskTypes.has(t), /* suppressEmit= */true);
-          }
+        for (const t of this.availableTaskTypes || []) {
+          cmd.view.setTypeVisibility(
+            t,
+            this.selectedTaskTypes.has(t),
+            { suppressEvents: true }
+          );
         }
+        cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes), {
+          suppressEvents: true,
+        });
         // Mark types initialized so default-selection logic does not override
         this._taskTypesInitialized = true;
         this.requestUpdate();
@@ -1262,10 +1264,10 @@ export class SidebarLit extends LitElement {
         this.taskFilters = state.taskFilterService.getFilters();
       }
       // Initialize state & task type filters
-      this.availableFeatureStates = state.availableFeatureStates || [];
+      this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
       this._scheduleTaskTypesRecompute();
       // Initialize graph type from current capacityViewMode
-      this._graphType = state.capacityViewMode || 'team';
+      this._graphType = sel.view.getCapacityViewMode() || 'team';
     } catch (e) {
       // Defensive: ignore if state is not yet ready
       console.warn('[Sidebar] Error initializing from state:', e);
@@ -1388,7 +1390,7 @@ export class SidebarLit extends LitElement {
       this.expandTeamAllocated = !this.expandTeamAllocated;
     }
     // Sync expansion state to State service
-    state.setExpansionState({
+    cmd.view.setExpansionState({
       expandParentChild: this.expandParentChild,
       expandRelations: this.expandRelations,
       expandTeamAllocated: this.expandTeamAllocated,
@@ -1438,10 +1440,7 @@ export class SidebarLit extends LitElement {
       if (!this._taskTypesInitialized && this.availableTaskTypes.length > 0) {
         if (!this.selectedTaskTypes || this.selectedTaskTypes.size === 0) {
           this.selectedTaskTypes = new Set(this.availableTaskTypes);
-          // emit initial filter so other parts can respond
-          bus.emit(FilterEvents.CHANGED, {
-            selectedTaskTypes: Array.from(this.selectedTaskTypes),
-          });
+          cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes));
         }
         this._taskTypesInitialized = true;
       }
@@ -1455,9 +1454,7 @@ export class SidebarLit extends LitElement {
     if (!Array.isArray(arr)) return;
     const valid = (this.availableTaskTypes || []).filter((t) => arr.includes(t));
     this.selectedTaskTypes = new Set(valid);
-    bus.emit(FilterEvents.CHANGED, {
-      selectedTaskTypes: Array.from(this.selectedTaskTypes),
-    });
+    cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes));
     this.requestUpdate();
     this._taskTypesInitialized = true;
   }
@@ -1503,22 +1500,17 @@ export class SidebarLit extends LitElement {
     if (!this.selectedTaskTypes) this.selectedTaskTypes = new Set();
     if (checked) this.selectedTaskTypes.add(type);
     else this.selectedTaskTypes.delete(type);
-    // Sync to ViewService (authoritative source for board filter)
-    if (state && state._viewService) {
-      state._viewService.setTypeVisibility(type, !!checked);
-    }
-    bus.emit(FilterEvents.CHANGED, {
-      selectedTaskTypes: Array.from(this.selectedTaskTypes),
-    });
+    cmd.view.setTypeVisibility(type, !!checked);
+    cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes));
     this.requestUpdate();
   }
 
   // Programmatic API: disable/enable sidebar controls via State service
   disableSidebarElements(map) {
-    state.setSidebarDisabledElements(map || {});
+    cmd.filter.setSidebarDisabledElements(map || {});
   }
   clearSidebarDisabledElements() {
-    state.clearSidebarDisabledElements();
+    cmd.filter.clearSidebarDisabledElements();
   }
 
   _toggleTaskType(type) {
@@ -1526,8 +1518,7 @@ export class SidebarLit extends LitElement {
     // Use ViewService as the authoritative source for current visibility —
     // avoids stale-selectedTaskTypes bugs when selectedTaskTypes was never
     // initialised (e.g. data loaded after connectedCallback ran with no features).
-    const isCurrentlyVisible =
-      state && state._viewService ? state._viewService.isTypeVisible(type) : true;
+    const isCurrentlyVisible = sel.view.isTypeVisible(type);
     const nowVisible = !isCurrentlyVisible;
 
     // Keep selectedTaskTypes in sync for persistence (view save/restore)
@@ -1535,13 +1526,8 @@ export class SidebarLit extends LitElement {
     if (nowVisible) this.selectedTaskTypes.add(type);
     else this.selectedTaskTypes.delete(type);
 
-    // Generically update type visibility via ViewService — no hardcoded type strings
-    if (state && state._viewService) {
-      state._viewService.setTypeVisibility(type, nowVisible);
-    }
-    bus.emit(FilterEvents.CHANGED, {
-      selectedTaskTypes: Array.from(this.selectedTaskTypes),
-    });
+    cmd.view.setTypeVisibility(type, nowVisible);
+    cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes));
     this.requestUpdate();
   }
 
@@ -1649,9 +1635,7 @@ export class SidebarLit extends LitElement {
                 : state.getFeatureStateColor ? state.getFeatureStateColor(s)
                 : '#999';
               const text = meta ? meta.text : '#fff';
-              const isActive =
-                state.selectedFeatureStateFilter &&
-                state.selectedFeatureStateFilter.has(s);
+              const isActive = sel.filter.getSelectedFeatureStateSet().has(s);
               const isDisabled = this._isControlDisabled('state', s);
               return html` <div
                 class="filter-option ${isActive ? 'active' : ''} ${isDisabled ? 'disabled'
@@ -1659,7 +1643,7 @@ export class SidebarLit extends LitElement {
                 aria-disabled="${isDisabled ? 'true' : 'false'}"
                 @click=${() => {
                   if (!isDisabled) {
-                    state.toggleStateSelected(s);
+                    cmd.filter.toggleStateSelected(s);
                     this._recomputeDataFunnel && this._recomputeDataFunnel();
                   }
                 }}
@@ -1690,8 +1674,7 @@ export class SidebarLit extends LitElement {
         <div class="filter-options">
           ${types.map(
             (t) => {
-              const isActive = state._viewService ? state._viewService.isTypeVisible(t)
-                : (this.selectedTaskTypes && this.selectedTaskTypes.has(t));
+              const isActive = sel.view.isTypeVisible(t);
               return html`
                 <div
                   class="filter-option ${isActive ? 'active' : ''}"
@@ -1722,7 +1705,7 @@ export class SidebarLit extends LitElement {
   // Handlers for Taskboard Options
   _setTimelineScale(scale) {
     try {
-      state._viewService.setTimelineScale(scale);
+      cmd.view.setTimelineScale(scale);
     } catch (e) {
       console.warn('[Sidebar] setTimelineScale failed', e);
     }
@@ -1732,7 +1715,7 @@ export class SidebarLit extends LitElement {
 
   _toggleCondensed() {
     try {
-      state._viewService.setCondensedCards(!state._viewService.condensedCards);
+      cmd.view.setCondensedCards(!sel.view.getCondensedCards());
     } catch (e) {
       console.warn('[Sidebar] toggleCondensed failed', e);
     }
@@ -1742,7 +1725,7 @@ export class SidebarLit extends LitElement {
 
   _setFeatureSortMode(mode) {
     try {
-      state._viewService.setFeatureSortMode(mode);
+      cmd.view.setFeatureSortMode(mode);
     } catch (e) {
       console.warn('[Sidebar] setFeatureSortMode failed', e);
     }
@@ -1753,7 +1736,7 @@ export class SidebarLit extends LitElement {
   _setGraphType(type) {
     this._graphType = type;
     try {
-      state._viewService.setCapacityViewMode(type);
+      cmd.view.setCapacityViewMode(type);
     } catch (e) {
       console.warn('[Sidebar] setCapacityViewMode failed', e);
     }
@@ -1815,7 +1798,7 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state.timelineScale === 'threeMonths' ?
+                    class="segment-btn ${sel.view.getTimelineScale() === 'threeMonths' ?
                       'active'
                     : ''}"
                     @click=${() => this._setTimelineScale('threeMonths')}
@@ -1824,14 +1807,14 @@ export class SidebarLit extends LitElement {
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.timelineScale === 'weeks' ? 'active' : ''}"
+                    class="segment-btn ${sel.view.getTimelineScale() === 'weeks' ? 'active' : ''}"
                     @click=${() => this._setTimelineScale('weeks')}
                   >
                     Weeks
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.timelineScale === 'months' ?
+                    class="segment-btn ${sel.view.getTimelineScale() === 'months' ?
                       'active'
                     : ''}"
                     @click=${() => this._setTimelineScale('months')}
@@ -1840,7 +1823,7 @@ export class SidebarLit extends LitElement {
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.timelineScale === 'quarters' ?
+                    class="segment-btn ${sel.view.getTimelineScale() === 'quarters' ?
                       'active'
                     : ''}"
                     @click=${() => this._setTimelineScale('quarters')}
@@ -1849,7 +1832,7 @@ export class SidebarLit extends LitElement {
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.timelineScale === 'years' ? 'active' : ''}"
+                    class="segment-btn ${sel.view.getTimelineScale() === 'years' ? 'active' : ''}"
                     @click=${() => this._setTimelineScale('years')}
                   >
                     Years
@@ -1862,22 +1845,22 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'normal' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('normal')}
+                    class="segment-btn ${sel.view.getDisplayMode() === 'normal' ? 'active' : ''}"
+                    @click=${() => cmd.view.setDisplayMode('normal')}
                   >
                     Normal
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'compact' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('compact')}
+                    class="segment-btn ${sel.view.getDisplayMode() === 'compact' ? 'active' : ''}"
+                    @click=${() => cmd.view.setDisplayMode('compact')}
                   >
                     Compact
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state._viewService.displayMode === 'packed' ? 'active' : ''}"
-                    @click=${() => state._viewService.setDisplayMode('packed')}
+                    class="segment-btn ${sel.view.getDisplayMode() === 'packed' ? 'active' : ''}"
+                    @click=${() => cmd.view.setDisplayMode('packed')}
                     title="Pack cards with non-overlapping dates into the same lane"
                   >
                     Packed
@@ -1890,21 +1873,21 @@ export class SidebarLit extends LitElement {
                 <div class="segmented-group">
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'rank' && !state._viewService.packedMode ?
+                    class="segment-btn ${sel.view.getFeatureSortMode() === 'rank' && !sel.view.getPackedMode() ?
                       'active'
-                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
-                    ?disabled=${state._viewService.packedMode}
-                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('rank')}
+                    : ''} ${sel.view.getPackedMode() ? 'disabled' : ''}"
+                    ?disabled=${sel.view.getPackedMode()}
+                    @click=${() => !sel.view.getPackedMode() && this._setFeatureSortMode('rank')}
                   >
                     Rank
                   </button>
                   <button
                     type="button"
-                    class="segment-btn ${state.featureSortMode === 'date' && !state._viewService.packedMode ?
+                    class="segment-btn ${sel.view.getFeatureSortMode() === 'date' && !sel.view.getPackedMode() ?
                       'active'
-                    : ''} ${state._viewService.packedMode ? 'disabled' : ''}"
-                    ?disabled=${state._viewService.packedMode}
-                    @click=${() => !state._viewService.packedMode && this._setFeatureSortMode('date')}
+                    : ''} ${sel.view.getPackedMode() ? 'disabled' : ''}"
+                    ?disabled=${sel.view.getPackedMode()}
+                    @click=${() => !sel.view.getPackedMode() && this._setFeatureSortMode('date')}
                   >
                     Date
                   </button>

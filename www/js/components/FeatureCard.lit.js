@@ -5,6 +5,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { FeatureEvents, DragEvents, UIEvents } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { startDragMove, startResize } from './dragManager.js';
 import { getIconTemplate } from '../services/IconService.js';
 import { featureFlags } from '../config.js';
@@ -773,7 +774,7 @@ export class FeatureCardLit extends LitElement {
     if (e.detail === 2) return;
 
     const eff = state.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    if (state.highlightFeatureRelationMode) {
+      if (sel.view.getHighlightFeatureRelationMode()) {
       // If this card is in the current connected set, treat it as selecting
       // the item within the set (highlight previous selection and new selection)
       if (this._connected) {

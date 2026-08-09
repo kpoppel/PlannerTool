@@ -9,6 +9,7 @@ import {
   TimelineEvents,
 } from '../core/EventRegistry.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { featureFlags } from '../config.js';
 
 export class EmptyBoardModal extends LitElement {
@@ -93,33 +94,27 @@ export class EmptyBoardModal extends LitElement {
     const reasons = [];
 
     // Projects / plans selection
-    const selectedProjects = state.projects.filter((p) => p.selected);
-    if (!selectedProjects.length) {
+    const selectedProjectIds = sel.selection.getSelectedProjectIds();
+    if (!selectedProjectIds.length) {
       reasons.push(
         'No projects/plans selected. Select one or more projects to display tasks.'
       );
     }
 
     // Feature state filter
-    const stateFilter =
-      state.selectedFeatureStateFilter instanceof Set ?
-        state.selectedFeatureStateFilter
-      : new Set(
-          state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
-        );
+    const stateFilter = sel.filter.getSelectedFeatureStateSet();
     if (stateFilter.size === 0) {
       reasons.push('Feature state filter excludes all states (no state selected).');
     }
 
     // View options — check if all task types are hidden
-    if (state._viewService) {
-      const hiddenTypes = state._viewService.hiddenTypes;
+    {
       const availableTypes = (state.availableTaskTypes || ['epic', 'feature']);
-      const allHidden = availableTypes.every((t) => hiddenTypes.has(t));
+      const allHidden = availableTypes.every((t) => !sel.view.isTypeVisible(t));
       if (allHidden) {
         reasons.push('All task types are hidden in view options.');
       } else {
-        const hiddenLabels = availableTypes.filter((t) => hiddenTypes.has(t));
+        const hiddenLabels = availableTypes.filter((t) => !sel.view.isTypeVisible(t));
         for (const t of hiddenLabels) {
           reasons.push(`${t.charAt(0).toUpperCase() + t.slice(1)}s are hidden in view options.`);
         }
@@ -127,22 +122,22 @@ export class EmptyBoardModal extends LitElement {
     }
 
     // Unplanned work visibility
-    if (featureFlags.SHOW_UNPLANNED_WORK && !state._viewService.showUnplannedWork) {
+    if (featureFlags.SHOW_UNPLANNED_WORK && !sel.view.getShowUnplannedWork()) {
       reasons.push('Unplanned work is hidden (unplanned features filtered out).');
     }
 
     // Team selection + capacity filtering
-    const selectedTeams = state.teams.filter((t) => t.selected);
-    if (state.teams && state.teams.length && !selectedTeams.length) {
+    const selectedTeamIds = sel.selection.getSelectedTeamIds();
+    if (state.teams && state.teams.length && !selectedTeamIds.length) {
       reasons.push('No teams selected — capacity-based filtering may exclude tasks.');
     }
 
     // If only teams are selected (no projects) and team-allocation expansion is disabled,
     // explain that team-only selection won't surface tasks unless expansion is enabled.
     if (
-      selectedTeams.length > 0 &&
-      (!selectedProjects || selectedProjects.length === 0) &&
-      !state.expansionState.expandTeamAllocated
+      selectedTeamIds.length > 0 &&
+      (!selectedProjectIds || selectedProjectIds.length === 0) &&
+      !sel.view.getExpansionState().expandTeamAllocated
     ) {
       reasons.push(
         "Only teams selected and 'Team Allocated' expansion is disabled — enable the expansion or select projects to show team-allocated tasks."
@@ -174,7 +169,7 @@ export class EmptyBoardModal extends LitElement {
     }
 
     // Hierarchical/project-hierarchy filter
-    if (state._viewService.showOnlyProjectHierarchy) {
+    if (sel.view.getShowOnlyProjectHierarchy()) {
       reasons.push(
         'Hierarchy filter enabled — only epics from selected project-type plans are shown.'
       );
@@ -195,16 +190,11 @@ export class EmptyBoardModal extends LitElement {
       const sourceFeatures = state.getEffectiveFeatures() || [];
       if (!sourceFeatures.length) return false;
 
-      const expandedIds = state.getExpandedFeatureIds();
+      const expandedIds = sel.view.getExpandedFeatureIds();
       if (!expandedIds || expandedIds.size === 0) return false;
 
       // State filter (preserve configured casing; compare case-insensitively)
-      const stateFilter =
-        state.selectedFeatureStateFilter instanceof Set ?
-          state.selectedFeatureStateFilter
-        : new Set(
-            state.selectedFeatureStateFilter ? [state.selectedFeatureStateFilter] : []
-          );
+      const stateFilter = sel.filter.getSelectedFeatureStateSet();
       const stateFilterLower = new Set(
         Array.from(stateFilter).map((s) => String(s).toLowerCase())
       );
@@ -221,12 +211,12 @@ export class EmptyBoardModal extends LitElement {
         if (!stateFilterLower.has(featureStateLower)) continue;
 
         // view options
-        if (state._viewService && !state._viewService.isTypeVisible(feature.type)) continue;
+        if (!sel.view.isTypeVisible(feature.type)) continue;
 
         // unplanned work
         if (featureFlags.SHOW_UNPLANNED_WORK) {
           const isUnplanned = !feature.start || !feature.end;
-          if (isUnplanned && !state._viewService.showUnplannedWork) continue;
+          if (isUnplanned && !sel.view.getShowUnplannedWork()) continue;
         }
 
         // Task/dimensional filters: if service exists, use it to validate feature

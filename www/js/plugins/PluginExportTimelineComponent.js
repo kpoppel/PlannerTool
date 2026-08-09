@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import { AppEvents } from '../core/EventRegistry.js';
 import { pluginManager } from '../core/PluginManager.js';
@@ -577,12 +578,9 @@ export class PluginExportTimeline extends LitElement {
       teamDailyCapacity: state.teamDailyCapacity || [],
       features: state.features || [],
       view: {
-        capacityMode:
-          state._viewService ? state._viewService.capacityViewMode : undefined,
-        hiddenTypes:
-          state._viewService ? Array.from(state._viewService.hiddenTypes) : [],
-        showDependencies:
-          state._viewService ? !!state._viewService.showDependencies : undefined,
+        capacityMode: sel.view.getCapacityViewMode(),
+        hiddenTypes: Array.from(sel.view.getHiddenTypes()),
+        showDependencies: sel.view.getShowDependencies(),
       },
     };
     return out;

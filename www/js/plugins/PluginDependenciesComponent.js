@@ -13,6 +13,7 @@
 import { html } from '../vendor/lit.js';
 import { OverlaySvgPlugin } from './OverlaySvgPlugin.js';
 import { state } from '../services/State.js';
+import { sel } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
 import {
   FeatureEvents,
@@ -83,7 +84,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
    * Controls overlay visibility so saved view state is honoured.
    */
   _handleDepsToggle() {
-    if (state?._viewService?.showDependencies) {
+    if (sel.view.getShowDependencies()) {
       this.open();
     } else {
       this.close();
@@ -112,7 +113,7 @@ export class PluginDependenciesComponent extends OverlaySvgPlugin {
     }
 
     const features = state.getEffectiveFeatures?.() ?? [];
-    const laneHeight = state._viewService?.condensedCards ? 28 : 100;
+    const laneHeight = sel.view.getCondensedCards() ? 28 : 100;
 
     /**
      * Read the board-space rect of a card from its inline style.
