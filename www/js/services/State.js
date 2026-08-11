@@ -1568,4 +1568,63 @@ class State {
   }
 }
 
-export const state = new State();
+// export const state = new State();
+
+function getCallsite() {
+  const stack = new Error().stack;
+  if (!stack) return "Unknown callsite";
+
+  // Split stack into lines
+  const lines = stack.split("\n");
+
+  /*
+    Stack layout when called inside the proxy trap:
+    lines[0]: "Error"
+    lines[1]: inside getCallsite()
+    lines[2]: inside the proxy handler / wrapper
+    lines[3]: the ACTUAL callsite that triggered the access/call
+  */
+  const callsiteLine = lines[3] || lines[2] || "";
+  
+  // Clean up whitespace and return
+  return callsiteLine.trim();
+}
+// Handler trap for 'get'
+// const loggingHandler = {
+//   get(target, prop, receiver) {
+//     const value = Reflect.get(target, prop, receiver);
+
+//     // If the accessed property is a function, wrap it
+//     if (typeof value === 'function') {
+//       return function (...args) {
+//         console.log(`Method '${prop}' was called with arguments:`, args);
+//         return value.apply(target, args); // Execute the original method
+//       };
+//     }
+
+//     // Standard property access
+//     console.log(`Property '${prop}' was accessed!`);
+//     return value;
+//   }
+// };
+
+const loggingHandler = {
+  get(target, prop, receiver) {
+    const value = Reflect.get(target, prop, receiver);
+    const origin = getCallsite();
+
+    if (typeof value === "function") {
+      return function (...args) {
+        console.log(`[Method '${prop}' called]`);
+        console.log(`  └─ Origin: ${origin}`);
+        console.log(`  └─ Args:`, args);
+        return value.apply(target, args);
+      };
+    }
+
+    console.log(`[Property '${prop}' accessed]`);
+    console.log(`  └─ Origin: ${origin}`);
+    return value;
+  }
+};
+export const state  = new Proxy(new State(), loggingHandler);

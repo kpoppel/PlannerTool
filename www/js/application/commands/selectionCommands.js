@@ -1,3 +1,17 @@
+import { ProjectEvents, TeamEvents, FeatureEvents } from '../../core/EventRegistry.js';
+
+function projectsWithSelection(state) {
+  const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
+  const ids = new Set((state?.selection?.projectIds || []).map((id) => String(id)));
+  return projects.map((p) => ({ ...p, selected: ids.has(String(p.id)) }));
+}
+
+function teamsWithSelection(state) {
+  const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
+  const ids = new Set((state?.selection?.teamIds || []).map((id) => String(id)));
+  return teams.map((t) => ({ ...t, selected: ids.has(String(t.id)) }));
+}
+
 function nextIds(currentIds, id, selected) {
   const set = new Set(Array.isArray(currentIds) ? currentIds : []);
   if (selected) set.add(id);
@@ -48,7 +62,6 @@ export function createLegacySelectionCommands(state) {
 export function createSelectionCommands(store, bus, legacyState) {
   return {
     setProjectSelected(id, selected, options = {}) {
-      legacyState?.setProjectSelected?.(id, selected);
       store.setState(
         (state) => ({
           ...state,
@@ -60,13 +73,15 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setProjectSelected'
       );
+      //TODO: remove when capacity recompute is ported to store
+      legacyState?.setProjectSelected?.(id, selected);
       if (!options?.suppressEvents) {
-        bus?.emit?.('selection:project-changed', { id, selected: Boolean(selected) });
+        bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setTeamSelected(id, selected, options = {}) {
-      legacyState?.setTeamSelected?.(id, selected);
       store.setState(
         (state) => ({
           ...state,
@@ -78,13 +93,15 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setTeamSelected'
       );
+      //TODO: remove when capacity recompute is ported to store
+      legacyState?.setTeamSelected?.(id, selected);
       if (!options?.suppressEvents) {
-        bus?.emit?.('selection:team-changed', { id, selected: Boolean(selected) });
+        bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setProjectsSelectedBulk(selections, options = {}) {
-      legacyState?.setProjectsSelectedBulk?.(selections, options);
       const projectIds = nextIdsFromBulkSelections(selections);
       store.setState(
         (state) => ({
@@ -97,15 +114,15 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setProjectsSelectedBulk'
       );
+      // suppressEvents: true prevents legacy from double-emitting; capacity recompute is skipped (TODO)
+      legacyState?.setProjectsSelectedBulk?.(selections, { suppressEvents: true });
       if (!options?.suppressEvents) {
-        bus?.emit?.('selection:projects-bulk-changed', {
-          selections: { ...(selections || {}) },
-        });
+        bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setTeamsSelectedBulk(selections, options = {}) {
-      legacyState?.setTeamsSelectedBulk?.(selections, options);
       const teamIds = nextIdsFromBulkSelections(selections);
       store.setState(
         (state) => ({
@@ -118,15 +135,16 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setTeamsSelectedBulk'
       );
+      // suppressEvents: true prevents legacy from double-emitting; capacity recompute is skipped (TODO)
+      legacyState?.setTeamsSelectedBulk?.(selections, { suppressEvents: true });
       if (!options?.suppressEvents) {
-        bus?.emit?.('selection:teams-bulk-changed', {
-          selections: { ...(selections || {}) },
-        });
+        bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setProjectColor(id, color, options = {}) {
-      legacyState?.setProjectColor?.(id, color);
+      //TODO: legacyState?.setProjectColor?.(id, color);
       store.setState(
         (state) => ({
           ...state,
@@ -146,7 +164,7 @@ export function createSelectionCommands(store, bus, legacyState) {
     },
 
     setTeamColor(id, color, options = {}) {
-      legacyState?.setTeamColor?.(id, color);
+      //TODO: legacyState?.setTeamColor?.(id, color);
       store.setState(
         (state) => ({
           ...state,

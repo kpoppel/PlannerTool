@@ -16,8 +16,8 @@ export function createInitialAppState() {
       items: [],
     },
     selection: {
-      projectIds: [],
-      teamIds: [],
+      projectIds: null,
+      teamIds: null,
       featureStateNames: [],
       taskFilters: {
         schedule: null,

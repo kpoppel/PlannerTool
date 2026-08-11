@@ -81,10 +81,10 @@ function deriveFallbackSelectedIds(items) {
 function deriveItemsWithSelection(sourceItems, storeIds) {
   const list = Array.isArray(sourceItems) ? sourceItems : [];
   const normalizedStoreIds = normalizeIdList(storeIds);
+  // null = not yet initialized → fall back to selected flags on items
+  // [] = explicitly empty (user deselected all) → no fallback
   const selectedIds =
-    normalizedStoreIds.length > 0 ?
-      normalizedStoreIds
-    : deriveFallbackSelectedIds(list);
+    storeIds === null ? deriveFallbackSelectedIds(list) : normalizedStoreIds;
   const selectedSet = new Set(selectedIds);
 
   return list.map((item) => ({
@@ -95,12 +95,12 @@ function deriveItemsWithSelection(sourceItems, storeIds) {
 
 function deriveProjectsFromStore(state, legacyState = null) {
   const projects = getPreferredSourceItems(legacyState?.projects, state?.baseline?.projects);
-  return deriveItemsWithSelection(projects, state?.selection?.projectIds || []);
+  return deriveItemsWithSelection(projects, state?.selection?.projectIds ?? null);
 }
 
 function deriveTeamsFromStore(state, legacyState = null) {
   const teams = getPreferredSourceItems(legacyState?.teams, state?.baseline?.teams);
-  return deriveItemsWithSelection(teams, state?.selection?.teamIds || []);
+  return deriveItemsWithSelection(teams, state?.selection?.teamIds ?? null);
 }
 
 export function createLegacySelectionSelectors(state) {
@@ -166,31 +166,33 @@ export function createSelectionSelectors(store, legacyState = null) {
     },
 
     getSelectedProjectIds() {
-      const selected = normalizeIdList(store.getState()?.selection?.projectIds || []);
-      if (selected.length > 0) {
-        return selected;
+      const projectIds = store.getState()?.selection?.projectIds ?? null;
+      if (projectIds !== null) {
+        return normalizeIdList(projectIds);
       }
+      // null = not yet initialized: derive from selected flags on projects
       return this.getProjects()
         .filter((project) => Boolean(project?.selected))
         .map((project) => String(project.id));
     },
 
     getSelectedTeamIds() {
-      const selected = normalizeIdList(store.getState()?.selection?.teamIds || []);
-      if (selected.length > 0) {
-        return selected;
+      const teamIds = store.getState()?.selection?.teamIds ?? null;
+      if (teamIds !== null) {
+        return normalizeIdList(teamIds);
       }
+      // null = not yet initialized: derive from selected flags on teams
       return this.getTeams()
         .filter((team) => Boolean(team?.selected))
         .map((team) => String(team.id));
     },
 
     getProjects() {
-      return deriveProjectsFromStore(store.getState(), legacyState);
+      return deriveProjectsFromStore(store.getState());
     },
 
     getTeams() {
-      return deriveTeamsFromStore(store.getState(), legacyState);
+      return deriveTeamsFromStore(store.getState());
     },
 
     getSelectedProjects() {

@@ -303,10 +303,16 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         await source.initState();
       }
 
+      // Use working copies (source.projects/teams) which have colors applied by ColorService.
+      // deriveItemsWithSelection overwrites the selected flag so stale selection is harmless.
       const baselineResult = await this.hydrateBaseline({
         preloaded: {
-          projects: Array.isArray(source.baselineProjects) ? source.baselineProjects : [],
-          teams: Array.isArray(source.baselineTeams) ? source.baselineTeams : [],
+          projects: Array.isArray(source.projects) && source.projects.length > 0
+            ? source.projects
+            : Array.isArray(source.baselineProjects) ? source.baselineProjects : [],
+          teams: Array.isArray(source.teams) && source.teams.length > 0
+            ? source.teams
+            : Array.isArray(source.baselineTeams) ? source.baselineTeams : [],
           features: Array.isArray(source.baselineFeatures) ? source.baselineFeatures : [],
           iterationSetsById: source.iterationSetsById || {},
         },
