@@ -12,8 +12,8 @@ export function createInitialAppState() {
       iterationsByProject: {},
     },
     scenarios: {
-      activeId: null,
-      items: [],
+      activeId: 'baseline',
+      items: [{ id: 'baseline', name: 'Baseline', overrides: {} }],
     },
     selection: {
       projectIds: null,

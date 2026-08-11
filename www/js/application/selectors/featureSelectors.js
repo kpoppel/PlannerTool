@@ -8,11 +8,36 @@ function getActiveScenario(state) {
   return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
 }
 
+function computeDirtyFields(base, override) {
+  // TODO: A card is dirty if it is in the overrides list. This looks like a bit overkill.
+  const fields = [];
+  const normDate = (v) => v || null;
+  const normTags = (v) =>
+    String(v || '').split(';').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if ('start' in override && normDate(override.start) !== normDate(base.start)) fields.push('start');
+  if ('end' in override && normDate(override.end) !== normDate(base.end)) fields.push('end');
+  if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(base.capacity))
+    fields.push('capacity');
+  if (override.state && override.state !== (base.state || '')) fields.push('state');
+  if (override.iterationPath !== undefined && override.iterationPath !== base.iterationPath)
+    fields.push('iterationPath');
+  if (
+    'tags' in override &&
+    JSON.stringify(normTags(override.tags)) !== JSON.stringify(normTags(base.tags))
+  )
+    fields.push('tags');
+  return fields;
+}
+
 function applyOverride(baseFeature, override) {
   if (!override) return { ...baseFeature };
+  const changedFields = computeDirtyFields(baseFeature, override);
   return {
     ...baseFeature,
     ...override,
+    scenarioOverride: true,
+    changedFields,
+    dirty: changedFields.length > 0,
   };
 }
 

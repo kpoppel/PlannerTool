@@ -489,6 +489,8 @@ export class ScenarioMenuLit extends LitElement {
 
   render() {
     const sorted = [...(this.scenarios || [])].sort((a, b) => {
+      if (a.id === 'baseline') return -1;
+      if (b.id === 'baseline') return 1;
       if (a.readonly && !b.readonly) return -1;
       if (!a.readonly && b.readonly) return 1;
       return (a.name || '').localeCompare(b.name || '');
@@ -509,7 +511,7 @@ export class ScenarioMenuLit extends LitElement {
                 ${sel.scenario.isScenarioUnsaved(s) ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
-                ${s.readonly ?
+                ${s.id === 'baseline' || s.readonly ?
                   html`
                     <span class="scenario-actions">
                       <button

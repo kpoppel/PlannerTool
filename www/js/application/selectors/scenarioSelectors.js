@@ -37,18 +37,14 @@ export function createLegacyScenarioSelectors(state) {
   };
 }
 
-export function createScenarioSelectors(store, legacyState = null) {
+export function createScenarioSelectors(store) {
   return {
     getScenarios() {
-      const items = getScenarioItems(store.getState());
-      if (items.length > 0) return items;
-      return Array.isArray(legacyState?.scenarios) ? legacyState.scenarios : items;
+      return getScenarioItems(store.getState());
     },
 
     getActiveScenarioId() {
-      const activeId = getScenarioActiveId(store.getState());
-      if (activeId && activeId !== 'baseline') return activeId;
-      return legacyState?.activeScenarioId || activeId;
+      return getScenarioActiveId(store.getState());
     },
 
     getActiveScenario() {

@@ -14,7 +14,7 @@ function getActiveScenarioId(state) {
 
 function findActiveScenario(state) {
   const activeId = getActiveScenarioId(state);
-  if (!activeId || activeId === 'baseline') return null;
+  if (!activeId) return null;
   return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
 }
 
@@ -47,7 +47,7 @@ function shiftIsoByMs(isoDate, deltaMs) {
 
 function withActiveScenario(state, updater) {
   const activeId = getActiveScenarioId(state);
-  if (!activeId || activeId === 'baseline') return null;
+  if (!activeId) return null;
 
   let changed = false;
   const nextItems = getScenarioItems(state).map((scenario) => {
@@ -106,7 +106,7 @@ export function createLegacyFeatureCommands(state) {
   };
 }
 
-export function createFeatureCommands(store, bus, legacyState = null) {
+export function createFeatureCommands(store, bus, legacyState = null, recomputeCapacity = null) {
   function canAssignProperty(target, prop) {
     if (!target || typeof target !== 'object') return false;
     let current = target;
@@ -279,11 +279,9 @@ export function createFeatureCommands(store, bus, legacyState = null) {
   }
 
   function recomputeAndEmitCapacity(changedFeatureIds = null) {
-    if (typeof legacyState?.recomputeCapacityMetrics === 'function') {
-      legacyState.recomputeCapacityMetrics(normalizeChangedFeatureIds(changedFeatureIds));
-      syncCapacityFromLegacy();
+    if (recomputeCapacity) {
+      recomputeCapacity(changedFeatureIds);
     }
-    bus?.emit?.(CapacityEvents.UPDATED, buildCapacityPayload());
   }
 
   function emitFeatureMutation(eventPayload) {
@@ -444,11 +442,7 @@ export function createFeatureCommands(store, bus, legacyState = null) {
       });
 
       if (!mutation) {
-        legacyState?.updateFeatureDates?.(safeUpdates);
-        syncStoreScenarioStateFromLegacy();
-        const ids = safeUpdates
-          .map((entry) => String(entry?.id || ''))
-          .filter(Boolean);
+        const ids = safeUpdates.map((entry) => String(entry?.id || '')).filter(Boolean);
         recomputeAndEmitCapacity(ids.length ? ids : null);
         emitFeatureMutation({ ids });
         return safeUpdates;
@@ -465,8 +459,6 @@ export function createFeatureCommands(store, bus, legacyState = null) {
         false,
         'feature.updateFeatureDates'
       );
-
-      syncLegacyScenarioState(mutation.items, mutation.activeId);
 
       const ids = Array.from(changedIds);
       recomputeAndEmitCapacity(ids.length ? ids : null);
@@ -486,8 +478,6 @@ export function createFeatureCommands(store, bus, legacyState = null) {
       );
 
       if (!mutation) {
-        legacyState?.updateFeatureField?.(id, field, value);
-        syncStoreScenarioStateFromLegacy();
         recomputeAndEmitCapacity([String(id)]);
         emitFeatureMutation({ id: String(id), field: String(field) });
         return { id: String(id), [field]: value };
@@ -504,8 +494,6 @@ export function createFeatureCommands(store, bus, legacyState = null) {
         false,
         'feature.updateFeatureField'
       );
-
-      syncLegacyScenarioState(mutation.items, mutation.activeId);
 
       recomputeAndEmitCapacity([id]);
       emitFeatureMutation({ id: String(id), field: String(field) });
@@ -525,8 +513,6 @@ export function createFeatureCommands(store, bus, legacyState = null) {
       );
 
       if (!mutation) {
-        legacyState?.setScenarioOverride?.(featureId, start, end);
-        syncStoreScenarioStateFromLegacy();
         recomputeAndEmitCapacity([String(featureId)]);
         emitFeatureMutation({ id: String(featureId), fields: ['start', 'end'] });
         return {
@@ -548,7 +534,7 @@ export function createFeatureCommands(store, bus, legacyState = null) {
         'feature.setScenarioOverride'
       );
 
-      syncLegacyScenarioState(mutation.items, mutation.activeId);
+      if (mutation.activeId !== 'baseline') syncLegacyScenarioState(mutation.items, mutation.activeId);
 
       recomputeAndEmitCapacity([featureId]);
       emitFeatureMutation({ id: String(featureId), fields: ['start', 'end'] });
@@ -578,12 +564,7 @@ export function createFeatureCommands(store, bus, legacyState = null) {
       });
 
       if (!mutation) {
-        const reverted = legacyState?.revertFeature?.(id);
-        if (!reverted) return false;
-        syncStoreScenarioStateFromLegacy();
-        recomputeAndEmitCapacity([String(id)]);
-        emitFeatureMutation({ id: String(id), type: 'revert' });
-        return true;
+        return false;
       }
 
       store.setState(
@@ -597,8 +578,6 @@ export function createFeatureCommands(store, bus, legacyState = null) {
         false,
         'feature.revertFeature'
       );
-
-      syncLegacyScenarioState(mutation.items, mutation.activeId);
 
       recomputeAndEmitCapacity([id]);
       emitFeatureMutation({ id: String(id), type: 'revert' });

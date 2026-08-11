@@ -57,7 +57,7 @@ const stateStoreCommands = {
   filter: createFilterCommands(store, bus, state, () => stateStoreCommands.data.recomputeCapacity()),
   view: createViewCommands(store, bus, state),
   viewRestore: createViewRestoreCommands(store, dataService, state),
-  feature: createFeatureCommands(store, bus, state),
+  feature: createFeatureCommands(store, bus, state, () => stateStoreCommands.data.recomputeCapacity()),
   scenario: createScenarioCommands(store, bus, state),
   group: createGroupCommands(store, bus),
   pluginState: createPluginStateCommands(store),
@@ -68,7 +68,7 @@ const stateStoreSelectors = {
   filter: createFilterSelectors(store, state),
   view: createViewSelectors(store, state),
   feature: createFeatureSelectors(store, state),
-  scenario: createScenarioSelectors(store, state),
+  scenario: createScenarioSelectors(store),
   group: createGroupSelectors(store),
   capacity: createCapacitySelectors(store),
 };

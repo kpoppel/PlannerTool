@@ -47,13 +47,15 @@ function ensureUniqueScenarioName(baseName, existingScenarios) {
 
 function emitScenarioList(bus, scenarios, activeScenarioId) {
   bus?.emit?.(ScenarioEvents.LIST, {
-    scenarios: scenarios.map((scenario) => ({
-      id: scenario.id,
-      name: scenario.name,
-      overridesCount: Object.keys(scenario.overrides || {}).length,
-      unsaved: scenario.isChanged === true,
-      readonly: scenario.readonly === true,
-    })),
+    scenarios: scenarios
+      .filter((scenario) => scenario.id !== 'baseline')
+      .map((scenario) => ({
+        id: scenario.id,
+        name: scenario.name,
+        overridesCount: Object.keys(scenario.overrides || {}).length,
+        unsaved: scenario.isChanged === true,
+        readonly: scenario.readonly === true,
+      })),
     activeScenarioId,
   });
 }
@@ -278,6 +280,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
     },
 
     renameScenario(id, newName) {
+      if (id === 'baseline') return null;
       if (typeof newName !== 'string' || !newName.trim()) return null;
 
       const snapshot = store.getState();
@@ -316,6 +319,7 @@ export function createScenarioCommands(store, bus, legacyState = null) {
     },
 
     deleteScenario(id) {
+      if (id === 'baseline') return;
       const snapshot = store.getState();
       const existingScenarios = toScenarioItems(snapshot);
       const exists = existingScenarios.some((scenario) => scenario.id === id);

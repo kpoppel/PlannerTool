@@ -102,11 +102,8 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
 
   function deriveEffectiveFeaturesFromState(state) {
     const baseline = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
-    const activeId = state?.scenarios?.activeId;
-    const scenario =
-      activeId && activeId !== 'baseline' ?
-        (state?.scenarios?.items || []).find((s) => s.id === activeId)
-      : null;
+    const activeId = state?.scenarios?.activeId ?? 'baseline';
+    const scenario = (state?.scenarios?.items || []).find((s) => s.id === activeId);
     const overrides = scenario?.overrides || {};
     return baseline.map((f) => {
       const override = overrides[String(f?.id ?? '')];
@@ -340,8 +337,11 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
           ...state,
           scenarios: {
             ...state.scenarios,
-            items: scenarioItems,
-            // Preserve current activeId only when the caller does not provide one.
+            // Baseline entry lives in items; preserve its overrides across server refreshes.
+            items: [
+              { ...(state.scenarios.items.find((s) => s.id === 'baseline') || { id: 'baseline', name: 'Baseline', overrides: {} }) },
+              ...scenarioItems.filter((s) => s.id !== 'baseline'),
+            ],
             activeId: hasActiveId ? options.activeId : state.scenarios.activeId,
           },
         }),
