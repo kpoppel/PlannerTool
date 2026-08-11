@@ -30,39 +30,29 @@ export function createLegacyCapacitySelectors(state) {
   };
 }
 
-export function createCapacitySelectors(store, legacyState = null) {
+export function createCapacitySelectors(store) {
   return {
     getCapacityDates() {
-      if (Array.isArray(legacyState?.capacityDates)) return legacyState.capacityDates;
       return toArray(store.getState()?.capacity?.dates);
     },
 
     getTeamDailyCapacity() {
-      if (Array.isArray(legacyState?.teamDailyCapacity)) return legacyState.teamDailyCapacity;
       return toArray(store.getState()?.capacity?.teamDaily);
     },
 
     getTeamDailyCapacityMap() {
-      if (Array.isArray(legacyState?.teamDailyCapacityMap)) return legacyState.teamDailyCapacityMap;
       return toArray(store.getState()?.capacity?.teamDailyMap);
     },
 
     getProjectDailyCapacity() {
-      if (Array.isArray(legacyState?.projectDailyCapacity)) return legacyState.projectDailyCapacity;
       return toArray(store.getState()?.capacity?.projectDaily);
     },
 
     getProjectDailyCapacityMap() {
-      if (Array.isArray(legacyState?.projectDailyCapacityMap)) {
-        return legacyState.projectDailyCapacityMap;
-      }
       return toArray(store.getState()?.capacity?.projectDailyMap);
     },
 
     getTotalOrgDailyPerTeamAvg() {
-      if (Array.isArray(legacyState?.totalOrgDailyPerTeamAvg)) {
-        return legacyState.totalOrgDailyPerTeamAvg;
-      }
       return toArray(store.getState()?.capacity?.organizationDailyPerTeamAverage);
     },
   };

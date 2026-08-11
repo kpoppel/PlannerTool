@@ -1,4 +1,9 @@
-import { DataEvents } from '../../core/EventRegistry.js';
+import { DataEvents, CapacityEvents } from '../../core/EventRegistry.js';
+import { CapacityCalculator } from '../../services/CapacityCalculator.js';
+import { featureFlags } from '../../config.js';
+
+// Passed as bus to the store-owned CapacityCalculator so it never double-emits.
+const NO_OP_BUS = { emit: () => {}, on: () => {}, off: () => {} };
 
 export const DataCommandEvents = {
   BASELINE_HYDRATED: Symbol('data-command:baseline-hydrated'),
@@ -93,7 +98,77 @@ function deriveFeatureStateNames(source, baselineFeatures) {
 }
 
 export function createDataCommands(store, bus, dataService, legacyStateRef = null) {
+  const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
+
+  function deriveEffectiveFeaturesFromState(state) {
+    const baseline = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
+    const activeId = state?.scenarios?.activeId;
+    const scenario =
+      activeId && activeId !== 'baseline' ?
+        (state?.scenarios?.items || []).find((s) => s.id === activeId)
+      : null;
+    const overrides = scenario?.overrides || {};
+    return baseline.map((f) => {
+      const override = overrides[String(f?.id ?? '')];
+      return override ? { ...f, ...override } : { ...f };
+    });
+  }
+
+  function buildChildrenByParentMap(features) {
+    const map = new Map();
+    for (const f of Array.isArray(features) ? features : []) {
+      if (!f?.parentId) continue;
+      const key = String(f.parentId);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(String(f.id));
+    }
+    return map;
+  }
+
   return {
+    recomputeCapacity(changedFeatureIds = null) {
+      const state = store.getState();
+      const features = deriveEffectiveFeaturesFromState(state);
+      const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
+      const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
+      const selectedProjectIds = (state?.selection?.projectIds || []).map((id) => String(id));
+      const selectedTeamIds = (state?.selection?.teamIds || []).map((id) => String(id));
+      const selectedStateIds = (state?.selection?.featureStateNames || []).map((s) => String(s));
+      // When GRAPH_ONLY_SELECTED_PLANS is off (default), graph always shows all plans.
+      const projectsForFilter =
+        featureFlags.GRAPH_ONLY_SELECTED_PLANS ?
+          selectedProjectIds
+        : projects.map((p) => String(p.id));
+
+      capacityCalculator.setChildrenByParent(buildChildrenByParentMap(features));
+      const result = capacityCalculator.calculate(
+        features,
+        { selectedProjects: projectsForFilter, selectedTeams: selectedTeamIds, selectedStates: selectedStateIds },
+        teams,
+        projects,
+        changedFeatureIds
+      );
+
+      store.setState(
+        (s) => ({
+          ...s,
+          capacity: {
+            dates: result.dates,
+            teamDaily: result.teamDailyCapacity,
+            teamDailyMap: result.teamDailyCapacityMap,
+            projectDailyRaw: result.projectDailyCapacityRaw,
+            projectDaily: result.projectDailyCapacity,
+            projectDailyMap: result.projectDailyCapacityMap,
+            organizationDaily: result.totalOrgDailyCapacity,
+            organizationDailyPerTeamAverage: result.totalOrgDailyPerTeamAvg,
+          },
+        }),
+        false,
+        'data.recomputeCapacity'
+      );
+      bus.emit(CapacityEvents.UPDATED, result);
+    },
+
     async hydrateBaseline(options = {}) {
       const preloaded = options?.preloaded || null;
       const hasPreloaded = preloaded && typeof preloaded === 'object';
@@ -389,6 +464,9 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         false,
         'data.bootstrapFromLegacyState'
       );
+
+      // Populate store.capacity so capacitySelectors reads store from the start.
+      this.recomputeCapacity();
 
       return {
         ok: true,

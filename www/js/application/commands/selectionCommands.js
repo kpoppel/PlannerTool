@@ -27,39 +27,39 @@ function nextIdsFromBulkSelections(selections) {
 
 export function createLegacySelectionCommands(state) {
   return {
-    setProjectSelected(id, selected) {
-      return state.setProjectSelected(id, selected);
-    },
+    // setProjectSelected(id, selected) {
+    //   return state.setProjectSelected(id, selected);
+    // },
 
-    setTeamSelected(id, selected) {
-      return state.setTeamSelected(id, selected);
-    },
+    // setTeamSelected(id, selected) {
+    //   return state.setTeamSelected(id, selected);
+    // },
 
-    setProjectsSelectedBulk(selections, opts) {
-      return state.setProjectsSelectedBulk(selections, opts);
-    },
+    // setProjectsSelectedBulk(selections, opts) {
+    //   return state.setProjectsSelectedBulk(selections, opts);
+    // },
 
-    setTeamsSelectedBulk(selections, opts) {
-      return state.setTeamsSelectedBulk(selections, opts);
-    },
+    // setTeamsSelectedBulk(selections, opts) {
+    //   return state.setTeamsSelectedBulk(selections, opts);
+    // },
 
-    setProjectColor(id, color) {
-      const project = (state.projects || []).find((item) => String(item?.id) === String(id));
-      if (project) {
-        project.color = color;
-      }
-    },
+    // setProjectColor(id, color) {
+    //   const project = (state.projects || []).find((item) => String(item?.id) === String(id));
+    //   if (project) {
+    //     project.color = color;
+    //   }
+    // },
 
-    setTeamColor(id, color) {
-      const team = (state.teams || []).find((item) => String(item?.id) === String(id));
-      if (team) {
-        team.color = color;
-      }
-    },
+    // setTeamColor(id, color) {
+    //   const team = (state.teams || []).find((item) => String(item?.id) === String(id));
+    //   if (team) {
+    //     team.color = color;
+    //   }
+    // },
   };
 }
 
-export function createSelectionCommands(store, bus, legacyState) {
+export function createSelectionCommands(store, bus, recomputeCapacity = null) {
   return {
     setProjectSelected(id, selected, options = {}) {
       store.setState(
@@ -73,8 +73,9 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setProjectSelected'
       );
-      //TODO: remove when capacity recompute is ported to store
-      legacyState?.setProjectSelected?.(id, selected);
+      if (recomputeCapacity) {
+        recomputeCapacity();
+      }
       if (!options?.suppressEvents) {
         bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -93,8 +94,9 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setTeamSelected'
       );
-      //TODO: remove when capacity recompute is ported to store
-      legacyState?.setTeamSelected?.(id, selected);
+      if (recomputeCapacity) {
+        recomputeCapacity();
+      }
       if (!options?.suppressEvents) {
         bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -114,8 +116,9 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setProjectsSelectedBulk'
       );
-      // suppressEvents: true prevents legacy from double-emitting; capacity recompute is skipped (TODO)
-      legacyState?.setProjectsSelectedBulk?.(selections, { suppressEvents: true });
+      if (recomputeCapacity) {
+        recomputeCapacity();
+      }
       if (!options?.suppressEvents) {
         bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -135,8 +138,9 @@ export function createSelectionCommands(store, bus, legacyState) {
         false,
         'selection.setTeamsSelectedBulk'
       );
-      // suppressEvents: true prevents legacy from double-emitting; capacity recompute is skipped (TODO)
-      legacyState?.setTeamsSelectedBulk?.(selections, { suppressEvents: true });
+      if (recomputeCapacity) {
+        recomputeCapacity();
+      }
       if (!options?.suppressEvents) {
         bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -144,7 +148,6 @@ export function createSelectionCommands(store, bus, legacyState) {
     },
 
     setProjectColor(id, color, options = {}) {
-      //TODO: legacyState?.setProjectColor?.(id, color);
       store.setState(
         (state) => ({
           ...state,
@@ -164,7 +167,6 @@ export function createSelectionCommands(store, bus, legacyState) {
     },
 
     setTeamColor(id, color, options = {}) {
-      //TODO: legacyState?.setTeamColor?.(id, color);
       store.setState(
         (state) => ({
           ...state,

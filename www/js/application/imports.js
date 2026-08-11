@@ -53,8 +53,8 @@ import { groupService } from '../services/GroupService.js';
 const stateStoreCommands = {
   ui: createUiCommands(store, bus),
   data: createDataCommands(store, bus, dataService, state),
-  selection: createSelectionCommands(store, bus, state),
-  filter: createFilterCommands(store, bus, state),
+  selection: createSelectionCommands(store, bus, () => stateStoreCommands.data.recomputeCapacity()),
+  filter: createFilterCommands(store, bus, state, () => stateStoreCommands.data.recomputeCapacity()),
   view: createViewCommands(store, bus, state),
   viewRestore: createViewRestoreCommands(store, dataService, state),
   feature: createFeatureCommands(store, bus, state),
@@ -70,7 +70,7 @@ const stateStoreSelectors = {
   feature: createFeatureSelectors(store, state),
   scenario: createScenarioSelectors(store, state),
   group: createGroupSelectors(store),
-  capacity: createCapacitySelectors(store, state),
+  capacity: createCapacitySelectors(store),
 };
 
 // Keep the OFF branch explicit: state-store data commands are not exposed

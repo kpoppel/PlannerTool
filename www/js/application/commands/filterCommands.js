@@ -52,7 +52,7 @@ function deriveAvailableStatesFromFeatures(features) {
   return out;
 }
 
-export function createFilterCommands(store, bus, legacyState) {
+export function createFilterCommands(store, bus, legacyState, recomputeCapacity = null) {
   return {
     setSelectedTaskTypes(types, options = {}) {
       const taskTypeNames = Array.isArray(types) ? Array.from(types) : [];
@@ -87,6 +87,7 @@ export function createFilterCommands(store, bus, legacyState) {
         false,
         'filter.setSelectedStates'
       );
+      if (recomputeCapacity) recomputeCapacity();
       if (!options?.suppressEvents) {
         bus?.emit?.('filter:states-changed', { featureStateNames });
       }
@@ -125,6 +126,7 @@ export function createFilterCommands(store, bus, legacyState) {
           'filter.setAllStatesSelected'
         );
       }
+      if (recomputeCapacity) recomputeCapacity();
       if (!options?.suppressEvents) {
         bus?.emit?.('filter:all-states-changed', { selected: Boolean(selected) });
       }
@@ -149,6 +151,7 @@ export function createFilterCommands(store, bus, legacyState) {
         false,
         'filter.toggleStateSelected'
       );
+      if (recomputeCapacity) recomputeCapacity();
       if (!options?.suppressEvents) {
         bus?.emit?.('filter:state-toggled', { stateName: key });
       }
