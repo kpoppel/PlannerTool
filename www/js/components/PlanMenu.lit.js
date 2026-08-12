@@ -177,8 +177,9 @@ export class PlanMenuLit extends LitElement {
     super.connectedCallback();
 
     // Listen to project changes for real-time updates
-    this._onProjectsChanged = (projects) => {
-      this.projects = projects ? [...projects] : [];
+    this._onProjectsChanged = () => {
+      const projects = sel.selection.getProjects() || [];
+      this.projects = [...projects];
       this.requestUpdate();
     };
 
@@ -190,6 +191,8 @@ export class PlanMenuLit extends LitElement {
 
     bus.on(ProjectEvents.CHANGED, this._onProjectsChanged);
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
+
+    this._onProjectsChanged();
 
     // Don't initialize from state - projects are passed as properties from TopMenu
   }

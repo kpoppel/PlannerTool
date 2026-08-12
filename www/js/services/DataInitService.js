@@ -102,8 +102,8 @@ export class DataInitService {
     }
 
     // Emit initial events
-    this._bus.emit(ProjectEvents.CHANGED, this._projectTeamService.getProjects());
-    this._bus.emit(TeamEvents.CHANGED, this._projectTeamService.getTeams());
+    this._bus.emit(ProjectEvents.CHANGED);
+    this._bus.emit(TeamEvents.CHANGED);
     this._bus.emit(
       StateFilterEvents.CHANGED,
       this._stateFilterService.availableFeatureStates
@@ -185,8 +185,8 @@ export class DataInitService {
     );
 
     // Emit refresh events
-    this._bus.emit(ProjectEvents.CHANGED, this._projectTeamService.getProjects());
-    this._bus.emit(TeamEvents.CHANGED, this._projectTeamService.getTeams());
+    this._bus.emit(ProjectEvents.CHANGED);
+    this._bus.emit(TeamEvents.CHANGED);
     this._bus.emit(FeatureEvents.UPDATED);
 
     return {

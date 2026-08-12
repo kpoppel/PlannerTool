@@ -165,8 +165,9 @@ export class TeamMenuLit extends LitElement {
     super.connectedCallback();
 
     // Listen to team changes for real-time updates
-    this._onTeamsChanged = (teams) => {
-      this.teams = teams ? [...teams] : [];
+    this._onTeamsChanged = () => {
+      const teams = sel.selection.getTeams() || [];
+      this.teams = [...teams];
       this.requestUpdate();
     };
 
@@ -188,6 +189,8 @@ export class TeamMenuLit extends LitElement {
     bus.on(ViewManagementEvents.ACTIVATED, this._onViewActivated);
     bus.on(FeatureEvents.UPDATED, this._onFeaturesUpdated);
     bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
+
+    this._onTeamsChanged();
   }
 
   disconnectedCallback() {

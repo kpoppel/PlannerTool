@@ -249,13 +249,13 @@ export class TopMenuBarLit extends LitElement {
     document.addEventListener('click', this._outsideClickHandler);
 
     // Listen to state changes to update menu data
-    this._onProjectsChanged = (projects) => {
-      const arr = projects ? [...projects] : [];
+    this._onProjectsChanged = () => {
+      const arr = sel.selection.getProjects() || [];
       this.projects = arr;
       this.selectedProjectsCount = arr.filter((p) => p && p.selected).length;
     };
-    this._onTeamsChanged = (teams) => {
-      const arr = teams ? [...teams] : [];
+    this._onTeamsChanged = () => {
+      const arr = sel.selection.getTeams() || [];
       this.teams = arr;
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
     };
@@ -292,8 +292,8 @@ export class TopMenuBarLit extends LitElement {
     // emitted before this element was connected. This ensures the component
     // has current data immediately instead of waiting for subsequent events.
     try {
-      this._onProjectsChanged(sel.selection.getProjects());
-      this._onTeamsChanged(sel.selection.getTeams());
+      this._onProjectsChanged();
+      this._onTeamsChanged();
       this._onScenariosList({
         scenarios: sel.scenario.getScenarios(),
         activeScenarioId: sel.scenario.getActiveScenarioId(),

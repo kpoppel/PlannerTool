@@ -1,17 +1,5 @@
 import { ProjectEvents, TeamEvents, FeatureEvents } from '../../core/EventRegistry.js';
 
-function projectsWithSelection(state) {
-  const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
-  const ids = new Set((state?.selection?.projectIds || []).map((id) => String(id)));
-  return projects.map((p) => ({ ...p, selected: ids.has(String(p.id)) }));
-}
-
-function teamsWithSelection(state) {
-  const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
-  const ids = new Set((state?.selection?.teamIds || []).map((id) => String(id)));
-  return teams.map((t) => ({ ...t, selected: ids.has(String(t.id)) }));
-}
-
 function nextIds(currentIds, id, selected) {
   const set = new Set(Array.isArray(currentIds) ? currentIds : []);
   if (selected) set.add(id);
@@ -77,7 +65,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
-        bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
+        bus?.emit?.(ProjectEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -98,7 +86,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
-        bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
+        bus?.emit?.(TeamEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -120,7 +108,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
-        bus?.emit?.(ProjectEvents.CHANGED, projectsWithSelection(store.getState()));
+        bus?.emit?.(ProjectEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -142,7 +130,7 @@ export function createSelectionCommands(store, bus, recomputeCapacity = null) {
         recomputeCapacity();
       }
       if (!options?.suppressEvents) {
-        bus?.emit?.(TeamEvents.CHANGED, teamsWithSelection(store.getState()));
+        bus?.emit?.(TeamEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },

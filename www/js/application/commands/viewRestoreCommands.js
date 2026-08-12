@@ -324,8 +324,6 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     const snapshot = store.getState();
     const projectIds = Array.from(snapshot.selection?.projectIds || []);
     const teamIds = Array.from(snapshot.selection?.teamIds || []);
-    const selectedProjectIds = new Set(projectIds.map(String));
-    const selectedTeamIds = new Set(teamIds.map(String));
 
     const activeViewData = {
       ...(viewData || {}),
@@ -335,14 +333,8 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       viewOptions: toActiveViewOptions(snapshot, viewData?.viewOptions || {}),
     };
 
-    const projects = (snapshot.baseline?.projects || []).map((p) => ({
-      ...p, selected: selectedProjectIds.has(String(p.id)),
-    }));
-    const teams = (snapshot.baseline?.teams || []).map((t) => ({
-      ...t, selected: selectedTeamIds.has(String(t.id)),
-    }));
-    bus.emit(ProjectEvents.CHANGED, projects);
-    bus.emit(TeamEvents.CHANGED, teams);
+    bus.emit(ProjectEvents.CHANGED);
+    bus.emit(TeamEvents.CHANGED);
     bus.emit(FeatureEvents.UPDATED);
     bus.emit(ViewManagementEvents.ACTIVATED, {
       id,

@@ -993,12 +993,14 @@ export class SidebarLit extends LitElement {
     };
     // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
-    this._onProjectsChanged = (projects) => {
-      this.projects = projects ? [...projects] : [];
+    this._onProjectsChanged = () => {
+      const projects = sel.selection.getProjects() || [];
+      this.projects = [...projects];
       this._scheduleDataFunnelRecompute();
     };
-    this._onTeamsChanged = (teams) => {
-      this.teams = teams ? [...teams] : [];
+    this._onTeamsChanged = () => {
+      const teams = sel.selection.getTeams() || [];
+      this.teams = [...teams];
       this._scheduleDataFunnelRecompute();
     };
     this._onScenariosList = (payload) => {
@@ -1237,8 +1239,8 @@ export class SidebarLit extends LitElement {
     // renders current projects/teams immediately instead of waiting for
     // subsequent change events.
     try {
-      this._onProjectsChanged(sel.selection.getProjects());
-      this._onTeamsChanged(sel.selection.getTeams());
+      this._onProjectsChanged();
+      this._onTeamsChanged();
       this._onScenariosList({
         scenarios: sel.scenario.getScenarios(),
         activeScenarioId: sel.scenario.getActiveScenarioId(),

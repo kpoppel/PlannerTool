@@ -45,6 +45,7 @@ Template - do not change :
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
 
 ### Changed
+- Phase 7 continued: `ProjectEvents.CHANGED` and `TeamEvents.CHANGED` now emit as signal-only events (no project/team array payloads), and menu/sidebar receivers now re-read project/team selection via `sel.selection` on receipt.
 - Tightened `CapacityEvents.UPDATED` to a signal-only emission so capacity recomputation no longer sends full capacity snapshots on the event bus.
 - Restored deleted plugin test coverage and updated it to the store-backed selector/command interface for cost, export, markers, portfolio, and plugin-state flows.
 - Removed the legacy `State.js` singleton, its one-off helper services, and the legacy-only tests that only exercised the old bridge layer.
