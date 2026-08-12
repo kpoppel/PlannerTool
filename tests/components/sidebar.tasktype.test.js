@@ -5,7 +5,7 @@
  *   1. _taskTypesInitialized must not be set when no types are available yet.
  *   2. _toggleTaskType uses ViewService as the authoritative source (not selectedTaskTypes).
  *   3. _renderTaskFilters active class driven by ViewService.isTypeVisible().
- *   4. _onSidebarFilterChanged syncs received selectedTaskTypes back to ViewService.
+ *   4. _onSidebarFilterChanged syncs selected task types from selectors on signal events.
  */
 
 import { expect } from '@open-wc/testing';
@@ -141,32 +141,34 @@ describe('Sidebar task-type filter', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Bug 4: _onSidebarFilterChanged syncs received selectedTaskTypes to ViewService
+  // Bug 4: _onSidebarFilterChanged syncs selected task types from selector state
   // -------------------------------------------------------------------------
-  it('FilterEvents.CHANGED with selectedTaskTypes syncs hidden types to ViewService', () => {
+  it('FilterEvents.CHANGED syncs selector-backed type visibility to local selectedTaskTypes', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic', 'feature']);
     cmd.view.setTypeVisibility('epic', true);
     cmd.view.setTypeVisibility('feature', true);
 
-    // External caller hides feature by emitting selectedTaskTypes without it
-    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: ['epic'] });
+    // Hide feature via command/store, then fire the signal event.
+    cmd.view.setTypeVisibility('feature', false, { suppressEvents: true });
+    bus.emit(FilterEvents.CHANGED);
 
     expect(sel.view.isTypeVisible('feature')).to.equal(false,
-      'feature should be hidden after external selectedTaskTypes event excludes it');
+      'feature should be hidden after selector update');
     expect(sel.view.isTypeVisible('epic')).to.equal(true);
     expect(sidebar.selectedTaskTypes.has('feature')).to.equal(false);
     expect(sidebar._taskTypesInitialized).to.equal(true);
   });
 
-  it('FilterEvents.CHANGED restoring all types makes all visible in ViewService', () => {
+  it('FilterEvents.CHANGED with all visible types syncs local selectedTaskTypes', () => {
     sidebar.availableTaskTypes = ['epic', 'feature'];
     sidebar.selectedTaskTypes = new Set(['epic']);
-    cmd.view.setTypeVisibility('feature', false);
+    cmd.view.setTypeVisibility('feature', true, { suppressEvents: true });
 
-    bus.emit(FilterEvents.CHANGED, { selectedTaskTypes: ['epic', 'feature'] });
+    bus.emit(FilterEvents.CHANGED);
 
     expect(sel.view.isTypeVisible('epic')).to.equal(true);
     expect(sel.view.isTypeVisible('feature')).to.equal(true);
+    expect(sidebar.selectedTaskTypes.has('feature')).to.equal(true);
   });
 });

@@ -1128,48 +1128,39 @@ export class SidebarLit extends LitElement {
     bus.on(StateFilterEvents.CHANGED, this._onAvailableStatesChanged);
 
     // Listen for task filter updates from TaskFilterService
-    this._onTaskFiltersChanged = (payload) => {
-      if (payload && payload.taskFilters) {
-        this.taskFilters = payload.taskFilters;
-        this.requestUpdate();
-      }
+    this._onTaskFiltersChanged = () => {
+      this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+      this.requestUpdate();
     };
     bus.on(FilterEvents.CHANGED, this._onTaskFiltersChanged);
 
-    // Listen for sidebar disabled maps emitted via state
-    this._onSidebarFilterChanged = (payload) => {
-      if (payload && Object.prototype.hasOwnProperty.call(payload, 'disabledSidebar')) {
-        this._disabledSidebar = payload.disabledSidebar || {};
-        this.requestUpdate();
-      }
-      // Allow external callers (plugins) to programmatically set which
-      // task types are selected in the sidebar via FilterEvents.CHANGED
-      // with `selectedTaskTypes: [ ... ]`.
-      if (payload && Object.prototype.hasOwnProperty.call(payload, 'selectedTaskTypes')) {
-        const arr =
-          Array.isArray(payload.selectedTaskTypes) ? payload.selectedTaskTypes : [];
-        this.selectedTaskTypes = new Set(arr);
-        // Sync to ViewService so the board filter matches (external callers or
-        // plugin-driven selectedTaskTypes must also be reflected in _hiddenTypes).
-        for (const t of this.availableTaskTypes || []) {
-          cmd.view.setTypeVisibility(
-            t,
-            this.selectedTaskTypes.has(t),
-            { suppressEvents: true }
-          );
-        }
-        cmd.filter.setSelectedTaskTypes(Array.from(this.selectedTaskTypes), {
-          suppressEvents: true,
-        });
-        // Mark types initialized so default-selection logic does not override
-        this._taskTypesInitialized = true;
-        this.requestUpdate();
-      }
+    this._onSidebarFilterChanged = () => {
+      const visibleTypes = (this.availableTaskTypes || []).filter((t) =>
+        sel.view.isTypeVisible(t)
+      );
+      this.selectedTaskTypes = new Set(visibleTypes);
+      this._taskTypesInitialized = true;
+      this.requestUpdate();
     };
     bus.on(FilterEvents.CHANGED, this._onSidebarFilterChanged);
 
+    this._onSidebarDisabledSet = ({ map } = {}) => {
+      this._disabledSidebar = map || {};
+      this.requestUpdate();
+    };
+    this._onSidebarDisabledCleared = () => {
+      this._disabledSidebar = {};
+      this.requestUpdate();
+    };
+    bus.on('filter:sidebar-disabled-set', this._onSidebarDisabledSet);
+    bus.on('filter:sidebar-disabled-cleared', this._onSidebarDisabledCleared);
+
     // When display mode changes to/from 'packed', disable or restore schedule.unplanned.
-    this._onDisplayModeChanged = ({ mode, oldMode } = {}) => {
+    this._lastDisplayMode = sel.view.getDisplayMode() || 'normal';
+    this._onDisplayModeChanged = () => {
+      const mode = sel.view.getDisplayMode() || 'normal';
+      const oldMode = this._lastDisplayMode;
+      this._lastDisplayMode = mode;
       if (mode === 'packed' && oldMode !== 'packed') {
         // Snapshot the current unplanned state before disabling it.
         const filters = sel.filter.getTaskFilters() || {};
@@ -1223,9 +1214,9 @@ export class SidebarLit extends LitElement {
     };
     bus.on(ViewEvents.CONDENSED, onViewOptionChange);
     bus.on(ViewEvents.DEPENDENCIES, onViewOptionChange);
-    bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
+    bus.on(ViewEvents.CAPACITY_MODE, () => {
       // Sync local _graphType when capacity mode changes
-      this._graphType = mode || 'team';
+      this._graphType = sel.view.getCapacityViewMode() || 'team';
       this.requestUpdate();
       onViewOptionChange();
     });
@@ -1347,6 +1338,10 @@ export class SidebarLit extends LitElement {
       bus.off(FilterEvents.CHANGED, this._onTaskFiltersChanged);
     if (this._onSidebarFilterChanged)
       bus.off(FilterEvents.CHANGED, this._onSidebarFilterChanged);
+    if (this._onSidebarDisabledSet)
+      bus.off('filter:sidebar-disabled-set', this._onSidebarDisabledSet);
+    if (this._onSidebarDisabledCleared)
+      bus.off('filter:sidebar-disabled-cleared', this._onSidebarDisabledCleared);
     if (this._onFeaturesForTypes)
       bus.off(FeatureEvents.UPDATED, this._onFeaturesForTypes);
     if (this._onDisplayModeChanged)
@@ -1387,13 +1382,7 @@ export class SidebarLit extends LitElement {
     // Trigger data funnel recomputation
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     // Emit filter change event so the board updates
-    bus.emit(FilterEvents.CHANGED, {
-      expansion: {
-        parentChild: this.expandParentChild,
-        relations: this.expandRelations,
-        teamAllocated: this.expandTeamAllocated,
-      },
-    });
+    bus.emit(FilterEvents.CHANGED);
   }
 
   _toggleTaskFilter(dimension, option) {

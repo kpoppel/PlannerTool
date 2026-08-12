@@ -11,7 +11,7 @@
  *
  * Events emitted:
  * - TimelineEvents.SCALE_CHANGED: when timeline scale changes
- * - FilterEvents.CHANGED: when type visibility (hiddenTypes) changes
+ * - FilterEvents.CHANGED: when filter/view-affecting options change
  * - ViewEvents.CONDENSED: when condensed card mode changes
  * - ViewEvents.DEPENDENCIES: when dependency visibility changes
  * - ViewEvents.CAPACITY_MODE: when capacity view mode changes
@@ -25,32 +25,6 @@ import {
   ViewEvents,
   FeatureEvents,
 } from '../core/EventRegistry.js';
-// Local monthWidth mapping to avoid circular import with Timeline component
-function getMonthWidthForScale(scale) {
-  const ZOOM_LEVELS = {
-    weeks: 240,
-    months: 120,
-    threeMonths: null,
-    quarters: 60,
-    years: 30,
-  };
-  if (scale === 'threeMonths') {
-    // Find timelineSection inline to avoid circular dependency with board-utils
-    let section = null;
-    if (typeof document !== 'undefined') {
-      const boardEl = document.querySelector('timeline-board');
-      if (boardEl) {
-        const root = boardEl.renderRoot || boardEl.shadowRoot || boardEl;
-        section = root && root.querySelector ? root.querySelector('#timelineSection') : null;
-      }
-    }
-    if (section && section.clientWidth) {
-      return Math.max(30, Math.floor(section.clientWidth / 3));
-    }
-    return 120;
-  }
-  return ZOOM_LEVELS[scale] ?? 120;
-}
 
 export class ViewService {
   /**
@@ -105,16 +79,10 @@ export class ViewService {
       scale = 'months';
     }
     if (this._timelineScale === scale) return;
-    const oldScale = this._timelineScale;
     this._timelineScale = scale;
-    const monthWidth = getMonthWidthForScale(scale);
     // emit unless suppressed
     if (!arguments[1]) {
-      this.bus.emit(TimelineEvents.SCALE_CHANGED, {
-        scale,
-        monthWidth,
-        oldScale,
-      });
+      this.bus.emit(TimelineEvents.SCALE_CHANGED);
     }
   }
 
@@ -151,9 +119,7 @@ export class ViewService {
       this._hiddenTypes.add(key);
     }
     if (!arguments[2]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        hiddenTypes: Array.from(this._hiddenTypes),
-      });
+      this.bus.emit(FilterEvents.CHANGED);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -176,7 +142,7 @@ export class ViewService {
     this._showDependencies = !!val;
     console.debug('[ViewService] setShowDependencies ->', this._showDependencies);
     if (!arguments[1]) {
-      this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
+      this.bus.emit(ViewEvents.DEPENDENCIES);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -197,9 +163,7 @@ export class ViewService {
     this._showUnassignedCards = !!val;
     console.debug('[ViewService] setShowUnallocatedCards ->', this._showUnassignedCards);
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        showUnassignedCards: this._showUnassignedCards,
-      });
+      this.bus.emit(FilterEvents.CHANGED);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -220,9 +184,7 @@ export class ViewService {
     this._showUnplannedWork = !!val;
     console.debug('[ViewService] setShowUnplannedWork ->', this._showUnplannedWork);
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        showUnplannedWork: this._showUnplannedWork,
-      });
+      this.bus.emit(FilterEvents.CHANGED);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -242,9 +204,7 @@ export class ViewService {
   setShowOnlyProjectHierarchy(val) {
     this._showOnlyProjectHierarchy = !!val;
     if (!arguments[1]) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
-      });
+      this.bus.emit(FilterEvents.CHANGED);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -269,12 +229,11 @@ export class ViewService {
       mode = 'normal';
     }
     if (this._displayMode === mode) return;
-    const oldMode = this._displayMode;
     this._displayMode = mode;
     if (!arguments[1]) {
       // Emit CONDENSED for backward compatibility (listeners re-render on display change)
-      this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
-      this.bus.emit(ViewEvents.DISPLAY_MODE, { mode, oldMode });
+      this.bus.emit(ViewEvents.CONDENSED);
+      this.bus.emit(ViewEvents.DISPLAY_MODE);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -324,7 +283,7 @@ export class ViewService {
     if (this._capacityViewMode === mode) return;
     this._capacityViewMode = mode;
     if (!arguments[1]) {
-      this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
+      this.bus.emit(ViewEvents.CAPACITY_MODE);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -346,7 +305,7 @@ export class ViewService {
     if (this._featureSortMode === mode) return;
     this._featureSortMode = mode;
     if (!arguments[1]) {
-      this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
+      this.bus.emit(ViewEvents.SORT_MODE);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -358,7 +317,7 @@ export class ViewService {
   setHighlightFeatureRelationMode(val) {
     this._highlightFeatureRelationMode = !!val;
     if (!arguments[1]) {
-      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
+      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }
@@ -436,17 +395,12 @@ export class ViewService {
     this.applyViewStateSilently(viewState);
 
     if (emitAggregated) {
-      this.bus.emit(FilterEvents.CHANGED, {
-        hiddenTypes: Array.from(this._hiddenTypes),
-        showUnassignedCards: this._showUnassignedCards,
-        showUnplannedWork: this._showUnplannedWork,
-        showOnlyProjectHierarchy: this._showOnlyProjectHierarchy,
-      });
-      this.bus.emit(ViewEvents.DEPENDENCIES, this._showDependencies);
-      this.bus.emit(ViewEvents.CONDENSED, this.condensedCards);
-      this.bus.emit(ViewEvents.CAPACITY_MODE, this._capacityViewMode);
-      this.bus.emit(ViewEvents.SORT_MODE, this._featureSortMode);
-      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS, this._highlightFeatureRelationMode);
+      this.bus.emit(FilterEvents.CHANGED);
+      this.bus.emit(ViewEvents.DEPENDENCIES);
+      this.bus.emit(ViewEvents.CONDENSED);
+      this.bus.emit(ViewEvents.CAPACITY_MODE);
+      this.bus.emit(ViewEvents.SORT_MODE);
+      this.bus.emit(ViewEvents.HIGHLIGHT_RELATIONS);
       this.bus.emit(FeatureEvents.UPDATED);
     }
   }

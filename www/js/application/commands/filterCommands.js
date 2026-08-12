@@ -91,7 +91,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         'filter.setSelectedTaskTypes'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { selectedTaskTypes: taskTypeNames });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -111,7 +111,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       );
       if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: featureStateNames });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -153,7 +153,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       }
       if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(StateFilterEvents.CHANGED, nextSelection);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
@@ -181,7 +181,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       );
       if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -201,7 +201,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         'filter.setStateFilter'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -266,7 +266,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         'filter.setTaskFilter'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { taskFilters: nextTaskFilters });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },

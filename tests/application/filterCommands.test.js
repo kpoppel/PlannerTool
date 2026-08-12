@@ -85,8 +85,11 @@ describe('application/commands/filterCommands', () => {
     commands.toggleTaskFilter('schedule', 'planned');
     commands.toggleStateSelected('Doing');
 
-    expect(bus.emit.mock.calls.some(([event, payload]) => event === FilterEvents.CHANGED && payload?.selectedFeatureStateFilter?.includes('New'))).toBe(true);
-    expect(bus.emit.mock.calls.some(([event, payload]) => event === FilterEvents.CHANGED && payload?.taskFilters?.schedule?.planned === false)).toBe(true);
+    const filterChangedCalls = bus.emit.mock.calls.filter(
+      ([event]) => event === FilterEvents.CHANGED
+    );
+    expect(filterChangedCalls.length).toBeGreaterThan(0);
+    expect(filterChangedCalls.every(([, payload]) => payload === undefined)).toBe(true);
     expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
   });
 
@@ -115,14 +118,11 @@ describe('application/commands/filterCommands', () => {
     commands.setAllStatesSelected(true);
 
     expect(store.getState().selection.featureStateNames).toEqual(['New', 'Doing', 'Done']);
-    expect(
-      bus.emit.mock.calls.some(
-        ([event, payload]) =>
-          event === FilterEvents.CHANGED &&
-          Array.isArray(payload?.selectedFeatureStateFilter) &&
-          payload.selectedFeatureStateFilter.length === 3
-      )
-    ).toBe(true);
+    const filterChangedCalls = bus.emit.mock.calls.filter(
+      ([event]) => event === FilterEvents.CHANGED
+    );
+    expect(filterChangedCalls.length).toBeGreaterThan(0);
+    expect(filterChangedCalls.every(([, payload]) => payload === undefined)).toBe(true);
     expect(
       bus.emit.mock.calls.some(([event]) => event === StateFilterEvents.CHANGED)
     ).toBe(true);

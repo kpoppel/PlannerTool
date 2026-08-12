@@ -133,8 +133,8 @@ export class PluginGraph extends LitElement {
     bus.on(ProjectEvents.CHANGED, () => this._scheduleRender());
     bus.on(TeamEvents.CHANGED, () => this._scheduleRender());
     bus.on(StateFilterEvents.CHANGED, () => this._scheduleRender());
-    bus.on(ViewEvents.CAPACITY_MODE, (mode) => {
-      this.mode = mode;
+    bus.on(ViewEvents.CAPACITY_MODE, () => {
+      this.mode = sel.view.getCapacityViewMode();
       this._scheduleRender();
     });
     bus.on(FilterEvents.CHANGED, () => this._scheduleRender());

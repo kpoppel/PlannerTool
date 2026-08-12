@@ -168,7 +168,7 @@ export class Timeline extends LitElement {
     }
 
     // Emit event after render completes
-    this.bus?.emit?.(TimelineEvents.MONTHS, this.months);
+    this.bus?.emit?.(TimelineEvents.MONTHS);
   }
 
   updated(changedProperties) {
@@ -283,24 +283,25 @@ export async function initTimeline() {
     // callers can provide changed ids and allow the header logic to short-circuit
     // when the visible month range does not need to change.
     bus.on(FeatureEvents.UPDATED, (p) => scheduleRenderTimelineHeader(p));
-    bus.on(TimelineEvents.SCALE_CHANGED, (payload) => {
+    bus.on(TimelineEvents.SCALE_CHANGED, () => {
       // Capture center date BEFORE scale change
       const centerDate = getCenterDate();
 
       // Track current scale
-      _currentTimelineScale = payload.scale;
+      const scale = sel.view.getTimelineScale() || _currentTimelineScale || 'months';
+      _currentTimelineScale = scale;
       // Toggle class on the mounted timeline element so components/styles
       // can react to the 'years' zoom (prevent wrapping of labels)
       const t = findInBoard('timeline-lit');
       if (t) {
-        if (payload.scale === 'years') t.classList.add('scale-years');
+        if (scale === 'years') t.classList.add('scale-years');
         else t.classList.remove('scale-years');
       }
 
       // If a special 'threeMonths' scale is requested, compute monthWidth
       // so that exactly 3 months fill the timelineSection viewport width.
-      let newMonthWidth = payload.monthWidth;
-      if (payload.scale === 'threeMonths') {
+      let newMonthWidth = getMonthWidthForScale(scale);
+      if (scale === 'threeMonths') {
         const section = findInBoard('#scroll-container');
         if (section && section.clientWidth) {
           newMonthWidth = Math.max(30, Math.floor(section.clientWidth / 3));
@@ -317,11 +318,11 @@ export async function initTimeline() {
       );
 
       // Trigger re-render and wait for it to complete
-      const renderPromise = scheduleRenderTimelineHeader(payload);
+      const renderPromise = scheduleRenderTimelineHeader();
 
       // Restore center date position after render completes
       renderPromise.then(() => {
-        if (payload && payload.scale === 'threeMonths') {
+        if (scale === 'threeMonths') {
           // Center current month in the viewport
           const today = new Date();
           const idx = monthsCache.findIndex(
@@ -341,10 +342,7 @@ export async function initTimeline() {
           }
         }
         // Signal that scale change is complete and scroll position is updated
-        bus.emit(
-          TimelineEvents.SCALE_COMPLETE,
-          Object.assign({}, payload, { monthWidth: newMonthWidth })
-        );
+        bus.emit(TimelineEvents.SCALE_COMPLETE, { scale, monthWidth: newMonthWidth });
       });
     });
     // Ensure any restored timeline scale is applied now.
@@ -494,7 +492,7 @@ async function renderTimelineHeader(payload) {
     comp.bus = bus;
     comp.monthWidth = TIMELINE_CONFIG.monthWidth;
     await comp.renderMonths(monthsCache).catch(() => {});
-    bus.emit(TimelineEvents.MONTHS, monthsCache);
+    bus.emit(TimelineEvents.MONTHS);
     const totalWidth = monthsCache.length * TIMELINE_CONFIG.monthWidth;
     // Set timeline header width
     header.style.width = totalWidth + 10 + 'px';
@@ -506,7 +504,7 @@ async function renderTimelineHeader(payload) {
     }
   } else {
     // No component available; still emit months so consumers can respond
-    bus.emit(TimelineEvents.MONTHS, monthsCache);
+    bus.emit(TimelineEvents.MONTHS);
   }
 
   // Initial scroll so current month is centered in viewport

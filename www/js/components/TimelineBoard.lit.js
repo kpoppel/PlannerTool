@@ -58,7 +58,7 @@ class TimelineBoard extends LitElement {
 
       // Ensure we register for MONTHS before initializing the timeline so
       // the initial MONTHS emission during initTimeline() isn't missed.
-      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
+      this._onMonthsUpdated = () => this._positionTodayLine(mod_t.getTimelineMonths());
       bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
 
       await mod_t.initTimeline();
@@ -73,7 +73,7 @@ class TimelineBoard extends LitElement {
       this._initGroupContextMenu(GroupContextMenu);
 
       // Position today-line once months are available, and re-position on scale changes
-      this._onMonthsUpdated = (months) => this._positionTodayLine(months);
+      this._onMonthsUpdated = () => this._positionTodayLine(mod_t.getTimelineMonths());
       bus.on(TimelineEvents.MONTHS, this._onMonthsUpdated);
 
       this._enablePanning();

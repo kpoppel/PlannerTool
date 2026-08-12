@@ -212,9 +212,7 @@ export class ViewManagementService {
           );
           // Emit with the correct Symbol so Sidebar._onSidebarFilterChanged fires
           if (!isInitBatch) {
-            this._bus.emit(FilterEvents.CHANGED, {
-              selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-            });
+            this._bus.emit(FilterEvents.CHANGED);
           }
 
           // Reset graph type to default
@@ -300,9 +298,7 @@ export class ViewManagementService {
             );
             // Use the Symbol key so Sidebar._onSidebarFilterChanged fires for proper sync
             if (!isInitBatch) {
-              this._bus.emit(FilterEvents.CHANGED, {
-                selectedTaskTypes: Array.from(sidebarElement.selectedTaskTypes),
-              });
+              this._bus.emit(FilterEvents.CHANGED);
             }
 
             // Restore graph type if saved

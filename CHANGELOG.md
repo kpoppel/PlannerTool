@@ -46,6 +46,7 @@ Template - do not change :
 
 ### Changed
 - Phase 7 continued: `ProjectEvents.CHANGED` and `TeamEvents.CHANGED` now emit as signal-only events (no project/team array payloads), and menu/sidebar receivers now re-read project/team selection via `sel.selection` on receipt.
+- Phase 7 continued: `FilterEvents.CHANGED`, `ViewEvents.*` view-state toggles, and `TimelineEvents.SCALE_CHANGED`/`TimelineEvents.MONTHS` now emit as signal-only events; listeners now read current state through `sel`/`cmd` at receipt time instead of consuming live payload objects.
 - Tightened `CapacityEvents.UPDATED` to a signal-only emission so capacity recomputation no longer sends full capacity snapshots on the event bus.
 - Restored deleted plugin test coverage and updated it to the store-backed selector/command interface for cost, export, markers, portfolio, and plugin-state flows.
 - Removed the legacy `State.js` singleton, its one-off helper services, and the legacy-only tests that only exercised the old bridge layer.

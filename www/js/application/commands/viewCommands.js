@@ -115,7 +115,6 @@ export function createViewCommands(store, bus) {
     },
 
     setTimelineScale(scale, runtimeOptions = {}) {
-      const previousScale = store.getState()?.view?.options?.timelineScale;
       setViewOptions(
         (options) => ({
           ...options,
@@ -124,16 +123,11 @@ export function createViewCommands(store, bus) {
         'view.setTimelineScale'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(TimelineEvents.SCALE_CHANGED, {
-          scale,
-          oldScale: previousScale,
-          monthWidth: 120,
-        });
+        bus?.emit?.(TimelineEvents.SCALE_CHANGED);
       }
     },
 
     setCondensedCards(condensed, runtimeOptions = {}) {
-      const previousMode = store.getState()?.view?.options?.displayMode || 'normal';
       const nextMode = Boolean(condensed) ? 'compact' : 'normal';
       setViewOptions(
         (options) => ({
@@ -145,8 +139,8 @@ export function createViewCommands(store, bus) {
         'view.setCondensedCards'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CONDENSED, Boolean(condensed));
-        bus?.emit?.(ViewEvents.DISPLAY_MODE, { mode: nextMode, oldMode: previousMode });
+        bus?.emit?.(ViewEvents.CONDENSED);
+        bus?.emit?.(ViewEvents.DISPLAY_MODE);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -160,7 +154,7 @@ export function createViewCommands(store, bus) {
         'view.setFeatureSortMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.SORT_MODE, mode);
+        bus?.emit?.(ViewEvents.SORT_MODE);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -174,13 +168,12 @@ export function createViewCommands(store, bus) {
         'view.setCapacityViewMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CAPACITY_MODE, mode);
+        bus?.emit?.(ViewEvents.CAPACITY_MODE);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setDisplayMode(mode, runtimeOptions = {}) {
-      const previousMode = store.getState()?.view?.options?.displayMode || 'normal';
       const packedMode = mode === 'packed';
       const condensedCards = mode !== 'normal';
       setViewOptions(
@@ -193,8 +186,8 @@ export function createViewCommands(store, bus) {
         'view.setDisplayMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CONDENSED, condensedCards);
-        bus?.emit?.(ViewEvents.DISPLAY_MODE, { mode, oldMode: previousMode });
+        bus?.emit?.(ViewEvents.CONDENSED);
+        bus?.emit?.(ViewEvents.DISPLAY_MODE);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -209,7 +202,7 @@ export function createViewCommands(store, bus) {
         'view.setShowDependencies'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.DEPENDENCIES, value);
+        bus?.emit?.(ViewEvents.DEPENDENCIES);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -233,7 +226,7 @@ export function createViewCommands(store, bus) {
         'view.setTypeVisibility'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED, { hiddenTypes: nextHiddenTypes });
+        bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
@@ -245,7 +238,7 @@ export function createViewCommands(store, bus) {
         'view.setHighlightFeatureRelationMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.HIGHLIGHT_RELATIONS, value);
+        bus?.emit?.(ViewEvents.HIGHLIGHT_RELATIONS);
       }
     },
   };
