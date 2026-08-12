@@ -40,6 +40,11 @@ describe('ProviderREST /api/scenario tests', () => {
     expect(saved1.data).to.have.property('id');
     expect(typeof saved1.data.id).to.equal('string');
 
+    // Server refreshes must normalize all scenario rows back to clean state.
+    const refreshed = await pr.listScenarios();
+    expect(refreshed.ok).to.equal(true);
+    expect(refreshed.data.every((s) => s.isChanged === false)).to.equal(true);
+
     // saveScenario (update)
     const updatedScenario = { ...saved1.data, name: 'New Scenario Updated' };
     const saved2 = await pr.saveScenario(updatedScenario);
@@ -57,5 +62,13 @@ describe('ProviderREST /api/scenario tests', () => {
     const deleted = await pr.deleteScenario(saved1.data.id);
     expect(deleted.ok).to.equal(true);
     expect(deleted.data).to.equal(true);
+  });
+
+  it('re-hydrated scenario lists are always clean', async () => {
+    const pr = new ProviderREST();
+    const list = await pr.listScenarios();
+
+    expect(list.ok).to.equal(true);
+    expect(list.data.every((scenario) => scenario.isChanged === false)).to.equal(true);
   });
 });

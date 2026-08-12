@@ -150,32 +150,31 @@ export class ScenarioMenuLit extends LitElement {
   connectedCallback() {
     super.connectedCallback();
 
-    // Listen to scenario changes for real-time updates
+    // Listen to scenario changes for real-time updates.
+    // Do not silently hide state failures by falling back to stale event payloads.
     this._onScenariosList = (payload) => {
-      // Prefer full scenarios from selectors, but fall back to event payload
-      // when selector-backed state has not yet been hydrated.
-      try {
-        const full = sel.scenario.getScenarios();
-        const list = Array.isArray(full) && full.length > 0 ? full : payload?.scenarios;
-        this.scenarios = Array.isArray(list) ? [...list] : [];
-      } catch (e) {
-        // Fallback to payload if state is not ready
-        const list = payload?.scenarios || [];
-        this.scenarios = Array.isArray(list) ? [...list] : [];
+      const full = sel.scenario.getScenarios();
+      if (!Array.isArray(full)) {
+        throw new Error('ScenarioMenu expected a valid scenario list from the store');
       }
-      this.activeScenarioId = payload?.activeScenarioId || sel.scenario.getActiveScenarioId();
+
+      this.scenarios = [...full];
+      this.activeScenarioId = payload?.activeScenarioId ?? sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
 
     this._onScenarioActivated = (payload) => {
-      this.activeScenarioId = payload?.scenarioId || null;
+      this.activeScenarioId = payload.scenarioId;
       this.requestUpdate();
     };
 
-    this._onScenariosUpdated = (payload) => {
+    this._onScenariosUpdated = () => {
       const scenarios = sel.scenario.getScenarios();
-      const list = Array.isArray(scenarios) && scenarios.length > 0 ? scenarios : payload;
-      this.scenarios = Array.isArray(list) ? [...list] : [];
+      if (!Array.isArray(scenarios)) {
+        throw new Error('ScenarioMenu expected a valid scenario list from the store');
+      }
+
+      this.scenarios = [...scenarios];
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
@@ -183,6 +182,7 @@ export class ScenarioMenuLit extends LitElement {
     bus.on(ScenarioEvents.LIST, this._onScenariosList);
     bus.on(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
+    bus.on(DataEvents.SCENARIOS_CHANGED, this._onScenariosUpdated);
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
 
     // Initialize from current state/props in case events were emitted before
@@ -200,6 +200,7 @@ export class ScenarioMenuLit extends LitElement {
       bus.off(ScenarioEvents.ACTIVATED, this._onScenarioActivated);
     if (this._onScenariosUpdated) {
       bus.off(ScenarioEvents.UPDATED, this._onScenariosUpdated);
+      bus.off(DataEvents.SCENARIOS_CHANGED, this._onScenariosUpdated);
       bus.off(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
     }
   }
@@ -214,9 +215,19 @@ export class ScenarioMenuLit extends LitElement {
     e.stopPropagation();
     try {
       await cmd.scenario.saveScenario(scenario.id);
+
+      const scenarios = sel.scenario.getScenarios();
+      if (!Array.isArray(scenarios)) {
+        throw new Error('ScenarioMenu expected a valid scenario list from the store');
+      }
+
+      this.scenarios = [...scenarios];
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
+      this.requestUpdate();
       console.log('[ScenarioMenu] Saved scenario:', scenario.name);
     } catch (err) {
       console.error('[ScenarioMenu] Failed to save scenario:', err);
+      throw err;
     }
   }
 
@@ -520,6 +531,7 @@ export class ScenarioMenuLit extends LitElement {
                 ${sel.scenario.isScenarioUnsaved(s) ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
+                ${console.log('[ScenarioMenu] Rendering scenario', s.id, 'isChanged:', sel.scenario.isScenarioUnsaved(s))}
                 ${s.id === 'baseline' || s.readonly ?
                   html`
                     <span class="scenario-actions">

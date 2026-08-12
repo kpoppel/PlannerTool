@@ -27,7 +27,7 @@ export function createLegacyScenarioSelectors(state) {
       if (typeof state?.isScenarioUnsaved === 'function') {
         return state.isScenarioUnsaved(scenario);
       }
-      return Boolean(scenario?.isChanged);
+      return Boolean(scenario.isChanged);
     },
 
     isActiveScenarioUnsaved() {
@@ -54,7 +54,7 @@ export function createScenarioSelectors(store) {
     },
 
     isScenarioUnsaved(scenario) {
-      return Boolean(scenario?.isChanged);
+      return Boolean(scenario.isChanged);
     },
 
     isActiveScenarioUnsaved() {

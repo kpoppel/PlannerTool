@@ -49,6 +49,56 @@ import {
 import { createLegacyGroupSelectors, createGroupSelectors } from './selectors/groupSelectors.js';
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
+import { DataEvents } from '../core/EventRegistry.js';
+
+function syncScenariosFromServer(payload) {
+  const scenarios = Array.isArray(payload) ? payload : Array.isArray(payload?.scenarios) ? payload.scenarios : null;
+  if (!Array.isArray(scenarios)) return;
+
+  store.setState(
+    (state) => {
+      const baseline =
+        (state.scenarios?.items || []).find((scenario) => scenario.id === 'baseline') ||
+        { id: 'baseline', name: 'Baseline', overrides: {} };
+      const existingById = new Map(
+        (state.scenarios?.items || [])
+          .filter((scenario) => scenario?.id && scenario.id !== 'baseline')
+          .map((scenario) => [String(scenario.id), scenario])
+      );
+
+      const nextItems = [
+        baseline,
+        ...scenarios
+          .filter((scenario) => scenario?.id !== 'baseline')
+          .map((scenario) => {
+            const existing = existingById.get(String(scenario.id));
+            const merged = {
+              ...existing,
+              ...scenario,
+              overrides: existing?.overrides ?? scenario?.overrides ?? {},
+              filters: existing?.filters ?? scenario?.filters ?? {},
+              view: existing?.view ?? scenario?.view ?? {},
+              isChanged: false,
+            };
+            return merged;
+          }),
+      ];
+
+      return {
+        ...state,
+        scenarios: {
+          ...state.scenarios,
+          items: nextItems,
+        },
+      };
+    },
+    false,
+    'scenario.syncScenariosFromServer'
+  );
+}
+
+bus.on(DataEvents.SCENARIOS_CHANGED, syncScenariosFromServer);
+bus.on(DataEvents.SCENARIOS_DATA, syncScenariosFromServer);
 
 const pluginStateCommands = createPluginStateCommands(store);
 
@@ -81,6 +131,7 @@ stateStoreCommands.feature = createFeatureCommands(
 );
 stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
   hydrateBaseline: (...args) => stateStoreCommands.data.hydrateBaseline(...args),
+  hydrateScenarioData: (...args) => stateStoreCommands.data.hydrateScenarioData(...args),
   invalidateCache: (...args) => dataService.invalidateCache(...args),
 });
 const stateStoreSelectors = {

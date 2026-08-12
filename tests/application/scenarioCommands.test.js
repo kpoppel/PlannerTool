@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import '../../www/js/application/imports.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 import {
   createLegacyScenarioCommands,
   createScenarioCommands,
 } from '../../www/js/application/commands/scenarioCommands.js';
 import { store } from '../../www/js/application/store.js';
-import { CapacityEvents, ScenarioEvents } from '../../www/js/core/EventRegistry.js';
+import { bus } from '../../www/js/core/EventBus.js';
+import { CapacityEvents, DataEvents, ScenarioEvents } from '../../www/js/core/EventRegistry.js';
 import { dataService } from '../../www/js/services/dataService.js';
 
 function withScenarioState(partial = {}) {
@@ -147,6 +149,39 @@ describe('application/commands/scenarioCommands', () => {
     );
     expect(result).toBe(saved);
     saveSpy.mockRestore();
+  });
+
+  it('syncs refreshed server metadata without dropping the existing scenario name', () => {
+    store.setState(
+      {
+        ...createInitialAppState(),
+        scenarios: {
+          activeId: 's1',
+          items: [
+            { id: 'baseline', name: 'Baseline', overrides: {} },
+            {
+              id: 's1',
+              name: 'Alpha',
+              overrides: { f1: { start: '2026-01-01' } },
+              filters: { states: ['Doing'] },
+              view: { timelineScale: 'months' },
+              isChanged: true,
+            },
+          ],
+        },
+      },
+      true,
+      'test.syncServerMeta'
+    );
+
+    bus.emit(DataEvents.SCENARIOS_CHANGED, [{ id: 's1', name: 'Alpha' }]);
+
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 's1')).toMatchObject({
+      id: 's1',
+      name: 'Alpha',
+      isChanged: false,
+      overrides: { f1: { start: '2026-01-01' } },
+    });
   });
 
   it('refreshBaseline delegates to the store data hydration path', async () => {

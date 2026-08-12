@@ -18,9 +18,18 @@ const { mockRefreshBaseline, mockPublishBaseline, mockOpenAzureDevopsModal } = v
   mockOpenAzureDevopsModal: vi.fn(),
 }));
 
-const { mockPendingGroupChanges, mockConfirmGroupCreate } = vi.hoisted(() => ({
+const {
+  mockPendingGroupChanges,
+  mockConfirmGroupCreate,
+  mockScenarioGetScenarios,
+  mockScenarioGetActiveScenarioId,
+  mockSaveScenario,
+} = vi.hoisted(() => ({
   mockPendingGroupChanges: vi.fn(() => []),
   mockConfirmGroupCreate: vi.fn(),
+  mockScenarioGetScenarios: vi.fn(() => []),
+  mockScenarioGetActiveScenarioId: vi.fn(() => null),
+  mockSaveScenario: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../www/js/services/dataService.js', () => ({
@@ -63,7 +72,7 @@ vi.mock('../../www/js/application/imports.js', () => ({
   cmd: {
     scenario: {
       activateScenario: vi.fn(),
-      saveScenario: vi.fn().mockResolvedValue(undefined),
+      saveScenario: mockSaveScenario,
       refreshBaseline: mockRefreshBaseline,
       invalidateAndRefreshBaseline: vi.fn(),
     },
@@ -81,7 +90,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
       getEffectiveFeatures: vi.fn(() => []),
     },
     scenario: {
-      getScenarios: vi.fn(() => []),
+      getScenarios: mockScenarioGetScenarios,
+      getActiveScenarioId: mockScenarioGetActiveScenarioId,
       isScenarioUnsaved: vi.fn((s) => Boolean(s?.isChanged)),
     },
     group: {
@@ -95,6 +105,8 @@ vi.mock('../../www/js/vendor/lit.js', () => ({
   LitElement: class {
     static properties = {};
     static styles = '';
+    connectedCallback() {}
+    disconnectedCallback() {}
     requestUpdate() {}
     dispatchEvent() {}
   },
@@ -102,6 +114,8 @@ vi.mock('../../www/js/vendor/lit.js', () => ({
   css: (strings, ...values) => String.raw({ raw: strings }, ...values),
 }));
 
+import { bus } from '../../www/js/core/EventBus.js';
+import { DataEvents } from '../../www/js/core/EventRegistry.js';
 import { ScenarioMenuLit } from '../../www/js/components/ScenarioMenu.lit.js';
 
 // ---------------------------------------------------------------------------
@@ -131,10 +145,59 @@ describe('ScenarioMenu._onSaveToAzure', () => {
     mockRefreshBaseline.mockResolvedValue(undefined);
   });
 
-  it('calls state.refreshBaseline() after a successful publish', async () => {
-    const scenario = { id: 'sc-1', overrides: { '42': { start: '2026-01-01' } } };
-    const menu = makeMenu({ scenarios: [scenario] });
+  it('refreshes the menu after a successful scenario save so the unsaved warning clears', async () => {
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: { '42': { start: '2026-01-01' } }, isChanged: true };
+    const refreshed = [{ ...scenario, isChanged: false }];
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
 
+    mockScenarioGetScenarios.mockReturnValue(refreshed);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockSaveScenario.mockResolvedValue({ ok: true });
+
+    await menu._onSaveScenario(makeEvent(), scenario);
+
+    expect(menu.scenarios[0].isChanged).toBe(false);
+    expect(menu.scenarios).toEqual(refreshed);
+  });
+
+  it('throws instead of silently falling back to stale payload data when selector state is invalid', async () => {
+    const scenario = { id: 'sc-1', name: 'Alpha', isChanged: true };
+    const menu = makeMenu({
+      scenarios: [scenario],
+      activeScenarioId: 'sc-1',
+    });
+
+    mockScenarioGetScenarios.mockReturnValue(undefined);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockSaveScenario.mockResolvedValue(undefined);
+
+    await expect(menu._onSaveScenario(makeEvent(), scenario)).rejects.toThrow(/valid scenario list/i);
+  });
+
+  it('updates the menu when the server emits a refreshed scenario list after save', () => {
+    const menu = makeMenu({
+      scenarios: [{ id: 'sc-1', name: 'Alpha', isChanged: true }],
+      activeScenarioId: 'sc-1',
+    });
+
+    menu._onScenariosUpdated = vi.fn((payload) => {
+      const list = Array.isArray(payload) ? payload : Array.isArray(payload?.scenarios) ? payload.scenarios : [];
+      menu.scenarios = list.map((s) => ({ ...s, isChanged: Boolean(s.isChanged) }));
+      menu.activeScenarioId = 'sc-1';
+    });
+
+    const payload = [{ id: 'sc-1', name: 'Alpha', isChanged: false }];
+    menu._onScenariosUpdated(payload);
+
+    expect(menu.scenarios[0].isChanged).toBe(false);
+  });
+
+  it('calls state.refreshBaseline() after a successful publish', async () => {
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: { '42': { start: '2026-01-01' } } };
+    const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
+
+    mockScenarioGetScenarios.mockReturnValue([scenario]);
+    mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
     mockOpenAzureDevopsModal.mockResolvedValue({ features: [{ id: '42', start: '2026-01-01' }], groupChanges: [] });
 
     await menu._onSaveToAzure(makeEvent(), scenario);

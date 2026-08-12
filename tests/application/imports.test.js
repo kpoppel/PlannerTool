@@ -76,4 +76,37 @@ describe('application/imports', () => {
     expect(typeof mod.sel.selection.getSelectedProjectIds).toBe('function');
     expect(typeof mod.sel.filter.getAvailableFeatureStates).toBe('function');
   });
+
+  it('keeps full scenario overrides when server metadata updates arrive', async () => {
+    vi.resetModules();
+    window.__featureFlags = { USE_STATE_STORE: true };
+
+    const mod = await import('../../www/js/application/imports.js?scenario_sync_merge=1');
+    const { bus } = await import('../../www/js/core/EventBus.js');
+    const { DataEvents } = await import('../../www/js/core/EventRegistry.js');
+
+    const firstOverrides = {
+      feat_1: { start: '2026-07-01', end: '2026-07-10' },
+    };
+
+    await mod.cmd.data.hydrateScenarioData({
+      preloadedItems: [{ id: 's1', name: 'Scenario One', overrides: firstOverrides }],
+      activeId: 's1',
+    });
+
+    bus.emit(DataEvents.SCENARIOS_CHANGED, [{ id: 's1', name: 'Scenario One (meta)' }]);
+    let active = mod.sel.scenario.getActiveScenario();
+    expect(active.name).toBe('Scenario One (meta)');
+    expect(active.overrides).toEqual(firstOverrides);
+
+    const fullOverrides = {
+      feat_1: { start: '2026-07-05', end: '2026-07-12' },
+      feat_2: { start: '2026-08-01', end: '2026-08-08' },
+    };
+    bus.emit(DataEvents.SCENARIOS_DATA, [{ id: 's1', name: 'Scenario One (full)', overrides: fullOverrides }]);
+
+    active = mod.sel.scenario.getActiveScenario();
+    expect(active.name).toBe('Scenario One (full)');
+    expect(active.overrides).toEqual(fullOverrides);
+  });
 });

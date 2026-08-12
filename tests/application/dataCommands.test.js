@@ -193,7 +193,7 @@ describe('application/commands/dataCommands', () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
-        data: [{ id: 's1', name: 'S1' }, { id: 's2', name: 'S2' }],
+        data: [{ id: 's1', name: 'S1', isChanged: true }, { id: 's2', name: 'S2', isChanged: true }],
       },
     });
     const bus = { emit: vi.fn() };
@@ -204,8 +204,8 @@ describe('application/commands/dataCommands', () => {
     expect(result.ok).toBe(true);
     expect(store.getState().scenarios.items).toEqual([
       { id: 'baseline', name: 'Baseline', overrides: {} },
-      { id: 's1', name: 'S1' },
-      { id: 's2', name: 'S2' },
+      { id: 's1', name: 'S1', isChanged: false },
+      { id: 's2', name: 'S2', isChanged: false },
     ]);
     expect(bus.emit).toHaveBeenCalledWith(DataCommandEvents.SCENARIOS_HYDRATED, {
       count: 2,
@@ -322,7 +322,7 @@ describe('application/commands/dataCommands', () => {
     expect(dataService.callRestResult).not.toHaveBeenCalled();
     expect(store.getState().scenarios.items).toEqual([
       { id: 'baseline', name: 'Baseline', overrides: {} },
-      { id: 's10' },
+      { id: 's10', isChanged: false },
     ]);
     expect(store.getState().scenarios.activeId).toBe('s10');
   });

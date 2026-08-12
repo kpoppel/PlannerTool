@@ -103,6 +103,7 @@ export function createLegacyScenarioCommands(state) {
 
 export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
   const hydrateBaseline = typeof deps.hydrateBaseline === 'function' ? deps.hydrateBaseline : null;
+  const hydrateScenarioData = typeof deps.hydrateScenarioData === 'function' ? deps.hydrateScenarioData : null;
   const invalidateCache = typeof deps.invalidateCache === 'function' ? deps.invalidateCache : () => dataService.invalidateCache();
 
   function buildCapacityPayload() {
@@ -332,26 +333,38 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
 
       const result = await dataService.saveScenario(payload);
       if (result && result.ok === true) {
-        store.setState(
-          (state) => ({
-            ...state,
-            scenarios: {
-              ...state.scenarios,
-              items: (state.scenarios?.items || []).map((item) =>
-                item.id === scenario.id ? { ...item, isChanged: false } : item
-              ),
-            },
-          }),
-          false,
-          'scenario.saveScenario'
-        );
+        let nextScenarios = toScenarioItems(store.getState());
+
+        if (typeof hydrateScenarioData === 'function') {
+          const hydrated = await hydrateScenarioData();
+          if (hydrated && hydrated.ok === false) {
+            console.warn('Scenario save refreshed store from server but hydration failed', hydrated.error);
+          }
+          nextScenarios = toScenarioItems(store.getState());
+        } else {
+          nextScenarios = nextScenarios.map((item) =>
+            item.id === scenario.id ? { ...item, isChanged: false } : item
+          );
+
+          store.setState(
+            (state) => ({
+              ...state,
+              scenarios: {
+                ...state.scenarios,
+                items: nextScenarios,
+              },
+            }),
+            false,
+            'scenario.saveScenario'
+          );
+        }
 
         bus?.emit?.(ScenarioEvents.SAVED, { scenarioId: scenario.id });
         bus?.emit?.(ScenarioEvents.UPDATED, {
           scenarioId: scenario.id,
           change: { type: 'saved' },
         });
-        emitScenarioList(bus, toScenarioItems(store.getState()), store.getState()?.scenarios?.activeId ?? 'baseline');
+        emitScenarioList(bus, nextScenarios, store.getState()?.scenarios?.activeId ?? 'baseline');
       }
 
       return result;

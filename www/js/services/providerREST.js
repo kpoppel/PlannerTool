@@ -166,9 +166,10 @@ export class ProviderREST extends RestProviderBase {
     const result = await this._requestJson('/api/scenario');
     if (!result.ok) return result;
     const list = Array.isArray(result.data) ? result.data : [];
-    bus.emit(DataEvents.SCENARIOS_CHANGED, list);
-    console.log('providerREST:listScenarios:', list);
-    return ok(list);
+    const normalized = list.map((scenario) => ({ ...scenario, isChanged: false }));
+    bus.emit(DataEvents.SCENARIOS_CHANGED, normalized);
+    console.log('providerREST:listScenarios:', normalized);
+    return ok(normalized);
   }
 
   async loadAllScenarios() {
@@ -182,7 +183,7 @@ export class ProviderREST extends RestProviderBase {
       if (!m || !m.id) continue;
       const scenarioResult = await this.getScenario(m.id);
       if (scenarioResult.ok && scenarioResult.data) {
-        scenarios.push(scenarioResult.data);
+        scenarios.push({ ...scenarioResult.data, isChanged: false });
       }
     }
     bus.emit(DataEvents.SCENARIOS_DATA, scenarios);

@@ -414,7 +414,9 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
             // Baseline entry lives in items; preserve its overrides across server refreshes.
             items: [
               { ...(state.scenarios.items.find((s) => s.id === 'baseline') || { id: 'baseline', name: 'Baseline', overrides: {} }) },
-              ...scenarioItems.filter((s) => s.id !== 'baseline'),
+              ...scenarioItems
+                .filter((s) => s.id !== 'baseline')
+                .map((scenario) => ({ ...scenario, isChanged: false })),
             ],
             activeId: hasActiveId ? options.activeId : state.scenarios.activeId,
           },
