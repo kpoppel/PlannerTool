@@ -60,6 +60,20 @@ describe('application/commands/filterCommands', () => {
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
+  it('keeps default task filter dimensions fully initialized with all options enabled', () => {
+    const selectionFilters = store.getState().selection.taskFilters;
+    expect(selectionFilters).toEqual({
+      schedule: { planned: true, unplanned: true },
+      allocation: { allocated: true, unallocated: true },
+      hierarchy: { hasParent: true, noParent: true },
+      relations: { hasLinks: true, noLinks: true },
+    });
+
+    const selectors = createFilterCommands(store, { emit: vi.fn() });
+    expect(selectors.setTaskFilter).toBeTypeOf('function');
+    expect(store.getState().selection.taskFilters.schedule).toEqual({ planned: true, unplanned: true });
+  });
+
   it('store branch setAllStatesSelected(true) derives available states from baseline features', () => {
     // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(

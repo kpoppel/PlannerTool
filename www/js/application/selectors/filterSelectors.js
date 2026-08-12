@@ -1,3 +1,22 @@
+const DEFAULT_TASK_FILTERS = {
+  schedule: { planned: true, unplanned: true },
+  allocation: { allocated: true, unallocated: true },
+  hierarchy: { hasParent: true, noParent: true },
+  relations: { hasLinks: true, noLinks: true },
+};
+
+function normalizeTaskFilters(filters = {}) {
+  const next = {};
+  for (const [dimension, options] of Object.entries(DEFAULT_TASK_FILTERS)) {
+    const current = filters?.[dimension];
+    next[dimension] = {
+      ...options,
+      ...(current && typeof current === 'object' ? current : {}),
+    };
+  }
+  return next;
+}
+
 function toStateSet(input) {
   if (input instanceof Set) return new Set(Array.from(input));
   if (Array.isArray(input)) return new Set(input);
@@ -50,7 +69,7 @@ function hasAnyTrueOption(filterOptions) {
 
 function createFallbackTaskFilterFn(store) {
   return (feature) => {
-    const filters = store.getState()?.selection?.taskFilters || {};
+    const filters = normalizeTaskFilters(store.getState()?.selection?.taskFilters);
     const schedule = filters.schedule || {};
     const allocation = filters.allocation || {};
     const hierarchy = filters.hierarchy || {};
@@ -151,13 +170,7 @@ export function createFilterSelectors(store, legacyState = null) {
   const fallbackTaskFilter = createFallbackTaskFilterFn(store);
 
   function getSelectionTaskFilters() {
-    const filters = store.getState()?.selection?.taskFilters || {};
-    return {
-      schedule: filters.schedule || null,
-      allocation: filters.allocation || null,
-      hierarchy: filters.hierarchy || null,
-      relations: filters.relations || null,
-    };
+    return normalizeTaskFilters(store.getState()?.selection?.taskFilters);
   }
 
   return {
@@ -184,9 +197,6 @@ export function createFilterSelectors(store, legacyState = null) {
     },
 
     featurePassesFilters(feature) {
-      if (legacyState?.taskFilterService?.featurePassesFilters) {
-        return legacyState.taskFilterService.featurePassesFilters(feature);
-      }
       return fallbackTaskFilter(feature);
     },
 
@@ -205,9 +215,6 @@ export function createFilterSelectors(store, legacyState = null) {
     },
 
     getTaskFilters() {
-      if (legacyState?.taskFilterService?.getFilters) {
-        return legacyState.taskFilterService.getFilters();
-      }
       return getSelectionTaskFilters();
     },
   };

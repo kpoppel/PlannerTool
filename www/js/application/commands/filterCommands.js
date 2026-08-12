@@ -38,6 +38,25 @@ export function createLegacyFilterCommands(state) {
   };
 }
 
+const DEFAULT_TASK_FILTERS = {
+  schedule: { planned: true, unplanned: true },
+  allocation: { allocated: true, unallocated: true },
+  hierarchy: { hasParent: true, noParent: true },
+  relations: { hasLinks: true, noLinks: true },
+};
+
+function normalizeTaskFilters(filters = {}) {
+  const next = {};
+  for (const [dimension, options] of Object.entries(DEFAULT_TASK_FILTERS)) {
+    const current = filters?.[dimension];
+    next[dimension] = {
+      ...options,
+      ...(current && typeof current === 'object' ? current : {}),
+    };
+  }
+  return next;
+}
+
 function deriveAvailableStatesFromFeatures(features) {
   const out = [];
   const seen = new Set();
@@ -214,11 +233,10 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
 
     setTaskFilter(dimension, option, selected, options = {}) {
       const nextSelected = Boolean(selected);
-      legacyState?.taskFilterService?.setFilter?.(dimension, option, nextSelected);
       store.setState(
         (state) => {
-          const currentFilters = state.selection?.taskFilters || {};
-          const currentDimension = currentFilters?.[dimension] || {};
+          const currentFilters = normalizeTaskFilters(state.selection?.taskFilters || {});
+          const currentDimension = currentFilters?.[dimension] || DEFAULT_TASK_FILTERS[dimension] || {};
           return {
             ...state,
             selection: {
@@ -242,7 +260,7 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
     },
 
     toggleTaskFilter(dimension, option, options = {}) {
-      const current = legacyState?.taskFilterService?.getFilters?.()?.[dimension]?.[option];
+      const current = store.getState()?.selection?.taskFilters?.[dimension]?.[option];
       const nextSelected = !Boolean(current);
       this.setTaskFilter(dimension, option, nextSelected, options);
     },

@@ -1554,7 +1554,8 @@ export class SidebarLit extends LitElement {
                 style="display:flex;flex-direction:column;gap:6px;"
               >
                 ${dim.options.map((opt) => {
-                  const isActive = this.taskFilters[dim.key][opt.key];
+                  const dimFilters = this.taskFilters?.[dim.key] || {};
+                  const isActive = Boolean(dimFilters[opt.key]);
                   const isDisabled = this._isControlDisabled(
                     'taskFilter',
                     dim.key,
