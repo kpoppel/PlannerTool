@@ -74,6 +74,14 @@ export class FeatureCardLit extends LitElement {
         box-shadow 120ms ease;
     }
 
+    /* Primary card (the one that was clicked) gets a stronger accent */
+    :host(.connected-primary) .feature-card,
+    .feature-card.connected-primary {
+      background: var(--color-connected-primary-bg, #c2deff);
+      box-shadow: 0 2px 8px rgba(30, 90, 200, 0.18);
+      border-left-color: var(--color-connected-primary-border, #3b82f6);
+    }
+
     /* Minimal highlight: small inset overlay that fades out */
     :host(.search-highlight) .feature-card::after {
       content: '';
@@ -597,11 +605,15 @@ export class FeatureCardLit extends LitElement {
         payload && payload.current ? String(payload.current) : null;
       const id = String(this.feature.id);
       const inSet = Array.isArray(ids) ? ids.indexOf(id) !== -1 : false;
-      if (inSet !== this._connected) {
+      const isPrimary = inSet && this._connectedCurrent === id;
+      if (inSet !== this._connected || isPrimary !== this._connectedIsPrimary) {
         this._connected = inSet;
+        this._connectedIsPrimary = isPrimary;
         this.classList.toggle('connected', inSet);
+        this.classList.toggle('connected-primary', isPrimary);
         const root = this._rootCard || this.shadowRoot?.querySelector('.feature-card');
         if (root) root.classList.toggle('connected', inSet);
+        if (root) root.classList.toggle('connected-primary', isPrimary);
         this.classList.toggle('dirty', !!this.feature?.dirty);
         this.requestUpdate();
       }
@@ -773,15 +785,16 @@ export class FeatureCardLit extends LitElement {
     if (e.detail === 2) return;
 
     const eff = sel.feature.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    if (this._connected) {
-      // Card is already in a connected set — navigate within the set
-      this.bus.emit(FeatureEvents.SELECTED_IN_CONNECTED_SET, eff);
-      this.selected = true;
-      this.requestUpdate();
-      return;
+    if (sel.view.getHighlightFeatureRelationMode()) {
+      if (this._connected) {
+        // Card is already in a connected set — navigate within the set
+        this.bus.emit(FeatureEvents.SELECTED_IN_CONNECTED_SET, eff);
+        this.selected = true;
+        this.requestUpdate();
+        return;
+      }
+      this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
     }
-    // Always build the connected set (ancestors + children) for the clicked card
-    this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
     this.selected = true;
     this.requestUpdate();
     cmd.feature.setSelectedFeature(eff);

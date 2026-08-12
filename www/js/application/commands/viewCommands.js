@@ -237,5 +237,16 @@ export function createViewCommands(store, bus) {
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
+
+    setHighlightFeatureRelationMode(enabled, runtimeOptions = {}) {
+      const value = Boolean(enabled);
+      setViewOptions(
+        (options) => ({ ...options, highlightFeatureRelationMode: value }),
+        'view.setHighlightFeatureRelationMode'
+      );
+      if (!runtimeOptions?.suppressEvents) {
+        bus?.emit?.(ViewEvents.HIGHLIGHT_RELATIONS, value);
+      }
+    },
   };
 }
