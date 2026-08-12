@@ -30,6 +30,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
 - Fixed scenario menu activation regressions where scenario metadata sync events could overwrite full scenario payloads and drop overrides/group overrides, causing scenario clicks to render baseline data instead of scenario-applied values.
 - Fixed store-mode scenario save/refresh flows to persist and rehydrate through the store-backed data layer rather than silently no-oping, removing the last runtime legacy-state dependency from that path without breaking baseline refresh behavior.
 - Removed the final remaining legacy-state compatibility bridges from the store-mode command and selector path so `USE_STATE_STORE=true` no longer reads or writes legacy scenario/capacity state during normal runtime mutation flows.
@@ -43,6 +44,12 @@ Template - do not change :
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
 
 ### Changed
+- Tightened `CapacityEvents.UPDATED` to a signal-only emission so capacity recomputation no longer sends full capacity snapshots on the event bus.
+- Restored deleted plugin test coverage and updated it to the store-backed selector/command interface for cost, export, markers, portfolio, and plugin-state flows.
+- Removed the legacy `State.js` singleton, its one-off helper services, and the legacy-only tests that only exercised the old bridge layer.
+- Tightened `GroupEvents.CHANGED` payloads to ids and compact hints only, removing embedded group objects from the event bus.
+- Consolidated plan-event notifications into `DataEvents.PLAN_EVENTS_CHANGED` and removed the standalone `PlanEventEvents` registry group.
+- Retired the `USE_STATE_STORE` bootstrap flag and made the store-backed command/selector path unconditional at app startup.
 - Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.
 - Phase 2 follow-up completed: removed admin constructor-time Result wrappers, moved app/admin endpoint execution onto the shared `RestProviderBase` JSON/result path, and normalized failure envelopes to `{ ok: false, error: { message, ... } }` across both providers.
 - Phase 4 started: aligned the Selection/Filter/View migration plan to the current consumer audit, introduced a `sel.view` seam in `application/imports.js` (legacy + store-backed selectors), and migrated `PluginDependenciesComponent` plus its component tests away from direct view-service state reads.

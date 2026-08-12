@@ -1,59 +1,33 @@
-import { featureFlags } from '../config.js';
 import { store } from './store.js';
 import { bus } from '../core/EventBus.js';
-import { state } from '../services/State.js';
 import { createUiCommands } from './commands/uiCommands.js';
 import { createDataCommands } from './commands/dataCommands.js';
-import {
-  createLegacySelectionCommands,
-  createSelectionCommands,
-} from './commands/selectionCommands.js';
-import { createLegacyFilterCommands, createFilterCommands } from './commands/filterCommands.js';
-import { createLegacyViewCommands, createViewCommands } from './commands/viewCommands.js';
-import {
-  createLegacyPluginStateCommands,
-  createPluginStateCommands,
-} from './commands/pluginStateCommands.js';
-import {
-  createLegacyViewRestoreCommands,
-  createViewRestoreCommands,
-} from './commands/viewRestoreCommands.js';
-import {
-  createLegacyFeatureCommands,
-  createFeatureCommands,
-} from './commands/featureCommands.js';
-import {
-  createLegacyScenarioCommands,
-  createScenarioCommands,
-} from './commands/scenarioCommands.js';
-import { createLegacyGroupCommands, createGroupCommands } from './commands/groupCommands.js';
+import { createSelectionCommands } from './commands/selectionCommands.js';
+import { createFilterCommands } from './commands/filterCommands.js';
+import { createViewCommands } from './commands/viewCommands.js';
+import { createPluginStateCommands } from './commands/pluginStateCommands.js';
+import { createViewRestoreCommands } from './commands/viewRestoreCommands.js';
+import { createFeatureCommands } from './commands/featureCommands.js';
+import { createScenarioCommands } from './commands/scenarioCommands.js';
+import { createGroupCommands } from './commands/groupCommands.js';
 import { uiSelectors } from './selectors/uiSelectors.js';
-import {
-  createLegacySelectionSelectors,
-  createSelectionSelectors,
-} from './selectors/selectionSelectors.js';
-import {
-  createLegacyFilterSelectors,
-  createFilterSelectors,
-} from './selectors/filterSelectors.js';
-import { createLegacyViewSelectors, createViewSelectors } from './selectors/viewSelectors.js';
-import {
-  createLegacyFeatureSelectors,
-  createFeatureSelectors,
-} from './selectors/featureSelectors.js';
-import { createLegacyCapacitySelectors, createCapacitySelectors } from './selectors/capacitySelectors.js';
-import {
-  createLegacyScenarioSelectors,
-  createScenarioSelectors,
-} from './selectors/scenarioSelectors.js';
-import { createLegacyGroupSelectors, createGroupSelectors } from './selectors/groupSelectors.js';
+import { createSelectionSelectors } from './selectors/selectionSelectors.js';
+import { createFilterSelectors } from './selectors/filterSelectors.js';
+import { createViewSelectors } from './selectors/viewSelectors.js';
+import { createFeatureSelectors } from './selectors/featureSelectors.js';
+import { createCapacitySelectors } from './selectors/capacitySelectors.js';
+import { createScenarioSelectors } from './selectors/scenarioSelectors.js';
+import { createGroupSelectors } from './selectors/groupSelectors.js';
 import { dataService } from '../services/dataService.js';
-import { groupService } from '../services/GroupService.js';
 import { DataEvents } from '../core/EventRegistry.js';
 
 function syncScenariosFromServer(payload) {
   const scenarios = Array.isArray(payload) ? payload : Array.isArray(payload?.scenarios) ? payload.scenarios : null;
   if (!Array.isArray(scenarios)) return;
+
+  // Merge metadata-only updates without discarding already-loaded nested payloads.
+  // Full payloads replace the stored nested objects because the key is present.
+  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
 
   store.setState(
     (state) => {
@@ -75,9 +49,9 @@ function syncScenariosFromServer(payload) {
             const merged = {
               ...existing,
               ...scenario,
-              overrides: existing?.overrides ?? scenario?.overrides ?? {},
-              filters: existing?.filters ?? scenario?.filters ?? {},
-              view: existing?.view ?? scenario?.view ?? {},
+              overrides: hasOwn(scenario, 'overrides') ? scenario.overrides ?? {} : existing?.overrides ?? {},
+              filters: hasOwn(scenario, 'filters') ? scenario.filters ?? {} : existing?.filters ?? {},
+              view: hasOwn(scenario, 'view') ? scenario.view ?? {} : existing?.view ?? {},
               isChanged: false,
             };
             return merged;
@@ -132,6 +106,7 @@ stateStoreCommands.feature = createFeatureCommands(
 stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
   hydrateBaseline: (...args) => stateStoreCommands.data.hydrateBaseline(...args),
   hydrateScenarioData: (...args) => stateStoreCommands.data.hydrateScenarioData(...args),
+  recomputeCapacity: (...args) => stateStoreCommands.data.recomputeCapacity(...args),
   invalidateCache: (...args) => dataService.invalidateCache(...args),
 });
 const stateStoreSelectors = {
@@ -145,30 +120,7 @@ const stateStoreSelectors = {
   capacity: createCapacitySelectors(store),
 };
 
-// Keep the OFF branch explicit: state-store data commands are not exposed
-// until a real legacy adapter is introduced for parity-safe cutover.
-const legacyCommands = {
-  ui: stateStoreCommands.ui,
-  selection: createLegacySelectionCommands(state),
-  filter: createLegacyFilterCommands(state),
-  view: createLegacyViewCommands(state),
-  viewRestore: createLegacyViewRestoreCommands(state),
-  feature: createLegacyFeatureCommands(state),
-  scenario: createLegacyScenarioCommands(state),
-  group: createLegacyGroupCommands(state, groupService),
-  pluginState: createLegacyPluginStateCommands(state),
-};
-const legacySelectors = {
-  ui: uiSelectors,
-  selection: createLegacySelectionSelectors(state),
-  filter: createLegacyFilterSelectors(state),
-  view: createLegacyViewSelectors(state),
-  feature: createLegacyFeatureSelectors(state),
-  scenario: createLegacyScenarioSelectors(state),
-  group: createLegacyGroupSelectors(state, groupService),
-  capacity: createLegacyCapacitySelectors(state),
-};
-
-export const isStateStoreEnabled = featureFlags.USE_STATE_STORE === true;
-export const cmd = isStateStoreEnabled ? stateStoreCommands : legacyCommands;
-export const sel = isStateStoreEnabled ? stateStoreSelectors : legacySelectors;
+// The store-backed command/selector surface is now the only runtime surface.
+export const isStateStoreEnabled = true;
+export const cmd = stateStoreCommands;
+export const sel = stateStoreSelectors;

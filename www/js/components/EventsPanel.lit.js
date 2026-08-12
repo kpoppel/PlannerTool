@@ -6,7 +6,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 import { dataService } from '../services/dataService.js';
 import { bus } from '../core/EventBus.js';
-import { PlanEventEvents } from '../core/EventRegistry.js';
+import { DataEvents } from '../core/EventRegistry.js';
 
 export class EventsPanel extends LitElement {
   static properties = {
@@ -271,7 +271,7 @@ export class EventsPanel extends LitElement {
     const updated = await dataService.updateEvent(this._editId, payload);
     if (updated) {
       await this._load();
-      bus.emit(PlanEventEvents.CHANGED);
+      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
       this._cancelEdit();
     }
     this._saving = false;
@@ -280,7 +280,7 @@ export class EventsPanel extends LitElement {
   async _deleteEvent(eventId) {
     await dataService.deleteEvent(eventId);
     await this._load();
-    bus.emit(PlanEventEvents.CHANGED);
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
   }
 
   async _addEvent() {
@@ -296,7 +296,7 @@ export class EventsPanel extends LitElement {
     const created = await dataService.createEvent(payload);
     if (created) {
       await this._load();
-      bus.emit(PlanEventEvents.CHANGED);
+      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
       this._newDate = '';
       this._newEndDate = '';
       this._newTitle = '';

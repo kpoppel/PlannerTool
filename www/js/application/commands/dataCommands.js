@@ -203,7 +203,7 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         false,
         'data.recomputeCapacity'
       );
-      bus.emit(CapacityEvents.UPDATED, result);
+      bus.emit(CapacityEvents.UPDATED);
     },
 
     async hydrateBaseline(options = {}) {

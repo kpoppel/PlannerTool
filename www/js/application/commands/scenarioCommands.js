@@ -104,24 +104,14 @@ export function createLegacyScenarioCommands(state) {
 export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
   const hydrateBaseline = typeof deps.hydrateBaseline === 'function' ? deps.hydrateBaseline : null;
   const hydrateScenarioData = typeof deps.hydrateScenarioData === 'function' ? deps.hydrateScenarioData : null;
+  const recomputeCapacity = typeof deps.recomputeCapacity === 'function' ? deps.recomputeCapacity : null;
   const invalidateCache = typeof deps.invalidateCache === 'function' ? deps.invalidateCache : () => dataService.invalidateCache();
 
-  function buildCapacityPayload() {
-    const snapshot = store.getState()?.capacity || {};
-    return {
-      dates: snapshot.dates ?? [],
-      teamDailyCapacity: snapshot.teamDaily ?? [],
-      teamDailyCapacityMap: snapshot.teamDailyMap ?? [],
-      projectDailyCapacityRaw: snapshot.projectDailyRaw ?? [],
-      projectDailyCapacity: snapshot.projectDaily ?? [],
-      projectDailyCapacityMap: snapshot.projectDailyMap ?? [],
-      totalOrgDailyCapacity: snapshot.organizationDaily ?? [],
-      totalOrgDailyPerTeamAvg: snapshot.organizationDailyPerTeamAverage ?? [],
-    };
-  }
-
   function recomputeAndEmitCapacity() {
-    bus?.emit?.(CapacityEvents.UPDATED, buildCapacityPayload());
+    if (recomputeCapacity) {
+      recomputeCapacity();
+    }
+    bus?.emit?.(CapacityEvents.UPDATED);
   }
 
   function getScenarioById(id) {
@@ -196,7 +186,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       bus?.emit?.(ScenarioEvents.ACTIVATED, { scenarioId: id });
       recomputeAndEmitCapacity();
       bus?.emit?.(FeatureEvents.UPDATED);
-      bus?.emit?.(GroupEvents.CHANGED, { op: 'scenarioSwitched' });
+      bus?.emit?.(GroupEvents.CHANGED);
       emitScenarioList(bus, scenarios, id);
 
       return scenarios.find((scenario) => scenario.id === id) || null;

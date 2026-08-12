@@ -18,9 +18,9 @@ import { bus } from '../core/EventBus.js';
 import {
   TimelineEvents,
   ProjectEvents,
-  PlanEventEvents,
   PluginEvents,
   BoardEvents,
+  DataEvents,
 } from '../core/EventRegistry.js';
 import { dataService } from '../services/dataService.js';
 import { sel } from '../application/imports.js';
@@ -457,7 +457,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     bus.on(TimelineEvents.MONTHS_CHANGED, this._timelineListener);
     bus.on(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     bus.on(ProjectEvents.CHANGED, this._selectionListener);
-    bus.on(PlanEventEvents.CHANGED, this._eventsChangedListener);
+    bus.on(DataEvents.PLAN_EVENTS_CHANGED, this._eventsChangedListener);
     bus.on(PluginEvents.ACTIVATED, this._pluginStateListener);
     bus.on(PluginEvents.DEACTIVATED, this._pluginStateListener);
   }
@@ -468,7 +468,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       bus.off(TimelineEvents.SCALE_CHANGED, this._timelineListener);
     }
     if (this._selectionListener) bus.off(ProjectEvents.CHANGED, this._selectionListener);
-    if (this._eventsChangedListener) bus.off(PlanEventEvents.CHANGED, this._eventsChangedListener);
+    if (this._eventsChangedListener) bus.off(DataEvents.PLAN_EVENTS_CHANGED, this._eventsChangedListener);
     if (this._pluginStateListener) {
       bus.off(PluginEvents.ACTIVATED, this._pluginStateListener);
       bus.off(PluginEvents.DEACTIVATED, this._pluginStateListener);
@@ -553,7 +553,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
     const updated = await dataService.updateEvent(this._editId, payload);
     if (updated) {
       await this.refresh();
-      bus.emit(PlanEventEvents.CHANGED);
+      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
       this._cancelEdit();
     }
     this._saving = false;
@@ -562,7 +562,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
   async _deleteEvent(eventId) {
     await dataService.deleteEvent(eventId);
     await this.refresh();
-    bus.emit(PlanEventEvents.CHANGED);
+    bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
   }
 
   async _addEvent(planId) {
@@ -582,7 +582,7 @@ export class PluginEventsComponent extends OverlaySvgPlugin {
       this._newCategories = { ...this._newCategories, [planId]: '' };
       this._addOpenPlanIds = { ...this._addOpenPlanIds, [planId]: false };
       await this.refresh();
-      bus.emit(PlanEventEvents.CHANGED);
+      bus.emit(DataEvents.PLAN_EVENTS_CHANGED);
     }
     this._saving = false;
   }

@@ -136,11 +136,9 @@ class LinkEditorState {
    * @private
    */
   _applyRelationChange(action, fromId, targetId) {
-    // Import state management here to avoid circular dependencies
-    Promise.all([
-      import('../../services/State.js'),
-      import('../../application/imports.js'),
-    ]).then(([{ state }, { sel }]) => {
+    // Use the store-backed selector surface for scenario and feature lookup so
+    // link edits stay aligned with the same effective data the rest of the app renders.
+    import('../../application/imports.js').then(({ sel }) => {
       try {
         const scenario = sel.scenario.getActiveScenario();
         if (!scenario) {
@@ -148,14 +146,14 @@ class LinkEditorState {
           return;
         }
 
-        // Get the baseline feature
-        const baselineFeature = state.baselineStore?.getFeatureById()?.get(fromId);
+        const baselineFeature = sel.feature.getBaselineFeatureById(fromId);
         if (!baselineFeature) {
           console.warn('[LinkEditorState] Feature not found:', fromId);
           return;
         }
 
-        // Get current effective relations (baseline + override)
+        // Start from the active scenario override when present; otherwise fall back
+        // to the baseline feature's relations and apply the requested change in place.
         let relations = [];
         if (
           scenario.overrides &&
@@ -167,16 +165,16 @@ class LinkEditorState {
           relations = [...baselineFeature.relations];
         }
 
-        // Apply the change based on action type
+        // Apply the change based on the relation type.
         if (action === ACTIONS.PARENT) {
-          // Parent is special - replace any existing Parent relation
+          // Parent links replace any existing Parent relation on the feature.
           relations = relations.filter((r) => {
             const relType = r.type || r.relationType || 'Related';
             return relType !== 'Parent';
           });
           relations.push({ type: 'Parent', id: targetId });
         } else {
-          // For Predecessor, Successor, Related - add if not exists
+          // Predecessor / Successor / Related links are only added when missing.
           const existingIndex = relations.findIndex((r) => {
             const relType = r.type || r.relationType || 'Related';
             const relId = String(r.id || r);
@@ -223,15 +221,14 @@ class LinkEditorState {
    * @param {string} relationType - relation type
    */
   removeRelation(fromId, targetId, relationType) {
-    Promise.all([
-      import('../../services/State.js'),
-      import('../../application/imports.js'),
-    ]).then(([{ state }, { sel }]) => {
+    // Remove the requested edge from the same scenario override structure used by
+    // add/edit operations, so the plugin remains internally consistent.
+    import('../../application/imports.js').then(({ sel }) => {
       try {
         const scenario = sel.scenario.getActiveScenario();
         if (!scenario) return;
 
-        const baselineFeature = state.baselineStore?.getFeatureById()?.get(fromId);
+        const baselineFeature = sel.feature.getBaselineFeatureById(fromId);
         if (!baselineFeature) return;
 
         // Get current effective relations

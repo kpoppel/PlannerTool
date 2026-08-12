@@ -129,6 +129,7 @@ export const TimelineEvents = {
 export const DataEvents = {
   SCENARIOS_CHANGED: Symbol('scenarios:changed'),
   SCENARIOS_DATA: Symbol('scenarios:data'),
+  PLAN_EVENTS_CHANGED: Symbol('plan-events:changed'),
   LOADED: Symbol('data:loaded'),
   SAVED: Symbol('data:saved'),
 };
@@ -155,11 +156,6 @@ export const BoardEvents = {
    * Payload: { offset: number }  (0 when the plugin is inactive or shows nothing)
    */
   OVERLAY_OFFSET_CHANGED: Symbol('board:overlay-offset-changed'),
-};
-
-// Plan events (locally-stored events tied to a plan)
-export const PlanEventEvents = {
-  CHANGED: Symbol('planevents:changed'),
 };
 
 // Group events — fired by GroupService

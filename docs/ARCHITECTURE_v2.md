@@ -1,6 +1,6 @@
 # PlannerTool Web Architecture (v2 draft — target design)
 
-> **Status: TARGET architecture with phased migration in progress (through Phase 6 validation, 2026-08-09).** `application/` scaffolding, `core/StoreController.js`, and command/selector seam groups are implemented and consumed across `www/js/components/` and `www/js/plugins/` for Selection/Filter/View plus Scenario/Feature/Group/Plugin-state/View-restore concerns. Runtime now defaults to Zustand-backed store mode (`USE_STATE_STORE=true`) for dev validation; Phase-7 runtime blocker surfaces (bootstrap, scenario menu, sidebar, plan/team menus, board/group selection flow, cost/graph/history/markers/main graph surfaces) now read/write through `cmd.*`/`sel.*` seams only. Legacy adapters remain present solely as rollback safety until Phase 7 decommissioning removes them. Sections in this document may describe either target end-state or landed interim state; per-phase notes in Sections 4, 10, and 11 call out migration status where behavior is still mixed.
+> **Status: phased migration in progress, with the store-backed runtime now live and the legacy `USE_STATE_STORE` bootstrap flag removed.** `application/` scaffolding, `core/StoreController.js`, and command/selector seam groups are implemented and consumed across `www/js/components/` and `www/js/plugins/` for Selection/Filter/View plus Scenario/Feature/Group/Plugin-state/View-restore concerns. The remaining Phase 7 work is the final decommission/documentation pass: event-registry cleanup, payload tightening where the bus still carries state-shaped data, and keeping the docs aligned with the now store-backed runtime. Sections in this document may describe either target end-state or landed interim state; per-phase notes in Sections 4, 10, and 11 call out migration status where behavior is still mixed.
 
 ## 0. Why change: current pain points (verified against the code, 2026-08-06)
 
@@ -624,9 +624,7 @@ Current flags in `www/js/config.js` (verified 2026-08-06) — these are **live b
 | `SHOW_UNPLANNED_WORK` | `true` | Whether unplanned features get default dates or render as draggable ghosts |
 | `PRESERVE_UNPLANNED_CHILDREN_ON_PARENT_MOVE` | `true` | Keeps unplanned children unplanned when parent epic moves |
 | `GRAPH_ONLY_SELECTED_PLANS` | `false` | Whether MainGraph reflects all plans or only selected ones |
-| `USE_STATE_STORE` | `true` | **Migration gate** — gates `application/imports.js`'s choice of State.js-adapter vs. real Zustand store/commands/selectors. Flipped ON during Phase 6 cutover validation; runtime cutover blockers migrated to seam-only callers. Deleted in Phase 7 after legacy fallback removal. |
-
-No flags have been "removed as migration complete" yet. `USE_STATE_STORE` is intentionally still present as the rollback switch during Phase 6 validation; the remaining explicit legacy fallback is the non-store bootstrap branch in `app.js`, tagged for Phase 7 removal.
+`USE_STATE_STORE` was removed in Phase 7 after the store-backed runtime became the only supported path; `config.js` no longer carries a migration gate for the frontend store cutover.
 
 ## 14. Testing strategy
 

@@ -181,7 +181,7 @@ export class CapacityCalculator {
         totalOrgDailyPerTeamAvg,
       };
       result.totalOrgDaily = cached.totalOrgDaily;
-      this.bus.emit(CapacityEvents.UPDATED, result);
+      this.bus.emit(CapacityEvents.UPDATED);
       return result;
     }
 
@@ -234,7 +234,7 @@ export class CapacityCalculator {
     this._lastFeaturesById = new Map(features.map((f) => [f.id, f]));
 
     // Emit event
-    this.bus.emit(CapacityEvents.UPDATED, result);
+    this.bus.emit(CapacityEvents.UPDATED);
 
     return result;
   }

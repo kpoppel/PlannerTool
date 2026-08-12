@@ -57,7 +57,7 @@ function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
 }
 
 function emitGroupMutation(bus, store, payload) {
-  bus?.emit?.(GroupEvents.CHANGED, payload || {});
+  bus?.emit?.(GroupEvents.CHANGED);
   bus?.emit?.(ScenarioEvents.UPDATED, {
     scenarioId: getActiveScenarioId(store.getState()),
     change: {

@@ -57,19 +57,13 @@ async function init() {
     // Prefetch lightweight modal helpers during idle to improve perceived performance
     import('./components/modalHelpers.js');
 
-    //Populate the app state from backend
+    // Populate the app state from the backend through the store-backed bootstrap.
     const { dataService } = await import('./services/dataService.js');
     await dataService.init();
-    const { cmd, isStateStoreEnabled } = await import('./application/imports.js');
-    if (isStateStoreEnabled) {
-      await cmd.data.hydrateBaseline();
-      await cmd.data.hydrateScenarioData();
-      await cmd.viewRestore.restoreLastView();
-    } else {
-      // TODO(phase-7-state-removal): remove legacy init fallback after flag retirement.
-      const legacyModule = await import('./services/State.js');
-      await legacyModule['state'].initState();
-    }
+    const { cmd } = await import('./application/imports.js');
+    await cmd.data.hydrateBaseline();
+    await cmd.data.hydrateScenarioData();
+    await cmd.viewRestore.restoreLastView();
 
     // Load Plugin system
     // Load modules config via fetch to avoid JSON module import and

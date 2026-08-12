@@ -12,6 +12,7 @@
  * Events emitted on the global bus:
  *   GroupEvents.LOADED   — groups for a plan fetched / refreshed
  *   GroupEvents.CHANGED  — group created / updated / deleted / membership changed
+ *                         Pure signal only; consumers re-read current group state.
  *
  * Singleton exported as `groupService`.
  */
@@ -172,7 +173,7 @@ export class GroupService {
       const list = this._groupsByPlan.get(String(planId)) || [];
       list.push(group);
       this._groupsByPlan.set(String(planId), list);
-      bus.emit(GroupEvents.CHANGED, { op: 'created', group });
+      bus.emit(GroupEvents.CHANGED);
       return group;
     } catch (err) {
       console.error('[GroupService] createGroup error', err);
@@ -198,7 +199,7 @@ export class GroupService {
           break;
         }
       }
-      bus.emit(GroupEvents.CHANGED, { op: 'updated', group: updated });
+      bus.emit(GroupEvents.CHANGED);
       return updated;
     } catch (err) {
       console.error('[GroupService] updateGroup error', err);
@@ -234,7 +235,7 @@ export class GroupService {
           break;
         }
       }
-      bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
+      bus.emit(GroupEvents.CHANGED);
       return true;
     } catch (err) {
       console.error('[GroupService] deleteGroup error', err);
@@ -257,7 +258,7 @@ export class GroupService {
     const list = this._groupsByPlan.get(String(planId)) || [];
     list.push(group);
     this._groupsByPlan.set(String(planId), list);
-    bus.emit(GroupEvents.CHANGED, { op: 'created', group });
+    bus.emit(GroupEvents.CHANGED);
   }
 
   /**
@@ -272,7 +273,7 @@ export class GroupService {
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...fields };
         this._groupsByPlan.set(planId, list);
-        bus.emit(GroupEvents.CHANGED, { op: 'updated', group: list[idx] });
+        bus.emit(GroupEvents.CHANGED);
         return list[idx];
       }
     }
@@ -302,7 +303,7 @@ export class GroupService {
           }
         }
         this._groupsByPlan.set(planId, list.filter((g) => !toRemove.has(String(g.id))));
-        bus.emit(GroupEvents.CHANGED, { op: 'deleted', groupId });
+        bus.emit(GroupEvents.CHANGED);
         return;
       }
     }
@@ -323,7 +324,7 @@ export class GroupService {
         changed = true;
       }
     }
-    if (changed) bus.emit(GroupEvents.CHANGED, { op: 'cleared' });
+    if (changed) bus.emit(GroupEvents.CHANGED);
   }
 
   /**
