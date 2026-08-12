@@ -33,6 +33,7 @@ Template - do not change :
 - Removed legacy `ViewManagementService` delegation from `createViewRestoreCommands`; view saves now capture project/team selection, task filters, feature states, expansion state, and task types directly from the store, fixing stale data on save in `USE_STATE_STORE=true` mode.
 - Completed view-apply bridge migration to store-first behavior by removing legacy `_viewService`/task-filter/state-sync restore calls while preserving Project/Team/Feature/View activation event emissions.
 - Eliminated remaining `legacyState` dependencies inside store-mode view restore commands by deriving default state/type selections from store baseline data and routing plugin view-state capture/restore through store-backed plugin-state commands.
+- State-store startup now explicitly runs store `viewRestore.restoreLastView()` after bootstrap so the last view from localStorage is fully re-applied (including expansion filters) via store events.
 - Store-backed view restore commands now always include a synthetic readonly `Default View` in the saved-views list so View menus consistently display the default option.
 - Selecting the store-backed `Default View` now performs a full reset equivalent to legacy defaults: baseline scenario active, all projects/teams/states/task-types selected, all task filters enabled, and default view options restored.
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
