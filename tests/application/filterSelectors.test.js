@@ -1,26 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import {
-  createLegacyFilterSelectors,
-  createFilterSelectors,
-} from '../../www/js/application/selectors/filterSelectors.js';
+import { createFilterSelectors } from '../../www/js/application/selectors/filterSelectors.js';
 import { ColorService } from '../../www/js/services/ColorService.js';
 
 describe('application/selectors/filterSelectors', () => {
-  it('legacy selectors expose selected and available feature states', () => {
-    const state = {
-      selectedFeatureStateFilter: new Set(['In Progress', 'Done']),
-      availableFeatureStates: ['New', 'In Progress', 'Done'],
-    };
-
-    const selectors = createLegacyFilterSelectors(state);
-    expect(Array.from(selectors.getSelectedFeatureStateSet())).toEqual([
-      'In Progress',
-      'Done',
-    ]);
-    expect(selectors.getSelectedFeatureStateNames()).toEqual(['In Progress', 'Done']);
-    expect(selectors.getAvailableFeatureStates()).toEqual(['New', 'In Progress', 'Done']);
-  });
-
   it('store selectors read selected states from selection slice', () => {
     const store = {
       getState: () => ({

@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyFeatureCommands,
-  createFeatureCommands,
-} from '../../www/js/application/commands/featureCommands.js';
+import { createFeatureCommands } from '../../www/js/application/commands/featureCommands.js';
 import { store } from '../../www/js/application/store.js';
 import { CapacityEvents, FeatureEvents, ScenarioEvents } from '../../www/js/core/EventRegistry.js';
 
@@ -63,26 +60,6 @@ describe('application/commands/featureCommands', () => {
   beforeEach(() => {
     // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(buildState(), true, 'test.resetStore');
-  });
-
-  it('legacy adapter delegates feature methods 1:1', () => {
-    const state = {
-      updateFeatureDates: vi.fn(),
-      updateFeatureField: vi.fn(),
-      setScenarioOverride: vi.fn(),
-      revertFeature: vi.fn(),
-    };
-
-    const commands = createLegacyFeatureCommands(state);
-    commands.updateFeatureDates([{ id: 'f1', start: 'x', end: 'y' }]);
-    commands.updateFeatureField('f1', 'state', 'Done');
-    commands.setScenarioOverride('f1', 'a', 'b');
-    commands.revertFeature('f1');
-
-    expect(state.updateFeatureDates).toHaveBeenCalledWith([{ id: 'f1', start: 'x', end: 'y' }]);
-    expect(state.updateFeatureField).toHaveBeenCalledWith('f1', 'state', 'Done');
-    expect(state.setScenarioOverride).toHaveBeenCalledWith('f1', 'a', 'b');
-    expect(state.revertFeature).toHaveBeenCalledWith('f1');
   });
 
   it('updateFeatureDates writes overrides for each feature id', () => {

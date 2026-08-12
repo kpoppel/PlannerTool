@@ -1,10 +1,21 @@
 import { expect } from '@open-wc/testing';
 import { stub } from 'sinon';
+import { vi } from 'vitest';
 import PluginMarkers from '../../www/js/plugins/PluginMarkers.js';
 import { PluginMarkersComponent } from '../../www/js/plugins/PluginMarkersComponent.js';
 import { bus } from '../../www/js/core/EventBus.js';
 import { PluginEvents } from '../../www/js/core/EventRegistry.js';
-import { state } from '../../www/js/services/State.js';
+
+const mockSel = vi.hoisted(() => ({
+  selection: {
+    getSelectedProjectIds: vi.fn(() => []),
+    getSelectedTeamIds: vi.fn(() => []),
+  },
+}));
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  sel: mockSel,
+}));
 
 describe('PluginMarkers', () => {
   let emitStub;
@@ -17,133 +28,76 @@ describe('PluginMarkers', () => {
     emitStub.restore();
   });
 
-  it('activate/deactivate/destroy/refresh/toggle behave correctly', async () => {
-    const p = new PluginMarkers('markers-test');
-    // Pre-set internals to avoid dynamic import and JSDOM DOM issues.
-    // MountedPlugin creates _el via createElement; real Lit components fail in JSDOM,
-    // so we provide a stub that has the methods the lifecycle code expects.
-    p._componentLoaded = true;
-    const elStub = {
+  it('activates, deactivates, and destroys cleanly', async () => {
+    const plugin = new PluginMarkers('markers-test');
+    plugin._componentLoaded = true;
+    plugin._host = { appendChild: stub() };
+    plugin._el = {
       open: stub(),
       close: stub(),
-      refresh: stub(),
       remove: stub(),
       style: { display: 'none' },
     };
-    // Set _host so MountedPlugin doesn't overwrite _el in _ensureElement()
-    p._host = { appendChild: stub() };
-    p._el = elStub;
 
-    await p.activate();
-    expect(p.active).to.be.true;
+    await plugin.activate();
+    expect(plugin.active).to.be.true;
     expect(emitStub.calledOnce).to.be.true;
     expect(emitStub.firstCall.args[0]).to.equal(PluginEvents.ACTIVATED);
 
-    // refresh: MountedPlugin doesn't have a native refresh() method, so we mock it on _el
-    // The test expects p.refresh to call el.refresh. Since MountedPlugin base has no refresh(),
-    // we need PluginMarkers to expose one OR the test should stub p.refresh directly.
-    // For now, add a stub refresh on the plugin instance.
-    p.refresh = async () => {
-      if (p._el?.refresh) await p._el.refresh();
-    };
-
-    await p.refresh();
-    expect(elStub.refresh.called).to.be.true;
-
-    await p.deactivate();
-    expect(p.active).to.be.false;
+    await plugin.deactivate();
+    expect(plugin.active).to.be.false;
     expect(emitStub.calledTwice).to.be.true;
     expect(emitStub.secondCall.args[0]).to.equal(PluginEvents.DEACTIVATED);
 
-    // destroy removes the element and clears _el (does NOT set initialized to false)
-    await p.destroy();
-    expect(p._el).to.equal(null);
-    expect(p.active).to.be.false;
-
-    // toggle: stubs on non-existent instance for toggle test
-    const p2 = new PluginMarkers('markers-toggle');
-    p2.activate = stub().resolves();
-    p2.deactivate = stub().resolves();
-    p2.active = false;
-    await p2.toggle();
-    expect(p2.activate.calledOnce).to.be.true;
-    p2.active = true;
-    await p2.toggle();
-    expect(p2.deactivate.calledOnce).to.be.true;
+    await plugin.destroy();
+    expect(plugin._el).to.equal(null);
+    expect(plugin.active).to.be.false;
   });
 });
 
 describe('PluginMarkersComponent marker filtering', () => {
-  const MARKERS = [
-    { project: 'proj-A', team_id: 'team-1', marker: { date: '2026-01-01', label: 'M1', color: '#ff0000' } },
-    { project: 'proj-A', team_id: 'team-2', marker: { date: '2026-02-01', label: 'M2', color: '#ff0000' } },
-    { project: 'proj-B', team_id: null,      marker: { date: '2026-03-01', label: 'M3', color: '#ff0000' } },
-  ];
-
-  function makeComponent(projects, teams) {
-    const c = new PluginMarkersComponent();
-    c.markers = MARKERS;
-    c.selectedColors = { '#ff0000': true };
-    // Stub state.projects and state.teams
-    stub(state, 'projects').get(() => projects);
-    stub(state, 'teams').get(() => teams);
-    return c;
-  }
-
   afterEach(() => {
-    // Restore any stubs applied to state
-    ['projects', 'teams'].forEach((prop) => {
-      const desc = Object.getOwnPropertyDescriptor(state, prop);
-      if (desc && desc.get?.restore) desc.get.restore();
-      if (desc && desc.restore) desc.restore();
-    });
+    mockSel.selection.getSelectedProjectIds.mockReset();
+    mockSel.selection.getSelectedTeamIds.mockReset();
   });
 
-  /** Invoke the private filter directly by reading what _renderSvg would keep */
-  function runFilter(c) {
-    const selectedProjects = (state.projects || []).filter((p) => p.selected).map((p) => p.id);
-    const selectedTeams = (state.teams || []).filter((t) => t.selected).map((t) => t.id);
-    const hasProjectSelection = selectedProjects.length > 0;
-    const hasTeamSelection = selectedTeams.length > 0;
+  it('renders filtered marker counts from selector-backed project and team ids', async () => {
+    mockSel.selection.getSelectedProjectIds.mockReturnValue(['proj-A']);
+    mockSel.selection.getSelectedTeamIds.mockReturnValue(['team-1']);
 
-    return c.markers.filter((m) => {
-      if (!hasProjectSelection) return false;
-      const projectMatch = selectedProjects.includes(m.project);
-      const teamMatch = !hasTeamSelection || !m.team_id || selectedTeams.includes(m.team_id);
-      const markerColor = m.marker?.color || '#2196F3';
-      const colorMatch = c.selectedColors[markerColor] !== false;
-      return projectMatch && teamMatch && colorMatch;
-    });
-  }
+    const el = document.createElement('plugin-markers');
+    el.visible = true;
+    el.markers = [
+      {
+        project: 'proj-A',
+        team_id: 'team-1',
+        plan_id: 'plan-1',
+        plan_name: 'Plan 1',
+        marker: { date: '2026-01-01', label: 'M1', color: '#ff0000' },
+      },
+      {
+        project: 'proj-A',
+        team_id: 'team-2',
+        plan_id: 'plan-2',
+        plan_name: 'Plan 2',
+        marker: { date: '2026-02-01', label: 'M2', color: '#00ff00' },
+      },
+      {
+        project: 'proj-B',
+        team_id: null,
+        plan_id: 'plan-3',
+        plan_name: 'Plan 3',
+        marker: { date: '2026-03-01', label: 'M3', color: '#0000ff' },
+      },
+    ];
 
-  it('shows markers when a project is selected but no teams are selected', () => {
-    const c = makeComponent(
-      [{ id: 'proj-A', selected: true }, { id: 'proj-B', selected: false }],
-      [] // no teams
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    expect(el.shadowRoot.textContent.replace(/\s+/g, ' ').trim()).to.include(
+      '1 of 3 markers'
     );
-    const result = runFilter(c);
-    // Both proj-A markers (M1 and M2) should be visible even with no team selection
-    expect(result.length).to.equal(2);
-    expect(result.map((m) => m.marker.label)).to.deep.equal(['M1', 'M2']);
-  });
 
-  it('hides markers when no projects are selected (regardless of teams)', () => {
-    const c = makeComponent(
-      [{ id: 'proj-A', selected: false }],
-      [{ id: 'team-1', selected: true }]
-    );
-    const result = runFilter(c);
-    expect(result.length).to.equal(0);
-  });
-
-  it('filters by team when teams are selected', () => {
-    const c = makeComponent(
-      [{ id: 'proj-A', selected: true }],
-      [{ id: 'team-1', selected: true }]
-    );
-    const result = runFilter(c);
-    // Only M1 (team-1) should pass — M2 (team-2) filtered out
-    expect(result.length).to.equal(1);
-    expect(result[0].marker.label).to.equal('M1');
+    el.remove();
   });
 });

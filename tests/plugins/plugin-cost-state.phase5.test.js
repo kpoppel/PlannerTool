@@ -1,86 +1,62 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const { mockGet, mockSet, mockUpdate } = vi.hoisted(() => ({
-  mockGet: vi.fn(() => ({ startDate: '2026-01-01', endDate: '2026-12-31' })),
-  mockSet: vi.fn(),
-  mockUpdate: vi.fn(),
+const mockCmd = vi.hoisted(() => ({
+  pluginState: {
+    update: vi.fn(),
+  },
+  filter: {
+    clearSidebarDisabledElements: vi.fn(),
+    setAllStatesSelected: vi.fn(),
+    setSelectedTaskTypes: vi.fn(),
+    setSidebarDisabledElements: vi.fn(),
+    setTaskFilter: vi.fn(),
+  },
+  view: {
+    setExpansionState: vi.fn(),
+  },
+}));
+
+const mockSel = vi.hoisted(() => ({
+  feature: {
+    getAvailableTaskTypes: vi.fn(() => []),
+    getChildrenByParentMap: vi.fn(() => new Map()),
+    getEffectiveFeatures: vi.fn(() => []),
+  },
+  filter: {
+    getAvailableFeatureStates: vi.fn(() => []),
+    getTaskFilters: vi.fn(() => ({ schedule: { unplanned: true } })),
+    featurePassesFilters: vi.fn(() => true),
+  },
+  view: {
+    getExpandedFeatureIds: vi.fn(() => new Set()),
+  },
+  selection: {
+    getSelectedProjectIds: vi.fn(() => []),
+  },
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: {
-    pluginState: {
-      get: mockGet,
-      set: mockSet,
-      update: mockUpdate,
-      subscribe: vi.fn(() => () => {}),
-    },
-    filter: {
-      setAllStatesSelected: vi.fn(),
-      setSelectedTaskTypes: vi.fn(),
-      setSidebarDisabledElements: vi.fn(),
-      clearSidebarDisabledElements: vi.fn(),
-    },
-    view: {
-      setExpansionState: vi.fn(),
-    },
-  },
-  sel: {
-    filter: {
-      getAvailableFeatureStates: vi.fn(() => []),
-    },
-  },
+  cmd: mockCmd,
+  sel: mockSel,
 }));
 
-vi.mock('../../www/js/services/State.js', () => ({
-  state: {
-    taskFilterService: {
-      setFilter: vi.fn(),
-    },
-    availableTaskTypes: [],
-  },
-}));
-
-import PluginCost from '../../www/js/plugins/PluginCost.js';
-import '../../www/js/plugins/PluginCostComponent.js';
+import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
 
 describe('plugin cost phase 5 pluginState seam', () => {
-  it('PluginCost activate/deactivate use cmd.pluginState', async () => {
-    const plugin = new PluginCost('plugin-cost');
-    plugin._el = {
-      pluginId: null,
-      open: vi.fn(),
-      startDate: null,
-      endDate: null,
-      style: { display: 'none' },
-    };
+  it('persists date changes through cmd.pluginState.update', () => {
+    const plugin = new PluginCostComponent();
+    plugin.pluginId = 'plugin-cost';
+    plugin.loadData = vi.fn();
+    plugin.startDate = '2026-04-01';
+    plugin.endDate = '2026-05-01';
 
-    plugin.mount = vi.fn(async () => plugin._el);
-    plugin.unmount = vi.fn(async () => {});
+    plugin.handleDateChange();
 
-    await plugin.activate();
-    expect(mockGet).toHaveBeenCalledWith('plugin-cost');
-
-    plugin._el.startDate = '2026-02-01';
-    plugin._el.endDate = '2026-03-01';
-    await plugin.deactivate();
-    expect(mockSet).toHaveBeenCalledWith(
-      'plugin-cost',
-      { startDate: '2026-02-01', endDate: '2026-03-01' },
-      { saveToView: true }
-    );
-  });
-
-  it('PluginCostComponent persists date state via cmd.pluginState.update', () => {
-    const PluginCostComponent = customElements.get('plugin-cost');
-    const el = new PluginCostComponent();
-    el.startDate = '2026-04-01';
-    el.endDate = '2026-05-01';
-
-    el._persistPluginState();
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockCmd.pluginState.update).toHaveBeenCalledWith(
       'plugin-cost',
       { startDate: '2026-04-01', endDate: '2026-05-01' },
       { saveToView: true }
     );
+    expect(plugin.loadData).toHaveBeenCalledTimes(1);
   });
 });

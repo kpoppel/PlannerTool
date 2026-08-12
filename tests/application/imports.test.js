@@ -41,7 +41,7 @@ describe('application/imports', () => {
     expect(seen).not.toContain('taskFilterService');
   });
 
-  it('keeps USE_STATE_STORE enabled by default', async () => {
+  it('exports store-backed commands and selectors unconditionally', async () => {
     vi.resetModules();
     const mod = await import('../../www/js/application/imports.js?phase1_off=1');
     expect(mod.isStateStoreEnabled).toBe(true);
@@ -58,9 +58,9 @@ describe('application/imports', () => {
     expect(typeof mod.sel.filter.getAvailableFeatureStates).toBe('function');
   });
 
-  it('turns on the state-store branch when runtime override is true', async () => {
+  it('ignores runtime USE_STATE_STORE overrides', async () => {
     vi.resetModules();
-    window.__featureFlags = { USE_STATE_STORE: true };
+    window.__featureFlags = { USE_STATE_STORE: false };
     const mod = await import('../../www/js/application/imports.js?phase1_on=1');
 
     expect(mod.isStateStoreEnabled).toBe(true);
@@ -79,7 +79,6 @@ describe('application/imports', () => {
 
   it('keeps full scenario overrides when server metadata updates arrive', async () => {
     vi.resetModules();
-    window.__featureFlags = { USE_STATE_STORE: true };
 
     const mod = await import('../../www/js/application/imports.js?scenario_sync_merge=1');
     const { bus } = await import('../../www/js/core/EventBus.js');

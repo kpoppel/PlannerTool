@@ -1,41 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyViewRestoreCommands,
-  createViewRestoreCommands,
-} from '../../www/js/application/commands/viewRestoreCommands.js';
+import { createViewRestoreCommands } from '../../www/js/application/commands/viewRestoreCommands.js';
 import { store } from '../../www/js/application/store.js';
 
 describe('application/commands/viewRestoreCommands', () => {
   beforeEach(() => {
     // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
-  });
-
-  it('legacy adapter delegates to viewManagementService', async () => {
-    const state = {
-      viewManagementService: {
-        loadAndApplyView: vi.fn(async () => {}),
-        saveCurrentView: vi.fn(async () => ({ id: 'v1' })),
-        renameView: vi.fn(async () => {}),
-        deleteView: vi.fn(async () => {}),
-        loadViews: vi.fn(async () => []),
-        restoreLastView: vi.fn(async () => {}),
-      },
-      captureCurrentView: vi.fn(() => ({ timelineScale: 'months' })),
-    };
-
-    const cmd = createLegacyViewRestoreCommands(state);
-    await cmd.loadAndApplyView('v1');
-    await cmd.saveCurrentView('Name', 'v1');
-    await cmd.renameView('v1', 'Renamed');
-    await cmd.deleteView('v1');
-    await cmd.loadViews();
-    await cmd.restoreLastView();
-    expect(cmd.captureCurrentView()).toEqual({ timelineScale: 'months' });
-
-    expect(state.viewManagementService.loadAndApplyView).toHaveBeenCalledWith('v1');
-    expect(state.captureCurrentView).toHaveBeenCalledOnce();
   });
 
   it('store commands load and save views through dataService', async () => {

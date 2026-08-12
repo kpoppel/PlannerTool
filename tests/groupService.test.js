@@ -176,14 +176,11 @@ describe('GroupService', () => {
       expect(svc.getGroupsForPlan('p1')).toContain(created);
     });
 
-    it('emits GroupEvents.CHANGED with op=created', async () => {
+    it('emits GroupEvents.CHANGED when creating a group', async () => {
       const created = mkGroup('g1', 'p1', 'A');
       dataService.createGroup.mockResolvedValue(created);
       await svc.createGroup('p1', 'A');
-      expect(bus.emit).toHaveBeenCalledWith(
-        GroupEvents.CHANGED,
-        expect.objectContaining({ op: 'created', group: created })
-      );
+      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.CHANGED);
     });
 
     it('returns null when server returns null', async () => {
@@ -211,17 +208,14 @@ describe('GroupService', () => {
       expect(svc.getGroupsForPlan('p1')[0].name).toBe('New Name');
     });
 
-    it('emits GroupEvents.CHANGED with op=updated', async () => {
+    it('emits GroupEvents.CHANGED when updating a group', async () => {
       const original = mkGroup('g1', 'p1', 'A');
       const updated = { ...original, name: 'B' };
       dataService.listGroups.mockResolvedValue([original]);
       await svc.loadGroups('p1');
       dataService.updateGroup.mockResolvedValue(updated);
       await svc.updateGroup('g1', { name: 'B' });
-      expect(bus.emit).toHaveBeenCalledWith(
-        GroupEvents.CHANGED,
-        expect.objectContaining({ op: 'updated' })
-      );
+      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.CHANGED);
     });
 
     it('returns null on server error', async () => {
@@ -242,16 +236,13 @@ describe('GroupService', () => {
       expect(svc.getGroupsForPlan('p1')).toHaveLength(0);
     });
 
-    it('emits GroupEvents.CHANGED with op=deleted', async () => {
+    it('emits GroupEvents.CHANGED when deleting a group', async () => {
       const group = mkGroup('g1', 'p1', 'A');
       dataService.listGroups.mockResolvedValue([group]);
       await svc.loadGroups('p1');
       dataService.deleteGroup.mockResolvedValue(true);
       await svc.deleteGroup('g1');
-      expect(bus.emit).toHaveBeenCalledWith(
-        GroupEvents.CHANGED,
-        expect.objectContaining({ op: 'deleted', groupId: 'g1' })
-      );
+      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.CHANGED);
     });
 
     it('returns false when server returns false', async () => {

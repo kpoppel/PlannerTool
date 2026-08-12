@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCmd = vi.hoisted(() => ({
   filter: {
     clearSidebarDisabledElements: vi.fn(),
     setAllStatesSelected: vi.fn(),
-    setTaskFilter: vi.fn(),
     setSelectedTaskTypes: vi.fn(),
     setSidebarDisabledElements: vi.fn(),
+    setTaskFilter: vi.fn(),
   },
   view: {
     setExpansionState: vi.fn(),
@@ -14,24 +14,12 @@ const mockCmd = vi.hoisted(() => ({
 }));
 
 const mockSel = vi.hoisted(() => ({
-  filter: {
-    getAvailableFeatureStates: () => ['New', 'Doing'],
-  },
   feature: {
-    getAvailableTaskTypes: () => ['feature', 'epic'],
+    getAvailableTaskTypes: vi.fn(() => ['feature', 'epic']),
   },
-  view: {
-    getExpandedFeatureIds: () => new Set(),
+  filter: {
+    getAvailableFeatureStates: vi.fn(() => ['New', 'Doing']),
   },
-}));
-
-const mockState = vi.hoisted(() => ({
-  pluginStateService: {
-    update: vi.fn(),
-    subscribe: vi.fn(() => () => {}),
-  },
-  getEffectiveFeatures: () => [],
-  childrenByParent: new Map(),
 }));
 
 vi.mock('../../www/js/application/imports.js', () => ({
@@ -39,29 +27,42 @@ vi.mock('../../www/js/application/imports.js', () => ({
   sel: mockSel,
 }));
 
-vi.mock('../../www/js/services/State.js', () => ({
-  state: mockState,
-}));
-
 import { PluginCostComponent } from '../../www/js/plugins/PluginCostComponent.js';
 
-describe('PluginCostComponent Phase 4 command/selector seam', () => {
+describe('PluginCostComponent command/selector seam', () => {
   beforeEach(() => {
     mockCmd.filter.clearSidebarDisabledElements.mockReset();
     mockCmd.filter.setAllStatesSelected.mockReset();
-    mockCmd.filter.setTaskFilter.mockReset();
     mockCmd.filter.setSelectedTaskTypes.mockReset();
     mockCmd.filter.setSidebarDisabledElements.mockReset();
+    mockCmd.filter.setTaskFilter.mockReset();
     mockCmd.view.setExpansionState.mockReset();
   });
 
-  it('routes sidebar disable flow through cmd.filter/cmd.view', () => {
-    const el = new PluginCostComponent();
-    el._applySidebarDisabled();
+  it('routes sidebar disable flow through cmd.filter and cmd.view', () => {
+    const plugin = new PluginCostComponent();
 
+    plugin._applySidebarDisabled();
+
+    expect(mockCmd.filter.setTaskFilter).toHaveBeenCalledWith(
+      'schedule',
+      'unplanned',
+      false
+    );
+    expect(mockCmd.filter.setTaskFilter).toHaveBeenCalledWith('schedule', 'planned', true);
     expect(mockCmd.filter.setAllStatesSelected).toHaveBeenCalledWith(true);
     expect(mockCmd.filter.setSelectedTaskTypes).toHaveBeenCalledWith(['feature', 'epic']);
-    expect(mockCmd.filter.setSidebarDisabledElements).toHaveBeenCalled();
+    expect(mockCmd.filter.setSidebarDisabledElements).toHaveBeenCalledWith({
+      taskFilters: {
+        schedule: ['planned'],
+        allocation: ['allocated', 'unallocated'],
+        hierarchy: ['hasParent', 'noParent'],
+        relations: ['hasLinks', 'noLinks'],
+      },
+      taskTypes: [],
+      states: ['New', 'Doing'],
+      expansion: ['parentChild', 'relations', 'teamAllocated'],
+    });
     expect(mockCmd.view.setExpansionState).toHaveBeenCalledWith({
       expandParentChild: true,
       expandRelations: true,
@@ -69,9 +70,10 @@ describe('PluginCostComponent Phase 4 command/selector seam', () => {
     });
   });
 
-  it('routes close cleanup through cmd.filter/cmd.view', () => {
-    const el = new PluginCostComponent();
-    el.close();
+  it('routes close cleanup through cmd.filter and cmd.view', () => {
+    const plugin = new PluginCostComponent();
+
+    plugin.close();
 
     expect(mockCmd.filter.clearSidebarDisabledElements).toHaveBeenCalled();
     expect(mockCmd.view.setExpansionState).toHaveBeenCalledWith({

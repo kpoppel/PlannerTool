@@ -1,32 +1,37 @@
-import { state } from '../../www/js/services/State.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConfigService } from '../../www/js/services/ConfigService.js';
+import { ConfigEvents } from '../../www/js/core/EventRegistry.js';
 
 describe('disable-autosave helper', () => {
-  // Prevent the State service from starting autosave intervals during tests.
-  beforeAll(() => {
-    try {
-      state.setupAutosave = function (intervalMin) {
-        if (this.autosaveTimer) {
-          clearInterval(this.autosaveTimer);
-          this.autosaveTimer = null;
-        }
-        this.autosaveIntervalMin = 0;
-      };
-      // Clear any timer that might already be running
-      try {
-        state.setupAutosave(0);
-      } catch (e) {}
-    } catch (e) {
-      /* noop for environments where state isn't available */
-    }
+  let service;
+  let bus;
+
+  beforeEach(() => {
+    bus = {
+      emit: vi.fn(),
+      on: vi.fn(),
+    };
+
+    service = new ConfigService(bus, {
+      getLocalPref: vi.fn(async () => null),
+      setLocalPref: vi.fn(async () => undefined),
+    });
   });
 
-  afterAll(() => {
-    try {
-      state.setupAutosave(0);
-    } catch (e) {}
+  afterEach(() => {
+    service?.destroy();
   });
 
-  it('is a test file used for setup', () => {
-    // no-op: ensures Vitest treats this file as a suite
+  it('disables autosave by switching the interval to zero', () => {
+    service.setupAutosave(5, () => {});
+
+    expect(service.isAutosaveEnabled()).toBe(true);
+    expect(service.autosaveIntervalMin).toBe(5);
+
+    service.disableAutosave();
+
+    expect(service.isAutosaveEnabled()).toBe(false);
+    expect(service.autosaveIntervalMin).toBe(0);
+    expect(bus.emit).toHaveBeenCalledWith(ConfigEvents.AUTOSAVE, { autosaveInterval: 0 });
   });
 });

@@ -1,37 +1,40 @@
 import { expect } from '@open-wc/testing';
+import { vi } from 'vitest';
+
+const mockSel = vi.hoisted(() => ({
+  selection: {
+    getSelectedProjects: vi.fn(() => []),
+  },
+  feature: {
+    getChildrenByParentMap: vi.fn(() => new Map()),
+  },
+}));
+
+vi.mock('../../www/js/application/imports.js', () => ({
+  sel: mockSel,
+}));
+
 import { renderProjectView } from '../../www/js/plugins/PluginCostProjectView.js';
-import { state } from '../../www/js/services/State.js';
 
-describe('PluginCost Project View render paths', () => {
-  let originalProjects;
-
-  beforeEach(() => {
-    // snapshot current projects and replace with controlled test data
-    originalProjects = state._projectTeamService.projects.slice();
-  });
-
-  afterEach(() => {
-    // restore
-    state._projectTeamService.projects = originalProjects;
-  });
-
-  it('returns an empty-state when no data present', () => {
+describe('PluginCost project view render paths', () => {
+  it('returns an empty state when no data is present', () => {
     const res = renderProjectView({});
-    expect(res).to.be.ok;
+    expect(res.strings.join('')).to.include('No cost data available');
   });
 
-  it('renders project-level empty table when project selected but no features', () => {
-    state._projectTeamService.projects = [{ id: 'p1', name: 'P1', selected: true }];
+  it('renders the no-features state for a selected project without data', () => {
+    mockSel.selection.getSelectedProjects.mockReturnValue([{ id: 'p1', name: 'Plan 1' }]);
 
-    const component = {
+    const res = renderProjectView({
+      data: {
+        projects: {
+          p1: { id: 'p1', features: [] },
+        },
+      },
       months: [new Date('2026-01-01')],
-      monthsMap: {},
-      expandedProjects: new Set(),
-      projectViewSelection: {},
-      data: { projects: { p1: { id: 'p1', features: [] } } },
-    };
+    });
 
-    const res = renderProjectView(component);
-    expect(res).to.be.ok;
+    expect(mockSel.selection.getSelectedProjects.mock.calls.length).to.equal(1);
+    expect(res).to.exist;
   });
 });

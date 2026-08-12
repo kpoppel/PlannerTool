@@ -1,46 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyPluginStateCommands,
-  createPluginStateCommands,
-} from '../../www/js/application/commands/pluginStateCommands.js';
+import { createPluginStateCommands } from '../../www/js/application/commands/pluginStateCommands.js';
 import { store } from '../../www/js/application/store.js';
 
 describe('application/commands/pluginStateCommands', () => {
   beforeEach(() => {
     // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
-  });
-
-  it('legacy adapter delegates to state pluginStateService', async () => {
-    const state = {
-      pluginStateService: {
-        get: vi.fn(() => ({ a: 1 })),
-        set: vi.fn(() => ({ a: 2 })),
-        update: vi.fn(() => ({ a: 3 })),
-        clear: vi.fn(),
-        clearAll: vi.fn(),
-        captureForView: vi.fn(() => ({ p1: { a: 1 } })),
-        restoreFromView: vi.fn(async () => {}),
-        subscribe: vi.fn(() => () => {}),
-        subscribeAll: vi.fn(() => () => {}),
-      },
-    };
-
-    const cmd = createLegacyPluginStateCommands(state);
-    expect(cmd.get('p1')).toEqual({ a: 1 });
-    expect(cmd.set('p1', { a: 2 })).toEqual({ a: 2 });
-    expect(cmd.update('p1', { a: 3 })).toEqual({ a: 3 });
-    cmd.clear('p1');
-    cmd.clearAll();
-    expect(cmd.captureForView()).toEqual({ p1: { a: 1 } });
-    await cmd.restoreFromView({ p1: { a: 9 } });
-    cmd.subscribe('p1', () => {});
-    cmd.subscribeAll(() => {});
-
-    expect(state.pluginStateService.get).toHaveBeenCalledWith('p1');
-    expect(state.pluginStateService.captureForView).toHaveBeenCalledOnce();
-    expect(state.pluginStateService.restoreFromView).toHaveBeenCalledWith({ p1: { a: 9 } });
   });
 
   it('store commands persist and restore plugin state with view filtering', async () => {

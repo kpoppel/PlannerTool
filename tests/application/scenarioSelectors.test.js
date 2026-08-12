@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyScenarioSelectors,
-  createScenarioSelectors,
-} from '../../www/js/application/selectors/scenarioSelectors.js';
+import { createScenarioSelectors } from '../../www/js/application/selectors/scenarioSelectors.js';
 import { store } from '../../www/js/application/store.js';
 
 describe('application/selectors/scenarioSelectors', () => {
@@ -25,23 +22,6 @@ describe('application/selectors/scenarioSelectors', () => {
     );
   });
 
-  it('legacy selectors delegate to state methods and fields', () => {
-    const state = {
-      scenarios: [{ id: 'legacy-1' }],
-      activeScenarioId: 'legacy-1',
-      getActiveScenario: vi.fn(() => ({ id: 'legacy-1', isChanged: true })),
-      isScenarioUnsaved: vi.fn(() => true),
-    };
-
-    const selectors = createLegacyScenarioSelectors(state);
-
-    expect(selectors.getScenarios()).toEqual([{ id: 'legacy-1' }]);
-    expect(selectors.getActiveScenarioId()).toBe('legacy-1');
-    expect(selectors.getActiveScenario()).toEqual({ id: 'legacy-1', isChanged: true });
-    expect(selectors.isActiveScenarioUnsaved()).toBe(true);
-    expect(state.isScenarioUnsaved).toHaveBeenCalled();
-  });
-
   it('store selectors return active scenario and unsaved status', () => {
     const selectors = createScenarioSelectors(store);
 
@@ -51,29 +31,4 @@ describe('application/selectors/scenarioSelectors', () => {
     expect(selectors.isActiveScenarioUnsaved()).toBe(true);
   });
 
-  it('store selectors fall back to legacy scenarios when store has none', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
-    store.setState(
-      {
-        ...createInitialAppState(),
-        scenarios: {
-          activeId: 'baseline',
-          items: [],
-        },
-      },
-      true,
-      'test.resetStoreEmptyScenarios'
-    );
-
-    const legacyState = {
-      scenarios: [{ id: 'legacy-s1', name: 'Legacy Scenario', isChanged: true }],
-      activeScenarioId: 'legacy-s1',
-    };
-
-    const selectors = createScenarioSelectors(store, legacyState);
-    expect(selectors.getScenarios()).toEqual(legacyState.scenarios);
-    expect(selectors.getActiveScenarioId()).toBe('legacy-s1');
-    expect(selectors.getActiveScenario()).toEqual(legacyState.scenarios[0]);
-    expect(selectors.isActiveScenarioUnsaved()).toBe(true);
-  });
 });

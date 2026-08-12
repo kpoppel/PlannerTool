@@ -26,7 +26,10 @@ describe('core/StoreController', () => {
 
   it('subscribes on connect and requests update on relevant changes', () => {
     const host = new FakeHost();
-    const controller = new StoreController(host, (state) => state.selection.projectIds.length);
+    const controller = new StoreController(
+      host,
+      (state) => state.selection?.projectIds?.length ?? 0
+    );
 
     controller.hostConnected();
 
@@ -70,7 +73,10 @@ describe('core/StoreController', () => {
 
   it('unsubscribes on disconnect', () => {
     const host = new FakeHost();
-    const controller = new StoreController(host, (state) => state.selection.projectIds.length);
+    const controller = new StoreController(
+      host,
+      (state) => state.selection?.projectIds?.length ?? 0
+    );
 
     controller.hostConnected();
     controller.hostDisconnected();

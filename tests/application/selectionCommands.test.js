@@ -70,29 +70,4 @@ describe('application/commands/selectionCommands', () => {
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
-  it('legacy adapter delegates calls to state methods 1:1', () => {
-    const state = {
-      setProjectSelected: vi.fn(),
-      setTeamSelected: vi.fn(),
-      setProjectsSelectedBulk: vi.fn(),
-      setTeamsSelectedBulk: vi.fn(),
-    };
-    const commands = createLegacySelectionCommands(state);
-
-    commands.setProjectSelected('p1', true);
-    commands.setTeamSelected('t1', false);
-    commands.setProjectsSelectedBulk({ p1: true }, { skipRefresh: true });
-    commands.setTeamsSelectedBulk({ t1: true }, { skipRefresh: true });
-
-    expect(state.setProjectSelected).toHaveBeenCalledWith('p1', true);
-    expect(state.setTeamSelected).toHaveBeenCalledWith('t1', false);
-    expect(state.setProjectsSelectedBulk).toHaveBeenCalledWith(
-      { p1: true },
-      { skipRefresh: true }
-    );
-    expect(state.setTeamsSelectedBulk).toHaveBeenCalledWith(
-      { t1: true },
-      { skipRefresh: true }
-    );
-  });
 });

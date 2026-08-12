@@ -1,44 +1,38 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
+import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
+import { createFilterSelectors } from '../../www/js/application/selectors/filterSelectors.js';
+import { store } from '../../www/js/application/store.js';
 
-const mockSel = vi.hoisted(() => ({
-  filter: {
-    getAvailableFeatureStates: vi.fn(() => ['New', 'Doing']),
-  },
-}));
+describe('PluginCostV1 selector seam', () => {
+  beforeEach(() => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(createInitialAppState(), true, 'test.resetStore');
+  });
 
-const mockState = vi.hoisted(() => ({
-  _colorService: {
-    getFeatureStateColors: vi.fn(() => ({
-      New: { background: '#111', text: '#fff' },
-      Doing: { background: '#222', text: '#fff' },
-    })),
-  },
-}));
+  it('derives available states and state colors from the store', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      (state) => ({
+        ...state,
+        baseline: {
+          ...state.baseline,
+          features: [
+            { id: '1', state: 'New' },
+            { id: '2', state: 'Doing' },
+            { id: '3', state: 'Doing' },
+          ],
+        },
+      }),
+      false,
+      'test.seedPluginCostV1States'
+    );
 
-vi.mock('../../www/js/application/imports.js', () => ({
-  cmd: {},
-  sel: mockSel,
-}));
+    const sel = createFilterSelectors(store);
+    const colors = sel.getFeatureStateColors();
 
-vi.mock('../../www/js/services/State.js', () => ({
-  state: mockState,
-}));
-
-import { PluginCostV1Component } from '../../www/js/plugins/PluginCostV1Component.js';
-
-describe('PluginCostV1Component Phase 4 selector seam', () => {
-  it('uses sel.filter available states when building state color map', () => {
-    const el = new PluginCostV1Component();
-    el.data = { projects: [] };
-    el.projects = [];
-    el.months = [];
-
-    el.render();
-
-    expect(mockSel.filter.getAvailableFeatureStates).toHaveBeenCalled();
-    expect(mockState._colorService.getFeatureStateColors).toHaveBeenCalledWith([
-      'New',
-      'Doing',
-    ]);
+    expect(sel.getAvailableFeatureStates()).to.deep.equal(['New', 'Doing']);
+    expect(Object.keys(colors)).to.deep.equal(['New', 'Doing']);
+    expect(colors.New.background).to.be.a('string');
+    expect(colors.New.text).to.be.a('string');
   });
 });

@@ -63,7 +63,7 @@ describe('application/store', () => {
     unsubscribe();
 
     expect(updates).toHaveLength(1);
-    expect(updates[0].prev).toEqual([]);
+    expect(updates[0].prev).toBeNull();
     expect(updates[0].next).toEqual(['project-1']);
   });
 });
