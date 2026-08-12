@@ -44,13 +44,6 @@ function normalizeIdList(ids) {
   return normalized;
 }
 
-function getPreferredSourceItems(legacyItems, baselineItems) {
-  if (Array.isArray(legacyItems) && legacyItems.length > 0) {
-    return legacyItems;
-  }
-  return Array.isArray(baselineItems) ? baselineItems : [];
-}
-
 function deriveFallbackSelectedIds(items) {
   const list = Array.isArray(items) ? items : [];
   const hasExplicitFlags = list.some((item) => typeof item?.selected === 'boolean');
@@ -93,13 +86,13 @@ function deriveItemsWithSelection(sourceItems, storeIds) {
   }));
 }
 
-function deriveProjectsFromStore(state, legacyState = null) {
-  const projects = getPreferredSourceItems(legacyState?.projects, state?.baseline?.projects);
+function deriveProjectsFromStore(state) {
+  const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
   return deriveItemsWithSelection(projects, state?.selection?.projectIds ?? null);
 }
 
-function deriveTeamsFromStore(state, legacyState = null) {
-  const teams = getPreferredSourceItems(legacyState?.teams, state?.baseline?.teams);
+function deriveTeamsFromStore(state) {
+  const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
   return deriveItemsWithSelection(teams, state?.selection?.teamIds ?? null);
 }
 
@@ -150,7 +143,7 @@ export function createLegacySelectionSelectors(state) {
   };
 }
 
-export function createSelectionSelectors(store, legacyState = null) {
+export function createSelectionSelectors(store) {
   return {
     getEffectiveSelectedProjectIds() {
       const state = store.getState();

@@ -240,7 +240,7 @@ function applyConfiguredStateSequence(states, projects) {
   return ordered;
 }
 
-export function createFilterSelectors(store, legacyState = null) {
+export function createFilterSelectors(store) {
   const fallbackTaskFilter = createFallbackTaskFilterFn(store);
 
   function getSelectionTaskFilters() {

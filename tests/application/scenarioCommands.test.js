@@ -6,6 +6,7 @@ import {
 } from '../../www/js/application/commands/scenarioCommands.js';
 import { store } from '../../www/js/application/store.js';
 import { CapacityEvents, ScenarioEvents } from '../../www/js/core/EventRegistry.js';
+import { dataService } from '../../www/js/services/dataService.js';
 
 function withScenarioState(partial = {}) {
   return {
@@ -94,69 +95,83 @@ describe('application/commands/scenarioCommands', () => {
 
   it('activateScenario updates active id and emits activation events', () => {
     const bus = { emit: vi.fn() };
-    const legacyState = {
-      recomputeCapacityMetrics: vi.fn(),
-      capacityDates: ['2026-01-01'],
-      teamDailyCapacity: [{ id: 't1' }],
-      teamDailyCapacityMap: [{ t1: 1 }],
-      projectDailyCapacityRaw: [{ id: 'p1' }],
-      projectDailyCapacity: [{ id: 'p1', value: 1 }],
-      projectDailyCapacityMap: [{ p1: 1 }],
-      totalOrgDailyCapacity: [3],
-      totalOrgDailyPerTeamAvg: [1.5],
-    };
-    const commands = createScenarioCommands(store, bus, legacyState);
+    const commands = createScenarioCommands(store, bus);
 
     const result = commands.activateScenario('s2');
 
     expect(result?.id).toBe('s2');
     expect(store.getState().scenarios.activeId).toBe('s2');
-    expect(legacyState.recomputeCapacityMetrics).toHaveBeenCalled();
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED, { scenarioId: 's2' });
     expect(bus.emit).toHaveBeenCalledWith(
       CapacityEvents.UPDATED,
       expect.objectContaining({
-        dates: ['2026-01-01'],
-        totalOrgDailyCapacity: [3],
+        totalOrgDailyCapacity: expect.any(Array),
       })
     );
   });
 
-  it('activateScenario handles legacy getter-only scenarios property without throwing', () => {
+  it('store-mode activation does not touch legacy state adapters', () => {
     const bus = { emit: vi.fn() };
-    let capturedActiveId = null;
-    const legacyState = {
-      recomputeCapacityMetrics: vi.fn(),
-      _scenarioEventService: {
-        getScenarios: () => [{ id: 'baseline', readonly: true }],
-        setActiveScenarioId: vi.fn((id) => {
-          capturedActiveId = id;
-        }),
-      },
-    };
-    Object.defineProperty(legacyState, 'scenarios', {
-      get() {
-        return [{ id: 'baseline', readonly: true }];
-      },
-      configurable: true,
-      enumerable: true,
-    });
-    Object.defineProperty(legacyState, 'activeScenarioId', {
-      get() {
-        return capturedActiveId;
-      },
-      set(id) {
-        capturedActiveId = id;
-      },
-      configurable: true,
-      enumerable: true,
-    });
+    const legacyState = new Proxy(
+      {},
+      {
+        get(_target, prop) {
+          throw new Error(`legacy state should not be accessed in store mode: ${String(prop)}`);
+        },
+      }
+    );
 
     const commands = createScenarioCommands(store, bus, legacyState);
 
     expect(() => commands.activateScenario('s2')).not.toThrow();
     expect(store.getState().scenarios.activeId).toBe('s2');
-    expect(capturedActiveId).toBe('s2');
+  });
+
+  it('saveScenario persists the active scenario without legacy state access', async () => {
+    const bus = { emit: vi.fn() };
+    const saved = { ok: true, data: { id: 's1' } };
+    const saveSpy = vi.spyOn(dataService, 'saveScenario').mockResolvedValue(saved);
+    const commands = createScenarioCommands(store, bus);
+
+    const result = await commands.saveScenario('s1');
+
+    expect(saveSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 's1',
+        name: 'Alpha',
+        overrides: { f1: { start: '2026-01-01' } },
+      })
+    );
+    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 's1')?.isChanged).toBe(
+      false
+    );
+    expect(result).toBe(saved);
+    saveSpy.mockRestore();
+  });
+
+  it('refreshBaseline delegates to the store data hydration path', async () => {
+    const bus = { emit: vi.fn() };
+    const hydrateBaseline = vi.fn().mockResolvedValue({ ok: true, data: { revision: 1 } });
+    const commands = createScenarioCommands(store, bus, null, { hydrateBaseline });
+
+    const result = await commands.refreshBaseline();
+
+    expect(hydrateBaseline).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, data: { revision: 1 } });
+  });
+
+  it('invalidateAndRefreshBaseline invalidates cache before hydration', async () => {
+    const bus = { emit: vi.fn() };
+    const invalidateCache = vi.spyOn(dataService, 'invalidateCache').mockResolvedValue({ ok: true });
+    const hydrateBaseline = vi.fn().mockResolvedValue({ ok: true, data: { revision: 2 } });
+    const commands = createScenarioCommands(store, bus, null, { hydrateBaseline });
+
+    const result = await commands.invalidateAndRefreshBaseline();
+
+    expect(invalidateCache).toHaveBeenCalledTimes(1);
+    expect(hydrateBaseline).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true, data: { revision: 2 } });
+    invalidateCache.mockRestore();
   });
 
   it('renameScenario enforces unique names and marks changed', () => {

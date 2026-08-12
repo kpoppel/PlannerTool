@@ -1,4 +1,5 @@
 import { CapacityEvents, FeatureEvents, GroupEvents, ScenarioEvents } from '../../core/EventRegistry.js';
+import { dataService } from '../../services/dataService.js';
 
 function cloneValue(value) {
   if (value == null) return {};
@@ -100,108 +101,31 @@ export function createLegacyScenarioCommands(state) {
   };
 }
 
-export function createScenarioCommands(store, bus, legacyState = null) {
-  function canAssignProperty(target, prop) {
-    if (!target || typeof target !== 'object') return false;
-    let current = target;
-    while (current) {
-      const descriptor = Object.getOwnPropertyDescriptor(current, prop);
-      if (descriptor) {
-        if (typeof descriptor.set === 'function') return true;
-        return descriptor.writable === true;
-      }
-      current = Object.getPrototypeOf(current);
-    }
-    return true;
-  }
-
-  function tryAssignProperty(target, prop, value) {
-    if (!canAssignProperty(target, prop)) return false;
-    try {
-      target[prop] = value;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function syncLegacyScenarioState(nextScenarios, nextActiveId) {
-    if (!legacyState) return;
-
-    const clonedScenarios = Array.isArray(nextScenarios) ? structuredClone(nextScenarios) : [];
-    const activeId = nextActiveId ?? 'baseline';
-
-    const wroteScenarios = tryAssignProperty(legacyState, 'scenarios', clonedScenarios);
-    if (!wroteScenarios && legacyState?._scenarioEventService) {
-      const existingReadonly = (legacyState._scenarioEventService.getScenarios?.() || []).filter(
-        (scenario) => scenario && scenario.readonly
-      );
-      legacyState._scenarioEventService._scenarios = [
-        ...existingReadonly,
-        ...structuredClone(clonedScenarios),
-      ];
-    }
-
-    const wroteActiveId = tryAssignProperty(legacyState, 'activeScenarioId', activeId);
-    if (!wroteActiveId && legacyState?._scenarioEventService?.setActiveScenarioId) {
-      legacyState._scenarioEventService.setActiveScenarioId(activeId);
-    }
-  }
+export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
+  const hydrateBaseline = typeof deps.hydrateBaseline === 'function' ? deps.hydrateBaseline : null;
+  const invalidateCache = typeof deps.invalidateCache === 'function' ? deps.invalidateCache : () => dataService.invalidateCache();
 
   function buildCapacityPayload() {
     const snapshot = store.getState()?.capacity || {};
     return {
-      dates: legacyState?.capacityDates ?? snapshot.dates ?? [],
-      teamDailyCapacity: legacyState?.teamDailyCapacity ?? snapshot.teamDaily ?? [],
-      teamDailyCapacityMap: legacyState?.teamDailyCapacityMap ?? snapshot.teamDailyMap ?? [],
-      projectDailyCapacityRaw: legacyState?.projectDailyCapacityRaw ?? snapshot.projectDailyRaw ?? [],
-      projectDailyCapacity: legacyState?.projectDailyCapacity ?? snapshot.projectDaily ?? [],
-      projectDailyCapacityMap: legacyState?.projectDailyCapacityMap ?? snapshot.projectDailyMap ?? [],
-      totalOrgDailyCapacity: legacyState?.totalOrgDailyCapacity ?? snapshot.organizationDaily ?? [],
-      totalOrgDailyPerTeamAvg:
-        legacyState?.totalOrgDailyPerTeamAvg ?? snapshot.organizationDailyPerTeamAverage ?? [],
+      dates: snapshot.dates ?? [],
+      teamDailyCapacity: snapshot.teamDaily ?? [],
+      teamDailyCapacityMap: snapshot.teamDailyMap ?? [],
+      projectDailyCapacityRaw: snapshot.projectDailyRaw ?? [],
+      projectDailyCapacity: snapshot.projectDaily ?? [],
+      projectDailyCapacityMap: snapshot.projectDailyMap ?? [],
+      totalOrgDailyCapacity: snapshot.organizationDaily ?? [],
+      totalOrgDailyPerTeamAvg: snapshot.organizationDailyPerTeamAverage ?? [],
     };
   }
 
-  function syncCapacityFromLegacy() {
-    if (!legacyState) return;
-    store.setState(
-      (state) => ({
-        ...state,
-        capacity: {
-          dates: Array.isArray(legacyState.capacityDates) ? legacyState.capacityDates : [],
-          teamDaily: Array.isArray(legacyState.teamDailyCapacity) ? legacyState.teamDailyCapacity : [],
-          teamDailyMap:
-            Array.isArray(legacyState.teamDailyCapacityMap) ? legacyState.teamDailyCapacityMap : [],
-          projectDailyRaw:
-            Array.isArray(legacyState.projectDailyCapacityRaw) ?
-              legacyState.projectDailyCapacityRaw
-            : [],
-          projectDaily:
-            Array.isArray(legacyState.projectDailyCapacity) ? legacyState.projectDailyCapacity : [],
-          projectDailyMap:
-            Array.isArray(legacyState.projectDailyCapacityMap) ?
-              legacyState.projectDailyCapacityMap
-            : [],
-          organizationDaily:
-            Array.isArray(legacyState.totalOrgDailyCapacity) ? legacyState.totalOrgDailyCapacity : [],
-          organizationDailyPerTeamAverage:
-            Array.isArray(legacyState.totalOrgDailyPerTeamAvg) ?
-              legacyState.totalOrgDailyPerTeamAvg
-            : [],
-        },
-      }),
-      false,
-      'scenario.syncCapacityFromLegacy'
-    );
+  function recomputeAndEmitCapacity() {
+    bus?.emit?.(CapacityEvents.UPDATED, buildCapacityPayload());
   }
 
-  function recomputeAndEmitCapacity(changedFeatureIds = null) {
-    if (typeof legacyState?.recomputeCapacityMetrics === 'function') {
-      legacyState.recomputeCapacityMetrics(changedFeatureIds);
-      syncCapacityFromLegacy();
-    }
-    bus?.emit?.(CapacityEvents.UPDATED, buildCapacityPayload());
+  function getScenarioById(id) {
+    const targetId = id ?? store.getState()?.scenarios?.activeId ?? 'baseline';
+    return toScenarioItems(store.getState()).find((scenario) => scenario.id === targetId) || null;
   }
 
   return {
@@ -245,7 +169,6 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         scenarioId: scenario.id,
         change: { type: 'clone', from: sourceId },
       });
-      syncLegacyScenarioState(nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
       emitScenarioList(bus, nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
 
       return scenario;
@@ -269,7 +192,6 @@ export function createScenarioCommands(store, bus, legacyState = null) {
       );
 
       const scenarios = toScenarioItems(store.getState());
-      syncLegacyScenarioState(scenarios, id);
       bus?.emit?.(ScenarioEvents.ACTIVATED, { scenarioId: id });
       recomputeAndEmitCapacity();
       bus?.emit?.(FeatureEvents.UPDATED);
@@ -308,7 +230,6 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.renameScenario'
       );
 
-      syncLegacyScenarioState(nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: id,
         change: { type: 'rename', name: uniqueName },
@@ -342,7 +263,6 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.deleteScenario'
       );
 
-      syncLegacyScenarioState(nextScenarios, nextActiveId);
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: id,
         change: { type: 'delete' },
@@ -382,7 +302,6 @@ export function createScenarioCommands(store, bus, legacyState = null) {
         'scenario.markActiveScenarioChanged'
       );
 
-      syncLegacyScenarioState(nextScenarios, activeId);
       bus?.emit?.(ScenarioEvents.UPDATED, {
         scenarioId: activeId,
         change: { type: 'markedChanged' },
@@ -392,18 +311,68 @@ export function createScenarioCommands(store, bus, legacyState = null) {
     },
 
     async saveScenario(id) {
-      if (typeof legacyState?.saveScenario !== 'function') return null;
-      return legacyState.saveScenario(id);
+      const scenario = getScenarioById(id);
+      if (!scenario || scenario.id === 'baseline') {
+        return { ok: true, data: scenario }; 
+      }
+
+      const payload = {
+        id: scenario.id,
+        name: scenario.name,
+        overrides: scenario.overrides,
+        filters: scenario.filters,
+        view: scenario.view,
+        scenarioGroups: Array.isArray(scenario.scenarioGroups) && scenario.scenarioGroups.length > 0
+          ? [...scenario.scenarioGroups]
+          : undefined,
+        groupOverrides: scenario.groupOverrides && Object.keys(scenario.groupOverrides).length > 0
+          ? { ...scenario.groupOverrides }
+          : undefined,
+      };
+
+      const result = await dataService.saveScenario(payload);
+      if (result && result.ok === true) {
+        store.setState(
+          (state) => ({
+            ...state,
+            scenarios: {
+              ...state.scenarios,
+              items: (state.scenarios?.items || []).map((item) =>
+                item.id === scenario.id ? { ...item, isChanged: false } : item
+              ),
+            },
+          }),
+          false,
+          'scenario.saveScenario'
+        );
+
+        bus?.emit?.(ScenarioEvents.SAVED, { scenarioId: scenario.id });
+        bus?.emit?.(ScenarioEvents.UPDATED, {
+          scenarioId: scenario.id,
+          change: { type: 'saved' },
+        });
+        emitScenarioList(bus, toScenarioItems(store.getState()), store.getState()?.scenarios?.activeId ?? 'baseline');
+      }
+
+      return result;
     },
 
     async refreshBaseline() {
-      if (typeof legacyState?.refreshBaseline !== 'function') return null;
-      return legacyState.refreshBaseline();
+      if (typeof hydrateBaseline === 'function') {
+        return hydrateBaseline();
+      }
+      return { ok: false, error: { message: 'baseline hydration not configured for store mode' } };
     },
 
     async invalidateAndRefreshBaseline() {
-      if (typeof legacyState?.invalidateAndRefreshBaseline !== 'function') return null;
-      return legacyState.invalidateAndRefreshBaseline();
+      const invalidation = await invalidateCache();
+      if (invalidation && invalidation.ok === false) {
+        console.warn('Scenario baseline invalidation failed, continuing with refresh', invalidation.error);
+      }
+      if (typeof hydrateBaseline === 'function') {
+        return hydrateBaseline();
+      }
+      return { ok: false, error: { message: 'baseline hydration not configured for store mode' } };
     },
   };
 }

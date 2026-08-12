@@ -30,6 +30,8 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Fixed store-mode scenario save/refresh flows to persist and rehydrate through the store-backed data layer rather than silently no-oping, removing the last runtime legacy-state dependency from that path without breaking baseline refresh behavior.
+- Removed the final remaining legacy-state compatibility bridges from the store-mode command and selector path so `USE_STATE_STORE=true` no longer reads or writes legacy scenario/capacity state during normal runtime mutation flows.
 - Removed legacy `taskFilterService` reads from the store-mode selector/command path so startup no longer touches the legacy TaskFilterService while booting in `USE_STATE_STORE=true` mode.
 - Removed legacy `ViewManagementService` delegation from `createViewRestoreCommands`; view saves now capture project/team selection, task filters, feature states, expansion state, and task types directly from the store, fixing stale data on save in `USE_STATE_STORE=true` mode.
 - Completed view-apply bridge migration to store-first behavior by removing legacy `_viewService`/task-filter/state-sync restore calls while preserving Project/Team/Feature/View activation event emissions.

@@ -55,15 +55,34 @@ const pluginStateCommands = createPluginStateCommands(store);
 const stateStoreCommands = {
   ui: createUiCommands(store, bus),
   data: createDataCommands(store, bus, dataService),
-  selection: createSelectionCommands(store, bus, () => stateStoreCommands.data.recomputeCapacity()),
-  filter: createFilterCommands(store, bus, () => stateStoreCommands.data.recomputeCapacity()),
+  selection: null,
+  filter: null,
   view: createViewCommands(store, bus),
   pluginState: pluginStateCommands,
   viewRestore: createViewRestoreCommands(store, dataService, pluginStateCommands),
-  feature: createFeatureCommands(store, bus, () => stateStoreCommands.data.recomputeCapacity()),
-  scenario: createScenarioCommands(store, bus),
+  feature: null,
+  scenario: null,
   group: createGroupCommands(store, bus),
 };
+stateStoreCommands.selection = createSelectionCommands(
+  store,
+  bus,
+  () => stateStoreCommands.data.recomputeCapacity()
+);
+stateStoreCommands.filter = createFilterCommands(
+  store,
+  bus,
+  () => stateStoreCommands.data.recomputeCapacity()
+);
+stateStoreCommands.feature = createFeatureCommands(
+  store,
+  bus,
+  () => stateStoreCommands.data.recomputeCapacity()
+);
+stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
+  hydrateBaseline: (...args) => stateStoreCommands.data.hydrateBaseline(...args),
+  invalidateCache: (...args) => dataService.invalidateCache(...args),
+});
 const stateStoreSelectors = {
   ui: uiSelectors,
   selection: createSelectionSelectors(store),
