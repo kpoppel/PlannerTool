@@ -45,6 +45,11 @@ const mockSel = vi.hoisted(() => ({
     getPackedMode: () => false,
     getDisplayMode: () => 'normal',
     getCapacityViewMode: () => 'team',
+    getExpansionState: () => ({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    }),
   },
 }));
 
@@ -77,6 +82,11 @@ describe('Sidebar Phase 4 command/selector seam', () => {
 
     mockSel.view.isTypeVisible = () => true;
     mockSel.view.getCondensedCards = () => false;
+    mockSel.view.getExpansionState = () => ({
+      expandParentChild: false,
+      expandRelations: false,
+      expandTeamAllocated: false,
+    });
   });
 
   it('setTaskTypeChecked updates cmd.view and cmd.filter', () => {
@@ -112,5 +122,24 @@ describe('Sidebar Phase 4 command/selector seam', () => {
     expect(mockCmd.view.setCondensedCards).toHaveBeenCalledWith(true);
     expect(mockCmd.view.setFeatureSortMode).toHaveBeenCalledWith('date');
     expect(mockCmd.view.setCapacityViewMode).toHaveBeenCalledWith('project');
+  });
+
+  it('hydrates expansion toggles from selector state', () => {
+    const sidebar = new SidebarLit();
+    sidebar.expandParentChild = true;
+    sidebar.expandRelations = true;
+    sidebar.expandTeamAllocated = true;
+
+    mockSel.view.getExpansionState = () => ({
+      expandParentChild: false,
+      expandRelations: true,
+      expandTeamAllocated: false,
+    });
+
+    sidebar._syncExpansionFromSelectors();
+
+    expect(sidebar.expandParentChild).toBe(false);
+    expect(sidebar.expandRelations).toBe(true);
+    expect(sidebar.expandTeamAllocated).toBe(false);
   });
 });

@@ -29,6 +29,14 @@ Template - do not change :
 - Migration `0026_migrate_ttl_cache.py`: moves any leftover remote-backend cache entries from `data/cache`
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
+### Fixed
+- Removed legacy `ViewManagementService` delegation from `createViewRestoreCommands`; view saves now capture project/team selection, task filters, feature states, expansion state, and task types directly from the store, fixing stale data on save in `USE_STATE_STORE=true` mode.
+- Completed view-apply bridge migration to store-first behavior by removing legacy `_viewService`/task-filter/state-sync restore calls while preserving Project/Team/Feature/View activation event emissions.
+- Eliminated remaining `legacyState` dependencies inside store-mode view restore commands by deriving default state/type selections from store baseline data and routing plugin view-state capture/restore through store-backed plugin-state commands.
+- Store-backed view restore commands now always include a synthetic readonly `Default View` in the saved-views list so View menus consistently display the default option.
+- Selecting the store-backed `Default View` now performs a full reset equivalent to legacy defaults: baseline scenario active, all projects/teams/states/task-types selected, all task filters enabled, and default view options restored.
+- Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
+
 ### Changed
 - Phase 2 shared data-access migration completed: both `ProviderREST` and `AdminProviderREST` now share `RestProviderBase` + `result.js` Result helpers, provider/admin endpoint methods return normalized Result contracts, `dataService`/admin call sites were updated for compatibility handling, and provider/admin regression suites were rewritten to assert the new contract.
 - Phase 2 follow-up completed: removed admin constructor-time Result wrappers, moved app/admin endpoint execution onto the shared `RestProviderBase` JSON/result path, and normalized failure envelopes to `{ ok: false, error: { message, ... } }` across both providers.

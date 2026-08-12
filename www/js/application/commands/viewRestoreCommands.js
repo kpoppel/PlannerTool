@@ -1,8 +1,46 @@
+import { bus } from '../../core/EventBus.js';
+import {
+  ProjectEvents,
+  TeamEvents,
+  FeatureEvents,
+  ViewManagementEvents,
+} from '../../core/EventRegistry.js';
+
 function cloneValue(value) {
   return value == null ? null : structuredClone(value);
 }
 
 const LAST_VIEW_ID_STORAGE_KEY = 'az_planner:last_view_id';
+
+const DEFAULT_VIEW_ID = 'default';
+
+function createSyntheticDefaultView() {
+  return {
+    id: DEFAULT_VIEW_ID,
+    name: 'Default View',
+    readonly: true,
+    selectedProjects: {},
+    selectedTeams: {},
+    viewOptions: {},
+  };
+}
+
+function withSyntheticDefaultView(views) {
+  const nextViews = Array.isArray(views) ? [...views] : [];
+  const defaultIndex = nextViews.findIndex((view) => String(view?.id) === DEFAULT_VIEW_ID);
+  const syntheticDefaultView = createSyntheticDefaultView();
+
+  if (defaultIndex === -1) {
+    nextViews.unshift(syntheticDefaultView);
+    return nextViews;
+  }
+
+  nextViews[defaultIndex] = {
+    ...nextViews[defaultIndex],
+    ...syntheticDefaultView,
+  };
+  return nextViews;
+}
 
 function getDefaultViewOptions() {
   return {
@@ -13,13 +51,69 @@ function getDefaultViewOptions() {
     displayMode: 'normal',
     packedMode: false,
     showDependencies: false,
-    showUnassignedCards: false,
-    showUnplannedWork: false,
+    showUnassignedCards: true,
+    showUnplannedWork: true,
     showOnlyProjectHierarchy: false,
     hiddenTypes: [],
     expandParentChild: false,
     expandRelations: false,
     expandTeamAllocated: false,
+  };
+}
+
+function deriveAvailableFeatureStates(snapshot) {
+  const fromFilterState = Array.isArray(snapshot?.filter?.availableFeatureStates) ?
+    snapshot.filter.availableFeatureStates
+  : [];
+  if (fromFilterState.length > 0) {
+    return Array.from(new Set(fromFilterState.map((stateName) => String(stateName))));
+  }
+
+  const fromFeatures = [];
+  const seen = new Set();
+  for (const feature of snapshot?.baseline?.features || []) {
+    const stateName = feature?.state;
+    if (!stateName) continue;
+    const key = String(stateName);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    fromFeatures.push(key);
+  }
+  return fromFeatures;
+}
+
+function deriveAvailableTaskTypes(snapshot) {
+  const fromFeatures = [];
+  const seen = new Set();
+  for (const feature of snapshot?.baseline?.features || []) {
+    const typeName = feature?.type ?? feature?.workItemType ?? feature?.work_item_type;
+    if (!typeName) continue;
+    const key = String(typeName);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    fromFeatures.push(key);
+  }
+  return fromFeatures;
+}
+
+function getAllTaskFiltersEnabled() {
+  return {
+    schedule: {
+      planned: true,
+      unplanned: true,
+    },
+    allocation: {
+      allocated: true,
+      unallocated: true,
+    },
+    hierarchy: {
+      hasParent: true,
+      noParent: true,
+    },
+    relations: {
+      hasLinks: true,
+      noLinks: true,
+    },
   };
 }
 
@@ -47,6 +141,23 @@ function toViewExpansion(existingExpansion, options = {}) {
   };
 }
 
+function toSelectedMap(ids) {
+  return Object.fromEntries((ids || []).map((id) => [String(id), true]));
+}
+
+function toActiveViewOptions(snapshot, existingViewOptions = {}) {
+  return {
+    ...existingViewOptions,
+    ...cloneValue(snapshot.view?.options || {}),
+    selectedFeatureStates: Array.from(snapshot.selection?.featureStateNames || []),
+    selectedTaskTypes: Array.from(snapshot.selection?.taskTypeNames || []),
+    taskFilters: cloneValue(snapshot.selection?.taskFilters || {}),
+    expandParentChild: Boolean(snapshot.view?.expansion?.parentChild),
+    expandRelations: Boolean(snapshot.view?.expansion?.relations),
+    expandTeamAllocated: Boolean(snapshot.view?.expansion?.teamAllocated),
+  };
+}
+
 function readLastViewId() {
   try {
     if (typeof localStorage === 'undefined') return null;
@@ -64,85 +175,6 @@ function writeLastViewId(viewId) {
   } catch {
     // Ignore persistence failures (e.g. tests / blocked storage).
   }
-}
-
-function getSelectedIds(items) {
-  return (Array.isArray(items) ? items : [])
-    .filter((item) => item?.selected === true && item?.id !== null && item?.id !== undefined)
-    .map((item) => String(item.id));
-}
-
-function syncStoreFromLegacyViewState(store, legacyState, fallbackViews = null, fallbackActiveId = null) {
-  if (!legacyState) return;
-
-  const selectedProjectIds = getSelectedIds(legacyState.projects);
-  const selectedTeamIds = getSelectedIds(legacyState.teams);
-  const availableTaskTypes =
-    Array.isArray(legacyState.availableTaskTypes) ? legacyState.availableTaskTypes : [];
-  const selectedTaskTypes = availableTaskTypes.filter(
-    (typeName) => legacyState?._viewService?.isTypeVisible?.(typeName) !== false
-  );
-  const hiddenTypes = availableTaskTypes.filter(
-    (typeName) => legacyState?._viewService?.isTypeVisible?.(typeName) === false
-  );
-  const selectedFeatureStateFilter =
-    legacyState?.selectedFeatureStateFilter &&
-    typeof legacyState.selectedFeatureStateFilter[Symbol.iterator] === 'function' ?
-      Array.from(legacyState.selectedFeatureStateFilter).map((stateName) => String(stateName))
-    : [];
-  const taskFilters = legacyState?.taskFilterService?.getFilters?.() || {};
-  const viewOptions =
-    typeof legacyState.captureCurrentView === 'function' ? legacyState.captureCurrentView() : {};
-  const expansionState = legacyState?.expansionState || {};
-  const savedViews =
-    fallbackViews ||
-    legacyState?.viewManagementService?.getViews?.() ||
-    legacyState?.savedViews ||
-    [];
-  const activeViewId =
-    fallbackActiveId ??
-    legacyState?.viewManagementService?.getActiveViewId?.() ??
-    legacyState?.activeViewId ??
-    null;
-
-  store.setState(
-    (state) => ({
-      ...state,
-      selection: {
-        ...state.selection,
-        projectIds: selectedProjectIds,
-        teamIds: selectedTeamIds,
-        featureStateNames: selectedFeatureStateFilter,
-        taskTypeNames: selectedTaskTypes,
-        taskFilters,
-        sidebarDisabled: legacyState?.getSidebarDisabledElements?.() || {},
-      },
-      scenarios: {
-        ...state.scenarios,
-        items:
-          Array.isArray(legacyState.scenarios) ? cloneValue(legacyState.scenarios) : state.scenarios.items,
-        activeId: legacyState?.activeScenarioId || state.scenarios.activeId,
-      },
-      view: {
-        ...state.view,
-        saved: cloneValue(savedViews) || [],
-        activeId: activeViewId,
-        options: {
-          ...state.view.options,
-          ...viewOptions,
-          hiddenTypes,
-        },
-        expansion: {
-          ...state.view.expansion,
-          parentChild: Boolean(expansionState.expandParentChild),
-          relations: Boolean(expansionState.expandRelations),
-          teamAllocated: Boolean(expansionState.expandTeamAllocated),
-        },
-      },
-    }),
-    false,
-    'viewRestore.syncFromLegacyViewState'
-  );
 }
 
 export function createLegacyViewRestoreCommands(state) {
@@ -177,28 +209,30 @@ export function createLegacyViewRestoreCommands(state) {
   };
 }
 
-export function createViewRestoreCommands(store, dataService, legacyState = null) {
+export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
   function setViews(views, activeId = null) {
+    const nextViews = withSyntheticDefaultView(views);
+    const nextActiveId = activeId !== null ? activeId : store.getState().view?.activeId;
     store.setState(
       (state) => ({
         ...state,
         view: {
           ...state.view,
-          saved: Array.isArray(views) ? cloneValue(views) : [],
+          saved: cloneValue(nextViews),
           ...(activeId !== null ? { activeId } : {}),
         },
       }),
       false,
       'viewRestore.setViews'
     );
+    bus.emit(ViewManagementEvents.LIST, {
+      views: nextViews,
+      activeViewId: nextActiveId,
+    });
   }
 
   async function restorePluginState(pluginState) {
-    if (typeof legacyState?.restorePluginStateFromView === 'function') {
-      await legacyState.restorePluginStateFromView(pluginState || {});
-      return;
-    }
-    await legacyState?.pluginStateService?.restoreFromView?.(pluginState || {});
+    await pluginStateCommands?.restoreFromView?.(pluginState || {});
   }
 
   function applyViewToStore(viewId, viewData) {
@@ -225,12 +259,18 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
     const selectedStates =
       Array.isArray(viewOptions.selectedFeatureStates) ?
         Array.from(viewOptions.selectedFeatureStates)
-      : (isDefault ? [] : (snapshot.selection?.featureStateNames || []));
+      :
+        (isDefault ?
+          deriveAvailableFeatureStates(snapshot)
+        : (snapshot.selection?.featureStateNames || []));
 
     const selectedTaskTypes =
       Array.isArray(viewOptions.selectedTaskTypes) ?
         Array.from(viewOptions.selectedTaskTypes)
-      : (isDefault ? [] : (snapshot.selection?.taskTypeNames || []));
+      :
+        (isDefault ?
+          deriveAvailableTaskTypes(snapshot)
+        : (snapshot.selection?.taskTypeNames || []));
 
     const nextViewOptions = isDefault ?
       getDefaultViewOptions()
@@ -245,7 +285,10 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
           ...(snapshot.selection?.taskFilters || {}),
           ...viewOptions.taskFilters,
         }
-      : (isDefault ? { schedule: null, allocation: null, hierarchy: null, relations: null } :
+      :
+        (isDefault ?
+          getAllTaskFiltersEnabled()
+        :
           (snapshot.selection?.taskFilters || {}));
 
     store.setState(
@@ -259,6 +302,10 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
           taskTypeNames: selectedTaskTypes,
           taskFilters: nextTaskFilters,
         },
+        scenarios: {
+          ...state.scenarios,
+          activeId: isDefault ? 'baseline' : state.scenarios?.activeId,
+        },
         view: {
           ...state.view,
           activeId: viewId,
@@ -271,30 +318,59 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
     );
   }
 
+  // Bridge: emit compatibility events from store state so board/timeline components re-render.
+  function emitViewApplied(id, viewData) {
+    const snapshot = store.getState();
+    const projectIds = Array.from(snapshot.selection?.projectIds || []);
+    const teamIds = Array.from(snapshot.selection?.teamIds || []);
+    const selectedProjectIds = new Set(projectIds.map(String));
+    const selectedTeamIds = new Set(teamIds.map(String));
+
+    const activeViewData = {
+      ...(viewData || {}),
+      id,
+      selectedProjects: toSelectedMap(projectIds),
+      selectedTeams: toSelectedMap(teamIds),
+      viewOptions: toActiveViewOptions(snapshot, viewData?.viewOptions || {}),
+    };
+
+    const projects = (snapshot.baseline?.projects || []).map((p) => ({
+      ...p, selected: selectedProjectIds.has(String(p.id)),
+    }));
+    const teams = (snapshot.baseline?.teams || []).map((t) => ({
+      ...t, selected: selectedTeamIds.has(String(t.id)),
+    }));
+    bus.emit(ProjectEvents.CHANGED, projects);
+    bus.emit(TeamEvents.CHANGED, teams);
+    bus.emit(FeatureEvents.UPDATED);
+    bus.emit(ViewManagementEvents.ACTIVATED, {
+      id,
+      viewId: id,
+      data: activeViewData,
+      activeViewData,
+    });
+  }
+
   return {
     async loadViews() {
-      if (legacyState?.viewManagementService?.loadViews) {
-        const views = (await legacyState.viewManagementService.loadViews()) || [];
-        syncStoreFromLegacyViewState(store, legacyState, views);
-        return views;
-      }
-
-      const views = (await dataService.listViews()) || [];
+      const views = withSyntheticDefaultView((await dataService.listViews()) || []);
       setViews(views);
       return views;
     },
 
     async saveCurrentView(name, viewId = null) {
-      if (legacyState?.viewManagementService?.saveCurrentView) {
-        const response = await legacyState.viewManagementService.saveCurrentView(name, viewId);
-        const views = legacyState.viewManagementService.getViews?.() || [];
-        const activeId =
-          legacyState.viewManagementService.getActiveViewId?.() || response?.id || null;
-        syncStoreFromLegacyViewState(store, legacyState, views, activeId);
-        return response;
-      }
-
       const snapshot = store.getState();
+      const pluginState = pluginStateCommands?.captureForView?.() || {};
+      const viewOptions = {
+        ...cloneValue(snapshot.view?.options || {}),
+        selectedFeatureStates: Array.from(snapshot.selection?.featureStateNames || []),
+        selectedTaskTypes: Array.from(snapshot.selection?.taskTypeNames || []),
+        taskFilters: cloneValue(snapshot.selection?.taskFilters || {}),
+        expandParentChild: Boolean(snapshot.view?.expansion?.parentChild),
+        expandRelations: Boolean(snapshot.view?.expansion?.relations),
+        expandTeamAllocated: Boolean(snapshot.view?.expansion?.teamAllocated),
+        ...(Object.keys(pluginState).length > 0 ? { pluginState } : {}),
+      };
       const payload = {
         id: viewId,
         name,
@@ -304,54 +380,36 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
         selectedTeams: Object.fromEntries(
           (snapshot.selection?.teamIds || []).map((id) => [String(id), true])
         ),
-        viewOptions: cloneValue(snapshot.view?.options || {}),
+        viewOptions,
       };
       const response = await dataService.saveView(payload);
-      const nextViews = (await dataService.listViews()) || [];
+      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
       setViews(nextViews, response?.id || null);
+      const savedViewData =
+        nextViews.find((v) => String(v?.id) === String(response?.id)) || response;
+      bus.emit(ViewManagementEvents.ACTIVATED, {
+        id: response?.id,
+        viewId: response?.id,
+        data: savedViewData,
+        activeViewData: savedViewData,
+      });
       return response;
     },
 
     async renameView(viewId, newName) {
-      if (legacyState?.viewManagementService?.renameView) {
-        await legacyState.viewManagementService.renameView(viewId, newName);
-        const views = legacyState.viewManagementService.getViews?.() || [];
-        const activeId = legacyState.viewManagementService.getActiveViewId?.() || null;
-        syncStoreFromLegacyViewState(store, legacyState, views, activeId);
-        return;
-      }
-
       await dataService.renameView(viewId, newName);
-      const nextViews = (await dataService.listViews()) || [];
+      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
       setViews(nextViews);
     },
 
     async deleteView(viewId) {
-      if (legacyState?.viewManagementService?.deleteView) {
-        await legacyState.viewManagementService.deleteView(viewId);
-        const views = legacyState.viewManagementService.getViews?.() || [];
-        const activeId = legacyState.viewManagementService.getActiveViewId?.() || null;
-        syncStoreFromLegacyViewState(store, legacyState, views, activeId);
-        return;
-      }
-
       await dataService.deleteView(viewId);
-      const nextViews = (await dataService.listViews()) || [];
+      const nextViews = withSyntheticDefaultView((await dataService.listViews()) || []);
       const activeId = store.getState().view?.activeId;
       setViews(nextViews, activeId === viewId ? null : activeId);
     },
 
     async loadAndApplyView(viewId) {
-      if (legacyState?.viewManagementService?.loadAndApplyView) {
-        const loaded = await legacyState.viewManagementService.loadAndApplyView(viewId);
-        const views = legacyState.viewManagementService.getViews?.() || [];
-        const activeId =
-          legacyState.viewManagementService.getActiveViewId?.() || String(viewId || 'default');
-        syncStoreFromLegacyViewState(store, legacyState, views, activeId);
-        writeLastViewId(activeId);
-        return loaded || activeId;
-      }
-
       const id = String(viewId || 'default');
       const savedViews = store.getState().view?.saved || [];
 
@@ -375,21 +433,13 @@ export function createViewRestoreCommands(store, dataService, legacyState = null
       }
 
       applyViewToStore(id, viewData);
+      emitViewApplied(id, viewData);
       await restorePluginState(viewData?.viewOptions?.pluginState || {});
       writeLastViewId(id);
       return id;
     },
 
     async restoreLastView() {
-      if (legacyState?.viewManagementService?.restoreLastView) {
-        await legacyState.viewManagementService.restoreLastView();
-        const views = legacyState.viewManagementService.getViews?.() || [];
-        const activeId = legacyState.viewManagementService.getActiveViewId?.() || 'default';
-        syncStoreFromLegacyViewState(store, legacyState, views, activeId);
-        writeLastViewId(activeId);
-        return true;
-      }
-
       const existingViews = store.getState().view?.saved || [];
       if (!existingViews.length) {
         await this.loadViews();

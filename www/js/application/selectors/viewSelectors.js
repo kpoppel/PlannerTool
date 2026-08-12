@@ -246,10 +246,6 @@ export function createViewSelectors(store, legacyState) {
     },
 
     getExpandedFeatureIds() {
-      if (typeof legacyState?.getExpandedFeatureIds === 'function') {
-        const legacyExpanded = legacyState.getExpandedFeatureIds();
-        return new Set(Array.from(legacyExpanded || []).map((id) => String(id)));
-      }
       return new Set(
         Array.from(getExpandedFeatureIdsFromStore(store.getState()) || []).map((id) => String(id))
       );
@@ -260,18 +256,12 @@ export function createViewSelectors(store, legacyState) {
     },
 
     getSavedViews() {
-      const saved = Array.isArray(store.getState()?.view?.saved) ? store.getState().view.saved : [];
-      if (saved.length > 0) return saved;
-      return legacyState?.savedViews || legacyState?.viewManagementService?.getViews?.() || saved;
+      const saved = store.getState()?.view?.saved;
+      return Array.isArray(saved) ? saved : [];
     },
 
     getActiveViewId() {
-      return (
-        store.getState()?.view?.activeId ||
-        legacyState?.activeViewId ||
-        legacyState?.viewManagementService?.getActiveViewId?.() ||
-        null
-      );
+      return store.getState()?.view?.activeId || null;
     },
   };
 }

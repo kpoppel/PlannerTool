@@ -966,6 +966,13 @@ export class SidebarLit extends LitElement {
     this._computeTaskTypesScheduled = false;
   }
 
+  _syncExpansionFromSelectors() {
+    const expansion = sel.view.getExpansionState?.() || {};
+    this.expandParentChild = Boolean(expansion.expandParentChild);
+    this.expandRelations = Boolean(expansion.expandRelations);
+    this.expandTeamAllocated = Boolean(expansion.expandTeamAllocated);
+  }
+
   connectedCallback() {
     super.connectedCallback();
     this._scheduleDataFunnelRecompute = () => {
@@ -1025,6 +1032,8 @@ export class SidebarLit extends LitElement {
       this.activeViewId = payload && payload.activeViewId ? payload.activeViewId : null;
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
+      this._syncExpansionFromSelectors();
+      this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
     this._onViewActivated = (payload) => {
@@ -1032,6 +1041,8 @@ export class SidebarLit extends LitElement {
       this.activeViewId = payload && payload.viewId ? payload.viewId : null;
       this.activeViewData =
         payload && payload.activeViewData ? payload.activeViewData : null;
+      this._syncExpansionFromSelectors();
+      this._scheduleDataFunnelRecompute();
       this.requestUpdate();
     };
 
@@ -1237,6 +1248,7 @@ export class SidebarLit extends LitElement {
         views: sel.view.getSavedViews(),
         activeViewId: sel.view.getActiveViewId(),
       });
+      this._syncExpansionFromSelectors();
       this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
       // Initialize state & task type filters
       this.availableFeatureStates = sel.filter.getAvailableFeatureStates();

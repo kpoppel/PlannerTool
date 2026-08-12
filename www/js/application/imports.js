@@ -50,17 +50,19 @@ import { createLegacyGroupSelectors, createGroupSelectors } from './selectors/gr
 import { dataService } from '../services/dataService.js';
 import { groupService } from '../services/GroupService.js';
 
+const pluginStateCommands = createPluginStateCommands(store);
+
 const stateStoreCommands = {
   ui: createUiCommands(store, bus),
   data: createDataCommands(store, bus, dataService, state),
   selection: createSelectionCommands(store, bus, () => stateStoreCommands.data.recomputeCapacity()),
   filter: createFilterCommands(store, bus, state, () => stateStoreCommands.data.recomputeCapacity()),
   view: createViewCommands(store, bus, state),
-  viewRestore: createViewRestoreCommands(store, dataService, state),
+  pluginState: pluginStateCommands,
+  viewRestore: createViewRestoreCommands(store, dataService, pluginStateCommands),
   feature: createFeatureCommands(store, bus, state, () => stateStoreCommands.data.recomputeCapacity()),
   scenario: createScenarioCommands(store, bus, state),
   group: createGroupCommands(store, bus),
-  pluginState: createPluginStateCommands(store),
 };
 const stateStoreSelectors = {
   ui: uiSelectors,

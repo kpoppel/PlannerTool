@@ -95,7 +95,7 @@ describe('application/selectors/viewSelectors', () => {
     expect(selectors.getDisplayMode()).toBe('normal');
   });
 
-  it('store branch falls back to legacy saved/active view when store slice is empty', () => {
+  it('store branch returns empty when store view slice is empty (no legacy fallback)', () => {
     const store = {
       getState: () => ({
         view: {
@@ -111,7 +111,39 @@ describe('application/selectors/viewSelectors', () => {
     };
 
     const selectors = createViewSelectors(store, legacyState);
-    expect(selectors.getSavedViews()).toEqual([{ id: 'legacy-v1', name: 'Legacy View' }]);
-    expect(selectors.getActiveViewId()).toBe('legacy-v1');
+    expect(selectors.getSavedViews()).toEqual([]);
+    expect(selectors.getActiveViewId()).toBe(null);
+  });
+
+  it('store branch computes expanded feature ids from store expansion state only', () => {
+    const store = {
+      getState: () => ({
+        baseline: {
+          features: [
+            { id: 'f-project', project: 'p1', capacity: [] },
+            { id: 'f-team', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
+            { id: 'f-hidden', project: 'p3', capacity: [] },
+          ],
+        },
+        selection: {
+          projectIds: ['p1'],
+          teamIds: ['t1'],
+        },
+        view: {
+          expansion: {
+            parentChild: false,
+            relations: false,
+            teamAllocated: false,
+          },
+          options: {},
+        },
+      }),
+    };
+    const legacyState = {
+      getExpandedFeatureIds: () => new Set(['legacy-only-id']),
+    };
+
+    const selectors = createViewSelectors(store, legacyState);
+    expect(Array.from(selectors.getExpandedFeatureIds())).toEqual(['f-project']);
   });
 });
