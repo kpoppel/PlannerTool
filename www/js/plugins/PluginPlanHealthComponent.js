@@ -9,7 +9,7 @@ import {
   TeamEvents,
   TimelineEvents,
 } from '../core/EventRegistry.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { findInBoard } from '../components/board-utils.js';
 import { pluginManager } from '../core/PluginManager.js';
 
@@ -1156,7 +1156,7 @@ export class PluginPlanHealthComponent extends LitElement {
       const feature = features.find((f) => String(f.id) === issueIdStr);
 
       if (feature) {
-        bus.emit(FeatureEvents.SELECTED, feature);
+        cmd.feature.setSelectedFeature(feature);
       }
 
       // Scroll to the feature card

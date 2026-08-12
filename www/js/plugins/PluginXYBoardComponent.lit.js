@@ -409,9 +409,8 @@ export class PluginXYBoardComponent extends LitElement {
     this._grid = grid;
   }
 
-  _onSelected(payload) {
-    const id = payload?.id ?? payload?.feature?.id ?? null;
-    this._selectedId = id;
+  _onSelected() {
+    this._selectedId = sel.feature.getSelectedFeatureId();
   }
 
   // ---- Persistence ----
@@ -480,7 +479,7 @@ export class PluginXYBoardComponent extends LitElement {
 
   _onCardClick(e) {
     const { feature } = e.detail;
-    bus.emit(FeatureEvents.SELECTED, feature);
+    cmd.feature.setSelectedFeature(feature);
   }
 
   // ---- Rendering helpers ----

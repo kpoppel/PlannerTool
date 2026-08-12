@@ -38,6 +38,7 @@
 import { MountedPlugin } from './MountedPlugin.js';
 import { bus } from '../core/EventBus.js';
 import { FeatureEvents } from '../core/EventRegistry.js';
+import { sel } from '../application/imports.js';
 
 export class SamplePlugin extends MountedPlugin {
   // Static default ID — used by pluginManager to register and retrieve this plugin
@@ -122,10 +123,11 @@ export class SamplePlugin extends MountedPlugin {
    * Demonstrates subscribing to bus events in activate() and cleaning up in deactivate().
    * Always store the bound reference in the constructor so bus.off() works by identity.
    */
-  _onFeatureSelect(payload) {
+  _onFeatureSelect() {
     const threshold = this._customConfig.threshold ?? 50;
+    const id = sel.feature.getSelectedFeatureId();
     this._logMessage(
-      `feature selected: ${payload?.featureId || 'unknown'} (threshold: ${threshold})`,
+      `feature selected: ${id || 'unknown'} (threshold: ${threshold})`,
       'feature-select'
     );
   }

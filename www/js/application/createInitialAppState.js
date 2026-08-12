@@ -33,6 +33,7 @@ export function createInitialAppState() {
       saved: [],
       options: {
         debugFlag: false,
+        highlightFeatureRelationMode: true,
       },
       expansion: {
         parentChild: false,
@@ -53,6 +54,9 @@ export function createInitialAppState() {
       projectDailyMap: [],
       organizationDaily: [],
       organizationDailyPerTeamAverage: [],
+    },
+    featureDisplay: {
+      selectedId: null,
     },
   };
 }

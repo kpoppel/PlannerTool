@@ -577,8 +577,8 @@ export class FeatureCardLit extends LitElement {
     this._onMouseDown = this._handleMouseDown.bind(this);
     this.addEventListener('mousedown', this._onMouseDown);
     // Keep card deselected when another feature is selected elsewhere
-    this._boundOnFeatureSelected = (f) => {
-      const selId = f && f.id ? String(f.id) : null;
+    this._boundOnFeatureSelected = () => {
+      const selId = sel.feature.getSelectedFeatureId();
       const myId = String(this.feature?.id);
       if (!selId || myId !== selId) {
         if (this.selected) {
@@ -773,23 +773,18 @@ export class FeatureCardLit extends LitElement {
     if (e.detail === 2) return;
 
     const eff = sel.feature.getEffectiveFeatureById(this.feature?.id) || this.feature;
-    if (sel.view.getHighlightFeatureRelationMode()) {
-      // If this card is in the current connected set, treat it as selecting
-      // the item within the set (highlight previous selection and new selection)
-      if (this._connected) {
-        this.bus.emit(FeatureEvents.SELECTED_IN_CONNECTED_SET, eff);
-        this.selected = true;
-        this.requestUpdate();
-        return;
-      }
-
-      // Otherwise request the board to build and store a connected map for this feature
-      this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
+    if (this._connected) {
+      // Card is already in a connected set — navigate within the set
+      this.bus.emit(FeatureEvents.SELECTED_IN_CONNECTED_SET, eff);
+      this.selected = true;
+      this.requestUpdate();
+      return;
     }
-    // Also reflect selection locally
+    // Always build the connected set (ancestors + children) for the clicked card
+    this.bus.emit(FeatureEvents.REQUEST_CONNECTED_SET, eff);
     this.selected = true;
     this.requestUpdate();
-    this.bus.emit(FeatureEvents.SELECTED, eff);
+    cmd.feature.setSelectedFeature(eff);
   }
 
   _handleContextMenu(e) {

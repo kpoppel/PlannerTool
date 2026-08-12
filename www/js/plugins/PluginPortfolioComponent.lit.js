@@ -155,9 +155,8 @@ export class PluginPortfolioComponent extends LitElement {
     this.removeAttribute('open');
   }
 
-  _onFeatureSelected(payload) {
-    const id = payload?.id || payload?.feature?.id || null;
-    this._selectedFeatureId = id;
+  _onFeatureSelected() {
+    this._selectedFeatureId = sel.feature.getSelectedFeatureId();
   }
 
   _refresh() {
@@ -369,8 +368,7 @@ export class PluginPortfolioComponent extends LitElement {
   _selectFeature(feature) {
     if (!feature) return;
     if (this._suppressClickUntil && Date.now() < this._suppressClickUntil) return;
-    this._selectedFeatureId = String(feature.id);
-    bus.emit(FeatureEvents.SELECTED, feature);
+    cmd.feature.setSelectedFeature(feature);
   }
 
   _clearToastTimer() {

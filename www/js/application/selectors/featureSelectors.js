@@ -426,5 +426,14 @@ export function createFeatureSelectors(store, legacyState = null) {
     getCountsForTeam(teamId) {
       return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeam(feature, teamId));
     },
+
+    getSelectedFeatureId() {
+      return store.getState().featureDisplay?.selectedId ?? null;
+    },
+
+    getSelectedFeature() {
+      const id = store.getState().featureDisplay?.selectedId;
+      return id ? this.getEffectiveFeatureById(id) : null;
+    },
   };
 }

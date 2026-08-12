@@ -16,6 +16,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- `FeatureEvents.SELECTED` is now store-backed: `cmd.feature.setSelectedFeature(feature)` writes `featureDisplay.selectedId` to the store and emits a bare signal; subscribers read `sel.feature.getSelectedFeature()` / `sel.feature.getSelectedFeatureId()` instead of consuming the event payload.
 - Added `scripts/clear_scenarios.py` one-time maintenance utility to remove a single corrupted scenario entry (or all scenarios for a user) directly from local scenario storage and register metadata.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`, ESLint guard rule `eslint-rules/no-runtime-state-violations.js`, inert `USE_STATE_STORE` flag in `config.js`); removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).
 - Phase 1 migration scaffold landed: added Zustand vendor bundling (`src/vendor-entry-zustand.js` -> `www/js/vendor/zustand.js`), introduced `www/js/application/` + `core/StoreController.js` with initial command/selector seam, and removed dead `core/Container.js`/`core/ServiceRegistry.js` wiring.

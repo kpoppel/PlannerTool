@@ -995,7 +995,9 @@ export class DetailsPanelLit extends LitElement {
     super.disconnectedCallback();
   }
 
-  _onShow(feature) {
+  _onShow() {
+    const feature = sel.feature.getSelectedFeature();
+    if (!feature) return;
     this.feature = feature;
     this._newTagText = '';
     this.open = true;

@@ -202,4 +202,29 @@ describe('application/commands/featureCommands', () => {
     expect(updated).toEqual({ id: 'f2', state: 'Blocked' });
     expect(store.getState().scenarios.items[0].overrides.f2.state).toBe('Blocked');
   });
+
+  it('setSelectedFeature writes selectedId to featureDisplay and emits bare SELECTED', () => {
+    const mockBus = { emit: vi.fn() };
+    const commands = createFeatureCommands(store, mockBus);
+
+    commands.setSelectedFeature({ id: 'f1', title: 'Alpha' });
+
+    expect(store.getState().featureDisplay.selectedId).toBe('f1');
+    expect(mockBus.emit).toHaveBeenCalledWith(FeatureEvents.SELECTED);
+    expect(mockBus.emit).not.toHaveBeenCalledWith(FeatureEvents.SELECTED, expect.anything());
+  });
+
+  it('setSelectedFeature with null feature clears selectedId', () => {
+    // eslint-disable-next-line local/no-runtime-state-violations
+    store.setState(
+      (s) => ({ ...s, featureDisplay: { selectedId: 'f1' } }),
+      false,
+      'test.preset'
+    );
+    const commands = createFeatureCommands(store, { emit: vi.fn() });
+
+    commands.setSelectedFeature(null);
+
+    expect(store.getState().featureDisplay.selectedId).toBeNull();
+  });
 });

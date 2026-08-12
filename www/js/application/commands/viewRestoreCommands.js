@@ -54,6 +54,7 @@ function getDefaultViewOptions() {
     showUnassignedCards: true,
     showUnplannedWork: true,
     showOnlyProjectHierarchy: false,
+    highlightFeatureRelationMode: true,
     hiddenTypes: [],
     expandParentChild: false,
     expandRelations: false,

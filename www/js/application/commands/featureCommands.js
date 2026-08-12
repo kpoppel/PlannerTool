@@ -410,5 +410,18 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
       emitFeatureMutation({ id: String(id), type: 'revert' });
       return true;
     },
+
+    setSelectedFeature(feature) {
+      const id = feature?.id != null ? String(feature.id) : null;
+      store.setState(
+        (state) => ({
+          ...state,
+          featureDisplay: { ...state.featureDisplay, selectedId: id },
+        }),
+        false,
+        'feature.setSelectedFeature'
+      );
+      bus?.emit?.(FeatureEvents.SELECTED);
+    },
   };
 }

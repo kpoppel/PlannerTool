@@ -25,7 +25,7 @@ import {
   GroupEvents,
 } from '../core/EventRegistry.js';
 import { bus } from '../core/EventBus.js';
-import { sel } from '../application/imports.js';
+import { cmd, sel } from '../application/imports.js';
 import { groupService } from '../services/GroupService.js';
 import { findInBoard } from './board-utils.js';
 
@@ -135,7 +135,7 @@ export async function initBoard() {
       primary: board._connectedPrimary,
       current: board._connectedCurrent,
     });
-    bus.emit(FeatureEvents.SELECTED, feature);
+    cmd.feature.setSelectedFeature(feature);
   });
 
   bus.on(UIEvents.DETAILS_HIDE, () => {

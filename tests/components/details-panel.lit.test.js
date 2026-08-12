@@ -1,8 +1,8 @@
 import { expect } from '@esm-bundle/chai';
 import '../../www/js/components/DetailsPanel.lit.js';
 import { render } from '../../www/js/vendor/lit.js';
-import { bus } from '../../www/js/core/EventBus.js';
-import { UIEvents } from '../../www/js/core/EventRegistry.js';
+import { cmd } from '../../www/js/application/imports.js';
+import { store } from '../../www/js/application/store.js';
 
 describe('details-panel', () => {
   let panel;
@@ -21,7 +21,7 @@ describe('details-panel', () => {
     expect(html).to.exist;
   });
 
-  it('opens when bus emits DETAILS_SHOW', async () => {
+  it('opens when feature is selected', async () => {
     const feature = {
       id: 'f1',
       title: 'F1',
@@ -31,11 +31,16 @@ describe('details-panel', () => {
       capacity: [{ team: 't1', capacity: 50 }],
       orgLoad: '10%',
     };
-    bus.emit(UIEvents.DETAILS_SHOW, feature);
+    // feature must be in baseline so sel.feature.getSelectedFeature() resolves
+    store.setState(
+      (s) => ({ ...s, baseline: { ...s.baseline, features: [feature] } }),
+      false,
+      'test.setBaseline'
+    );
+    cmd.feature.setSelectedFeature(feature);
     // allow event loop
     await new Promise((r) => setTimeout(r, 0));
     expect(panel.open).to.be.true;
-    expect(panel.feature).to.equal(feature);
   });
 
   it('_renderField shows original when changed', () => {

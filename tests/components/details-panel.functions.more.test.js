@@ -17,7 +17,9 @@ describe('DetailsPanel additional function coverage', () => {
   it('_onShow opens and sets feature', async () => {
     const el = await fixture(html`<details-panel></details-panel>`);
     const f = { id: 'x1', title: 'X' };
-    el._onShow(f);
+    const stub = sinon.stub(sel.feature, 'getSelectedFeature').returns(f);
+    el._onShow();
+    stub.restore();
     expect(el.open).to.equal(true);
     expect(el.feature).to.equal(f);
   });
