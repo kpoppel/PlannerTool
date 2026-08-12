@@ -47,18 +47,9 @@ function ensureUniqueScenarioName(baseName, existingScenarios) {
 }
 
 function emitScenarioList(bus, scenarios, activeScenarioId) {
-  bus?.emit?.(ScenarioEvents.LIST, {
-    scenarios: scenarios
-      .filter((scenario) => scenario.id !== 'baseline')
-      .map((scenario) => ({
-        id: scenario.id,
-        name: scenario.name,
-        overridesCount: Object.keys(scenario.overrides || {}).length,
-        unsaved: scenario.isChanged === true,
-        readonly: scenario.readonly === true,
-      })),
-    activeScenarioId,
-  });
+  void scenarios;
+  void activeScenarioId;
+  bus?.emit?.(ScenarioEvents.LIST);
 }
 
 function toScenarioItems(storeState) {
@@ -156,10 +147,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         'scenario.cloneScenario'
       );
 
-      bus?.emit?.(ScenarioEvents.UPDATED, {
-        scenarioId: scenario.id,
-        change: { type: 'clone', from: sourceId },
-      });
+      bus?.emit?.(ScenarioEvents.UPDATED);
       emitScenarioList(bus, nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
 
       return scenario;
@@ -183,7 +171,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       );
 
       const scenarios = toScenarioItems(store.getState());
-      bus?.emit?.(ScenarioEvents.ACTIVATED, { scenarioId: id });
+      bus?.emit?.(ScenarioEvents.ACTIVATED);
       recomputeAndEmitCapacity();
       bus?.emit?.(FeatureEvents.UPDATED);
       bus?.emit?.(GroupEvents.CHANGED);
@@ -221,10 +209,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         'scenario.renameScenario'
       );
 
-      bus?.emit?.(ScenarioEvents.UPDATED, {
-        scenarioId: id,
-        change: { type: 'rename', name: uniqueName },
-      });
+      bus?.emit?.(ScenarioEvents.UPDATED);
       emitScenarioList(bus, nextScenarios, snapshot?.scenarios?.activeId ?? 'baseline');
 
       return nextScenarios.find((candidate) => candidate.id === id) || null;
@@ -254,12 +239,9 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         'scenario.deleteScenario'
       );
 
-      bus?.emit?.(ScenarioEvents.UPDATED, {
-        scenarioId: id,
-        change: { type: 'delete' },
-      });
+      bus?.emit?.(ScenarioEvents.UPDATED);
       if (wasActive) {
-        bus?.emit?.(ScenarioEvents.ACTIVATED, { scenarioId: 'baseline' });
+        bus?.emit?.(ScenarioEvents.ACTIVATED);
       }
       bus?.emit?.(FeatureEvents.UPDATED);
       emitScenarioList(bus, nextScenarios, nextActiveId);
@@ -293,10 +275,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         'scenario.markActiveScenarioChanged'
       );
 
-      bus?.emit?.(ScenarioEvents.UPDATED, {
-        scenarioId: activeId,
-        change: { type: 'markedChanged' },
-      });
+      bus?.emit?.(ScenarioEvents.UPDATED);
       emitScenarioList(bus, nextScenarios, activeId);
       return true;
     },
@@ -350,10 +329,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         }
 
         bus?.emit?.(ScenarioEvents.SAVED, { scenarioId: scenario.id });
-        bus?.emit?.(ScenarioEvents.UPDATED, {
-          scenarioId: scenario.id,
-          change: { type: 'saved' },
-        });
+        bus?.emit?.(ScenarioEvents.UPDATED);
         emitScenarioList(bus, nextScenarios, store.getState()?.scenarios?.activeId ?? 'baseline');
       }
 

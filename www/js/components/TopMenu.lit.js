@@ -259,12 +259,12 @@ export class TopMenuBarLit extends LitElement {
       this.teams = arr;
       this.selectedTeamsCount = arr.filter((t) => t && t.selected).length;
     };
-    this._onScenariosList = (payload) => {
-      this.scenarios = sel.scenario.getScenarios() || payload?.scenarios || [];
-      this.activeScenarioId = payload?.activeScenarioId || sel.scenario.getActiveScenarioId();
+    this._onScenariosList = () => {
+      this.scenarios = sel.scenario.getScenarios() || [];
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
-    this._onScenarioActivated = (payload) => {
-      this.activeScenarioId = payload?.scenarioId || sel.scenario.getActiveScenarioId();
+    this._onScenarioActivated = () => {
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
       this.scenarios = sel.scenario.getScenarios() || [];
@@ -294,10 +294,7 @@ export class TopMenuBarLit extends LitElement {
     try {
       this._onProjectsChanged();
       this._onTeamsChanged();
-      this._onScenariosList({
-        scenarios: sel.scenario.getScenarios(),
-        activeScenarioId: sel.scenario.getActiveScenarioId(),
-      });
+      this._onScenariosList();
       const savedViews = sel.view.getSavedViews();
       const activeViewId = sel.view.getActiveViewId();
       this._onViewsList({

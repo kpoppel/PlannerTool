@@ -59,14 +59,8 @@ describe('application/commands/scenarioCommands', () => {
     expect(clone.filters).not.toBe(source.filters);
     expect(clone.view).not.toBe(source.view);
 
-    expect(bus.emit).toHaveBeenCalledWith(
-      ScenarioEvents.UPDATED,
-      expect.objectContaining({ scenarioId: created.id })
-    );
-    expect(bus.emit).toHaveBeenCalledWith(
-      ScenarioEvents.LIST,
-      expect.objectContaining({ activeScenarioId: 's1' })
-    );
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.LIST);
   });
 
   it('activateScenario updates active id and emits activation events', () => {
@@ -79,7 +73,7 @@ describe('application/commands/scenarioCommands', () => {
     expect(result?.id).toBe('s2');
     expect(store.getState().scenarios.activeId).toBe('s2');
     expect(recomputeCapacity).toHaveBeenCalledTimes(1);
-    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED, { scenarioId: 's2' });
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED);
     expect(bus.emit).toHaveBeenCalledWith(CapacityEvents.UPDATED);
   });
 
@@ -188,13 +182,7 @@ describe('application/commands/scenarioCommands', () => {
 
     expect(renamed?.name).toBe('Alpha 2');
     expect(renamed?.isChanged).toBe(true);
-    expect(bus.emit).toHaveBeenCalledWith(
-      ScenarioEvents.UPDATED,
-      expect.objectContaining({
-        scenarioId: 's2',
-        change: expect.objectContaining({ type: 'rename', name: 'Alpha 2' }),
-      })
-    );
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 
   it('deleteScenario removes the item and falls back to baseline when active', () => {
@@ -206,7 +194,7 @@ describe('application/commands/scenarioCommands', () => {
     const ids = store.getState().scenarios.items.map((scenario) => scenario.id);
     expect(ids).toEqual(['s2']);
     expect(store.getState().scenarios.activeId).toBe('baseline');
-    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED, { scenarioId: 'baseline' });
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED);
   });
 
   it('markActiveScenarioChanged toggles isChanged once and reports status', () => {

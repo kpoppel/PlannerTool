@@ -115,13 +115,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
 
   function emitFeatureMutation(eventPayload) {
     bus?.emit?.(FeatureEvents.UPDATED, eventPayload || {});
-    bus?.emit?.(ScenarioEvents.UPDATED, {
-      scenarioId: getActiveScenarioId(store.getState()),
-      change: {
-        type: 'featureMutation',
-        ...eventPayload,
-      },
-    });
+    bus?.emit?.(ScenarioEvents.UPDATED);
   }
 
   return {

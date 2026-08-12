@@ -99,13 +99,7 @@ describe('application/commands/dataCommands', () => {
     });
     expect(store.getState().capacity.projectDaily.length).toBeGreaterThan(0);
 
-    expect(bus.emit).toHaveBeenCalledWith(
-      DataEvents.LOADED,
-      expect.objectContaining({
-        phase: 'baseline',
-        counts: { projects: 2, teams: 2, features: 2 },
-      })
-    );
+    expect(bus.emit).toHaveBeenCalledWith(DataEvents.LOADED);
     expect(bus.emit).toHaveBeenCalledWith(
       DataCommandEvents.BASELINE_HYDRATED,
       expect.objectContaining({ revision: expect.any(Number) })
@@ -154,10 +148,7 @@ describe('application/commands/dataCommands', () => {
       'Resolved',
       'Closed',
     ]);
-    expect(bus.emit).toHaveBeenCalledWith(
-      DataEvents.LOADED,
-      expect.objectContaining({ phase: 'baseline' })
-    );
+    expect(bus.emit).toHaveBeenCalledWith(DataEvents.LOADED);
   });
 
   it('hydrateBaseline fails fast on non-ok Result and does not mutate baseline', async () => {

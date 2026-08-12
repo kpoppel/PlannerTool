@@ -52,8 +52,9 @@ export async function initBoard() {
     }
   };
 
-  const handleScenarioActivation = ({ scenarioId }) => {
+  const handleScenarioActivation = () => {
     if (!board) return;
+    const scenarioId = sel.scenario.getActiveScenarioId();
     const activeScenario =
       sel.scenario.getScenarios().find((s) => s.id === scenarioId) || null;
     // Apply scenario-mode class on #board-area (the background container) so

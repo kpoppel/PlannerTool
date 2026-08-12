@@ -146,7 +146,7 @@ describe('GroupService', () => {
     it('emits GroupEvents.LOADED after fetch', async () => {
       dataService.listGroups.mockResolvedValue([]);
       await svc.loadGroups('p1');
-      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.LOADED, expect.objectContaining({ planId: 'p1' }));
+      expect(bus.emit).toHaveBeenCalledWith(GroupEvents.LOADED);
     });
 
     it('returns empty array on error', async () => {

@@ -94,10 +94,7 @@ describe('application/commands/featureCommands', () => {
     const scenario = store.getState().scenarios.items[0];
     expect(scenario.overrides.f2.state).toBe('Blocked');
     expect(recomputeCapacity).toHaveBeenCalledWith(['f2']);
-    expect(bus.emit).toHaveBeenCalledWith(
-      ScenarioEvents.UPDATED,
-      expect.objectContaining({ scenarioId: 's1' })
-    );
+    expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 
   it('setScenarioOverride sets start/end override pair', () => {

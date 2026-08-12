@@ -1003,25 +1003,14 @@ export class SidebarLit extends LitElement {
       this.teams = [...teams];
       this._scheduleDataFunnelRecompute();
     };
-    this._onScenariosList = (payload) => {
-      // Use selector seam for authoritative scenario objects so this stays
-      // consistent when store-mode commands are active.
-      try {
-        const full = sel.scenario.getScenarios() || [];
-        this.scenarios = Array.isArray(full) ? [...full] : [];
-      } catch (e) {
-        // Fallback to payload if state is not ready
-        const list = payload && payload.scenarios ? payload.scenarios : [];
-        this.scenarios = Array.isArray(list) ? [...list] : [];
-      }
-      // Prefer explicit activeScenarioId from payload if present, otherwise use state
-      if (payload && payload.activeScenarioId)
-        this.activeScenarioId = payload.activeScenarioId;
-      else this.activeScenarioId = sel.scenario.getActiveScenarioId();
+    this._onScenariosList = () => {
+      // Scenario events are signals; selector state is the source of truth.
+      const full = sel.scenario.getScenarios() || [];
+      this.scenarios = Array.isArray(full) ? [...full] : [];
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
-    this._onScenarioActivated = (payload) => {
-      this.activeScenarioId =
-        payload && payload.scenarioId ? payload.scenarioId : sel.scenario.getActiveScenarioId();
+    this._onScenarioActivated = () => {
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
       const sc = sel.scenario.getScenarios() || [];
@@ -1232,10 +1221,7 @@ export class SidebarLit extends LitElement {
     try {
       this._onProjectsChanged();
       this._onTeamsChanged();
-      this._onScenariosList({
-        scenarios: sel.scenario.getScenarios(),
-        activeScenarioId: sel.scenario.getActiveScenarioId(),
-      });
+      this._onScenariosList();
       console.log('[Sidebar] Initializing views from selectors:', sel.view.getSavedViews());
       this._onViewsList({
         views: sel.view.getSavedViews(),

@@ -136,7 +136,7 @@ export class GroupService {
     try {
       const groups = await dataService.listGroups(planId);
       this._groupsByPlan.set(String(planId), groups || []);
-      bus.emit(GroupEvents.LOADED, { planId, groups: this._groupsByPlan.get(String(planId)) });
+      bus.emit(GroupEvents.LOADED);
       return this._groupsByPlan.get(String(planId));
     } catch (err) {
       console.error('[GroupService] loadGroups error', planId, err);

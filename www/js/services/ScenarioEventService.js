@@ -135,25 +135,14 @@ export class ScenarioEventService {
    * Emit scenario list event
    */
   emitScenarioList() {
-    this._bus.emit(ScenarioEvents.LIST, {
-      scenarios: this._scenarios.map((s) => ({
-        id: s.id,
-        name: s.name,
-        overridesCount: Object.keys(s.overrides || {}).length,
-        unsaved: this.isScenarioUnsaved(s),
-        readonly: s.readonly === true,
-      })),
-      activeScenarioId: this._activeScenarioId,
-    });
+    this._bus.emit(ScenarioEvents.LIST);
   }
 
   /**
    * Emit scenario activated event
    */
   emitScenarioActivated() {
-    this._bus.emit(ScenarioEvents.ACTIVATED, {
-      scenarioId: this._activeScenarioId,
-    });
+    this._bus.emit(ScenarioEvents.ACTIVATED);
   }
 
   /**
@@ -162,7 +151,9 @@ export class ScenarioEventService {
    * @param {Object} change - Change object describing the update
    */
   emitScenarioUpdated(id, change) {
-    this._bus.emit(ScenarioEvents.UPDATED, { scenarioId: id, change });
+    void id;
+    void change;
+    this._bus.emit(ScenarioEvents.UPDATED);
     this.emitScenarioList();
   }
 

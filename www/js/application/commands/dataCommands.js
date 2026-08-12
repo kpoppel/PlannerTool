@@ -358,15 +358,7 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       this.recomputeCapacity();
 
       bus.emit(StateFilterEvents.CHANGED, allFeatureStateNames);
-      bus.emit(DataEvents.LOADED, {
-        phase: 'baseline',
-        revision,
-        counts: {
-          projects: hydratedProjects.length,
-          teams: hydratedTeams.length,
-          features: featuresWithRank.length,
-        },
-      });
+      bus.emit(DataEvents.LOADED);
       bus.emit(DataCommandEvents.BASELINE_HYDRATED, { revision });
 
       return {

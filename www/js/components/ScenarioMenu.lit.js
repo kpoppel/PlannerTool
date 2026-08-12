@@ -152,19 +152,19 @@ export class ScenarioMenuLit extends LitElement {
 
     // Listen to scenario changes for real-time updates.
     // Do not silently hide state failures by falling back to stale event payloads.
-    this._onScenariosList = (payload) => {
+    this._onScenariosList = () => {
       const full = sel.scenario.getScenarios();
       if (!Array.isArray(full)) {
         throw new Error('ScenarioMenu expected a valid scenario list from the store');
       }
 
       this.scenarios = [...full];
-      this.activeScenarioId = payload?.activeScenarioId ?? sel.scenario.getActiveScenarioId();
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
 
-    this._onScenarioActivated = (payload) => {
-      this.activeScenarioId = payload.scenarioId;
+    this._onScenarioActivated = () => {
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
 
@@ -187,10 +187,7 @@ export class ScenarioMenuLit extends LitElement {
 
     // Initialize from current state/props in case events were emitted before
     // this popover was connected.
-    this._onScenariosList({
-      scenarios: this.scenarios,
-      activeScenarioId: this.activeScenarioId,
-    });
+    this._onScenariosList();
   }
 
   disconnectedCallback() {
