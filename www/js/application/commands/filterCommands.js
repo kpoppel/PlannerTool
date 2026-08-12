@@ -1,3 +1,5 @@
+import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
+
 export function createLegacyFilterCommands(state) {
   return {
     setSelectedTaskTypes(types, options) {
@@ -71,11 +73,12 @@ function deriveAvailableStatesFromFeatures(features) {
   return out;
 }
 
-export function createFilterCommands(store, bus, legacyState, recomputeCapacity = null) {
+export function createFilterCommands(store, bus, recomputeCapacity = null) {
+  const recompute = typeof recomputeCapacity === 'function' ? recomputeCapacity : null;
+
   return {
     setSelectedTaskTypes(types, options = {}) {
       const taskTypeNames = Array.isArray(types) ? Array.from(types) : [];
-      legacyState?.setSelectedTaskTypes?.(taskTypeNames, options);
       store.setState(
         (state) => ({
           ...state,
@@ -88,13 +91,13 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
         'filter.setSelectedTaskTypes'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:task-types-changed', { taskTypeNames });
+        bus?.emit?.(FilterEvents.CHANGED, { selectedTaskTypes: taskTypeNames });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setSelectedStates(states, options = {}) {
       const featureStateNames = Array.isArray(states) ? Array.from(states) : [];
-      legacyState?.setSelectedStates?.(featureStateNames, options);
       store.setState(
         (state) => ({
           ...state,
@@ -106,21 +109,23 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
         false,
         'filter.setSelectedStates'
       );
-      if (recomputeCapacity) recomputeCapacity();
+      if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:states-changed', { featureStateNames });
+        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: featureStateNames });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setAllStatesSelected(selected, options = {}) {
-      legacyState?.setAllStatesSelected?.(Boolean(selected), options);
+      let nextSelection = [];
       if (!selected) {
+        nextSelection = [];
         store.setState(
           (state) => ({
             ...state,
             selection: {
               ...state.selection,
-              featureStateNames: [],
+              featureStateNames: nextSelection,
             },
           }),
           false,
@@ -133,70 +138,75 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
           Array.isArray(available) && available.length > 0 ?
             available
           : deriveAvailableStatesFromFeatures(currentState?.baseline?.features);
+        nextSelection = Array.from(fallback);
         store.setState(
           (state) => ({
             ...state,
             selection: {
               ...state.selection,
-              featureStateNames: Array.from(fallback),
+              featureStateNames: nextSelection,
             },
           }),
           false,
           'filter.setAllStatesSelected'
         );
       }
-      if (recomputeCapacity) recomputeCapacity();
+      if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:all-states-changed', { selected: Boolean(selected) });
+        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(StateFilterEvents.CHANGED, nextSelection);
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     toggleStateSelected(stateName, options = {}) {
       const key = String(stateName);
-      legacyState?.toggleStateSelected?.(key, options);
+      let nextSelection = [];
       store.setState(
         (state) => {
           const current = new Set(state.selection?.featureStateNames || []);
           if (current.has(key)) current.delete(key);
           else current.add(key);
+          nextSelection = Array.from(current);
           return {
             ...state,
             selection: {
               ...state.selection,
-              featureStateNames: Array.from(current),
+              featureStateNames: nextSelection,
             },
           };
         },
         false,
         'filter.toggleStateSelected'
       );
-      if (recomputeCapacity) recomputeCapacity();
+      if (recompute) recompute();
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:state-toggled', { stateName: key });
+        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setStateFilter(stateName, options = {}) {
       const key = String(stateName);
-      legacyState?.setStateFilter?.(key, options);
+      const nextSelection = key ? [key] : [];
       store.setState(
         (state) => ({
           ...state,
           selection: {
             ...state.selection,
-            featureStateNames: key ? [key] : [],
+            featureStateNames: nextSelection,
           },
         }),
         false,
         'filter.setStateFilter'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:state-filter-set', { stateName: key });
+        bus?.emit?.(FilterEvents.CHANGED, { selectedFeatureStateFilter: nextSelection });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setSidebarDisabledElements(map, options = {}) {
-      legacyState?.setSidebarDisabledElements?.(map || {});
       store.setState(
         (state) => ({
           ...state,
@@ -214,7 +224,6 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
     },
 
     clearSidebarDisabledElements(options = {}) {
-      legacyState?.clearSidebarDisabledElements?.();
       store.setState(
         (state) => ({
           ...state,
@@ -233,21 +242,23 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
 
     setTaskFilter(dimension, option, selected, options = {}) {
       const nextSelected = Boolean(selected);
+      let nextTaskFilters = {};
       store.setState(
         (state) => {
           const currentFilters = normalizeTaskFilters(state.selection?.taskFilters || {});
           const currentDimension = currentFilters?.[dimension] || DEFAULT_TASK_FILTERS[dimension] || {};
+          nextTaskFilters = {
+            ...currentFilters,
+            [dimension]: {
+              ...currentDimension,
+              [option]: nextSelected,
+            },
+          };
           return {
             ...state,
             selection: {
               ...state.selection,
-              taskFilters: {
-                ...currentFilters,
-                [dimension]: {
-                  ...currentDimension,
-                  [option]: nextSelected,
-                },
-              },
+              taskFilters: nextTaskFilters,
             },
           };
         },
@@ -255,7 +266,8 @@ export function createFilterCommands(store, bus, legacyState, recomputeCapacity 
         'filter.setTaskFilter'
       );
       if (!options?.suppressEvents) {
-        bus?.emit?.('filter:task-filter-changed', { dimension, option, selected: nextSelected });
+        bus?.emit?.(FilterEvents.CHANGED, { taskFilters: nextTaskFilters });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 

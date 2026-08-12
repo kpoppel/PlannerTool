@@ -106,7 +106,7 @@ export function createLegacyFeatureCommands(state) {
   };
 }
 
-export function createFeatureCommands(store, bus, legacyState = null, recomputeCapacity = null) {
+export function createFeatureCommands(store, bus, recomputeCapacity = null) {
   function canAssignProperty(target, prop) {
     if (!target || typeof target !== 'object') return false;
     let current = target;

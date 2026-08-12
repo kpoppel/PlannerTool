@@ -5,6 +5,11 @@ import {
   createLegacyFilterCommands,
   createFilterCommands,
 } from '../../www/js/application/commands/filterCommands.js';
+import {
+  FeatureEvents,
+  FilterEvents,
+  StateFilterEvents,
+} from '../../www/js/core/EventRegistry.js';
 
 describe('application/commands/filterCommands', () => {
   beforeEach(() => {
@@ -43,8 +48,8 @@ describe('application/commands/filterCommands', () => {
 
   it('store branch updates selection filter slices and supports suppressEvents', () => {
     const bus = { emit: vi.fn() };
-    const legacyState = { setSelectedTaskTypes: vi.fn() };
-    const commands = createFilterCommands(store, bus, legacyState);
+    const recomputeCapacity = vi.fn();
+    const commands = createFilterCommands(store, bus, recomputeCapacity);
 
     commands.setSelectedTaskTypes(['feature'], { suppressEvents: true });
     commands.setSelectedStates(['Doing'], { suppressEvents: true });
@@ -54,9 +59,7 @@ describe('application/commands/filterCommands', () => {
     expect(selection.taskTypeNames).toEqual(['feature']);
     expect(selection.featureStateNames).toEqual(['Doing']);
     expect(selection.sidebarDisabled).toEqual({ states: ['Doing'] });
-    expect(legacyState.setSelectedTaskTypes).toHaveBeenCalledWith(['feature'], {
-      suppressEvents: true,
-    });
+    expect(recomputeCapacity).toHaveBeenCalledTimes(1);
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
@@ -72,6 +75,19 @@ describe('application/commands/filterCommands', () => {
     const selectors = createFilterCommands(store, { emit: vi.fn() });
     expect(selectors.setTaskFilter).toBeTypeOf('function');
     expect(store.getState().selection.taskFilters.schedule).toEqual({ planned: true, unplanned: true });
+  });
+
+  it('emits the expected filter events for state and task filter toggles', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createFilterCommands(store, bus);
+
+    commands.setSelectedStates(['New']);
+    commands.toggleTaskFilter('schedule', 'planned');
+    commands.toggleStateSelected('Doing');
+
+    expect(bus.emit.mock.calls.some(([event, payload]) => event === FilterEvents.CHANGED && payload?.selectedFeatureStateFilter?.includes('New'))).toBe(true);
+    expect(bus.emit.mock.calls.some(([event, payload]) => event === FilterEvents.CHANGED && payload?.taskFilters?.schedule?.planned === false)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
   });
 
   it('store branch setAllStatesSelected(true) derives available states from baseline features', () => {
@@ -99,6 +115,16 @@ describe('application/commands/filterCommands', () => {
     commands.setAllStatesSelected(true);
 
     expect(store.getState().selection.featureStateNames).toEqual(['New', 'Doing', 'Done']);
-    expect(bus.emit).toHaveBeenCalledWith('filter:all-states-changed', { selected: true });
+    expect(
+      bus.emit.mock.calls.some(
+        ([event, payload]) =>
+          event === FilterEvents.CHANGED &&
+          Array.isArray(payload?.selectedFeatureStateFilter) &&
+          payload.selectedFeatureStateFilter.length === 3
+      )
+    ).toBe(true);
+    expect(
+      bus.emit.mock.calls.some(([event]) => event === StateFilterEvents.CHANGED)
+    ).toBe(true);
   });
 });

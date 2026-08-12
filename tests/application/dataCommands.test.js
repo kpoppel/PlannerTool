@@ -8,6 +8,7 @@ import {
 import { DataEvents } from '../../www/js/core/EventRegistry.js';
 
 function makeDataServiceMock(overrides = {}) {
+  const getColorMappings = vi.fn(async () => ({ projectColors: {}, teamColors: {} }));
   return {
     callRestResult: vi.fn(async (methodName) => {
       const map = {
@@ -19,6 +20,7 @@ function makeDataServiceMock(overrides = {}) {
       };
       return methodName in overrides ? overrides[methodName] : map[methodName];
     }),
+    getColorMappings,
   };
 }
 
@@ -30,9 +32,29 @@ describe('application/commands/dataCommands', () => {
 
   it('hydrateBaseline sets baseline slice and emits loaded events', async () => {
     const dataService = makeDataServiceMock({
-      getProjects: { ok: true, data: [{ id: 'p1' }] },
-      getTeams: { ok: true, data: [{ id: 't1' }] },
-      getFeatures: { ok: true, data: [{ id: 'f1' }, { id: 'f2' }] },
+      getProjects: { ok: true, data: [{ id: 'p1' }, { id: 'p2' }] },
+      getTeams: { ok: true, data: [{ id: 't1' }, { id: 't2' }] },
+      getFeatures: {
+        ok: true,
+        data: [
+          {
+            id: 'f1',
+            project: 'p1',
+            state: 'In Progress',
+            start: '2025-01-01',
+            end: '2025-01-05',
+            capacity: [{ team: 't1', capacity: 4 }],
+          },
+          {
+            id: 'f2',
+            project: 'p2',
+            state: 'Done',
+            start: '2025-01-03',
+            end: '2025-01-08',
+            capacity: [{ team: 't2', capacity: 3 }],
+          },
+        ],
+      },
       getIterationsConfig: {
         ok: true,
         data: { iterationSetsById: { p1: [{ id: 'iter-1' }] } },
@@ -44,26 +66,97 @@ describe('application/commands/dataCommands', () => {
     const result = await commands.hydrateBaseline();
 
     expect(result.ok).toBe(true);
-    expect(store.getState().baseline.projects).toEqual([{ id: 'p1' }]);
-    expect(store.getState().baseline.teams).toEqual([{ id: 't1' }]);
+    expect(store.getState().baseline.projects).toEqual([
+      { id: 'p1', color: '#3498db' },
+      { id: 'p2', color: '#2980b9' },
+    ]);
+    expect(store.getState().baseline.teams).toEqual([
+      { id: 't1', color: '#3498db' },
+      { id: 't2', color: '#2980b9' },
+    ]);
     expect(store.getState().baseline.features).toEqual([
-      { id: 'f1', originalRank: 0 },
-      { id: 'f2', originalRank: 1 },
+      {
+        id: 'f1',
+        project: 'p1',
+        state: 'In Progress',
+        start: '2025-01-01',
+        end: '2025-01-05',
+        capacity: [{ team: 't1', capacity: 4 }],
+        originalRank: 0,
+      },
+      {
+        id: 'f2',
+        project: 'p2',
+        state: 'Done',
+        start: '2025-01-03',
+        end: '2025-01-08',
+        capacity: [{ team: 't2', capacity: 3 }],
+        originalRank: 1,
+      },
     ]);
     expect(store.getState().baseline.iterationsByProject).toEqual({
       p1: [{ id: 'iter-1' }],
     });
+    expect(store.getState().capacity.projectDaily.length).toBeGreaterThan(0);
 
     expect(bus.emit).toHaveBeenCalledWith(
       DataEvents.LOADED,
       expect.objectContaining({
         phase: 'baseline',
-        counts: { projects: 1, teams: 1, features: 2 },
+        counts: { projects: 2, teams: 2, features: 2 },
       })
     );
     expect(bus.emit).toHaveBeenCalledWith(
       DataCommandEvents.BASELINE_HYDRATED,
       expect.objectContaining({ revision: expect.any(Number) })
+    );
+  });
+
+  it('hydrateBaseline respects project-configured state_display_sequence order', async () => {
+    const dataService = makeDataServiceMock({
+      getProjects: {
+        ok: true,
+        data: [{
+          id: 'p1',
+          display_states: ['Closed', 'New', 'Resolved', 'Active', 'Defined'],
+          state_display_sequence: [
+            { types: ['New'] },
+            { types: ['Defined'] },
+            { types: ['Active'] },
+            { types: ['Resolved'] },
+            { types: ['Closed'] },
+          ],
+        }],
+      },
+      getTeams: { ok: true, data: [] },
+      getFeatures: {
+        ok: true,
+        data: [
+          { id: 'f1', project: 'p1', state: 'Closed' },
+          { id: 'f2', project: 'p1', state: 'New' },
+          { id: 'f3', project: 'p1', state: 'Resolved' },
+          { id: 'f4', project: 'p1', state: 'Defined' },
+          { id: 'f5', project: 'p1', state: 'Active' },
+        ],
+      },
+      getIterationsConfig: { ok: true, data: { iterationSetsById: {} } },
+    });
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+
+    const result = await commands.hydrateBaseline();
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().selection.featureStateNames).toEqual([
+      'New',
+      'Defined',
+      'Active',
+      'Resolved',
+      'Closed',
+    ]);
+    expect(bus.emit).toHaveBeenCalledWith(
+      DataEvents.LOADED,
+      expect.objectContaining({ phase: 'baseline' })
     );
   });
 
@@ -110,6 +203,7 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(store.getState().scenarios.items).toEqual([
+      { id: 'baseline', name: 'Baseline', overrides: {} },
       { id: 's1', name: 'S1' },
       { id: 's2', name: 'S2' },
     ]);
@@ -153,7 +247,7 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(dataService.callRestResult).not.toHaveBeenCalled();
-    expect(store.getState().baseline.projects).toEqual([{ id: 'p10' }]);
+    expect(store.getState().baseline.projects).toEqual([{ id: 'p10', color: expect.any(String) }]);
     expect(store.getState().baseline.features).toEqual([{ id: 'f10', originalRank: 0 }]);
   });
 
@@ -226,7 +320,10 @@ describe('application/commands/dataCommands', () => {
 
     expect(result.ok).toBe(true);
     expect(dataService.callRestResult).not.toHaveBeenCalled();
-    expect(store.getState().scenarios.items).toEqual([{ id: 's10' }]);
+    expect(store.getState().scenarios.items).toEqual([
+      { id: 'baseline', name: 'Baseline', overrides: {} },
+      { id: 's10' },
+    ]);
     expect(store.getState().scenarios.activeId).toBe('s10');
   });
 

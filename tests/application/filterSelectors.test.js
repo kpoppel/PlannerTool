@@ -3,6 +3,7 @@ import {
   createLegacyFilterSelectors,
   createFilterSelectors,
 } from '../../www/js/application/selectors/filterSelectors.js';
+import { ColorService } from '../../www/js/services/ColorService.js';
 
 describe('application/selectors/filterSelectors', () => {
   it('legacy selectors expose selected and available feature states', () => {
@@ -55,5 +56,116 @@ describe('application/selectors/filterSelectors', () => {
 
     const selectors = createFilterSelectors(store);
     expect(selectors.getAvailableFeatureStates()).toEqual(['Todo', 'Doing']);
+  });
+
+  it('store selectors respect configured state_display_sequence ordering', () => {
+    const store = {
+      getState: () => ({
+        selection: { featureStateNames: [] },
+        baseline: {
+          features: [
+            { id: 'f1', state: 'Closed' },
+            { id: 'f2', state: 'New' },
+            { id: 'f3', state: 'Resolved' },
+            { id: 'f4', state: 'Defined' },
+            { id: 'f5', state: 'Active' },
+          ],
+          projects: [
+            {
+              state_display_sequence: [
+                { types: ['New'] },
+                { types: ['Defined'] },
+                { types: ['Active'] },
+                { types: ['Resolved'] },
+                { types: ['Closed'] },
+              ],
+            },
+          ],
+        },
+      }),
+    };
+
+    const selectors = createFilterSelectors(store);
+    expect(selectors.getAvailableFeatureStates()).toEqual([
+      'New',
+      'Defined',
+      'Active',
+      'Resolved',
+      'Closed',
+    ]);
+    expect(selectors.compareFeatureStates('Resolved', 'Defined')).toBeGreaterThan(0);
+  });
+
+  it('store selectors prefer project configuration over stale explicit state order', () => {
+    const store = {
+      getState: () => ({
+        selection: { featureStateNames: [] },
+        filter: { availableFeatureStates: ['Closed', 'New', 'Resolved', 'Active', 'Defined'] },
+        baseline: {
+          features: [
+            { id: 'f1', state: 'Closed' },
+            { id: 'f2', state: 'New' },
+            { id: 'f3', state: 'Resolved' },
+            { id: 'f4', state: 'Defined' },
+            { id: 'f5', state: 'Active' },
+          ],
+          projects: [
+            {
+              state_display_sequence: [
+                { types: ['New'] },
+                { types: ['Defined'] },
+                { types: ['Active'] },
+                { types: ['Resolved'] },
+                { types: ['Closed'] },
+              ],
+            },
+          ],
+        },
+      }),
+    };
+
+    const selectors = createFilterSelectors(store);
+    expect(selectors.getAvailableFeatureStates()).toEqual([
+      'New',
+      'Defined',
+      'Active',
+      'Resolved',
+      'Closed',
+    ]);
+  });
+
+  it('store selectors ignore legacy state and resolve metadata from the store only', () => {
+    const legacyState = new Proxy(
+      {},
+      {
+        get(target, prop) {
+          throw new Error(`legacy state should not be accessed: ${String(prop)}`);
+        },
+      }
+    );
+
+    const store = {
+      getState: () => ({
+        selection: { featureStateNames: [] },
+        baseline: {
+          features: [{ id: 'f1', state: 'Todo' }, { id: 'f2', state: 'Doing' }],
+          projects: [
+            {
+              state_categories: { Todo: 'Proposed', Doing: 'InProgress' },
+              state_display_sequence: [{ types: ['Todo', 'Doing'] }],
+            },
+          ],
+        },
+      }),
+    };
+
+    const selectors = createFilterSelectors(store, legacyState);
+    const colors = selectors.getFeatureStateColors();
+    const expected = new ColorService().getFeatureStateColors(['Todo', 'Doing']);
+
+    expect(Object.keys(colors)).toEqual(['Todo', 'Doing']);
+    expect(colors).toEqual(expected);
+    expect(selectors.getFeatureStateCategory('Todo')).toBe('Proposed');
+    expect(selectors.compareFeatureStates('Doing', 'Todo')).toBeGreaterThan(0);
   });
 });

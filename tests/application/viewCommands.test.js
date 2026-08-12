@@ -5,6 +5,12 @@ import {
   createLegacyViewCommands,
   createViewCommands,
 } from '../../www/js/application/commands/viewCommands.js';
+import {
+  FeatureEvents,
+  FilterEvents,
+  TimelineEvents,
+  ViewEvents,
+} from '../../www/js/core/EventRegistry.js';
 
 describe('application/commands/viewCommands', () => {
   beforeEach(() => {
@@ -103,6 +109,14 @@ describe('application/commands/viewCommands', () => {
       hiddenTypes: [],
     });
     expect(bus.emit).toHaveBeenCalled();
+    expect(bus.emit.mock.calls.some(([event]) => event === TimelineEvents.SCALE_CHANGED)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.DISPLAY_MODE)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.CONDENSED)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.SORT_MODE)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.CAPACITY_MODE)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === ViewEvents.DEPENDENCIES)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === FilterEvents.CHANGED)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
   });
 
   it('store branch maps displayMode to condensedCards and packedMode', () => {

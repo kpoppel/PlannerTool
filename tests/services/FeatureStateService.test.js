@@ -286,7 +286,7 @@ describe('FeatureStateService', () => {
     expect(svc.compareStates('Active', 'Unassigned')).toBeLessThan(0);
   });
 
-  it('ignores legacy flat-array sequence format', () => {
+  it('resolves the exact backend object-array sequence format', () => {
     svc.loadFromProjects([
       {
         display_states: ['New', 'Defined', 'Active', 'Resolved', 'Closed'],
@@ -297,19 +297,30 @@ describe('FeatureStateService', () => {
           Resolved: 'Resolved',
           Closed: 'Completed',
         },
-        state_display_sequence: ['New', 'Defined', 'Active', 'Resolved', 'Closed'],
+        state_display_sequence: [
+          { types: ['New'] },
+          { types: ['Defined'] },
+          { types: ['Active'] },
+          { types: ['Resolved'] },
+          { types: ['Closed'] },
+        ],
       },
     ]);
 
-    // Falls back to category + name ordering because legacy flat format is ignored.
     expect(svc.getAvailableStates()).toEqual([
       'New',
-      'Active',
       'Defined',
+      'Active',
       'Resolved',
       'Closed',
     ]);
-    expect(svc.getConfiguredSequence()).toEqual([]);
+    expect(svc.getConfiguredSequence()).toEqual([
+      'New',
+      'Defined',
+      'Active',
+      'Resolved',
+      'Closed',
+    ]);
   });
 
   // ── integration: state_categories filtered to display_states only ────────

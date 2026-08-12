@@ -1,5 +1,10 @@
-import { DataEvents, CapacityEvents } from '../../core/EventRegistry.js';
+import {
+  DataEvents,
+  CapacityEvents,
+  StateFilterEvents,
+} from '../../core/EventRegistry.js';
 import { CapacityCalculator } from '../../services/CapacityCalculator.js';
+import { ColorService, PALETTE } from '../../services/ColorService.js';
 import { featureFlags } from '../../config.js';
 
 // Passed as bus to the store-owned CapacityCalculator so it never double-emits.
@@ -80,6 +85,12 @@ function getExplicitOrDefaultSelectedIds(items) {
   return selectedIds.length > 0 ? selectedIds : allIds;
 }
 
+function derivePaletteColor(item, mappedColor, fallbackIndex) {
+  if (item?.color) return item.color;
+  if (mappedColor) return mappedColor;
+  return PALETTE[fallbackIndex % PALETTE.length] || '#3498db';
+}
+
 function deriveFeatureStateNames(source, baselineFeatures) {
   const selectedStates = Array.from(source?.selectedFeatureStateFilter || []).map((name) =>
     String(name)
@@ -95,6 +106,35 @@ function deriveFeatureStateNames(source, baselineFeatures) {
     featureStates.add(String(stateName));
   }
   return Array.from(featureStates);
+}
+
+function deriveOrderedFeatureStateNames(projects, baselineFeatures) {
+  const configured = [];
+  const seen = new Set();
+
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const raw = project?.state_display_sequence || [];
+    if (!Array.isArray(raw)) continue;
+
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
+      for (const stateName of item.types) {
+        const value = String(stateName || '').trim();
+        if (!value || seen.has(value)) continue;
+        seen.add(value);
+        configured.push(value);
+      }
+    }
+  }
+
+  for (const feature of Array.isArray(baselineFeatures) ? baselineFeatures : []) {
+    const stateName = String(feature?.state || '').trim();
+    if (!stateName || seen.has(stateName)) continue;
+    seen.add(stateName);
+    configured.push(stateName);
+  }
+
+  return configured;
 }
 
 export function createDataCommands(store, bus, dataService, legacyStateRef = null) {
@@ -253,9 +293,24 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         );
       }
 
-      const projects = projectsResult.data;
-      const teams = teamsResult.data;
-      const features = featuresResult.data;
+      const projects = Array.isArray(projectsResult.data) ? projectsResult.data : [];
+      const teams = Array.isArray(teamsResult.data) ? teamsResult.data : [];
+      const features = Array.isArray(featuresResult.data) ? featuresResult.data : [];
+
+      const colorMappings = typeof dataService?.getColorMappings === 'function'
+        ? await dataService.getColorMappings()
+        : { projectColors: {}, teamColors: {} };
+      const projectColorMap = colorMappings?.projectColors || {};
+      const teamColorMap = colorMappings?.teamColors || {};
+
+      const hydratedProjects = projects.map((project, index) => ({
+        ...project,
+        color: derivePaletteColor(project, projectColorMap[String(project?.id)], index),
+      }));
+      const hydratedTeams = teams.map((team, index) => ({
+        ...team,
+        color: derivePaletteColor(team, teamColorMap[String(team?.id)], index),
+      }));
 
       const featuresWithRank = features.map((feature, index) => ({
         ...feature,
@@ -263,6 +318,13 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       }));
 
       const revision = Date.now();
+      const allProjectIds = hydratedProjects.map((project) => String(project.id));
+      const allTeamIds = hydratedTeams.map((team) => String(team.id));
+      const allFeatureStateNames = deriveOrderedFeatureStateNames(
+        hydratedProjects,
+        featuresWithRank
+      );
+
       store.setState(
         (state) => ({
           ...state,
@@ -274,22 +336,34 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
           baseline: {
             ...state.baseline,
             revision,
-            projects,
-            teams,
+            projects: hydratedProjects,
+            teams: hydratedTeams,
             features: featuresWithRank,
             iterationsByProject: iterationSetsById,
+          },
+          selection: {
+            ...state.selection,
+            projectIds: state.selection?.projectIds ?? allProjectIds,
+            teamIds: state.selection?.teamIds ?? allTeamIds,
+            featureStateNames:
+              Array.isArray(state.selection?.featureStateNames) && state.selection.featureStateNames.length > 0
+                ? state.selection.featureStateNames
+                : allFeatureStateNames,
           },
         }),
         false,
         'data.hydrateBaseline'
       );
 
+      this.recomputeCapacity();
+
+      bus.emit(StateFilterEvents.CHANGED, allFeatureStateNames);
       bus.emit(DataEvents.LOADED, {
         phase: 'baseline',
         revision,
         counts: {
-          projects: projects.length,
-          teams: teams.length,
+          projects: hydratedProjects.length,
+          teams: hydratedTeams.length,
           features: featuresWithRank.length,
         },
       });
@@ -299,8 +373,8 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         ok: true,
         data: {
           revision,
-          projects,
-          teams,
+          projects: hydratedProjects,
+          teams: hydratedTeams,
           features: featuresWithRank,
           iterationsByProject: iterationSetsById,
         },

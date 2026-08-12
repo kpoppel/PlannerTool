@@ -62,7 +62,8 @@ async function init() {
     await dataService.init();
     const { cmd, isStateStoreEnabled } = await import('./application/imports.js');
     if (isStateStoreEnabled) {
-      await cmd.data.bootstrapFromLegacyState();
+      await cmd.data.hydrateBaseline();
+      await cmd.data.hydrateScenarioData();
       await cmd.viewRestore.restoreLastView();
     } else {
       // TODO(phase-7-state-removal): remove legacy init fallback after flag retirement.

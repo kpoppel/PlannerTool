@@ -1,3 +1,10 @@
+import {
+  FeatureEvents,
+  FilterEvents,
+  TimelineEvents,
+  ViewEvents,
+} from '../../core/EventRegistry.js';
+
 function mergedExpansion(current, incoming = {}) {
   return {
     parentChild:
@@ -74,7 +81,7 @@ export function createLegacyViewCommands(state) {
   };
 }
 
-export function createViewCommands(store, bus, legacyState) {
+export function createViewCommands(store, bus) {
   function setViewOptions(updater, actionName) {
     store.setState(
       (state) => ({
@@ -91,7 +98,6 @@ export function createViewCommands(store, bus, legacyState) {
 
   return {
     setExpansionState(options, runtimeOptions = {}) {
-      legacyState?.setExpansionState?.(options, runtimeOptions);
       store.setState(
         (state) => ({
           ...state,
@@ -109,7 +115,7 @@ export function createViewCommands(store, bus, legacyState) {
     },
 
     setTimelineScale(scale, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setTimelineScale?.(scale);
+      const previousScale = store.getState()?.view?.options?.timelineScale;
       setViewOptions(
         (options) => ({
           ...options,
@@ -118,28 +124,34 @@ export function createViewCommands(store, bus, legacyState) {
         'view.setTimelineScale'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:timeline-scale-changed', { scale });
+        bus?.emit?.(TimelineEvents.SCALE_CHANGED, {
+          scale,
+          oldScale: previousScale,
+          monthWidth: 120,
+        });
       }
     },
 
     setCondensedCards(condensed, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setCondensedCards?.(Boolean(condensed));
+      const previousMode = store.getState()?.view?.options?.displayMode || 'normal';
+      const nextMode = Boolean(condensed) ? 'compact' : 'normal';
       setViewOptions(
         (options) => ({
           ...options,
           condensedCards: Boolean(condensed),
-            displayMode: condensed ? 'compact' : 'normal',
-            packedMode: false,
+          displayMode: nextMode,
+          packedMode: false,
         }),
         'view.setCondensedCards'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:condensed-cards-changed', { condensed: Boolean(condensed) });
+        bus?.emit?.(ViewEvents.CONDENSED, Boolean(condensed));
+        bus?.emit?.(ViewEvents.DISPLAY_MODE, { mode: nextMode, oldMode: previousMode });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setFeatureSortMode(mode, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setFeatureSortMode?.(mode);
       setViewOptions(
         (options) => ({
           ...options,
@@ -148,12 +160,12 @@ export function createViewCommands(store, bus, legacyState) {
         'view.setFeatureSortMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:feature-sort-mode-changed', { mode });
+        bus?.emit?.(ViewEvents.SORT_MODE, mode);
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setCapacityViewMode(mode, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setCapacityViewMode?.(mode);
       setViewOptions(
         (options) => ({
           ...options,
@@ -162,30 +174,32 @@ export function createViewCommands(store, bus, legacyState) {
         'view.setCapacityViewMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:capacity-view-mode-changed', { mode });
+        bus?.emit?.(ViewEvents.CAPACITY_MODE, mode);
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setDisplayMode(mode, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setDisplayMode?.(mode);
+      const previousMode = store.getState()?.view?.options?.displayMode || 'normal';
       const packedMode = mode === 'packed';
-        const condensedCards = mode !== 'normal';
+      const condensedCards = mode !== 'normal';
       setViewOptions(
         (options) => ({
           ...options,
           displayMode: mode,
           packedMode,
-            condensedCards,
+          condensedCards,
         }),
         'view.setDisplayMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:display-mode-changed', { mode });
+        bus?.emit?.(ViewEvents.CONDENSED, condensedCards);
+        bus?.emit?.(ViewEvents.DISPLAY_MODE, { mode, oldMode: previousMode });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setShowDependencies(showDependencies, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setShowDependencies?.(Boolean(showDependencies));
       const value = Boolean(showDependencies);
       setViewOptions(
         (options) => ({
@@ -195,33 +209,32 @@ export function createViewCommands(store, bus, legacyState) {
         'view.setShowDependencies'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:show-dependencies-changed', { showDependencies: value });
+        bus?.emit?.(ViewEvents.DEPENDENCIES, value);
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
 
     setTypeVisibility(typeName, visible, runtimeOptions = {}) {
-      getLegacyViewService(legacyState)?.setTypeVisibility?.(
-        typeName,
-        Boolean(visible),
-        Boolean(runtimeOptions?.suppressEvents)
-      );
       const key = String(typeName);
       const shouldShow = Boolean(visible);
+      let nextHiddenTypes = [];
       setViewOptions(
         (options) => {
           const currentHidden = toUniqueStringArray(options.hiddenTypes || []);
           const hiddenSet = new Set(currentHidden);
           if (shouldShow) hiddenSet.delete(key);
           else hiddenSet.add(key);
+          nextHiddenTypes = Array.from(hiddenSet);
           return {
             ...options,
-            hiddenTypes: Array.from(hiddenSet),
+            hiddenTypes: nextHiddenTypes,
           };
         },
         'view.setTypeVisibility'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:type-visibility-changed', { typeName: key, visible: shouldShow });
+        bus?.emit?.(FilterEvents.CHANGED, { hiddenTypes: nextHiddenTypes });
+        bus?.emit?.(FeatureEvents.UPDATED);
       }
     },
   };

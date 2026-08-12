@@ -39,14 +39,18 @@ export class FeatureStateService {
   _normalizeSequence(rawSequence) {
     if (!Array.isArray(rawSequence)) return [];
 
-    // Required admin format: [{ types: ['New', 'Defined'] }, { types: ['Active'] }]
     const flattened = [];
+    const seen = new Set();
 
     for (const item of rawSequence) {
-      const levelTypes = Array.isArray(item?.types) ? item.types : [];
-      for (const s of levelTypes) {
+      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
+
+      for (const s of item.types) {
         const trimmed = String(s || '').trim();
-        if (trimmed) flattened.push(trimmed);
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed);
+          flattened.push(trimmed);
+        }
       }
     }
 

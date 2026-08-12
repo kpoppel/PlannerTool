@@ -1,3 +1,5 @@
+import { DEFAULT_STATE_COLOR_MAP, PALETTE } from '../../services/ColorService.js';
+
 const DEFAULT_TASK_FILTERS = {
   schedule: { planned: true, unplanned: true },
   allocation: { allocated: true, unallocated: true },
@@ -38,23 +40,41 @@ function deriveAvailableStatesFromFeatures(features) {
   return out;
 }
 
-function hashColor(seed) {
+function legacyStateColor(stateName) {
+  if (!stateName) return PALETTE[0];
+
+  const lowerStateName = String(stateName).toLowerCase();
+  const mapped = DEFAULT_STATE_COLOR_MAP[String(stateName)] || DEFAULT_STATE_COLOR_MAP[Object.keys(DEFAULT_STATE_COLOR_MAP).find((key) => key.toLowerCase() === lowerStateName)];
+  if (mapped) return mapped;
+
   let hash = 0;
-  const text = String(seed || 'state');
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash << 5) - hash + text.charCodeAt(index);
+  for (let i = 0; i < lowerStateName.length; i += 1) {
+    hash = (hash << 5) - hash + lowerStateName.charCodeAt(i);
     hash |= 0;
   }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 55% 45%)`;
+  const idx = Math.abs(hash) % PALETTE.length;
+  return PALETTE[idx];
+}
+
+function pickLegacyTextColor(hex) {
+  if (!hex) return '#000';
+
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 128 ? '#000' : '#fff';
 }
 
 function deriveStateColorMap(states) {
   const map = {};
   for (const stateName of states || []) {
+    const background = legacyStateColor(stateName);
     map[stateName] = {
-      background: hashColor(stateName),
-      text: '#ffffff',
+      background,
+      text: pickLegacyTextColor(background),
     };
   }
   return map;
@@ -166,11 +186,73 @@ export function createLegacyFilterSelectors(state) {
   };
 }
 
+function deriveStateCategoryMap(projects) {
+  const categories = {};
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const projectCategories = project?.state_categories || project?.stateCategories || {};
+    for (const [stateName, category] of Object.entries(projectCategories)) {
+      if (stateName == null || category == null) continue;
+      categories[String(stateName)] = String(category);
+    }
+  }
+  return categories;
+}
+
+function deriveConfiguredStateSequence(projects) {
+  const sequence = [];
+  const seen = new Set();
+
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const raw = project?.state_display_sequence || project?.stateDisplaySequence || [];
+    if (!Array.isArray(raw)) continue;
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
+      for (const stateName of item.types) {
+        const value = String(stateName || '').trim();
+        if (!value || seen.has(value)) continue;
+        seen.add(value);
+        sequence.push(value);
+      }
+    }
+  }
+
+  return sequence;
+}
+
+function applyConfiguredStateSequence(states, projects) {
+  const ordered = [];
+  const seen = new Set();
+  const configured = deriveConfiguredStateSequence(projects);
+
+  for (const configuredState of configured) {
+    const matchingState = states.find((stateName) => String(stateName) === String(configuredState));
+    if (!matchingState || seen.has(matchingState)) continue;
+    ordered.push(matchingState);
+    seen.add(matchingState);
+  }
+
+  for (const stateName of states) {
+    if (seen.has(stateName)) continue;
+    ordered.push(stateName);
+    seen.add(stateName);
+  }
+
+  return ordered;
+}
+
 export function createFilterSelectors(store, legacyState = null) {
   const fallbackTaskFilter = createFallbackTaskFilterFn(store);
 
   function getSelectionTaskFilters() {
     return normalizeTaskFilters(store.getState()?.selection?.taskFilters);
+  }
+
+  function getStateCategories() {
+    return deriveStateCategoryMap(store.getState()?.baseline?.projects);
+  }
+
+  function getConfiguredSequence() {
+    return deriveConfiguredStateSequence(store.getState()?.baseline?.projects);
   }
 
   return {
@@ -184,15 +266,18 @@ export function createFilterSelectors(store, legacyState = null) {
 
     getAvailableFeatureStates() {
       const state = store.getState();
+      const baselineStates = deriveAvailableStatesFromFeatures(state?.baseline?.features);
+      const configuredSequence = deriveConfiguredStateSequence(state?.baseline?.projects);
+
+      if (configuredSequence.length > 0) {
+        return applyConfiguredStateSequence(baselineStates, state?.baseline?.projects);
+      }
+
       const explicit = state?.filter?.availableFeatureStates;
-      if (Array.isArray(explicit)) return explicit;
-      return deriveAvailableStatesFromFeatures(state?.baseline?.features);
+      return Array.isArray(explicit) && explicit.length > 0 ? explicit : baselineStates;
     },
 
     getFeatureStateColors() {
-      if (legacyState?._colorService?.getFeatureStateColors) {
-        return legacyState._colorService.getFeatureStateColors(this.getAvailableFeatureStates());
-      }
       return deriveStateColorMap(this.getAvailableFeatureStates());
     },
 
@@ -201,15 +286,20 @@ export function createFilterSelectors(store, legacyState = null) {
     },
 
     getFeatureStateCategory(stateName) {
-      if (legacyState?.featureStateService?.getCategoryForState) {
-        return legacyState.featureStateService.getCategoryForState(stateName) || '';
-      }
-      return '';
+      const key = String(stateName ?? '');
+      return getStateCategories()[key] || '';
     },
 
     compareFeatureStates(a, b) {
-      if (typeof legacyState?.compareFeatureStates === 'function') {
-        return legacyState.compareFeatureStates(a, b);
+      const configured = getConfiguredSequence();
+      if (configured.length > 0) {
+        const aIndex = configured.indexOf(String(a ?? ''));
+        const bIndex = configured.indexOf(String(b ?? ''));
+        if (aIndex !== -1 || bIndex !== -1) {
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        }
       }
       return compareStrings(a, b);
     },
