@@ -92,4 +92,28 @@ describe('application/selectors/featureSelectors', () => {
       expect.objectContaining({ id: 'f1', start: '2026-03-01', end: '2026-03-10' })
     );
   });
+
+  it('store selector does not touch legacy featureService during expansion calculations', () => {
+    const seen = [];
+    const legacyState = new Proxy({}, {
+      get(target, prop) {
+        seen.push(prop);
+        if (prop === 'featureService') {
+          throw new Error('legacy featureService should not be touched in store mode');
+        }
+        return undefined;
+      },
+    });
+
+    const selectors = createFeatureSelectors(store, legacyState);
+    const result = selectors.computeExpandedFeatureSet(['f1'], {
+      expandParentChild: true,
+      expandRelations: false,
+      expandTeamAllocated: false,
+      selectedTeamIds: [],
+    });
+
+    expect(result.expandedIds.has('f1')).toBe(true);
+    expect(seen).not.toContain('featureService');
+  });
 });

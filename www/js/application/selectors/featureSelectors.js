@@ -397,9 +397,6 @@ export function createFeatureSelectors(store, legacyState = null) {
     },
 
     computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
-      if (legacyState?.featureService?.computeExpandedFeatureSet) {
-        return legacyState.featureService.computeExpandedFeatureSet(selectedFeatureIds, options);
-      }
       return computeExpandedFeatureSetFallback(
         this.getEffectiveFeatures(),
         selectedFeatureIds,
@@ -420,9 +417,6 @@ export function createFeatureSelectors(store, legacyState = null) {
     },
 
     getCountsForProject(projectId) {
-      if (typeof legacyState?.allCountsForProject === 'function') {
-        return legacyState.allCountsForProject(projectId);
-      }
       return makeCountsMap(
         this.getEffectiveFeatures(),
         (feature) => String(feature?.project) === String(projectId)
@@ -430,9 +424,6 @@ export function createFeatureSelectors(store, legacyState = null) {
     },
 
     getCountsForTeam(teamId) {
-      if (typeof legacyState?.allCountsForTeam === 'function') {
-        return legacyState.allCountsForTeam(teamId);
-      }
       return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeam(feature, teamId));
     },
   };
