@@ -53,6 +53,7 @@ export class ScenarioEventService {
     this._scenarios.push(...readonly);
 
     for (const s of scenarios || []) {
+      const scenarioId = s?._meta?.id || s?.id || null;
       // Ensure required fields, preserve readonly flag from server
       const merged = Object.assign(
         {
@@ -65,7 +66,8 @@ export class ScenarioEventService {
           isChanged: false,
           readonly: false,
         },
-        s
+        s,
+        scenarioId ? { id: scenarioId } : {}
       );
 
       // Skip if already added as readonly scenario

@@ -3,11 +3,14 @@ import './Modal.lit.js';
 import { cmd } from '../application/imports.js';
 
 export class ViewRenameModal extends LitElement {
-  static properties = { id: { type: String }, name: { type: String } };
+  static properties = {
+    viewId: { type: String },
+    name: { type: String },
+  };
 
   constructor() {
     super();
-    this.id = '';
+    this.viewId = '';
     this.name = '';
   }
 
@@ -38,9 +41,13 @@ export class ViewRenameModal extends LitElement {
         status.textContent = 'Please enter a view name.';
         return;
       }
+      if (!this.viewId) {
+        status.textContent = 'Missing view ID. Please close and retry.';
+        return;
+      }
       this._disableButtons(true);
       try {
-        await cmd.viewRestore.renameView(this.id, val);
+        await cmd.viewRestore.renameView(this.viewId, val);
         this.remove();
       } catch (err) {
         status.textContent = `Failed to rename view: ${err.message || err}`;

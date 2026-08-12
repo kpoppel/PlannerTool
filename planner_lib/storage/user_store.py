@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional
 
 from planner_lib.storage.base import StorageBackend
 
+import logging
+logger = logging.getLogger(__name__)
 
 class UserDataStore:
     """Generic CRUD store for user-scoped keyed items with a shared register.
@@ -82,6 +84,27 @@ class UserDataStore:
     def save_register(self, register: Dict[str, Dict[str, Any]]) -> None:
         self._storage.save(self.namespace, self.register_key, register)
 
+    def _for_storage(self, data: Any) -> Any:
+        """Return a copy of *data* with any ``_meta`` field stripped out."""
+        if not isinstance(data, dict):
+            logger.debug("Non-dict data for item %r", data)
+            return data
+        payload = dict(data)
+        payload.pop('_meta', None)
+        return payload
+
+    def _with_item_meta(self, item_id: str, data: Any) -> Any:
+        """Return a copy of *data* with a ``_meta`` field containing the item storage id."""
+        if not isinstance(data, dict):
+            logger.debug("Non-dict data for item %s: %r", item_id, data)
+            return data
+        payload = dict(data)
+        raw_meta = payload.get('_meta')
+        meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+        meta['id'] = item_id
+        payload['_meta'] = meta
+        return payload
+
     def save_item(
         self,
         user_id: str,
@@ -97,7 +120,7 @@ class UserDataStore:
         """
         iid = item_id or uuid.uuid4().hex
         key = self._item_key(user_id, iid)
-        self._storage.save(self.namespace, key, data)
+        self._storage.save(self.namespace, key, self._for_storage(data))
         meta: Dict[str, Any] = {"id": iid, "user": user_id}
         if extra_meta:
             meta.update(extra_meta)
@@ -110,7 +133,7 @@ class UserDataStore:
     def load_item(self, user_id: str, item_id: str) -> Any:
         """Load and return the item data; raises ``KeyError`` if not found."""
         key = self._item_key(user_id, item_id)
-        return self._storage.load(self.namespace, key)
+        return self._with_item_meta(item_id, self._storage.load(self.namespace, key))
 
     def delete_item(self, user_id: str, item_id: str) -> bool:
         """Delete an item and its register entry.

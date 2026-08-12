@@ -152,16 +152,18 @@ export class ScenarioMenuLit extends LitElement {
 
     // Listen to scenario changes for real-time updates
     this._onScenariosList = (payload) => {
-      // Use full scenarios from state to get overrides data
+      // Prefer full scenarios from selectors, but fall back to event payload
+      // when selector-backed state has not yet been hydrated.
       try {
-        const full = sel.scenario.getScenarios() || [];
-        this.scenarios = Array.isArray(full) ? [...full] : [];
+        const full = sel.scenario.getScenarios();
+        const list = Array.isArray(full) && full.length > 0 ? full : payload?.scenarios;
+        this.scenarios = Array.isArray(list) ? [...list] : [];
       } catch (e) {
         // Fallback to payload if state is not ready
         const list = payload?.scenarios || [];
         this.scenarios = Array.isArray(list) ? [...list] : [];
       }
-      this.activeScenarioId = payload?.activeScenarioId || null;
+      this.activeScenarioId = payload?.activeScenarioId || sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
 
@@ -170,9 +172,11 @@ export class ScenarioMenuLit extends LitElement {
       this.requestUpdate();
     };
 
-    this._onScenariosUpdated = () => {
-      const scenarios = sel.scenario.getScenarios() || [];
-      this.scenarios = scenarios ? [...scenarios] : [];
+    this._onScenariosUpdated = (payload) => {
+      const scenarios = sel.scenario.getScenarios();
+      const list = Array.isArray(scenarios) && scenarios.length > 0 ? scenarios : payload;
+      this.scenarios = Array.isArray(list) ? [...list] : [];
+      this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
     };
 
@@ -181,7 +185,12 @@ export class ScenarioMenuLit extends LitElement {
     bus.on(ScenarioEvents.UPDATED, this._onScenariosUpdated);
     bus.on(DataEvents.SCENARIOS_DATA, this._onScenariosUpdated);
 
-    // Don't initialize from state - scenarios are passed as properties from TopMenu
+    // Initialize from current state/props in case events were emitted before
+    // this popover was connected.
+    this._onScenariosList({
+      scenarios: this.scenarios,
+      activeScenarioId: this.activeScenarioId,
+    });
   }
 
   disconnectedCallback() {

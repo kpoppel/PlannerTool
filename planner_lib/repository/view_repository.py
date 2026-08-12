@@ -38,7 +38,7 @@ class ViewRepository:
     def save_view(
         self,
         user_id: str,
-        view_id: Optional[str],
+        view_id: str,
         data: dict,
     ) -> DomainView:
         """Persist a view and return its metadata dict."""

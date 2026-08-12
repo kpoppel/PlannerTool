@@ -79,7 +79,7 @@ class UserDataBackend(ScenarioBackend, ViewBackend, EventBackend):
         from planner_lib.views.view_store import load_user_view
         return load_user_view(self._storage, user_id, view_id)
 
-    def save_view(self, user_id: str, view_id: Optional[str], data: dict) -> DomainView:
+    def save_view(self, user_id: str, view_id: str, data: dict) -> DomainView:
         """Persist a view and return its metadata."""
         from planner_lib.views.view_store import save_user_view
         return save_user_view(self._storage, user_id, view_id, data)

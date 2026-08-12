@@ -97,7 +97,7 @@ describe('view modals phase 5 seam migration', () => {
     const status = makeElement('div');
 
     const modal = new ViewRenameModal();
-    modal.id = 'v1';
+    modal.viewId = 'v1';
     modal.remove = vi.fn();
     wireModal(modal, {
       '#renameViewInput': input,
@@ -109,6 +109,28 @@ describe('view modals phase 5 seam migration', () => {
     modal.firstUpdated();
     await saveBtn.click();
     expect(mockRenameView).toHaveBeenCalledWith('v1', 'Renamed');
+  });
+
+  it('ViewRenameModal blocks rename when viewId is missing', async () => {
+    const input = makeElement('input');
+    input.value = 'Renamed';
+    const saveBtn = makeElement();
+    const cancelBtn = makeElement();
+    const status = makeElement('div');
+
+    const modal = new ViewRenameModal();
+    modal.remove = vi.fn();
+    wireModal(modal, {
+      '#renameViewInput': input,
+      '#renameViewBtn': saveBtn,
+      '#cancelRenameViewBtn': cancelBtn,
+      '#renameViewStatus': status,
+    });
+
+    modal.firstUpdated();
+    await saveBtn.click();
+    expect(mockRenameView).not.toHaveBeenCalled();
+    expect(status.textContent).toBe('Missing view ID. Please close and retry.');
   });
 
   it('ViewDeleteModal uses cmd.viewRestore.deleteView', async () => {

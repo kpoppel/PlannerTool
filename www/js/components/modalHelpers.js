@@ -150,9 +150,9 @@ export const openEmptyBoardModal = async ({ parent = document.body } = {}) => {
 const _simpleModal = async (
   modulePath,
   tagName,
-  { id, name, parent = document.body } = {}
+  { id, name, parent = document.body, attrs: extraAttrs = {} } = {}
 ) => {
-  const attrs = {};
+  const attrs = { ...extraAttrs };
   if (id) attrs.id = id;
   if (name) attrs.name = name;
   const { el, cleanup } = await _createModal(modulePath, tagName, {
@@ -177,7 +177,10 @@ export const openScenarioDeleteModal = (opts = {}) =>
 
 export const openViewSaveModal = (opts = {}) =>
   _simpleModal('./ViewSaveModal.lit.js', 'view-save-modal', opts);
-export const openViewRenameModal = (opts = {}) =>
-  _simpleModal('./ViewRenameModal.lit.js', 'view-rename-modal', opts);
+export const openViewRenameModal = ({ id, ...opts } = {}) =>
+  _simpleModal('./ViewRenameModal.lit.js', 'view-rename-modal', {
+    ...opts,
+    attrs: id ? { viewId: id } : {},
+  });
 export const openViewDeleteModal = (opts = {}) =>
   _simpleModal('./ViewDeleteModal.lit.js', 'view-delete-modal', opts);

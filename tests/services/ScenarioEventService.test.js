@@ -51,7 +51,7 @@ describe('ScenarioEventService basic flows', () => {
     return s._scenarioManager.activeScenarioId === s._activeScenarioId;
   }
 
-  it('handleScenariosData merges scenarios and emits events', () => {
+  it('handleScenariosData merges scenarios and normalizes _meta ids', () => {
     // attach bus handlers to capture emits
     let listEmitted = false;
     let activatedEmitted = false;
@@ -66,7 +66,7 @@ describe('ScenarioEventService basic flows', () => {
     svc._captureCurrentFilters = () => ({ projects: [] });
     svc._captureCurrentView = () => ({ zoom: 'months' });
 
-    svc._handleScenariosData([{ id: 's1', name: 'S1' }]);
+    svc._handleScenariosData([{ _meta: { id: 's1' }, name: 'S1' }]);
 
     expect(svc.getScenarios().some((x) => x.id === 's1')).to.equal(true);
     expect(listEmitted).to.equal(true);

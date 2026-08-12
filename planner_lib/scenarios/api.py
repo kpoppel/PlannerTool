@@ -10,6 +10,17 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _payload_item_id(data: dict | None) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    if data.get('id'):
+        return data.get('id')
+    meta = data.get('_meta')
+    if isinstance(meta, dict) and meta.get('id'):
+        return meta.get('id')
+    return None
+
+
 @router.get('/scenario')
 @require_session
 async def api_scenario_get(request: Request):
@@ -49,20 +60,21 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
         if op == 'save':
             if isinstance(data, dict) and data.get('readonly'):
                 raise HTTPException(status_code=400, detail='Cannot save readonly scenario')
-            scenario_id = data.get('id') if isinstance(data, dict) else None
+            scenario_id = _payload_item_id(data)
             return await asyncio.to_thread(scenario_repo.save_scenario, user_id, scenario_id, data)
         elif op == 'delete':
-            if not isinstance(data, dict) or not data.get('id'):
+            scenario_id = _payload_item_id(data)
+            if not scenario_id:
                 raise HTTPException(status_code=400, detail='Missing scenario id for delete')
             try:
-                scenario = await asyncio.to_thread(scenario_repo.get_scenario, user_id, data['id'])
+                scenario = await asyncio.to_thread(scenario_repo.get_scenario, user_id, scenario_id)
                 if isinstance(scenario, dict) and scenario.get('readonly'):
                     raise HTTPException(status_code=400, detail='Cannot delete readonly scenario')
             except KeyError:
                 raise HTTPException(status_code=404, detail='Scenario not found')
-            if not await asyncio.to_thread(scenario_repo.delete_scenario, user_id, data['id']):
+            if not await asyncio.to_thread(scenario_repo.delete_scenario, user_id, scenario_id):
                 raise HTTPException(status_code=404, detail='Scenario not found')
-            return {'ok': True, 'id': data['id']}
+            return {'ok': True, 'id': scenario_id}
         else:
             raise HTTPException(status_code=400, detail='Unsupported op')
     except HTTPException:

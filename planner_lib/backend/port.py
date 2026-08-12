@@ -308,7 +308,7 @@ class ViewBackend(Protocol):
     def save_view(
         self,
         user_id: str,
-        view_id: Optional[str],
+        view_id: str,
         data: dict,
     ) -> DomainView: ...
 

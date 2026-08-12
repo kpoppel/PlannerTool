@@ -11,6 +11,17 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _payload_item_id(data: dict | None) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    if data.get('id'):
+        return data.get('id')
+    meta = data.get('_meta')
+    if isinstance(meta, dict) and meta.get('id'):
+        return meta.get('id')
+    return None
+
+
 @router.get('/view')
 @require_session
 async def api_view_get(request: Request):
@@ -50,15 +61,16 @@ async def api_view_post(request: Request, payload: dict = Body(default={})):
                 raise HTTPException(status_code=400, detail='View data must be an object')
             if not data.get('name'):
                 raise HTTPException(status_code=400, detail='View name is required')
-            meta = await asyncio.to_thread(view_repo.save_view, user_id, data.get('id'), data)
+            meta = await asyncio.to_thread(view_repo.save_view, user_id, _payload_item_id(data), data)
             logger.info("Saved view '%s' (id=%s) for user %s", data.get('name'), meta['id'], user_id)
             return meta
         elif op == 'delete':
-            if not isinstance(data, dict) or not data.get('id'):
+            item_id = _payload_item_id(data)
+            if not item_id:
                 raise HTTPException(status_code=400, detail='Missing view id for delete')
-            if not await asyncio.to_thread(view_repo.delete_view, user_id, data['id']):
+            if not await asyncio.to_thread(view_repo.delete_view, user_id, item_id):
                 raise HTTPException(status_code=404, detail='View not found')
-            return {'ok': True, 'id': data['id']}
+            return {'ok': True, 'id': item_id}
         else:
             raise HTTPException(status_code=400, detail='Unsupported op')
     except HTTPException:
