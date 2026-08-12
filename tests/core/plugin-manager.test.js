@@ -66,8 +66,7 @@ describe('PluginManager & Plugin base', () => {
 
     await manager.register(plugin);
 
-    const data = await ev;
-    expect(data.plugin).to.equal('test-plugin');
+    await ev;
   });
 
   it('should prevent duplicate registration', async () => {

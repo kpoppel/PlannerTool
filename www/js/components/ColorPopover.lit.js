@@ -2,7 +2,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { dataService } from '../services/dataService.js';
 import { cmd } from '../application/imports.js';
 import { bus } from '../core/EventBus.js';
-import { ProjectEvents, TeamEvents, ColorEvents } from '../core/EventRegistry.js';
+import { ProjectEvents, TeamEvents } from '../core/EventRegistry.js';
 
 export class ColorPopoverLit extends LitElement {
   static properties = {
@@ -114,11 +114,6 @@ export class ColorPopoverLit extends LitElement {
         cmd.selection.setTeamColor(this.entityId, color, { suppressEvents: true });
         bus.emit(TeamEvents.CHANGED);
       }
-      bus.emit(ColorEvents.CHANGED, {
-        entityType: this.entityType,
-        id: this.entityId,
-        color,
-      });
     } catch (e) {
       console.error('ColorPopover.applyColor', e);
     }

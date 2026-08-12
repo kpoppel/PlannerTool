@@ -134,11 +134,6 @@ export const DataEvents = {
   SAVED: Symbol('data:saved'),
 };
 
-// Color events
-export const ColorEvents = {
-  CHANGED: Symbol('color:changed'),
-};
-
 // States filter events
 export const StateFilterEvents = {
   CHANGED: Symbol('states:changed'),
@@ -146,10 +141,6 @@ export const StateFilterEvents = {
 
 // Board coordinate / scroll events
 export const BoardEvents = {
-  /** Fired by BoardCoordinateService on every scroll of the scroll container. */
-  SCROLL: Symbol('board:scroll'),
-  /** Fired by TimelineBoard once the board area is mounted and BCS is initialised. */
-  READY: Symbol('board:ready'),
   /**
    * Fired by overlay plugins (markers, events) after each SVG render with the
    * pixel clearance FeatureBoard must add above its first card row.

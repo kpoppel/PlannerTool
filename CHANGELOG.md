@@ -45,6 +45,8 @@ Template - do not change :
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
 
 ### Changed
+- Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.
+- Phase 7 follow-up: removed unused `ColorEvents.CHANGED` event wiring; retained payload-bearing contracts for `PluginEvents.*`, `SessionEvents.EXPIRED`, `BoardEvents.OVERLAY_OFFSET_CHANGED`, `DragEvents.*`, and `ConfigEvents.AUTOSAVE` where payload is the intentional transport contract or state-store parity surface.
 - Phase 7 lifecycle follow-up: migrated `ScenarioEvents.LIST`/`ACTIVATED`/`UPDATED`, `GroupEvents.LOADED`, and `DataEvents.LOADED` to signal-only emissions; receivers now read current scenario/group/data state via `sel`/`cmd` on receipt, while `DataEvents.SCENARIOS_CHANGED` and `DataEvents.SCENARIOS_DATA` remain data-bearing as backend ingress feeds.
 - Phase 7 continued: `ProjectEvents.CHANGED` and `TeamEvents.CHANGED` now emit as signal-only events (no project/team array payloads), and menu/sidebar receivers now re-read project/team selection via `sel.selection` on receipt.
 - Phase 7 continued: `FilterEvents.CHANGED`, `ViewEvents.*` view-state toggles, and `TimelineEvents.SCALE_CHANGED`/`TimelineEvents.MONTHS` now emit as signal-only events; listeners now read current state through `sel`/`cmd` at receipt time instead of consuming live payload objects.

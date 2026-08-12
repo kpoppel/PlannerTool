@@ -136,14 +136,14 @@ export class MountedPlugin {
     await this._ensureElement();
     this._showPlugin();
     this.active = true;
-    bus.emit(PluginEvents.ACTIVATED, { id: this.id });
+    bus.emit(PluginEvents.ACTIVATED, { plugin: this.id });
   }
 
   async deactivate() {
     this._hidePlugin();
     if (this._el && typeof this._el.close === 'function') this._el.close();
     this.active = false;
-    bus.emit(PluginEvents.DEACTIVATED, { id: this.id });
+    bus.emit(PluginEvents.DEACTIVATED, { plugin: this.id });
   }
 
   async destroy() {

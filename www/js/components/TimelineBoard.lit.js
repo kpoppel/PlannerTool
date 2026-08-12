@@ -23,7 +23,7 @@ import { LitElement, html, css } from '../vendor/lit.js';
 import { sel } from '../application/imports.js';
 import { boardCoords } from '../services/BoardCoordinateService.js';
 import { bus } from '../core/EventBus.js';
-import { BoardEvents, UIEvents, TimelineEvents } from '../core/EventRegistry.js';
+import { UIEvents, TimelineEvents } from '../core/EventRegistry.js';
 import { calcTodayX } from './board-utils.js';
 
 class TimelineBoard extends LitElement {
@@ -50,7 +50,6 @@ class TimelineBoard extends LitElement {
 
       if (scrollContainer && boardArea) {
         boardCoords.init(scrollContainer, boardArea);
-        bus.emit(BoardEvents.READY, { scrollContainer, boardArea });
       }
 
       await import('./MainGraph.lit.js');
