@@ -1,126 +1,328 @@
-**PlannerTool Web Architecture**
+# PlannerTool Web Architecture (v2)
 
-Purpose: a concise overview of the architecture and module responsibilities for the web front-end under `www/js` and admin panel under `www-admin/js`. This document describes high-level architectural layers and how major subsystems fit together. It avoids line-level or function-level detail in favor of responsibilities and design principles.
+> Status: current architecture reference for the PlannerTool web system.
 
-**System Overview**
-- **Tech stack:** ES modules, vanilla JavaScript with Lit for web components. No heavy client framework. Data access via pluggable providers (REST, local storage, mock).
-- **Design principles:** layered separation of concerns (components, core orchestration, services, providers); small, testable, single-responsibility modules; typed event bus for decoupled communication; pluggable plugin and provider extension points.
+## 1. Purpose
 
-**Layered Architecture: www/js (Main Application)**
+This document describes the current architecture of the PlannerTool web system.
+It defines system boundaries, runtime composition, module responsibilities, state and event contracts,
+and quality-focused constraints used for implementation and review.
 
-1. **Presentation (components/):** Lit element components responsible for rendering UI and managing direct DOM interactions. Components stay thin: they emit domain events to the bus and consume state-change events. Examples: feature cards, timeline, sidebar controls, modals, graphs, dependency renderers. Lifecycle management (attach/detach listeners) is critical here.
+## 2. Scope
 
-2. **Core Orchestration (core/):** Provides infrastructure for module wiring and cross-cutting concerns. Includes EventBus (typed event routing), EventRegistry (event type definitions), PluginManager (plugin lifecycle and loading), Plugin base class, ServiceRegistry (service discovery), and Container (dependency injection).
+In scope:
 
-3. **Application Services (services/):** Encapsulates business logic, application state, and domain computations. Includes state management (State.js, BaselineStore), feature/scenario operations (FeatureService, ScenarioManager, ScenarioEventService), filtering (FilterManager, StateFilterService), capacity calculations (CapacityCalculator, PluginCostCalculator), and utility services (ColorService, IconService, ConfigService, ProjectTeamService, ViewService). Services own their state, expose imperative APIs for modifications, emit events for derived updates, and remain decoupled via the event bus.
+- Main web application under `www/js/`
+- Admin web application under `www/admin/js/`
+- Frontend-to-backend interaction with `planner.py` REST endpoints
+- Runtime state, eventing, plugin composition, and UI architecture
 
-4. **Data Access Layer (providers + dataService):** Abstract persistence and remote data. Includes ProviderREST (HTTP), ProviderLocalStorage (fallback), ProviderMock (testing), and DataInitService. The dataService adapter wires the active provider so services and components use a single interface regardless of backend.
+Out of scope:
 
-5. **Plugins (plugins/):** Optional, loadable modules for extensibility. Plugins declare metadata (id, dependencies, mount point) in modules.config.json and have optional schema definitions in .schema.json files. Current plugins include markers, cost analysis, and export functionality. Plugins register themselves with the core infrastructure, consume runtime configuration, and clean up on deactivation. Runtime configuration is managed separately via the admin panel and merged with static metadata at app startup.
+- Backend internals and persistence implementation details
+- Deployment infrastructure details (covered by deployment documentation)
 
-6. **Utilities & Helpers (tour/, vendor/, and standalone files):** Reusable helpers like board-utils.js (layout/render helpers), dragManager.js (drag-and-drop), util.js (date/geometry math), viewOptions.js (UI state), and modalHelpers.js (modal management). vendor/ holds third-party libraries (e.g., Lit).
+## 3. System Context
 
-**Layered Architecture: www-admin/js (Admin Panel)**
+```mermaid
+flowchart LR
+    User[User in Browser]
+    MainApp[Main App\nwww/js]
+    AdminApp[Admin App\nwww/admin/js]
+    API[Planner REST API\nplanner.py]
+    Data[(Server Data Stores)]
 
-1. **Admin Components (components/):** Lit elements for admin-specific UI. AdminApp.lit.js is the main container. Subdirectory admin/ houses feature-specific components (System, Users, Projects, Teams, Cost, AreaMappings, Iterations). Admin components follow the same patterns as main-app components.
+    User --> MainApp
+    User --> AdminApp
+    MainApp --> API
+    AdminApp --> API
+    API --> Data
+```
 
-2. **Admin Services (services/):** REST provider for admin data operations. Simpler than main-app services; focuses on CRUD and admin-specific queries.
+## 4. Technology Profile
 
-3. **Entry Point (admin.js):** Bootstrap that initializes dataService, checks admin authorization, and mounts the admin app.
+| Concern | Technology |
+|---|---|
+| Component model | Lit 3 web components |
+| Module system | Native ES modules |
+| Frontend state | Zustand vanilla (`createStore`, `subscribeWithSelector`) |
+| Build pipeline | Vite (`npm run build`) |
+| Vendor bundling | Rollup (`npm run build:vendor`) |
+| Testing | Vitest, Playwright, pytest |
+| Linting | ESLint |
 
-**Key Patterns & Design Decisions**
+## 5. Top-Level Structure
 
-- **Event-Driven Communication:** The EventBus provides typed, symbol-based events (defined in EventRegistry) for decoupled module interaction. Components and services subscribe/unsubscribe in lifecycle methods (connectedCallback/disconnectedCallback or equivalent) to avoid memory leaks.
+Generated from the current frontend audit.
 
-- **Immutable State & Derived Computation:** Application state in State.js and BaselineStore treats baseline data as immutable. Derived data (effective features, capacity per day, filtered views) is computed on-demand or cached. This keeps the render path fast and state predictable.
+| Area | Files | LOC | Role |
+|---|---:|---:|---|
+| `www/js/application` | 21 | 4,850 | Store composition, commands, selectors, runtime wiring |
+| `www/js/core` | 8 | 1,040 | Event bus, plugin manager, store controller |
+| `www/js/services` | 22 | 7,115 | Domain services and REST provider |
+| `www/js/components` | 48 | 17,093 | Main UI components and UI helpers |
+| `www/js/plugins` | 52 | 18,817 | Feature plugins and plugin UI components |
+| `www/admin/js` | 27 | 11,349 | Admin SPA components and services |
 
-- **Service APIs:** Services expose imperative methods to modify state and emit events when state changes. Consumers call service methods rather than mutating state directly. This maintains a single source of truth and enables undo/redo and scenario management.
+### 5.1 Code Navigation Map
 
-- **Plugin Extension & Configuration:** Plugins declare static metadata (id, path, export, dependencies, enabled, mountPoint) in modules.config.json. Each plugin has an optional .schema.json file defining configuration schema and defaults. PluginManager loads and activates plugins declaratively, merging runtime-managed config (enabled, activated, custom_config) with static metadata. Runtime configuration is managed via admin panel REST endpoints and persisted per-deployment. Plugins hook into the event bus, access runtime config via constructor parameters, and must clean up on deactivation.
+Primary entry points and composition seams:
 
-- **Provider Abstraction:** Services call dataService, which delegates to an active provider (ProviderREST, ProviderLocalStorage, or ProviderMock). This allows seamless backend swapping and offline-first fallback without changing service code.
+- Main app bootstrap: `www/js/app.js`
+- Main app command/selector composition: `www/js/application/imports.js`
+- Store definition: `www/js/application/store.js`
+- Command modules: `www/js/application/commands/*.js`
+- Selector modules: `www/js/application/selectors/*.js`
+- Event system: `www/js/core/EventBus.js`, `www/js/core/EventRegistry.js`
+- Plugin lifecycle manager: `www/js/core/PluginManager.js`
+- Lit store subscription controller: `www/js/core/StoreController.js`
+- Shared data facade: `www/js/services/dataService.js`
+- Admin app bootstrap: `www/admin/js/admin.js`
+- Admin backend adapter: `www/admin/js/services/providerREST.js`
 
-**Component Design Principles**
+## 6. Architectural Principles
 
-- Keep components focused on render and direct interactions (pointer, keyboard).
-- Extract business logic to services or utility functions for testability.
-- Use reactive properties for inputs; manage local UI state sparingly.
-- Always unsubscribe from events and observers in disconnectedCallback to prevent leaks.
-- Emit domain events (not DOM events) to the bus for cross-component communication.
-- Use Shadow DOM for encapsulation but coordinate layout and theming via CSS custom properties.
+- Single canonical runtime state store.
+- Explicit write path through command modules.
+- Pure read path through selector modules.
+- UI components do not mutate store directly.
+- Runtime composition is centralized in `www/js/application/imports.js`.
+- Domain services are explicit modules; some are constructor-injected, others are singleton exports.
+- Event bus carries signals and routing hints, not state snapshots.
+- Plugin lifecycle is explicit (`init`, `activate`, `deactivate`, `destroy`).
 
-**State Management Architecture**
+## 7. Runtime Architecture
 
-The State.js service is the central orchestrator:
-- Owns baseline data (features, teams, projects, config).
-- Exposes APIs to modify features (create, update, delete, revert).
-- Delegates to sub-services: FeatureService (feature derivations), ScenarioManager (scenario CRUD), FilterManager (project/team selection), CapacityCalculator (daily capacity math).
-- Emits events whenever derived state changes, triggering UI updates.
+```mermaid
+flowchart TD
+    subgraph Presentation[Presentation Layer]
+        Comp[Components\nwww/js/components]
+        Plugins[Plugins\nwww/js/plugins]
+    end
 
-Services like QueuedFeatureService and SidebarPersistenceService handle secondary concerns (queued edits, UI preferences).
+    subgraph AppLayer[Application Layer]
+        Cmd[Commands\nwww/js/application/commands]
+        Sel[Selectors\nwww/js/application/selectors]
+        Store[(Zustand Store\nwww/js/application/store.js)]
+        Runtime[Runtime Wiring\nwww/js/application/imports.js]
+    end
 
-**Plugin Configuration Management**
+    subgraph Core[Core Layer]
+        Bus[EventBus + EventRegistry\nwww/js/core]
+        PM[PluginManager\nwww/js/core]
+        SC[StoreController\nwww/js/core/StoreController.js]
+    end
 
-The plugin system uses a two-tier configuration model separating static metadata from runtime configuration:
+    subgraph Services[Service Layer]
+        DomainSvc[Domain Services\nwww/js/services]
+        DataSvc[dataService.js]
+        REST[providerREST.js]
+    end
 
-- **Static Metadata (modules.config.json):** Immutable, deployment-wide plugin registry. Defines id, path, export, dependencies, default enabled/activated states, and mount points. Deployed with the application code.
+    API[(Backend REST API)]
+    AppBoot[Bootstrap\nwww/js/app.js]
 
-- **Schema Definitions (plugins/*.schema.json):** Optional per-plugin JSON Schema defining configuration constraints (type, required fields, min/max values, patterns, enums). Used by admin UI for form field rendering and validation. Each schema includes both constraint metadata and default values for custom_config.
+    Comp --> SC --> Store
+    Plugins --> SC
+    Comp --> Cmd
+    Plugins --> Cmd
+    Comp --> Sel
+    Plugins --> Sel
+    Sel --> Store
+    Cmd --> Store
+    Cmd --> Bus
+    Runtime --> Cmd
+    Runtime --> Sel
+    Runtime --> Bus
+    Runtime --> PM
+    AppBoot --> Runtime
+    AppBoot --> PM
+    AppBoot --> DataSvc
+    Cmd -. uses .-> DomainSvc
+    DomainSvc --> DataSvc --> REST --> API
+    PM --> Plugins
+```
 
-- **Runtime Configuration (backend: plugin_runtime_config):** Mutable, per-deployment plugin settings including enabled, activated, order, and plugin-specific custom_config. Stored in backend persistent config (via admin_service). Managed by admin panel (REST endpoints: POST/GET /admin/v1/plugins-config) and loaded by client app at startup.
+## 8. State Architecture
 
-- **Configuration Merge (www/js/core/pluginConfigMerge.js):** At app startup, client fetches runtime config from /api/plugins/config and merges with modules.config.json via mergePluginConfig(). Runtime order is authoritative when provided; metadata defaults apply when not overridden. Unknown plugin IDs in runtime config are skipped with a warning, and missing metadata plugins are appended with metadata defaults.
+### 8.1 Store
 
-- **Schema Discovery:** Admin panel discovers plugin schemas via per-plugin .schema.json files using pluginSchemaRegistry. User app loads all schemas at startup via /api/plugins/schemas endpoint. Schema-driven form UI in admin panel uses schema.properties to render typed input fields (text, number, boolean, select, JSON) with real-time validation. Config button only appears for plugins with non-empty schema.properties.
+Canonical runtime state lives in `www/js/application/store.js`.
 
-- **Safeguards:** Validation ensures at most one activated plugin, enabled=false forces activated=false, duplicate IDs are rejected, and all custom_config values are objects (no deep schema validation—delegated to frontend forms). Backend returns errors for unknown plugin IDs; client silently skips them to allow safe deployment of subset of plugins.
+Primary slices:
 
-**Testing Strategy**
+- `lifecycle`
+- `baseline`
+- `scenarios`
+- `selection`
+- `view`
+- `groups`
+- `pluginState`
+- `capacity`
 
-- **Unit tests:** Focus on services and domain logic (ScenarioManager, FeatureService, FilterManager, CapacityCalculator). Keep these isolated, fast, and deterministic.
-- **Component tests:** Use a headless test runner (configured in package.json) to render components, assert DOM and attributes, and verify event emission. Mock bus and state to isolate components.
-- **Integration tests:** Exercise dataService + provider + state wiring to verify end-to-end flows.
-- **E2E tests:** Use Playwright for smoke and user-flow tests (load baseline, open details, create/save scenarios, drag/resize).
-- **Coverage goals:** aim for 80% statements in service code; prioritize high branch coverage for critical paths.
+### 8.2 Write Path
 
-**Development Guidelines**
+- Components and plugins call command functions from `www/js/application/imports.js` (`cmd.*`).
+- Commands mutate state via `store.setState(...)`.
+- Commands emit signal events for cross-module coordination (for example scenario, plugin, capacity, and UI synchronization events).
+- Startup hydration is command-driven from `www/js/app.js` (`cmd.data.hydrateBaseline()`, `cmd.data.hydrateScenarioData()`, `cmd.viewRestore.restoreLastView()`).
 
-- **Adding a component:** Create under components/, export as a Lit element, register custom element, add unit + component tests in tests/.
-- **Adding a service:** Implement under services/, inject dependencies (bus, state, other services), add unit tests. Follow the service API pattern: imperative methods + event emission.
-- **Adding a plugin:** Create under plugins/, implement the Plugin interface (init, activate, deactivate, destroy), add metadata to modules.config.json, create a .schema.json file with configuration schema (optional but recommended), ensure clean activation/deactivation. If the plugin supports runtime configuration, accept custom_config in constructor and validate against schema.
-- **Adding a provider:** Implement the provider interface (matching existing ProviderREST, ProviderLocalStorage), integrate via dataService.
-- **Event naming:** Use EventRegistry constants; prefer domain-namespaced events (e.g., FeatureEvents.UPDATED, ScenarioEvents.SAVED, UIEvents.DETAILS_SHOW).
+### 8.3 Read Path
 
-**Code Organization Rules**
+- Selectors compute derived data from `store.getState()` and are exposed via `sel.*`.
+- Components and plugins read via `sel.*` and subscribe with `StoreController` where reactive updates are needed.
+- Re-render occurs from store subscription notifications.
 
-- core/: infrastructure and wiring only (EventBus, registries, plugin lifecycle). No business logic.
-- services/: business logic, state management, domain computations. No component rendering or DOM.
-- components/: UI rendering and interactions. Delegate complex logic to services.
-- plugins/: optional extensions; must be reversible (clean up on deactivate).
-- providers/: data access adapters; maintain a consistent interface for dataService.
-- Utilities: pure functions and helpers; no side-effects where possible.
+### 8.4 Invariants
 
-**Maintenance & Scalability**
+- No direct store mutation outside command modules.
+- Selectors are pure and deterministic for a given state snapshot.
+- Services do not own canonical frontend state.
 
-- **Keep APIs stable:** service methods, event names, and provider interfaces are module boundaries; changes ripple widely. Deprecate gradually.
-- **Avoid circular dependencies:** core → services → (components, providers); components may depend on core and services but not vice versa.
-- **Use feature flags (config.js):** gate breaking changes during migrations; remove progressively.
-- **Document non-obvious logic:** use comments to explain invariants, magic numbers, and complex algorithms. JSDoc for public APIs.
-- **Refactor regularly:** extract long methods into smaller services, consolidate duplicated patterns, remove dead code.
+## 9. Event Architecture
 
-**Deployment & Configuration**
+`www/js/core/EventBus.js` provides symbol-based pub/sub with namespace listeners.
 
-- **www/js/config.js:** feature flags and runtime configuration.
-- **www/js/modules.config.json:** static plugin metadata (id, path, export, dependencies, enabled, mountPoint).
-- **www/js/plugins/*.schema.json:** plugin configuration schema and defaults (optional per-plugin metadata for runtime config UI).
-- **Backend plugin_runtime_config:** runtime-managed plugin settings (enabled, activated, custom_config, order) persisted per-deployment. Admin panel provides REST endpoints for CRUD. Merged with static metadata at app startup.
-- **Environment:** Node.js v16+ for tests; tests run via npm scripts in package.json. Python tests in requirements-dev.txt for backend.
-- **Build:** No bundler; modules are loaded as-is by the browser. Libraries in vendor/ or via CDN.
+Event usage rules:
 
-**Known Limitations & Future Improvements**
+- Event payloads contain IDs or compact routing hints.
+- State collections and derived snapshots are not sent on event payloads.
+- UI update propagation uses store subscriptions, not event payload transport.
 
-- Provider interface could be more strongly typed (e.g., TypeScript or JSDoc @typedef).
-- Scenario management logic (in ScenarioManager and State) is complex; could be split further.
-- Some legacy DOM wiring remains; full migration to Lit components is ongoing.
-- Feature flag cleanup: old flags should be removed as migrations complete.
+## 10. Startup Architecture
 
+```mermaid
+sequenceDiagram
+    participant Browser as Browser
+    participant App as app.js
+    participant DS as dataService
+    participant Cmd as cmd.* (imports.js)
+    participant Store as application/store.js
+    participant Bus as EventBus
+    participant PM as PluginManager
+    participant API as Backend API
+
+    Browser->>App: DOMContentLoaded
+    App->>App: Show spinner
+    App->>DS: Initialize session
+    DS->>API: POST /api/session
+    App->>Cmd: hydrateBaseline + hydrateScenarioData
+    Cmd->>DS: Fetch baseline/scenario data
+    DS->>API: GET/POST REST calls
+    Cmd->>Store: setState(hydrated slices)
+    Cmd->>Bus: emit hydration/capacity signals
+    App->>Cmd: restoreLastView
+    Cmd->>Store: setState(view/selection)
+    App->>DS: getPluginsConfig/getPluginsSchemas
+    App->>PM: Load plugin config and register modules
+    PM->>PM: Activate configured plugins
+    PM->>Bus: emit PluginEvents.*
+    App->>App: Hide spinner
+    App->>Bus: Emit AppEvents.READY
+    App->>Bus: Register SessionEvents listeners
+```
+
+## 11. Interaction Flow (Example)
+
+Example: feature drag date update.
+
+```mermaid
+sequenceDiagram
+    participant Card as FeatureCard
+    participant Drag as dragManager
+    participant Cmd as cmd.feature.updateFeatureDates
+    participant Store as Zustand Store
+    participant DataCmd as cmd.data.recomputeCapacity
+    participant Bus as EventBus
+    participant Board as FeatureBoard
+
+    Card->>Drag: pointer interaction
+    Drag->>Cmd: update payload
+    Cmd->>Store: setState(scenario overrides)
+    Cmd->>DataCmd: recomputeCapacity()
+    DataCmd->>Store: setState(capacity slice)
+    DataCmd->>Bus: emit CapacityEvents.UPDATED
+    Cmd->>Bus: emit FeatureEvents.UPDATED/ScenarioEvents.UPDATED
+    Store-->>Board: selector subscription update
+    Board->>Board: re-render
+```
+
+## 12. Plugin Architecture
+
+Plugins are runtime modules loaded through `PluginManager` and `modules.config.json`.
+
+Plugin contracts:
+
+- Lifecycle: `init`, `activate`, `deactivate`, `destroy`
+- Mounting through configured mount points
+- Optional exclusivity and fullscreen behavior
+- Access to state through `cmd`/`sel` seams and store controller subscriptions
+
+Runtime behavior notes:
+
+- `PluginManager` emits `PluginEvents.REGISTERED`, `ACTIVATED`, `DEACTIVATED`, `UNREGISTERED`.
+- `loadFromConfig` resolves dependencies and can reorder activation for dependency safety.
+- Plugin UI components typically subscribe to EventBus signals and read state via `sel.*`.
+
+## 13. Admin Application Architecture
+
+The admin application is a separate Lit SPA under `www/admin/js`.
+
+```mermaid
+flowchart TD
+    AdminBoot[admin.js] --> Check[Auth Check]
+    Check -->|authorized| AdminShell[AdminApp.lit.js]
+    Check -->|unauthorized| LoginRedirect[Login Redirect]
+    AdminShell --> Sections[Admin Sections]
+    AdminBoot --> SharedData[dataService.init]
+    Sections --> AdminREST[www/admin/js/services/providerREST.js]
+    AdminREST --> API[Backend /admin/v1/*]
+```
+
+Admin and main applications share backend APIs and build pipeline conventions but remain separate UI compositions.
+
+## 14. Testing Architecture
+
+Test layers:
+
+- Unit: command, selector, service, and pure utility coverage
+- Component: Lit rendering and interaction coverage
+- Integration: command + selector + store behavior
+- E2E: Playwright user-path validation
+- Backend/API: pytest coverage
+
+Contract-testing rules:
+
+- Tests assert public behavior and observable effects.
+- Tests avoid private-field coupling.
+- Tests isolate state per test case.
+
+## 15. Quality Attributes
+
+### 15.1 Modifiability
+
+- Layered separation of presentation, application, core, and service responsibilities.
+- Command/selector seams localize state-model changes.
+
+### 15.2 Testability
+
+- Deterministic selectors and explicit command APIs.
+- Store subscriptions make UI update behavior observable.
+
+### 15.3 Performance
+
+- Selector-scoped subscriptions reduce unnecessary rerenders.
+- Event bus is used for targeted side-effect signaling.
+
+### 15.4 Reliability
+
+- Startup sequence enforces explicit hydration before ready signal.
+- Session lifecycle handling is centralized in data-access services.
+
+## 16. Governance Rules
+
+- New state writes are added only through command modules.
+- New derived reads are added only through selectors.
+- New event types must document payload shape and consumer responsibility.
+- Plugin additions must define lifecycle behavior and cleanup.
+- Architecture-impacting changes must update this document and corresponding tests.
