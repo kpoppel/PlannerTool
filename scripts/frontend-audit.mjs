@@ -81,6 +81,10 @@ function summariseTests(testsDir) {
   let totalLoc = 0;
   let filesWithPrivateAccess = 0;
   let filesWithViMocks = 0;
+  let testCaseCount = 0;
+  let expectCount = 0;
+  let skippedTests = 0;
+  let filesMockingApplicationImports = 0;
   const subDirCounts = {};
 
   for (const f of files) {
@@ -89,17 +93,33 @@ function summariseTests(testsDir) {
     totalLoc += content.split('\n').length;
     if (hasMatch(content, /\b\w+\._[a-zA-Z]/)) filesWithPrivateAccess += 1;
     if (hasMatch(content, /vi\.(mock|fn|spyOn)\s*\(/)) filesWithViMocks += 1;
+    testCaseCount += (content.match(/\b(?:it|test)\s*\(/g) || []).length;
+    expectCount += (content.match(/\bexpect\s*\(/g) || []).length;
+    skippedTests += (content.match(/\b(?:describe|it|test)\.skip\s*\(|\bxdescribe\s*\(|\bxit\s*\(/g) || []).length;
+    if (hasMatch(content, /vi\.mock\(\s*['\"][^'\"]*\/application\/imports\.js['\"]/)) {
+      filesMockingApplicationImports += 1;
+    }
 
     const rel = relative(testsDir, f);
     const top = rel.includes('/') ? rel.split('/')[0] : '(root)';
     subDirCounts[top] = (subDirCounts[top] || 0) + 1;
   }
-  return { totalFiles: files.length, totalLoc, filesWithPrivateAccess, filesWithViMocks, subDirCounts };
+  return {
+    totalFiles: files.length,
+    totalLoc,
+    filesWithPrivateAccess,
+    filesWithViMocks,
+    testCaseCount,
+    expectCount,
+    skippedTests,
+    filesMockingApplicationImports,
+    subDirCounts,
+  };
 }
 
 // ── www/js ────────────────────────────────────────────────────────────────────
 const wwwJs = join(ROOT, 'www/js');
-const wwwDirs = ['core', 'services', 'components', 'plugins', 'config'];
+const wwwDirs = ['application', 'core', 'services', 'components', 'plugins', 'config'];
 const wwwLooseFiles = [
   ['app.js', join(wwwJs, 'app.js')],
   ['config.js', join(wwwJs, 'config.js')],
@@ -174,8 +194,12 @@ ${[...adminRows, ...adminLooseRows].map(tableRow).join('\n')}
 |---|---:|
 | Total test files | ${testsSummary.totalFiles} |
 | Total LOC | ${testsSummary.totalLoc.toLocaleString()} |
+| Test cases (it/test) | ${testsSummary.testCaseCount.toLocaleString()} |
+| expect() call sites | ${testsSummary.expectCount.toLocaleString()} |
 | Files with private-field access¹ | ${testsSummary.filesWithPrivateAccess} |
 | Files with vi.mock/fn/spyOn | ${testsSummary.filesWithViMocks} |
+| Files mocking application/imports.js seam | ${testsSummary.filesMockingApplicationImports} |
+| Skipped tests (describe.skip/it.skip/xdescribe/xit) | ${testsSummary.skippedTests} |
 
 ### Test files per subdirectory
 

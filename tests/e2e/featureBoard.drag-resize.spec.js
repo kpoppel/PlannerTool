@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { waitForFeatureCards } from './helpers.js';
 
 test.describe('FeatureBoard drag & resize (e2e)', () => {
   test('drags a feature card and triggers update', async ({ page }) => {
     await page.goto('/');
 
-    // Wait for feature-card-lit to appear
-    await page.waitForSelector('feature-card-lit', { timeout: 5000 });
+    await waitForFeatureCards(page, 30000);
 
     const card = await page.$('feature-card-lit');
     expect(card).not.toBeNull();

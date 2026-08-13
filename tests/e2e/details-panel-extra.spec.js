@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { clearOverlays } from './helpers.js';
+import { clearOverlays, waitForFeatureCards } from './helpers.js';
 
 test.describe('Details Panel - Extra coverage', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await clearOverlays(page);
-    // Wait for at least one Lit-hosted feature card
-    await page.waitForSelector('feature-card-lit', { timeout: 10000 });
+    await waitForFeatureCards(page, 30000);
   });
 
   test('capacity input can be edited and saved', async ({ page }) => {

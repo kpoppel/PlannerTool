@@ -11,6 +11,7 @@ Template - do not change :
 ## [v] - unreleased
 ### Added
 ### Changed
+- Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 ### Fixed
 ---
 

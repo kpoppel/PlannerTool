@@ -20,7 +20,7 @@
 import { TIMELINE_CONFIG, getTimelineMonths } from '../components/Timeline.lit.js';
 import { parseDate } from '../components/util.js';
 
-class BoardCoordinateService {
+export class BoardCoordinateService {
   constructor() {
     /** @type {HTMLElement|null} */
     this._scrollContainer = null;

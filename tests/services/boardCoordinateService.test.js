@@ -3,7 +3,7 @@
  * Unit tests for BoardCoordinateService
  */
 import { expect } from '@esm-bundle/chai';
-import { boardCoords } from '../../www/js/services/BoardCoordinateService.js';
+import { BoardCoordinateService } from '../../www/js/services/BoardCoordinateService.js';
 import { _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
 
 // ============================================================================
@@ -14,21 +14,22 @@ import { _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
  * Build a minimal mock element with a getBoundingClientRect stub.
  */
 function mockEl(rect) {
+  const listeners = new Map();
   return {
     getBoundingClientRect: () => ({ ...rect }),
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (eventName, cb) => {
+      listeners.set(eventName, cb);
+    },
+    removeEventListener: (eventName) => {
+      listeners.delete(eventName);
+    },
+    trigger: (eventName) => {
+      const cb = listeners.get(eventName);
+      if (typeof cb === 'function') cb();
+    },
     scrollLeft: rect.scrollLeft ?? 0,
     scrollTop: rect.scrollTop ?? 0,
   };
-}
-
-// Reset boardCoords after each test so nothing leaks between cases
-function resetCoords() {
-  boardCoords._scrollContainer = null;
-  boardCoords._boardArea = null;
-  boardCoords._panningAllowed = true;
-  boardCoords._subscribers = new Set();
 }
 
 // ============================================================================
@@ -36,8 +37,10 @@ function resetCoords() {
 // ============================================================================
 
 describe('BoardCoordinateService', () => {
-  afterEach(() => {
-    resetCoords();
+  let boardCoords;
+
+  beforeEach(() => {
+    boardCoords = new BoardCoordinateService();
   });
 
   // --------------------------------------------------------------------------
@@ -170,12 +173,12 @@ describe('BoardCoordinateService', () => {
       boardCoords.init(sc, ba);
 
       const unsub = boardCoords.subscribe(() => calls++);
-      boardCoords._onScroll();
+      sc.trigger('scroll');
       expect(calls).to.equal(1);
-      boardCoords._onScroll();
+      sc.trigger('scroll');
       expect(calls).to.equal(2);
       unsub();
-      boardCoords._onScroll();
+      sc.trigger('scroll');
       expect(calls).to.equal(2); // no longer called after unsub
     });
   });

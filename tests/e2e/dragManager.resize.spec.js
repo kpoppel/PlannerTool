@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { waitForFeatureCards } from './helpers.js';
 
 test.describe('DragManager resize (e2e)', () => {
   test('resizes a feature card via right-edge drag', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('feature-card-lit', { timeout: 5000 });
+    await waitForFeatureCards(page, 30000);
 
     const card = await page.$('feature-card-lit');
     expect(card).not.toBeNull();

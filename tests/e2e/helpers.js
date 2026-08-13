@@ -1,3 +1,5 @@
+import { expect } from '@playwright/test';
+
 export async function clearOverlays(page) {
   await page.evaluate(() => {
     const overlaySelectors = [
@@ -16,4 +18,10 @@ export async function clearOverlays(page) {
   });
   // Allow any UI to settle
   await page.waitForTimeout(100);
+}
+
+export async function waitForFeatureCards(page, timeout = 30000) {
+  const timelineRegion = page.getByRole('region', { name: 'Timeline and Features' });
+  await expect(timelineRegion).toBeVisible({ timeout });
+  await expect(page.locator('feature-card-lit').first()).toBeVisible({ timeout });
 }

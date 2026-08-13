@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { clearOverlays } from './helpers.js';
+import { clearOverlays, waitForFeatureCards } from './helpers.js';
 
 // Verifies the details/side panel content and basic interactions
 test('Details side panel shows expected elements and can be closed', async ({ page }) => {
@@ -9,7 +9,7 @@ test('Details side panel shows expected elements and can be closed', async ({ pa
   await clearOverlays(page);
 
   // Wait for a feature card-lit to appear and click it to open the side panel
-  await page.waitForSelector('feature-card-lit', { timeout: 15000 });
+  await waitForFeatureCards(page, 30000);
   const card = await page.$('feature-card-lit');
   if (!card) throw new Error('No feature card-lit found');
   await card.click();

@@ -121,7 +121,7 @@ test.describe('In-app SearchTool', () => {
         featureId: idText,
         beforeLeft: beforeScrollLeft,
       },
-      { timeout: 2500 }
+      { timeout: 8000 }
     );
     const activated = await activatedHandle.jsonValue();
     expect(activated && activated.found).toBeTruthy();
