@@ -5,7 +5,6 @@ import { createUiCommands, UiEvents } from '../../www/js/application/commands/ui
 
 describe('application/commands/uiCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 

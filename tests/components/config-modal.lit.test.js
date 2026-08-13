@@ -32,7 +32,7 @@ describe('config-modal', () => {
   it('Save button triggers dataService.setLocalPref and saveConfig', async () => {
     const origSet = dataService.setLocalPref;
     const origSave = dataService.saveConfig;
-    let saved = {};
+    const saved = {};
     dataService.setLocalPref = async (k, v) => {
       saved[k] = v;
     };

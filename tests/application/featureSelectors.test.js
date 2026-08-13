@@ -33,7 +33,6 @@ function seedStore() {
 
 describe('application/selectors/featureSelectors', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(seedStore(), true, 'test.resetStore');
   });
 
@@ -63,7 +62,6 @@ describe('application/selectors/featureSelectors', () => {
   });
 
   it('store selector applies baseline overrides when baseline is active', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       {
         ...seedStore(),

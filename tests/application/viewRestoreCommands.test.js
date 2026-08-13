@@ -5,7 +5,6 @@ import { store } from '../../www/js/application/store.js';
 
 describe('application/commands/viewRestoreCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
@@ -39,7 +38,6 @@ describe('application/commands/viewRestoreCommands', () => {
   });
 
   it('saveCurrentView captures full state from store (projects, teams, filters, expansion)', async () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,
@@ -249,7 +247,6 @@ describe('application/commands/viewRestoreCommands', () => {
   });
 
   it('applies default view as full reset baseline with all selectors enabled', async () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,

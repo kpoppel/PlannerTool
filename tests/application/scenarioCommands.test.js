@@ -37,7 +37,6 @@ function withScenarioState(partial = {}) {
 
 describe('application/commands/scenarioCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(withScenarioState(), true, 'test.resetStore');
   });
 

@@ -24,7 +24,7 @@ test.describe('Left Sidebar - Extra coverage', () => {
     });
     expect(texts.length).toBe(3);
     for (const t of texts) {
-      expect(/^[+\-]?\d+$/.test(String(t).trim())).toBe(true);
+      expect(/^[-+]?\d+$/.test(String(t).trim())).toBe(true);
     }
   });
 

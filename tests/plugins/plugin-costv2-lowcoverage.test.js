@@ -123,7 +123,7 @@ describe('PluginCost low-coverage branches', () => {
   it('renderTeamMembersView handles various shapes and expanded members', () => {
     const comp = { expandedTeams: new Set(['team-A']) };
     // empty/null
-    let tpl = renderTeamMembersView({});
+    const tpl = renderTeamMembersView({});
     let container = document.createElement('div');
     render(tpl, container);
     expect(container.innerHTML).to.include('No Team Members');

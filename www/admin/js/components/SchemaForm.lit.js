@@ -595,7 +595,7 @@ export class SchemaForm extends LitElement {
    */
   _getValueByBracketPath(path) {
     if (!path) return this.data;
-    const re = /([^\.\[]+)(?:\[(\d+)\])?/g;
+    const re = /([^.[]+)(?:\[(\d+)\])?/g;
     let m;
     let obj = this.data;
     while ((m = re.exec(path)) !== null) {
@@ -864,7 +864,7 @@ export class SchemaForm extends LitElement {
           <select
             .value=${value || ''}
             @change=${(e) => {
-              const pathParts = path.match(/([^\[]+)(?:\[(\d+)\])?/g);
+              const pathParts = path.match(/([^[]+)(?:\[(\d+)\])?/g);
               const arrayPath = pathParts[0].replace(/\[\d+\]$/, '');
               const arr = this._getValueByPath(arrayPath);
               arr[idx] = e.target.value;
@@ -885,7 +885,7 @@ export class SchemaForm extends LitElement {
           type="text"
           .value=${value || ''}
           @input=${(e) => {
-            const pathParts = path.match(/([^\[]+)(?:\[(\d+)\])?/g);
+            const pathParts = path.match(/([^[]+)(?:\[(\d+)\])?/g);
             const arrayPath = pathParts[0].replace(/\[\d+\]$/, '');
             const arr = this._getValueByPath(arrayPath);
             arr[idx] = e.target.value;

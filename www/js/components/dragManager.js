@@ -180,7 +180,7 @@ export function startResize(
   function endDateFromWidth(width) {
     let remaining = width;
     let current = new Date(startDate);
-    while (true) {
+    while (remaining > 0) {
       const daysInMonth = new Date(
         current.getFullYear(),
         current.getMonth() + 1,
@@ -200,6 +200,9 @@ export function startResize(
       remaining -= widthForRemainingMonth;
       current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
     }
+    // Should never get here though.
+    console.log('Warning: endDateFromWidth() ran out of months to traverse, returning today');
+    return new Date(Date.now());
   }
 
   function widthForSpan(sDate, eDate) {

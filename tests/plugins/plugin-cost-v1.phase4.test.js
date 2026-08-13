@@ -5,12 +5,10 @@ import { store } from '../../www/js/application/store.js';
 
 describe('PluginCostV1 selector seam', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
   it('derives available states and state colors from the store', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,

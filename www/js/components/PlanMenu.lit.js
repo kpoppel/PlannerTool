@@ -11,13 +11,6 @@ import { getIconTemplate } from '../services/IconService.js';
  * Shows delivery plans and team backlogs with selection toggles
  */
 export class PlanMenuLit extends LitElement {
-  static properties = {
-    projects: { type: Array },
-    activeViewId: { type: String },
-    activeViewData: { type: Object },
-    _eventsOpenPlanId: { type: String, state: true },
-  };
-
   static styles = css`
     :host {
       display: block;

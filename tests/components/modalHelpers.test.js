@@ -28,13 +28,14 @@ describe('modalHelpers', () => {
   // Helper to wait for an element to appear in the document
   async function waitFor(selector, timeout = 2000) {
     const start = Date.now();
-    while (true) {
+    for (let attempts = 0; attempts < 2000; attempts += 1) {
       const el = document.querySelector(selector);
       if (el) return el;
       if (Date.now() - start > timeout)
         throw new Error('Timed out waiting for ' + selector);
       await new Promise((r) => setTimeout(r, 10));
     }
+    throw new Error('Timed out waiting for ' + selector);
   }
 
   it('openConfigModal resolves when modal-close dispatched', async () => {

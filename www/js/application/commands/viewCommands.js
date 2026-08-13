@@ -128,7 +128,7 @@ export function createViewCommands(store, bus) {
     },
 
     setCondensedCards(condensed, runtimeOptions = {}) {
-      const nextMode = Boolean(condensed) ? 'compact' : 'normal';
+      const nextMode = condensed ? 'compact' : 'normal';
       setViewOptions(
         (options) => ({
           ...options,

@@ -14,7 +14,6 @@ import {
 
 describe('application/commands/viewCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 

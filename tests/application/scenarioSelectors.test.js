@@ -5,7 +5,6 @@ import { store } from '../../www/js/application/store.js';
 
 describe('application/selectors/scenarioSelectors', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       {
         ...createInitialAppState(),

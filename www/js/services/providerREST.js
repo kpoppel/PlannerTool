@@ -303,6 +303,11 @@ export class ProviderREST extends RestProviderBase {
   }
 
   async getFeatures(project) {
+    function getParent(f) {
+      const parentRel = f.relations.find((r) => r.type === 'Parent');
+      return parentRel ? parentRel.id : null;
+    }
+
     try {
       const url =
         project ? `/api/tasks?project=${encodeURIComponent(project)}` : '/api/tasks';
@@ -316,10 +321,6 @@ export class ProviderREST extends RestProviderBase {
       }
       const tasks = await resTasks.json();
       // Calculate derived fields used in the frontend.
-      function getParent(f) {
-        const parentRel = f.relations.find((r) => r.type === 'Parent');
-        return parentRel ? parentRel.id : null;
-      }
       const retval = (tasks || []).map((f) => ({
         ...f,
         parentId: getParent(f),

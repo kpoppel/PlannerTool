@@ -94,8 +94,8 @@ class GhostTitle extends LitElement {
   _performPositioning() {
     if (!this.visible) return;
 
-    let cardRect = this.cardRect;
-    let boardRect = this.boardRect;
+    const cardRect = this.cardRect;
+    const boardRect = this.boardRect;
     if (!cardRect || !boardRect) return;
 
     // Use cached ghost size from ResizeObserver to avoid forcing layout.

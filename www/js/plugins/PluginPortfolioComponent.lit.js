@@ -784,10 +784,6 @@ export class PluginPortfolioComponent extends LitElement {
     `;
   }
 
-  _toggleUnallocated() {
-    this._unallocatedOpen = !this._unallocatedOpen;
-  }
-
   _toggleBoard() {
     this._boardOpen = !this._boardOpen;
   }

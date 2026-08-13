@@ -257,6 +257,7 @@ function renderProjectSummaryTable(
   for (const teamName of teams) {
     const teamData = teamAllocations.get(teamName);
     // DEBUG: print team allocation for server/client comparison
+    // eslint-disable-next-line no-constant-condition --- IGNORE ---
     if (false) {
       if (!component.__dbg_logged_team_arch && teamName === 'team-architecture') {
         component.__dbg_logged_team_arch = true;
@@ -279,6 +280,7 @@ function renderProjectSummaryTable(
   }
 
   // DEBUG: show totals and server-provided project totals for inspection
+  // eslint-disable-next-line no-constant-condition --- IGNORE ---
   if (false) {
     const pid = projectData && projectData.id ? projectData.id : '(unknown)';
     console.debug('[PluginCost][DBG][client][summary]', {

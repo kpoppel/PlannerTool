@@ -4,7 +4,6 @@ import { createInitialAppState } from '../../www/js/application/createInitialApp
 
 describe('application/store', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
@@ -31,7 +30,6 @@ describe('application/store', () => {
       { equalityFn: Object.is }
     );
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,
@@ -47,7 +45,6 @@ describe('application/store', () => {
       'test.unrelatedViewChange'
     );
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,

@@ -58,7 +58,6 @@ function buildState(partial = {}) {
 
 describe('application/commands/featureCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(buildState(), true, 'test.resetStore');
   });
 
@@ -137,7 +136,6 @@ describe('application/commands/featureCommands', () => {
   });
 
   it('epic move does not shift child dates when child has non-date override only', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       buildState({
         scenarios: {
@@ -212,7 +210,6 @@ describe('application/commands/featureCommands', () => {
   });
 
   it('setSelectedFeature with null feature clears selectedId', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (s) => ({ ...s, featureDisplay: { selectedId: 'f1' } }),
       false,

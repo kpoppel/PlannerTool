@@ -13,7 +13,6 @@ import {
 
 describe('application/commands/filterCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
@@ -94,7 +93,6 @@ describe('application/commands/filterCommands', () => {
   });
 
   it('store branch setAllStatesSelected(true) derives available states from baseline features', () => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (current) => ({
         ...current,

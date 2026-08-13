@@ -854,15 +854,7 @@ export class AdminPlugins extends LitElement {
   async _onReload() {
     await this._load();
   }
-
-  _onEditConfig(rowIndex) {
-    if (rowIndex < 0 || rowIndex >= this._rows.length) return;
-    const row = this._rows[rowIndex];
-    this._editingConfigIndex = rowIndex;
-    this._configEditorValue = JSON.stringify(row.custom_config || {}, null, 2);
-    this.requestUpdate();
-  }
-
+  
   _onEditConfig(rowIndex) {
     if (rowIndex < 0 || rowIndex >= this._rows.length) return;
     const row = this._rows[rowIndex];

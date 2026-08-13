@@ -8,7 +8,6 @@ import {
 
 describe('application/commands/selectionCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 

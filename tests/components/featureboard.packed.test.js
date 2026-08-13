@@ -8,7 +8,7 @@
  */
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
-import * as boardUtils from '../../www/js/components/board-utils.js';
+import { initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
 import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { sel } from '../../www/js/application/imports.js';
@@ -108,6 +108,11 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
   let projects;
 
   beforeEach(async () => {
+    _resetTimelineState();
+    const timelineEl = document.createElement('timeline-lit');
+    document.body.appendChild(timelineEl);
+    await initTimeline();
+
     await customElements.whenDefined('feature-board');
     board = document.createElement('feature-board');
     document.body.appendChild(board);
@@ -138,28 +143,13 @@ describe('FeatureBoard renderFeatures — no duplicate cards', () => {
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
     sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
 
-    // Stub computePosition so tests don't depend on a real timeline being mounted.
-    // Returns a deterministic fixed position for any feature that has dates.
-    origComputePosition = boardUtils.computePosition;
-    Object.defineProperty(boardUtils, 'computePosition', {
-      configurable: true,
-      writable: true,
-      value: (feature) => {
-        if (!feature.start || !feature.end) return null;
-        return { left: 100, width: 200 };
-      },
-    });
-
+    // Keep the test on the real board-utils behavior so it exercises the
+    // actual packed-mode layout logic without mutating the imported module.
   });
 
   afterEach(() => {
     board.remove();
     sinon.restore();
-    Object.defineProperty(boardUtils, 'computePosition', {
-      configurable: true,
-      writable: true,
-      value: origComputePosition,
-    });
   });
 
   /** Make a feature with dates so it survives the packed-mode position check */
@@ -282,6 +272,11 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
   let effectiveFeatures;
 
   beforeEach(async () => {
+    _resetTimelineState();
+    const timelineEl = document.createElement('timeline-lit');
+    document.body.appendChild(timelineEl);
+    await initTimeline();
+
     await customElements.whenDefined('feature-board');
     board = document.createElement('feature-board');
     document.body.appendChild(board);
@@ -310,26 +305,14 @@ describe('FeatureBoard updateCardsById — packed mode triggers full rerender', 
     sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['Active']));
     sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
     sinon.stub(sel.group, 'getEffectiveGroups').returns([]);
-
-    origComputePosition = boardUtils.computePosition;
-    Object.defineProperty(boardUtils, 'computePosition', {
-      configurable: true,
-      writable: true,
-      value: (feature) => {
-        if (!feature.start || !feature.end) return null;
-        return { left: 100, width: 200 };
-      },
-    });
   });
 
   afterEach(() => {
     board.remove();
+    const timelineEl = document.querySelector('timeline-lit');
+    if (timelineEl) timelineEl.remove();
+    _resetTimelineState();
     sinon.restore();
-    Object.defineProperty(boardUtils, 'computePosition', {
-      configurable: true,
-      writable: true,
-      value: origComputePosition,
-    });
   });
 
   function makeFeature(id, title = `Feature ${id}`) {

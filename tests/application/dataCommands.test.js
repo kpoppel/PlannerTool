@@ -26,7 +26,6 @@ function makeDataServiceMock(overrides = {}) {
 
 describe('application/commands/dataCommands', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
@@ -347,7 +346,6 @@ describe('application/commands/dataCommands', () => {
     const bus = { emit: vi.fn() };
     const commands = createDataCommands(store, bus, dataService);
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState((state) => ({
       ...state,
       scenarios: {

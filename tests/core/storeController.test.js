@@ -20,7 +20,6 @@ class FakeHost {
 
 describe('core/StoreController', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
@@ -36,7 +35,6 @@ describe('core/StoreController', () => {
     expect(controller.value).toBe(0);
     expect(host.updateCount).toBe(0);
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,
@@ -54,7 +52,6 @@ describe('core/StoreController', () => {
 
     expect(host.updateCount).toBe(0);
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,
@@ -81,7 +78,6 @@ describe('core/StoreController', () => {
     controller.hostConnected();
     controller.hostDisconnected();
 
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(
       (state) => ({
         ...state,

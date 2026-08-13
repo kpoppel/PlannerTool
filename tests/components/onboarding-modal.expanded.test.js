@@ -7,7 +7,9 @@ describe('OnboardingModal expanded tests', () => {
     // ensure clean localStorage
     try {
       localStorage.removeItem('az_planner:onboarding_seen');
-    } catch (e) {}
+    } catch (e) {
+      // localStorage may be unavailable in this environment
+    }
   });
 
   it('firstUpdated opens inner modal when mounted', async () => {
@@ -69,6 +71,8 @@ describe('OnboardingModal expanded tests', () => {
     // cleanup
     try {
       el.remove();
-    } catch (e) {}
+    } catch (e) {
+      // element may already be detached
+    }
   });
 });

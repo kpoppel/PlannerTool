@@ -35,7 +35,6 @@ function seedStore() {
 
 describe('application/selectors/groupSelectors', () => {
   beforeEach(() => {
-    // eslint-disable-next-line local/no-runtime-state-violations
     store.setState(seedStore(), true, 'test.resetStore');
   });
 

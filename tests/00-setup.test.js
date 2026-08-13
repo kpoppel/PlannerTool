@@ -1,6 +1,5 @@
 // Global setup for browser tests - create expected DOM elements and simple mocks
 // This module intentionally runs before other tests (filename prefix 00-)
-/* global window, document */
 const ids = ['featureBoard', 'sidebar', 'timeline', 'detailsPanel', 'featureCard'];
 for (const id of ids) {
   if (!document.getElementById(id)) {

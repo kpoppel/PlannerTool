@@ -84,7 +84,9 @@ describe('FeatureBoard & DragSurface Tests', () => {
     board.appendChild(card1);
     try {
       if (board && board._cardMap) board._cardMap.set('F1', card1);
-    } catch (e) {}
+    } catch (e) {
+      // ignore test fixture setup differences
+    }
     const card2 = document.createElement('feature-card-lit');
     card2.feature = features[1];
     card2.style.left = '200px';
@@ -92,7 +94,9 @@ describe('FeatureBoard & DragSurface Tests', () => {
     board.appendChild(card2);
     try {
       if (board && board._cardMap) board._cardMap.set('F2', card2);
-    } catch (e) {}
+    } catch (e) {
+      // ignore test fixture setup differences
+    }
     features[0].start = '2025-01-02';
     features[0].end = '2025-01-08';
     features[0]._left = 50;

@@ -273,7 +273,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
 
     toggleTaskFilter(dimension, option, options = {}) {
       const current = store.getState()?.selection?.taskFilters?.[dimension]?.[option];
-      const nextSelected = !Boolean(current);
+      const nextSelected = !current;
       this.setTaskFilter(dimension, option, nextSelected, options);
     },
   };

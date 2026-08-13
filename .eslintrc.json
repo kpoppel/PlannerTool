@@ -14,8 +14,7 @@
   "rules": {
     "no-var": "error",
     "prefer-const": "warn",
-    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }],
-    "local/no-runtime-state-violations": "warn"
+    "no-unused-vars": ["off", { "argsIgnorePattern": "^_" }]
   },
   "overrides": [
     {
