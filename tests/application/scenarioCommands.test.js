@@ -12,6 +12,7 @@ function withScenarioState(partial = {}) {
     ...createInitialAppState(),
     scenarios: {
       activeId: 's1',
+      changedIds: [],
       items: [
         {
           id: 's1',
@@ -19,7 +20,6 @@ function withScenarioState(partial = {}) {
           overrides: { f1: { start: '2026-01-01' } },
           filters: { states: ['Doing'] },
           view: { timelineScale: 'months' },
-          isChanged: false,
         },
         {
           id: 's2',
@@ -27,7 +27,6 @@ function withScenarioState(partial = {}) {
           overrides: {},
           filters: {},
           view: {},
-          isChanged: false,
         },
       ],
       ...partial,
@@ -108,19 +107,18 @@ describe('application/commands/scenarioCommands', () => {
         overrides: { f1: { start: '2026-01-01' } },
       })
     );
-    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 's1')?.isChanged).toBe(
-      false
-    );
+    expect(store.getState().scenarios.changedIds).not.toContain('s1');
     expect(result).toBe(saved);
     saveSpy.mockRestore();
   });
 
-  it('syncs refreshed server metadata without dropping the existing scenario name', () => {
+  it('syncs refreshed server metadata without dropping the existing scenario name or app dirty flags', () => {
     store.setState(
       {
         ...createInitialAppState(),
         scenarios: {
           activeId: 's1',
+          changedIds: ['s1', 's2'],
           items: [
             { id: 'baseline', name: 'Baseline', overrides: {} },
             {
@@ -129,7 +127,6 @@ describe('application/commands/scenarioCommands', () => {
               overrides: { f1: { start: '2026-01-01' } },
               filters: { states: ['Doing'] },
               view: { timelineScale: 'months' },
-              isChanged: true,
             },
           ],
         },
@@ -143,9 +140,82 @@ describe('application/commands/scenarioCommands', () => {
     expect(store.getState().scenarios.items.find((scenario) => scenario.id === 's1')).toMatchObject({
       id: 's1',
       name: 'Alpha',
-      isChanged: false,
-      overrides: { f1: { start: '2026-01-01' } },
     });
+    expect(store.getState().scenarios.changedIds).toEqual(['s1', 's2']);
+  });
+
+  it('saveScenario clears the saved scenario dirty flag even after a hydrate refresh', async () => {
+    const bus = { emit: vi.fn() };
+    const saveSpy = vi.spyOn(dataService, 'saveScenario').mockResolvedValue({ ok: true, data: { id: 's1' } });
+    const hydrateScenarioData = vi.fn().mockImplementation(async () => {
+      store.setState(
+        (state) => ({
+          ...state,
+          scenarios: {
+            ...state.scenarios,
+            items: [
+              ...state.scenarios.items,
+              { id: 's1', name: 'Alpha', overrides: {}, filters: {}, view: {} },
+            ],
+          },
+        }),
+        false,
+        'test.hydrateScenarioData'
+      );
+      return { ok: true };
+    });
+    const commands = createScenarioCommands(store, bus, null, { hydrateScenarioData });
+
+    store.setState(
+      {
+        ...createInitialAppState(),
+        scenarios: {
+          activeId: 's1',
+          changedIds: ['s1'],
+          items: [
+            { id: 'baseline', name: 'Baseline', overrides: {} },
+            { id: 's1', name: 'Alpha', overrides: { f1: { start: '2026-01-01' } }, filters: { states: ['Doing'] }, view: { timelineScale: 'months' } },
+          ],
+        },
+      },
+      true,
+      'test.saveScenarioHydrated'
+    );
+
+    await commands.saveScenario('s1');
+
+    expect(store.getState().scenarios.changedIds).not.toContain('s1');
+    saveSpy.mockRestore();
+  });
+
+  it('saveScenario clears the dirty flag without reloading the scenario list', async () => {
+    const bus = { emit: vi.fn() };
+    const saveSpy = vi.spyOn(dataService, 'saveScenario').mockResolvedValue({ ok: true, data: { id: 's1' } });
+    const hydrateScenarioData = vi.fn().mockResolvedValue({ ok: true });
+    const commands = createScenarioCommands(store, bus, null, { hydrateScenarioData });
+
+    store.setState(
+      {
+        ...createInitialAppState(),
+        scenarios: {
+          activeId: 's1',
+          changedIds: ['s1'],
+          items: [
+            { id: 'baseline', name: 'Baseline', overrides: {} },
+            { id: 's1', name: 'Alpha', overrides: { f1: { start: '2026-01-01' } }, filters: { states: ['Doing'] }, view: { timelineScale: 'months' } },
+          ],
+        },
+      },
+      true,
+      'test.saveScenarioDirtyFlagNoReload'
+    );
+
+    await commands.saveScenario('s1');
+
+    expect(store.getState().scenarios.changedIds).not.toContain('s1');
+    expect(store.getState().scenarios.items.map((scenario) => scenario.id)).toContain('s1');
+    expect(hydrateScenarioData).not.toHaveBeenCalled();
+    saveSpy.mockRestore();
   });
 
   it('refreshBaseline delegates to the store data hydration path', async () => {
@@ -180,7 +250,7 @@ describe('application/commands/scenarioCommands', () => {
     const renamed = commands.renameScenario('s2', 'Alpha');
 
     expect(renamed?.name).toBe('Alpha 2');
-    expect(renamed?.isChanged).toBe(true);
+    expect(store.getState().scenarios.changedIds).toContain('s2');
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 
@@ -196,7 +266,7 @@ describe('application/commands/scenarioCommands', () => {
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.ACTIVATED);
   });
 
-  it('markActiveScenarioChanged toggles isChanged once and reports status', () => {
+  it('markActiveScenarioChanged toggles the canonical changedIds set once and reports status', () => {
     const bus = { emit: vi.fn() };
     const commands = createScenarioCommands(store, bus);
 
@@ -205,8 +275,6 @@ describe('application/commands/scenarioCommands', () => {
 
     expect(first).toBe(true);
     expect(second).toBe(false);
-    expect(store.getState().scenarios.items.find((scenario) => scenario.id === 's1')?.isChanged).toBe(
-      true
-    );
+    expect(store.getState().scenarios.changedIds).toContain('s1');
   });
 });

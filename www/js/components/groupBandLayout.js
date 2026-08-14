@@ -74,16 +74,39 @@ export function buildGroupBandItems(
   // Membership is determined by group.members (list of task IDs on the group)
   const planGroupIds = new Set(planGroups.map((g) => String(g.id)));
   const featuresByGroup = new Map();
+  const featureSortMode = sel.view.getFeatureSortMode?.() || 'rank';
 
-  // Index features by id for O(1) lookup
+  // Group order is intentionally stable: the board's grouping/rank structure
+  // should not be re-ordered by the task sort toggle. Only the task cards inside
+  // each group respond to the active Task Sort mode.
   const featureById = new Map(orderedFeatures.map((f) => [String(f.id), f]));
+
+  const sortFeaturesInGroup = (features) => {
+    const sorted = [...features];
+    if (featureSortMode === 'date') {
+      sorted.sort((a, b) => {
+        if (!a.start && !b.start) return (a.originalRank ?? 0) - (b.originalRank ?? 0);
+        if (!a.start) return 1;
+        if (!b.start) return -1;
+        const byDate = String(a.start).localeCompare(String(b.start));
+        if (byDate !== 0) return byDate;
+        return (a.originalRank ?? 0) - (b.originalRank ?? 0);
+      });
+      return sorted;
+    }
+
+    sorted.sort((a, b) => (a.originalRank ?? 0) - (b.originalRank ?? 0));
+    return sorted;
+  };
 
   // Populate featuresByGroup from group.members lists
   for (const group of planGroups) {
     const members = group.members || [];
-    const groupFeatures = members
-      .map((taskId) => featureById.get(String(taskId)))
-      .filter(Boolean);
+    const groupFeatures = sortFeaturesInGroup(
+      members
+        .map((taskId) => featureById.get(String(taskId)))
+        .filter(Boolean)
+    );
     featuresByGroup.set(String(group.id), groupFeatures);
   }
 
@@ -115,9 +138,17 @@ export function buildGroupBandItems(
     return computePosition({ start: fmt(today), end: fmt(next) }, months);
   };
 
-  /** Sort groups by earliest child start date, then by rank. */
+  /**
+   * Sort groups by their configured rank so the Task Sort toggle never reorders
+   * the group pills themselves. A fallback to earliest child start keeps
+   * unranked groups deterministic without coupling group ordering to date sort.
+   */
   const sortGroupList = (groups) =>
     [...groups].sort((a, b) => {
+      const aRank = Number.isFinite(a.rank) ? a.rank : Number.MAX_SAFE_INTEGER;
+      const bRank = Number.isFinite(b.rank) ? b.rank : Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+
       const aFeats = featuresByGroup.get(String(a.id)) || [];
       const bFeats = featuresByGroup.get(String(b.id)) || [];
       const aStart = aFeats.map((f) => f.start).filter(Boolean).sort()[0] || '';
@@ -125,7 +156,7 @@ export function buildGroupBandItems(
       if (aStart && bStart) return aStart.localeCompare(bStart);
       if (aStart) return -1;
       if (bStart) return 1;
-      return (a.rank ?? 0) - (b.rank ?? 0);
+      return String(a.name || '').localeCompare(String(b.name || ''));
     });
 
   let rowTop = topOffset;

@@ -392,20 +392,20 @@ class FeatureBoard extends LitElement {
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
     const projects = sel.selection.getProjects() || [];
-    // Check if feature is in expanded set (when expansion filters are active)
     const expansionState = sel.view.getExpansionState() || {};
     const hasExpansion =
       expansionState.expandParentChild ||
       expansionState.expandRelations ||
       expansionState.expandTeamAllocated;
+    const expandedIds = hasExpansion ? sel.view.getExpandedFeatureIds() : new Set();
+    const isExpansionVisible = hasExpansion && expandedIds.has(String(feature.id));
 
     if (hasExpansion) {
-      const expandedIds = sel.view.getExpandedFeatureIds();
-      // If expansion is active, only show features in expanded set
-      // Don't require project selection - expansion can pull in features from other projects
-      if (!expandedIds.has(String(feature.id))) return false;
+      // Expansion can pull in features from other projects or teams; once a feature
+      // is in the expanded set, it must remain visible even when the project/team
+      // filter would otherwise reject it.
+      if (!isExpansionVisible) return false;
     } else {
-      // No expansion active - use standard project filter
       const project = projects.find((p) => p.id === feature.project && p.selected);
       if (!project) return false;
     }
@@ -464,6 +464,10 @@ class FeatureBoard extends LitElement {
     // A parent item is visible if it has direct or indirect visible children,
     // or if it itself passes team/project/capacity checks.
     // Use childrenMap to detect parent items generically (no type string check).
+    if (isExpansionVisible) {
+      return true;
+    }
+
     if (childrenMap.has(feature.id)) {
       const children = childrenMap.get(feature.id) || [];
       const anyChildVisible = children.some((child) => {

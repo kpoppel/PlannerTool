@@ -7,13 +7,12 @@ const DEFAULT_TASK_FILTERS = {
   relations: { hasLinks: true, noLinks: true },
 };
 
-function normalizeTaskFilters(filters = {}) {
+function normalizeTaskFilters(filters) {
   const next = {};
   for (const [dimension, options] of Object.entries(DEFAULT_TASK_FILTERS)) {
-    const current = filters?.[dimension];
     next[dimension] = {
       ...options,
-      ...(current && typeof current === 'object' ? current : {}),
+      ...filters[dimension],
     };
   }
   return next;
@@ -22,15 +21,14 @@ function normalizeTaskFilters(filters = {}) {
 function toStateSet(input) {
   if (input instanceof Set) return new Set(Array.from(input));
   if (Array.isArray(input)) return new Set(input);
-  if (input == null) return new Set();
   return new Set([input]);
 }
 
 function deriveAvailableStatesFromFeatures(features) {
   const out = [];
   const seen = new Set();
-  for (const feature of Array.isArray(features) ? features : []) {
-    const stateName = feature?.state;
+  for (const feature of features) {
+    const stateName = feature.state;
     if (!stateName) continue;
     const key = String(stateName);
     if (seen.has(key)) continue;
@@ -40,7 +38,7 @@ function deriveAvailableStatesFromFeatures(features) {
   return out;
 }
 
-function legacyStateColor(stateName) {
+function deriveStateColor(stateName) {
   if (!stateName) return PALETTE[0];
 
   const lowerStateName = String(stateName).toLowerCase();
@@ -70,8 +68,8 @@ function pickLegacyTextColor(hex) {
 
 function deriveStateColorMap(states) {
   const map = {};
-  for (const stateName of states || []) {
-    const background = legacyStateColor(stateName);
+  for (const stateName of states) {
+    const background = deriveStateColor(stateName);
     map[stateName] = {
       background,
       text: pickLegacyTextColor(background),
@@ -89,16 +87,16 @@ function hasAnyTrueOption(filterOptions) {
 
 function createFallbackTaskFilterFn(store) {
   return (feature) => {
-    const filters = normalizeTaskFilters(store.getState()?.selection?.taskFilters);
-    const schedule = filters.schedule || {};
-    const allocation = filters.allocation || {};
-    const hierarchy = filters.hierarchy || {};
-    const relations = filters.relations || {};
+    const filters = normalizeTaskFilters(store.getState().selection.taskFilters);
+    const schedule = filters.schedule;
+    const allocation = filters.allocation;
+    const hierarchy = filters.hierarchy;
+    const relations = filters.relations;
 
-    const hasDates = !!(feature?.start && feature?.end);
-    const hasCapacity = Array.isArray(feature?.capacity) && feature.capacity.length > 0;
-    const hasParent = !!feature?.parentId;
-    const hasLinks = Array.isArray(feature?.relations) && feature.relations.length > 0;
+    const hasDates = !!(feature.start && feature.end);
+    const hasCapacity = Array.isArray(feature.capacity) && feature.capacity.length > 0;
+    const hasParent = !!feature.parentId;
+    const hasLinks = Array.isArray(feature.relations) && feature.relations.length > 0;
 
     if (hasAnyTrueOption(schedule)) {
       if (schedule.planned === true && !hasDates && schedule.unplanned !== true) return false;
@@ -132,64 +130,10 @@ function compareStrings(a, b) {
   return String(a || '').localeCompare(String(b || ''));
 }
 
-export function createLegacyFilterSelectors(state) {
-  return {
-    getSelectedFeatureStateSet() {
-      return toStateSet(state?.selectedFeatureStateFilter);
-    },
-
-    getSelectedFeatureStateNames() {
-      return Array.from(toStateSet(state?.selectedFeatureStateFilter));
-    },
-
-    getAvailableFeatureStates() {
-      return Array.isArray(state?.availableFeatureStates) ? state.availableFeatureStates : [];
-    },
-
-    getFeatureStateColors() {
-      if (typeof state?.getFeatureStateColors === 'function') {
-        return state.getFeatureStateColors();
-      }
-      if (state?._colorService?.getFeatureStateColors) {
-        return state._colorService.getFeatureStateColors(this.getAvailableFeatureStates());
-      }
-      return deriveStateColorMap(this.getAvailableFeatureStates());
-    },
-
-    featurePassesFilters(feature) {
-      if (state?.taskFilterService?.featurePassesFilters) {
-        return state.taskFilterService.featurePassesFilters(feature);
-      }
-      return true;
-    },
-
-    getFeatureStateCategory(stateName) {
-      if (state?.featureStateService?.getCategoryForState) {
-        return state.featureStateService.getCategoryForState(stateName) || '';
-      }
-      return '';
-    },
-
-    compareFeatureStates(a, b) {
-      if (typeof state?.compareFeatureStates === 'function') {
-        return state.compareFeatureStates(a, b);
-      }
-      return compareStrings(a, b);
-    },
-
-    getTaskFilters() {
-      if (state?.taskFilterService?.getFilters) {
-        return state.taskFilterService.getFilters();
-      }
-      return null;
-    },
-  };
-}
-
 function deriveStateCategoryMap(projects) {
   const categories = {};
-  for (const project of Array.isArray(projects) ? projects : []) {
-    const projectCategories = project?.state_categories || project?.stateCategories || {};
+  for (const project of projects) {
+    const projectCategories = project.state_categories || project.stateCategories || {};
     for (const [stateName, category] of Object.entries(projectCategories)) {
       if (stateName == null || category == null) continue;
       categories[String(stateName)] = String(category);
@@ -202,8 +146,8 @@ function deriveConfiguredStateSequence(projects) {
   const sequence = [];
   const seen = new Set();
 
-  for (const project of Array.isArray(projects) ? projects : []) {
-    const raw = project?.state_display_sequence || project?.stateDisplaySequence || [];
+  for (const project of projects) {
+    const raw = project.state_display_sequence || project.stateDisplaySequence || [];
     if (!Array.isArray(raw)) continue;
     for (const item of raw) {
       if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
@@ -244,37 +188,36 @@ export function createFilterSelectors(store) {
   const fallbackTaskFilter = createFallbackTaskFilterFn(store);
 
   function getSelectionTaskFilters() {
-    return normalizeTaskFilters(store.getState()?.selection?.taskFilters);
+    return normalizeTaskFilters(store.getState().selection.taskFilters);
   }
 
   function getStateCategories() {
-    return deriveStateCategoryMap(store.getState()?.baseline?.projects);
+    return deriveStateCategoryMap(store.getState().baseline.projects);
   }
 
   function getConfiguredSequence() {
-    return deriveConfiguredStateSequence(store.getState()?.baseline?.projects);
+    return deriveConfiguredStateSequence(store.getState().baseline.projects);
   }
 
   return {
     getSelectedFeatureStateSet() {
-      return toStateSet(store.getState()?.selection?.featureStateNames);
+      return toStateSet(store.getState().selection.featureStateNames);
     },
 
     getSelectedFeatureStateNames() {
-      return Array.from(toStateSet(store.getState()?.selection?.featureStateNames));
+      return Array.from(toStateSet(store.getState().selection.featureStateNames));
     },
 
     getAvailableFeatureStates() {
       const state = store.getState();
-      const baselineStates = deriveAvailableStatesFromFeatures(state?.baseline?.features);
-      const configuredSequence = deriveConfiguredStateSequence(state?.baseline?.projects);
+      const baselineStates = deriveAvailableStatesFromFeatures(state.baseline.features);
+      const configuredSequence = deriveConfiguredStateSequence(state.baseline.projects);
 
       if (configuredSequence.length > 0) {
-        return applyConfiguredStateSequence(baselineStates, state?.baseline?.projects);
+        return applyConfiguredStateSequence(baselineStates, state.baseline.projects);
       }
 
-      const explicit = state?.filter?.availableFeatureStates;
-      return Array.isArray(explicit) && explicit.length > 0 ? explicit : baselineStates;
+      return baselineStates;
     },
 
     getFeatureStateColors() {

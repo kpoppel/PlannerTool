@@ -82,8 +82,13 @@ function withFeatureOverride(scenario, featureId, updater) {
   return {
     ...scenario,
     overrides,
-    isChanged: true,
   };
+}
+
+function addActiveScenarioToChangedIds(state) {
+  const activeId = getActiveScenarioId(state);
+  if (!activeId || activeId === 'baseline') return Array.isArray(state?.scenarios?.changedIds) ? state.scenarios.changedIds : [];
+  return Array.from(new Set([...(Array.isArray(state?.scenarios?.changedIds) ? state.scenarios.changedIds : []), String(activeId)]));
 }
 
 export function createLegacyFeatureCommands(state) {
@@ -276,6 +281,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -311,6 +317,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -350,6 +357,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),
@@ -380,7 +388,6 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
         return {
           ...scenario,
           overrides,
-          isChanged: true,
         };
       });
 
@@ -393,6 +400,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: addActiveScenarioToChangedIds(state),
             items: mutation.items,
           },
         }),

@@ -108,4 +108,35 @@ describe('application/imports', () => {
     expect(active.name).toBe('Scenario One (full)');
     expect(active.overrides).toEqual(fullOverrides);
   });
+
+  it('keeps the dirty set untouched during server scenario sync', async () => {
+    vi.resetModules();
+
+    const mod = await import('../../www/js/application/imports.js?scenario_sync_dirty_noop=1');
+    const { bus } = await import('../../www/js/core/EventBus.js');
+    const { DataEvents } = await import('../../www/js/core/EventRegistry.js');
+    const { store } = await import('../../www/js/application/store.js');
+
+    store.setState(
+      {
+        ...store.getState(),
+        scenarios: {
+          ...store.getState().scenarios,
+          activeId: 'baseline',
+          changedIds: ['scen_123', 'scen_456'],
+          items: [
+            { id: 'baseline', name: 'Baseline', readonly: true },
+            { id: 'scen_123', name: 'Local draft', overrides: {}, filters: {}, view: {} },
+            { id: 'scen_456', name: 'Server-known', overrides: {}, filters: {}, view: {} },
+          ],
+        },
+      },
+      true,
+      'test.keepDirtyIds'
+    );
+
+    bus.emit(DataEvents.SCENARIOS_DATA, [{ id: 'scen_456', name: 'Server-known' }]);
+
+    expect(mod.sel.scenario.getChangedScenarioIds()).toEqual(['scen_123', 'scen_456']);
+  });
 });

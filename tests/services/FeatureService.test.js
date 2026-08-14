@@ -44,7 +44,7 @@ describe('FeatureService public methods', () => {
       getFeatureById: () => new Map(features.map((f) => [f.id, f])),
     };
 
-    activeScenario = { overrides: {}, isChanged: false };
+    activeScenario = { overrides: {}, changedIds: [] };
 
     fs = new FeatureService(baselineStore, () => activeScenario);
     fs.setChildrenByParent(new Map([['e1', ['f1']]]));

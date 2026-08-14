@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bus } from '../../www/js/core/EventBus.js';
-import { FilterEvents, ViewEvents } from '../../www/js/core/EventRegistry.js';
+import {
+  CapacityEvents,
+  FilterEvents,
+  ViewEvents,
+} from '../../www/js/core/EventRegistry.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 import { createViewRestoreCommands } from '../../www/js/application/commands/viewRestoreCommands.js';
 import { store } from '../../www/js/application/store.js';
@@ -137,6 +141,7 @@ describe('application/commands/viewRestoreCommands', () => {
     });
     expect(emitSpy).toHaveBeenCalledWith(FilterEvents.CHANGED);
     expect(emitSpy).toHaveBeenCalledWith(ViewEvents.CAPACITY_MODE);
+    expect(emitSpy).toHaveBeenCalledWith(CapacityEvents.UPDATED);
     emitSpy.mockRestore();
   });
 

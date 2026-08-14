@@ -8,9 +8,19 @@ describe('application/selectors/filterSelectors', () => {
       getState: () => ({
         selection: {
           featureStateNames: ['Open', 'Closed'],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
         },
         baseline: {
           features: [],
+          projects: [],
+        },
+        filter: {
+          availableFeatureStates: [],
         },
       }),
     };
@@ -25,6 +35,12 @@ describe('application/selectors/filterSelectors', () => {
       getState: () => ({
         selection: {
           featureStateNames: [],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
         },
         baseline: {
           features: [
@@ -32,6 +48,10 @@ describe('application/selectors/filterSelectors', () => {
             { id: 'f2', state: 'Doing' },
             { id: 'f3', state: 'Todo' },
           ],
+          projects: [],
+        },
+        filter: {
+          availableFeatureStates: [],
         },
       }),
     };
@@ -40,10 +60,45 @@ describe('application/selectors/filterSelectors', () => {
     expect(selectors.getAvailableFeatureStates()).toEqual(['Todo', 'Doing']);
   });
 
+  it('store selectors tolerate a missing filter slice and still derive states from baseline data', () => {
+    const store = {
+      getState: () => ({
+        selection: {
+          featureStateNames: [],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
+        },
+        baseline: {
+          features: [
+            { id: 'f1', state: 'Todo' },
+            { id: 'f2', state: 'Blocked' },
+            { id: 'f3', state: 'Todo' },
+          ],
+          projects: [],
+        },
+      }),
+    };
+
+    const selectors = createFilterSelectors(store);
+    expect(selectors.getAvailableFeatureStates()).toEqual(['Todo', 'Blocked']);
+  });
+
   it('store selectors respect configured state_display_sequence ordering', () => {
     const store = {
       getState: () => ({
-        selection: { featureStateNames: [] },
+        selection: {
+          featureStateNames: [],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
+        },
         baseline: {
           features: [
             { id: 'f1', state: 'Closed' },
@@ -64,6 +119,9 @@ describe('application/selectors/filterSelectors', () => {
             },
           ],
         },
+        filter: {
+          availableFeatureStates: [],
+        },
       }),
     };
 
@@ -81,7 +139,15 @@ describe('application/selectors/filterSelectors', () => {
   it('store selectors prefer project configuration over stale explicit state order', () => {
     const store = {
       getState: () => ({
-        selection: { featureStateNames: [] },
+        selection: {
+          featureStateNames: [],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
+        },
         filter: { availableFeatureStates: ['Closed', 'New', 'Resolved', 'Active', 'Defined'] },
         baseline: {
           features: [
@@ -128,7 +194,15 @@ describe('application/selectors/filterSelectors', () => {
 
     const store = {
       getState: () => ({
-        selection: { featureStateNames: [] },
+        selection: {
+          featureStateNames: [],
+          taskFilters: {
+            schedule: { planned: true, unplanned: true },
+            allocation: { allocated: true, unallocated: true },
+            hierarchy: { hasParent: true, noParent: true },
+            relations: { hasLinks: true, noLinks: true },
+          },
+        },
         baseline: {
           features: [{ id: 'f1', state: 'Todo' }, { id: 'f2', state: 'Doing' }],
           projects: [
@@ -137,6 +211,9 @@ describe('application/selectors/filterSelectors', () => {
               state_display_sequence: [{ types: ['Todo', 'Doing'] }],
             },
           ],
+        },
+        filter: {
+          availableFeatureStates: [],
         },
       }),
     };

@@ -63,7 +63,6 @@ export class ScenarioEventService {
               this._captureCurrentFilters()
             : { projects: [], teams: [] },
           view: this._captureCurrentView(),
-          isChanged: false,
           readonly: false,
         },
         s,
@@ -105,7 +104,6 @@ export class ScenarioEventService {
 
     if (existing) {
       existing.overrides = {};
-      existing.isChanged = false;
       existing.readonly = true;
     } else {
       const defaultScenario = {
@@ -114,7 +112,6 @@ export class ScenarioEventService {
         overrides: {},
         filters: this._captureCurrentFilters(),
         view: this._captureCurrentView(),
-        isChanged: false,
         readonly: true,
       };
       this._scenarios.push(defaultScenario);
@@ -163,7 +160,7 @@ export class ScenarioEventService {
    * @returns {boolean}
    */
   isScenarioUnsaved(scen) {
-    return scen.isChanged === true;
+    return Boolean(this._scenarioManager.getUnsavedScenarioIds().includes(String(scen.id)));
   }
 
   /**
@@ -214,10 +211,6 @@ export class ScenarioEventService {
    * @param {string} id - Scenario ID
    */
   markScenarioSaved(id) {
-    const scen = this._scenarios.find((s) => s.id === id);
-    if (scen) {
-      scen.isChanged = false;
-    }
     this._scenarioManager.markScenarioSaved(id);
   }
 }

@@ -23,12 +23,14 @@ const {
   mockConfirmGroupCreate,
   mockScenarioGetScenarios,
   mockScenarioGetActiveScenarioId,
+  mockGetChangedScenarioIds,
   mockSaveScenario,
 } = vi.hoisted(() => ({
   mockPendingGroupChanges: vi.fn(() => []),
   mockConfirmGroupCreate: vi.fn(),
   mockScenarioGetScenarios: vi.fn(() => []),
   mockScenarioGetActiveScenarioId: vi.fn(() => null),
+  mockGetChangedScenarioIds: vi.fn(() => []),
   mockSaveScenario: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -92,7 +94,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
     scenario: {
       getScenarios: mockScenarioGetScenarios,
       getActiveScenarioId: mockScenarioGetActiveScenarioId,
-      isScenarioUnsaved: vi.fn((s) => Boolean(s?.isChanged)),
+      getChangedScenarioIds: mockGetChangedScenarioIds,
+      isScenarioUnsaved: vi.fn((s) => mockGetChangedScenarioIds().includes(String(s?.id))),
     },
     group: {
       getPendingGroupChanges: mockPendingGroupChanges,
@@ -100,11 +103,8 @@ vi.mock('../../www/js/application/imports.js', () => ({
   },
 }));
 
-// Minimal Lit stub so the component class can be imported without a real browser
 vi.mock('../../www/js/vendor/lit.js', () => ({
   LitElement: class {
-    static properties = {};
-    static styles = '';
     connectedCallback() {}
     disconnectedCallback() {}
     requestUpdate() {}
@@ -146,22 +146,23 @@ describe('ScenarioMenu._onSaveToAzure', () => {
   });
 
   it('refreshes the menu after a successful scenario save so the unsaved warning clears', async () => {
-    const scenario = { id: 'sc-1', name: 'Alpha', overrides: { '42': { start: '2026-01-01' } }, isChanged: true };
-    const refreshed = [{ ...scenario, isChanged: false }];
+    const scenario = { id: 'sc-1', name: 'Alpha', overrides: { '42': { start: '2026-01-01' } } };
+    const refreshed = [{ ...scenario }];
     const menu = makeMenu({ scenarios: [scenario], activeScenarioId: 'sc-1' });
 
     mockScenarioGetScenarios.mockReturnValue(refreshed);
     mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockGetChangedScenarioIds.mockReturnValue([]);
     mockSaveScenario.mockResolvedValue({ ok: true });
 
     await menu._onSaveScenario(makeEvent(), scenario);
 
-    expect(menu.scenarios[0].isChanged).toBe(false);
     expect(menu.scenarios).toEqual(refreshed);
+    expect(menu.scenarios[0]).not.toHaveProperty('changedIds');
   });
 
   it('throws instead of silently falling back to stale payload data when selector state is invalid', async () => {
-    const scenario = { id: 'sc-1', name: 'Alpha', isChanged: true };
+    const scenario = { id: 'sc-1', name: 'Alpha' };
     const menu = makeMenu({
       scenarios: [scenario],
       activeScenarioId: 'sc-1',
@@ -169,6 +170,7 @@ describe('ScenarioMenu._onSaveToAzure', () => {
 
     mockScenarioGetScenarios.mockReturnValue(undefined);
     mockScenarioGetActiveScenarioId.mockReturnValue('sc-1');
+    mockGetChangedScenarioIds.mockReturnValue([]);
     mockSaveScenario.mockResolvedValue(undefined);
 
     await expect(menu._onSaveScenario(makeEvent(), scenario)).rejects.toThrow(/valid scenario list/i);
@@ -176,20 +178,20 @@ describe('ScenarioMenu._onSaveToAzure', () => {
 
   it('updates the menu when the server emits a refreshed scenario list after save', () => {
     const menu = makeMenu({
-      scenarios: [{ id: 'sc-1', name: 'Alpha', isChanged: true }],
+      scenarios: [{ id: 'sc-1', name: 'Alpha' }],
       activeScenarioId: 'sc-1',
     });
 
     menu._onScenariosUpdated = vi.fn((payload) => {
       const list = Array.isArray(payload) ? payload : Array.isArray(payload?.scenarios) ? payload.scenarios : [];
-      menu.scenarios = list.map((s) => ({ ...s, isChanged: Boolean(s.isChanged) }));
+      menu.scenarios = list.map((s) => ({ ...s }));
       menu.activeScenarioId = 'sc-1';
     });
 
-    const payload = [{ id: 'sc-1', name: 'Alpha', isChanged: false }];
+    const payload = [{ id: 'sc-1', name: 'Alpha' }];
     menu._onScenariosUpdated(payload);
 
-    expect(menu.scenarios[0].isChanged).toBe(false);
+    expect(menu.scenarios[0]).not.toHaveProperty('changedIds');
   });
 
   it('calls state.refreshBaseline() after a successful publish', async () => {

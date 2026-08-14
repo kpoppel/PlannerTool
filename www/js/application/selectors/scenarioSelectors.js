@@ -1,46 +1,23 @@
 function getScenarioItems(state) {
-  return Array.isArray(state?.scenarios?.items) ? state.scenarios.items : [];
+  return state.scenarios.items;
 }
 
 function getScenarioActiveId(state) {
-  return state?.scenarios?.activeId ?? 'baseline';
+  return state.scenarios.activeId;
 }
 
-export function createLegacyScenarioSelectors(state) {
-  return {
-    getScenarios() {
-      return Array.isArray(state?.scenarios) ? state.scenarios : [];
-    },
-
-    getActiveScenarioId() {
-      return state?.activeScenarioId ?? 'baseline';
-    },
-
-    getActiveScenario() {
-      if (typeof state?.getActiveScenario === 'function') {
-        return state.getActiveScenario();
-      }
-      return null;
-    },
-
-    isScenarioUnsaved(scenario) {
-      if (typeof state?.isScenarioUnsaved === 'function') {
-        return state.isScenarioUnsaved(scenario);
-      }
-      return Boolean(scenario.isChanged);
-    },
-
-    isActiveScenarioUnsaved() {
-      const scenario = this.getActiveScenario();
-      return this.isScenarioUnsaved(scenario);
-    },
-  };
+function getChangedScenarioIds(state) {
+  return state.scenarios.changedIds.map(String);
 }
 
 export function createScenarioSelectors(store) {
   return {
     getScenarios() {
       return getScenarioItems(store.getState());
+    },
+
+    getChangedScenarioIds() {
+      return getChangedScenarioIds(store.getState());
     },
 
     getActiveScenarioId() {
@@ -54,7 +31,8 @@ export function createScenarioSelectors(store) {
     },
 
     isScenarioUnsaved(scenario) {
-      return Boolean(scenario.isChanged);
+      const changedIds = this.getChangedScenarioIds();
+      return changedIds.includes(String(scenario.id));
     },
 
     isActiveScenarioUnsaved() {

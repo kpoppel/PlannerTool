@@ -56,45 +56,29 @@ function toScenarioItems(storeState) {
   return Array.isArray(storeState?.scenarios?.items) ? storeState.scenarios.items : [];
 }
 
-export function createLegacyScenarioCommands(state) {
-  return {
-    cloneScenario(sourceId, name) {
-      return state.cloneScenario(sourceId, name);
-    },
+function toChangedIds(storeState) {
+  return storeState.scenarios.changedIds.map(String);
+}
 
-    activateScenario(id) {
-      return state.activateScenario(id);
-    },
+function normalizeChangedIds(ids) {
+  return ids.filter(Boolean).map(String);
+}
 
-    renameScenario(id, name) {
-      return state.renameScenario(id, name);
-    },
+function removeScenarioChangedId(ids, scenarioId) {
+  const id = String(scenarioId);
+  console.log('removeScenarioChangedId', ids, scenarioId, Array.isArray(ids) ? ids.filter((entry) => String(entry) !== id) : []);
+  return Array.isArray(ids) ? ids.filter((entry) => String(entry) !== id) : [];
+}
 
-    deleteScenario(id) {
-      return state.deleteScenario(id);
-    },
-
-    markActiveScenarioChanged() {
-      return state._markActiveScenarioChanged();
-    },
-
-    saveScenario(id) {
-      return state.saveScenario(id);
-    },
-
-    refreshBaseline() {
-      return state.refreshBaseline();
-    },
-
-    invalidateAndRefreshBaseline() {
-      return state.invalidateAndRefreshBaseline();
-    },
-  };
+function withScenarioChangedIds(state, scenarioId, changed) {
+  const current = normalizeChangedIds(toChangedIds(state));
+  const id = String(scenarioId);
+  const next = changed ? Array.from(new Set([...current, id])) : current.filter((entry) => entry !== id);
+  return next;
 }
 
 export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
   const hydrateBaseline = typeof deps.hydrateBaseline === 'function' ? deps.hydrateBaseline : null;
-  const hydrateScenarioData = typeof deps.hydrateScenarioData === 'function' ? deps.hydrateScenarioData : null;
   const recomputeCapacity = typeof deps.recomputeCapacity === 'function' ? deps.recomputeCapacity : null;
   const invalidateCache = typeof deps.invalidateCache === 'function' ? deps.invalidateCache : () => dataService.invalidateCache();
 
@@ -118,7 +102,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
 
       const requestedName = typeof name === 'string' && name.trim() ?
         name.trim()
-      : createDefaultScenarioName(existingScenarios);
+        : createDefaultScenarioName(existingScenarios);
       const uniqueName = ensureUniqueScenarioName(requestedName, existingScenarios);
 
       const scenario = {
@@ -127,19 +111,20 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
         overrides:
           sourceScenario ?
             cloneValue(sourceScenario.overrides)
-          : cloneValue(runtimeOptions.currentOverrides),
+            : cloneValue(runtimeOptions.currentOverrides),
         filters:
           sourceScenario ? cloneValue(sourceScenario.filters) : cloneValue(runtimeOptions.currentFilters),
         view: sourceScenario ? cloneValue(sourceScenario.view) : cloneValue(runtimeOptions.currentView),
-        isChanged: true,
       };
 
       const nextScenarios = [...existingScenarios, scenario];
+      const nextChangedIds = withScenarioChangedIds(snapshot, scenario.id, true);
       store.setState(
         (state) => ({
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: withScenarioChangedIds(state, scenario.id, true),
             items: nextScenarios,
           },
         }),
@@ -194,7 +179,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       if (uniqueName === scenario.name) return scenario;
 
       const nextScenarios = existingScenarios.map((candidate) =>
-        candidate.id === id ? { ...candidate, name: uniqueName, isChanged: true } : candidate
+        candidate.id === id ? { ...candidate, name: uniqueName } : candidate
       );
 
       store.setState(
@@ -202,6 +187,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: withScenarioChangedIds(state, id, true),
             items: nextScenarios,
           },
         }),
@@ -231,6 +217,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: withScenarioChangedIds(state, id, false),
             items: nextScenarios,
             activeId: nextActiveId,
           },
@@ -253,21 +240,18 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       if (!activeId || activeId === 'baseline') return false;
 
       const existingScenarios = toScenarioItems(snapshot);
-      let changed = false;
-      const nextScenarios = existingScenarios.map((scenario) => {
-        if (scenario.id !== activeId) return scenario;
-        if (scenario.isChanged) return scenario;
-        changed = true;
-        return { ...scenario, isChanged: true };
-      });
+      const changedIds = toChangedIds(snapshot);
+      const alreadyChanged = changedIds.includes(String(activeId));
+      if (alreadyChanged) return false;
 
-      if (!changed) return false;
+      const nextScenarios = existingScenarios;
 
       store.setState(
         (state) => ({
           ...state,
           scenarios: {
             ...state.scenarios,
+            changedIds: withScenarioChangedIds(state, activeId, true),
             items: nextScenarios,
           },
         }),
@@ -283,55 +267,29 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
     async saveScenario(id) {
       const scenario = getScenarioById(id);
       if (!scenario || scenario.id === 'baseline') {
-        return { ok: true, data: scenario }; 
+        return { ok: true, data: scenario };
       }
 
-      const payload = {
-        id: scenario.id,
-        name: scenario.name,
-        overrides: scenario.overrides,
-        filters: scenario.filters,
-        view: scenario.view,
-        scenarioGroups: Array.isArray(scenario.scenarioGroups) && scenario.scenarioGroups.length > 0
-          ? [...scenario.scenarioGroups]
-          : undefined,
-        groupOverrides: scenario.groupOverrides && Object.keys(scenario.groupOverrides).length > 0
-          ? { ...scenario.groupOverrides }
-          : undefined,
-      };
-
-      const result = await dataService.saveScenario(payload);
-      if (result && result.ok === true) {
-        let nextScenarios = toScenarioItems(store.getState());
-
-        if (typeof hydrateScenarioData === 'function') {
-          const hydrated = await hydrateScenarioData();
-          if (hydrated && hydrated.ok === false) {
-            console.warn('Scenario save refreshed store from server but hydration failed', hydrated.error);
-          }
-          nextScenarios = toScenarioItems(store.getState());
-        } else {
-          nextScenarios = nextScenarios.map((item) =>
-            item.id === scenario.id ? { ...item, isChanged: false } : item
-          );
-
-          store.setState(
-            (state) => ({
-              ...state,
-              scenarios: {
-                ...state.scenarios,
-                items: nextScenarios,
-              },
-            }),
-            false,
-            'scenario.saveScenario'
-          );
-        }
-
-        bus?.emit?.(ScenarioEvents.SAVED, { scenarioId: scenario.id });
-        bus?.emit?.(ScenarioEvents.UPDATED);
-        emitScenarioList(bus, nextScenarios, store.getState()?.scenarios?.activeId ?? 'baseline');
+      const result = await dataService.saveScenario(scenario);
+      if (result && Object.prototype.hasOwnProperty.call(result, 'ok')) {
+        return result;
       }
+
+      // Then update the local store with the cleared flag.
+      store.setState(
+        (state) => ({
+          ...state,
+          scenarios: {
+            ...state.scenarios,
+            changedIds: removeScenarioChangedId(state.scenarios.changedIds, scenario.id),
+          },
+        }),
+        false,
+        'scenario.saveScenario.clearDirty'
+      );
+
+      bus.emit(ScenarioEvents.SAVED, { scenarioId: scenario.id });
+      bus.emit(ScenarioEvents.UPDATED);
 
       return result;
     },

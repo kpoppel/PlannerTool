@@ -9,7 +9,7 @@
 import { fixture, html, expect } from '@open-wc/testing';
 import sinon from 'sinon';
 import { initTimeline, _resetTimelineState } from '../../www/js/components/Timeline.lit.js';
-import { packIntoRows } from '../../www/js/components/groupBandLayout.js';
+import { packIntoRows, buildGroupBandItems } from '../../www/js/components/groupBandLayout.js';
 import '../../www/js/components/FeatureBoard.lit.js';
 import { sel } from '../../www/js/application/imports.js';
 
@@ -99,6 +99,64 @@ describe('FeatureBoard._packIntoRows', () => {
 });
 
 // ---- Duplicate prevention in renderFeatures (packed mode) ----
+
+describe('Group band ordering', () => {
+  beforeEach(() => {
+    sinon.stub(sel.selection, 'getProjects').returns([
+      { id: 'p1', name: 'Plan A', color: '#aa0000', selected: true },
+    ]);
+    sinon.stub(sel.selection, 'getTeams').returns([]);
+    sinon.stub(sel.view, 'getFeatureSortMode').returns('date');
+  });
+
+  afterEach(() => {
+    sinon.restore();
+  });
+
+  it('sorts task cards within a group by the active task sort mode without reordering groups', () => {
+    const monthDates = [
+      new Date('2025-01-01T00:00:00Z'),
+      new Date('2025-02-01T00:00:00Z'),
+      new Date('2025-03-01T00:00:00Z'),
+      new Date('2025-04-01T00:00:00Z'),
+      new Date('2025-05-01T00:00:00Z'),
+      new Date('2025-06-01T00:00:00Z'),
+    ];
+
+    const features = [
+      { id: 't2', title: 'Late task', start: '2025-03-10', end: '2025-03-20', project: 'p1', originalRank: 20 },
+      { id: 't1', title: 'Early task', start: '2025-01-05', end: '2025-01-12', project: 'p1', originalRank: 5 },
+      { id: 't3', title: 'Middle task', start: '2025-02-08', end: '2025-02-15', project: 'p1', originalRank: 10 },
+      { id: 't4', title: 'Late group task', start: '2025-04-11', end: '2025-04-19', project: 'p1', originalRank: 30 },
+    ];
+
+    const groups = [
+      { id: 'g2', plan_id: 'p1', name: 'Zeta', members: ['t4'], color: '#00ff00', rank: 20 },
+      { id: 'g1', plan_id: 'p1', name: 'Alpha', members: ['t2', 't1', 't3'], color: '#ff0000', rank: 10 },
+    ];
+
+    const result = buildGroupBandItems(
+      features,
+      groups,
+      0,
+      monthDates,
+      false,
+      false,
+      new Set(),
+      'p1'
+    );
+
+    const groupOrder = result.items
+      .filter((item) => item.isGroup && item.id !== '__ungrouped__:p1')
+      .map((item) => item.id);
+    const alphaCardIds = result.items
+      .filter((item) => !item.isGroup && ['t2', 't1', 't3'].includes(item.feature.id))
+      .map((item) => item.feature.id);
+
+    expect(groupOrder).to.deep.equal(['g1', 'g2']);
+    expect(alphaCardIds).to.deep.equal(['t1', 't3', 't2']);
+  });
+});
 
 describe('FeatureBoard renderFeatures — no duplicate cards', () => {
   let board;

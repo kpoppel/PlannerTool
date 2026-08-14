@@ -1,7 +1,7 @@
 export function createInitialAppState() {
   return {
     lifecycle: {
-      status: 'idle',
+      status: 'bootstrapping',
       error: null,
     },
     baseline: {
@@ -13,7 +13,15 @@ export function createInitialAppState() {
     },
     scenarios: {
       activeId: 'baseline',
-      items: [{ id: 'baseline', name: 'Baseline', overrides: {} }],
+      changedIds: [],
+      items: [{
+        id: 'baseline',
+        name: 'Baseline',
+        readonly: true,
+        overrides: {},
+        groupOverrides: {},
+        scenarioGroups: [],
+      }],
     },
     selection: {
       projectIds: [],

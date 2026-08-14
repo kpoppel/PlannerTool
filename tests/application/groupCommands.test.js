@@ -9,12 +9,12 @@ function seedStore() {
     ...createInitialAppState(),
     scenarios: {
       activeId: 's1',
+      changedIds: [],
       items: [
         {
           id: 's1',
           name: 'Scenario',
           readonly: false,
-          isChanged: false,
           scenarioGroups: [],
           groupOverrides: {},
         },

@@ -108,6 +108,40 @@ function deriveFeatureStateNames(source, baselineFeatures) {
   return Array.from(featureStates);
 }
 
+function deriveOrderedFeatureStateNames(projects, features) {
+  const featureStates = new Set();
+  for (const feature of features || []) {
+    const stateName = feature?.state;
+    if (!stateName) continue;
+    featureStates.add(String(stateName));
+  }
+
+  const ordered = [];
+  const seen = new Set();
+
+  for (const project of projects || []) {
+    const raw = project?.state_display_sequence || project?.stateDisplaySequence || [];
+    if (!Array.isArray(raw)) continue;
+
+    for (const item of raw) {
+      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
+      for (const stateName of item.types) {
+        const value = String(stateName || '').trim();
+        if (!value || !featureStates.has(value) || seen.has(value)) continue;
+        seen.add(value);
+        ordered.push(value);
+      }
+    }
+  }
+
+  for (const stateName of featureStates) {
+    if (seen.has(stateName)) continue;
+    ordered.push(stateName);
+  }
+
+  return ordered;
+}
+
 export function createDataCommands(store, bus, dataService, legacyStateRef = null) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
@@ -289,6 +323,11 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       }));
 
       const revision = Date.now();
+      const defaultFeatureStateNames = deriveOrderedFeatureStateNames(
+        hydratedProjects,
+        featuresWithRank
+      );
+
       store.setState(
         (state) => ({
           ...state,
@@ -309,7 +348,10 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
             ...state.selection,
             projectIds: state.selection.projectIds,
             teamIds: state.selection.teamIds,
-            featureStateNames: state.selection.featureStateNames
+            featureStateNames: Array.isArray(state.selection.featureStateNames) &&
+              state.selection.featureStateNames.length > 0
+              ? state.selection.featureStateNames
+              : defaultFeatureStateNames,
           },
         }),
         false,
@@ -359,18 +401,19 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       const scenarioItems = scenariosResult.data;
       const hasActiveId = Object.prototype.hasOwnProperty.call(options || {}, 'activeId');
 
+      const baseline = {
+        id: 'baseline',
+        name: 'Baseline',
+        readonly: true,
+        overrides: {},
+      };
+
       store.setState(
         (state) => ({
           ...state,
           scenarios: {
             ...state.scenarios,
-            // Baseline entry lives in items; preserve its overrides across server refreshes.
-            items: [
-              { ...(state.scenarios.items.find((s) => s.id === 'baseline') || { id: 'baseline', name: 'Baseline', overrides: {} }) },
-              ...scenarioItems
-                .filter((s) => s.id !== 'baseline')
-                .map((scenario) => ({ ...scenario, isChanged: false })),
-            ],
+            items: [baseline, ...scenarioItems.filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null)],
             activeId: hasActiveId ? options.activeId : state.scenarios.activeId,
           },
         }),

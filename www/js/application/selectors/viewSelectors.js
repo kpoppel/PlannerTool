@@ -1,197 +1,213 @@
-function getLegacyViewService(state) {
-  return state?._viewService || null;
-}
-
 function toStringArray(values) {
-  return Array.from(values || []).map((v) => String(v));
+  return Array.from(values).map((v) => String(v));
 }
 
 function hasTeamAllocation(feature, selectedTeamIds) {
-  const capacities = Array.isArray(feature?.capacity) ? feature.capacity : [];
-  for (const entry of capacities) {
-    const teamId = entry?.team ?? entry?.teamId ?? entry?.id;
-    if (teamId && selectedTeamIds.has(String(teamId))) {
-      return true;
-    }
+  if (selectedTeamIds.size === 0) {
+    return false;
   }
-  return false;
+
+  return feature.capacity.some((entry) => {
+    return Boolean(entry.team) && selectedTeamIds.has(String(entry.team));
+  });
 }
 
 function getTimelineScaleFromStore(state) {
-  return state?.view?.options?.timelineScale || 'months';
+  return state.view.options.timelineScale;
 }
 
 function getShowDependenciesFromStore(state) {
-  return Boolean(state?.view?.options?.showDependencies);
+  return Boolean(state.view.options.showDependencies);
 }
 
 function getCondensedCardsFromStore(state) {
-  const options = state?.view?.options || {};
-  if (typeof options.condensedCards === 'boolean') return options.condensedCards;
-  return (options.displayMode || 'normal') !== 'normal';
+  return Boolean(state.view.options.condensedCards);
 }
 
 function getCapacityViewModeFromStore(state) {
-  return state?.view?.options?.capacityViewMode || 'team';
+  return state.view.options.capacityViewMode;
 }
 
 function getHighlightFeatureRelationModeFromStore(state) {
-  return Boolean(state?.view?.options?.highlightFeatureRelationMode);
+  return Boolean(state.view.options.highlightFeatureRelationMode);
 }
 
 function getFeatureSortModeFromStore(state) {
-  return state?.view?.options?.featureSortMode || 'rank';
+  return state.view.options.featureSortMode;
 }
 
 function getPackedModeFromStore(state) {
-  return Boolean(state?.view?.options?.packedMode);
+  return Boolean(state.view.options.packedMode);
 }
 
 function getShowUnassignedCardsFromStore(state) {
-  return Boolean(state?.view?.options?.showUnassignedCards);
+  return Boolean(state.view.options.showUnassignedCards);
 }
 
 function getDisplayModeFromStore(state) {
-  return state?.view?.options?.displayMode || 'normal';
+  return state.view.options.displayMode;
 }
 
 function getStoreHiddenTypes(state) {
-  const hidden = state?.view?.options?.hiddenTypes;
-  if (hidden instanceof Set) return new Set(toStringArray(hidden));
-  if (Array.isArray(hidden)) return new Set(toStringArray(hidden));
-  return new Set();
+  return new Set(toStringArray(state.view.options.hiddenTypes));
 }
 
 function getStoreExpansionState(state) {
   return {
-    expandParentChild: Boolean(state?.view?.expansion?.parentChild),
-    expandRelations: Boolean(state?.view?.expansion?.relations),
-    expandTeamAllocated: Boolean(state?.view?.expansion?.teamAllocated),
+    expandParentChild: Boolean(state.view.expansion.parentChild),
+    expandRelations: Boolean(state.view.expansion.relations),
+    expandTeamAllocated: Boolean(state.view.expansion.teamAllocated),
   };
 }
 
-function getExpandedFeatureIdsFromStore(state) {
-  const features = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
-  const selectedProjectIds = new Set(toStringArray(state?.selection?.projectIds));
-  const selectedTeamIds = new Set(toStringArray(state?.selection?.teamIds));
+function getExpandedFeatureSetFromStore(state) {
+  const features = Array.isArray(state.baseline.features) ? state.baseline.features : [];
+  const selectedProjectIds = new Set(toStringArray(state.selection.projectIds));
+  const selectedTeamIds = new Set(toStringArray(state.selection.teamIds));
   const expansion = getStoreExpansionState(state);
+  const featureById = new Map(
+    features
+      .filter((feature) => feature && feature.id != null)
+      .map((feature) => [String(feature.id), feature])
+  );
 
   const expanded = new Set();
   for (const feature of features) {
-    if (!feature?.id) continue;
+    const featureId = String(feature.id ?? '');
+    if (!featureId) continue;
     if (selectedProjectIds.has(String(feature.project))) {
-      expanded.add(feature.id);
-      continue;
-    }
-    if (expansion.expandTeamAllocated && selectedTeamIds.size && hasTeamAllocation(feature, selectedTeamIds)) {
-      expanded.add(feature.id);
+      expanded.add(featureId);
     }
   }
 
-  return expanded;
-}
+  const counts = {
+    parentChild: 0,
+    relations: 0,
+    teamAllocated: 0,
+  };
 
-export function createLegacyViewSelectors(state) {
+  const baseIds = new Set(expanded);
+
+  if (expansion.expandParentChild) {
+    const phaseAdded = new Set();
+    const canExpandDown = new Set(baseIds);
+    const toProcess = Array.from(baseIds);
+
+    while (toProcess.length > 0) {
+      const currentId = String(toProcess.pop());
+      const feature = featureById.get(currentId);
+      if (!feature) continue;
+
+      if (feature.parentId && featureById.has(String(feature.parentId))) {
+        const parentId = String(feature.parentId);
+        if (!baseIds.has(parentId) && !phaseAdded.has(parentId) && !expanded.has(parentId)) {
+          expanded.add(parentId);
+          phaseAdded.add(parentId);
+          toProcess.push(parentId);
+        }
+      }
+
+      if (canExpandDown.has(currentId)) {
+        for (const child of features) {
+          if (String(child.parentId) === currentId && child.id != null) {
+            const childId = String(child.id);
+            if (!baseIds.has(childId) && !phaseAdded.has(childId) && !expanded.has(childId)) {
+              expanded.add(childId);
+              phaseAdded.add(childId);
+              canExpandDown.add(childId);
+              toProcess.push(childId);
+            }
+          }
+        }
+      }
+    }
+
+    counts.parentChild = phaseAdded.size;
+  }
+
+  if (expansion.expandRelations) {
+    const phaseAdded = new Set();
+    const toProcess = Array.from(baseIds);
+    while (toProcess.length > 0) {
+      const currentId = String(toProcess.pop());
+      const feature = featureById.get(currentId);
+      if (!feature || !Array.isArray(feature.relations)) continue;
+
+      for (const relation of feature.relations) {
+        const relationType = String(relation?.type ?? relation?.relationType ?? '');
+        if (relationType === 'Parent' || relationType === 'Child') continue;
+
+        const relationId = String(relation?.id ?? '');
+        if (!relationId || !featureById.has(relationId)) continue;
+        if (baseIds.has(relationId) || phaseAdded.has(relationId) || expanded.has(relationId)) continue;
+        expanded.add(relationId);
+        phaseAdded.add(relationId);
+        toProcess.push(relationId);
+      }
+    }
+
+    counts.relations = phaseAdded.size;
+  }
+
+  if (expansion.expandTeamAllocated && selectedTeamIds.size > 0) {
+    const phaseAdded = new Set();
+    for (const feature of features) {
+      const featureId = String(feature.id ?? '');
+      if (!featureId || baseIds.has(featureId) || phaseAdded.has(featureId) || expanded.has(featureId)) continue;
+      if (hasTeamAllocation(feature, selectedTeamIds)) {
+        expanded.add(featureId);
+        phaseAdded.add(featureId);
+      }
+    }
+    counts.teamAllocated = phaseAdded.size;
+  }
+
   return {
-    getTimelineScale() {
-      const viewService = getLegacyViewService(state);
-      return viewService?.timelineScale || state?.timelineScale || 'months';
-    },
-
-    getShowDependencies() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.showDependencies ?? state?.showDependencies);
-    },
-
-    getCondensedCards() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.condensedCards);
-    },
-
-    getCapacityViewMode() {
-      const viewService = getLegacyViewService(state);
-      return viewService?.capacityViewMode || state?.capacityViewMode || 'team';
-    },
-
-    getHighlightFeatureRelationMode() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(
-        viewService?.highlightFeatureRelationMode ?? state?.highlightFeatureRelationMode
-      );
-    },
-
-    getFeatureSortMode() {
-      const viewService = getLegacyViewService(state);
-      return viewService?.featureSortMode || state?.featureSortMode || 'rank';
-    },
-
-    getPackedMode() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.packedMode);
-    },
-
-    getShowUnassignedCards() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.showUnassignedCards);
-    },
-
-    getDisplayMode() {
-      const viewService = getLegacyViewService(state);
-      return viewService?.displayMode || state?.displayMode || 'normal';
-    },
-
-    isTypeVisible(type) {
-      const viewService = getLegacyViewService(state);
-      if (viewService && typeof viewService.isTypeVisible === 'function') {
-        return viewService.isTypeVisible(type);
-      }
-      return true;
-    },
-
-    getShowUnplannedWork() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.showUnplannedWork);
-    },
-
-    getShowOnlyProjectHierarchy() {
-      const viewService = getLegacyViewService(state);
-      return Boolean(viewService?.showOnlyProjectHierarchy);
-    },
-
-    getExpansionState() {
-      return state?.expansionState || {
-        expandParentChild: false,
-        expandRelations: false,
-        expandTeamAllocated: false,
-      };
-    },
-
-    getExpandedFeatureIds() {
-      if (typeof state?.getExpandedFeatureIds === 'function') {
-        return state.getExpandedFeatureIds();
-      }
-      return new Set();
-    },
-
-    getHiddenTypes() {
-      const viewService = getLegacyViewService(state);
-      if (viewService?.hiddenTypes instanceof Set) {
-        return new Set(Array.from(viewService.hiddenTypes).map((v) => String(v)));
-      }
-      return new Set();
-    },
-
-    getSavedViews() {
-      return Array.isArray(state?.savedViews) ? state.savedViews : [];
-    },
-
-    getActiveViewId() {
-      return state?.activeViewId || null;
-    },
+    expandedIds: expanded,
+    counts,
   };
 }
 
-export function createViewSelectors(store, legacyState) {
+export function createViewSelectors(store) {
+  let cachedExpandedFeatureSet = null;
+  let cachedState = null;
+
+  const getExpandedFeatureSetMemoized = () => {
+    const state = store.getState();
+    const baselineFeatures = state?.baseline?.features;
+    const projectIds = state?.selection?.projectIds;
+    const teamIds = state?.selection?.teamIds;
+    const expansion = state?.view?.expansion;
+
+    if (
+      cachedExpandedFeatureSet && cachedState &&
+      cachedState.features === baselineFeatures &&
+      cachedState.projectIds === projectIds &&
+      cachedState.teamIds === teamIds &&
+      cachedState.expansion === expansion
+    ) {
+      return cachedExpandedFeatureSet;
+    }
+
+    const { expandedIds, counts } = getExpandedFeatureSetFromStore(state);
+    cachedExpandedFeatureSet = {
+      expandedIds: new Set(Array.from(expandedIds).map((id) => String(id))),
+      counts: {
+        parentChild: Number(counts.parentChild) || 0,
+        relations: Number(counts.relations) || 0,
+        teamAllocated: Number(counts.teamAllocated) || 0,
+      },
+    };
+    cachedState = {
+      features: baselineFeatures,
+      projectIds,
+      teamIds,
+      expansion,
+    };
+    console.log('Expanded feature set recalculated:', cachedExpandedFeatureSet);
+    return cachedExpandedFeatureSet;
+  };
+
   return {
     getTimelineScale() {
       return getTimelineScaleFromStore(store.getState());
@@ -234,21 +250,23 @@ export function createViewSelectors(store, legacyState) {
     },
 
     getShowUnplannedWork() {
-      return Boolean(store.getState()?.view?.options?.showUnplannedWork);
+      return Boolean(store.getState().view.options.showUnplannedWork);
     },
 
     getShowOnlyProjectHierarchy() {
-      return Boolean(store.getState()?.view?.options?.showOnlyProjectHierarchy);
+      return Boolean(store.getState().view.options.showOnlyProjectHierarchy);
     },
 
     getExpansionState() {
       return getStoreExpansionState(store.getState());
     },
 
+    getExpandedFeatureSet() {
+      return getExpandedFeatureSetMemoized();
+    },
+
     getExpandedFeatureIds() {
-      return new Set(
-        Array.from(getExpandedFeatureIdsFromStore(store.getState()) || []).map((id) => String(id))
-      );
+      return this.getExpandedFeatureSet().expandedIds;
     },
 
     getHiddenTypes() {
@@ -256,12 +274,11 @@ export function createViewSelectors(store, legacyState) {
     },
 
     getSavedViews() {
-      const saved = store.getState()?.view?.saved;
-      return Array.isArray(saved) ? saved : [];
+      return store.getState().view.saved;
     },
 
     getActiveViewId() {
-      return store.getState()?.view?.activeId || null;
+      return store.getState().view.activeId;
     },
   };
 }

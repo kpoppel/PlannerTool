@@ -10,9 +10,10 @@ describe('application/selectors/scenarioSelectors', () => {
         ...createInitialAppState(),
         scenarios: {
           activeId: 's2',
+          changedIds: ['s2'],
           items: [
-            { id: 's1', name: 'Alpha', isChanged: false },
-            { id: 's2', name: 'Beta', isChanged: true },
+            { id: 's1', name: 'Alpha' },
+            { id: 's2', name: 'Beta' },
           ],
         },
       },
@@ -25,9 +26,20 @@ describe('application/selectors/scenarioSelectors', () => {
     const selectors = createScenarioSelectors(store);
 
     expect(selectors.getActiveScenarioId()).toBe('s2');
-    expect(selectors.getActiveScenario()).toEqual({ id: 's2', name: 'Beta', isChanged: true });
-    expect(selectors.isScenarioUnsaved({ isChanged: true })).toBe(true);
+    expect(selectors.getActiveScenario()).toEqual({ id: 's2', name: 'Beta' });
+    expect(selectors.isScenarioUnsaved({ id: 's2' })).toBe(true);
     expect(selectors.isActiveScenarioUnsaved()).toBe(true);
+  });
+
+  it('store selectors expose the canonical active scenario id without legacy fallback synthesis', () => {
+    const selectors = createScenarioSelectors(store);
+
+    expect(selectors.getScenarios()).toEqual([
+      { id: 's1', name: 'Alpha' },
+      { id: 's2', name: 'Beta' },
+    ]);
+    expect(selectors.getActiveScenarioId()).toBe('s2');
+    expect(selectors.getActiveScenario()).toMatchObject({ id: 's2', name: 'Beta' });
   });
 
 });

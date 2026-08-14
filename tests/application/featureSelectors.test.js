@@ -1,9 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyFeatureSelectors,
-  createFeatureSelectors,
-} from '../../www/js/application/selectors/featureSelectors.js';
+import { createFeatureSelectors } from '../../www/js/application/selectors/featureSelectors.js';
 import { store } from '../../www/js/application/store.js';
 
 function seedStore() {
@@ -34,19 +31,6 @@ function seedStore() {
 describe('application/selectors/featureSelectors', () => {
   beforeEach(() => {
     store.setState(seedStore(), true, 'test.resetStore');
-  });
-
-  it('legacy selector delegates to state methods', () => {
-    const state = {
-      getEffectiveFeatures: vi.fn(() => [{ id: 'x1' }]),
-      getEffectiveFeatureById: vi.fn(() => ({ id: 'x2' })),
-    };
-
-    const selectors = createLegacyFeatureSelectors(state);
-
-    expect(selectors.getEffectiveFeatures()).toEqual([{ id: 'x1' }]);
-    expect(selectors.getEffectiveFeatureById('x2')).toEqual({ id: 'x2' });
-    expect(state.getEffectiveFeatureById).toHaveBeenCalledWith('x2');
   });
 
   it('store selector overlays active scenario overrides onto baseline', () => {
@@ -88,6 +72,17 @@ describe('application/selectors/featureSelectors', () => {
 
     expect(f1).toEqual(
       expect.objectContaining({ id: 'f1', start: '2026-03-01', end: '2026-03-10' })
+    );
+  });
+
+  it('baseline scenarios always include an explicit empty overrides map', () => {
+    const baseline = createInitialAppState().scenarios.items.find((scenario) => scenario.id === 'baseline');
+
+    expect(baseline).toEqual(
+      expect.objectContaining({
+        id: 'baseline',
+        overrides: {},
+      })
     );
   });
 

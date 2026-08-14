@@ -43,7 +43,7 @@ describe('ProviderREST /api/scenario tests', () => {
     // Server refreshes must normalize all scenario rows back to clean state.
     const refreshed = await pr.listScenarios();
     expect(refreshed.ok).to.equal(true);
-    expect(refreshed.data.every((s) => s.isChanged === false)).to.equal(true);
+    expect(refreshed.data.every((s) => !Object.prototype.hasOwnProperty.call(s, 'changedIds'))).to.equal(true);
 
     // saveScenario (update)
     const updatedScenario = { ...saved1.data, name: 'New Scenario Updated' };
@@ -69,6 +69,6 @@ describe('ProviderREST /api/scenario tests', () => {
     const list = await pr.listScenarios();
 
     expect(list.ok).to.equal(true);
-    expect(list.data.every((scenario) => scenario.isChanged === false)).to.equal(true);
+    expect(list.data.every((scenario) => !Object.prototype.hasOwnProperty.call(scenario, 'changedIds'))).to.equal(true);
   });
 });

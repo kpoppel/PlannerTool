@@ -1,5 +1,6 @@
 import { bus } from '../../core/EventBus.js';
 import {
+  CapacityEvents,
   ProjectEvents,
   TeamEvents,
   FeatureEvents,
@@ -340,6 +341,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
     bus.emit(ProjectEvents.CHANGED);
     bus.emit(TeamEvents.CHANGED);
     bus.emit(FilterEvents.CHANGED);
+    bus.emit(CapacityEvents.UPDATED);
     bus.emit(ViewEvents.CAPACITY_MODE);
     bus.emit(ViewEvents.DEPENDENCIES);
     bus.emit(ViewEvents.CONDENSED);

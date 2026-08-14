@@ -1,15 +1,14 @@
 function getScenarioItems(state) {
-  return Array.isArray(state?.scenarios?.items) ? state.scenarios.items : [];
+  return state.scenarios.items;
 }
 
 function getActiveScenario(state) {
-  const activeId = state?.scenarios?.activeId ?? 'baseline';
+  const activeId = state.scenarios.activeId;
   if (!activeId) return null;
   return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
 }
 
 function computeDirtyFields(base, override) {
-  // TODO: A card is dirty if it is in the overrides list. This looks like a bit overkill.
   const fields = [];
   const normDate = (v) => v || null;
   const normTags = (v) =>
@@ -42,12 +41,12 @@ function applyOverride(baseFeature, override) {
 }
 
 function deriveEffectiveFeatures(state) {
-  const baselineFeatures = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
+  const baselineFeatures = state.baseline.features;
   const scenario = getActiveScenario(state);
-  const overrides = scenario?.overrides || {};
+  const overrides = scenario.overrides;
 
   return baselineFeatures.map((feature) => {
-    const key = String(feature?.id ?? '');
+    const key = String(feature.id ?? '');
     const override = overrides[key];
     return applyOverride(feature, override);
   });
@@ -55,9 +54,8 @@ function deriveEffectiveFeatures(state) {
 
 function buildBaselineFeatureMap(state) {
   const map = new Map();
-  const features = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
-  for (const feature of features) {
-    if (!feature?.id) continue;
+  for (const feature of state.baseline.features) {
+    if (!feature.id) continue;
     map.set(String(feature.id), feature);
   }
   return map;
@@ -65,8 +63,8 @@ function buildBaselineFeatureMap(state) {
 
 function buildChildrenByParentMap(features) {
   const map = new Map();
-  for (const feature of Array.isArray(features) ? features : []) {
-    const parentId = feature?.parentId;
+  for (const feature of features) {
+    const parentId = feature.parentId;
     if (!parentId) continue;
     const key = String(parentId);
     if (!map.has(key)) map.set(key, []);
@@ -77,16 +75,16 @@ function buildChildrenByParentMap(features) {
 
 function deriveAvailableTaskTypes(features) {
   const types = new Set();
-  for (const feature of Array.isArray(features) ? features : []) {
-    const type = feature?.type ?? feature?.workItemType ?? feature?.work_item_type;
+  for (const feature of features) {
+    const type = feature.type ?? feature.workItemType ?? feature.work_item_type;
     if (type) types.add(String(type));
   }
   return Array.from(types).sort();
 }
 
 function deriveTaskTypeHierarchy(projects) {
-  for (const project of Array.isArray(projects) ? projects : []) {
-    if (Array.isArray(project?.task_type_hierarchy) && project.task_type_hierarchy.length > 0) {
+  for (const project of projects) {
+    if (Array.isArray(project.task_type_hierarchy) && project.task_type_hierarchy.length > 0) {
       return project.task_type_hierarchy;
     }
   }
@@ -115,13 +113,11 @@ function getIterationsForProjectFromStore(state, projectId) {
   const idKey = projectId == null ? '' : String(projectId).trim();
   if (!idKey) return [];
 
-  const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
-  const project = projects.find((item) => String(item?.id || '').trim() === idKey);
+  const project = state.baseline.projects.find((item) => String(item.id || '').trim() === idKey);
   const iterationSetId = String(project?.iteration_uuid || '').trim();
   if (!iterationSetId) return [];
 
-  const setsById = state?.baseline?.iterationsByProject || {};
-  const linkedSet = setsById[iterationSetId];
+  const linkedSet = state.baseline.iterationsByProject[iterationSetId];
   if (Array.isArray(linkedSet?.iterations)) return linkedSet.iterations;
   return [];
 }
@@ -136,8 +132,8 @@ function normalizeIdSet(values) {
 
 function buildParentByChildMap(features) {
   const map = new Map();
-  for (const feature of Array.isArray(features) ? features : []) {
-    if (!feature?.id || !feature?.parentId) continue;
+  for (const feature of features) {
+    if (!feature.id || !feature.parentId) continue;
     map.set(String(feature.id), String(feature.parentId));
   }
   return map;
@@ -153,7 +149,7 @@ function buildTaskTypeOrderMap(taskTypes, hierarchy) {
 }
 
 function getFeatureTypeName(feature) {
-  return String(feature?.type ?? feature?.workItemType ?? feature?.work_item_type ?? '').trim();
+  return String(feature.type ?? feature.workItemType ?? feature.work_item_type ?? '').trim();
 }
 
 function makeCountsMap(features, predicate) {
@@ -168,15 +164,14 @@ function makeCountsMap(features, predicate) {
 }
 
 function hasFeatureTeam(feature, teamId) {
-  const capacities = Array.isArray(feature?.capacity) ? feature.capacity : [];
-  return capacities.some((item) => String(item?.team ?? item?.teamId ?? item?.id) === String(teamId));
+  const capacities = feature.capacity || [];
+  return capacities.some((item) => String(item.team ?? item.teamId ?? item.id) === String(teamId));
 }
 
 function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options = {}) {
   const expandedIds = normalizeIdSet(selectedFeatureIds);
   const childrenByParent = buildChildrenByParentMap(features);
   const parentByChild = buildParentByChildMap(features);
-  const byId = new Map(features.map((feature) => [String(feature.id), feature]));
   const selectedTeamIds = normalizeIdSet(options.selectedTeamIds || []);
 
   let parentChildCount = 0;
@@ -205,7 +200,7 @@ function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options
 
   if (options.expandTeamAllocated && selectedTeamIds.size > 0) {
     for (const feature of features) {
-      if (!feature?.id) continue;
+      if (!feature.id) continue;
       if (expandedIds.has(String(feature.id))) continue;
       const matchesTeam = Array.from(selectedTeamIds).some((teamId) => hasFeatureTeam(feature, teamId));
       if (!matchesTeam) continue;
@@ -224,128 +219,10 @@ function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options
   };
 }
 
-export function createLegacyFeatureSelectors(state) {
+export function createFeatureSelectors(store) {
   return {
     getBaselineFeatures() {
-      return Array.isArray(state?.baselineFeatures) ? state.baselineFeatures : [];
-    },
-
-    getEffectiveFeatures() {
-      if (typeof state.getEffectiveFeatures === 'function') {
-        return state.getEffectiveFeatures();
-      }
-      return [];
-    },
-
-    getEffectiveFeatureById(id) {
-      if (typeof state.getEffectiveFeatureById === 'function') {
-        return state.getEffectiveFeatureById(id);
-      }
-      const features = this.getEffectiveFeatures();
-      return features.find((feature) => String(feature?.id) === String(id)) || null;
-    },
-
-    getChildrenByParentMap() {
-      if (state?.childrenByParent instanceof Map) {
-        return state.childrenByParent;
-      }
-      return buildChildrenByParentMap(this.getEffectiveFeatures());
-    },
-
-    getIterationsForProject(projectId) {
-      if (typeof state?.getIterationsForProject === 'function') {
-        return state.getIterationsForProject(projectId);
-      }
-      return [];
-    },
-
-    getAvailableTaskTypes() {
-      if (Array.isArray(state?.availableTaskTypes)) return state.availableTaskTypes;
-      return deriveAvailableTaskTypes(this.getEffectiveFeatures());
-    },
-
-    getTaskTypeHierarchy() {
-      if (Array.isArray(state?.taskTypeHierarchy)) return state.taskTypeHierarchy;
-      return deriveTaskTypeHierarchy(state?.baselineProjects || []);
-    },
-
-    getTypeLevel(type) {
-      if (typeof state?.getTypeLevel === 'function') return state.getTypeLevel(type);
-      return getTypeLevelFromHierarchy(type, this.getTaskTypeHierarchy());
-    },
-
-    getTypeDisplayName(type) {
-      if (typeof state?.getTypeDisplayName === 'function') {
-        return state.getTypeDisplayName(type);
-      }
-      return getTypeDisplayNameFromHierarchy(type, this.getTaskTypeHierarchy());
-    },
-
-    getBaselineFeatureById(id) {
-      const key = String(id);
-      if (state?.baselineFeatureById instanceof Map) {
-        return state.baselineFeatureById.get(key) || null;
-      }
-      const feature = (state?.baselineFeatures || []).find((item) => String(item?.id) === key);
-      return feature || null;
-    },
-
-    getChildrenByParentId(parentId) {
-      const map = this.getChildrenByParentMap();
-      const ids = map.get(String(parentId)) || map.get(Number(parentId)) || [];
-      return Array.from(ids || []).map((id) => String(id));
-    },
-
-    computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
-      if (state?.featureService?.computeExpandedFeatureSet) {
-        return state.featureService.computeExpandedFeatureSet(selectedFeatureIds, options);
-      }
-      return computeExpandedFeatureSetFallback(
-        this.getEffectiveFeatures(),
-        selectedFeatureIds,
-        options
-      );
-    },
-
-    getAvailableTaskTypesOrdered() {
-      if (Array.isArray(state?.availableTaskTypesOrdered)) {
-        return state.availableTaskTypesOrdered;
-      }
-      const taskTypes = this.getAvailableTaskTypes();
-      const hierarchy = this.getTaskTypeHierarchy();
-      return [...taskTypes].sort((a, b) => {
-        const levelA = getTypeLevelFromHierarchy(a, hierarchy);
-        const levelB = getTypeLevelFromHierarchy(b, hierarchy);
-        if (levelA !== levelB) return levelA - levelB;
-        return String(a).localeCompare(String(b));
-      });
-    },
-
-    getCountsForProject(projectId) {
-      if (typeof state?.allCountsForProject === 'function') {
-        return state.allCountsForProject(projectId);
-      }
-      return makeCountsMap(
-        this.getEffectiveFeatures(),
-        (feature) => String(feature?.project) === String(projectId)
-      );
-    },
-
-    getCountsForTeam(teamId) {
-      if (typeof state?.allCountsForTeam === 'function') {
-        return state.allCountsForTeam(teamId);
-      }
-      return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeam(feature, teamId));
-    },
-  };
-}
-
-export function createFeatureSelectors(store, legacyState = null) {
-  return {
-    getBaselineFeatures() {
-      return Array.isArray(store.getState()?.baseline?.features) ?
-          store.getState().baseline.features
-        : [];
+      return store.getState().baseline.features;
     },
 
     getEffectiveFeatures() {
@@ -355,7 +232,7 @@ export function createFeatureSelectors(store, legacyState = null) {
     getEffectiveFeatureById(id) {
       const key = String(id);
       const features = deriveEffectiveFeatures(store.getState());
-      return features.find((feature) => String(feature?.id) === key) || null;
+      return features.find((feature) => String(feature.id) === key) || null;
     },
 
     getChildrenByParentMap() {
@@ -368,15 +245,11 @@ export function createFeatureSelectors(store, legacyState = null) {
 
     getAvailableTaskTypes() {
       const state = store.getState();
-      const features = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
-      return deriveAvailableTaskTypes(features);
+      return deriveAvailableTaskTypes(state.baseline.features);
     },
 
     getTaskTypeHierarchy() {
-      const projects = Array.isArray(store.getState()?.baseline?.projects) ?
-        store.getState().baseline.projects
-      : [];
-      return deriveTaskTypeHierarchy(projects);
+      return deriveTaskTypeHierarchy(store.getState().baseline.projects);
     },
 
     getTypeLevel(type) {
@@ -393,7 +266,7 @@ export function createFeatureSelectors(store, legacyState = null) {
 
     getChildrenByParentId(parentId) {
       const ids = this.getChildrenByParentMap().get(String(parentId)) || [];
-      return Array.from(ids || []).map((id) => String(id));
+      return Array.from(ids).map((id) => String(id));
     },
 
     computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
@@ -419,7 +292,7 @@ export function createFeatureSelectors(store, legacyState = null) {
     getCountsForProject(projectId) {
       return makeCountsMap(
         this.getEffectiveFeatures(),
-        (feature) => String(feature?.project) === String(projectId)
+        (feature) => String(feature.project) === String(projectId)
       );
     },
 
@@ -428,11 +301,11 @@ export function createFeatureSelectors(store, legacyState = null) {
     },
 
     getSelectedFeatureId() {
-      return store.getState().featureDisplay?.selectedId ?? null;
+      return store.getState().featureDisplay.selectedId ?? null;
     },
 
     getSelectedFeature() {
-      const id = store.getState().featureDisplay?.selectedId;
+      const id = store.getState().featureDisplay.selectedId;
       return id ? this.getEffectiveFeatureById(id) : null;
     },
   };

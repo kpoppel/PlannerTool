@@ -23,10 +23,7 @@ function withActiveScenario(state, updater) {
     const nextScenario = updater(scenario);
     if (!nextScenario || nextScenario === scenario) return scenario;
     changed = true;
-    return {
-      ...nextScenario,
-      isChanged: true,
-    };
+    return nextScenario;
   });
 
   if (!changed) return null;

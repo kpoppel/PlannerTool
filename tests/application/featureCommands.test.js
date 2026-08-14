@@ -40,6 +40,7 @@ function buildState(partial = {}) {
     },
     scenarios: {
       activeId: 's1',
+      changedIds: [],
       items: [
         {
           id: 's1',
@@ -48,7 +49,6 @@ function buildState(partial = {}) {
             f1: { state: 'Done' },
             f2: { start: '2026-01-15', end: '2026-01-25' },
           },
-          isChanged: false,
         },
       ],
     },
@@ -92,6 +92,7 @@ describe('application/commands/featureCommands', () => {
     expect(updated).toEqual({ id: 'f2', state: 'Blocked' });
     const scenario = store.getState().scenarios.items[0];
     expect(scenario.overrides.f2.state).toBe('Blocked');
+    expect(store.getState().scenarios.changedIds).toContain('s1');
     expect(recomputeCapacity).toHaveBeenCalledWith(['f2']);
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
@@ -140,6 +141,7 @@ describe('application/commands/featureCommands', () => {
       buildState({
         scenarios: {
           activeId: 's1',
+          changedIds: [],
           items: [
             {
               id: 's1',
@@ -149,7 +151,6 @@ describe('application/commands/featureCommands', () => {
                   capacity: [{ team: 't1', pct: 50 }],
                 },
               },
-              isChanged: false,
             },
           ],
         },

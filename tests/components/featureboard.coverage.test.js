@@ -87,4 +87,33 @@ describe('FeatureBoard helper coverage', () => {
     const passes = el._featurePassesFilters(feature, new Map(), [feature]);
     expect(passes).to.be.true;
   });
+
+  it('_featurePassesFilters keeps relation-expanded features visible even when they are outside the selected project', async () => {
+    const el = await fixture(html`<feature-board></feature-board>`);
+    sinon.stub(sel.selection, 'getProjects').returns([{ id: 'p1', selected: true }]);
+    sinon.stub(sel.selection, 'getSelectedProjectIds').returns(['p1']);
+    sinon.stub(sel.selection, 'getSelectedTeamIds').returns(['t1']);
+    sinon.stub(sel.view, 'getExpansionState').returns({
+      expandParentChild: false,
+      expandRelations: true,
+      expandTeamAllocated: false,
+    });
+    sinon.stub(sel.view, 'getExpandedFeatureIds').returns(new Set(['f-outside']));
+    sinon.stub(sel.view, 'getShowOnlyProjectHierarchy').returns(false);
+    sinon.stub(sel.view, 'isTypeVisible').returns(true);
+    sinon.stub(sel.view, 'getShowUnplannedWork').returns(true);
+    sinon.stub(sel.view, 'getShowUnassignedCards').returns(false);
+    sinon.stub(sel.filter, 'getSelectedFeatureStateSet').returns(new Set(['New']));
+    sinon.stub(sel.filter, 'featurePassesFilters').returns(true);
+
+    const feature = {
+      id: 'f-outside',
+      project: 'p2',
+      type: 'feature',
+      state: 'New',
+      capacity: [],
+    };
+    const passes = el._featurePassesFilters(feature, new Map(), [feature]);
+    expect(passes).to.be.true;
+  });
 });

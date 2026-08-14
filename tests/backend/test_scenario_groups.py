@@ -60,12 +60,13 @@ def test_scenario_with_scenario_groups_saves_and_loads(client):
     assert sg['members'] == ['task-100', 'task-200']
 
 
-def test_scenario_without_scenario_groups_is_unaffected(client):
-    """Scenarios without scenarioGroups are not modified."""
+def test_scenario_without_scenario_groups_is_left_as_is(client):
+    """Legacy scenarios are not silently repaired in the app/server layer."""
     scenario = {'name': 'No groups', 'overrides': {}}
     saved = _save_scenario(client, scenario).json()
     loaded = _load_scenario(client, saved['id']).json()
-    assert loaded.get('scenarioGroups') is None or 'scenarioGroups' not in loaded
+    assert loaded.get('groupOverrides') is None
+    assert loaded.get('scenarioGroups') is None
 
 
 def test_scenario_can_update_scenario_groups(client):
@@ -119,3 +120,35 @@ def test_scenario_groups_empty_list_round_trips(client):
     # Either not present or empty list is acceptable for empty []
     sg = loaded.get('scenarioGroups')
     assert sg is None or sg == []
+
+
+def test_legacy_scenario_remains_legacy_until_migrated(client):
+    """The runtime layer intentionally leaves legacy payloads unchanged until migration runs."""
+    scenario = {'name': 'Legacy scenario', 'overrides': {}}
+    saved = _save_scenario(client, scenario).json()
+    scenario_id = saved['id']
+
+    loaded = _load_scenario(client, scenario_id).json()
+    assert loaded.get('groupOverrides') is None
+    assert loaded.get('scenarioGroups') is None
+
+    updated = _save_scenario(client, {'id': scenario_id, 'name': 'Legacy scenario', 'overrides': {}, 'groupOverrides': {}, 'scenarioGroups': []}).json()
+    assert updated['id'] == scenario_id
+
+    reloaded = _load_scenario(client, scenario_id).json()
+    assert reloaded.get('groupOverrides') == {}
+    assert reloaded.get('scenarioGroups') == []
+
+
+def test_scenario_rejects_blank_name_and_empty_group_metadata(client):
+    """The backend should reject blank names and malformed scenario metadata shapes."""
+    blank_name = _save_scenario(client, {'name': '   ', 'overrides': {}})
+    assert blank_name.status_code == 400
+
+    invalid_group_meta = _save_scenario(client, {
+        'name': 'Bad metadata',
+        'overrides': {},
+        'groupOverrides': [],
+        'scenarioGroups': {'bad': 'shape'},
+    })
+    assert invalid_group_meta.status_code == 400

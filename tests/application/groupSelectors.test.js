@@ -1,9 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyGroupSelectors,
-  createGroupSelectors,
-} from '../../www/js/application/selectors/groupSelectors.js';
+import { createGroupSelectors } from '../../www/js/application/selectors/groupSelectors.js';
 import { store } from '../../www/js/application/store.js';
 
 function seedStore() {
@@ -36,30 +33,6 @@ function seedStore() {
 describe('application/selectors/groupSelectors', () => {
   beforeEach(() => {
     store.setState(seedStore(), true, 'test.resetStore');
-  });
-
-  it('legacy selector computes effective groups from cache + active scenario', () => {
-    const state = {
-      getActiveScenario: vi.fn(() => ({
-        id: 's1',
-        groupOverrides: { g1: { memberDeltas: [{ taskId: 'f2', op: 'add' }] } },
-        scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft', members: ['f3'] }],
-      })),
-      getPendingGroupChanges: vi.fn(() => [{ type: 'create', group: { id: 'tmp_1' } }]),
-    };
-    const groupService = {
-      getGroupsForPlan: vi.fn(() => [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }]),
-      getGroupById: vi.fn(() => ({ id: 'g9' })),
-      hasPlanLoaded: vi.fn(() => true),
-    };
-
-    const selectors = createLegacyGroupSelectors(state, groupService);
-    const groups = selectors.getEffectiveGroups('p1');
-    expect(groups.map((group) => group.id)).toEqual(['g1', 'tmp_1']);
-    expect(groups.find((group) => group.id === 'g1')?.members).toEqual(['f1', 'f2']);
-    expect(selectors.getPendingGroupChanges()).toHaveLength(1);
-    expect(selectors.getGroupById('g9')).toEqual({ id: 'g9' });
-    expect(selectors.hasPlanLoaded('p1')).toBe(true);
   });
 
   it('store selector merges baseline with scenario overrides and local groups', () => {
@@ -95,5 +68,29 @@ describe('application/selectors/groupSelectors', () => {
   it('store getGroupById hides baseline groups deleted in active scenario', () => {
     const selectors = createGroupSelectors(store);
     expect(selectors.getGroupById('g2')).toBeNull();
+  });
+
+  it('store selectors ignore null scenario state when baseline is active', () => {
+    store.setState(
+      {
+        ...seedStore(),
+        scenarios: {
+          activeId: 'baseline',
+          items: [{ id: 'baseline', name: 'Baseline', overrides: {}, scenarioGroups: [], groupOverrides: {} }],
+        },
+      },
+      true,
+      'test.resetStore.baselineScenario'
+    );
+
+    const selectors = createGroupSelectors(store);
+
+    expect(() => selectors.getEffectiveGroups('p1')).not.toThrow();
+    expect(selectors.getEffectiveGroups('p1')).toEqual([
+      expect.objectContaining({ id: 'g1' }),
+      expect.objectContaining({ id: 'g2' }),
+    ]);
+    expect(selectors.getPendingGroupChanges()).toEqual([]);
+    expect(selectors.getGroupById('g1')).toEqual(expect.objectContaining({ id: 'g1' }));
   });
 });

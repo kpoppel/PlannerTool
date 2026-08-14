@@ -33,9 +33,8 @@ async function init() {
     // TODO/DEBUG: For Debugging: Expose internals for automated tests and debugging
     // window.state = state; window.bus = bus;
 
-    const mod = await import('./components/Sidebar.lit.js');
-    await mod.initSidebar();
-
+    // Sidebar must not mount before baseline/scenario/view hydration completes.
+    // The initial store is intentionally in bootstrap mode until data is loaded.
     // Load top menu bar component so the <top-menu-bar> element in index.html upgrades
     await import('./components/TopMenu.lit.js');
 
@@ -64,6 +63,9 @@ async function init() {
     await cmd.data.hydrateBaseline();
     await cmd.data.hydrateScenarioData();
     await cmd.viewRestore.restoreLastView();
+
+    const mod = await import('./components/Sidebar.lit.js');
+    await mod.initSidebar();
 
     // Load Plugin system
     // Load modules config via fetch to avoid JSON module import and

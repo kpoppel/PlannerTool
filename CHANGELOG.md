@@ -14,6 +14,7 @@ Template - do not change :
 - Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 ### Fixed
 - Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
+- Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
 ---
 
 ## [v5.0.0] - unreleased
@@ -33,6 +34,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Fixed group task ordering so tasks within a group respect the active Task Sort toggle instead of preserving insertion order when rendered.
 - Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
 - Fixed scenario menu activation regressions where scenario metadata sync events could overwrite full scenario payloads and drop overrides/group overrides, causing scenario clicks to render baseline data instead of scenario-applied values.
 - Fixed store-mode scenario save/refresh flows to persist and rehydrate through the store-backed data layer rather than silently no-oping, removing the last runtime legacy-state dependency from that path without breaking baseline refresh behavior.
@@ -117,6 +119,7 @@ Template - do not change :
 
 ### Fixed
 - View rename now preserves the original view id in the rename modal flow by passing a dedicated `viewId` property, preventing `id: null` save payloads that previously created duplicate views instead of renaming.
+- Fixed dependency expansion counts to ignore Parent/Child links so only genuine dependency edges contribute to the sidebar bubble and expanded-card counts.
 - User-scoped scenario/view payloads now keep storage ids in `_meta.id` on load, and save routes accept `_meta.id` on round-trip updates, ensuring `/api/view?id=...` returns a complete payload without polluting stored data with internal ids.
 - Hardened Phase 3 hydration strictness: `hydrateBaseline`/`hydrateScenarioData` now reject invalid `ok` payload shapes with explicit `HYDRATION_FAILED` errors and no state mutation, and `application/imports.js` no longer exposes state-store data commands when `USE_STATE_STORE` is false.
 - Fixed admin config screens that were reading provider Result envelopes as raw payloads; groups/system/iterations/users/people/cost/area-mappings now consume `.data` correctly and display returned records, and Azure project browsing now reuses the saved ADO organization URL when calling `/api/azure/projects`.

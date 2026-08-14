@@ -265,7 +265,17 @@ class DataService {
     return this._unwrapOrFallback('renameScenario', result, null);
   }
   async saveScenario(scenario) {
-    const result = await this.providers['rest'].saveScenario(scenario);
+    const payload = {
+      id: scenario.id,
+      name: scenario.name,
+      overrides: scenario.overrides,
+      filters: scenario.filters,
+      view: scenario.view,
+      scenarioGroups: scenario.scenarioGroups,
+      groupOverrides: scenario.groupOverrides,
+    };
+
+    const result = await this.providers['rest'].saveScenario(payload);
     return this._unwrapOrFallback('saveScenario', result, { ok: false, error: { message: 'request_failed' } });
   }
   // --- View Management ---

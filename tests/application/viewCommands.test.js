@@ -84,6 +84,20 @@ describe('application/commands/viewCommands', () => {
     expect(bus.emit).not.toHaveBeenCalled();
   });
 
+  it('store branch emits update events when expansion state changes', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createViewCommands(store, bus);
+
+    commands.setExpansionState({
+      expandParentChild: true,
+      expandRelations: true,
+      expandTeamAllocated: true,
+    });
+
+    expect(bus.emit.mock.calls.some(([event]) => event === FeatureEvents.UPDATED)).toBe(true);
+    expect(bus.emit.mock.calls.some(([event]) => event === FilterEvents.CHANGED)).toBe(true);
+  });
+
   it('store branch updates view options and hidden types', () => {
     const bus = { emit: vi.fn() };
     const commands = createViewCommands(store, bus);

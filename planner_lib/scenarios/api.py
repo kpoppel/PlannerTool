@@ -21,6 +21,46 @@ def _payload_item_id(data: dict | None) -> str | None:
     return None
 
 
+def _validate_scenario_payload(data: dict | None) -> None:
+    """Reject malformed scenario payloads before they are persisted."""
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail='Scenario data must be an object')
+
+    # Enforce the store/server contract at the boundary so callers can rely on the fields existing.
+    data.setdefault('overrides', {})
+    data.setdefault('filters', {})
+    data.setdefault('view', {})
+    data.setdefault('groupOverrides', {})
+    data.setdefault('scenarioGroups', [])
+
+    for key in ('id', 'name'):
+        value = data.get(key)
+        if value is not None and str(value).strip() == '':
+            raise HTTPException(status_code=400, detail=f'Scenario {key} cannot be empty')
+
+    if not isinstance(data.get('overrides'), dict):
+        raise HTTPException(status_code=400, detail='Scenario overrides must be an object')
+    if not isinstance(data.get('filters'), dict):
+        raise HTTPException(status_code=400, detail='Scenario filters must be an object')
+    if not isinstance(data.get('view'), dict):
+        raise HTTPException(status_code=400, detail='Scenario view must be an object')
+    if not isinstance(data.get('groupOverrides'), dict):
+        raise HTTPException(status_code=400, detail='Scenario groupOverrides must be an object')
+
+    groups = data.get('scenarioGroups')
+    if not isinstance(groups, list):
+        raise HTTPException(status_code=400, detail='Scenario scenarioGroups must be a list')
+    for group in groups:
+        if not isinstance(group, dict):
+            raise HTTPException(status_code=400, detail='Scenario group entries must be objects')
+        group_id = group.get('id')
+        group_name = group.get('name')
+        if group_id is None or str(group_id).strip() == '':
+            raise HTTPException(status_code=400, detail='Scenario group id cannot be empty')
+        if group_name is None or str(group_name).strip() == '':
+            raise HTTPException(status_code=400, detail='Scenario group name cannot be empty')
+
+
 @router.get('/scenario')
 @require_session
 async def api_scenario_get(request: Request):
@@ -60,6 +100,7 @@ async def api_scenario_post(request: Request, payload: dict = Body(default={})):
         if op == 'save':
             if isinstance(data, dict) and data.get('readonly'):
                 raise HTTPException(status_code=400, detail='Cannot save readonly scenario')
+            _validate_scenario_payload(data)
             scenario_id = _payload_item_id(data)
             return await asyncio.to_thread(scenario_repo.save_scenario, user_id, scenario_id, data)
         elif op == 'delete':

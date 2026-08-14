@@ -22,47 +22,39 @@ import { dataService } from '../services/dataService.js';
 import { DataEvents } from '../core/EventRegistry.js';
 
 function syncScenariosFromServer(payload) {
-  const scenarios = Array.isArray(payload) ? payload : Array.isArray(payload?.scenarios) ? payload.scenarios : null;
+  const scenarios = Array.isArray(payload) ? payload : payload?.scenarios;
   if (!Array.isArray(scenarios)) return;
-
-  // Merge metadata-only updates without discarding already-loaded nested payloads.
-  // Full payloads replace the stored nested objects because the key is present.
-  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
 
   store.setState(
     (state) => {
-      const baseline =
-        (state.scenarios?.items || []).find((scenario) => scenario.id === 'baseline') ||
-        { id: 'baseline', name: 'Baseline', overrides: {} };
-      const existingById = new Map(
-        (state.scenarios?.items || [])
-          .filter((scenario) => scenario?.id && scenario.id !== 'baseline')
-          .map((scenario) => [String(scenario.id), scenario])
-      );
+      const baseline = state.scenarios.items.find((scenario) => scenario.id === 'baseline') || {
+        id: 'baseline',
+        name: 'Baseline',
+        readonly: true,
+        overrides: {},
+      };
 
-      const nextItems = [
-        baseline,
-        ...scenarios
-          .filter((scenario) => scenario?.id !== 'baseline')
-          .map((scenario) => {
-            const existing = existingById.get(String(scenario.id));
-            const merged = {
-              ...existing,
-              ...scenario,
-              overrides: hasOwn(scenario, 'overrides') ? scenario.overrides ?? {} : existing?.overrides ?? {},
-              filters: hasOwn(scenario, 'filters') ? scenario.filters ?? {} : existing?.filters ?? {},
-              view: hasOwn(scenario, 'view') ? scenario.view ?? {} : existing?.view ?? {},
-              isChanged: false,
-            };
-            return merged;
-          }),
-      ];
+      const mergedServerScenarios = scenarios
+        .filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null)
+        .map((scenario) => {
+          const existing = (Array.isArray(state.scenarios.items) ? state.scenarios.items : [])
+            .find((item) => String(item.id) === String(scenario.id));
+          return {
+            ...(existing ?? {}),
+            ...scenario,
+            id: String(scenario.id),
+          };
+        });
+
+      const localOnlyScenarios = (Array.isArray(state.scenarios.items) ? state.scenarios.items : [])
+        .filter((scenario) => scenario && typeof scenario === 'object' && String(scenario.id) !== 'baseline')
+        .filter((scenario) => !scenarios.some((serverScenario) => String(serverScenario.id) === String(scenario.id)));
 
       return {
         ...state,
         scenarios: {
           ...state.scenarios,
-          items: nextItems,
+          items: [baseline, ...localOnlyScenarios, ...mergedServerScenarios],
         },
       };
     },
@@ -105,7 +97,6 @@ stateStoreCommands.feature = createFeatureCommands(
 );
 stateStoreCommands.scenario = createScenarioCommands(store, bus, null, {
   hydrateBaseline: (...args) => stateStoreCommands.data.hydrateBaseline(...args),
-  hydrateScenarioData: (...args) => stateStoreCommands.data.hydrateScenarioData(...args),
   recomputeCapacity: (...args) => stateStoreCommands.data.recomputeCapacity(...args),
   invalidateCache: (...args) => dataService.invalidateCache(...args),
 });

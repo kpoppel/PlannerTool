@@ -8,3 +8,16 @@ export const store = createStore(
     })
   )
 );
+
+export function isStoreReady(state = store.getState()) {
+  const baseline = state?.baseline || {};
+  const lifecycle = state?.lifecycle || {};
+  return lifecycle.status === 'ready'
+    && Array.isArray(baseline.projects)
+    && Array.isArray(baseline.teams)
+    && Array.isArray(baseline.features);
+}
+
+export function readStoreWhenReady() {
+  return isStoreReady() ? store.getState() : null;
+}

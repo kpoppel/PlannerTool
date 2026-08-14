@@ -28,7 +28,14 @@ describe('application/store', () => {
     expect(current.selection.featureStateNames).toEqual([]);
     expect(current.selection.taskTypeNames).toEqual([]);
     expect(current.scenarios.activeId).toBe('baseline');
-    expect(current.scenarios.items).toEqual([{ id: 'baseline', name: 'Baseline', overrides: {} }]);
+    expect(current.scenarios.items).toEqual([{
+      id: 'baseline',
+      name: 'Baseline',
+      readonly: true,
+      overrides: {},
+      groupOverrides: {},
+      scenarioGroups: [],
+    }]);
     expect(current.view.expansion).toEqual({
       parentChild: false,
       relations: false,

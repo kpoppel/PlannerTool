@@ -170,10 +170,6 @@ export class ScenarioMenuLit extends LitElement {
 
     this._onScenariosUpdated = () => {
       const scenarios = sel.scenario.getScenarios();
-      if (!Array.isArray(scenarios)) {
-        throw new Error('ScenarioMenu expected a valid scenario list from the store');
-      }
-
       this.scenarios = [...scenarios];
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
@@ -212,18 +208,18 @@ export class ScenarioMenuLit extends LitElement {
     e.stopPropagation();
     try {
       await cmd.scenario.saveScenario(scenario.id);
+      // Code seems not needed.
+      //      const scenarios = sel.scenario.getScenarios();
+      //      if (!Array.isArray(scenarios)) {
+      //        throw new Error('ScenarioMenu expected a valid scenario list from the store');
+      //      }
 
-      const scenarios = sel.scenario.getScenarios();
-      if (!Array.isArray(scenarios)) {
-        throw new Error('ScenarioMenu expected a valid scenario list from the store');
-      }
-
-      this.scenarios = [...scenarios];
-      this.activeScenarioId = sel.scenario.getActiveScenarioId();
+      //      this.scenarios = [...scenarios];
+      //      this.activeScenarioId = sel.scenario.getActiveScenarioId();
       this.requestUpdate();
-      console.log('[ScenarioMenu] Saved scenario:', scenario.name);
+      console.log('[ScenarioMenu] Saved scenario:', scenario.name, sel.scenario.getChangedScenarioIds());
     } catch (err) {
-      console.error('[ScenarioMenu] Failed to save scenario:', err);
+      console.error('[ScenarioMenu] Failed to save scenario:', scenario.name, err);
       throw err;
     }
   }
@@ -284,11 +280,11 @@ export class ScenarioMenuLit extends LitElement {
   }
 
   _buildAzureModalStateAdapter() {
-    const baselineFeatures = sel.feature.getBaselineFeatures?.() || [];
-    const teams = sel.selection.getTeams?.() || [];
-    const projects = sel.selection.getProjects?.() || [];
+    const baselineFeatures = sel.feature.getBaselineFeatures();
+    const teams = sel.selection.getTeams();
+    const projects = sel.selection.getProjects();
     const featuresById = new Map(
-      (sel.feature.getEffectiveFeatures?.() || []).map((feature) => [String(feature.id), feature])
+      sel.feature.getEffectiveFeatures().map((feature) => [String(feature.id), feature])
     );
     for (const feature of baselineFeatures) {
       const key = String(feature?.id);
@@ -304,6 +300,10 @@ export class ScenarioMenuLit extends LitElement {
         return feature?.title || feature?.name || String(id);
       },
     };
+  }
+
+  _getChangedScenarioIds() {
+    return new Set(sel.scenario.getChangedScenarioIds().map(String));
   }
 
   async _onCopyScenario(e) {
@@ -512,12 +512,16 @@ export class ScenarioMenuLit extends LitElement {
       if (!a.readonly && b.readonly) return 1;
       return (a.name || '').localeCompare(b.name || '');
     });
-
+    const changedScenarioIds = this._getChangedScenarioIds();
+    console.log('[ScenarioMenu] Rendering scenarios', sorted.map((s) => s.name), changedScenarioIds);
     return html`
       <div class="menu-popover">
         <ul class="sidebar-list">
           ${sorted.map(
-            (s) => html`
+            (s) => {
+              const hasUnsavedChanges = changedScenarioIds.has(String(s.id));
+              console.log('[ScenarioMenu] Rendering scenarios innder', s.name, hasUnsavedChanges);
+              return html`
               <li
                 class="sidebar-list-item scenario-item ${s.id === this.activeScenarioId ?
                   'active'
@@ -525,10 +529,9 @@ export class ScenarioMenuLit extends LitElement {
                 @click=${(e) => this._onScenarioClick(e, s)}
               >
                 <span class="scenario-name" title="${s.name}">${s.name}</span>
-                ${sel.scenario.isScenarioUnsaved(s) ?
+                ${hasUnsavedChanges ?
                   html` <span class="scenario-warning" title="Unsaved changes">⚠️</span> `
                 : ''}
-                ${console.log('[ScenarioMenu] Rendering scenario', s.id, 'isChanged:', sel.scenario.isScenarioUnsaved(s))}
                 ${s.id === 'baseline' || s.readonly ?
                   html`
                     <span class="scenario-actions">
@@ -588,8 +591,9 @@ export class ScenarioMenuLit extends LitElement {
                     </span>
                   `}
               </li>
-            `
-          )}
+            `;
+            })
+          }
         </ul>
         <button type="button" class="copy-scenario-btn" @click=${this._onCopyScenario}>
           📋 Copy Scenario

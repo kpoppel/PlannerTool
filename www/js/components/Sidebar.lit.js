@@ -1,5 +1,6 @@
 import { LitElement, html, css } from '../vendor/lit.js';
 import { cmd, sel } from '../application/imports.js';
+import { isStoreReady } from '../application/store.js';
 import { bus } from '../core/EventBus.js';
 import {
   ProjectEvents,
@@ -30,6 +31,15 @@ export class SidebarLit extends LitElement {
     activeViewData: { type: Object },
     serverStatus: { type: String },
     serverName: { type: String },
+    selectedTasksCount: { type: Number },
+    expandedTasksCount: { type: Number },
+    displayedTasksCount: { type: Number },
+    expandParentChildCount: { type: Number },
+    expandRelationsCount: { type: Number },
+    expandTeamAllocatedCount: { type: Number },
+    expandParentChild: { type: Boolean },
+    expandRelations: { type: Boolean },
+    expandTeamAllocated: { type: Boolean },
   };
 
   static styles = css`
@@ -1057,15 +1067,8 @@ export class SidebarLit extends LitElement {
         );
         this.selectedTasksCount = selectedFeatureIds.size;
 
-        // Expanded tasks: apply expansion filters
-        const selectedTeamIds = sel.selection.getSelectedTeamIds();
-        const expansionResult =
-          sel.feature.computeExpandedFeatureSet(selectedFeatureIds, {
-            expandParentChild: this.expandParentChild,
-            expandRelations: this.expandRelations,
-            expandTeamAllocated: this.expandTeamAllocated,
-            selectedTeamIds,
-          });
+        // Expanded tasks: use the selector-owned expansion set so the sidebar remains a consumer.
+        const expansionResult = sel.view.getExpandedFeatureSet();
 
         const expandedFeatureIds = expansionResult.expandedIds;
         this.expandedTasksCount = expandedFeatureIds.size - this.selectedTasksCount;
@@ -1219,6 +1222,10 @@ export class SidebarLit extends LitElement {
     // renders current projects/teams immediately instead of waiting for
     // subsequent change events.
     try {
+      if (!isStoreReady()) {
+        console.warn('[Sidebar] Store not ready during bootstrap; delaying selector sync.');
+        return;
+      }
       this._onProjectsChanged();
       this._onTeamsChanged();
       this._onScenariosList();
@@ -1365,8 +1372,9 @@ export class SidebarLit extends LitElement {
       expandRelations: this.expandRelations,
       expandTeamAllocated: this.expandTeamAllocated,
     });
-    // Trigger data funnel recomputation
-    this._recomputeDataFunnel && this._recomputeDataFunnel();
+    // Trigger data funnel recomputation immediately and re-render the count bubbles.
+    this._recomputeDataFunnelNow?.();
+    this.requestUpdate();
     // Emit filter change event so the board updates
     bus.emit(FilterEvents.CHANGED);
   }

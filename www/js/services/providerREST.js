@@ -166,7 +166,7 @@ export class ProviderREST extends RestProviderBase {
     const result = await this._requestJson('/api/scenario');
     if (!result.ok) return result;
     const list = Array.isArray(result.data) ? result.data : [];
-    const normalized = list.map((scenario) => ({ ...scenario, isChanged: false }));
+    const normalized = list;
     bus.emit(DataEvents.SCENARIOS_CHANGED, normalized);
     console.log('providerREST:listScenarios:', normalized);
     return ok(normalized);
@@ -182,8 +182,8 @@ export class ProviderREST extends RestProviderBase {
       // Load all scenarios from server (server should not send baseline, but we can handle it)
       if (!m || !m.id) continue;
       const scenarioResult = await this.getScenario(m.id);
-      if (scenarioResult.ok && scenarioResult.data) {
-        scenarios.push({ ...scenarioResult.data, isChanged: false });
+      if (scenarioResult.ok && scenarioResult.data && typeof scenarioResult.data === 'object') {
+        scenarios.push({ ...scenarioResult.data, id: String(scenarioResult.data.id) });
       }
     }
     bus.emit(DataEvents.SCENARIOS_DATA, scenarios);
@@ -212,10 +212,12 @@ export class ProviderREST extends RestProviderBase {
     });
     if (!result.ok) return result;
 
-    const listResult = await this.listScenarios();
-    if (listResult.ok) {
-      bus.emit(DataEvents.SCENARIOS_CHANGED, listResult.data);
-    }
+    // I don't think listng is needed. Listing the scenarios does not add information
+    // the application does not already have.
+    //const listResult = await this.listScenarios();
+    //if (listResult.ok) {
+    //  bus.emit(DataEvents.SCENARIOS_CHANGED, listResult.data);
+    //}
     console.log('providerREST:saveScenario:', result.data);
     return ok(result.data);
   }

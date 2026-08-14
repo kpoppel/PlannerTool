@@ -346,7 +346,7 @@ export class FeatureService {
     }
 
     if (updateCount > 0) {
-      activeScenario.isChanged = true;
+      // Dirty state is tracked in the canonical scenario store via scenario.changedIds.
 
       // If an epic itself was updated, include its children so the board
       // can update their visuals if necessary.
@@ -393,7 +393,6 @@ export class FeatureService {
       };
       ov[field] = value;
       activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
 
       // Emit events with specific id so board can update only changed cards
       // Also include parent epic or children where relevant so all affected
@@ -418,7 +417,6 @@ export class FeatureService {
       const ov = activeScenario.overrides[id] || {};
       ov.capacity = value;
       activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
 
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
@@ -437,7 +435,6 @@ export class FeatureService {
       const ov = activeScenario.overrides[id] || {};
       ov.state = value;
       activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
 
       // Emit events so UI updates
       const idsToEmit = new Set([id]);
@@ -452,7 +449,6 @@ export class FeatureService {
       const ov = activeScenario.overrides[id] || {};
       ov.iterationPath = value;
       activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
 
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
@@ -464,7 +460,6 @@ export class FeatureService {
       const ov = activeScenario.overrides[id] || {};
       ov.tags = value;
       activeScenario.overrides[id] = ov;
-      activeScenario.isChanged = true;
 
       const idsToEmit = new Set([id]);
       if (base.parentId) idsToEmit.add(base.parentId);
@@ -484,7 +479,6 @@ export class FeatureService {
 
     if (activeScenario.overrides[id]) {
       delete activeScenario.overrides[id];
-      activeScenario.isChanged = true;
 
       // Emit events and include related ids (parent/children)
       const idsToEmit = new Set([id]);

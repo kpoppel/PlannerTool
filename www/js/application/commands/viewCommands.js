@@ -110,7 +110,8 @@ export function createViewCommands(store, bus) {
         'view.setExpansionState'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.('view:expansion-changed', { options: options || {} });
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -123,7 +124,7 @@ export function createViewCommands(store, bus) {
         'view.setTimelineScale'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(TimelineEvents.SCALE_CHANGED);
+        bus.emit(TimelineEvents.SCALE_CHANGED);
       }
     },
 
@@ -139,9 +140,9 @@ export function createViewCommands(store, bus) {
         'view.setCondensedCards'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CONDENSED);
-        bus?.emit?.(ViewEvents.DISPLAY_MODE);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(ViewEvents.CONDENSED);
+        bus.emit(ViewEvents.DISPLAY_MODE);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -154,8 +155,8 @@ export function createViewCommands(store, bus) {
         'view.setFeatureSortMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.SORT_MODE);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(ViewEvents.SORT_MODE);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -168,8 +169,8 @@ export function createViewCommands(store, bus) {
         'view.setCapacityViewMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CAPACITY_MODE);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(ViewEvents.CAPACITY_MODE);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -186,9 +187,9 @@ export function createViewCommands(store, bus) {
         'view.setDisplayMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.CONDENSED);
-        bus?.emit?.(ViewEvents.DISPLAY_MODE);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(ViewEvents.CONDENSED);
+        bus.emit(ViewEvents.DISPLAY_MODE);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -202,8 +203,8 @@ export function createViewCommands(store, bus) {
         'view.setShowDependencies'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.DEPENDENCIES);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(ViewEvents.DEPENDENCIES);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -226,8 +227,8 @@ export function createViewCommands(store, bus) {
         'view.setTypeVisibility'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -238,7 +239,7 @@ export function createViewCommands(store, bus) {
         'view.setHighlightFeatureRelationMode'
       );
       if (!runtimeOptions?.suppressEvents) {
-        bus?.emit?.(ViewEvents.HIGHLIGHT_RELATIONS);
+        bus.emit(ViewEvents.HIGHLIGHT_RELATIONS);
       }
     },
   };
