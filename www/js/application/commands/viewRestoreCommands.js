@@ -3,6 +3,8 @@ import {
   ProjectEvents,
   TeamEvents,
   FeatureEvents,
+  FilterEvents,
+  ViewEvents,
   ViewManagementEvents,
 } from '../../core/EventRegistry.js';
 
@@ -333,8 +335,15 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
       viewOptions: toActiveViewOptions(snapshot, viewData?.viewOptions || {}),
     };
 
+    // Keep the sidebar and board UI in sync with the newly-applied saved view.
+    // These events are what the sidebar listens to for task filters and graph type.
     bus.emit(ProjectEvents.CHANGED);
     bus.emit(TeamEvents.CHANGED);
+    bus.emit(FilterEvents.CHANGED);
+    bus.emit(ViewEvents.CAPACITY_MODE);
+    bus.emit(ViewEvents.DEPENDENCIES);
+    bus.emit(ViewEvents.CONDENSED);
+    bus.emit(ViewEvents.SORT_MODE);
     bus.emit(FeatureEvents.UPDATED);
     bus.emit(ViewManagementEvents.ACTIVATED, {
       id,

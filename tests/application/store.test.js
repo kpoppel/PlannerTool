@@ -20,6 +20,24 @@ describe('application/store', () => {
     expect(current).toHaveProperty('capacity');
   });
 
+  it('uses canonical empty-array selection state and stable view/scenario defaults', () => {
+    const current = store.getState();
+
+    expect(current.selection.projectIds).toEqual([]);
+    expect(current.selection.teamIds).toEqual([]);
+    expect(current.selection.featureStateNames).toEqual([]);
+    expect(current.selection.taskTypeNames).toEqual([]);
+    expect(current.scenarios.activeId).toBe('baseline');
+    expect(current.scenarios.items).toEqual([{ id: 'baseline', name: 'Baseline', overrides: {} }]);
+    expect(current.view.expansion).toEqual({
+      parentChild: false,
+      relations: false,
+      teamAllocated: false,
+    });
+    expect(current.groups.byPlanId).toEqual({});
+    expect(current.featureDisplay.selectedId).toBeNull();
+  });
+
   it('notifies selector subscribers only when the selected slice changes', () => {
     const updates = [];
     const unsubscribe = store.subscribe(
@@ -60,7 +78,7 @@ describe('application/store', () => {
     unsubscribe();
 
     expect(updates).toHaveLength(1);
-    expect(updates[0].prev).toBeNull();
+    expect(updates[0].prev).toEqual([]);
     expect(updates[0].next).toEqual(['project-1']);
   });
 });

@@ -16,8 +16,8 @@ export function createInitialAppState() {
       items: [{ id: 'baseline', name: 'Baseline', overrides: {} }],
     },
     selection: {
-      projectIds: null,
-      teamIds: null,
+      projectIds: [],
+      teamIds: [],
       featureStateNames: [],
       taskFilters: {
         schedule: { planned: true, unplanned: true },

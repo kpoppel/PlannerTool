@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { bus } from '../../www/js/core/EventBus.js';
+import { FilterEvents, ViewEvents } from '../../www/js/core/EventRegistry.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
 import { createViewRestoreCommands } from '../../www/js/application/commands/viewRestoreCommands.js';
 import { store } from '../../www/js/application/store.js';
@@ -96,7 +98,8 @@ describe('application/commands/viewRestoreCommands', () => {
           timelineScale: 'weeks',
           selectedFeatureStates: ['Doing', 'Done'],
           selectedTaskTypes: ['feature'],
-          taskFilters: { schedule: 'planned', relations: 'all' },
+          taskFilters: { schedule: { planned: false, unplanned: true }, relations: { hasLinks: true, noLinks: false } },
+          capacityViewMode: 'project',
           expandParentChild: true,
           expandRelations: false,
           expandTeamAllocated: true,
@@ -108,6 +111,7 @@ describe('application/commands/viewRestoreCommands', () => {
       restoreFromView: vi.fn(async () => {}),
     };
 
+    const emitSpy = vi.spyOn(bus, 'emit');
     const cmd = createViewRestoreCommands(store, dataService, pluginStateCommands);
     await cmd.loadAndApplyView('v1');
 
@@ -118,10 +122,11 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(snapshot.selection.featureStateNames).toEqual(['Doing', 'Done']);
     expect(snapshot.selection.taskTypeNames).toEqual(['feature']);
     expect(snapshot.selection.taskFilters).toMatchObject({
-      schedule: 'planned',
-      relations: 'all',
+      schedule: { planned: false, unplanned: true },
+      relations: { hasLinks: true, noLinks: false },
     });
     expect(snapshot.view.options.timelineScale).toBe('weeks');
+    expect(snapshot.view.options.capacityViewMode).toBe('project');
     expect(snapshot.view.expansion).toEqual({
       parentChild: true,
       relations: false,
@@ -130,6 +135,9 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({
       'plugin-cost': { mode: 'team' },
     });
+    expect(emitSpy).toHaveBeenCalledWith(FilterEvents.CHANGED);
+    expect(emitSpy).toHaveBeenCalledWith(ViewEvents.CAPACITY_MODE);
+    emitSpy.mockRestore();
   });
 
   it('does not delegate to legacy view services when loading or applying store views', async () => {

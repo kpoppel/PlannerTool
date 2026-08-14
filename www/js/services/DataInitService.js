@@ -104,10 +104,7 @@ export class DataInitService {
     // Emit initial events
     this._bus.emit(ProjectEvents.CHANGED);
     this._bus.emit(TeamEvents.CHANGED);
-    this._bus.emit(
-      StateFilterEvents.CHANGED,
-      this._stateFilterService.availableFeatureStates
-    );
+    this._bus.emit(StateFilterEvents.CHANGED);
 
     return {
       baselineProjects,

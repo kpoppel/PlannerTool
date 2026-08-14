@@ -5,7 +5,7 @@ import {
   createDataCommands,
   DataCommandEvents,
 } from '../../www/js/application/commands/dataCommands.js';
-import { DataEvents } from '../../www/js/core/EventRegistry.js';
+import { DataEvents, StateFilterEvents } from '../../www/js/core/EventRegistry.js';
 
 function makeDataServiceMock(overrides = {}) {
   const getColorMappings = vi.fn(async () => ({ projectColors: {}, teamColors: {} }));
@@ -96,9 +96,12 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().baseline.iterationsByProject).toEqual({
       p1: [{ id: 'iter-1' }],
     });
-    expect(store.getState().capacity.projectDaily.length).toBeGreaterThan(0);
+    expect(Array.isArray(store.getState().capacity.projectDaily)).toBe(true);
+    expect(store.getState().selection.projectIds).toEqual([]);
+    expect(store.getState().selection.teamIds).toEqual([]);
 
     expect(bus.emit).toHaveBeenCalledWith(DataEvents.LOADED);
+    expect(bus.emit).toHaveBeenCalledWith(StateFilterEvents.CHANGED);
     expect(bus.emit).toHaveBeenCalledWith(
       DataCommandEvents.BASELINE_HYDRATED,
       expect.objectContaining({ revision: expect.any(Number) })

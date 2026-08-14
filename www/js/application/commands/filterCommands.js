@@ -154,7 +154,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       if (recompute) recompute();
       if (!options?.suppressEvents) {
         bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(StateFilterEvents.CHANGED, nextSelection);
+        bus?.emit?.(StateFilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
       }
     },

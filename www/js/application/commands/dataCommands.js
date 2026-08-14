@@ -108,35 +108,6 @@ function deriveFeatureStateNames(source, baselineFeatures) {
   return Array.from(featureStates);
 }
 
-function deriveOrderedFeatureStateNames(projects, baselineFeatures) {
-  const configured = [];
-  const seen = new Set();
-
-  for (const project of Array.isArray(projects) ? projects : []) {
-    const raw = project?.state_display_sequence || [];
-    if (!Array.isArray(raw)) continue;
-
-    for (const item of raw) {
-      if (!item || typeof item !== 'object' || !Array.isArray(item.types)) continue;
-      for (const stateName of item.types) {
-        const value = String(stateName || '').trim();
-        if (!value || seen.has(value)) continue;
-        seen.add(value);
-        configured.push(value);
-      }
-    }
-  }
-
-  for (const feature of Array.isArray(baselineFeatures) ? baselineFeatures : []) {
-    const stateName = String(feature?.state || '').trim();
-    if (!stateName || seen.has(stateName)) continue;
-    seen.add(stateName);
-    configured.push(stateName);
-  }
-
-  return configured;
-}
-
 export function createDataCommands(store, bus, dataService, legacyStateRef = null) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
@@ -318,13 +289,6 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       }));
 
       const revision = Date.now();
-      const allProjectIds = hydratedProjects.map((project) => String(project.id));
-      const allTeamIds = hydratedTeams.map((team) => String(team.id));
-      const allFeatureStateNames = deriveOrderedFeatureStateNames(
-        hydratedProjects,
-        featuresWithRank
-      );
-
       store.setState(
         (state) => ({
           ...state,
@@ -343,12 +307,9 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
           },
           selection: {
             ...state.selection,
-            projectIds: state.selection?.projectIds ?? allProjectIds,
-            teamIds: state.selection?.teamIds ?? allTeamIds,
-            featureStateNames:
-              Array.isArray(state.selection?.featureStateNames) && state.selection.featureStateNames.length > 0
-                ? state.selection.featureStateNames
-                : allFeatureStateNames,
+            projectIds: state.selection.projectIds,
+            teamIds: state.selection.teamIds,
+            featureStateNames: state.selection.featureStateNames
           },
         }),
         false,
@@ -357,7 +318,7 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
 
       this.recomputeCapacity();
 
-      bus.emit(StateFilterEvents.CHANGED, allFeatureStateNames);
+      bus.emit(StateFilterEvents.CHANGED);
       bus.emit(DataEvents.LOADED);
       bus.emit(DataCommandEvents.BASELINE_HYDRATED, { revision });
 

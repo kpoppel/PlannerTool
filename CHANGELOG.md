@@ -13,6 +13,7 @@ Template - do not change :
 ### Changed
 - Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 ### Fixed
+- Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
 ---
 
 ## [v5.0.0] - unreleased
