@@ -63,49 +63,10 @@ async function callStrict(dataService, methodName, ...args) {
   return { ok: true, data: result.data };
 }
 
-function getExplicitOrDefaultSelectedIds(items) {
-  const list = Array.isArray(items) ? items : [];
-  const hasExplicitSelection = list.some((item) => typeof item?.selected === 'boolean');
-  const allIds = list
-    .filter((item) => item?.id !== null && item?.id !== undefined)
-    .map((item) => String(item.id));
-
-  if (!allIds.length) {
-    return [];
-  }
-
-  if (!hasExplicitSelection) {
-    return allIds;
-  }
-
-  const selectedIds = list
-    .filter((item) => item?.selected === true && item?.id !== null && item?.id !== undefined)
-    .map((item) => String(item.id));
-
-  return selectedIds.length > 0 ? selectedIds : allIds;
-}
-
 function derivePaletteColor(item, mappedColor, fallbackIndex) {
   if (item?.color) return item.color;
   if (mappedColor) return mappedColor;
   return PALETTE[fallbackIndex % PALETTE.length] || '#3498db';
-}
-
-function deriveFeatureStateNames(source, baselineFeatures) {
-  const selectedStates = Array.from(source?.selectedFeatureStateFilter || []).map((name) =>
-    String(name)
-  );
-  if (selectedStates.length > 0) {
-    return selectedStates;
-  }
-
-  const featureStates = new Set();
-  for (const feature of baselineFeatures || []) {
-    const stateName = feature?.state;
-    if (!stateName) continue;
-    featureStates.add(String(stateName));
-  }
-  return Array.from(featureStates);
 }
 
 function deriveOrderedFeatureStateNames(projects, features) {
@@ -142,7 +103,7 @@ function deriveOrderedFeatureStateNames(projects, features) {
   return ordered;
 }
 
-export function createDataCommands(store, bus, dataService, legacyStateRef = null) {
+export function createDataCommands(store, bus, dataService) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
   function deriveEffectiveFeaturesFromState(state) {
@@ -406,6 +367,8 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
         name: 'Baseline',
         readonly: true,
         overrides: {},
+        groupOverrides: {},
+        scenarioGroups: [],
       };
 
       store.setState(
@@ -413,7 +376,10 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
           ...state,
           scenarios: {
             ...state.scenarios,
-            items: [baseline, ...scenarioItems.filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null)],
+            items: [
+              baseline,
+              ...scenarioItems.filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null),
+            ],
             activeId: hasActiveId ? options.activeId : state.scenarios.activeId,
           },
         }),
@@ -434,115 +400,5 @@ export function createDataCommands(store, bus, dataService, legacyStateRef = nul
       };
     },
 
-    async bootstrapFromLegacyState(legacyState = null) {
-      const source = legacyState || legacyStateRef || null;
-      if (!source) {
-        return {
-          ok: false,
-          error: {
-            code: 'missing_legacy_state',
-            message: 'bootstrapFromLegacyState requires a legacy state object',
-          },
-        };
-      }
-
-      if (typeof source.initState === 'function') {
-        await source.initState();
-      }
-
-      // Use working copies (source.projects/teams) which have colors applied by ColorService.
-      // deriveItemsWithSelection overwrites the selected flag so stale selection is harmless.
-      const baselineResult = await this.hydrateBaseline({
-        preloaded: {
-          projects: Array.isArray(source.projects) && source.projects.length > 0
-            ? source.projects
-            : Array.isArray(source.baselineProjects) ? source.baselineProjects : [],
-          teams: Array.isArray(source.teams) && source.teams.length > 0
-            ? source.teams
-            : Array.isArray(source.baselineTeams) ? source.baselineTeams : [],
-          features: Array.isArray(source.baselineFeatures) ? source.baselineFeatures : [],
-          iterationSetsById: source.iterationSetsById || {},
-        },
-      });
-      if (!baselineResult?.ok) return baselineResult;
-
-      const scenariosResult = await this.hydrateScenarioData({
-        preloadedItems: Array.isArray(source.scenarios) ? source.scenarios : [],
-        activeId: source.activeScenarioId || 'baseline',
-      });
-      if (!scenariosResult?.ok) return scenariosResult;
-
-      const sourceProjects = Array.isArray(source.projects) ? source.projects : [];
-      const sourceTeams = Array.isArray(source.teams) ? source.teams : [];
-      const sourceBaselineFeatures =
-        Array.isArray(source.baselineFeatures) ? source.baselineFeatures : [];
-
-      const projectIds = getExplicitOrDefaultSelectedIds(sourceProjects);
-      const teamIds = getExplicitOrDefaultSelectedIds(sourceTeams);
-      const featureStateNames = deriveFeatureStateNames(source, sourceBaselineFeatures);
-      const taskTypeNames = (source.availableTaskTypes || []).filter(
-        (typeName) => source?._viewService?.isTypeVisible?.(typeName) !== false
-      );
-      const hiddenTypes = (source.availableTaskTypes || []).filter(
-        (typeName) => source?._viewService?.isTypeVisible?.(typeName) === false
-      );
-      const taskFilters =
-        source?.taskFilterService?.getFilters?.() || {
-          schedule: null,
-          allocation: null,
-          hierarchy: null,
-          relations: null,
-        };
-      const viewService = source._viewService;
-      const expansion = source.expansionState || {};
-
-      store.setState(
-        (state) => ({
-          ...state,
-          selection: {
-            ...state.selection,
-            projectIds,
-            teamIds,
-            featureStateNames,
-            taskTypeNames,
-            taskFilters,
-            sidebarDisabled: source.getSidebarDisabledElements?.() || {},
-          },
-          view: {
-            ...state.view,
-            expansion: {
-              ...state.view.expansion,
-              parentChild: Boolean(expansion.expandParentChild),
-              relations: Boolean(expansion.expandRelations),
-              teamAllocated: Boolean(expansion.expandTeamAllocated),
-            },
-            options: {
-              ...state.view.options,
-              timelineScale: viewService?.timelineScale || 'months',
-              displayMode: viewService?.displayMode || 'normal',
-              condensedCards: (viewService?.displayMode || 'normal') !== 'normal',
-              packedMode: viewService?.displayMode === 'packed',
-              showDependencies: Boolean(viewService?.showDependencies),
-              featureSortMode: viewService?.featureSortMode || 'rank',
-              capacityViewMode: viewService?.capacityViewMode || 'team',
-              hiddenTypes,
-              showUnplannedWork: Boolean(viewService?.showUnplannedWork),
-              showOnlyProjectHierarchy: Boolean(viewService?.showOnlyProjectHierarchy),
-              showUnassignedCards: Boolean(viewService?.showUnassignedCards),
-              highlightFeatureRelationMode: Boolean(viewService?.highlightFeatureRelationMode),
-            },
-          },
-        }),
-        false,
-        'data.bootstrapFromLegacyState'
-      );
-
-      // Populate store.capacity so capacitySelectors reads store from the start.
-      this.recomputeCapacity();
-
-      return {
-        ok: true,
-      };
-    },
   };
 }

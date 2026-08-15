@@ -271,11 +271,10 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       }
 
       const result = await dataService.saveScenario(scenario);
-      if (result && Object.prototype.hasOwnProperty.call(result, 'ok')) {
+      if (result && Object.prototype.hasOwnProperty.call(result, 'ok') && result.ok === false) {
         return result;
       }
 
-      // Then update the local store with the cleared flag.
       store.setState(
         (state) => ({
           ...state,
@@ -291,7 +290,7 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
       bus.emit(ScenarioEvents.SAVED, { scenarioId: scenario.id });
       bus.emit(ScenarioEvents.UPDATED);
 
-      return result;
+      return result ?? { ok: true, data: scenario };
     },
 
     async refreshBaseline() {

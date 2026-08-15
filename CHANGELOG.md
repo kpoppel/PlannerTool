@@ -49,6 +49,7 @@ Template - do not change :
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
 
 ### Changed
+- Removed the legacy `bootstrapFromLegacyState` compatibility path and its direct test coverage; store-mode startup now relies on the active hydration commands instead of legacy state bridge logic.
 - Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.
 - Phase 7 follow-up: removed unused `ColorEvents.CHANGED` event wiring; retained payload-bearing contracts for `PluginEvents.*`, `SessionEvents.EXPIRED`, `BoardEvents.OVERLAY_OFFSET_CHANGED`, `DragEvents.*`, and `ConfigEvents.AUTOSAVE` where payload is the intentional transport contract or state-store parity surface.
 - Phase 7 lifecycle follow-up: migrated `ScenarioEvents.LIST`/`ACTIVATED`/`UPDATED`, `GroupEvents.LOADED`, and `DataEvents.LOADED` to signal-only emissions; receivers now read current scenario/group/data state via `sel`/`cmd` on receipt, while `DataEvents.SCENARIOS_CHANGED` and `DataEvents.SCENARIOS_DATA` remain data-bearing as backend ingress feeds.

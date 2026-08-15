@@ -207,15 +207,12 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveScenario(e, scenario) {
     e.stopPropagation();
     try {
-      await cmd.scenario.saveScenario(scenario.id);
-      // Code seems not needed.
-      //      const scenarios = sel.scenario.getScenarios();
-      //      if (!Array.isArray(scenarios)) {
-      //        throw new Error('ScenarioMenu expected a valid scenario list from the store');
-      //      }
+      const scenarios = sel.scenario.getScenarios();
+      if (!Array.isArray(scenarios)) {
+        throw new Error('ScenarioMenu expected a valid scenario list from the store');
+      }
 
-      //      this.scenarios = [...scenarios];
-      //      this.activeScenarioId = sel.scenario.getActiveScenarioId();
+      await cmd.scenario.saveScenario(scenario.id);
       this.requestUpdate();
       console.log('[ScenarioMenu] Saved scenario:', scenario.name, sel.scenario.getChangedScenarioIds());
     } catch (err) {
