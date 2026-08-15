@@ -1459,11 +1459,11 @@ export class DetailsPanelLit extends LitElement {
   render() {
     if (!this.open || !this.feature) return html`<div class="panel closed"></div>`;
     const feature = this.feature;
-    const projects = sel.selection.getProjects() || [];
-    const teams = sel.selection.getTeams() || [];
+    const projects = sel.selection.getProjects();
+    const teams = sel.selection.getTeams();
     const childrenByParent = sel.feature.getChildrenByParentMap();
     const stateColors = sel.filter.getFeatureStateColors();
-    const availableFeatureStates = sel.filter.getAvailableFeatureStates() || [];
+    const availableFeatureStates = sel.filter.getAvailableFeatureStates();
     const stateColor = stateColors[feature.state];
     const stateOrig = feature && feature.original ? feature.original.state : undefined;
     const stateChanged = stateOrig !== undefined && feature.state !== stateOrig;

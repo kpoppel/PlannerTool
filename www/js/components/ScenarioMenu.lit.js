@@ -339,7 +339,7 @@ export class ScenarioMenuLit extends LitElement {
   async _onSaveToAzure(e, scenario) {
     e.stopPropagation();
     try {
-      const fullScenarios = sel.scenario.getScenarios() || [];
+      const fullScenarios = sel.scenario.getScenarios();
       const fullScenario = fullScenarios.find((s) => s.id === scenario.id) || scenario;
 
       const overrides = fullScenario.overrides || {};
@@ -375,7 +375,7 @@ export class ScenarioMenuLit extends LitElement {
           const committedMembers = new Set((op.group.members || []).map(String));
           // All members originally in the scenario group, including any that were
           // deselected in the modal and therefore not in committedMembers.
-          const activeScen = sel.scenario?.getActiveScenario?.();
+          const activeScen = sel.scenario.getActiveScenario();
           const originalMembers = (
             (activeScen?.scenarioGroups || []).find((g) => String(g.id) === String(op.group.id))
               ?.members || []
@@ -414,13 +414,12 @@ export class ScenarioMenuLit extends LitElement {
             if (op.group.plan_id) affectedPlanIds.add(String(op.group.plan_id));
           }
         } else if (op.type === 'update' && op.groupId) {
-          const activeScen = sel.scenario?.getActiveScenario?.();
+          const activeScen = sel.scenario.getActiveScenario();
           const updatePayload = { ...(op.fields || {}) };
 
           // Apply any committed member deltas to compute the new full members list.
           if (op.memberDeltas?.length) {
-            const baseGroup =
-              sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
+            const baseGroup = sel.group.getGroupById(op.groupId);
             const baseMembers = new Set((baseGroup?.members || []).map(String));
             for (const { taskId, op: delta } of op.memberDeltas) {
               if (delta === 'add') baseMembers.add(String(taskId));
@@ -447,15 +446,15 @@ export class ScenarioMenuLit extends LitElement {
             }
           }
 
-          const g = sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
+          const g = sel.group.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         } else if (op.type === 'delete' && op.groupId) {
           await dataService.deleteGroup(op.groupId);
-          const activeScen = sel.scenario?.getActiveScenario?.();
+          const activeScen = sel.scenario.getActiveScenario();
           if (activeScen?.groupOverrides?.[op.groupId]) {
             delete activeScen.groupOverrides[op.groupId];
           }
-          const g = sel.group?.getGroupById?.(op.groupId) || groupService.getGroupById(op.groupId);
+          const g = sel.group.getGroupById(op.groupId);
           if (g?.plan_id) affectedPlanIds.add(String(g.plan_id));
         }
       }

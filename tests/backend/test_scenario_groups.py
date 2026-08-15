@@ -60,13 +60,15 @@ def test_scenario_with_scenario_groups_saves_and_loads(client):
     assert sg['members'] == ['task-100', 'task-200']
 
 
-def test_scenario_without_scenario_groups_is_left_as_is(client):
-    """Legacy scenarios are not silently repaired in the app/server layer."""
+def test_scenario_without_scenario_groups_is_normalized_by_server(client):
+    """The server must supply the canonical scenario contract even for legacy payloads."""
     scenario = {'name': 'No groups', 'overrides': {}}
     saved = _save_scenario(client, scenario).json()
     loaded = _load_scenario(client, saved['id']).json()
-    assert loaded.get('groupOverrides') is None
-    assert loaded.get('scenarioGroups') is None
+    assert loaded.get('groupOverrides') == {}
+    assert loaded.get('scenarioGroups') == []
+    assert loaded.get('filters') == {}
+    assert loaded.get('view') == {}
 
 
 def test_scenario_can_update_scenario_groups(client):
@@ -122,15 +124,17 @@ def test_scenario_groups_empty_list_round_trips(client):
     assert sg is None or sg == []
 
 
-def test_legacy_scenario_remains_legacy_until_migrated(client):
-    """The runtime layer intentionally leaves legacy payloads unchanged until migration runs."""
+def test_legacy_scenario_is_normalized_on_load_and_update(client):
+    """The server should always return the canonical scenario contract for persisted data."""
     scenario = {'name': 'Legacy scenario', 'overrides': {}}
     saved = _save_scenario(client, scenario).json()
     scenario_id = saved['id']
 
     loaded = _load_scenario(client, scenario_id).json()
-    assert loaded.get('groupOverrides') is None
-    assert loaded.get('scenarioGroups') is None
+    assert loaded.get('groupOverrides') == {}
+    assert loaded.get('scenarioGroups') == []
+    assert loaded.get('filters') == {}
+    assert loaded.get('view') == {}
 
     updated = _save_scenario(client, {'id': scenario_id, 'name': 'Legacy scenario', 'overrides': {}, 'groupOverrides': {}, 'scenarioGroups': []}).json()
     assert updated['id'] == scenario_id

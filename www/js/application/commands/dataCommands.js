@@ -290,31 +290,45 @@ export function createDataCommands(store, bus, dataService) {
       );
 
       store.setState(
-        (state) => ({
-          ...state,
-          lifecycle: {
-            ...state.lifecycle,
-            status: 'ready',
-            error: null,
-          },
-          baseline: {
-            ...state.baseline,
-            revision,
-            projects: hydratedProjects,
-            teams: hydratedTeams,
-            features: featuresWithRank,
-            iterationsByProject: iterationSetsById,
-          },
-          selection: {
-            ...state.selection,
-            projectIds: state.selection.projectIds,
-            teamIds: state.selection.teamIds,
-            featureStateNames: Array.isArray(state.selection.featureStateNames) &&
-              state.selection.featureStateNames.length > 0
-              ? state.selection.featureStateNames
-              : defaultFeatureStateNames,
-          },
-        }),
+        (state) => {
+          const nextGroupsByPlanId = { ...state.groups.byPlanId };
+          for (const project of hydratedProjects) {
+            const planId = String(project.id);
+            if (!Object.prototype.hasOwnProperty.call(nextGroupsByPlanId, planId)) {
+              nextGroupsByPlanId[planId] = [];
+            }
+          }
+
+          return {
+            ...state,
+            lifecycle: {
+              ...state.lifecycle,
+              status: 'ready',
+              error: null,
+            },
+            baseline: {
+              ...state.baseline,
+              revision,
+              projects: hydratedProjects,
+              teams: hydratedTeams,
+              features: featuresWithRank,
+              iterationsByProject: iterationSetsById,
+            },
+            groups: {
+              ...state.groups,
+              byPlanId: nextGroupsByPlanId,
+            },
+            selection: {
+              ...state.selection,
+              projectIds: state.selection.projectIds,
+              teamIds: state.selection.teamIds,
+              featureStateNames: Array.isArray(state.selection.featureStateNames) &&
+                state.selection.featureStateNames.length > 0
+                ? state.selection.featureStateNames
+                : defaultFeatureStateNames,
+            },
+          };
+        },
         false,
         'data.hydrateBaseline'
       );
@@ -362,6 +376,17 @@ export function createDataCommands(store, bus, dataService) {
       const scenarioItems = scenariosResult.data;
       const hasActiveId = Object.prototype.hasOwnProperty.call(options || {}, 'activeId');
 
+      const normalisedScenarioItems = scenarioItems
+        .filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null)
+        .map((scenario) => ({
+          ...scenario,
+          overrides: scenario.overrides ?? {},
+          filters: scenario.filters ?? {},
+          view: scenario.view ?? {},
+          groupOverrides: scenario.groupOverrides ?? {},
+          scenarioGroups: Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : [],
+        }));
+
       const baseline = {
         id: 'baseline',
         name: 'Baseline',
@@ -376,10 +401,7 @@ export function createDataCommands(store, bus, dataService) {
           ...state,
           scenarios: {
             ...state.scenarios,
-            items: [
-              baseline,
-              ...scenarioItems.filter((scenario) => scenario && typeof scenario === 'object' && scenario.id != null),
-            ],
+            items: [baseline, ...normalisedScenarioItems],
             activeId: hasActiveId ? options.activeId : state.scenarios.activeId,
           },
         }),

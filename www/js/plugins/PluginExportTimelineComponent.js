@@ -570,16 +570,16 @@ export class PluginExportTimeline extends LitElement {
     // Collect a seam-sourced snapshot from selector state used by timeline components.
     const out = {
       generatedAt: new Date().toISOString(),
-      projects: sel.selection?.getProjects?.() || [],
-      teams: sel.selection?.getTeams?.() || [],
-      capacityDates: sel.capacity?.getCapacityDates?.() || [],
-      projectDailyCapacity: sel.capacity?.getProjectDailyCapacity?.() || [],
-      teamDailyCapacity: sel.capacity?.getTeamDailyCapacity?.() || [],
-      features: sel.feature?.getEffectiveFeatures?.() || [],
+      projects: sel.selection.getProjects(),
+      teams: sel.selection.getTeams(),
+      capacityDates: sel.capacity.getCapacityDates(),
+      projectDailyCapacity: sel.capacity.getProjectDailyCapacity(),
+      teamDailyCapacity: sel.capacity.getTeamDailyCapacity(),
+      features: sel.feature.getEffectiveFeatures(),
       view: {
-        capacityMode: sel.view?.getCapacityViewMode?.(),
-        hiddenTypes: Array.from(sel.view?.getHiddenTypes?.() || []),
-        showDependencies: sel.view?.getShowDependencies?.(),
+        capacityMode: sel.view.getCapacityViewMode(),
+        hiddenTypes: Array.from(sel.view.getHiddenTypes()),
+        showDependencies: sel.view.getShowDependencies(),
       },
     };
     return out;

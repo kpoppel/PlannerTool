@@ -93,20 +93,20 @@ export class MainGraphLit extends LitElement {
     this._maingraphScrollScheduled = false;
     this._maingraphUnsubs = [];
     const buildSnapshot = () => {
-      const months = getTimelineMonths() || [];
+      const months = getTimelineMonths();
       // Use expansion-aware project IDs so the graph is consistent with the
       // feature cards shown on the board (e.g. when expand-by-allocation is on).
       const selectedProjectIds = sel.selection.getEffectiveSelectedProjectIds();
       return {
         months,
-        teams: sel.selection.getTeams() || [],
-        projects: sel.selection.getProjects() || [],
-        capacityDates: sel.capacity.getCapacityDates() || [],
-        teamDailyCapacity: sel.capacity.getTeamDailyCapacity() || [],
-        teamDailyCapacityMap: sel.capacity.getTeamDailyCapacityMap() || null,
-        projectDailyCapacity: sel.capacity.getProjectDailyCapacity() || [],
-        projectDailyCapacityMap: sel.capacity.getProjectDailyCapacityMap() || null,
-        totalOrgDailyPerTeamAvg: sel.capacity.getTotalOrgDailyPerTeamAvg() || [],
+        teams: sel.selection.getTeams(),
+        projects: sel.selection.getProjects(),
+        capacityDates: sel.capacity.getCapacityDates(),
+        teamDailyCapacity: sel.capacity.getTeamDailyCapacity(),
+        teamDailyCapacityMap: sel.capacity.getTeamDailyCapacityMap(),
+        projectDailyCapacity: sel.capacity.getProjectDailyCapacity(),
+        projectDailyCapacityMap: sel.capacity.getProjectDailyCapacityMap(),
+        totalOrgDailyPerTeamAvg: sel.capacity.getTotalOrgDailyPerTeamAvg(),
         capacityViewMode: sel.view.getCapacityViewMode(),
         selectedTeamIds: sel.selection.getSelectedTeamIds(),
         selectedProjectIds,
@@ -182,16 +182,16 @@ export class MainGraphLit extends LitElement {
     this._renderData = data;
 
     // Extract commonly used data fields (fall back to empty arrays/maps)
-    const months = data.months || [];
-    const teams = data.teams || [];
-    const allProjects = data.projects || [];
+    const months = data.months;
+    const teams = data.teams;
+    const allProjects = data.projects;
     // For project view rendering, we'll filter to only show type='project', but we calculate for all
-    const capacityDates = data.capacityDates || [];
-    const teamDailyCapacity = data.teamDailyCapacity || [];
+    const capacityDates = data.capacityDates;
+    const teamDailyCapacity = data.teamDailyCapacity;
     const teamDailyCapacityMap = data.teamDailyCapacityMap || null;
-    const projectDailyCapacity = data.projectDailyCapacity || [];
+    const projectDailyCapacity = data.projectDailyCapacity;
     const projectDailyCapacityMap = data.projectDailyCapacityMap || null;
-    const totalOrgDailyPerTeamAvg = data.totalOrgDailyPerTeamAvg || [];
+    const totalOrgDailyPerTeamAvg = data.totalOrgDailyPerTeamAvg;
     const capacityViewMode = data.capacityViewMode || 'team';
     const selectedTeamIds = new Set(
       data.selectedTeamIds || teams.filter((t) => t.selected).map((t) => t.id)
@@ -290,11 +290,9 @@ export class MainGraphLit extends LitElement {
       selectedProjectIds,
     } = stateSnapshot;
 
-    const selectedTeamIdSet = new Set(
-      Array.from(selectedTeamIds || []).map((id) => String(id))
-    );
+    const selectedTeamIdSet = new Set(Array.from(selectedTeamIds).map((id) => String(id)));
     const selectedProjectIdSet = new Set(
-      Array.from(selectedProjectIds || []).map((id) => String(id))
+      Array.from(selectedProjectIds).map((id) => String(id))
     );
 
     const MONTH_WIDTH = TIMELINE_CONFIG.monthWidth;

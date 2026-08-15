@@ -99,6 +99,10 @@ describe('application/commands/dataCommands', () => {
     expect(Array.isArray(store.getState().capacity.projectDaily)).toBe(true);
     expect(store.getState().selection.projectIds).toEqual([]);
     expect(store.getState().selection.teamIds).toEqual([]);
+    expect(store.getState().groups.byPlanId).toEqual({
+      p1: [],
+      p2: [],
+    });
 
     expect(bus.emit).toHaveBeenCalledWith(DataEvents.LOADED);
     expect(bus.emit).toHaveBeenCalledWith(StateFilterEvents.CHANGED);
@@ -207,10 +211,20 @@ describe('application/commands/dataCommands', () => {
       {
         id: 's1',
         name: 'S1',
+        overrides: {},
+        filters: {},
+        view: {},
+        groupOverrides: {},
+        scenarioGroups: [],
       },
       {
         id: 's2',
         name: 'S2',
+        overrides: {},
+        filters: {},
+        view: {},
+        groupOverrides: {},
+        scenarioGroups: [],
       },
     ]);
     expect(store.getState().scenarios.changedIds).toEqual([]);
@@ -219,7 +233,7 @@ describe('application/commands/dataCommands', () => {
     });
   });
 
-  it('hydrateScenarioData preserves legacy payload shape until migration repairs it', async () => {
+  it('hydrateScenarioData normalizes missing scenario metadata to the canonical shape', async () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
@@ -235,13 +249,16 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().scenarios.items[1]).toMatchObject({
       id: 's1',
       name: 'S1',
+      overrides: {},
+      filters: {},
+      view: {},
+      groupOverrides: {},
+      scenarioGroups: [],
     });
     expect(store.getState().scenarios.changedIds).toEqual([]);
-    expect(store.getState().scenarios.items[1]).not.toHaveProperty('groupOverrides');
-    expect(store.getState().scenarios.items[1]).not.toHaveProperty('scenarioGroups');
   });
 
-  it('hydrateScenarioData preserves null server metadata instead of manufacturing empty values', async () => {
+  it('hydrateScenarioData normalizes null server metadata to the canonical shape', async () => {
     const dataService = makeDataServiceMock({
       loadAllScenarios: {
         ok: true,
@@ -257,8 +274,11 @@ describe('application/commands/dataCommands', () => {
     expect(store.getState().scenarios.items[1]).toMatchObject({
       id: 's1',
       name: 'S1',
-      groupOverrides: null,
-      scenarioGroups: null,
+      overrides: {},
+      filters: {},
+      view: {},
+      groupOverrides: {},
+      scenarioGroups: [],
     });
     expect(store.getState().scenarios.changedIds).toEqual([]);
   });
@@ -300,6 +320,40 @@ describe('application/commands/dataCommands', () => {
     expect(dataService.callRestResult).not.toHaveBeenCalled();
     expect(store.getState().baseline.projects).toEqual([{ id: 'p10', color: expect.any(String) }]);
     expect(store.getState().baseline.features).toEqual([{ id: 'f10', originalRank: 0 }]);
+  });
+
+  it('hydrateScenarioData accepts preloaded items without calling dataService', async () => {
+    const dataService = makeDataServiceMock();
+    const bus = { emit: vi.fn() };
+    const commands = createDataCommands(store, bus, dataService);
+
+    const result = await commands.hydrateScenarioData({
+      preloadedItems: [{ id: 's10', name: 'S10' }],
+      activeId: 's10',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(dataService.callRestResult).not.toHaveBeenCalled();
+    expect(store.getState().scenarios.items).toEqual([
+      {
+        id: 'baseline',
+        name: 'Baseline',
+        readonly: true,
+        overrides: {},
+        groupOverrides: {},
+        scenarioGroups: [],
+      },
+      {
+        id: 's10',
+        name: 'S10',
+        overrides: {},
+        filters: {},
+        view: {},
+        groupOverrides: {},
+        scenarioGroups: [],
+      },
+    ]);
+    expect(store.getState().scenarios.activeId).toBe('s10');
   });
 
   it('hydrateBaseline fails loudly on ok Result with invalid projects shape and does not mutate state', async () => {
@@ -382,6 +436,12 @@ describe('application/commands/dataCommands', () => {
       },
       {
         id: 's10',
+        name: undefined,
+        overrides: {},
+        filters: {},
+        view: {},
+        groupOverrides: {},
+        scenarioGroups: [],
       },
     ]);
     expect(store.getState().scenarios.changedIds).toEqual([]);

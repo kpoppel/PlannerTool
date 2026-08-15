@@ -391,8 +391,8 @@ class FeatureBoard extends LitElement {
   }
 
   _featurePassesFilters(feature, childrenMap, allFeatures = []) {
-    const projects = sel.selection.getProjects() || [];
-    const expansionState = sel.view.getExpansionState() || {};
+    const projects = sel.selection.getProjects();
+    const expansionState = sel.view.getExpansionState();
     const hasExpansion =
       expansionState.expandParentChild ||
       expansionState.expandRelations ||
@@ -549,15 +549,15 @@ class FeatureBoard extends LitElement {
     const childrenMap = this._buildChildrenMap(sourceFeatures);
     const months = getTimelineMonths();
     const isPacked = sel.view.getPackedMode();
-    const expansionState = sel.view.getExpansionState() || {};
+    const expansionState = sel.view.getExpansionState();
     const visibleFeatures = [];
     for (const feature of sourceFeatures) {
       if (!this._featurePassesFilters(feature, childrenMap, sourceFeatures)) continue;
       if (isPacked && (!feature.start || !feature.end)) continue;
       visibleFeatures.push(feature);
     }
-    const selectedProjects = sel.selection.getProjects() || [];
-    const selectedTeams = sel.selection.getTeams() || [];
+    const selectedProjects = sel.selection.getProjects();
+    const selectedTeams = sel.selection.getTeams();
     const candidateSwimlanes = buildSwimlaneList(
       selectedProjects,
       selectedTeams,
@@ -696,7 +696,7 @@ class FeatureBoard extends LitElement {
 
         // Use group layout for plan/expanded-plan swimlanes that have groups.
         const planGroups = (swimlane.type === 'plan' || swimlane.type === 'expanded-plan')
-          ? (sel.group?.getEffectiveGroups?.(String(swimlane.id)) || [])
+          ? sel.group.getEffectiveGroups(String(swimlane.id))
           : [];
 
         if (planGroups.length > 0) {
@@ -793,9 +793,7 @@ class FeatureBoard extends LitElement {
       // returns groups from ALL cached plans (including stale entries from plans
       // no longer selected), which would show empty group pills from other plans.
       const selectedPlanIds = selectedProjects.filter((p) => p.selected).map((p) => p.id);
-      const allGroups = selectedPlanIds.flatMap(
-        (id) => sel.group?.getEffectiveGroups?.(id) || []
-      );
+      const allGroups = selectedPlanIds.flatMap((id) => sel.group.getEffectiveGroups(id));
       renderList = [];
 
       if (allGroups.length > 0) {
@@ -1035,7 +1033,7 @@ class FeatureBoard extends LitElement {
             `${geom.width}px`
           : geom.width
         : '';
-      const projects = sel.selection.getProjects() || [];
+      const projects = sel.selection.getProjects();
       const project = projects.find((p) => p.id === feature.project);
 
       this._updateCachedRenderItemById(id, feature, {

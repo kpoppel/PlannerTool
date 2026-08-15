@@ -19,7 +19,40 @@ import { createCapacitySelectors } from './selectors/capacitySelectors.js';
 import { createScenarioSelectors } from './selectors/scenarioSelectors.js';
 import { createGroupSelectors } from './selectors/groupSelectors.js';
 import { dataService } from '../services/dataService.js';
-import { DataEvents } from '../core/EventRegistry.js';
+import { groupService } from '../services/GroupService.js';
+import { DataEvents, GroupEvents } from '../core/EventRegistry.js';
+
+function syncGroupsFromService() {
+  const nextByPlanId = {};
+  for (const [planId, groups] of groupService._groupsByPlan.entries()) {
+    nextByPlanId[String(planId)] = Array.isArray(groups) ? groups : [];
+  }
+
+  store.setState(
+    (state) => {
+      const currentGroups = state?.groups ?? { byPlanId: {} };
+      const currentByPlanId = Object.prototype.hasOwnProperty.call(currentGroups, 'byPlanId')
+        && currentGroups.byPlanId && typeof currentGroups.byPlanId === 'object'
+        ? currentGroups.byPlanId
+        : {};
+
+      return {
+        ...state,
+        groups: {
+          ...currentGroups,
+          byPlanId: {
+            ...currentByPlanId,
+            ...Object.fromEntries(
+              Object.entries(nextByPlanId).map(([planId, groups]) => [String(planId), Array.isArray(groups) ? groups : []])
+            ),
+          },
+        },
+      };
+    },
+    false,
+    'group.syncGroupsFromService'
+  );
+}
 
 function syncScenariosFromServer(payload) {
   const scenarios = Array.isArray(payload) ? payload : payload?.scenarios;
@@ -32,6 +65,18 @@ function syncScenariosFromServer(payload) {
         name: 'Baseline',
         readonly: true,
         overrides: {},
+        groupOverrides: {},
+        scenarioGroups: [],
+      };
+
+      const normalizedBaseline = {
+        ...baseline,
+        id: 'baseline',
+        name: baseline.name ?? 'Baseline',
+        readonly: baseline.readonly ?? true,
+        overrides: baseline.overrides ?? {},
+        groupOverrides: baseline.groupOverrides ?? {},
+        scenarioGroups: Array.isArray(baseline.scenarioGroups) ? baseline.scenarioGroups : [],
       };
 
       const mergedServerScenarios = scenarios
@@ -39,11 +84,19 @@ function syncScenariosFromServer(payload) {
         .map((scenario) => {
           const existing = (Array.isArray(state.scenarios.items) ? state.scenarios.items : [])
             .find((item) => String(item.id) === String(scenario.id));
-          return {
+          const normalized = {
             ...(existing ?? {}),
             ...scenario,
             id: String(scenario.id),
+            groupOverrides: scenario?.groupOverrides ?? existing?.groupOverrides ?? {},
+            scenarioGroups: Array.isArray(scenario?.scenarioGroups)
+              ? scenario.scenarioGroups
+              : Array.isArray(existing?.scenarioGroups)
+                ? existing.scenarioGroups
+                : [],
           };
+
+          return normalized;
         });
 
       const localOnlyScenarios = (Array.isArray(state.scenarios.items) ? state.scenarios.items : [])
@@ -54,7 +107,7 @@ function syncScenariosFromServer(payload) {
         ...state,
         scenarios: {
           ...state.scenarios,
-          items: [baseline, ...localOnlyScenarios, ...mergedServerScenarios],
+          items: [normalizedBaseline, ...localOnlyScenarios, ...mergedServerScenarios],
         },
       };
     },
@@ -65,6 +118,8 @@ function syncScenariosFromServer(payload) {
 
 bus.on(DataEvents.SCENARIOS_CHANGED, syncScenariosFromServer);
 bus.on(DataEvents.SCENARIOS_DATA, syncScenariosFromServer);
+bus.on(GroupEvents.LOADED, syncGroupsFromService);
+bus.on(GroupEvents.CHANGED, syncGroupsFromService);
 
 const pluginStateCommands = createPluginStateCommands(store);
 

@@ -977,7 +977,7 @@ export class SidebarLit extends LitElement {
   }
 
   _syncExpansionFromSelectors() {
-    const expansion = sel.view.getExpansionState?.() || {};
+    const expansion = sel.view.getExpansionState();
     this.expandParentChild = Boolean(expansion.expandParentChild);
     this.expandRelations = Boolean(expansion.expandRelations);
     this.expandTeamAllocated = Boolean(expansion.expandTeamAllocated);
@@ -1004,18 +1004,18 @@ export class SidebarLit extends LitElement {
     // Using shadow DOM; `static styles` will apply automatically.
     // Wire event handlers to update reactive properties
     this._onProjectsChanged = () => {
-      const projects = sel.selection.getProjects() || [];
+      const projects = sel.selection.getProjects();
       this.projects = [...projects];
       this._scheduleDataFunnelRecompute();
     };
     this._onTeamsChanged = () => {
-      const teams = sel.selection.getTeams() || [];
+      const teams = sel.selection.getTeams();
       this.teams = [...teams];
       this._scheduleDataFunnelRecompute();
     };
     this._onScenariosList = () => {
       // Scenario events are signals; selector state is the source of truth.
-      const full = sel.scenario.getScenarios() || [];
+      const full = sel.scenario.getScenarios();
       this.scenarios = Array.isArray(full) ? [...full] : [];
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
@@ -1023,7 +1023,7 @@ export class SidebarLit extends LitElement {
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
     this._onScenariosUpdated = () => {
-      const sc = sel.scenario.getScenarios() || [];
+      const sc = sel.scenario.getScenarios();
       this.scenarios = [...sc];
       this.activeScenarioId = sel.scenario.getActiveScenarioId();
     };
@@ -1058,7 +1058,7 @@ export class SidebarLit extends LitElement {
     // Recompute data funnel when features or filters change
     this._recomputeDataFunnelNow = () => {
       try {
-        const feats = sel.feature?.getEffectiveFeatures?.() || [];
+        const feats = sel.feature.getEffectiveFeatures();
         const selectedProjectIds = sel.selection.getSelectedProjectIds();
 
         // Selected tasks: features whose project is selected
@@ -1121,7 +1121,7 @@ export class SidebarLit extends LitElement {
 
     // Listen for task filter updates from TaskFilterService
     this._onTaskFiltersChanged = () => {
-      this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+      this.taskFilters = sel.filter.getTaskFilters();
       this.requestUpdate();
     };
     bus.on(FilterEvents.CHANGED, this._onTaskFiltersChanged);
@@ -1148,18 +1148,18 @@ export class SidebarLit extends LitElement {
     bus.on('filter:sidebar-disabled-cleared', this._onSidebarDisabledCleared);
 
     // When display mode changes to/from 'packed', disable or restore schedule.unplanned.
-    this._lastDisplayMode = sel.view.getDisplayMode() || 'normal';
+    this._lastDisplayMode = sel.view.getDisplayMode();
     this._onDisplayModeChanged = () => {
-      const mode = sel.view.getDisplayMode() || 'normal';
+      const mode = sel.view.getDisplayMode();
       const oldMode = this._lastDisplayMode;
       this._lastDisplayMode = mode;
       if (mode === 'packed' && oldMode !== 'packed') {
         // Snapshot the current unplanned state before disabling it.
-        const filters = sel.filter.getTaskFilters() || {};
+        const filters = sel.filter.getTaskFilters();
         this._packedModeUnplannedSnapshot = filters.schedule?.unplanned ?? true;
         // Uncheck unplanned: packed mode cannot display unplanned tasks.
         cmd.filter.setTaskFilter('schedule', 'unplanned', false);
-        this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+        this.taskFilters = sel.filter.getTaskFilters();
         // Disable the control so the user cannot re-enable it while in packed mode.
         const existing = this._disabledSidebar || {};
         const existingSchedule = (existing.taskFilters?.schedule || []).slice();
@@ -1235,7 +1235,7 @@ export class SidebarLit extends LitElement {
         activeViewId: sel.view.getActiveViewId(),
       });
       this._syncExpansionFromSelectors();
-      this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+      this.taskFilters = sel.filter.getTaskFilters();
       // Initialize state & task type filters
       this.availableFeatureStates = sel.filter.getAvailableFeatureStates();
       this._scheduleTaskTypesRecompute();
@@ -1381,7 +1381,7 @@ export class SidebarLit extends LitElement {
 
   _toggleTaskFilter(dimension, option) {
     cmd.filter.toggleTaskFilter(dimension, option);
-    this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+    this.taskFilters = sel.filter.getTaskFilters();
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     // Auto-save removed - use View feature instead
     this.requestUpdate();
@@ -1390,13 +1390,13 @@ export class SidebarLit extends LitElement {
   // Compute available task types from baseline/features (no hardcoded fallback)
   _computeAvailableTaskTypes() {
     try {
-      const baseline = sel.feature.getBaselineFeatures() || [];
+      const baseline = sel.feature.getBaselineFeatures();
       const types = new Set();
       baseline.forEach((f) => {
         const t = f.type || f.workItemType || f.work_item_type || null;
         if (t) types.add(String(t));
       });
-      const ordered = sel.feature.getAvailableTaskTypesOrdered?.() || [];
+      const ordered = sel.feature.getAvailableTaskTypesOrdered();
       this.availableTaskTypes = ordered.length > 0 ? ordered : Array.from(types).sort();
       // Default selection only on first initialization AND only when types are available.
       // Guard: if connectedCallback fires before data loads (availableTaskTypes=[]), do NOT
@@ -1448,7 +1448,7 @@ export class SidebarLit extends LitElement {
   // Programmatic API: set a task filter option checked/unchecked
   setTaskFilterChecked(dimension, option, checked) {
     cmd.filter.setTaskFilter(dimension, option, !!checked);
-    this.taskFilters = sel.filter.getTaskFilters() || this.taskFilters;
+    this.taskFilters = sel.filter.getTaskFilters();
     this._recomputeDataFunnel && this._recomputeDataFunnel();
     this.requestUpdate();
   }
@@ -1573,7 +1573,7 @@ export class SidebarLit extends LitElement {
   _renderTaskFilters() {
     // Render dynamic 'Task Filters' box with States and Types
     const states = this.availableFeatureStates || [];
-    const ordered = sel.feature.getAvailableTaskTypesOrdered?.() || [];
+    const ordered = sel.feature.getAvailableTaskTypesOrdered();
     const types = (ordered && ordered.length > 0) ? ordered : (this.availableTaskTypes || []);
     return html`${states.length === 0 && types.length === 0 ?
       html`<div class="section-description">
@@ -1585,7 +1585,7 @@ export class SidebarLit extends LitElement {
         <div class="filter-dimension-title">State</div>
         <div class="filter-options">
           ${(() => {
-            const colors = sel.filter.getFeatureStateColors?.() || {};
+            const colors = sel.filter.getFeatureStateColors();
             return states.map((s) => {
               const meta = colors && colors[s] ? colors[s] : null;
               const bg =

@@ -139,4 +139,56 @@ describe('application/imports', () => {
 
     expect(mod.sel.scenario.getChangedScenarioIds()).toEqual(['scen_123', 'scen_456']);
   });
+
+  it('syncs loaded group cache into the canonical store slice', async () => {
+    vi.resetModules();
+
+    const mod = await import('../../www/js/application/imports.js?group_store_sync=1');
+    const { bus } = await import('../../www/js/core/EventBus.js');
+    const { GroupEvents } = await import('../../www/js/core/EventRegistry.js');
+    const { store } = await import('../../www/js/application/store.js');
+    const { groupService } = await import('../../www/js/services/GroupService.js');
+
+    groupService._groupsByPlan.clear();
+    groupService._groupsByPlan.set('p1', [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }]);
+
+    bus.emit(GroupEvents.LOADED);
+
+    expect(store.getState().groups.byPlanId).toEqual({
+      p1: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
+    });
+    expect(mod.sel.group.getEffectiveGroups('p1')).toEqual([
+      expect.objectContaining({ id: 'g1', plan_id: 'p1' }),
+    ]);
+  });
+
+  it('preserves existing plan entries when only a subset of groups loads', async () => {
+    vi.resetModules();
+
+    const mod = await import('../../www/js/application/imports.js?group_store_sync_partial=1');
+    const { bus } = await import('../../www/js/core/EventBus.js');
+    const { GroupEvents } = await import('../../www/js/core/EventRegistry.js');
+    const { store } = await import('../../www/js/application/store.js');
+    const { groupService } = await import('../../www/js/services/GroupService.js');
+
+    store.setState({
+      ...store.getState(),
+      groups: {
+        ...store.getState().groups,
+        byPlanId: {
+          p1: [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }],
+          p2: [],
+        },
+      },
+    }, true, 'test.seed.partialGroups');
+
+    groupService._groupsByPlan.clear();
+    groupService._groupsByPlan.set('p1', [{ id: 'g1', plan_id: 'p1', name: 'Core', members: ['f1'] }]);
+
+    bus.emit(GroupEvents.LOADED);
+
+    expect(store.getState().groups.byPlanId.p2).toEqual([]);
+    expect(mod.sel.group.getEffectiveGroups('p2')).toEqual([]);
+  });
+
 });

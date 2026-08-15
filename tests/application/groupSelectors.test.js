@@ -94,7 +94,15 @@ describe('application/selectors/groupSelectors', () => {
     expect(selectors.getGroupById('g1')).toEqual(expect.objectContaining({ id: 'g1' }));
   });
 
-  it('store selectors fail loudly when active scenario omits required group metadata', () => {
+  it('store selectors return an empty group list for a plan that has not been hydrated yet', () => {
+    const selectors = createGroupSelectors(store);
+
+    expect(selectors.getEffectiveGroups('missing-plan')).toEqual([]);
+    expect(selectors.getGroupById('missing-group')).toBeNull();
+    expect(selectors.hasPlanLoaded('missing-plan')).toBe(false);
+  });
+
+  it('store selectors treat missing group metadata as empty defaults', () => {
     store.setState(
       {
         ...seedStore(),
@@ -109,6 +117,14 @@ describe('application/selectors/groupSelectors', () => {
 
     const selectors = createGroupSelectors(store);
 
-    expect(() => selectors.getPendingGroupChanges()).toThrow(TypeError);
+    expect(() => selectors.getPendingGroupChanges()).not.toThrow();
+    expect(selectors.getPendingGroupChanges()).toEqual([
+      expect.objectContaining({ type: 'create', group: expect.objectContaining({ id: 'tmp_1' }) }),
+    ]);
+    expect(selectors.getEffectiveGroups('p1')).toEqual([
+      expect.objectContaining({ id: 'g1' }),
+      expect.objectContaining({ id: 'g2' }),
+      expect.objectContaining({ id: 'tmp_1' }),
+    ]);
   });
 });
