@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyViewCommands,
-  createViewCommands,
-} from '../../www/js/application/commands/viewCommands.js';
+import { createViewCommands } from '../../www/js/application/commands/viewCommands.js';
 import {
   FeatureEvents,
   FilterEvents,
@@ -17,51 +14,9 @@ describe('application/commands/viewCommands', () => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
-  it('legacy branch delegates expansion command to state', () => {
-    const state = { setExpansionState: vi.fn() };
-    const commands = createLegacyViewCommands(state);
-
-    commands.setExpansionState({ expandParentChild: true }, { suppressEvents: true });
-
-    expect(state.setExpansionState).toHaveBeenCalledWith(
-      { expandParentChild: true },
-      { suppressEvents: true }
-    );
-  });
-
-  it('legacy branch delegates view service updates', () => {
-    const state = {
-      _viewService: {
-        setTimelineScale: vi.fn(),
-        setCondensedCards: vi.fn(),
-        setFeatureSortMode: vi.fn(),
-        setCapacityViewMode: vi.fn(),
-        setDisplayMode: vi.fn(),
-        setShowDependencies: vi.fn(),
-        setTypeVisibility: vi.fn(),
-      },
-    };
-    const commands = createLegacyViewCommands(state);
-
-    commands.setTimelineScale('quarters');
-    commands.setCondensedCards(true);
-    commands.setFeatureSortMode('date');
-    commands.setCapacityViewMode('project');
-    commands.setDisplayMode('packed');
-    commands.setShowDependencies(true);
-    commands.setTypeVisibility('feature', false, { suppressEvents: true });
-
-    expect(state._viewService.setTimelineScale).toHaveBeenCalledWith('quarters');
-    expect(state._viewService.setCondensedCards).toHaveBeenCalledWith(true);
-    expect(state._viewService.setFeatureSortMode).toHaveBeenCalledWith('date');
-    expect(state._viewService.setCapacityViewMode).toHaveBeenCalledWith('project');
-    expect(state._viewService.setDisplayMode).toHaveBeenCalledWith('packed');
-    expect(state._viewService.setShowDependencies).toHaveBeenCalledWith(true);
-    expect(state._viewService.setTypeVisibility).toHaveBeenCalledWith(
-      'feature',
-      false,
-      true
-    );
+  it('does not expose legacy compatibility adapters', async () => {
+    const mod = await import('../../www/js/application/commands/viewCommands.js');
+    expect(mod.createLegacyViewCommands).toBeUndefined();
   });
 
   it('store branch updates expansion slice and supports suppressEvents', () => {

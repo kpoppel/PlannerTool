@@ -91,26 +91,6 @@ function addActiveScenarioToChangedIds(state) {
   return Array.from(new Set([...(Array.isArray(state?.scenarios?.changedIds) ? state.scenarios.changedIds : []), String(activeId)]));
 }
 
-export function createLegacyFeatureCommands(state) {
-  return {
-    updateFeatureDates(updates) {
-      return state.updateFeatureDates(updates);
-    },
-
-    updateFeatureField(id, field, value) {
-      return state.updateFeatureField(id, field, value);
-    },
-
-    setScenarioOverride(featureId, start, end) {
-      return state.setScenarioOverride(featureId, start, end);
-    },
-
-    revertFeature(id) {
-      return state.revertFeature(id);
-    },
-  };
-}
-
 export function createFeatureCommands(store, bus, recomputeCapacity = null) {
   function recomputeAndEmitCapacity(changedFeatureIds = null) {
     if (typeof recomputeCapacity === 'function') {

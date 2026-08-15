@@ -1,45 +1,5 @@
 import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
 
-export function createLegacyFilterCommands(state) {
-  return {
-    setSelectedTaskTypes(types, options) {
-      return state.setSelectedTaskTypes(types, options);
-    },
-
-    setSelectedStates(states, options) {
-      return state.setSelectedStates(states, options);
-    },
-
-    setAllStatesSelected(selected, options) {
-      return state.setAllStatesSelected(selected, options);
-    },
-
-    toggleStateSelected(stateName, options) {
-      return state.toggleStateSelected(stateName, options);
-    },
-
-    setStateFilter(stateName, options) {
-      return state.setStateFilter(stateName, options);
-    },
-
-    setSidebarDisabledElements(map) {
-      return state.setSidebarDisabledElements(map);
-    },
-
-    clearSidebarDisabledElements() {
-      return state.clearSidebarDisabledElements();
-    },
-
-    setTaskFilter(dimension, option, selected) {
-      return state.taskFilterService?.setFilter?.(dimension, option, Boolean(selected));
-    },
-
-    toggleTaskFilter(dimension, option) {
-      return state.taskFilterService?.toggleFilter?.(dimension, option);
-    },
-  };
-}
-
 const DEFAULT_TASK_FILTERS = {
   schedule: { planned: true, unplanned: true },
   allocation: { allocated: true, unallocated: true },

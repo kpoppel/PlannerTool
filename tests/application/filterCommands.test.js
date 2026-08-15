@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { store } from '../../www/js/application/store.js';
 import { createInitialAppState } from '../../www/js/application/createInitialAppState.js';
-import {
-  createLegacyFilterCommands,
-  createFilterCommands,
-} from '../../www/js/application/commands/filterCommands.js';
+import { createFilterCommands } from '../../www/js/application/commands/filterCommands.js';
 import {
   FeatureEvents,
   FilterEvents,
@@ -16,33 +13,9 @@ describe('application/commands/filterCommands', () => {
     store.setState(createInitialAppState(), true, 'test.resetStore');
   });
 
-  it('legacy branch delegates filter command methods to state 1:1', () => {
-    const state = {
-      setSelectedTaskTypes: vi.fn(),
-      setSelectedStates: vi.fn(),
-      setAllStatesSelected: vi.fn(),
-      toggleStateSelected: vi.fn(),
-      setStateFilter: vi.fn(),
-      setSidebarDisabledElements: vi.fn(),
-      clearSidebarDisabledElements: vi.fn(),
-    };
-    const commands = createLegacyFilterCommands(state);
-
-    commands.setSelectedTaskTypes(['feature']);
-    commands.setSelectedStates(['New']);
-    commands.setAllStatesSelected(true);
-    commands.toggleStateSelected('New');
-    commands.setStateFilter('Doing');
-    commands.setSidebarDisabledElements({ states: ['Doing'] });
-    commands.clearSidebarDisabledElements();
-
-    expect(state.setSelectedTaskTypes).toHaveBeenCalledWith(['feature'], undefined);
-    expect(state.setSelectedStates).toHaveBeenCalledWith(['New'], undefined);
-    expect(state.setAllStatesSelected).toHaveBeenCalledWith(true, undefined);
-    expect(state.toggleStateSelected).toHaveBeenCalledWith('New', undefined);
-    expect(state.setStateFilter).toHaveBeenCalledWith('Doing', undefined);
-    expect(state.setSidebarDisabledElements).toHaveBeenCalledWith({ states: ['Doing'] });
-    expect(state.clearSidebarDisabledElements).toHaveBeenCalled();
+  it('does not expose legacy compatibility adapters', async () => {
+    const mod = await import('../../www/js/application/commands/filterCommands.js');
+    expect(mod.createLegacyFilterCommands).toBeUndefined();
   });
 
   it('store branch updates selection filter slices and supports suppressEvents', () => {

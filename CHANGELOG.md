@@ -19,6 +19,7 @@ Template - do not change :
 
 ## [v5.0.0] - unreleased
 ### Added
+- Tightened store-backed command contracts for filter, view, feature, group, and view-restore flows by removing dead legacy compatibility adapters and keeping the canonical store boundary strict.
 - `FeatureEvents.SELECTED` is now store-backed: `cmd.feature.setSelectedFeature(feature)` writes `featureDisplay.selectedId` to the store and emits a bare signal; subscribers read `sel.feature.getSelectedFeature()` / `sel.feature.getSelectedFeatureId()` instead of consuming the event payload.
 - Added `scripts/clear_scenarios.py` one-time maintenance utility to remove a single corrupted scenario entry (or all scenarios for a user) directly from local scenario storage and register metadata.
 - Added frontend migration tooling (audit script `scripts/frontend-audit.mjs`; removed confirmed-dead `PluginCostV2.js` / `PluginCostV2Component.js` files and `.test.old.js` stubs; stack assessment `backup/architecture_v5/STACK_ASSESSMENT.md` written (verdict: GO).

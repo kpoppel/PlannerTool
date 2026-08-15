@@ -181,22 +181,9 @@ describe('application/commands/featureCommands', () => {
     expect(scenario.overrides.f1).toBeUndefined();
   });
 
-  it('store-mode feature updates ignore legacy compatibility adapters', () => {
-    const bus = { emit: vi.fn() };
-    const legacyState = new Proxy(
-      {},
-      {
-        get(_target, prop) {
-          throw new Error(`legacy state should not be accessed in store mode: ${String(prop)}`);
-        },
-      }
-    );
-
-    const commands = createFeatureCommands(store, bus, legacyState);
-    const updated = commands.updateFeatureField('f2', 'state', 'Blocked');
-
-    expect(updated).toEqual({ id: 'f2', state: 'Blocked' });
-    expect(store.getState().scenarios.items[0].overrides.f2.state).toBe('Blocked');
+  it('does not expose legacy compatibility adapters', async () => {
+    const mod = await import('../../www/js/application/commands/featureCommands.js');
+    expect(mod.createLegacyFeatureCommands).toBeUndefined();
   });
 
   it('setSelectedFeature writes selectedId to featureDisplay and emits bare SELECTED', () => {

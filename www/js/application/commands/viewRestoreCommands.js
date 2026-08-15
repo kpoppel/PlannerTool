@@ -181,38 +181,6 @@ function writeLastViewId(viewId) {
   }
 }
 
-export function createLegacyViewRestoreCommands(state) {
-  return {
-    loadAndApplyView(viewId) {
-      return state.viewManagementService?.loadAndApplyView(viewId);
-    },
-
-    saveCurrentView(name, viewId = null) {
-      return state.viewManagementService?.saveCurrentView(name, viewId);
-    },
-
-    renameView(viewId, newName) {
-      return state.viewManagementService?.renameView(viewId, newName);
-    },
-
-    deleteView(viewId) {
-      return state.viewManagementService?.deleteView(viewId);
-    },
-
-    loadViews() {
-      return state.viewManagementService?.loadViews();
-    },
-
-    restoreLastView() {
-      return state.viewManagementService?.restoreLastView();
-    },
-
-    captureCurrentView() {
-      return state.captureCurrentView?.() || {};
-    },
-  };
-}
-
 export function createViewRestoreCommands(store, dataService, pluginStateCommands = null) {
   function setViews(views, activeId = null) {
     const nextViews = withSyntheticDefaultView(views);

@@ -35,52 +35,6 @@ function toUniqueStringArray(values) {
   return out;
 }
 
-function getLegacyViewService(state) {
-  return state?._viewService;
-}
-
-export function createLegacyViewCommands(state) {
-  return {
-    setExpansionState(options, runtimeOptions) {
-      return state.setExpansionState(options, runtimeOptions);
-    },
-
-    setTimelineScale(scale) {
-      return getLegacyViewService(state)?.setTimelineScale?.(scale);
-    },
-
-    setCondensedCards(condensed) {
-      return getLegacyViewService(state)?.setCondensedCards?.(Boolean(condensed));
-    },
-
-    setFeatureSortMode(mode) {
-      return getLegacyViewService(state)?.setFeatureSortMode?.(mode);
-    },
-
-    setCapacityViewMode(mode) {
-      return getLegacyViewService(state)?.setCapacityViewMode?.(mode);
-    },
-
-    setDisplayMode(mode) {
-      return getLegacyViewService(state)?.setDisplayMode?.(mode);
-    },
-
-    setShowDependencies(showDependencies) {
-      return getLegacyViewService(state)?.setShowDependencies?.(
-        Boolean(showDependencies)
-      );
-    },
-
-    setTypeVisibility(typeName, visible, runtimeOptions) {
-      return getLegacyViewService(state)?.setTypeVisibility?.(
-        typeName,
-        Boolean(visible),
-        Boolean(runtimeOptions?.suppressEvents)
-      );
-    },
-  };
-}
-
 export function createViewCommands(store, bus) {
   function setViewOptions(updater, actionName) {
     store.setState(

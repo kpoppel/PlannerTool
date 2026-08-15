@@ -168,11 +168,9 @@ describe('application/commands/viewRestoreCommands', () => {
     await cmd.loadViews();
     await cmd.loadAndApplyView('v1');
 
-    // Store should be updated directly from the view data
     expect(store.getState().view.activeId).toBe('v1');
     expect(store.getState().selection.projectIds).toEqual(['p1']);
     expect(store.getState().view.options.timelineScale).toBe('weeks');
-    // dataService was used
     expect(dataService.listViews).toHaveBeenCalled();
     expect(dataService.getView).toHaveBeenCalledWith('v1');
     expect(pluginStateCommands.restoreFromView).toHaveBeenCalledWith({});
@@ -180,6 +178,11 @@ describe('application/commands/viewRestoreCommands', () => {
     await cmd.saveCurrentView('Name');
     expect(dataService.saveView).toHaveBeenCalled();
     expect(pluginStateCommands.captureForView).toHaveBeenCalled();
+  });
+
+  it('does not expose legacy compatibility adapters', async () => {
+    const mod = await import('../../www/js/application/commands/viewRestoreCommands.js');
+    expect(mod.createLegacyViewRestoreCommands).toBeUndefined();
   });
 
   it('restoreLastView restores last active view payload and falls back to default', async () => {

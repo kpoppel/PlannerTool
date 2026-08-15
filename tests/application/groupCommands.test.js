@@ -58,4 +58,9 @@ describe('application/commands/groupCommands', () => {
       { taskId: 'f1', op: 'remove' },
     ]);
   });
+
+  it('does not expose legacy compatibility adapters', async () => {
+    const mod = await import('../../www/js/application/commands/groupCommands.js');
+    expect(mod.createLegacyGroupCommands).toBeUndefined();
+  });
 });
