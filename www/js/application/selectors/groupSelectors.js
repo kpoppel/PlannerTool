@@ -9,7 +9,7 @@ function getActiveScenario(state) {
 
 function getBaselineGroupsForPlan(state, planId) {
   const byPlanId = state.groups.byPlanId;
-  return byPlanId[String(planId)] || [];
+  return byPlanId[String(planId)];
 }
 
 function applyOverrides(groups, overrides) {
@@ -20,7 +20,7 @@ function applyOverrides(groups, overrides) {
       if (!override) return group;
 
       const { _deleted, memberDeltas, ...fields } = override;
-      let members = group.members || [];
+      let members = group.members;
       if (Array.isArray(memberDeltas) && memberDeltas.length > 0) {
         const memberSet = new Set(members.map(String));
         for (const delta of memberDeltas) {
@@ -43,8 +43,8 @@ function applyOverrides(groups, overrides) {
 function derivePendingGroupChanges(scenario) {
   if (!scenario) return [];
 
-  const scenarioGroups = Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : [];
-  const groupOverrides = scenario.groupOverrides && typeof scenario.groupOverrides === 'object' ? scenario.groupOverrides : {};
+  const scenarioGroups = scenario.scenarioGroups;
+  const groupOverrides = scenario.groupOverrides;
   const pending = [];
 
   for (const group of scenarioGroups) {
@@ -81,10 +81,8 @@ export function createGroupSelectors(store) {
       const scenario = getActiveScenario(state);
       if (!scenario) return baselineGroups;
 
-      const overrides = scenario.groupOverrides && typeof scenario.groupOverrides === 'object' ? scenario.groupOverrides : {};
-      const scenarioGroups = Array.isArray(scenario.scenarioGroups) ?
-        scenario.scenarioGroups.filter((group) => String(group.plan_id) === String(planId))
-        : [];
+      const overrides = scenario.groupOverrides;
+      const scenarioGroups = scenario.scenarioGroups.filter((group) => String(group.plan_id) === String(planId));
       return [...applyOverrides(baselineGroups, overrides), ...scenarioGroups];
     },
 
@@ -99,7 +97,7 @@ export function createGroupSelectors(store) {
       const scenario = getActiveScenario(state);
       if (!scenario) return null;
 
-      const overrides = scenario.groupOverrides && typeof scenario.groupOverrides === 'object' ? scenario.groupOverrides : {};
+      const overrides = scenario.groupOverrides;
       const byPlanId = state.groups.byPlanId;
       for (const groups of Object.values(byPlanId)) {
         const found = groups.find((group) => String(group.id) === key);
@@ -109,7 +107,7 @@ export function createGroupSelectors(store) {
         if (!override) return found;
         return applyOverrides([found], overrides)[0] || null;
       }
-      return (Array.isArray(scenario.scenarioGroups) ? scenario.scenarioGroups : []).find((group) => String(group.id) === key) || null;
+      return scenario.scenarioGroups.find((group) => String(group.id) === key) || null;
     },
 
     hasPlanLoaded(planId) {

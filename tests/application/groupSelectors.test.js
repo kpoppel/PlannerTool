@@ -93,4 +93,22 @@ describe('application/selectors/groupSelectors', () => {
     expect(selectors.getPendingGroupChanges()).toEqual([]);
     expect(selectors.getGroupById('g1')).toEqual(expect.objectContaining({ id: 'g1' }));
   });
+
+  it('store selectors fail loudly when active scenario omits required group metadata', () => {
+    store.setState(
+      {
+        ...seedStore(),
+        scenarios: {
+          activeId: 's1',
+          items: [{ id: 's1', name: 'Broken', scenarioGroups: [{ id: 'tmp_1', plan_id: 'p1', name: 'Draft' }] }],
+        },
+      },
+      true,
+      'test.resetStore.missingGroupMetadata'
+    );
+
+    const selectors = createGroupSelectors(store);
+
+    expect(() => selectors.getPendingGroupChanges()).toThrow(TypeError);
+  });
 });
