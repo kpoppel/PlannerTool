@@ -34,7 +34,13 @@ function deriveAvailableStatesFromFeatures(features) {
 }
 
 export function createFilterCommands(store, bus, recomputeCapacity = null) {
-  const recompute = typeof recomputeCapacity === 'function' ? recomputeCapacity : null;
+  const recompute = recomputeCapacity;
+
+  function requireRecomputeCapacity() {
+    if (typeof recompute !== 'function') {
+      throw new TypeError('filterCommands requires recomputeCapacity');
+    }
+  }
 
   return {
     setSelectedTaskTypes(types, options = {}) {
@@ -69,7 +75,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setSelectedStates'
       );
-      if (recompute) recompute();
+      requireRecomputeCapacity();
+      recompute();
       if (!options?.suppressEvents) {
         bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);
@@ -111,7 +118,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
           'filter.setAllStatesSelected'
         );
       }
-      if (recompute) recompute();
+      requireRecomputeCapacity();
+      recompute();
       if (!options?.suppressEvents) {
         bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(StateFilterEvents.CHANGED);
@@ -139,7 +147,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.toggleStateSelected'
       );
-      if (recompute) recompute();
+      requireRecomputeCapacity();
+      recompute();
       if (!options?.suppressEvents) {
         bus?.emit?.(FilterEvents.CHANGED);
         bus?.emit?.(FeatureEvents.UPDATED);

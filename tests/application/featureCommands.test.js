@@ -97,6 +97,11 @@ describe('application/commands/featureCommands', () => {
     expect(bus.emit).toHaveBeenCalledWith(ScenarioEvents.UPDATED);
   });
 
+  it('fails loudly when the recomputeCapacity seam is missing', () => {
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, undefined);
+    expect(() => commands.updateFeatureField('f2', 'state', 'Blocked')).toThrow(TypeError);
+  });
+
   it('setScenarioOverride sets start/end override pair', () => {
     const recomputeCapacity = vi.fn();
     const commands = createFeatureCommands(store, { emit: vi.fn() }, recomputeCapacity);
@@ -112,7 +117,7 @@ describe('application/commands/featureCommands', () => {
   });
 
   it('partial date updates preserve omitted values', () => {
-    const commands = createFeatureCommands(store, { emit: vi.fn() }, { recomputeCapacityMetrics: vi.fn() });
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
 
     commands.updateFeatureDates([{ id: 'f2', start: '2026-02-01' }]);
 
@@ -122,7 +127,7 @@ describe('application/commands/featureCommands', () => {
   });
 
   it('date updates enforce epic and child clamping semantics', () => {
-    const commands = createFeatureCommands(store, { emit: vi.fn() }, { recomputeCapacityMetrics: vi.fn() });
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
 
     commands.updateFeatureDates([{ id: 'f0', start: '2026-01-02', end: '2026-01-05' }]);
 
@@ -159,7 +164,7 @@ describe('application/commands/featureCommands', () => {
       'test.resetStore.nonDateChildOverride'
     );
 
-    const commands = createFeatureCommands(store, { emit: vi.fn() }, { recomputeCapacityMetrics: vi.fn() });
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
 
     commands.updateFeatureDates([{ id: 'f0', start: '2026-01-04', end: '2026-02-02' }]);
 
@@ -170,7 +175,7 @@ describe('application/commands/featureCommands', () => {
   });
 
   it('revertFeature removes override and reports success', () => {
-    const commands = createFeatureCommands(store, { emit: vi.fn() });
+    const commands = createFeatureCommands(store, { emit: vi.fn() }, vi.fn());
 
     const first = commands.revertFeature('f1');
     const second = commands.revertFeature('f1');

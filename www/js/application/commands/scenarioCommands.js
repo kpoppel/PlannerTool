@@ -78,14 +78,31 @@ function withScenarioChangedIds(state, scenarioId, changed) {
 }
 
 export function createScenarioCommands(store, bus, _legacyState = null, deps = {}) {
-  const hydrateBaseline = typeof deps.hydrateBaseline === 'function' ? deps.hydrateBaseline : null;
-  const recomputeCapacity = typeof deps.recomputeCapacity === 'function' ? deps.recomputeCapacity : null;
-  const invalidateCache = typeof deps.invalidateCache === 'function' ? deps.invalidateCache : () => dataService.invalidateCache();
+  const hydrateBaseline = deps.hydrateBaseline ?? null;
+  const recomputeCapacity = deps.recomputeCapacity ?? null;
+  const invalidateCache = deps.invalidateCache ?? null;
+
+  function requireHydrateBaseline() {
+    if (typeof hydrateBaseline !== 'function') {
+      throw new TypeError('scenarioCommands requires hydrateBaseline');
+    }
+  }
+
+  function requireRecomputeCapacity() {
+    if (typeof recomputeCapacity !== 'function') {
+      throw new TypeError('scenarioCommands requires recomputeCapacity');
+    }
+  }
+
+  function requireInvalidateCache() {
+    if (typeof invalidateCache !== 'function') {
+      throw new TypeError('scenarioCommands requires invalidateCache');
+    }
+  }
 
   function recomputeAndEmitCapacity() {
-    if (recomputeCapacity) {
-      recomputeCapacity();
-    }
+    requireRecomputeCapacity();
+    recomputeCapacity();
     bus?.emit?.(CapacityEvents.UPDATED);
   }
 
@@ -294,21 +311,18 @@ export function createScenarioCommands(store, bus, _legacyState = null, deps = {
     },
 
     async refreshBaseline() {
-      if (typeof hydrateBaseline === 'function') {
-        return hydrateBaseline();
-      }
-      return { ok: false, error: { message: 'baseline hydration not configured for store mode' } };
+      requireHydrateBaseline();
+      return hydrateBaseline();
     },
 
     async invalidateAndRefreshBaseline() {
+      requireInvalidateCache();
       const invalidation = await invalidateCache();
       if (invalidation && invalidation.ok === false) {
         console.warn('Scenario baseline invalidation failed, continuing with refresh', invalidation.error);
       }
-      if (typeof hydrateBaseline === 'function') {
-        return hydrateBaseline();
-      }
-      return { ok: false, error: { message: 'baseline hydration not configured for store mode' } };
+      requireHydrateBaseline();
+      return hydrateBaseline();
     },
   };
 }

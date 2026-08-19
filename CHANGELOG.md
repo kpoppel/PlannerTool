@@ -35,6 +35,7 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Tightened Phase 5 seam contracts so required internal `recomputeCapacity`, `hydrateBaseline`, and `invalidateCache` hooks fail loudly instead of silently proceeding.
 - Fixed group task ordering so tasks within a group respect the active Task Sort toggle instead of preserving insertion order when rendered.
 - Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
 - Fixed scenario menu activation regressions where scenario metadata sync events could overwrite full scenario payloads and drop overrides/group overrides, causing scenario clicks to render baseline data instead of scenario-applied values.

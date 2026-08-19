@@ -63,6 +63,8 @@ async function init() {
     await cmd.data.hydrateBaseline();
     await cmd.data.hydrateScenarioData();
     await cmd.viewRestore.restoreLastView();
+    // View restore updates selection/filter slices; recompute capacity so graph data is fresh.
+    cmd.data.recomputeCapacity();
 
     const mod = await import('./components/Sidebar.lit.js');
     await mod.initSidebar();

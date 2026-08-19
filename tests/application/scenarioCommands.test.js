@@ -41,7 +41,11 @@ describe('application/commands/scenarioCommands', () => {
 
   it('cloneScenario deep-clones mutable branches and emits updated/list', () => {
     const bus = { emit: vi.fn() };
-    const commands = createScenarioCommands(store, bus);
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     const created = commands.cloneScenario('s1', 'Alpha');
 
@@ -86,7 +90,11 @@ describe('application/commands/scenarioCommands', () => {
       }
     );
 
-    const commands = createScenarioCommands(store, bus, legacyState);
+    const commands = createScenarioCommands(store, bus, legacyState, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     expect(() => commands.activateScenario('s2')).not.toThrow();
     expect(store.getState().scenarios.activeId).toBe('s2');
@@ -96,7 +104,11 @@ describe('application/commands/scenarioCommands', () => {
     const bus = { emit: vi.fn() };
     const saved = { ok: true, data: { id: 's1' } };
     const saveSpy = vi.spyOn(dataService, 'saveScenario').mockResolvedValue(saved);
-    const commands = createScenarioCommands(store, bus);
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     const result = await commands.saveScenario('s1');
 
@@ -229,23 +241,35 @@ describe('application/commands/scenarioCommands', () => {
     expect(result).toEqual({ ok: true, data: { revision: 1 } });
   });
 
+  it('fails loudly when the hydrateBaseline seam is missing', async () => {
+    const commands = createScenarioCommands(store, { emit: vi.fn() }, null, {});
+    await expect(commands.refreshBaseline()).rejects.toThrow(TypeError);
+  });
+
   it('invalidateAndRefreshBaseline invalidates cache before hydration', async () => {
     const bus = { emit: vi.fn() };
-    const invalidateCache = vi.spyOn(dataService, 'invalidateCache').mockResolvedValue({ ok: true });
+    const invalidateCache = vi.fn().mockResolvedValue({ ok: true });
     const hydrateBaseline = vi.fn().mockResolvedValue({ ok: true, data: { revision: 2 } });
-    const commands = createScenarioCommands(store, bus, null, { hydrateBaseline });
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline,
+      recomputeCapacity: vi.fn(),
+      invalidateCache,
+    });
 
     const result = await commands.invalidateAndRefreshBaseline();
 
     expect(invalidateCache).toHaveBeenCalledTimes(1);
     expect(hydrateBaseline).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ ok: true, data: { revision: 2 } });
-    invalidateCache.mockRestore();
   });
 
   it('renameScenario enforces unique names and marks changed', () => {
     const bus = { emit: vi.fn() };
-    const commands = createScenarioCommands(store, bus);
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     const renamed = commands.renameScenario('s2', 'Alpha');
 
@@ -256,7 +280,11 @@ describe('application/commands/scenarioCommands', () => {
 
   it('deleteScenario removes the item and falls back to baseline when active', () => {
     const bus = { emit: vi.fn() };
-    const commands = createScenarioCommands(store, bus);
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     commands.deleteScenario('s1');
 
@@ -268,7 +296,11 @@ describe('application/commands/scenarioCommands', () => {
 
   it('markActiveScenarioChanged toggles the canonical changedIds set once and reports status', () => {
     const bus = { emit: vi.fn() };
-    const commands = createScenarioCommands(store, bus);
+    const commands = createScenarioCommands(store, bus, null, {
+      hydrateBaseline: vi.fn().mockResolvedValue({ ok: true }),
+      recomputeCapacity: vi.fn(),
+      invalidateCache: vi.fn().mockResolvedValue({ ok: true }),
+    });
 
     const first = commands.markActiveScenarioChanged();
     const second = commands.markActiveScenarioChanged();

@@ -7,9 +7,11 @@ import { bus } from '../core/EventBus.js';
 import { getTimelineMonths, TIMELINE_CONFIG } from '../components/Timeline.lit.js';
 import {
   CapacityEvents,
+  FeatureEvents,
   ProjectEvents,
   TeamEvents,
   FilterEvents,
+  StateFilterEvents,
   TimelineEvents,
   ViewEvents,
 } from '../core/EventRegistry.js';
@@ -141,12 +143,20 @@ export class MainGraphLit extends LitElement {
 
     // Subscribe to bus events (data changes → full rebuild)
     this._maingraphUnsubs.push(bus.on(CapacityEvents.UPDATED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(FeatureEvents.UPDATED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(ProjectEvents.CHANGED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(TeamEvents.CHANGED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(FilterEvents.CHANGED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(StateFilterEvents.CHANGED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(TimelineEvents.MONTHS, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_CHANGED, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(TimelineEvents.SCALE_COMPLETE, scheduleDataRender));
     this._maingraphUnsubs.push(bus.on(ViewEvents.CAPACITY_MODE, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.CONDENSED, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.DEPENDENCIES, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.DISPLAY_MODE, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.SORT_MODE, scheduleDataRender));
+    this._maingraphUnsubs.push(bus.on(ViewEvents.HIGHLIGHT_RELATIONS, scheduleDataRender));
 
     // Listen for scroll via boardCoords (fast scroll render without rebuilding snapshot)
     this._maingraphScrollUnsubscribe = boardCoords.subscribe(scheduleScrollRender);
@@ -182,22 +192,26 @@ export class MainGraphLit extends LitElement {
     this._renderData = data;
 
     // Extract commonly used data fields (fall back to empty arrays/maps)
-    const months = data.months;
-    const teams = data.teams;
-    const allProjects = data.projects;
+    const months = Array.isArray(data.months) ? data.months : [];
+    const teams = Array.isArray(data.teams) ? data.teams : [];
+    const allProjects = Array.isArray(data.projects) ? data.projects : [];
     // For project view rendering, we'll filter to only show type='project', but we calculate for all
-    const capacityDates = data.capacityDates;
-    const teamDailyCapacity = data.teamDailyCapacity;
+    const capacityDates = Array.isArray(data.capacityDates) ? data.capacityDates : [];
+    const teamDailyCapacity = Array.isArray(data.teamDailyCapacity) ? data.teamDailyCapacity : [];
     const teamDailyCapacityMap = data.teamDailyCapacityMap || null;
-    const projectDailyCapacity = data.projectDailyCapacity;
+    const projectDailyCapacity = Array.isArray(data.projectDailyCapacity) ? data.projectDailyCapacity : [];
     const projectDailyCapacityMap = data.projectDailyCapacityMap || null;
-    const totalOrgDailyPerTeamAvg = data.totalOrgDailyPerTeamAvg;
+    const totalOrgDailyPerTeamAvg = Array.isArray(data.totalOrgDailyPerTeamAvg) ? data.totalOrgDailyPerTeamAvg : [];
     const capacityViewMode = data.capacityViewMode || 'team';
     const selectedTeamIds = new Set(
-      data.selectedTeamIds || teams.filter((t) => t.selected).map((t) => t.id)
+      Array.isArray(data.selectedTeamIds)
+        ? data.selectedTeamIds
+        : teams.filter((t) => t?.selected).map((t) => t.id)
     );
     const selectedProjectIds = new Set(
-      data.selectedProjectIds || allProjects.filter((p) => p.selected).map((p) => p.id)
+      Array.isArray(data.selectedProjectIds)
+        ? data.selectedProjectIds
+        : allProjects.filter((p) => p?.selected).map((p) => p.id)
     );
     const selectedFeatureStateFilter = data.selectedFeatureStateFilter || null;
 

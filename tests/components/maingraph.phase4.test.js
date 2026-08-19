@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fixture, html } from '@open-wc/testing';
+import {
+  FeatureEvents,
+  StateFilterEvents,
+  TimelineEvents,
+  ViewEvents,
+} from '../../www/js/core/EventRegistry.js';
 
 const mockSel = vi.hoisted(() => ({
   selection: {
@@ -96,5 +102,20 @@ describe('MainGraph Phase 4 selector seam', () => {
 
     expect(mockBus.on).toHaveBeenCalled();
     expect(mockBoardCoords.subscribe).toHaveBeenCalled();
+  });
+
+  it('refreshes when feature mutations, state filters, or view toggles change', async () => {
+    const el = await fixture(html`<maingraph-lit></maingraph-lit>`);
+    await el.updateComplete;
+
+    const subscribedEvents = mockBus.on.mock.calls.map(([event]) => event);
+    expect(subscribedEvents).toContain(FeatureEvents.UPDATED);
+    expect(subscribedEvents).toContain(StateFilterEvents.CHANGED);
+    expect(subscribedEvents).toContain(ViewEvents.CAPACITY_MODE);
+    expect(subscribedEvents).toContain(ViewEvents.CONDENSED);
+    expect(subscribedEvents).toContain(ViewEvents.DEPENDENCIES);
+    expect(subscribedEvents).toContain(ViewEvents.SORT_MODE);
+    expect(subscribedEvents).toContain(ViewEvents.DISPLAY_MODE);
+    expect(subscribedEvents).toContain(TimelineEvents.SCALE_CHANGED);
   });
 });

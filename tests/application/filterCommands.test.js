@@ -44,14 +44,19 @@ describe('application/commands/filterCommands', () => {
       relations: { hasLinks: true, noLinks: true },
     });
 
-    const selectors = createFilterCommands(store, { emit: vi.fn() });
+    const selectors = createFilterCommands(store, { emit: vi.fn() }, vi.fn());
     expect(selectors.setTaskFilter).toBeTypeOf('function');
     expect(store.getState().selection.taskFilters.schedule).toEqual({ planned: true, unplanned: true });
   });
 
+  it('fails loudly when the recomputeCapacity seam is missing', () => {
+    const commands = createFilterCommands(store, { emit: vi.fn() }, undefined);
+    expect(() => commands.setSelectedStates(['Doing'])).toThrow(TypeError);
+  });
+
   it('emits the expected filter events for state and task filter toggles', () => {
     const bus = { emit: vi.fn() };
-    const commands = createFilterCommands(store, bus);
+    const commands = createFilterCommands(store, bus, vi.fn());
 
     commands.setSelectedStates(['New']);
     commands.toggleTaskFilter('schedule', 'planned');
@@ -85,7 +90,7 @@ describe('application/commands/filterCommands', () => {
     );
 
     const bus = { emit: vi.fn() };
-    const commands = createFilterCommands(store, bus);
+    const commands = createFilterCommands(store, bus, vi.fn());
     commands.setAllStatesSelected(true);
 
     expect(store.getState().selection.featureStateNames).toEqual(['New', 'Doing', 'Done']);

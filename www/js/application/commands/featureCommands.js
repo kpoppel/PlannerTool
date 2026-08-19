@@ -92,10 +92,15 @@ function addActiveScenarioToChangedIds(state) {
 }
 
 export function createFeatureCommands(store, bus, recomputeCapacity = null) {
-  function recomputeAndEmitCapacity(changedFeatureIds = null) {
-    if (typeof recomputeCapacity === 'function') {
-      recomputeCapacity(changedFeatureIds);
+  function requireRecomputeCapacity() {
+    if (typeof recomputeCapacity !== 'function') {
+      throw new TypeError('featureCommands requires recomputeCapacity');
     }
+  }
+
+  function recomputeAndEmitCapacity(changedFeatureIds = null) {
+    requireRecomputeCapacity();
+    recomputeCapacity(changedFeatureIds);
   }
 
   function emitFeatureMutation(eventPayload) {
