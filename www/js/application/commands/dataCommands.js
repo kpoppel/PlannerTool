@@ -6,6 +6,10 @@ import {
 import { CapacityCalculator } from '../../services/CapacityCalculator.js';
 import { ColorService, PALETTE } from '../../services/ColorService.js';
 import { featureFlags } from '../../config.js';
+import {
+  buildChildrenByParentMap,
+  deriveEffectiveFeatures,
+} from '../shared/featureProjection.js';
 
 // Passed as bus to the store-owned CapacityCalculator so it never double-emits.
 const NO_OP_BUS = { emit: () => {}, on: () => {}, off: () => {} };
@@ -106,32 +110,10 @@ function deriveOrderedFeatureStateNames(projects, features) {
 export function createDataCommands(store, bus, dataService) {
   const capacityCalculator = new CapacityCalculator(NO_OP_BUS);
 
-  function deriveEffectiveFeaturesFromState(state) {
-    const baseline = Array.isArray(state?.baseline?.features) ? state.baseline.features : [];
-    const activeId = state?.scenarios?.activeId ?? 'baseline';
-    const scenario = (state?.scenarios?.items || []).find((s) => s.id === activeId);
-    const overrides = scenario?.overrides || {};
-    return baseline.map((f) => {
-      const override = overrides[String(f?.id ?? '')];
-      return override ? { ...f, ...override } : { ...f };
-    });
-  }
-
-  function buildChildrenByParentMap(features) {
-    const map = new Map();
-    for (const f of Array.isArray(features) ? features : []) {
-      if (!f?.parentId) continue;
-      const key = String(f.parentId);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(String(f.id));
-    }
-    return map;
-  }
-
   return {
     recomputeCapacity(changedFeatureIds = null) {
       const state = store.getState();
-      const features = deriveEffectiveFeaturesFromState(state);
+      const features = deriveEffectiveFeatures(state, { includeDirtyMetadata: false });
       const teams = Array.isArray(state?.baseline?.teams) ? state.baseline.teams : [];
       const projects = Array.isArray(state?.baseline?.projects) ? state.baseline.projects : [];
       const selectedProjectIds = (state?.selection?.projectIds || []).map((id) => String(id));

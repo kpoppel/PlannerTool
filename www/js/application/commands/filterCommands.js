@@ -1,11 +1,5 @@
 import { FeatureEvents, FilterEvents, StateFilterEvents } from '../../core/EventRegistry.js';
-
-const DEFAULT_TASK_FILTERS = {
-  schedule: { planned: true, unplanned: true },
-  allocation: { allocated: true, unallocated: true },
-  hierarchy: { hasParent: true, noParent: true },
-  relations: { hasLinks: true, noLinks: true },
-};
+import { normalizeTaskFilters } from '../shared/taskFilters.js';
 
 function deriveAvailableStatesFromFeatures(features) {
   const out = [];
@@ -196,13 +190,9 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       let nextTaskFilters = {};
       store.setState(
         (state) => {
-          const currentFilters = {
-            ...DEFAULT_TASK_FILTERS,
-            ...(state.selection?.taskFilters || {}),
-          };
+          const currentFilters = normalizeTaskFilters(state.selection.taskFilters);
           const currentDimension = {
-            ...DEFAULT_TASK_FILTERS[dimension],
-            ...(currentFilters?.[dimension] || {}),
+            ...(currentFilters[dimension] || {}),
           };
           nextTaskFilters = {
             ...currentFilters,

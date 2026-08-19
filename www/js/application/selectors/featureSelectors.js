@@ -1,76 +1,12 @@
-function getScenarioItems(state) {
-  return state.scenarios.items;
-}
-
-function getActiveScenario(state) {
-  const activeId = state.scenarios.activeId;
-  if (!activeId) return null;
-  return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
-}
-
-function computeDirtyFields(base, override) {
-  const fields = [];
-  const normDate = (v) => v || null;
-  const normTags = (v) =>
-    String(v || '').split(';').map((t) => t.trim().toLowerCase()).filter(Boolean);
-  if ('start' in override && normDate(override.start) !== normDate(base.start)) fields.push('start');
-  if ('end' in override && normDate(override.end) !== normDate(base.end)) fields.push('end');
-  if (override.capacity && JSON.stringify(override.capacity) !== JSON.stringify(base.capacity))
-    fields.push('capacity');
-  if (override.state && override.state !== (base.state || '')) fields.push('state');
-  if (override.iterationPath !== undefined && override.iterationPath !== base.iterationPath)
-    fields.push('iterationPath');
-  if (
-    'tags' in override &&
-    JSON.stringify(normTags(override.tags)) !== JSON.stringify(normTags(base.tags))
-  )
-    fields.push('tags');
-  return fields;
-}
-
-function applyOverride(baseFeature, override) {
-  if (!override) return { ...baseFeature };
-  const changedFields = computeDirtyFields(baseFeature, override);
-  return {
-    ...baseFeature,
-    ...override,
-    scenarioOverride: true,
-    changedFields,
-    dirty: changedFields.length > 0,
-  };
-}
-
-function deriveEffectiveFeatures(state) {
-  const baselineFeatures = state.baseline.features;
-  const scenario = getActiveScenario(state);
-  const overrides = scenario.overrides;
-
-  return baselineFeatures.map((feature) => {
-    const key = String(feature.id ?? '');
-    const override = overrides[key];
-    return applyOverride(feature, override);
-  });
-}
+import {
+  buildChildrenByParentMap,
+  buildFeatureMap,
+  deriveEffectiveFeatures,
+} from '../shared/featureProjection.js';
+import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 
 function buildBaselineFeatureMap(state) {
-  const map = new Map();
-  for (const feature of state.baseline.features) {
-    if (!feature.id) continue;
-    map.set(String(feature.id), feature);
-  }
-  return map;
-}
-
-function buildChildrenByParentMap(features) {
-  const map = new Map();
-  for (const feature of features) {
-    const parentId = feature.parentId;
-    if (!parentId) continue;
-    const key = String(parentId);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(String(feature.id));
-  }
-  return map;
+  return buildFeatureMap(state.baseline.features);
 }
 
 function deriveAvailableTaskTypes(features) {
@@ -163,11 +99,6 @@ function makeCountsMap(features, predicate) {
   return counts;
 }
 
-function hasFeatureTeam(feature, teamId) {
-  const capacities = feature.capacity || [];
-  return capacities.some((item) => String(item.team ?? item.teamId ?? item.id) === String(teamId));
-}
-
 function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options = {}) {
   const expandedIds = normalizeIdSet(selectedFeatureIds);
   const childrenByParent = buildChildrenByParentMap(features);
@@ -202,7 +133,7 @@ function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options
     for (const feature of features) {
       if (!feature.id) continue;
       if (expandedIds.has(String(feature.id))) continue;
-      const matchesTeam = Array.from(selectedTeamIds).some((teamId) => hasFeatureTeam(feature, teamId));
+      const matchesTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
       if (!matchesTeam) continue;
       expandedIds.add(String(feature.id));
       teamAllocatedCount += 1;
@@ -297,7 +228,7 @@ export function createFeatureSelectors(store) {
     },
 
     getCountsForTeam(teamId) {
-      return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeam(feature, teamId));
+      return makeCountsMap(this.getEffectiveFeatures(), (feature) => hasFeatureTeamId(feature, teamId));
     },
 
     getSelectedFeatureId() {

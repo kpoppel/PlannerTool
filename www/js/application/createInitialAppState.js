@@ -1,3 +1,5 @@
+import { getAllTaskFiltersEnabled } from './shared/taskFilters.js';
+
 export function createInitialAppState() {
   return {
     lifecycle: {
@@ -27,12 +29,7 @@ export function createInitialAppState() {
       projectIds: [],
       teamIds: [],
       featureStateNames: [],
-      taskFilters: {
-        schedule: { planned: true, unplanned: true },
-        allocation: { allocated: true, unallocated: true },
-        hierarchy: { hasParent: true, noParent: true },
-        relations: { hasLinks: true, noLinks: true },
-      },
+      taskFilters: getAllTaskFiltersEnabled(),
       taskTypeNames: [],
       sidebarDisabled: {},
     },

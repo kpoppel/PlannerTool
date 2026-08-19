@@ -1,15 +1,7 @@
+import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
+
 function toStringArray(values) {
   return Array.from(values).map((v) => String(v));
-}
-
-function hasTeamAllocation(feature, selectedTeamIds) {
-  if (selectedTeamIds.size === 0) {
-    return false;
-  }
-
-  return feature.capacity.some((entry) => {
-    return Boolean(entry.team) && selectedTeamIds.has(String(entry.team));
-  });
 }
 
 function getTimelineScaleFromStore(state) {
@@ -154,7 +146,7 @@ function getExpandedFeatureSetFromStore(state) {
     for (const feature of features) {
       const featureId = String(feature.id ?? '');
       if (!featureId || baseIds.has(featureId) || phaseAdded.has(featureId) || expanded.has(featureId)) continue;
-      if (hasTeamAllocation(feature, selectedTeamIds)) {
+      if (hasFeatureTeamAllocation(feature, selectedTeamIds)) {
         expanded.add(featureId);
         phaseAdded.add(featureId);
       }

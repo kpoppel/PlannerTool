@@ -1,13 +1,4 @@
-function hasTeamAllocation(feature, selectedTeamIds) {
-  const capacities = feature.capacity;
-  for (const entry of capacities) {
-    const teamId = entry.team ?? entry.teamId ?? entry.id;
-    if (teamId && selectedTeamIds.has(String(teamId))) {
-      return true;
-    }
-  }
-  return false;
-}
+import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
 
 function deriveEffectiveProjectIdsFromStore(state) {
   const rawSelected = state.selection.projectIds.map((id) => String(id));
@@ -26,7 +17,7 @@ function deriveEffectiveProjectIdsFromStore(state) {
 
   for (const feature of state.baseline.features) {
     if (!feature.project) continue;
-    if (hasTeamAllocation(feature, selectedTeamIds)) {
+    if (hasFeatureTeamAllocation(feature, selectedTeamIds)) {
       derived.add(String(feature.project));
     }
   }

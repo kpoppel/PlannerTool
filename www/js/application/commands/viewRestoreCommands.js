@@ -8,6 +8,7 @@ import {
   ViewEvents,
   ViewManagementEvents,
 } from '../../core/EventRegistry.js';
+import { getAllTaskFiltersEnabled } from '../shared/taskFilters.js';
 
 function cloneValue(value) {
   return value == null ? null : structuredClone(value);
@@ -100,27 +101,6 @@ function deriveAvailableTaskTypes(snapshot) {
   return fromFeatures;
 }
 
-function getAllTaskFiltersEnabled() {
-  return {
-    schedule: {
-      planned: true,
-      unplanned: true,
-    },
-    allocation: {
-      allocated: true,
-      unallocated: true,
-    },
-    hierarchy: {
-      hasParent: true,
-      noParent: true,
-    },
-    relations: {
-      hasLinks: true,
-      noLinks: true,
-    },
-  };
-}
-
 function toSelectedIds(selectionMap) {
   if (!selectionMap || typeof selectionMap !== 'object') return [];
   return Object.entries(selectionMap)
@@ -149,9 +129,8 @@ function toSelectedMap(ids) {
   return Object.fromEntries((ids || []).map((id) => [String(id), true]));
 }
 
-function toActiveViewOptions(snapshot, existingViewOptions = {}) {
+function buildViewSnapshotOptions(snapshot, pluginState = {}) {
   return {
-    ...existingViewOptions,
     ...cloneValue(snapshot.view.options),
     selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
     selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
@@ -159,6 +138,14 @@ function toActiveViewOptions(snapshot, existingViewOptions = {}) {
     expandParentChild: Boolean(snapshot.view.expansion.parentChild),
     expandRelations: Boolean(snapshot.view.expansion.relations),
     expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
+    ...pluginState,
+  };
+}
+
+function toActiveViewOptions(snapshot, existingViewOptions = {}) {
+  return {
+    ...existingViewOptions,
+    ...buildViewSnapshotOptions(snapshot),
   };
 }
 
@@ -334,17 +321,8 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
 
     async saveCurrentView(name, viewId = null) {
       const snapshot = store.getState();
-      const pluginState = pluginStateCommands?.captureForView?.() || {};
-      const viewOptions = {
-        ...cloneValue(snapshot.view.options),
-        selectedFeatureStates: Array.from(snapshot.selection.featureStateNames),
-        selectedTaskTypes: Array.from(snapshot.selection.taskTypeNames),
-        taskFilters: cloneValue(snapshot.selection.taskFilters),
-        expandParentChild: Boolean(snapshot.view.expansion.parentChild),
-        expandRelations: Boolean(snapshot.view.expansion.relations),
-        expandTeamAllocated: Boolean(snapshot.view.expansion.teamAllocated),
-        ...(Object.keys(pluginState).length > 0 ? { pluginState } : {}),
-      };
+      const pluginState = pluginStateCommands.captureForView();
+      const viewOptions = buildViewSnapshotOptions(snapshot, pluginState);
       const payload = {
         id: viewId,
         name,
@@ -435,9 +413,7 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
 
     captureCurrentView() {
       const snapshot = store.getState();
-      return {
-        viewOptions: cloneValue(snapshot.view?.options || {}),
-      };
+      return buildViewSnapshotOptions(snapshot);
     },
   };
 }

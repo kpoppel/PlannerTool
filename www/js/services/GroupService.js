@@ -20,6 +20,7 @@
 import { bus } from '../core/EventBus.js';
 import { GroupEvents } from '../core/EventRegistry.js';
 import { dataService } from './dataService.js';
+import { deriveEffectiveGroupsForPlan } from '../application/shared/groupProjection.js';
 
 export class GroupService {
   constructor() {
@@ -92,34 +93,7 @@ export class GroupService {
   getEffectiveGroups(planId, scenario) {
     const key = String(planId);
     const baselineGroups = this._groupsByPlan.get(key) || [];
-    const groupOverrides = scenario?.groupOverrides || {};
-    const scenarioGroups = (scenario?.scenarioGroups || []).filter(
-      (g) => String(g.plan_id) === key
-    );
-
-    // Apply group overrides to baseline groups (non-destructively).
-    // Groups marked as deleted are excluded.
-    const effective = baselineGroups
-      .filter((g) => !groupOverrides[String(g.id)]?._deleted)
-      .map((g) => {
-        const ov = groupOverrides[String(g.id)];
-        if (!ov) return g;
-        // Apply scalar field overrides (name, color, etc) then reconstruct members from deltas.
-        const { _deleted, memberDeltas, ...fields } = ov;
-        let members = g.members || [];
-        if (memberDeltas?.length) {
-          const memberSet = new Set(members.map(String));
-          for (const { taskId, op } of memberDeltas) {
-            if (op === 'add') memberSet.add(String(taskId));
-            else memberSet.delete(String(taskId));
-          }
-          members = [...memberSet];
-        }
-        return { ...g, ...fields, members };
-      });
-
-    // Append scenario-local groups (already scoped to planId by filter above).
-    return [...effective, ...scenarioGroups];
+    return deriveEffectiveGroupsForPlan(planId, baselineGroups, scenario);
   }
 
   // ---------------------------------------------------------------------------

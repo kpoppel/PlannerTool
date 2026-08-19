@@ -1,37 +1,10 @@
 import { GroupEvents, ScenarioEvents } from '../../core/EventRegistry.js';
-
-function getScenarioItems(state) {
-  return Array.isArray(state?.scenarios?.items) ? state.scenarios.items : [];
-}
-
-function getActiveScenarioId(state) {
-  return state?.scenarios?.activeId ?? 'baseline';
-}
-
-function isMutableScenario(scenario) {
-  return Boolean(scenario) && scenario.readonly !== true;
-}
-
-function withActiveScenario(state, updater) {
-  const activeId = getActiveScenarioId(state);
-  if (!activeId || activeId === 'baseline') return null;
-
-  let changed = false;
-  const nextItems = getScenarioItems(state).map((scenario) => {
-    if (scenario.id !== activeId) return scenario;
-    if (!isMutableScenario(scenario)) return scenario;
-    const nextScenario = updater(scenario);
-    if (!nextScenario || nextScenario === scenario) return scenario;
-    changed = true;
-    return nextScenario;
-  });
-
-  if (!changed) return null;
-  return {
-    activeId,
-    items: nextItems,
-  };
-}
+import {
+  getActiveScenarioId,
+  getScenarioItems,
+  isMutableScenario,
+  withActiveScenario,
+} from '../shared/scenarioMutations.js';
 
 function applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op) {
   const key = String(groupId);
@@ -84,7 +57,7 @@ export function createGroupCommands(store, bus) {
       const mutation = withActiveScenario(snapshot, (scenario) => ({
         ...scenario,
         scenarioGroups: [...(scenario.scenarioGroups || []), tempGroup],
-      }));
+      }), { allowBaseline: false });
 
       if (!mutation) return null;
 
@@ -133,7 +106,7 @@ export function createGroupCommands(store, bus) {
           ...scenario,
           groupOverrides: nextOverrides,
         };
-      });
+      }, { allowBaseline: false });
 
       if (!mutation) return null;
 
@@ -194,7 +167,7 @@ export function createGroupCommands(store, bus) {
           ...scenario,
           groupOverrides: nextOverrides,
         };
-      });
+      }, { allowBaseline: false });
 
       if (!mutation) return false;
 
@@ -218,8 +191,10 @@ export function createGroupCommands(store, bus) {
       if (!groupId || !taskId || (op !== 'add' && op !== 'remove')) return false;
 
       const snapshot = store.getState();
-      const mutation = withActiveScenario(snapshot, (scenario) =>
-        applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op)
+      const mutation = withActiveScenario(
+        snapshot,
+        (scenario) => applyGroupMemberDeltaToScenario(scenario, groupId, taskId, op),
+        { allowBaseline: false }
       );
 
       if (!mutation) return false;
@@ -299,7 +274,7 @@ export function createGroupCommands(store, bus) {
         ...scenario,
         scenarioGroups: [],
         groupOverrides: {},
-      }));
+      }), { allowBaseline: false });
 
       if (!mutation) return false;
 
@@ -328,7 +303,7 @@ export function createGroupCommands(store, bus) {
         scenarioGroups: (scenario.scenarioGroups || []).map((group) =>
           String(group.id) === String(tempId) ? { ...group, id: String(realId) } : group
         ),
-      }));
+      }), { allowBaseline: false });
 
       if (!mutation) return false;
 

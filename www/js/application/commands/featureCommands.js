@@ -1,16 +1,13 @@
 import { CapacityEvents, FeatureEvents, ScenarioEvents } from '../../core/EventRegistry.js';
-
-function isMutableScenario(scenario) {
-  return Boolean(scenario) && scenario.readonly !== true;
-}
-
-function getScenarioItems(state) {
-  return Array.isArray(state?.scenarios?.items) ? state.scenarios.items : [];
-}
-
-function getActiveScenarioId(state) {
-  return state?.scenarios?.activeId ?? 'baseline';
-}
+import {
+  buildChildrenByParentMap,
+  buildFeatureMap,
+} from '../shared/featureProjection.js';
+import {
+  getActiveScenarioId,
+  getScenarioItems,
+  withActiveScenario,
+} from '../shared/scenarioMutations.js';
 
 function findActiveScenario(state) {
   const activeId = getActiveScenarioId(state);
@@ -19,51 +16,13 @@ function findActiveScenario(state) {
 }
 
 function getBaselineFeatureMap(state) {
-  const map = new Map();
-  for (const feature of state?.baseline?.features || []) {
-    if (!feature?.id) continue;
-    map.set(String(feature.id), feature);
-  }
-  return map;
-}
-
-function getChildrenByParent(state) {
-  const childrenByParent = new Map();
-  for (const feature of state?.baseline?.features || []) {
-    const parentId = feature?.parentId;
-    if (!parentId) continue;
-    const parentKey = String(parentId);
-    if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
-    childrenByParent.get(parentKey).push(String(feature.id));
-  }
-  return childrenByParent;
+  return buildFeatureMap(state.baseline.features);
 }
 
 function shiftIsoByMs(isoDate, deltaMs) {
   const parsed = Date.parse(isoDate);
   if (Number.isNaN(parsed)) return isoDate;
   return new Date(parsed + deltaMs).toISOString().slice(0, 10);
-}
-
-function withActiveScenario(state, updater) {
-  const activeId = getActiveScenarioId(state);
-  if (!activeId) return null;
-
-  let changed = false;
-  const nextItems = getScenarioItems(state).map((scenario) => {
-    if (scenario.id !== activeId) return scenario;
-    if (!isMutableScenario(scenario)) return scenario;
-    const nextScenario = updater(scenario);
-    if (!nextScenario || nextScenario === scenario) return scenario;
-    changed = true;
-    return nextScenario;
-  });
-
-  if (!changed) return null;
-  return {
-    items: nextItems,
-    activeId,
-  };
 }
 
 function withFeatureOverride(scenario, featureId, updater) {
@@ -115,7 +74,7 @@ export function createFeatureCommands(store, bus, recomputeCapacity = null) {
 
       const snapshot = store.getState();
       const baselineById = getBaselineFeatureMap(snapshot);
-      const childrenByParent = getChildrenByParent(snapshot);
+      const childrenByParent = buildChildrenByParentMap(snapshot.baseline.features);
       const changedIds = new Set();
 
       const activeScenario = findActiveScenario(snapshot);

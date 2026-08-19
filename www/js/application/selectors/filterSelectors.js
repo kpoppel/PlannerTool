@@ -1,22 +1,5 @@
 import { DEFAULT_STATE_COLOR_MAP, PALETTE } from '../../services/ColorService.js';
-
-const DEFAULT_TASK_FILTERS = {
-  schedule: { planned: true, unplanned: true },
-  allocation: { allocated: true, unallocated: true },
-  hierarchy: { hasParent: true, noParent: true },
-  relations: { hasLinks: true, noLinks: true },
-};
-
-function normalizeTaskFilters(filters) {
-  const next = {};
-  for (const [dimension, options] of Object.entries(DEFAULT_TASK_FILTERS)) {
-    next[dimension] = {
-      ...options,
-      ...filters[dimension],
-    };
-  }
-  return next;
-}
+import { normalizeTaskFilters } from '../shared/taskFilters.js';
 
 function toStateSet(input) {
   if (input instanceof Set) return new Set(Array.from(input));
