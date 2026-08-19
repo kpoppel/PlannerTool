@@ -7,18 +7,6 @@ const DEFAULT_TASK_FILTERS = {
   relations: { hasLinks: true, noLinks: true },
 };
 
-function normalizeTaskFilters(filters = {}) {
-  const next = {};
-  for (const [dimension, options] of Object.entries(DEFAULT_TASK_FILTERS)) {
-    const current = filters?.[dimension];
-    next[dimension] = {
-      ...options,
-      ...(current && typeof current === 'object' ? current : {}),
-    };
-  }
-  return next;
-}
-
 function deriveAvailableStatesFromFeatures(features) {
   const out = [];
   const seen = new Set();
@@ -36,15 +24,9 @@ function deriveAvailableStatesFromFeatures(features) {
 export function createFilterCommands(store, bus, recomputeCapacity = null) {
   const recompute = recomputeCapacity;
 
-  function requireRecomputeCapacity() {
-    if (typeof recompute !== 'function') {
-      throw new TypeError('filterCommands requires recomputeCapacity');
-    }
-  }
-
   return {
     setSelectedTaskTypes(types, options = {}) {
-      const taskTypeNames = Array.isArray(types) ? Array.from(types) : [];
+      const taskTypeNames = types;
       store.setState(
         (state) => ({
           ...state,
@@ -63,7 +45,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
     },
 
     setSelectedStates(states, options = {}) {
-      const featureStateNames = Array.isArray(states) ? Array.from(states) : [];
+      const featureStateNames = states;
       store.setState(
         (state) => ({
           ...state,
@@ -75,11 +57,11 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setSelectedStates'
       );
-      requireRecomputeCapacity();
+
       recompute();
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -118,12 +100,12 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
           'filter.setAllStatesSelected'
         );
       }
-      requireRecomputeCapacity();
+
       recompute();
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(StateFilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(StateFilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -147,11 +129,11 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.toggleStateSelected'
       );
-      requireRecomputeCapacity();
+
       recompute();
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -169,9 +151,9 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setStateFilter'
       );
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 
@@ -187,8 +169,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setSidebarDisabledElements'
       );
-      if (!options?.suppressEvents) {
-        bus?.emit?.('filter:sidebar-disabled-set', { map: map || {} });
+      if (!options.suppressEvents) {
+        bus.emit('filter:sidebar-disabled-set', { map: map || {} });
       }
     },
 
@@ -204,8 +186,8 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.clearSidebarDisabledElements'
       );
-      if (!options?.suppressEvents) {
-        bus?.emit?.('filter:sidebar-disabled-cleared', {});
+      if (!options.suppressEvents) {
+        bus.emit('filter:sidebar-disabled-cleared', {});
       }
     },
 
@@ -214,8 +196,14 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
       let nextTaskFilters = {};
       store.setState(
         (state) => {
-          const currentFilters = normalizeTaskFilters(state.selection?.taskFilters || {});
-          const currentDimension = currentFilters?.[dimension] || DEFAULT_TASK_FILTERS[dimension] || {};
+          const currentFilters = {
+            ...DEFAULT_TASK_FILTERS,
+            ...(state.selection?.taskFilters || {}),
+          };
+          const currentDimension = {
+            ...DEFAULT_TASK_FILTERS[dimension],
+            ...(currentFilters?.[dimension] || {}),
+          };
           nextTaskFilters = {
             ...currentFilters,
             [dimension]: {
@@ -234,9 +222,9 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         false,
         'filter.setTaskFilter'
       );
-      if (!options?.suppressEvents) {
-        bus?.emit?.(FilterEvents.CHANGED);
-        bus?.emit?.(FeatureEvents.UPDATED);
+      if (!options.suppressEvents) {
+        bus.emit(FilterEvents.CHANGED);
+        bus.emit(FeatureEvents.UPDATED);
       }
     },
 

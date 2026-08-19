@@ -11,10 +11,8 @@ Template - do not change :
 ## [v] - unreleased
 ### Added
 ### Changed
-- Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 ### Fixed
-- Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
-- Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
+
 ---
 
 ## [v5.0.0] - unreleased
@@ -35,6 +33,9 @@ Template - do not change :
   into the new `data/remote_cache` store for existing installations (run via `python3 scripts/migrate.py --apply`).
 
 ### Fixed
+- Fixed saved-view activation so Sidebar task filters and the graph-type toggle refresh immediately when a view is applied.
+- Fixed parent/child expansion state changes to emit the board refresh signals required for the featureboard to re-render with the newly computed expanded set.
+- Aligned store-backed filter command callers with the array-based interface so task/state selections are written from canonical arrays instead of relying on coercion at the command boundary.
 - Tightened Phase 5 seam contracts so required internal `recomputeCapacity`, `hydrateBaseline`, and `invalidateCache` hooks fail loudly instead of silently proceeding.
 - Fixed group task ordering so tasks within a group respect the active Task Sort toggle instead of preserving insertion order when rendered.
 - Restored the valuable autosave and feature-state regression coverage in the active ConfigService/FeatureStateService layers without reintroducing legacy State.js dependencies.
@@ -51,6 +52,7 @@ Template - do not change :
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
 
 ### Changed
+- Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 - Removed the legacy `bootstrapFromLegacyState` compatibility path and its direct test coverage; store-mode startup now relies on the active hydration commands instead of legacy state bridge logic.
 - Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.
 - Phase 7 follow-up: removed unused `ColorEvents.CHANGED` event wiring; retained payload-bearing contracts for `PluginEvents.*`, `SessionEvents.EXPIRED`, `BoardEvents.OVERLAY_OFFSET_CHANGED`, `DragEvents.*`, and `ConfigEvents.AUTOSAVE` where payload is the intentional transport contract or state-store parity surface.

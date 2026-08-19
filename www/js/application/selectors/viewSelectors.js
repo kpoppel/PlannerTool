@@ -61,7 +61,7 @@ function getStoreExpansionState(state) {
 }
 
 function getExpandedFeatureSetFromStore(state) {
-  const features = Array.isArray(state.baseline.features) ? state.baseline.features : [];
+  const features = state.baseline.features;
   const selectedProjectIds = new Set(toStringArray(state.selection.projectIds));
   const selectedTeamIds = new Set(toStringArray(state.selection.teamIds));
   const expansion = getStoreExpansionState(state);
@@ -174,10 +174,10 @@ export function createViewSelectors(store) {
 
   const getExpandedFeatureSetMemoized = () => {
     const state = store.getState();
-    const baselineFeatures = state?.baseline?.features;
-    const projectIds = state?.selection?.projectIds;
-    const teamIds = state?.selection?.teamIds;
-    const expansion = state?.view?.expansion;
+    const baselineFeatures = state.baseline.features;
+    const projectIds = state.selection.projectIds;
+    const teamIds = state.selection.teamIds;
+    const expansion = state.view.expansion;
 
     if (
       cachedExpandedFeatureSet && cachedState &&
@@ -204,7 +204,6 @@ export function createViewSelectors(store) {
       teamIds,
       expansion,
     };
-    console.log('Expanded feature set recalculated:', cachedExpandedFeatureSet);
     return cachedExpandedFeatureSet;
   };
 

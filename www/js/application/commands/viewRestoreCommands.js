@@ -204,19 +204,21 @@ export function createViewRestoreCommands(store, dataService, pluginStateCommand
   }
 
   async function restorePluginState(pluginState) {
-    await pluginStateCommands?.restoreFromView?.(pluginState || {});
+    await pluginStateCommands.restoreFromView(pluginState);
   }
 
   function applyViewToStore(viewId, viewData) {
     const snapshot = store.getState();
-    const viewOptions = cloneValue(viewData?.viewOptions || {});
     const isDefault = String(viewId) === 'default';
 
+    const viewOptions = cloneValue(viewData.viewOptions);
+
     const defaultProjectSelections = Object.fromEntries(
-      (snapshot?.baseline?.projects || []).map((project) => [String(project?.id), true])
+      snapshot.baseline.projects.map((project) => [String(project.id), true])
     );
+
     const defaultTeamSelections = Object.fromEntries(
-      (snapshot?.baseline?.teams || []).map((team) => [String(team?.id), true])
+      snapshot.baseline.teams.map((team) => [String(team.id), true])
     );
 
     const selectedProjects =

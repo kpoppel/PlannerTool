@@ -54,6 +54,17 @@ describe('application/commands/filterCommands', () => {
     expect(() => commands.setSelectedStates(['Doing'])).toThrow(TypeError);
   });
 
+  it('accepts caller-provided arrays and stores them as selection values', () => {
+    const bus = { emit: vi.fn() };
+    const commands = createFilterCommands(store, bus, vi.fn());
+
+    expect(() => commands.setSelectedStates(['Doing'])).not.toThrow();
+    expect(() => commands.setSelectedTaskTypes(['feature'])).not.toThrow();
+
+    expect(store.getState().selection.featureStateNames).toEqual(['Doing']);
+    expect(store.getState().selection.taskTypeNames).toEqual(['feature']);
+  });
+
   it('emits the expected filter events for state and task filter toggles', () => {
     const bus = { emit: vi.fn() };
     const commands = createFilterCommands(store, bus, vi.fn());

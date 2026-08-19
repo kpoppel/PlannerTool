@@ -1,14 +1,14 @@
 function getScenarioItems(state) {
-  return Array.isArray(state?.scenarios?.items) ? state.scenarios.items : [];
+  return state.scenarios.items;
 }
 
 function getActiveScenario(state) {
-  const activeId = state?.scenarios?.activeId ?? 'baseline';
+  const activeId = state.scenarios.activeId ?? 'baseline';
   return getScenarioItems(state).find((scenario) => scenario.id === activeId) || null;
 }
 
 function getBaselineGroupsForPlan(state, planId) {
-  const byPlanId = state?.groups?.byPlanId ?? {};
+  const byPlanId = state.groups.byPlanId;
   const key = String(planId);
   return Array.isArray(byPlanId[key]) ? byPlanId[key] : [];
 }

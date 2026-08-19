@@ -185,6 +185,30 @@ describe('application/commands/viewRestoreCommands', () => {
     expect(mod.createLegacyViewRestoreCommands).toBeUndefined();
   });
 
+  it('loadAndApplyView treats omitted selection maps as empty selections without crashing', async () => {
+    const dataService = {
+      listViews: vi.fn(async () => [{ id: 'v1', name: 'One' }]),
+      getView: vi.fn(async () => ({
+        id: 'v1',
+        name: 'One',
+        viewOptions: { timelineScale: 'weeks' },
+      })),
+      saveView: vi.fn(async () => ({ id: 'v1' })),
+      renameView: vi.fn(async () => {}),
+      deleteView: vi.fn(async () => {}),
+    };
+
+    const cmd = createViewRestoreCommands(store, dataService, {
+      restoreFromView: vi.fn(async () => {}),
+    });
+
+    await expect(cmd.loadAndApplyView('v1')).resolves.toBe('v1');
+    expect(store.getState().selection.projectIds).toEqual([]);
+    expect(store.getState().selection.teamIds).toEqual([]);
+    expect(store.getState().view.activeId).toBe('v1');
+    expect(store.getState().view.options.timelineScale).toBe('weeks');
+  });
+
   it('restoreLastView restores last active view payload and falls back to default', async () => {
     const localStorageMock = {
       _value: 'v9',
