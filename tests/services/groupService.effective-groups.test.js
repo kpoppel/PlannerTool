@@ -136,13 +136,11 @@ describe('GroupService.getEffectiveGroups', () => {
     expect(ids).toContain('tmp_123');
   });
 
-  it('returns empty array when scenario is null', async () => {
+  it('fails loudly when scenario is null', async () => {
     const g1 = mkGroup('g1', 'p1', 'Alpha');
     dataService.listGroups.mockResolvedValue([g1]);
     await svc.loadGroups('p1');
-    const result = svc.getEffectiveGroups('p1', null);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('g1');
+    expect(() => svc.getEffectiveGroups('p1', null)).toThrow(TypeError);
   });
 
   it('leaves override fields on baseline group unchanged (only memberDeltas differ)', async () => {

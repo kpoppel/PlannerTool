@@ -51,6 +51,7 @@ Template - do not change :
 - Store-backed view restore commands now always include a synthetic readonly `Default View` in the saved-views list so View menus consistently display the default option.
 - Selecting the store-backed `Default View` now performs a full reset equivalent to legacy defaults: baseline scenario active, all projects/teams/states/task-types selected, all task filters enabled, and default view options restored.
 - Sidebar expansion toggles now hydrate from store selectors on view list/activation so restored expand filters are applied immediately instead of retaining stale pre-switch toggle state.
+- Fixed store `setAllStatesSelected(true)` to derive available feature states from canonical baseline features, removing the stale dependency on a non-existent `state.filter` slice that broke plugin lifecycle tests.
 
 ### Changed
 - Tightened application team-allocation helpers to the canonical feature capacity contract by using only `capacity[].teamId` and removing legacy nullable/fallback field normalization.
@@ -61,6 +62,7 @@ Template - do not change :
 - Phase 6 consolidation slice: centralized task-filter normalization, active-scenario mutation wrappers, and effective-feature/hierarchy derivations into shared application helpers, then wired filter/feature/group/data/view-restore modules to the single-owner implementations with focused shared-helper tests.
 - Phase 6 consolidation continued: unified team-allocation id matching and effective-group projection into shared helpers, and removed duplicated selector/service derivations by wiring selection/view/feature/group selectors plus GroupService to the same owners.
 - Phase 6 consolidation follow-up: introduced shared state-derivation owners for available task types and configured feature-state ordering, removed duplicate active-scenario lookup wrappers in feature/group seams, and aligned view-restore/group-projection defaults with those shared contracts.
+- Phase 6/7 slice: centralized expanded-feature derivation (parent/child, relations, team-allocation) into a single shared owner used by both view and feature selectors, with focused shared-contract tests.
 - Updated `backup/architecture_v5/ARCHITECTURE_v2.md` to match the live runtime topology (imports.js wiring, command/store/event flow, plugin lifecycle, and admin bootstrap/service paths).
 - Removed the legacy `bootstrapFromLegacyState` compatibility path and its direct test coverage; store-mode startup now relies on the active hydration commands instead of legacy state bridge logic.
 - Removed dead `BoardEvents.READY` and `BoardEvents.SCROLL` contracts (no emit/listen clients); kept `BoardEvents.OVERLAY_OFFSET_CHANGED` as the active board overlay signal with payload.

@@ -1,4 +1,4 @@
-import { hasFeatureTeamAllocation } from '../shared/teamAllocation.js';
+import { computeExpandedFeatureSet } from '../shared/featureExpansion.js';
 
 function toStringArray(values) {
   return Array.from(values).map((v) => String(v));
@@ -55,109 +55,23 @@ function getStoreExpansionState(state) {
 function getExpandedFeatureSetFromStore(state) {
   const features = state.baseline.features;
   const selectedProjectIds = new Set(toStringArray(state.selection.projectIds));
-  const selectedTeamIds = new Set(toStringArray(state.selection.teamIds));
   const expansion = getStoreExpansionState(state);
-  const featureById = new Map(
-    features
-      .filter((feature) => feature && feature.id != null)
-      .map((feature) => [String(feature.id), feature])
-  );
 
-  const expanded = new Set();
+  const selectedFeatureIds = [];
   for (const feature of features) {
-    const featureId = String(feature.id ?? '');
+    const featureId = feature.id == null ? '' : String(feature.id);
     if (!featureId) continue;
     if (selectedProjectIds.has(String(feature.project))) {
-      expanded.add(featureId);
+      selectedFeatureIds.push(featureId);
     }
   }
 
-  const counts = {
-    parentChild: 0,
-    relations: 0,
-    teamAllocated: 0,
-  };
-
-  const baseIds = new Set(expanded);
-
-  if (expansion.expandParentChild) {
-    const phaseAdded = new Set();
-    const canExpandDown = new Set(baseIds);
-    const toProcess = Array.from(baseIds);
-
-    while (toProcess.length > 0) {
-      const currentId = String(toProcess.pop());
-      const feature = featureById.get(currentId);
-      if (!feature) continue;
-
-      if (feature.parentId && featureById.has(String(feature.parentId))) {
-        const parentId = String(feature.parentId);
-        if (!baseIds.has(parentId) && !phaseAdded.has(parentId) && !expanded.has(parentId)) {
-          expanded.add(parentId);
-          phaseAdded.add(parentId);
-          toProcess.push(parentId);
-        }
-      }
-
-      if (canExpandDown.has(currentId)) {
-        for (const child of features) {
-          if (String(child.parentId) === currentId && child.id != null) {
-            const childId = String(child.id);
-            if (!baseIds.has(childId) && !phaseAdded.has(childId) && !expanded.has(childId)) {
-              expanded.add(childId);
-              phaseAdded.add(childId);
-              canExpandDown.add(childId);
-              toProcess.push(childId);
-            }
-          }
-        }
-      }
-    }
-
-    counts.parentChild = phaseAdded.size;
-  }
-
-  if (expansion.expandRelations) {
-    const phaseAdded = new Set();
-    const toProcess = Array.from(baseIds);
-    while (toProcess.length > 0) {
-      const currentId = String(toProcess.pop());
-      const feature = featureById.get(currentId);
-      if (!feature || !Array.isArray(feature.relations)) continue;
-
-      for (const relation of feature.relations) {
-        const relationType = String(relation?.type ?? relation?.relationType ?? '');
-        if (relationType === 'Parent' || relationType === 'Child') continue;
-
-        const relationId = String(relation?.id ?? '');
-        if (!relationId || !featureById.has(relationId)) continue;
-        if (baseIds.has(relationId) || phaseAdded.has(relationId) || expanded.has(relationId)) continue;
-        expanded.add(relationId);
-        phaseAdded.add(relationId);
-        toProcess.push(relationId);
-      }
-    }
-
-    counts.relations = phaseAdded.size;
-  }
-
-  if (expansion.expandTeamAllocated && selectedTeamIds.size > 0) {
-    const phaseAdded = new Set();
-    for (const feature of features) {
-      const featureId = String(feature.id ?? '');
-      if (!featureId || baseIds.has(featureId) || phaseAdded.has(featureId) || expanded.has(featureId)) continue;
-      if (hasFeatureTeamAllocation(feature, selectedTeamIds)) {
-        expanded.add(featureId);
-        phaseAdded.add(featureId);
-      }
-    }
-    counts.teamAllocated = phaseAdded.size;
-  }
-
-  return {
-    expandedIds: expanded,
-    counts,
-  };
+  return computeExpandedFeatureSet(features, selectedFeatureIds, {
+    expandParentChild: expansion.expandParentChild,
+    expandRelations: expansion.expandRelations,
+    expandTeamAllocated: expansion.expandTeamAllocated,
+    selectedTeamIds: state.selection.teamIds,
+  });
 }
 
 export function createViewSelectors(store) {

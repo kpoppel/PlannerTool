@@ -63,9 +63,7 @@ export function createFilterCommands(store, bus, recomputeCapacity = null) {
         );
       } else {
         const currentState = store.getState();
-        const available = currentState.filter.availableFeatureStates;
-        const fallback = available.length > 0 ? available : deriveAvailableFeatureStates(currentState.baseline.features);
-        nextSelection = Array.from(fallback);
+        nextSelection = deriveAvailableFeatureStates(currentState.baseline.features);
         store.setState(
           (state) => ({
             ...state,

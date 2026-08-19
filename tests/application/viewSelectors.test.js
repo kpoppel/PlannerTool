@@ -60,7 +60,7 @@ describe('application/selectors/viewSelectors', () => {
         baseline: {
           features: [
             { id: 'f-project', project: 'p1', capacity: [] },
-            { id: 'f-team', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
+            { id: 'f-team', project: 'p2', capacity: [{ teamId: 't1', capacity: 1 }] },
             { id: 'f-hidden', project: 'p3', capacity: [] },
           ],
         },
@@ -112,7 +112,7 @@ describe('application/selectors/viewSelectors', () => {
         baseline: {
           features: [
             { id: 'f-project', project: 'p1', capacity: [] },
-            { id: 'f-team', project: 'p2', capacity: [{ team: 't1', capacity: 1 }] },
+            { id: 'f-team', project: 'p2', capacity: [{ teamId: 't1', capacity: 1 }] },
             { id: 'f-hidden', project: 'p3', capacity: [] },
           ],
         },
@@ -297,10 +297,10 @@ describe('application/selectors/viewSelectors', () => {
       getState: () => ({
         baseline: {
           features: [
-            { id: 'a', project: 'p1', parentId: null, capacity: [{ team: 't1', capacity: 5 }] },
-            { id: 'b', project: 'p1', parentId: null, capacity: [{ team: 't1', capacity: 5 }] },
-            { id: 'c', project: 'p2', parentId: null, capacity: [{ team: 't1', capacity: 5 }] },
-            { id: 'd', project: 'p3', parentId: null, capacity: [{ team: 't2', capacity: 5 }] },
+            { id: 'a', project: 'p1', parentId: null, capacity: [{ teamId: 't1', capacity: 5 }] },
+            { id: 'b', project: 'p1', parentId: null, capacity: [{ teamId: 't1', capacity: 5 }] },
+            { id: 'c', project: 'p2', parentId: null, capacity: [{ teamId: 't1', capacity: 5 }] },
+            { id: 'd', project: 'p3', parentId: null, capacity: [{ teamId: 't2', capacity: 5 }] },
           ],
         },
         selection: {

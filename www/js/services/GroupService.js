@@ -87,7 +87,7 @@ export class GroupService {
    * The baseline cache is not mutated — overrides produce new group objects.
    *
    * @param {string|number} planId
-   * @param {object|null} scenario  Active scenario (may be null/undefined)
+  * @param {object} scenario  Active scenario object
    * @returns {Array} Effective groups sorted by (rank, name)
    */
   getEffectiveGroups(planId, scenario) {

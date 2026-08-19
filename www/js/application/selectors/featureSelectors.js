@@ -3,6 +3,7 @@ import {
   buildFeatureMap,
   deriveEffectiveFeatures,
 } from '../shared/featureProjection.js';
+import { computeExpandedFeatureSet } from '../shared/featureExpansion.js';
 import { deriveAvailableTaskTypes } from '../shared/stateDerivations.js';
 import { hasFeatureTeamAllocation, hasFeatureTeamId } from '../shared/teamAllocation.js';
 
@@ -52,23 +53,6 @@ function getIterationsForProjectFromStore(state, projectId) {
   return linkedSet.iterations;
 }
 
-function normalizeIdSet(values) {
-  const out = new Set();
-  for (const value of values) {
-    out.add(String(value));
-  }
-  return out;
-}
-
-function buildParentByChildMap(features) {
-  const map = new Map();
-  for (const feature of features) {
-    if (!feature.parentId) continue;
-    map.set(String(feature.id), String(feature.parentId));
-  }
-  return map;
-}
-
 function buildTaskTypeOrderMap(taskTypes, hierarchy) {
   const order = new Map();
   for (const type of taskTypes) {
@@ -96,59 +80,6 @@ function makeCountsMap(features, predicate) {
     }
   }
   return counts;
-}
-
-function computeExpandedFeatureSetFallback(features, selectedFeatureIds, options = {}) {
-  const expandedIds = normalizeIdSet(selectedFeatureIds);
-  const childrenByParent = buildChildrenByParentMap(features);
-  const parentByChild = buildParentByChildMap(features);
-  const selectedTeamIds = normalizeIdSet(options.selectedTeamIds);
-
-  let parentChildCount = 0;
-  let teamAllocatedCount = 0;
-
-  if (options.expandParentChild) {
-    const stack = Array.from(expandedIds);
-    while (stack.length > 0) {
-      const currentId = stack.pop();
-      const children = childrenByParent.get(String(currentId));
-      if (children !== undefined) {
-        for (const childId of children) {
-          if (!expandedIds.has(String(childId))) {
-            expandedIds.add(String(childId));
-            parentChildCount += 1;
-            stack.push(String(childId));
-          }
-        }
-      }
-      const parentId = parentByChild.get(String(currentId));
-      if (parentId && !expandedIds.has(String(parentId))) {
-        expandedIds.add(String(parentId));
-        parentChildCount += 1;
-        stack.push(String(parentId));
-      }
-    }
-  }
-
-  if (options.expandTeamAllocated && selectedTeamIds.size > 0) {
-    for (const feature of features) {
-      if (!feature.id) continue;
-      if (expandedIds.has(String(feature.id))) continue;
-      const matchesTeam = hasFeatureTeamAllocation(feature, selectedTeamIds);
-      if (!matchesTeam) continue;
-      expandedIds.add(String(feature.id));
-      teamAllocatedCount += 1;
-    }
-  }
-
-  return {
-    expandedIds,
-    counts: {
-      parentChild: parentChildCount,
-      relations: 0,
-      teamAllocated: teamAllocatedCount,
-    },
-  };
 }
 
 export function createFeatureSelectors(store) {
@@ -207,10 +138,15 @@ export function createFeatureSelectors(store) {
     },
 
     computeExpandedFeatureSet(selectedFeatureIds, options = {}) {
-      return computeExpandedFeatureSetFallback(
+      return computeExpandedFeatureSet(
         this.getEffectiveFeatures(),
         selectedFeatureIds,
-        options
+        {
+          expandParentChild: options.expandParentChild,
+          expandRelations: false,
+          expandTeamAllocated: options.expandTeamAllocated,
+          selectedTeamIds: options.selectedTeamIds,
+        }
       );
     },
 
